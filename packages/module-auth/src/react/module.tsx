@@ -26,8 +26,15 @@ import { SignInPage } from './sign-in-page.js';
  * `searchParams` and nothing else, so something has to bridge the two; doing it
  * here keeps `next/navigation` out of the module entirely.
  */
-function SignInRoute(_props: ModuleRouteProps) {
-  return <SignInPage />;
+function SignInRoute({ searchParams }: ModuleRouteProps) {
+  // ?next=/somewhere, so a guard that bounced someone here can send them back.
+  const next = searchParams?.next;
+  // Only app-relative paths. An absolute URL here would make the sign-in page
+  // an open redirect: /auth/signin?next=https://evil.example sends a freshly
+  // authenticated user straight to an attacker's page, wearing the trust of
+  // having just arrived from yours.
+  const safe = typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  return <SignInPage redirectTo={safe} />;
 }
 
 function ForgotPasswordRoute(_props: ModuleRouteProps) {

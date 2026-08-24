@@ -203,6 +203,24 @@ export class AuthService {
     return { revoked: count > 0 };
   }
 
+  /**
+   * The signed-in user's own record.
+   *
+   * A DATABASE READ, unlike /auth/me — which is why it is a separate call
+   * rather than a wider one. `Principal` is deliberately thin (see types.ts):
+   * it carries what a guard needs to decide, and a guard does not need a
+   * display name. Baking one into the token would mean a week-old session
+   * greeting someone by a name they changed on Tuesday.
+   */
+  async profile(principal: Principal): Promise<SessionUser | null> {
+    const user = await this.client().authUser.findUnique({ where: { id: principal.userId } });
+    // Deleted or suspended since the token was issued. The token stays
+    // cryptographically valid until it expires, so this is the check that
+    // notices.
+    if (user?.status !== 'active') return null;
+    return toSessionUser(user);
+  }
+
   // ── forgot password ───────────────────────────────────────────────────────
 
   /**

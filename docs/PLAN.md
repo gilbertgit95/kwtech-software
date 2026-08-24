@@ -483,6 +483,47 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-08-25** — **The frontend was not actually styled**, and the reason was
+  worse than a missing palette. Tailwind ignores everything reachable through
+  `node_modules` — which is how every workspace package is reached under pnpm —
+  so it never saw the module pages' class names at all. Not merely unthemed:
+  `rounded-md` and `px-3` were missing too, because Tailwind only emits classes
+  it has seen written down. Proof it was that and not the palette: `min-h-dvh`
+  was present (used in the app's own `page.tsx`) while `rounded-md` was not
+  (used only inside `module-auth`). Fixed with `@source` lines in the app's
+  globals.css, mirroring `WEB_MODULES` in `src/modules.ts` — a glob over
+  `packages/*` would scan packages the app does not compose.
+- **2026-08-25** — Design tokens filled in (`@kwtech/web-ui/styles.css`): a
+  neutral oklch palette named by ROLE, `@theme inline` so `.dark` can swap them,
+  and a class-based `dark` variant for `next-themes`. `@theme` had been left
+  empty "until the first real component needs one" — components that needed
+  them were then written, so `bg-background`, `text-foreground` and the rest
+  resolved to nothing.
+- **2026-08-25** — **Sign-in went nowhere.** `SignInRoute` rendered
+  `<SignInPage />` with no `onSignedIn`, so a successful sign-in set the cookies
+  and left the user looking at the form. It now navigates, and does so with a
+  FULL page load rather than a client-side route change — the session cookie is
+  httpOnly, so only the server can see it, and a soft navigation would re-render
+  from a client cache that still believes nobody is signed in.
+- **2026-08-25** — `?next=` is honoured only when app-relative. An absolute URL
+  would make the sign-in page an open redirect, sending a freshly authenticated
+  user to an attacker's page wearing the trust of having just arrived from ours.
+  Verified: `?next=https://evil.example` resolves to `/`, `?next=/settings` is
+  kept.
+- **2026-08-25** — **A place to land**: the home page is a server component that
+  reads the httpOnly cookie, and there is a sign-out. Signing out does BOTH
+  halves — revokes the session server-side and clears the cookies — because
+  clearing cookies alone leaves anyone who captured the refresh token holding a
+  working session for its full week. The cookies are cleared even when the
+  revoke call fails: being stuck signed in on a shared machine is the worse
+  outcome.
+- **2026-08-25** — `GET /auth/profile` added, separate from `/auth/me`. `/me`
+  returns the token's claims and reads no database, which is what makes it cheap
+  enough for every page load; `/profile` reads the user row for a page that
+  wants to greet someone by name. Keeping them apart also means the profile read
+  is the thing that notices a user suspended or deleted since the token was
+  issued — the token stays cryptographically valid until it expires.
+
 - **2026-08-25** — **`pnpm dev` starts the whole stack**: every package in watch
   mode plus both apps, one command. Ports moved to **:8080** (API) and **:8081**
   (web) to sit clear of the sibling repos on this machine.

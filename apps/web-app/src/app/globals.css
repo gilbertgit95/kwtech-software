@@ -1,10 +1,26 @@
 /*
- * Tailwind v4 configures itself in CSS — no tailwind.config.js.
- *
- * The design tokens live in @kwtech/web-ui so that this app and a future admin
- * app cannot drift; the module pages style themselves against these names
- * (bg-background, text-muted-foreground, …) and never hard-code a colour, which
- * is what lets an app restyle a package's components.
+ * Tailwind v4 configures itself in CSS — no tailwind.config.js by design.
  */
 @import "tailwindcss";
+
+/* The design tokens and the dark-mode variant. Must come after the import
+   above: it is what defines @theme and @custom-variant in the first place. */
 @import "@kwtech/web-ui/styles.css";
+
+/*
+ * Where to look for class names.
+ *
+ * Tailwind scans this app's own files automatically and **ignores everything
+ * reachable through node_modules** — which is how every workspace package is
+ * reached in a pnpm monorepo. Without these lines the module pages render with
+ * no CSS at all: not merely unthemed, but missing `rounded-md` and `px-3` too,
+ * because Tailwind only emits classes it has actually seen written down.
+ *
+ * This list mirrors WEB_MODULES in src/modules.ts. Adding a module means adding
+ * a line here as well — the alternative, a glob over `packages/*`, would scan
+ * packages this app does not compose and quietly grow the stylesheet with
+ * classes nothing renders.
+ */
+@source "../../../../packages/module-auth/src";
+@source "../../../../packages/module-permissions/src";
+@source "../../../../packages/web-ui/src";

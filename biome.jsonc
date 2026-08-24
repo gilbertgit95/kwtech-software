@@ -16,7 +16,10 @@
       // Static assets, not source. Biome parses a standalone .svg as JSX and
       // demands a <title> on every icon — an a11y rule that belongs on inline
       // SVG in components, not on files served verbatim.
-      "!**/public"
+      "!**/public",
+      // Written by Next on every build and stamped "should not be edited".
+      // Formatting it is churn that the next build reverses.
+      "!**/next-env.d.ts"
     ]
   },
   "css": {

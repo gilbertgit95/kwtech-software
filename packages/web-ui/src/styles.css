@@ -1,12 +1,145 @@
 /*
- * Tailwind v4 configures itself in CSS. Apps import this once, then their own
- * globals.css on top — so the design tokens live here, with the components
- * that consume them, and not in five app-level copies.
+ * The design tokens, and the dark-mode variant that swaps them.
+ *
+ * Tailwind v4 configures itself in CSS — there is no tailwind.config.js by
+ * design. Apps import this once from their own globals.css, so the palette
+ * lives here with the components that consume it rather than in a copy per app.
+ *
+ * Deliberately NOT `@import "tailwindcss"` — the importing app does that first,
+ * and doing it here as well emits the whole preflight twice.
  */
-@import "tailwindcss";
 
-@theme {
-  /* Design tokens go here. Kept deliberately empty until the first real
-     component needs one — a token nobody references is a token nobody
-     maintains. */
+/*
+ * Class-based dark mode, so `next-themes` (PLAN §3) can toggle it without a
+ * round trip and without fighting the OS preference. `:where()` keeps the
+ * selector at zero specificity, so a `dark:` utility never outranks a plain one
+ * by accident.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Light values. Named by ROLE, not by colour — `--background`, not `--white` —
+ * because the whole point is that the dark block below can change what the
+ * colour is without changing what it means, and no component has to know which
+ * theme is active.
+ *
+ * oklch, not hex: it is perceptually uniform, so a lightness step looks like
+ * the same step at every hue. Adjusting a scale in hex means eyeballing it.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+
+  --muted: oklch(0.97 0 0);
+  /* Deliberately dark enough to clear WCAG AA on --background. "Muted" is a
+     visual weight, not a licence to make text unreadable. */
+  --muted-foreground: oklch(0.556 0 0);
+
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  /* Lighter than the light-mode red: the same hue on a dark ground reads
+     muddy and fails contrast. */
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.556 0 0);
+}
+
+/*
+ * `@theme inline` is what turns the variables above into utilities —
+ * `bg-background`, `text-muted-foreground`, `border-input`. Without it they are
+ * just custom properties nothing can reach, and every class referencing them
+ * silently does not exist.
+ *
+ * `inline` matters: it makes the utilities reference `var(--background)` rather
+ * than baking in the light value, which is what lets `.dark` swap them at all.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+/*
+ * Tailwind v4's preflight unsets border colour, so every `border` utility would
+ * otherwise draw with `currentColor` — a black outline in light mode and a
+ * white one in dark.
+ */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+  }
 }

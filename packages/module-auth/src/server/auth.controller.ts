@@ -69,6 +69,18 @@ export class AuthController {
   }
 
   /**
+   * The caller's own record — name, email, username.
+   *
+   * Separate from /me because this one READS THE DATABASE. Keeping them apart
+   * lets a guard-level check stay free while a page that wants to greet someone
+   * by name pays for it, and only when it asks.
+   */
+  @Get('profile')
+  profile(@CurrentPrincipal() principal: Principal): Promise<SessionUser | null> {
+    return this.auth.profile(principal);
+  }
+
+  /**
    * Who the caller is, per their token. No database read — this is the claims
    * already verified by the guard, which is what makes it cheap enough for the
    * frontend to call on every page load.

@@ -15,10 +15,21 @@ import { useAuthForm } from './use-auth-form.js';
 export function SignInPage({
   client,
   onSignedIn,
+  redirectTo = '/',
   forgotPasswordHref = '/auth/forgot-password',
 }: {
   client?: AuthClient;
-  /** Where to go once it works. The module does not own the app's router. */
+  /**
+   * Where to go once it works.
+   *
+   * A FULL page navigation, not a client-side route change, and that is the
+   * point: the session cookie is httpOnly, so only the server can read it. A
+   * soft navigation would re-render the new page from a client cache that still
+   * believes nobody is signed in — the sign-in appears to do nothing, which is
+   * exactly the bug this default exists to prevent.
+   */
+  redirectTo?: string;
+  /** Overrides the navigation entirely, for an app that wants its own. */
   onSignedIn?: () => void;
   forgotPasswordHref?: string;
 }) {
@@ -29,7 +40,8 @@ export function SignInPage({
       identifier: String(form.get('identifier') ?? ''),
       password: String(form.get('password') ?? ''),
     });
-    onSignedIn?.();
+    if (onSignedIn) onSignedIn();
+    else window.location.assign(redirectTo);
   });
 
   return (

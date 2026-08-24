@@ -431,6 +431,31 @@ describe('resetPassword', () => {
   });
 });
 
+describe('profile', () => {
+  const principal = { userId: 'u1', sessionId: 's1', scope: 'full' as const, expiresAt: 0 };
+
+  it('returns the record the token cannot carry', async () => {
+    const h = harness({ user: user() });
+    await expect(h.svc.profile(principal)).resolves.toEqual({
+      id: 'u1',
+      email: 'ada@example.com',
+      username: 'ada',
+      displayName: 'Ada',
+    });
+  });
+
+  it('returns null for a user suspended since the token was issued', async () => {
+    // The token stays cryptographically valid until it expires, so this read is
+    // what notices. Nothing else does.
+    const h = harness({ user: user({ status: 'suspended' }) });
+    await expect(h.svc.profile(principal)).resolves.toBeNull();
+  });
+
+  it('returns null for a user deleted since the token was issued', async () => {
+    await expect(harness({}).svc.profile(principal)).resolves.toBeNull();
+  });
+});
+
 describe('a host that bound no client', () => {
   it('fails with a message naming the option, not a missing method', async () => {
     const svc = new AuthService(OPTIONS, new TokenService(OPTIONS));

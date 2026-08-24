@@ -47,7 +47,8 @@ export interface AuthPrismaClient {
   $transaction<T>(fn: (tx: AuthTransaction) => Promise<T>): Promise<T>;
 
   authUser: {
-    findUnique(args: { where: { email: string } }): Promise<AuthUserRow | null>;
+    /** By email at sign-in; by id for the caller's own profile. */
+    findUnique(args: { where: { email: string } | { id: string } }): Promise<AuthUserRow | null>;
     /**
      * Sign-in accepts an email OR a username, so one query covers both. A
      * username may not contain '@' (domain/policy.ts), so the two branches of
