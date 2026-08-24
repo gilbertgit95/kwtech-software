@@ -29,9 +29,14 @@ export interface RoleWithFeatures {
    */
   organizationId: string | null;
   features: { featureKey: string }[];
-  /** Only app-level roles carry these. See domain/limits.ts. */
-  limits: { limitKey: string; value: number }[];
 }
+
+// NOTE: no `limits` here. Only the APP-level role query includes them (see
+// UserRoleRow), because `user:organizations` is the sole role-sourced cap and
+// it hangs off an app-level role. Declaring `limits` on this shared type made
+// it a promise the membership and workspace-member queries never keep: their
+// `include` asks for features alone, so a real Prisma client cannot satisfy
+// this interface — which is how the lie was found. Nothing read the field.
 
 /**
  * Nested filter applied wherever role features are read: a feature the seed has
@@ -106,7 +111,10 @@ export interface PermissionsPrismaClient {
     findMany(args: {
       where: {
         organizationId: string;
-        status: string;
+        // The literal, not `string`. PermSubscriptionStatus is an enum in the
+        // schema (H4), so a `string` here is wider than the column and stops a
+        // generated Prisma client satisfying this interface at all.
+        status: 'active';
         // Organization-wide plans plus the active workspace's own, in one query.
         OR: ({ workspaceId: null } | { workspaceId: string })[];
       };

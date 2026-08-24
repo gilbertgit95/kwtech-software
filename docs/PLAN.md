@@ -31,6 +31,7 @@ Last updated: 2026-08-25
 | `packages/module-kit` | `@kwtech/module-kit` | The module contract every app composes (§9) | — |
 | `packages/web-ui` | `@kwtech/web-ui` | React + Tailwind 4 + AG Grid Community | — |
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
+| `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
 
 **Planned, not built yet:** `packages/db` (Prisma — see the note below),
 `apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
@@ -418,18 +419,27 @@ adapter, never a second copy of the feature.
 - **Phase 0 — done.** Turborepo + pnpm scaffold on masterdb's toolchain (Biome,
   `tsconfig.base.json`, lefthook, commitlint, catalog). `@kwtech/web-ui` and
   `@kwtech/module-permissions` scaffolded: registry, checks, Nest adapter, React adapter.
-- **Phase 1 — `packages/db`.** Prisma 7 schema, `prisma.config.ts`, pg driver
-  adapter, first migration against local Postgres. Blocks everything server-side.
-- **Phase 2 — `apps/web-server` skeleton.** `nest new`, Prisma module, JWT guard,
-  one REST controller, Swagger emitting `openapi.json`. Wire
-  `PermissionsModule.forRoot` and put a real key behind `@RequireFeature`.
-  Near-transcription of masterdb — low risk.
+- **Phase 1 — Prisma home. DONE, except the migration.** §12.2 closed the other
+  way: **`apps/web-server` owns its schema and client**, not `packages/db`.
+  `scripts/compose-schema.mjs` copies each module's fragment into
+  `prisma/_modules/`, `prisma.config.ts` holds the URL (Prisma 7 moved it out of
+  the schema), and `prisma generate` produces the TS client. The first
+  `migrate dev` still needs a Postgres to run against — nothing here has been
+  applied to a database yet.
+- **Phase 2 — `apps/web-server` skeleton. DONE.** Hand-written rather than
+  `nest new` (the CLI's generator adds nothing the plan had not already
+  decided). PrismaService, health check, Swagger, global JwtAuthGuard +
+  ThrottlerGuard + FeatureGuard, both modules wired. Boots, maps every route
+  from both modules with no wiring in the app, and answers 200/401/400
+  correctly — verified with curl, not assumed.
 - **Phase 3 — GraphQL layer.** `@nestjs/graphql` code-first, one resolver,
   `schema.graphql` emitted, codegen wired into turbo, Apollo Client 4 consuming
   it. **Highest-risk phase: no existing repo runs this pairing.**
-- **Phase 4 — `apps/web-app` vertical slice.** `create-next-app`, Tailwind 4 via
-  `@kwtech/web-ui/styles.css`, Auth.js 5, `PermissionsProvider` fed from the
-  server, one feature end to end.
+- **Phase 4 — `apps/web-app` vertical slice. PARTLY DONE.** Next 16 app with
+  Tailwind 4 via `@kwtech/web-ui/styles.css`, the module catch-all route
+  (§12.11 strategy A) and the three auth pages rendering. NOT Auth.js — §12.8
+  closed the other way (below). `PermissionsProvider` and a real feature
+  end to end still to come.
 - **Phase 5 — first grid.** `<DataGrid>` in `@kwtech/web-ui`, Infinite Row Model
   over a paginated GraphQL query, shared theme.
 - **Phase 6 — permissions for real.** ~~Grants persisted~~ (done: the write path
@@ -448,16 +458,16 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | # | Decision | Blocks | Notes |
 |---|---|---|---|
 | 1 | ~~Upgrade local pnpm to 11~~ **Closed** | — | pnpm 11.18.0 in place; install, typecheck, build and lint all green |
-| 2 | Where Prisma lives: one `packages/db` per database, or each server app owns its schema | Phase 1 | apps may sit on different databases (§9); modules are unaffected either way |
+| 2 | ~~Where Prisma lives~~ **Closed** | — | **`apps/web-server` owns its schema and client.** Module fragments compose into it; extract `packages/db` only when a second app needs the same database |
 | 3 | `module-permissions`: where the principal comes from | Phase 2 | the module resolves grants itself; the app supplies only `resolveSubjectId` (§9 rule 6) |
 | 4 | Container host for `web-server` | Phase 2 deploy | Railway / Fly / Render |
 | 5 | Postgres host — must be pooled (§5) | Phase 1 | Neon / Supabase / RDS+PgBouncer |
 | 6 | Validation: zod pipe (masterdb) vs `class-validator` (coseller) | Phase 2 | code-first GraphQL needs decorators for *types* either way; zod can still own *validation*. Decide once, not per-module |
 | 7 | TypeScript version for `web-server` | Phase 2 | masterdb pins its backend to 6.0.3 while the catalog is 7.0.2 — confirm the reason (decorator metadata) before deviating |
-| 8 | `next-auth` 5 beta vs server-issued JWT only | Phase 4 | masterdb runs the v5 beta; a beta in the auth path is a real risk |
+| 8 | ~~`next-auth` 5 beta vs server-issued JWT~~ **Closed** | — | **NestJS-issued JWT.** One issuer and one verification path for REST, GraphQL and the WS handshake; Auth.js would have left the API verifying a session it did not mint |
 | 10 | Job platform for `worker`; CI + remote cache | Phase 7+ | coseller uses Inngest |
 | 11 | Next route strategy: catch-all vs generated stubs (§9) | Phase 4 | start catch-all; the module is identical either way |
-| 12 | **Does `module-permissions` own user identity?** | Phase 1 | today it does not: `userId` is a bare string with no FK, so users may live in another module, another database or an external IdP. If profile data (name, email, credentials) moves in, this becomes an identity module and should be renamed `module-access` or split. Decide before the first migration |
+| 12 | ~~Does `module-permissions` own user identity?~~ **Closed: no** | — | Identity lives in **`@kwtech/module-auth`**. `perm_*` still holds `userId` as a bare string with no FK to `auth_user`; the two meet only in the app's `resolvePrincipal` |
 | 13 | Where the active organization and workspace come from on a request | Phase 2 | header, subdomain or session — `resolvePrincipal` reads it; the module does not guess |
 | 14 | Confirm app-level roles should bypass plan entitlement | Phase 2 | the default: staff must be able to help a lapsed organization. It is the one path that ignores billing state, so it needs a deliberate yes |
 | 15 | Should surfaces declare themselves **public**, rather than being public by omission? | Phase 6 | enforcement is opt-in, so an endpoint that should be guarded looks identical to one deliberately open. A `@Public('reason')` marker plus a coverage report would close it, at the cost of annotating every surface |
@@ -467,6 +477,107 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-08-25** — **Authentication went into a NEW `module-auth`, not into
+  `module-permissions`** (§12.12 closed: no). Credentials and reset tokens are
+  the most identity-shaped data there is, and §9 rule 5 exists to keep the
+  permissions module free of them. What the boundary buys, concretely: an
+  external IdP stays possible without migrating the permission tables, and two
+  apps on two databases can still share `module-permissions`.
+- **2026-08-25** — **The two modules meet in exactly one function**,
+  `apps/web-server/src/auth/resolve-principal.ts`. Auth verifies a token and
+  leaves a Principal on the request; that function reads the `userId` off it and
+  hands it to permissions. Neither package imports the other; both depend only
+  on `module-kit`. Extracted from an inline arrow in `AppModule` so it can be
+  tested — it is the highest-consequence function in the app.
+- **2026-08-25** — **A step-up (`pwd_change`) token resolves to no permission
+  context at all.** Otherwise a user who must change their password would be
+  authorised normally everywhere except the one endpoint that checks scope,
+  making the restriction decorative.
+- **2026-08-25** — **§12.8 closed: NestJS issues the JWT**, Auth.js is not
+  adopted. §5 puts the API on a different host and §7 rides subscriptions over
+  one socket, so REST, GraphQL and the WS handshake need one issuer and one
+  verification path. Auth.js would have left the API verifying a session it did
+  not mint, and forgot/reset-password is hand-built either way.
+- **2026-08-25** — Access token (15m, stateless) + opaque refresh token
+  (**1 week**, addresses a revocable `auth_session` row). Split deliberately:
+  verification reads no database, which keeps auth off the hot path, and the
+  cost is that revocation lags by the ACCESS token's life. `AUTH_SESSION_TTL`
+  and `AUTH_ACCESS_TOKEN_TTL` are separate env knobs for exactly that reason —
+  raising the second to a week would make "sign out everywhere", suspension and
+  a password reset all take seven days to bite. Note this diverges from masterdb,
+  which sets a 7d access token *and can*, because its guard re-reads the session
+  row on every request.
+- **2026-08-25** — **The credential path tells the caller nothing.** One message
+  and one status for unknown address, wrong password, locked account, suspended
+  account and expired session — and the same amount of WORK, via a dummy scrypt
+  verify when the address does not exist, because a millisecond-vs-100ms
+  difference answers the question the status code refuses to. `AuthFailureReason`
+  exists for the operator hook and never reaches a response.
+- **2026-08-25** — Forgot-password answers identically whether or not the
+  account exists. "No account with that email" is an enumeration oracle that
+  needs no password guessing at all, and it ships constantly because it reads as
+  helpful.
+- **2026-08-25** — Reset tokens are **stored hashed, single-use, and revoke every
+  session on consumption**. Someone resetting a stolen password is not helped by
+  a reset that leaves the thief signed in.
+- **2026-08-25** — scrypt from `node:crypto`, not argon2id: every argon2 binding
+  needs a native build step and `allowBuilds` is kept short on purpose (§2). The
+  stored hash is self-describing (`scrypt$N=…$salt$hash`), so moving to argon2id
+  later costs no migration and no forced reset.
+- **2026-08-25** — **Federated identity is in the SCHEMA only** — `auth_identity`
+  with `AuthIdentityProvider { google, microsoft }`, nothing implemented. Two
+  properties cannot be retrofitted without a data migration and a security
+  review, so they are fixed now: the match key is the provider's **`subject`**
+  claim and never email (matching on email is the classic federated
+  account-takeover), and `emailVerifiedByProvider` gates auto-LINKING to an
+  existing account. Provider access/refresh tokens are deliberately absent —
+  nothing calls provider APIs, and storing them meanwhile is a liability with no
+  reader.
+- **2026-08-25** — **Tokens never reach client JavaScript.** The API sets no
+  cookies (no CSRF surface, and a mobile app can use the identical mechanism), so
+  `apps/web-app/src/app/api/auth/[action]` proxies the three unauthenticated
+  actions and sets httpOnly cookies. It is an allowlist, not a pass-through: a
+  general proxy would let the browser reach every endpoint with the session
+  attached.
+- **2026-08-25** — Next needed a **required** catch-all (`[...slug]`), not the
+  optional one §12.11 implied: an optional catch-all also matches `/` and
+  collides with the app's own root page. Required is the honest shape anyway.
+- **2026-08-25** — **Three bugs found only by running it**, none visible to
+  typecheck or unit tests:
+  1. **Two copies of `@nestjs/common`** (11.2.1 in the modules' devDeps vs
+     11.1.29 in the app). Nest decides an HTTP status with
+     `instanceof HttpException`, so every 401 and 400 raised inside a module
+     reached the client as a **500**. Fixed by cataloguing `@nestjs/*` and
+     `reflect-metadata` in `pnpm-workspace.yaml` — a second copy is not a
+     duplicate, it is a bug.
+  2. **`Reflector` is auto-provided in the ROOT injector only**, so both guards
+     failed to construct inside their dynamic modules. Both modules now list it,
+     and `APP_GUARD` uses `useExisting` rather than `useClass` — `useClass`
+     builds a second instance in the app's injector, where it is absent again.
+  3. **Prisma 7 emits ESM-targeted source** (`import.meta.url`), so
+     `apps/web-server` must be `"type": "module"`. Under CJS the generated client
+     died at import with "exports is not defined in ES module scope".
+- **2026-08-25** — **A compile-time assertion that the app's PrismaClient fits
+  each module's structural interface** (`src/prisma/satisfies-modules.ts`).
+  `{ provide: X, useExisting: PrismaService }` is typed as `Provider` — token and
+  class, with no relationship TypeScript checks — so the property the whole
+  database-agnostic design rests on was being taken on trust in the one place it
+  matters. Adding the assertion immediately found two type lies in
+  `module-permissions`: `permSubscription.findMany` declared `status: string`
+  where the schema has an enum, and `RoleWithFeatures` declared a required
+  `limits` that the membership and workspace-member queries never include.
+- **2026-08-25** — `$transaction` is the one thing PrismaService cannot satisfy
+  structurally — it is overloaded, and TypeScript gives up on the comparison once
+  Prisma's generics are involved. The app supplies a small adapter
+  (`src/prisma/module-clients.ts`) with one narrow, commented cast, rather than
+  loosening the modules' `$transaction` to `any` and discarding the transaction
+  handle's type inside every write in both modules.
+- **2026-08-25** — Validation stays in `AuthService`, not a global pipe. §12.6 is
+  still open between a zod pipe and `class-validator`, and a module that picked
+  one would decide it for every consumer; a pipe also only guards HTTP, while the
+  same service is reachable from a CLI, a worker and a test.
+
 
 - **2026-08-25** — Repo scaffolded: Turborepo v2 + pnpm workspaces.
 - **2026-08-25** — Scope set: 5 apps (api, web, admin, worker, cli).

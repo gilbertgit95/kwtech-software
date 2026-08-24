@@ -32,3 +32,15 @@ pnpm-debug.log*
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Prisma module fragments, copied by apps/*/scripts/compose-schema.mjs on every
+# generate. A checked-in copy would be a second source that drifts from the
+# module it came from.
+#
+# The `**/` prefixes matter: a pattern CONTAINING a slash is anchored to this
+# file's directory, so a bare `prisma/_modules` would only ever match one at the
+# repo root — never the one under apps/web-server, which is the only one there
+# is.
+**/prisma/_modules/
+# Prisma 7 emits the client as TypeScript source. Generated, not authored.
+**/src/generated/

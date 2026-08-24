@@ -6,6 +6,21 @@ catalog:
   typescript: 7.0.2
   '@types/node': 24.10.1
 
+  # Nest is catalogued, not merely pinned per package, because a SECOND copy is
+  # not a duplicate — it is a bug. Nest's exception filter decides an HTTP
+  # status with `instanceof HttpException`, and a module that threw an
+  # UnauthorizedException built from a different copy of @nestjs/common failed
+  # that check: every 401 and 400 raised inside module-auth and
+  # module-permissions reached the client as a 500. Found by running it.
+  #
+  # The modules keep a permissive `^11.0.0` PEER range — a consumer may use any
+  # Nest 11 — while every devDependency and app dependency here resolves through
+  # this one entry, so the workspace links a single instance.
+  '@nestjs/common': 11.1.29
+  '@nestjs/core': 11.1.29
+  '@nestjs/platform-express': 11.1.29
+  reflect-metadata: 0.2.2
+
 # pnpm 11 does not run dependency install scripts unless they are allowlisted
 # here. Keep it to packages that genuinely need a build step and no more.
 #
@@ -24,3 +39,8 @@ allowBuilds:
   # (PLAN §3: swc, not ts-jest); unrs-resolver arrives under it.
   '@swc/core': true
   unrs-resolver: true
+  # Denied, not merely unlisted, so the prompt does not come back every install
+  # and the decision is on the record: @scarf/scarf's install script exists to
+  # phone home with analytics about who is installing what. It arrives under
+  # Prisma and nothing needs it to run.
+  '@scarf/scarf': false

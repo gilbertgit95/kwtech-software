@@ -1,4 +1,5 @@
 import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { RequestScope } from '../scope.js';
 import type { PermissionContext } from '../types.js';
 import { FeatureGuard } from './feature.guard.js';
@@ -116,6 +117,11 @@ export class PermissionsModule {
 
     const providers: Provider[] = [
       { provide: PERMISSIONS_OPTIONS, useValue: options },
+      // See the note in @kwtech/module-auth's AuthModule: Reflector is auto-
+      // provided in the ROOT injector only, and FeatureGuard reads every
+      // @RequireFeature / @RequireScope through it. Without this the app cannot
+      // construct the guard at boot.
+      Reflector,
       PermissionsService,
       PermissionsWriteService,
       FeatureGuard,

@@ -65,6 +65,12 @@
     // All uncached: they talk to a live database, or write outside the
     // package. DATABASE_URL is declared per-task rather than globally so it
     // cannot invalidate build/lint/test.
+    // Copies each module's prisma fragment into the app's schema folder. Not
+    // cached: it writes outside the task's own outputs, into a directory that
+    // must reflect whatever the module packages currently hold.
+    "db:compose": {
+      "cache": false
+    },
     "db:generate": {
       "cache": false
     },
@@ -92,9 +98,28 @@
     // NEXT_PUBLIC_* values are inlined into the client bundle at build time,
     // so they genuinely change the output and must be part of the hash.
     "@kwtech/web-app#build": {
-      "dependsOn": ["^build", "codegen"],
+      // No `codegen` yet: that task appears with the GraphQL layer in Phase 3.
+      // Listing a script no package has makes turbo fail the graph, not skip.
+      "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**"],
-      "env": ["NEXT_PUBLIC_*"]
+      // API_URL and SESSION_COOKIE are SERVER-side — read by the route handlers
+      // in src/app/api/auth, never inlined into the client bundle, which is the
+      // whole point of not naming them NEXT_PUBLIC_. They still belong in the
+      // hash: a build against a different API is a different build.
+      "env": ["NEXT_PUBLIC_*", "API_URL", "SESSION_COOKIE"]
+    },
+
+    // The backend must generate its Prisma client before anything typechecks
+    // against it — the client is TypeScript source, so without it there is no
+    // `PrismaClient` type to extend.
+    "@kwtech/web-server#build": {
+      "dependsOn": ["^build", "db:generate"],
+      "outputs": ["dist/**", "src/generated/**"],
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+    "@kwtech/web-server#typecheck": {
+      "dependsOn": ["^build", "db:generate"],
+      "passThroughEnv": ["DATABASE_URL"]
     }
   }
 }

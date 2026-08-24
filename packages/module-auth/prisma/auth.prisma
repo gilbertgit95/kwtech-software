@@ -1,0 +1,222 @@
+// The auth module's slice of the data model.
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Auth` and mapped to `auth_*` so a module
+// can never collide with another module's names in a schema it does not own.
+//
+//   AuthUser ──credential──▶ how they prove it (a password today)
+//       │
+//       ├──session──▶ a live sign-in, revocable, refresh-token addressed
+//       └──password reset──▶ a one-shot, hashed, expiring token
+//
+// ─── the identity boundary, from the other side ─────────────────────────────
+//
+// `AuthUser.id` is what `perm_membership.user_id` and `perm_user_role.user_id`
+// hold — and there is deliberately NO foreign key between them. The two modules
+// never reference each other's tables, so:
+//
+//   - an app may run permissions against an external IdP's user ids and never
+//     install these tables at all;
+//   - the two modules may live in different databases;
+//   - replacing this module with SSO is a change to one app's
+//     `resolvePrincipal`, not a migration of the permission tables.
+//
+// The seam is `resolvePrincipal`: this module issues a token, the app reads it,
+// module-permissions grants against the id inside. See docs/PLAN.md §12.12.
+
+enum AuthUserStatus {
+  active
+  suspended
+}
+
+/// A SECRET THE USER PROVES, held by us. Federated sign-in is deliberately not
+/// in here — see AuthIdentity for why the two are different tables.
+///
+/// An enum rather than a boolean so `webauthn` or `totp` is a value, not a
+/// table, and so a user may hold several at once.
+enum AuthCredentialType {
+  password
+}
+
+/// ─── federated identity: schema now, implementation later ──────────────────
+///
+/// Not yet wired to any endpoint. It is here because the two decisions below
+/// are the ones that cannot be taken later without a data migration and a
+/// security review, and because a user who signs up with Google must be
+/// representable before the sign-in path can be honest about them.
+enum AuthIdentityProvider {
+  google
+  microsoft
+}
+
+model AuthUser {
+  id String @id @default(cuid())
+
+  /// Stored lower-cased and NFKC-normalised, always, by domain/policy.ts.
+  /// Two rows differing only by case are two accounts one person cannot tell
+  /// apart, and `@unique` on the raw string would happily allow both.
+  email String @unique
+
+  displayName     String?
+  status          AuthUserStatus @default(active)
+  emailVerifiedAt DateTime?
+
+  /// Per-account brute-force state. The other half is a per-IP rate limit in
+  /// the app: lockout alone lets an attacker deny service to a NAMED person,
+  /// and an IP limit alone lets a botnet spread guesses across accounts.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  credentials    AuthCredential[]
+  identities     AuthIdentity[]
+  sessions       AuthSession[]
+  passwordResets AuthPasswordReset[]
+
+  @@map("auth_user")
+}
+
+/// A sign-in method someone ELSE vouches for: "Sign in with Google/Microsoft".
+///
+/// SCHEMA ONLY for now — nothing reads or writes this table yet. Two properties
+/// of it are load-bearing and are the reason it exists this early:
+///
+/// **1. The match key is `subject`, never email.** `subject` is the provider's
+/// stable `sub` claim for that account. Email addresses change, get reassigned
+/// by employers, and are not always verified by the issuer — so matching an
+/// incoming login to a local user by email is the classic federated
+/// account-takeover: register `victim@company.com` at any provider that will
+/// not check it, sign in, and receive the victim's account. `@@unique([provider,
+/// subject])` is what makes that impossible to express.
+///
+/// **2. `emailVerifiedByProvider` gates LINKING, not signing in.** Attaching a
+/// new provider to an EXISTING local account may only happen automatically when
+/// the provider asserts the address is verified. Otherwise the user signs in
+/// with what they already have and links deliberately — otherwise property 1 is
+/// re-opened one level up.
+///
+/// Kept apart from AuthCredential because the two are different things: a
+/// credential is a secret we store and verify, an identity is an assertion a
+/// third party makes. Merging them would put a foreign `sub` in a column named
+/// `secret` and give the password path a row it must remember to skip.
+///
+/// Deliberately ABSENT: the provider's access and refresh tokens. They are only
+/// needed to call provider APIs on the user's behalf, which nothing here does;
+/// storing them meanwhile is a standing liability with no reader. When a feature
+/// needs them, add `accessToken`/`refreshToken`/`scope`/`tokenExpiresAt` here —
+/// encrypted at rest — and not before.
+model AuthIdentity {
+  id     String @id @default(cuid())
+  userId String
+
+  provider AuthIdentityProvider
+
+  /// The provider's stable subject claim. NOT an email. See the note above.
+  subject String
+
+  /// The address the provider reported AT LINK TIME, kept for support and for
+  /// noticing that it has since drifted. Never used to match a sign-in.
+  email                  String?
+  emailVerifiedByProvider Boolean @default(false)
+
+  displayName String?
+
+  linkedAt    DateTime  @default(now())
+  lastLoginAt DateTime?
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The whole security property, as a constraint: one provider account maps to
+  /// at most one local user, and a second attempt to claim it fails in the
+  /// database rather than depending on application code remembering to check.
+  @@unique([provider, subject])
+  /// One account per provider per user — linking Google twice is a bug, not a
+  /// second identity.
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("auth_identity")
+}
+
+/// How a user proves who they are. Kept off AuthUser so that rotating a hash
+/// does not touch the user row, and so a second factor or a second method is an
+/// extra row rather than a migration.
+/// Optional, and increasingly so: a user who signed up with Google has NO row
+/// here. The sign-in path already treats a missing credential as an ordinary
+/// refusal rather than an error, which is what lets that user exist today.
+model AuthCredential {
+  id     String             @id @default(cuid())
+  userId String
+  type   AuthCredentialType
+
+  /// SELF-DESCRIBING: `scrypt$N=16384,r=8,p=1$<salt>$<hash>`. The algorithm and
+  /// its parameters live inside the value, so moving to argon2id later costs no
+  /// migration and no forced reset — verify against whatever prefix the row
+  /// carries, and re-hash on the next successful sign-in.
+  secret String
+
+  updatedAt DateTime @updatedAt
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("auth_credential")
+}
+
+/// A live sign-in.
+///
+/// The access token is a stateless JWT and is never stored: checking a row on
+/// every request is the cost this design exists to avoid. The session row is
+/// addressed by the REFRESH token instead, which is presented rarely — so
+/// revocation is real (revoke the row, the next refresh fails) without a
+/// database read on the hot path. The window is the access token's lifetime,
+/// and that is the knob to turn if it needs to be shorter.
+model AuthSession {
+  id     String @id @default(cuid())
+  userId String
+
+  /// SHA-256 of the token, never the token. A database read — a backup, a
+  /// support query, a leaked dump — must not yield a working session.
+  refreshTokenHash String @unique
+
+  issuedAt   DateTime  @default(now())
+  lastUsedAt DateTime?
+  expiresAt  DateTime
+  /// Set rather than deleted, so "signed out at" stays answerable.
+  revokedAt  DateTime?
+
+  ipAddress String?
+  userAgent String?
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("auth_session")
+}
+
+/// A one-shot password-reset grant.
+///
+/// Hashed like a refresh token and for the same reason. Rows are kept after use
+/// — `consumedAt` rather than a delete — because "this link was already used"
+/// and "this link never existed" need different answers to the person holding
+/// it, and only one of those is knowable from a missing row.
+model AuthPasswordReset {
+  id     String @id @default(cuid())
+  userId String
+
+  tokenHash String @unique
+
+  requestedAt DateTime  @default(now())
+  expiresAt   DateTime
+  consumedAt  DateTime?
+
+  /// Recorded for the notification email that tells a user a reset was
+  /// requested from somewhere they do not recognise.
+  requestedIp String?
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+  @@map("auth_password_reset")
+}

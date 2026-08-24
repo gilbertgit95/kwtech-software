@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // Nest resolves controllers, providers and DTOs from decorator metadata.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // The generated Prisma client is not written to this project's standards
+    // and is not ours to fix.
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "src/generated"]
+}

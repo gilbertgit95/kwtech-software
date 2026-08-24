@@ -1,8 +1,8 @@
 {
-  "name": "@kwtech/module-permissions",
+  "name": "@kwtech/module-auth",
   "version": "0.0.0",
   "private": true,
-  "description": "The permissions feature, whole: data model, domain logic, GraphQL surface, server wiring and React components",
+  "description": "The authentication feature, whole: identity tables, credential and token logic, REST surface, Nest wiring and React pages",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -17,26 +17,24 @@
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
     },
-    "./graphql": "./src/graphql/operations.graphql",
-    "./prisma": "./prisma/permissions.prisma"
+    "./prisma": "./prisma/auth.prisma"
   },
   "files": [
     "dist",
-    "prisma",
-    "src/graphql"
+    "prisma"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
     "test": "jest",
-    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
-    "@nestjs/graphql": "^13.0.0",
+    "jsonwebtoken": "^9.0.0",
     "react": "^19.0.0",
     "reflect-metadata": "^0.2.0"
   },
@@ -44,7 +42,7 @@
     "@nestjs/common": {
       "optional": true
     },
-    "@nestjs/graphql": {
+    "jsonwebtoken": {
       "optional": true
     },
     "reflect-metadata": {
@@ -54,20 +52,21 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "@kwtech/module-kit": "workspace:*"
+  },
   "devDependencies": {
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
-    "@nestjs/graphql": "^13.4.5",
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
     "jest": "^30.4.2",
+    "jsonwebtoken": "^9.0.3",
     "reflect-metadata": "catalog:",
     "typescript": "catalog:"
-  },
-  "dependencies": {
-    "@kwtech/module-kit": "workspace:*"
   }
 }

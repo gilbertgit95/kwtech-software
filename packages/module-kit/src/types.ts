@@ -24,10 +24,22 @@ export interface FeatureContribution {
   isPrivileged?: boolean;
 }
 
+/**
+ * What a route's component is handed. `searchParams` is here because a real
+ * route can depend on the query string — /auth/reset-password is nothing
+ * without its token — and a descriptor that could not express that would push
+ * every such page into hand-written app code, which is the duplication this
+ * package exists to remove.
+ */
+export interface ModuleRouteProps {
+  params?: Record<string, string>;
+  searchParams?: Record<string, string | string[] | undefined>;
+}
+
 export interface ModuleRoute {
   /** App-absolute and leading-slash: '/admin/roles'. */
   path: string;
-  component: ComponentType<{ params?: Record<string, string> }>;
+  component: ComponentType<ModuleRouteProps>;
   title: string;
   /**
    * Feature key required to reach it. Read by BOTH the navigation filter and

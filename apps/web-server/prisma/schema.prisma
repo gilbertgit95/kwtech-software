@@ -1,0 +1,27 @@
+// This app's OWN models, plus — via prismaSchemaFolder — every module fragment
+// copied into ./_modules by `pnpm db:compose`.
+//
+// §12.2 decided: the server app owns its schema and its client rather than a
+// shared packages/db. The modules are unaffected either way, which was the
+// point: they declare tables and never open a connection, so a second app on a
+// second database composes the same fragments into its own schema.
+//
+// Nothing app-specific lives here yet. Auth and permissions are entirely in
+// their modules; this file exists to hold the generator, the datasource, and
+// whatever domain models the product grows.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+
+  // Prisma 7 emits the client as TypeScript source with no Rust query engine.
+  // Consequence, already wired in turbo.json: src/generated/** must be listed
+  // in build.outputs, or a cache restore yields a package that cannot compile.
+}
+
+// No `url` here: Prisma 7 moved it to prisma.config.ts. The schema is shape
+// only and carries no credentials, which is what makes a composed folder of
+// module fragments safe to read and diff on its own.
+datasource db {
+  provider = "postgresql"
+}

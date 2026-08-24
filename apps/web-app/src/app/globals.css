@@ -1,0 +1,10 @@
+/*
+ * Tailwind v4 configures itself in CSS — no tailwind.config.js.
+ *
+ * The design tokens live in @kwtech/web-ui so that this app and a future admin
+ * app cannot drift; the module pages style themselves against these names
+ * (bg-background, text-muted-foreground, …) and never hard-code a colour, which
+ * is what lets an app restyle a package's components.
+ */
+@import "tailwindcss";
+@import "@kwtech/web-ui/styles.css";

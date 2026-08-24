@@ -83,12 +83,20 @@ const service = (db?: Db) => {
   return { svc: new PermissionsService(client), calls };
 };
 
+/** A scoped (organization/workspace) role, as the membership queries return it. */
 const role = (over: Partial<RoleWithFeatures> & Pick<RoleWithFeatures, 'key' | 'level'>): RoleWithFeatures => ({
   organizationId: null,
   features: [],
-  limits: [],
   ...over,
 });
+
+/**
+ * An APP-level role. The only query that also includes limits — see the note on
+ * RoleWithFeatures for why the two shapes are not one.
+ */
+const appRole = (
+  over: Partial<UserRoleRow['role']> & Pick<UserRoleRow['role'], 'key' | 'level'>,
+): UserRoleRow['role'] => ({ features: [], limits: [], ...over });
 
 const membership = (over: Partial<MembershipRow> = {}): MembershipRow => ({
   id: 'm1',
@@ -110,7 +118,7 @@ describe('loadContext — app level short-circuits', () => {
     // hand would pick an arbitrary one and answer a question nobody asked.
     const { svc, calls } = service({
       userRoles: [
-        { role: role({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }) },
+        { role: appRole({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }) },
       ],
     });
 
@@ -131,7 +139,7 @@ describe('loadContext — app level short-circuits', () => {
   it('resolves role-sourced limits at app level, where no subscription exists', () => {
     const { svc } = service({
       userRoles: [
-        { role: role({ key: 'staff', level: 'app', limits: [{ limitKey: LIMIT.userOrganizations, value: 25 }] }) },
+        { role: appRole({ key: 'staff', level: 'app', limits: [{ limitKey: LIMIT.userOrganizations, value: 25 }] }) },
       ],
     });
 
@@ -151,7 +159,7 @@ describe('loadContext — a caller with no membership', () => {
     const { svc } = service({
       membership: null,
       userRoles: [
-        { role: role({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }) },
+        { role: appRole({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }) },
       ],
     });
 
