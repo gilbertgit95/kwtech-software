@@ -8,7 +8,16 @@
     "emitDecoratorMetadata": true,
     // The generated Prisma client is not written to this project's standards
     // and is not ours to fix.
-    "skipLibCheck": true
+    "skipLibCheck": true,
+
+    // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`,
+    // and with the build info sitting NEXT TO the tsconfig it outlives every
+    // `rm -rf dist` — after which tsc reads it, concludes nothing changed, and
+    // emits nothing at all. Silent: no error, no output, and the next `node
+    // dist/main.js` fails with a module-not-found that points nowhere near the
+    // cause. Keeping it in the output directory means deleting the output
+    // deletes the claim about it.
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "src/generated"]

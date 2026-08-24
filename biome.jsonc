@@ -42,9 +42,17 @@
   },
   "overrides": [
     {
-      // NestJS server adapters. Three recommended rules read Nest's idioms as
-      // mistakes, and one of them silently breaks the app.
-      "includes": ["**/src/server/**"],
+      // Every NestJS surface in the repo. Three recommended rules read Nest's
+      // idioms as mistakes, and one of them silently breaks the app.
+      //
+      // Scoped by WHAT THE CODE IS, not by a directory that happens to be
+      // called `server`: the first version of this override matched only
+      // `**/src/server/**`, so the modules were protected and apps/web-server —
+      // which is Nest from top to bottom — was not. `useImportType` then erased
+      // the PrismaService import in HealthController and the app failed to boot
+      // with "argument Function at index [0]", which names neither the file nor
+      // the cause.
+      "includes": ["**/src/server/**", "apps/web-server/src/**"],
       "linter": {
         "rules": {
           "style": {

@@ -167,3 +167,22 @@ describe('TokenService.bearer', () => {
     expect(TokenService.bearer(header)).toBeNull();
   });
 });
+
+describe('the mfa scope is reserved but grants nothing', () => {
+  it('round-trips, so a half-admitted session is representable', () => {
+    // Reserved before 2FA is built: adding the value later would mean every
+    // already-issued token was minted by a verifier that did not know it existed.
+    const svc = service();
+    const token = svc.issueAccess({ userId: 'u1', sessionId: 's1', scope: 'mfa' }).accessToken;
+    expect(svc.verifyAccess(token)?.scope).toBe('mfa');
+  });
+
+  it('is still refused by resolvePrincipal — see apps/web-server', () => {
+    // Verification says "this token is genuine", not "this token is enough".
+    // The app admits `full` and nothing else, so a new scope grants no
+    // permissions anywhere by default.
+    expect(
+      service().verifyAccess(service().issueAccess({ userId: 'u1', sessionId: 's1', scope: 'mfa' }).accessToken),
+    ).not.toBeNull();
+  });
+});

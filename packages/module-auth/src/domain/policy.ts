@@ -69,6 +69,43 @@ export function normaliseEmail(email: string): string {
   return email.normalize('NFKC').trim().toLowerCase();
 }
 
+export const MIN_USERNAME_LENGTH = 3;
+export const MAX_USERNAME_LENGTH = 32;
+
+/**
+ * One username, one spelling — the same rule as email, for the same reason.
+ *
+ * `Gilbert95` and `gilbert95` must not be two accounts, and a case-sensitive
+ * `@unique` would cheerfully allow both. The display name is where casing a
+ * person cares about lives; a username is an identifier.
+ */
+export function normaliseUsername(username: string): string {
+  return username.normalize('NFKC').trim().toLowerCase();
+}
+
+/**
+ * No '@', ever.
+ *
+ * That single restriction is what lets ONE sign-in field accept either an
+ * address or a username: the two namespaces cannot overlap, so an identifier
+ * containing '@' is unambiguously an email and anything else is unambiguously a
+ * username. Without it, someone could register the username `you@example.com`
+ * and make every lookup ambiguous.
+ */
+export function isPlausibleUsername(username: string): boolean {
+  if (username.length < MIN_USERNAME_LENGTH || username.length > MAX_USERNAME_LENGTH) return false;
+  return /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(username);
+}
+
+/**
+ * Which namespace an identifier belongs to. Structural, not a validity check —
+ * `looksLikeEmail('nonsense@')` is true, and the lookup then simply finds
+ * nothing, which is the correct outcome for a sign-in attempt.
+ */
+export function looksLikeEmail(identifier: string): boolean {
+  return identifier.includes('@');
+}
+
 /** Cheap structural check. Delivery is the only real proof an address exists. */
 export function isPlausibleEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(email);

@@ -4,8 +4,11 @@ import {
   isExpired,
   isLockedOut,
   isPlausibleEmail,
+  isPlausibleUsername,
+  looksLikeEmail,
   nextLockoutState,
   normaliseEmail,
+  normaliseUsername,
   PASSWORD_RESET_TTL,
 } from '../domain/policy.js';
 import type { AuthFailureReason, AuthResult, Principal, SessionUser, TokenScope } from '../types.js';
@@ -79,21 +82,31 @@ export class AuthService {
 
   // ── sign in ───────────────────────────────────────────────────────────────
 
-  async signIn(input: { email: string; password: string }, context: RequestContext): Promise<AuthResult> {
+  /**
+   * `identifier` is an email OR a username. One field, because that is what the
+   * form has, and unambiguous because a username may not contain '@'.
+   */
+  async signIn(input: { identifier: string; password: string }, context: RequestContext): Promise<AuthResult> {
     const db = this.client();
-    const email = normaliseEmail(requireString(input.email, 'email'));
+    const raw = requireString(input.identifier, 'identifier');
     const password = requireString(input.password, 'password');
     const now = this.now();
 
-    // Malformed addresses cannot match a row, and saying so would tell an
-    // attacker which of their guesses are even worth trying. Burn the time and
-    // refuse like any other unknown address.
-    if (!isPlausibleEmail(email)) {
+    const isEmail = looksLikeEmail(raw);
+    const identifier = isEmail ? normaliseEmail(raw) : normaliseUsername(raw);
+
+    // A malformed identifier cannot match a row, and saying so would tell an
+    // attacker which of their guesses are even worth trying. Burn the hashing
+    // time and refuse exactly like any other unknown account.
+    const plausible = isEmail ? isPlausibleEmail(identifier) : isPlausibleUsername(identifier);
+    if (!plausible) {
       await this.burnPasswordTime(password);
-      throw this.refuse('unknown_email', { email, ip: context.ipAddress });
+      throw this.refuse('unknown_email', { email: identifier, ip: context.ipAddress });
     }
 
-    const user = await db.authUser.findUnique({ where: { email } });
+    const user = await db.authUser.findFirst({
+      where: { OR: [{ email: identifier }, { username: identifier }] },
+    });
     const credential = user
       ? await db.authCredential.findFirst({
           where: { userId: user.id, type: 'password' },
@@ -109,7 +122,7 @@ export class AuthService {
       ? await verifyPassword(password, credential.secret)
       : await this.burnPasswordTime(password);
 
-    if (!user) throw this.refuse('unknown_email', { email, ip: context.ipAddress });
+    if (!user) throw this.refuse('unknown_email', { email: identifier, ip: context.ipAddress });
     if (!credential) throw this.refuse('no_password_credential', { userId: user.id, ip: context.ipAddress });
 
     // Checked BEFORE the password result is acted on: a locked account must
@@ -371,5 +384,5 @@ export class AuthService {
 }
 
 function toSessionUser(user: AuthUserRow): SessionUser {
-  return { id: user.id, email: user.email, displayName: user.displayName };
+  return { id: user.id, email: user.email, username: user.username, displayName: user.displayName };
 }

@@ -26,7 +26,7 @@ export function SignInPage({
 
   const { pending, error, onSubmit } = useAuthForm(async (form) => {
     await api.signIn({
-      email: String(form.get('email') ?? ''),
+      identifier: String(form.get('identifier') ?? ''),
       password: String(form.get('password') ?? ''),
     });
     onSignedIn?.();
@@ -35,7 +35,7 @@ export function SignInPage({
   return (
     <AuthShell
       title="Sign in"
-      description="Enter your email and password to continue."
+      description="Enter your email or username and your password to continue."
       footer={
         <a href={forgotPasswordHref} className="underline underline-offset-4 hover:text-foreground">
           Forgot your password?
@@ -44,7 +44,12 @@ export function SignInPage({
     >
       <form onSubmit={onSubmit} noValidate>
         <AuthError>{error}</AuthError>
-        <AuthField label="Email" name="email" type="email" autoComplete="username" />
+        {/*
+          type="text", not type="email": the field accepts a username too, and
+          the browser's built-in email validation would reject one before the
+          form was ever submitted.
+        */}
+        <AuthField label="Email or username" name="identifier" type="text" autoComplete="username" />
         <AuthField label="Password" name="password" type="password" autoComplete="current-password" />
         <AuthSubmit pending={pending}>Sign in</AuthSubmit>
       </form>

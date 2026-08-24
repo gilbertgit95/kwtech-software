@@ -50,6 +50,7 @@ interface Writes {
 const user = (over: Partial<AuthUserRow> = {}): AuthUserRow => ({
   id: 'u1',
   email: 'ada@example.com',
+  username: 'ada',
   displayName: 'Ada',
   status: 'active',
   failedLoginCount: 0,
@@ -73,6 +74,7 @@ function harness(state: State = {}) {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
     authUser: {
       findUnique: async () => state.user ?? null,
+      findFirst: async () => state.user ?? null,
       update: async (args: unknown) => {
         writes.userUpdates.push(args);
         return {};
@@ -130,9 +132,9 @@ const failureOf = async (promise: Promise<unknown>, failures: AuthFailureReason[
 describe('signIn — one answer for every failure', () => {
   it('signs in and returns both tokens', async () => {
     const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
-    const result = await h.svc.signIn({ email: 'ada@example.com', password: PASSWORD }, CONTEXT);
+    const result = await h.svc.signIn({ identifier: 'ada@example.com', password: PASSWORD }, CONTEXT);
 
-    expect(result.user).toEqual({ id: 'u1', email: 'ada@example.com', displayName: 'Ada' });
+    expect(result.user).toEqual({ id: 'u1', email: 'ada@example.com', username: 'ada', displayName: 'Ada' });
     expect(result.accessToken).toBeTruthy();
     expect(result.refreshToken).toBeTruthy();
     expect(result.scope).toBe('full');
@@ -141,12 +143,30 @@ describe('signIn — one answer for every failure', () => {
 
   it('normalises the address before looking it up', async () => {
     const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
-    await expect(h.svc.signIn({ email: '  ADA@Example.COM ', password: PASSWORD }, CONTEXT)).resolves.toBeDefined();
+    await expect(
+      h.svc.signIn({ identifier: '  ADA@Example.COM ', password: PASSWORD }, CONTEXT),
+    ).resolves.toBeDefined();
+  });
+
+  it('accepts a USERNAME in the same field', async () => {
+    // One field, and unambiguous: a username may not contain '@', so the two
+    // namespaces cannot overlap.
+    const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
+    await expect(h.svc.signIn({ identifier: 'Gilbert95', password: PASSWORD }, CONTEXT)).resolves.toBeDefined();
+  });
+
+  it('refuses a malformed identifier exactly like an unknown one', async () => {
+    // Saying "that is not a valid email" would tell an attacker which of their
+    // guesses are worth trying at all.
+    const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
+    expect(await failureOf(h.svc.signIn({ identifier: 'no', password: PASSWORD }, CONTEXT), h.failures)).toBe(
+      'unknown_email',
+    );
   });
 
   it('stores only the HASH of the refresh token', async () => {
     const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
-    const result = await h.svc.signIn({ email: 'ada@example.com', password: PASSWORD }, CONTEXT);
+    const result = await h.svc.signIn({ identifier: 'ada@example.com', password: PASSWORD }, CONTEXT);
 
     // A database read — a backup, a support query, a leaked dump — must not
     // yield a working session.
@@ -157,7 +177,7 @@ describe('signIn — one answer for every failure', () => {
 
   it('clears the lockout counter on success', async () => {
     const h = harness({ user: user({ failedLoginCount: 4 }), secret: await hashPassword(PASSWORD) });
-    await h.svc.signIn({ email: 'ada@example.com', password: PASSWORD }, CONTEXT);
+    await h.svc.signIn({ identifier: 'ada@example.com', password: PASSWORD }, CONTEXT);
     expect(h.writes.userUpdates[0]).toMatchObject({ data: { failedLoginCount: 0, lockedUntil: null } });
   });
 
@@ -166,15 +186,18 @@ describe('signIn — one answer for every failure', () => {
     ['a user with no password credential', { user: user() }, 'no_password_credential'],
   ])('refuses %s with the same message', async (_label, state, expected) => {
     const h = harness(state as State);
-    expect(await failureOf(h.svc.signIn({ email: 'ada@example.com', password: PASSWORD }, CONTEXT), h.failures)).toBe(
-      expected,
-    );
+    expect(
+      await failureOf(h.svc.signIn({ identifier: 'ada@example.com', password: PASSWORD }, CONTEXT), h.failures),
+    ).toBe(expected);
   });
 
   it('refuses the wrong password and counts it', async () => {
     const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
     expect(
-      await failureOf(h.svc.signIn({ email: 'ada@example.com', password: 'wrong password!!' }, CONTEXT), h.failures),
+      await failureOf(
+        h.svc.signIn({ identifier: 'ada@example.com', password: 'wrong password!!' }, CONTEXT),
+        h.failures,
+      ),
     ).toBe('wrong_password');
     expect(h.writes.userUpdates[0]).toMatchObject({ data: { failedLoginCount: 1 } });
   });
@@ -185,17 +208,17 @@ describe('signIn — one answer for every failure', () => {
       user: user({ lockedUntil: new Date(Date.now() + 60_000) }),
       secret: await hashPassword(PASSWORD),
     });
-    expect(await failureOf(h.svc.signIn({ email: 'ada@example.com', password: PASSWORD }, CONTEXT), h.failures)).toBe(
-      'account_locked',
-    );
+    expect(
+      await failureOf(h.svc.signIn({ identifier: 'ada@example.com', password: PASSWORD }, CONTEXT), h.failures),
+    ).toBe('account_locked');
     expect(h.writes.sessionCreates).toHaveLength(0);
   });
 
   it('refuses a suspended account after the password checks out', async () => {
     const h = harness({ user: user({ status: 'suspended' }), secret: await hashPassword(PASSWORD) });
-    expect(await failureOf(h.svc.signIn({ email: 'ada@example.com', password: PASSWORD }, CONTEXT), h.failures)).toBe(
-      'account_suspended',
-    );
+    expect(
+      await failureOf(h.svc.signIn({ identifier: 'ada@example.com', password: PASSWORD }, CONTEXT), h.failures),
+    ).toBe('account_suspended');
   });
 
   it('spends hashing time even when the address does not exist', async () => {
@@ -212,10 +235,10 @@ describe('signIn — one answer for every failure', () => {
     };
 
     const wrongPassword = await timeOf(() =>
-      known.svc.signIn({ email: 'ada@example.com', password: 'wrong password!!' }, CONTEXT),
+      known.svc.signIn({ identifier: 'ada@example.com', password: 'wrong password!!' }, CONTEXT),
     );
     const noSuchUser = await timeOf(() =>
-      unknown.svc.signIn({ email: 'nobody@example.com', password: PASSWORD }, CONTEXT),
+      unknown.svc.signIn({ identifier: 'nobody@example.com', password: PASSWORD }, CONTEXT),
     );
 
     // Both pay for a scrypt. The ratio is the assertion, not the absolute time.
@@ -411,6 +434,8 @@ describe('resetPassword', () => {
 describe('a host that bound no client', () => {
   it('fails with a message naming the option, not a missing method', async () => {
     const svc = new AuthService(OPTIONS, new TokenService(OPTIONS));
-    await expect(svc.signIn({ email: 'a@b.com', password: PASSWORD }, CONTEXT)).rejects.toThrow(/Bind AUTH_PRISMA/);
+    await expect(svc.signIn({ identifier: 'a@b.com', password: PASSWORD }, CONTEXT)).rejects.toThrow(
+      /Bind AUTH_PRISMA/,
+    );
   });
 });

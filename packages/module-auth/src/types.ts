@@ -9,15 +9,25 @@
  *
  * `full` is an ordinary session. The others are step-up tokens: they prove
  * identity for exactly one endpoint and are refused everywhere else, so a
- * half-admitted user — one who must change their password before continuing —
- * can hold a session without that session granting anything.
+ * half-admitted user can hold a session without that session granting anything.
+ *
+ *   pwd_change  the password is correct but must be changed before continuing.
+ *   mfa         the password is correct and a SECOND FACTOR is still owed.
+ *               Reserved now, unused until 2FA is implemented — but the value
+ *               has to exist before the sign-in path can represent that user at
+ *               all, and adding it later would mean every already-issued token
+ *               was minted by a verifier that did not know the scope existed.
+ *
+ * The app's `resolvePrincipal` admits `full` and nothing else, so a new scope
+ * grants no permissions anywhere by default — which is the direction a
+ * half-finished sign-in should fail in.
  *
  * This is deliberately NOT a permission. Permissions answer "may this person
  * do X"; scope answers "may this credential be used for X at all", and a
  * password-change token held by an administrator must still be refused
  * everywhere but /auth/change-password.
  */
-export type TokenScope = 'full' | 'pwd_change';
+export type TokenScope = 'full' | 'pwd_change' | 'mfa';
 
 /**
  * Who the caller is, as established by a verified access token.
@@ -95,6 +105,7 @@ export interface FederatedIdentity {
 export interface SessionUser {
   id: string;
   email: string;
+  username: string | null;
   displayName: string | null;
 }
 

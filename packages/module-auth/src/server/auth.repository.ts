@@ -13,6 +13,7 @@ export const AUTH_PRISMA = 'kwtech:auth-prisma';
 export interface AuthUserRow {
   id: string;
   email: string;
+  username: string | null;
   displayName: string | null;
   status: 'active' | 'suspended';
   failedLoginCount: number;
@@ -47,6 +48,12 @@ export interface AuthPrismaClient {
 
   authUser: {
     findUnique(args: { where: { email: string } }): Promise<AuthUserRow | null>;
+    /**
+     * Sign-in accepts an email OR a username, so one query covers both. A
+     * username may not contain '@' (domain/policy.ts), so the two branches of
+     * the OR can never match different users for the same input.
+     */
+    findFirst(args: { where: { OR: ({ email: string } | { username: string })[] } }): Promise<AuthUserRow | null>;
     update(args: {
       where: { id: string };
       data: { failedLoginCount?: number; lockedUntil?: Date | null; lastLoginAt?: Date };

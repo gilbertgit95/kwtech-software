@@ -4,11 +4,14 @@ import {
   isExpired,
   isLockedOut,
   isPlausibleEmail,
+  isPlausibleUsername,
   LOCKOUT_MS,
+  looksLikeEmail,
   MAX_FAILED_LOGINS,
   MIN_PASSWORD_LENGTH,
   nextLockoutState,
   normaliseEmail,
+  normaliseUsername,
 } from '../src/domain/policy.js';
 
 describe('normaliseEmail', () => {
@@ -126,5 +129,50 @@ describe('isExpired / expiryFrom', () => {
   it('round-trips a TTL', () => {
     expect(isExpired(expiryFrom(now, 60), now)).toBe(false);
     expect(isExpired(expiryFrom(now, 60), new Date(now.getTime() + 60_001))).toBe(true);
+  });
+});
+
+describe('normaliseUsername', () => {
+  it('folds case, so Gilbert95 and gilbert95 are one account', () => {
+    expect(normaliseUsername('  Gilbert95 ')).toBe('gilbert95');
+  });
+
+  it('is idempotent', () => {
+    expect(normaliseUsername(normaliseUsername('Gilbert95'))).toBe('gilbert95');
+  });
+});
+
+describe('isPlausibleUsername', () => {
+  it.each(['gilbert95', 'a_b', 'a.b-c', 'abc'])('accepts %p', (name) => {
+    expect(isPlausibleUsername(name)).toBe(true);
+  });
+
+  it.each([
+    ['ab', 'too short'],
+    ['a'.repeat(33), 'too long'],
+    ['_leading', 'starts with a separator'],
+    ['trailing.', 'ends with a separator'],
+    ['has space', 'contains a space'],
+    ['Gilbert95', 'not normalised'],
+  ])('rejects %p (%s)', (name) => {
+    expect(isPlausibleUsername(name)).toBe(false);
+  });
+
+  it('rejects anything containing @, which is what keeps the two namespaces apart', () => {
+    // Without this, registering the username `you@example.com` would make every
+    // sign-in lookup ambiguous.
+    expect(isPlausibleUsername('you@example.com')).toBe(false);
+  });
+});
+
+describe('looksLikeEmail', () => {
+  it('routes an identifier to the right namespace', () => {
+    expect(looksLikeEmail('ada@example.com')).toBe(true);
+    expect(looksLikeEmail('gilbert95')).toBe(false);
+  });
+
+  it('is structural, not a validity check — a bad address still routes as one', () => {
+    // It then finds nothing, which is the correct outcome for a sign-in attempt.
+    expect(looksLikeEmail('nonsense@')).toBe(true);
   });
 });

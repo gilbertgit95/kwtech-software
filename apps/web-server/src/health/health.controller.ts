@@ -1,6 +1,6 @@
 import { Public } from '@kwtech/module-auth/server';
 import { Controller, Get, HttpCode } from '@nestjs/common';
-import type { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 /**
  * A health check is a route, not a feature — no permission key, and explicitly

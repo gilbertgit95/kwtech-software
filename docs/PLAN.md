@@ -478,6 +478,69 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-08-25** — **Local Postgres 16 on WSL2** (apt, not Docker): systemd is
+  already enabled in `/etc/wsl.conf`, which is the only thing that usually makes
+  Postgres-on-WSL awkward, so a container would add a daemon and a disk penalty
+  for nothing. Note what it does NOT reproduce: the connection-churn behaviour
+  §5's pooling requirement exists for.
+- **2026-08-25** — **Phase 1 finished for real.** The first two migrations ran
+  against a live database: 21 tables, both module fragments composed into one
+  schema, and the whole flow verified end to end — sign-in by username and by
+  email (200), wrong password (401), forgot-password (202 for a real address and
+  an unknown one alike), reset token stored as a 64-char hash with a one-hour
+  life, and the Next app setting both cookies `HttpOnly` while its response body
+  carries only `{"ok":true}`.
+- **2026-08-25** — **`AuthUser.username` added, and sign-in takes an
+  `identifier`** — one field accepting either an address or a username.
+  Unambiguous because a username may not contain `@`, which is the single
+  restriction that keeps the two namespaces from overlapping; without it someone
+  could register the username `you@example.com` and make every lookup ambiguous.
+  Normalised (lower-cased, NFKC) exactly like email, for the same reason:
+  `Gilbert95` and `gilbert95` must not be two accounts. `displayName` holds the
+  human name and is never an identifier.
+- **2026-08-25** — **The first account is a seed script, not a sign-up
+  endpoint.** Who may create an account — open registration, invite-only,
+  administrator-provisioned — is three different products and is not decided.
+  `pnpm db:seed` is idempotent (re-running resets the password, which is the
+  usual reason to run it again) and reads its values from the environment so a
+  real password is never committed.
+- **2026-08-25** — The seed **warns rather than refuses** when the password
+  misses the application's own policy. Refusing would block an operator who
+  chose a value deliberately for a local database; staying silent would be worse
+  — a password the app will not let you CHOOSE but happily lets you keep is a
+  trap that surfaces months later at a password reset. ⚠️ The seeded
+  `Master101!` is 10 characters against a `MIN_PASSWORD_LENGTH` of 12 and is in
+  exactly that state today.
+- **2026-08-25** — **2FA is schema-only** (`auth_mfa_factor`,
+  `auth_recovery_code`, `AuthSession.mfaSatisfiedAt`, `AuthUser.mfaRequiredAt`)
+  plus a reserved `mfa` token scope. Nothing implements it. Four decisions taken
+  now because they are the ones that cannot be taken later:
+  1. **`confirmedAt`** — a factor is inert until proved once. Without it, a
+     mis-scanned QR code locks a user out with a factor they can never satisfy.
+  2. **A TOTP secret is SYMMETRIC, unlike a password hash**, so it must be
+     encrypted at rest with a key that is not in the database. Left a plain
+     column deliberately, so whoever implements TOTP has to decide explicitly
+     rather than inherit a silent default.
+  3. **`lastUsedStep`** — replay protection. A 6-digit code is valid for its
+     whole window, so an observed code can be presented again without it.
+  4. **`mfaSatisfiedAt` is per SESSION, not per user** — one device may have
+     completed MFA while another, opened earlier, has not.
+  The `mfa` scope had to be reserved in `TokenScope` now: adding it later would
+  mean every already-issued token was minted by a verifier that did not know it
+  existed. `resolvePrincipal` admits `full` only, so the new scope grants nothing
+  anywhere by default.
+- **2026-08-25** — **Biome's `useImportType` broke DI a second time**, in
+  `apps/web-server` this time — the override was scoped to `**/src/server/**`,
+  which protected the modules and missed the app that is Nest from top to
+  bottom. It erased `PrismaService` in `HealthController` and the app failed to
+  boot with "argument Function at index [0]", naming neither the file nor the
+  cause. The override is now scoped by what the code IS, not by a directory that
+  happens to be called `server`.
+- **2026-08-25** — `tsBuildInfoFile` moved **inside `dist/`**. With it beside
+  the tsconfig it outlived every `rm -rf dist`, after which tsc read it,
+  concluded nothing had changed and emitted nothing — silently, with the failure
+  surfacing later as a module-not-found pointing nowhere near the cause.
+
 - **2026-08-25** — **Authentication went into a NEW `module-auth`, not into
   `module-permissions`** (§12.12 closed: no). Credentials and reset tokens are
   the most identity-shaped data there is, and §9 rule 5 exists to keep the

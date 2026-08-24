@@ -28,7 +28,7 @@ export class AuthController {
   @Public('the caller has no token yet — this is where they get one')
   @Post('signin')
   @HttpCode(200)
-  signIn(@Body() body: { email: string; password: string }, @Req() request: unknown): Promise<AuthResult> {
+  signIn(@Body() body: { identifier: string; password: string }, @Req() request: unknown): Promise<AuthResult> {
     return this.auth.signIn(body, contextOf(request));
   }
 

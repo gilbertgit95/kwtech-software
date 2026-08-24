@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "test": "jest",
-    "clean": "rm -rf dist coverage .turbo *.tsbuildinfo src/generated prisma/_modules"
+    "clean": "rm -rf dist coverage .turbo *.tsbuildinfo src/generated prisma/_modules",
+    "db:seed": "tsc -p tsconfig.build.json && node dist/seed/seed-user.js"
   },
   "dependencies": {
     "@kwtech/module-auth": "workspace:*",

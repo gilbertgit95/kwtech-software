@@ -38,6 +38,20 @@ enum AuthCredentialType {
   password
 }
 
+/// ─── second factors: schema now, implementation later ─────────────────────
+///
+/// Not yet wired to any endpoint. Present because two of the decisions below
+/// cannot be taken later without a data migration, and because the sign-in path
+/// has to be able to REPRESENT a half-admitted user before it can handle one.
+enum AuthMfaFactorType {
+  /// RFC 6238 authenticator app. The secret is symmetric — see the warning on
+  /// AuthMfaFactor.secret.
+  totp
+  /// A security key or platform authenticator. Stores a PUBLIC key, so it
+  /// carries none of totp's storage risk.
+  webauthn
+}
+
 /// ─── federated identity: schema now, implementation later ──────────────────
 ///
 /// Not yet wired to any endpoint. It is here because the two decisions below
@@ -57,6 +71,19 @@ model AuthUser {
   /// apart, and `@unique` on the raw string would happily allow both.
   email String @unique
 
+  /// A second way to sign in. Normalised exactly like email and for the same
+  /// reason: `Gilbert95` and `gilbert95` must not be two accounts.
+  ///
+  /// It may not contain '@' — enforced in domain/policy.ts — which is what lets
+  /// one sign-in field accept either an address or a username without the two
+  /// namespaces ever colliding.
+  ///
+  /// Optional: a user created by "Sign in with Google" has no username to pick,
+  /// and forcing one would mean inventing it or blocking the sign-up.
+  username String? @unique
+
+  /// The human name — "Gilbert D. Cuerbo". Never an identifier: it is not
+  /// unique, not normalised, and changing it must not change how anyone signs in.
   displayName     String?
   status          AuthUserStatus @default(active)
   emailVerifiedAt DateTime?
@@ -70,12 +97,97 @@ model AuthUser {
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
 
+  /// When this user was REQUIRED to use a second factor — a policy, not a
+  /// state. Whether MFA is currently active is "do they hold a confirmed
+  /// factor", which is derivable and therefore deliberately not stored: a
+  /// denormalised flag is a second source of truth that drifts from the rows it
+  /// summarises. Being required to enrol, and having enrolled, are different
+  /// facts, and only the first one needs a column.
+  mfaRequiredAt DateTime?
+
   credentials    AuthCredential[]
   identities     AuthIdentity[]
+  mfaFactors     AuthMfaFactor[]
+  recoveryCodes  AuthRecoveryCode[]
   sessions       AuthSession[]
   passwordResets AuthPasswordReset[]
 
   @@map("auth_user")
+}
+
+/// A second factor. SCHEMA ONLY — nothing reads or writes this table yet.
+///
+/// **`confirmedAt` is the load-bearing column.** A factor is inert until its
+/// owner has proved once that it works. Without that, enrolling a
+/// mis-scanned QR code or a broken authenticator locks the user out of their own
+/// account with a factor they can never satisfy — and the recovery path for that
+/// is a support ticket, which is exactly what MFA makes expensive to answer.
+///
+/// ⚠️ **`secret` must be encrypted at rest before any TOTP code is verified.**
+/// It is NOT like a password hash. A password hash is one-way: a stolen database
+/// yields work, not credentials. A TOTP secret is SYMMETRIC — whoever reads it
+/// can generate valid codes forever, so a leaked dump defeats the second factor
+/// entirely. It needs application-level encryption with a key that does not live
+/// in the database. Left as a plain column here precisely so that the person who
+/// implements TOTP has to make that decision explicitly rather than inherit a
+/// silent default. WebAuthn stores a public key and needs none of this.
+model AuthMfaFactor {
+  id     String            @id @default(cuid())
+  userId String
+  type   AuthMfaFactorType
+
+  /// Chosen by the user — "iPhone", "1Password", "YubiKey (blue)". People
+  /// enrol several and need to tell them apart when revoking one.
+  label String
+
+  /// TOTP: the shared secret, ENCRYPTED (see the warning above).
+  /// WebAuthn: the credential's public key. Never a secret in that case.
+  secret String
+
+  /// Null until proved once. An unconfirmed factor grants nothing and blocks
+  /// nothing.
+  confirmedAt DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  /// The last TOTP time-step accepted for this factor.
+  ///
+  /// Replay protection, and not optional: a 6-digit code stays valid for its
+  /// whole window, so without recording the step that was used, an attacker who
+  /// observes one code — over the shoulder, in a phishing proxy, in a log — can
+  /// present it again inside the same 30 seconds. Refusing any step less than or
+  /// equal to this one closes that.
+  lastUsedStep BigInt?
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One label per user, so "revoke my iPhone" names exactly one row.
+  @@unique([userId, label])
+  @@index([userId, confirmedAt])
+  @@map("auth_mfa_factor")
+}
+
+/// The way back in when the second factor is lost — a phone replaced, stolen or
+/// wiped. SCHEMA ONLY.
+///
+/// Hashed like a password rather than like a refresh token: a recovery code is
+/// typed by a human, so it is short and low-entropy enough that a fast hash over
+/// a stolen dump would recover it. Single-use by `usedAt`, and rows are kept
+/// after use so "you already used this one" and "that was never a code" stay
+/// different answers.
+model AuthRecoveryCode {
+  id     String @id @default(cuid())
+  userId String
+
+  codeHash String @unique
+
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("auth_recovery_code")
 }
 
 /// A sign-in method someone ELSE vouches for: "Sign in with Google/Microsoft".
@@ -185,6 +297,15 @@ model AuthSession {
   expiresAt  DateTime
   /// Set rather than deleted, so "signed out at" stays answerable.
   revokedAt  DateTime?
+
+  /// When the second factor was satisfied for THIS session. Null means the
+  /// session was established by password alone.
+  ///
+  /// Recorded per session, not per user, because that is the question anyone
+  /// ever asks: "was this session fully authenticated". A flag on the user
+  /// cannot answer it — one device may have completed MFA while another, opened
+  /// before it was required, has not.
+  mfaSatisfiedAt DateTime?
 
   ipAddress String?
   userAgent String?

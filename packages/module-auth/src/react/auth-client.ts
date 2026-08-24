@@ -13,7 +13,7 @@ import type { AuthResult } from '../types.js';
  * server route) is one a component in a package cannot implement.
  */
 export interface AuthClient {
-  signIn(input: { email: string; password: string }): Promise<AuthResult>;
+  signIn(input: { identifier: string; password: string }): Promise<AuthResult>;
   requestPasswordReset(input: { email: string }): Promise<void>;
   resetPassword(input: { token: string; password: string }): Promise<void>;
 }
