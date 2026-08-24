@@ -36,13 +36,17 @@ const duration = (fallback: string) =>
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required — see .env.example'),
 
-  /** 3002 to match masterdb's backend; 3000/3001 belong to coseller-mono. */
-  PORT: z.coerce.number().int().positive().default(3002),
+  /**
+   * 8080 for the API, 8081 for the Next app. Chosen to sit clear of the other
+   * Sensorbee repos on this machine — coseller-mono holds 3000/3001 and
+   * masterdb 3002/3003 — so every service can run at once.
+   */
+  PORT: z.coerce.number().int().positive().default(8080),
 
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   /** Where the Next app lives. The CORS allow-list and reset links both need it. */
-  FRONTEND_URL: z.url().default('http://localhost:3003'),
+  FRONTEND_URL: z.url().default('http://localhost:8081'),
 
   /**
    * Signs the access token. Nothing else in the system uses it: a shared secret
@@ -101,7 +105,7 @@ const envSchema = z.object({
    * NODE_ENV is production, because a reset link in an aggregated log is a
    * working credential in an aggregated log.
    */
-  AUTH_RESET_URL_BASE: z.url().default('http://localhost:3003/auth/reset-password'),
+  AUTH_RESET_URL_BASE: z.url().default('http://localhost:8081/auth/reset-password'),
 });
 
 /**

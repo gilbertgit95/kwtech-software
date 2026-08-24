@@ -129,7 +129,7 @@ async function main() {
         `  name:     ${input.displayName}\n` +
         `  username: ${normaliseUsername(input.username)}\n` +
         `  email:    ${normaliseEmail(input.email)}\n` +
-        '\nSign in at http://localhost:3003/auth/signin with either the email or the username.',
+        '\nSign in at http://localhost:8081/auth/signin with either the email or the username.',
     );
   } finally {
     await prisma.$disconnect();

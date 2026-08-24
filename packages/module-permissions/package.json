@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput --tsBuildInfoFile dist/.tsbuildinfo.dev",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
     "test": "jest",

@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 3003",
+    "dev": "next dev --turbopack -p 8081",
     "build": "next build",
-    "start": "next start -p 3003",
+    "start": "next start -p 8081",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"

@@ -144,6 +144,11 @@ no always-on process, no persistent connections. `graphql-ws` subscriptions
 therefore cannot work there, and the failure is silent — connections simply never
 establish.
 
+Locally: the API is **:8080** and the web app **:8081** — clear of the other
+Sensorbee repos on one machine (coseller-mono holds 3000/3001, masterdb
+3002/3003), so everything can run at once. `pnpm dev` starts both plus every
+package in watch mode.
+
 ```
 Vercel                    Container host (Railway / Fly / Render / ECS)
   apps/web-app              apps/web-server  ← HTTP + WebSocket, always on
@@ -477,6 +482,25 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-08-25** — **`pnpm dev` starts the whole stack**: every package in watch
+  mode plus both apps, one command. Ports moved to **:8080** (API) and **:8081**
+  (web) to sit clear of the sibling repos on this machine.
+  - Packages gained a `dev` watcher, without which editing a module changed
+    nothing in the running apps until someone remembered to rebuild.
+  - `dev` dependsOn **`^build`**, not `^dev`: a persistent task never finishes,
+    so nothing can depend on it. The one-shot build is what makes a cold
+    checkout work; the watchers take over afterwards.
+  - A package's `build` and its `dev` watcher compile the same project into the
+    same `dist/`, so they are given **separate build-info files**. Sharing one
+    lets whichever loses the race conclude "nothing changed" and emit nothing.
+  - Verified from a cold start with every `dist/` deleted, and by editing a
+    module source and watching the change reach the rendered page.
+- **2026-08-25** — `tsBuildInfoFile` moved inside `dist/` for the packages too,
+  after the same trap that had already bitten `web-server` broke the first cold
+  `pnpm dev`: `rm -rf dist` left the build info behind, tsc read it, concluded
+  nothing had changed and emitted nothing — reported three packages later as
+  "Cannot find module '@kwtech/module-kit'".
 
 - **2026-08-25** — **Local Postgres 16 on WSL2** (apt, not Docker): systemd is
   already enabled in `/etc/wsl.conf`, which is the only thing that usually makes

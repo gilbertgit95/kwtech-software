@@ -10,7 +10,10 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "start": "turbo run start",
     "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=@kwtech/web-server...",
+    "dev:web": "turbo run dev --filter=@kwtech/web-app...",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",

@@ -9,7 +9,7 @@ import { z } from 'zod';
  * invite exactly the arrangement that design exists to prevent.
  */
 const envSchema = z.object({
-  API_URL: z.url().default('http://localhost:3002/api/v1'),
+  API_URL: z.url().default('http://localhost:8080/api/v1'),
   /**
    * Encrypts nothing — it names the cookie. Kept configurable so two
    * deployments on sibling subdomains do not overwrite each other's session.

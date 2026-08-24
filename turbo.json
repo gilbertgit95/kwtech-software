@@ -34,7 +34,23 @@
     },
 
     // Long-running by nature: never cached, never awaited.
+    //
+    // `dependsOn: ["^build"]` is what makes `pnpm dev` work from a clean
+    // checkout: every package is compiled ONCE before any watcher starts, so an
+    // app does not boot against a dist/ that does not exist yet. After that the
+    // packages' own `dev` watchers take over and rebuild on change — which is
+    // what makes editing a module show up in the running apps rather than only
+    // after a manual build.
+    //
+    // Note `^build`, not `^dev`: a persistent task can never be depended upon,
+    // because it does not finish.
+    // A package's one-shot `build` and its `dev` watcher compile the same
+    // project into the same dist/. They are given SEPARATE build-info files
+    // (see each package's dev script) so the two cannot race on it — a
+    // collision there makes one of them conclude "nothing changed" and emit
+    // nothing, which is the failure mode that is hardest to read.
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
@@ -119,6 +135,16 @@
     },
     "@kwtech/web-server#typecheck": {
       "dependsOn": ["^build", "db:generate"],
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+
+    // Same reason as its build: the Prisma client is TypeScript SOURCE, so
+    // without generating it first there is no `PrismaClient` type to extend and
+    // the watcher's first compile fails on a clean checkout.
+    "@kwtech/web-server#dev": {
+      "dependsOn": ["^build", "db:generate"],
+      "cache": false,
+      "persistent": true,
       "passThroughEnv": ["DATABASE_URL"]
     }
   }

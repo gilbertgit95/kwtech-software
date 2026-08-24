@@ -4,6 +4,13 @@
     "lib": ["ES2023", "DOM"],
     "jsx": "react-jsx",
     "outDir": "dist",
+    // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
+    // with the build info beside the tsconfig it outlives every `rm -rf dist` —
+    // after which tsc reads it, concludes nothing changed and emits NOTHING.
+    // Silent: no error, no output, and the failure surfaces later as a
+    // module-not-found pointing nowhere near the cause. Keeping it in the output
+    // directory means deleting the output deletes the claim about it.
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
     "rootDir": "src",
     // The Nest adapter uses parameter and class decorators.
     "experimentalDecorators": true,
