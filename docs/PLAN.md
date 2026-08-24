@@ -65,10 +65,17 @@ Two pnpm 11 mechanisms inherited deliberately:
   packages. When a package must be let through early, pin the exclusion to the
   exact version, never the bare name.
 
-⚠️ **Local mismatch.** The pnpm on this machine is **10.26.1**; the repo declares
-11.18.0 and `engine-strict=true` will refuse to install. Fix with
-`corepack enable` (it reads `packageManager` and switches automatically) or
-upgrade pnpm globally. (§11.1)
+**Install works.** pnpm 11.18.0 on Node 24.12.0, resolved via corepack; §12.1
+is closed. Two things that bit on the first real install, worth knowing before
+the next one:
+
+- **`minimumReleaseAge` rejected the committed lockfile**, not a dependency —
+  `picomatch@4.0.7` had been published inside the quarantine window when the
+  lock was written. The fix is a fresh resolution (delete `pnpm-lock.yaml`,
+  reinstall), which picks the older, policy-clean version. Pinning an exclusion
+  would have been the wrong lever: nothing needed *that* version.
+- **`pnpm install` needs `CI=true`** in a non-TTY shell when the modules
+  directory must be purged, or it aborts rather than prompt.
 
 ## 3. Stack — DECIDED
 
@@ -438,7 +445,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 
 | # | Decision | Blocks | Notes |
 |---|---|---|---|
-| 1 | Upgrade local pnpm to 11 (corepack) | install | `engine-strict=true` refuses pnpm 10 |
+| 1 | ~~Upgrade local pnpm to 11~~ **Closed** | — | pnpm 11.18.0 in place; install, typecheck, build and lint all green |
 | 2 | Where Prisma lives: one `packages/db` per database, or each server app owns its schema | Phase 1 | apps may sit on different databases (§9); modules are unaffected either way |
 | 3 | `module-permissions`: where the principal comes from | Phase 2 | the module resolves grants itself; the app supplies only `resolveSubjectId` (§9 rule 6) |
 | 4 | Container host for `web-server` | Phase 2 deploy | Railway / Fly / Render |
@@ -701,6 +708,48 @@ Decisions 1, 2, 3 and 5 gate the next step.
   registry holds only its own features, so filtering there would have dropped
   every other module's keys. `PermFeature` is the shared table and the only place
   that can answer for all modules at once.
+- **2026-08-25** — **First real install and compile.** §12.1 closed: pnpm
+  11.18.0 installs cleanly. The module had never been compiled, and `tsc` found
+  seven errors — including a **runtime bug**: the subscription query omitted
+  `plan.limits` while the mapping below it read `sub.plan.limits`, so every
+  plan-sourced cap would have thrown on the first guarded request. Also:
+  `UserRoleRow` did not declare the `limits` its own query includes, and four
+  `exactOptionalPropertyTypes` violations where `plans: undefined` — a
+  *meaningful* state (no subscription model) that both readers branch on — was
+  not assignable to an optional property. Fixed by widening those declarations
+  to `| undefined` rather than by dropping the flag.
+- **2026-08-25** — **Biome's `useImportType` autofix breaks NestJS DI**, and did:
+  it rewrote `Reflector` and `PermissionsService` to `import type` in the guard
+  and the resolver. Nest resolves constructor parameters from the
+  `design:paramtypes` metadata `emitDecoratorMetadata` emits, and that metadata
+  comes from the VALUE binding — a type-only import erases it, so the container
+  has nothing to resolve. The failure is at startup, with a clean typecheck on
+  both sides of it. Reverted, and `useImportType` (plus `noStaticOnlyClass` and
+  `noUnusedPrivateClassMembers`, which misread `forRoot` and a reserved
+  injection) is now **off under `**/src/server/**`** via a `biome.jsonc`
+  override. Every future `module-*` server adapter inherits it.
+
+- **2026-08-25** — **Test suite written — 202 tests, the review's top priority
+  closed.** Jest 30 + `@swc/jest` per §3, in `module-permissions` (181) and
+  `module-kit` (21). No database: `PermissionsPrismaClient` is structural, so the
+  service is exercised against a literal object that also RECORDS its queries —
+  which is what lets "did it ask at all" be a test (the app-level short circuit,
+  the `deprecatedAt` filter, the workspace/organization pairing) rather than only
+  "what did it answer". Every rule in this log is a case.
+- **2026-08-25** — Second defect found by the tests: **`parseScope` misread
+  interior empty path segments.** `filter(Boolean)` collapsed
+  `/organizations//workspaces/ws1` into `['organizations','workspaces','ws1']`
+  and read the literal string `'workspaces'` as the organization id. It failed
+  closed, but the guard and the router would then disagree about the request's
+  LEVEL — the exact mismatch `@RequireScope` exists to catch rather than to
+  produce. Only the empties a well-formed path produces (leading, trailing) are
+  dropped now; an interior one makes the path resolve to app level with no ids.
+- **2026-08-25** — **Tests are typechecked**, via a `tsconfig.test.json` per
+  package that adds `test/` and emits nothing. Not ceremony: the first run of it
+  caught six assertions built on a `ModuleRoute` shape the source no longer had.
+  Under `@swc/jest` those compile and pass regardless, so an untypechecked suite
+  is one that can go on asserting against a type that is gone.
+
 - **2026-08-25** — Left open and recorded: the module has **no write path**
   (nothing to invite a member, assign a role, share a workspace, or start a
   subscription). That is why capacity limits are advisory, why cross-tenant role

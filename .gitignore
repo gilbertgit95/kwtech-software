@@ -9,6 +9,9 @@ build
 out
 .next
 .turbo
+# tsconfig.base.json sets "incremental": true, so every package emits one of
+# these next to its tsconfig. Machine state, not source.
+*.tsbuildinfo
 
 # testing
 coverage

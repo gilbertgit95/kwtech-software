@@ -15,10 +15,7 @@ import { PermissionsService } from './permissions.service.js';
 import { type FeatureMode, REQUIRED_FEATURES, REQUIRED_FEATURES_MODE } from './require-feature.decorator.js';
 import { REQUIRED_SCOPE, type ScopeSpec } from './require-scope.decorator.js';
 
-type ResolveOutcome =
-  | { kind: 'ok'; context: PermissionContext }
-  | { kind: 'unauthenticated' }
-  | { kind: 'no_access' };
+type ResolveOutcome = { kind: 'ok'; context: PermissionContext } | { kind: 'unauthenticated' } | { kind: 'no_access' };
 
 /** Where the guard stashes the resolved context, so handlers can read it without a second query. */
 export const PERMISSION_CONTEXT_KEY = 'kwtechPermissions';
@@ -139,9 +136,10 @@ export class FeatureGuard implements CanActivate {
       }
     }
 
-    const url = (request as { originalUrl?: string; url?: string } | undefined)?.originalUrl
-      ?? (request as { url?: string } | undefined)?.url
-      ?? '';
+    const url =
+      (request as { originalUrl?: string; url?: string } | undefined)?.originalUrl ??
+      (request as { url?: string } | undefined)?.url ??
+      '';
     return parseScope(url, this.options.apiPrefix ? { apiPrefix: this.options.apiPrefix } : {});
   }
 

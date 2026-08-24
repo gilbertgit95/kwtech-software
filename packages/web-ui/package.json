@@ -10,7 +10,10 @@
     },
     "./styles.css": "./src/styles.css"
   },
-  "files": ["dist", "src/styles.css"],
+  "files": [
+    "dist",
+    "src/styles.css"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

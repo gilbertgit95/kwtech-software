@@ -28,7 +28,7 @@ export class PermissionsService {
    */
   async loadContext(
     userId: string,
-    scope: { organizationId?: string; workspaceId?: string | null } = {},
+    scope: { organizationId?: string | undefined; workspaceId?: string | null | undefined } = {},
   ): Promise<PermissionContext | null> {
     // App-level roles are granted to the user outright, with no organization in
     // the picture. Loaded first because a support engineer holding one has no
@@ -91,12 +91,14 @@ export class PermissionsService {
 
     const roles: RoleGrant[] = [...appRoleGrants];
     roles.push(
-      ...membership.roles.filter((link) => ownedByThisTenant(link.role)).map((link) => ({
-        roleKey: link.role.key,
-        level: toRoleLevel(link.role.level),
-        features: link.role.features.map((rf) => rf.featureKey),
-        workspaceId: null,
-      })),
+      ...membership.roles
+        .filter((link) => ownedByThisTenant(link.role))
+        .map((link) => ({
+          roleKey: link.role.key,
+          level: toRoleLevel(link.role.level),
+          features: link.role.features.map((rf) => rf.featureKey),
+          workspaceId: null,
+        })),
     );
 
     // The workspace named in the path must belong to the organization named in
@@ -119,16 +121,20 @@ export class PermissionsService {
     if (workspaceId) {
       const workspaceMember = await this.prisma.permWorkspaceMember.findFirst({
         where: { membershipId: membership.id, workspaceId },
-        include: { roles: { include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } } } },
+        include: {
+          roles: { include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } } },
+        },
       });
 
       roles.push(
-        ...(workspaceMember?.roles ?? []).filter((link) => ownedByThisTenant(link.role)).map((link) => ({
-          roleKey: link.role.key,
-          level: toRoleLevel(link.role.level),
-          features: link.role.features.map((rf) => rf.featureKey),
-          workspaceId,
-        })),
+        ...(workspaceMember?.roles ?? [])
+          .filter((link) => ownedByThisTenant(link.role))
+          .map((link) => ({
+            roleKey: link.role.key,
+            level: toRoleLevel(link.role.level),
+            features: link.role.features.map((rf) => rf.featureKey),
+            workspaceId,
+          })),
       );
     }
 
@@ -140,7 +146,7 @@ export class PermissionsService {
         status: 'active',
         OR: workspaceId ? [{ workspaceId: null }, { workspaceId }] : [{ workspaceId: null }],
       },
-      include: { plan: { include: { features: true } } },
+      include: { plan: { include: { features: true, limits: true } } },
     });
 
     // An empty list, not undefined: no active subscription entitles nothing.

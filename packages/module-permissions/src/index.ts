@@ -9,9 +9,10 @@
  *   import { PermissionsModule } from '@kwtech/module-permissions/server';
  *   import { FeatureGate } from '@kwtech/module-permissions/react';
  */
-export * from './types.js';
+
 export * from './check.js';
-export * from './feature-keys.js';
 export * from './domain/index.js';
+export * from './feature-keys.js';
 export * from './registry-audit.js';
 export * from './scope.js';
+export * from './types.js';

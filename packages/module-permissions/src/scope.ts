@@ -50,7 +50,17 @@ export function parseScope(pathname: string, config: ScopeConfig = {}): RequestS
     path = path.slice(config.apiPrefix.length);
   }
 
-  const segments = path.split('/').filter(Boolean);
+  // Only the empties a well-formed path produces are dropped: the one before a
+  // leading '/' and any after a trailing one. An INTERIOR empty segment is kept,
+  // because it is positional — '/organizations//workspaces/ws1' otherwise
+  // collapses to ['organizations', 'workspaces', 'ws1'] and reads the literal
+  // string 'workspaces' as the organization id. That resolves to no
+  // organization, so it fails closed, but the guard and the router would then
+  // disagree about which LEVEL the request is at, which is the mismatch
+  // @RequireScope exists to catch rather than to produce.
+  const segments = path.split('/');
+  if (segments[0] === '') segments.shift();
+  while (segments.length > 0 && segments[segments.length - 1] === '') segments.pop();
 
   // '/organizations' with no id is a listing, not an organization-scoped
   // request — app level, so it is not treated as scoped to nothing.

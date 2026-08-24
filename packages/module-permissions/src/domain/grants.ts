@@ -1,6 +1,6 @@
 import { FEATURE } from '../feature-keys.js';
-import { resolveLimits } from './limits.js';
 import type { FeatureKey, PermissionContext, RoleLevel } from '../types.js';
+import { resolveLimits } from './limits.js';
 
 /**
  * A role as the module reads it: a name, the features it collects, and where it
@@ -58,7 +58,7 @@ export interface ComposeInput {
    * Collapsing the middle into the first would silently grant everything to a
    * lapsed organization, which is the expensive direction to be wrong in.
    */
-  plans?: readonly PlanEntitlement[] | null;
+  plans?: readonly PlanEntitlement[] | null | undefined;
 }
 
 /**
@@ -90,9 +90,7 @@ export function composeContext(input: ComposeInput): PermissionContext {
   // filtered. null or an empty list means no ACTIVE plan, which entitles
   // nothing; collapsing the two would hand a lapsed organization everything.
   const entitled: readonly FeatureKey[] | null =
-    input.plans === undefined
-      ? null
-      : [...new Set((input.plans ?? []).flatMap((plan) => plan.features))].sort();
+    input.plans === undefined ? null : [...new Set((input.plans ?? []).flatMap((plan) => plan.features))].sort();
 
   const granted = new Set<FeatureKey>();
   const appLevel = new Set<FeatureKey>();
@@ -159,8 +157,7 @@ export function composeContext(input: ComposeInput): PermissionContext {
   // membership anywhere, and the whole point of the right is entering an
   // organization they do not belong to. Without this, C1's enforcement would
   // lock out exactly the people it must not.
-  const seesEveryWorkspace =
-    granted.has(FEATURE.workspacesAccessAll) || granted.has(FEATURE.platformSupportAccess);
+  const seesEveryWorkspace = granted.has(FEATURE.workspacesAccessAll) || granted.has(FEATURE.platformSupportAccess);
 
   const accessibleWorkspaceIds = seesEveryWorkspace
     ? null

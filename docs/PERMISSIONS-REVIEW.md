@@ -4,7 +4,7 @@ Findings against `@kwtech/module-permissions` as built on 2026-08-25. Severity i
 about the permission layer's own guarantees, not about how any app might happen
 to compensate for it.
 
-**Status after the 2026-08-25 fix pass:**
+**Status after the 2026-08-25 fix pass, and the test pass that followed:**
 
 | | Finding | Status |
 |---|---|---|
@@ -22,7 +22,7 @@ to compensate for it.
 | M5 | Query cost | open — measure first |
 | M6 | Impersonation undesigned | open |
 | M7 | No audit trail | open |
-| — | No tests | open — **do before M4** |
+| — | No tests | **done** — 202 tests, green |
 
 ---
 
@@ -230,9 +230,31 @@ audit trail must stay readable", but no audit table exists.
   between a payment failing and `status` changing.
 - **Identity.** Deliberately outside the module (§12.12), but nothing yet defines
   where it lives — which C3's fix and the write path both need.
-- **Tests.** Zero. The logic was verified during design with throwaway scripts;
-  none survived. For a permission system this is the gap that makes every other
-  fix risky.
+- ~~**Tests.** Zero.~~ **Closed.** 202 tests (181 in `module-permissions`, 21 in
+  `module-kit`), Jest 30 + `@swc/jest`, no database — the structural
+  `PermissionsPrismaClient` is satisfied by a literal object. Every rule in
+  PLAN §13 is a case, organised around the findings above: C1 and C2 have
+  dedicated blocks, C3's read-side filter is tested for both grant tables, and
+  the plan/limit regression below has its own test. Pure core and domain are at
+  99–100% coverage; the untested remainder is Nest wiring that needs an
+  integration harness.
+
+  Two defects surfaced while writing them, neither previously known:
+
+  - **The module had never been compiled.** `tsc` found seven errors, one a
+    runtime break: the subscription query included `plan.features` but not
+    `plan.limits`, while the mapping below it read `sub.plan.limits`. Every
+    plan-sourced cap would have thrown on the first guarded request that
+    reached a subscription. Fixed, with a regression test asserting the
+    `include` shape as well as the result.
+  - **`parseScope` misread interior empty path segments.** `filter(Boolean)`
+    collapsed `/organizations//workspaces/ws1` to
+    `['organizations','workspaces','ws1']`, reading the literal string
+    `'workspaces'` as the organization id. It failed closed — no organization
+    matches — but the guard and the router would then disagree about the
+    request's LEVEL, which is the mismatch `@RequireScope` exists to catch
+    rather than to produce. Interior empties are now preserved, so such a path
+    resolves to app level with no ids.
 
 ---
 

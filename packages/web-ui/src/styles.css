@@ -3,7 +3,7 @@
  * globals.css on top — so the design tokens live here, with the components
  * that consume them, and not in five app-level copies.
  */
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme {
   /* Design tokens go here. Kept deliberately empty until the first real

@@ -2,9 +2,9 @@ import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '
 import type { RequestScope } from '../scope.js';
 import type { PermissionContext } from '../types.js';
 import { FeatureGuard } from './feature.guard.js';
+import { PermissionsResolver } from './graphql/permissions.resolver.js';
 import { PermissionsController } from './permissions.controller.js';
 import { PermissionsService } from './permissions.service.js';
-import { PermissionsResolver } from './graphql/permissions.resolver.js';
 
 export const PERMISSIONS_OPTIONS = 'kwtech:permissions-options';
 

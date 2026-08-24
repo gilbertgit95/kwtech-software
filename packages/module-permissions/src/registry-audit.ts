@@ -45,10 +45,7 @@ export function deriveRouteBindings(routes: readonly ModuleRoute[]): Map<Feature
   return derived;
 }
 
-export function auditRegistry(
-  specs: readonly FeatureSpec[],
-  routes: readonly ModuleRoute[] = [],
-): RegistryAudit {
+export function auditRegistry(specs: readonly FeatureSpec[], routes: readonly ModuleRoute[] = []): RegistryAudit {
   const derived = deriveRouteBindings(routes);
   const bySurface = {} as Record<FeatureSurface, number>;
   const owners = new Map<string, FeatureKey[]>();

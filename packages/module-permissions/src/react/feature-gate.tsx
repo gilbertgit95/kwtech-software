@@ -1,10 +1,9 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import type { FeatureKey } from '../types.js';
 import { denialReason } from '../check.js';
-import type { DenialReason } from '../types.js';
-import { usePermissions, useHasAllFeatures, useHasAnyFeature } from './use-permissions.js';
+import type { DenialReason, FeatureKey } from '../types.js';
+import { useHasAllFeatures, useHasAnyFeature, usePermissions } from './use-permissions.js';
 
 export interface FeatureGateProps {
   /** Every key required. Mutually exclusive with anyOf. */

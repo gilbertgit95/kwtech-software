@@ -27,10 +27,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
     "test": "jest",
-    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
@@ -53,7 +55,16 @@
     }
   },
   "devDependencies": {
+    "@nestjs/common": "^11.2.1",
+    "@nestjs/core": "^11.2.1",
+    "@nestjs/graphql": "^13.4.5",
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
+    "@types/react": "^19.2.18",
+    "jest": "^30.4.2",
+    "reflect-metadata": "^0.2.2",
     "typescript": "catalog:"
   },
   "dependencies": {

@@ -67,7 +67,13 @@ export interface SubscriptionRow {
 }
 
 export interface UserRoleRow {
-  role: { key: string; level: string; features: { featureKey: string }[] };
+  role: {
+    key: string;
+    level: string;
+    features: { featureKey: string }[];
+    /** App-level roles carry 'user:organizations'. See domain/limits.ts. */
+    limits: { limitKey: string; value: number }[];
+  };
 }
 
 export interface PermissionsPrismaClient {

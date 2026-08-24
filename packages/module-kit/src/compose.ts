@@ -41,10 +41,7 @@ export function composeRoutes(modules: readonly WebModuleDescriptor[]): ModuleRo
  * Pass `heldFeatures` to filter; omit it to get the unfiltered menu (the role
  * editor wants that).
  */
-export function composeNav(
-  modules: readonly WebModuleDescriptor[],
-  heldFeatures?: readonly string[],
-): NavEntry[] {
+export function composeNav(modules: readonly WebModuleDescriptor[], heldFeatures?: readonly string[]): NavEntry[] {
   const entries: NavEntry[] = [];
 
   for (const route of composeRoutes(modules)) {
@@ -110,9 +107,7 @@ export function serverModuleImports(modules: readonly ServerModuleDescriptor[]):
 }
 
 /** Feeds the app's RouterModule.register(), for modules that asked for a prefix. */
-export function serverRoutePrefixes(
-  modules: readonly ServerModuleDescriptor[],
-): { path: string; module: unknown }[] {
+export function serverRoutePrefixes(modules: readonly ServerModuleDescriptor[]): { path: string; module: unknown }[] {
   return modules
     .filter((mod) => mod.routePrefix)
     .map((mod) => ({ path: mod.routePrefix as string, module: mod.nestModule }));

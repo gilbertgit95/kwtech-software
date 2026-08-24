@@ -40,6 +40,39 @@
       "preset": "recommended"
     }
   },
+  "overrides": [
+    {
+      // NestJS server adapters. Three recommended rules read Nest's idioms as
+      // mistakes, and one of them silently breaks the app.
+      "includes": ["**/src/server/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            // THE IMPORTANT ONE. Nest resolves a constructor parameter from the
+            // `design:paramtypes` metadata emitDecoratorMetadata writes, and
+            // that metadata is emitted from the VALUE binding. Rewriting an
+            // injected class to `import type` erases it, so the container has
+            // nothing to resolve and the app fails at startup — a runtime
+            // break produced by a lint autofix, with a clean typecheck either
+            // side of it.
+            "useImportType": "off"
+          },
+          "complexity": {
+            // A Nest dynamic module IS a class with only static members:
+            // `forRoot` must hang off a @Module()-decorated class. There is no
+            // function form to prefer.
+            "noStaticOnlyClass": "off"
+          },
+          "correctness": {
+            // An injected dependency reserved for a handler that is not written
+            // yet reads as unused. Removing the parameter would remove the
+            // injection.
+            "noUnusedPrivateClassMembers": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {

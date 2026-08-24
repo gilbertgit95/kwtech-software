@@ -5,13 +5,14 @@
  * optional peers: a browser bundle that never imports this subpath never pulls
  * them in.
  */
-export * from './require-feature.decorator.js';
-export * from './require-scope.decorator.js';
+
 export * from './feature.guard.js';
-export * from './permissions.module.js';
-export * from './permissions.service.js';
-export * from './permissions.repository.js';
 export * from './graphql/permission.types.js';
 export * from './graphql/permissions.resolver.js';
 export * from './permissions.controller.js';
+export * from './permissions.module.js';
+export * from './permissions.repository.js';
+export * from './permissions.service.js';
+export * from './require-feature.decorator.js';
+export * from './require-scope.decorator.js';
 export * from './server-module.js';

@@ -146,7 +146,7 @@ export interface ResolveLimitsInput {
    * plan-sourced limits come back unrestricted. `null` or `[]` means no active
    * plan, and they come back at their floor.
    */
-  plans?: readonly PlanEntitlement[] | null;
+  plans?: readonly PlanEntitlement[] | null | undefined;
   /** The caller's role grants. Only the app-level ones set role-sourced limits. */
   roles?: readonly RoleLimitGrant[];
 }

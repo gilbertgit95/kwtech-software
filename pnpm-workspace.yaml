@@ -19,3 +19,8 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   lefthook: true
+  # Both ship a Rust native binding and use their install script to select the
+  # right prebuilt binary for the platform. @swc/core is the Jest transform
+  # (PLAN §3: swc, not ts-jest); unrs-resolver arrives under it.
+  '@swc/core': true
+  unrs-resolver: true

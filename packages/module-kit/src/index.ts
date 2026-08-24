@@ -12,5 +12,6 @@
  * Depends on nothing at runtime: react is type-only and optional, and Nest
  * modules are carried as opaque values so this package never imports Nest.
  */
-export * from './types.js';
+
 export * from './compose.js';
+export * from './types.js';
