@@ -10,15 +10,15 @@ to compensate for it.
 |---|---|---|
 | C1 | Workspace access never enforced | **fixed** |
 | C2 | Workspace/organization pairing unchecked | **fixed** |
-| C3 | Role ownership across organizations | **read side fixed**, write side blocked on M4 |
-| H1 | Limits advisory, audit helpers uncalled | **blocked** on M4 and a seed task |
+| C3 | Role ownership across organizations | **fixed** — read side filters, write side refuses |
+| H1 | Limits advisory, audit helpers uncalled | **limits fixed**; the seed-task helpers still uncalled |
 | H2 | Deprecated features still grant | **fixed** |
 | H3 | Archived workspaces still resolve | **fixed** |
 | H4 | Free-form `level`/`status` | **fixed** |
 | M1 | No staleness story | open — needs a decision with M5 |
 | M2 | 403 for unauthenticated | **fixed** |
 | M3 | `graphql_field` has no mechanism | blocked until the GraphQL layer exists (Phase 3) |
-| M4 | No write path | open — the largest gap |
+| M4 | No write path | **done** for grants and membership; subscriptions deliberately out |
 | M5 | Query cost | open — measure first |
 | M6 | Impersonation undesigned | open |
 | M7 | No audit trail | open |
@@ -85,9 +85,15 @@ another. `assertRoleFeatureLevels()` guards level, not ownership.
 > `organizationId` differing from the membership's, for both organization and
 > workspace roles.
 >
-> **Write side still open.** There is no write path to validate on (M4), so a
-> cross-tenant grant can still be *written* — it simply no longer takes effect.
-> The defensive filter is not a substitute for rejecting the row.
+> **Write side now fixed too.** `PermissionsWriteService.assignRole` and
+> `assignWorkspaceRole` read the role INSIDE the transaction that would insert
+> the grant and refuse it there — `role_foreign_to_organization` when the role
+> belongs to another organization, `role_level_mismatch` when its level does not
+> match where it is being attached. The caller supplies only a `roleId`, and a
+> `roleId` is exactly what an attacker or a bug would get wrong.
+>
+> The read-side filter stays. It is now defence in depth rather than the only
+> defence, and it still covers rows written before this existed.
 
 ---
 
@@ -104,10 +110,22 @@ The audit helpers have the same problem: `auditRegistry()`,
 exported and **never called anywhere**. They are designed to run in a seed task
 and in CI; neither exists yet, so they are currently dead code.
 
-> **Blocked on M4.** Capacity belongs where the row is created, and there is no
-> such place in the module yet. Until then these are **caller obligations, not
-> guarantees** — recorded here and in the README rather than left to look like
-> enforcement.
+> **Limits fixed.** Capacity is now counted and refused inside the transaction
+> that creates the row, in `PermissionsWriteService` — so a cap is a guarantee of
+> the module rather than an obligation on every consuming app. `checkCapacity()`
+> survives as the *read* of the same question ("have I room for one more",
+> asked to grey out a button); the write path no longer depends on anyone
+> calling it.
+>
+> One property is deliberately weaker than it looks, and is documented in the
+> README rather than left to be discovered: under READ COMMITTED two concurrent
+> invites can both count N and both insert. The transaction narrows the window
+> to a round trip; closing it needs `Serializable` or an advisory lock, neither
+> of which this module can emit without owning SQL.
+>
+> **The audit helpers are still uncalled.** `assertRoleFeatureLevels()` now runs,
+> via `assertRoleDefinable()` on the write path. `auditRegistry()`,
+> `assertRegistered()` and `assertPlanLimits()` still wait on a seed task.
 
 ### H2. Deprecated features still grant — FIXED
 
@@ -183,9 +201,9 @@ one query can serve users who may see different columns. There is no field guard
 no middleware, no documented pattern. A binding declared against it today would
 name something nothing enforces.
 
-### M4. The write side does not exist
+### M4. The write side does not exist — DONE
 
-**The largest gap in the module.** It answers permission questions and provides
+**Was the largest gap in the module.** It answers permission questions and provides
 nothing for changing permissions: no operation to invite a member, assign a role,
 share a workspace, create a workspace, or start a subscription.
 
@@ -194,6 +212,29 @@ is unvalidated (C3), and every consuming app will reimplement the same writes �
 which is exactly the duplication the module exists to prevent. The registry, the
 level rules and the capacity checks all assume a write path that would enforce
 them.
+
+> **Done — `PermissionsWriteService`**, bound behind its own client key
+> (`PERMISSIONS_PRISMA_WRITE`) so an app that wired reads does not acquire a
+> write path by inheritance. Covers organizations, members, organization- and
+> workspace-level role grants, workspaces and workspace sharing: 37 tests.
+>
+> Every method checks the ACTOR, duplicating `FeatureGuard` on purpose — a
+> worker, a CLI command and a seed script arrive with no guard, and "the caller
+> checked" is not verifiable from here. Refusals are `PermissionWriteError` with
+> a `reason` rather than Nest exceptions, so the service runs without Nest, and
+> so the advice differs: `at_capacity` means buy more, `not_permitted` means ask
+> an administrator.
+>
+> **Three things stay out, and none of them by oversight:**
+>
+> - **Subscriptions.** Written by the billing integration, not by a user action.
+>   The questions under "Missing information" below — who writes them, with what
+>   idempotency, what happens between a payment failing and `status` changing —
+>   have no answers yet, and a guess would land in the one table a permission
+>   check must not have to doubt.
+> - **Users.** §12.12: the module does not own identity.
+> - **The audit trail.** M7, still open. Every method takes the actor, so adding
+>   it is a new table and a call, not a change to every signature.
 
 ### M5. Query cost per guarded request
 

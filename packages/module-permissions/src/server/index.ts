@@ -13,6 +13,7 @@ export * from './permissions.controller.js';
 export * from './permissions.module.js';
 export * from './permissions.repository.js';
 export * from './permissions.service.js';
+export * from './permissions-write.service.js';
 export * from './require-feature.decorator.js';
 export * from './require-scope.decorator.js';
 export * from './server-module.js';

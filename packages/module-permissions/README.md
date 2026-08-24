@@ -281,12 +281,75 @@ Grants are additionally filtered on the way in: a role whose `organizationId`
 differs from the membership's is discarded, and a feature the seed has deprecated
 stops granting.
 
-⚠️ **Caller obligations, not guarantees.** The module has no write path yet, so
-`checkCapacity()` is advisory — nothing stops an app adding member N+1 without
-asking. Likewise `auditRegistry()`, `assertRegistered()`, `assertPlanLimits()`
-and `assertRoleFeatureLevels()` are exported for a seed task and CI that do not
-exist yet, so nothing currently calls them. See
-[docs/PERMISSIONS-REVIEW.md](../../docs/PERMISSIONS-REVIEW.md) H1 and M4.
+## Changing permissions — `PermissionsWriteService`
+
+Answering permission questions and changing them are different services, wired
+separately. The write client is bound on its own key, so an app that only reads
+does not acquire a write path by having wired reads:
+
+```ts
+PermissionsModule.forRoot({
+  prismaProvider:      { provide: PERMISSIONS_PRISMA,       useExisting: PrismaService },
+  prismaWriteProvider: { provide: PERMISSIONS_PRISMA_WRITE, useExisting: PrismaService },
+  resolvePrincipal: (req) => …,
+})
+```
+
+| Call | Needs | Capped by |
+|---|---|---|
+| `createOrganization` | — (no organization exists yet to grant a right) | `user:organizations`, from the actor's app-level role |
+| `addMember` / `removeMember` | `members:manage` | `organization:members` |
+| `assignRole` / `revokeRole` | `members:manage` | — |
+| `createWorkspace` / `archiveWorkspace` | `workspaces:manage` | `organization:workspaces` |
+| `shareWorkspace` / `unshareWorkspace` | `workspaces:share` | `workspace:members` |
+| `assignWorkspaceRole` / `revokeWorkspaceRole` | `workspaces:share` | — |
+
+Four properties worth relying on:
+
+1. **Every call checks the actor**, duplicating what `FeatureGuard` already did
+   at the HTTP edge. A worker, a CLI command and a seed script arrive with no
+   guard, and "the caller checked" is not something this code can verify.
+2. **Capacity is counted where the row is created**, inside the transaction that
+   creates it — so a cap is a guarantee of this service rather than an
+   obligation on every app. See the caveat below.
+3. **The role is read inside the transaction and judged there**, never trusted
+   from the caller. A `roleId` from another tenant is refused, not merely
+   ignored on the way out.
+4. **Grants are idempotent, membership is not.** Re-granting a held role returns
+   `{ granted: false }`; re-adding an existing member is `already_exists`,
+   because "add this person" carries an intent already satisfied differently.
+
+Refusals are `PermissionWriteError` with a `reason` — `not_permitted`,
+`at_capacity`, `role_foreign_to_organization`, `role_level_mismatch`,
+`role_features_invalid`, `not_found`, `already_exists` — not Nest exceptions, so
+the service is callable from a CLI or a test that never loads Nest. The
+distinctions carry advice: `at_capacity` means buy more, `not_permitted` means
+ask an administrator, and `role_foreign_to_organization` means neither will help.
+
+⚠️ **The capacity caveat, stated precisely.** The count and the insert share one
+transaction, but under READ COMMITTED — Prisma's and Postgres's default — two
+concurrent invites can both count N and both insert, giving N+2 against a cap of
+N+1. The transaction narrows the window to a round trip; it does not close it.
+Closing it needs the host, because this module deliberately emits no SQL: run the
+app's client at `Serializable`, or take an advisory lock on the organization in
+the app's own wrapper.
+
+### Still not here
+
+- **Subscriptions.** Written by the billing integration, not by a user action.
+  Who writes them, with what idempotency, and what happens between a payment
+  failing and `status` changing are open questions; guessing would put a wrong
+  answer in the one table a permission check must not have to doubt.
+- **Users.** The module does not own identity — it grants against a `userId` it
+  never issues.
+- **An audit trail.** `grantedAt` records when, never who. Every method takes the
+  actor, so adding it is a new table and a call rather than a change to every
+  signature. See [docs/PERMISSIONS-REVIEW.md](../../docs/PERMISSIONS-REVIEW.md) M7.
+
+⚠️ **Still caller obligations.** `auditRegistry()`, `assertRegistered()` and
+`assertPlanLimits()` are exported for a seed task and CI that do not exist yet,
+so nothing calls them. `assertRoleFeatureLevels()` is now called — by
+`assertRoleDefinable()`, on the write path.
 
 ## Enforcement is opt-in
 

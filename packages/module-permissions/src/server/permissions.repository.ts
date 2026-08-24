@@ -53,6 +53,8 @@ export interface MembershipRow {
 
 /** The active workspace's membership, with the roles held in it. */
 export interface WorkspaceMemberRow {
+  /** The read path never needed it; workspace role grants hang off it, so the write path does. */
+  id: string;
   workspaceId: string;
   roles: { role: RoleWithFeatures }[];
 }
@@ -125,3 +127,95 @@ export interface PermissionsPrismaClient {
     count(args: { where: { organizationId: string; archivedAt: null } }): Promise<number>;
   };
 }
+
+// ─── the write half ─────────────────────────────────────────────────────────
+//
+// Kept as a SEPARATE interface that extends the read one, so a host that only
+// answers permission questions — a worker, a read replica, an app that
+// administers grants elsewhere — satisfies PermissionsPrismaClient without
+// having to expose a client that can write. Injecting a write-capable client is
+// then a deliberate act, visible in the app's wiring.
+
+/** The transaction handle a write runs inside. Structurally a client, like everything else here. */
+export type PermissionsTransaction = Omit<PermissionsWriteClient, '$transaction'>;
+
+export interface PermissionsWriteClient extends PermissionsPrismaClient {
+  /**
+   * Capacity is counted and the row inserted inside ONE transaction.
+   *
+   * Worth stating exactly what that does and does not buy, because a limit that
+   * looks enforced and is not is worse than one documented as advisory: under
+   * READ COMMITTED — Prisma's and Postgres's default — two concurrent invites
+   * can both count N and both insert, giving N+2 against a cap of N+1. The
+   * transaction narrows the window to the round trip; it does not close it.
+   *
+   * Closing it needs the host's help, because this module deliberately cannot
+   * emit SQL: pass `isolationLevel: 'Serializable'` through the app's client, or
+   * take an advisory lock on the organization in the app's own wrapper. For
+   * seats and workspaces the residual overshoot is one row under concurrent
+   * writes by the same administrator, which is why the default is left alone.
+   */
+  $transaction<T>(fn: (tx: PermissionsTransaction) => Promise<T>): Promise<T>;
+
+  permOrganization: {
+    create(args: { data: { key: string; name: string }; select: { id: true } }): Promise<{ id: string }>;
+  };
+
+  permMembership: PermissionsPrismaClient['permMembership'] & {
+    create(args: {
+      data: { userId: string; organizationId: string; status: 'active' };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    deleteMany(args: { where: { userId: string; organizationId: string } }): Promise<{ count: number }>;
+  };
+
+  permWorkspace: PermissionsPrismaClient['permWorkspace'] & {
+    create(args: {
+      data: { organizationId: string; key: string; name: string };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    updateMany(args: {
+      where: { id: string; organizationId: string };
+      data: { archivedAt: Date };
+    }): Promise<{ count: number }>;
+  };
+
+  permWorkspaceMember: PermissionsPrismaClient['permWorkspaceMember'] & {
+    create(args: {
+      data: { membershipId: string; workspaceId: string };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    deleteMany(args: { where: { membershipId: string; workspaceId: string } }): Promise<{ count: number }>;
+  };
+
+  /**
+   * The role being granted is READ inside the same transaction as the insert,
+   * never trusted from the caller: the caller supplies a roleId, and a roleId
+   * from one tenant attached to a membership in another is precisely C3.
+   */
+  permRole: {
+    findFirst(args: {
+      where: { id: string };
+      select: { id: true; key: true; level: true; organizationId: true };
+    }): Promise<{ id: string; key: string; level: string; organizationId: string | null } | null>;
+  };
+
+  permMembershipRole: {
+    findFirst(args: { where: { membershipId: string; roleId: string } }): Promise<{ roleId: string } | null>;
+    create(args: { data: { membershipId: string; roleId: string } }): Promise<unknown>;
+    deleteMany(args: { where: { membershipId: string; roleId: string } }): Promise<{ count: number }>;
+  };
+
+  permWorkspaceMemberRole: {
+    findFirst(args: { where: { workspaceMemberId: string; roleId: string } }): Promise<{ roleId: string } | null>;
+    create(args: { data: { workspaceMemberId: string; roleId: string } }): Promise<unknown>;
+    deleteMany(args: { where: { workspaceMemberId: string; roleId: string } }): Promise<{ count: number }>;
+  };
+}
+
+/**
+ * Bound separately from PERMISSIONS_PRISMA so that granting the module write
+ * access is an explicit line in the app, not something it inherits by having
+ * wired the read client.
+ */
+export const PERMISSIONS_PRISMA_WRITE = 'kwtech:permissions-prisma-write';

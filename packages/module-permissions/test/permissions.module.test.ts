@@ -2,8 +2,9 @@ import { FeatureGuard } from '../src/server/feature.guard.js';
 import { PermissionsResolver } from '../src/server/graphql/permissions.resolver.js';
 import { PermissionsController } from '../src/server/permissions.controller.js';
 import { PERMISSIONS_OPTIONS, PermissionsModule } from '../src/server/permissions.module.js';
-import { PERMISSIONS_PRISMA } from '../src/server/permissions.repository.js';
+import { PERMISSIONS_PRISMA, PERMISSIONS_PRISMA_WRITE } from '../src/server/permissions.repository.js';
 import { PermissionsService } from '../src/server/permissions.service.js';
+import { PermissionsWriteService } from '../src/server/permissions-write.service.js';
 
 /**
  * Registration is composition, not wiring: importing the module IS the
@@ -65,6 +66,23 @@ describe('PermissionsModule.forRoot', () => {
     class DbModule {}
     expect(PermissionsModule.forRoot({ ...principal, imports: [DbModule] }).imports).toEqual([DbModule]);
     expect(PermissionsModule.forRoot(principal).imports).toEqual([]);
+  });
+
+  it('binds the write client only when the app asks for one', () => {
+    // An app that wired reads should not acquire a write path by inheritance;
+    // granting one is a visible line in its own wiring.
+    const provider = { provide: PERMISSIONS_PRISMA_WRITE, useValue: {} };
+    expect(PermissionsModule.forRoot({ ...principal, prismaWriteProvider: provider }).providers).toContain(provider);
+  });
+
+  it('leaves the write service injectable with no write client, so it fails on use not at boot', () => {
+    const providers = PermissionsModule.forRoot(principal).providers ?? [];
+    expect(providers).toContain(PermissionsWriteService);
+    expect(providers).toContainEqual({ provide: PERMISSIONS_PRISMA_WRITE, useValue: undefined });
+  });
+
+  it('exports the write service alongside the read one', () => {
+    expect(PermissionsModule.forRoot(principal).exports).toContain(PermissionsWriteService);
   });
 
   it('is global, so a guard applied app-wide can resolve it', () => {

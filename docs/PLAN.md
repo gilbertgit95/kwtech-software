@@ -432,8 +432,10 @@ adapter, never a second copy of the feature.
   server, one feature end to end.
 - **Phase 5 — first grid.** `<DataGrid>` in `@kwtech/web-ui`, Infinite Row Model
   over a paginated GraphQL query, shared theme.
-- **Phase 6 — permissions for real.** Grants persisted, seed task upserting the
-  registry, `<FeatureGate>` on a live control, navigation filtered by the same keys.
+- **Phase 6 — permissions for real.** ~~Grants persisted~~ (done: the write path
+  exists and is tested), seed task upserting the registry — which is what finally
+  calls `auditRegistry()`, `assertRegistered()` and `assertPlanLimits()` —
+  `<FeatureGate>` on a live control, navigation filtered by the same keys.
 - **Phase 7+ — later scope.** `apps/admin` (extract into `web-ui` driven by what
   the two apps genuinely share), realtime subscriptions, `worker`, `cli`,
   then CI/Docker/remote cache.
@@ -750,9 +752,46 @@ Decisions 1, 2, 3 and 5 gate the next step.
   Under `@swc/jest` those compile and pass regardless, so an untypechecked suite
   is one that can go on asserting against a type that is gone.
 
-- **2026-08-25** — Left open and recorded: the module has **no write path**
-  (nothing to invite a member, assign a role, share a workspace, or start a
-  subscription). That is why capacity limits are advisory, why cross-tenant role
-  grants can still be written (the read side now discards them), and why the
-  audit helpers are uncalled. Tests come first — there are none, and every rule
-  above is a test case.
+- **2026-08-25** — ~~The module has no write path.~~ **`PermissionsWriteService`
+  built** (M4): organizations, members, organization- and workspace-level role
+  grants, workspaces and workspace sharing. Closes H1's limits and C3's write
+  side, and is the first caller of `assertRoleFeatureLevels`.
+- **2026-08-25** — **The write client is bound on its own key**
+  (`PERMISSIONS_PRISMA_WRITE`, `prismaWriteProvider`), separate from the read
+  one. An app that only answers permission questions — a worker, a read replica,
+  an app administering grants elsewhere — should not acquire a write path by
+  having wired reads; granting one is a visible line in its own wiring. Unbound,
+  the service still injects and refuses on first use with an error naming the
+  option, rather than failing to resolve at boot.
+- **2026-08-25** — **Every write checks the actor**, duplicating `FeatureGuard`
+  deliberately. A worker, a CLI command and a seed script arrive with no guard in
+  front of them, and "the caller already checked" is not a property this code can
+  verify. Fail closed (§9 rule 7) matters most on writes: a skipped check is not
+  a wrong answer, it is a wrong row that outlives the request.
+- **2026-08-25** — **Capacity moved from advisory to enforced**: counted inside
+  the transaction that creates the row. `checkCapacity()` survives as the *read*
+  of the same question — "have I room for one more", asked to grey out a button —
+  but nothing now depends on a caller remembering it.
+- **2026-08-25** — Capacity's residual race **documented rather than claimed
+  away**: under READ COMMITTED two concurrent invites can both count N and both
+  insert. The transaction narrows the window to a round trip; closing it needs
+  `Serializable` or an advisory lock, and this module emits no SQL by design, so
+  it is the host's lever. A limit that looks enforced and is not would be worse
+  than one documented as advisory.
+- **2026-08-25** — **Write refusals are `PermissionWriteError`, not Nest
+  exceptions**, with their own reason vocabulary distinct from `DenialReason`:
+  `at_capacity` means buy more, `not_permitted` means ask an administrator, and
+  `role_foreign_to_organization` means neither will help. Keeps the service
+  callable from a CLI, a worker and a test that never load Nest.
+- **2026-08-25** — **Grants are idempotent; membership is not.** Re-granting a
+  held role returns `{ granted: false }` — making a retry an error turns every
+  network blip into a support ticket. Re-adding an existing member is
+  `already_exists`, because "add this person" carries an intent that has already
+  been satisfied differently, and hiding that hides a stale invite.
+- **2026-08-25** — **Subscription writes deliberately excluded from M4.** They
+  are written by the billing integration, not by a user action, and who writes
+  them, with what idempotency, and what happens between a payment failing and
+  `status` changing are all unanswered. A guess would land in the one table a
+  permission check must not have to doubt. Users are excluded too (§12.12), and
+  M7's audit trail stays open — but every write method takes the actor, so adding
+  it is a new table and a call rather than a change to every signature.

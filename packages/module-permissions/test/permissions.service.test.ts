@@ -246,6 +246,7 @@ describe('C3 — a role defined by one organization never grants in another', ()
     const { svc } = service({
       membership: membership(),
       workspaceMember: {
+        id: 'wm1',
         workspaceId: 'ws1',
         roles: [
           {

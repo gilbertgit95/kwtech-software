@@ -4,7 +4,9 @@ import type { PermissionContext } from '../types.js';
 import { FeatureGuard } from './feature.guard.js';
 import { PermissionsResolver } from './graphql/permissions.resolver.js';
 import { PermissionsController } from './permissions.controller.js';
+import { PERMISSIONS_PRISMA_WRITE } from './permissions.repository.js';
 import { PermissionsService } from './permissions.service.js';
+import { PermissionsWriteService } from './permissions-write.service.js';
 
 export const PERMISSIONS_OPTIONS = 'kwtech:permissions-options';
 
@@ -17,6 +19,19 @@ export interface PermissionsModuleOptions {
    *   { provide: PERMISSIONS_PRISMA, useExisting: PrismaService }
    */
   prismaProvider?: Provider;
+
+  /**
+   * Binds a WRITE-capable client, enabling PermissionsWriteService:
+   *   { provide: PERMISSIONS_PRISMA_WRITE, useExisting: PrismaService }
+   *
+   * Separate from prismaProvider on purpose. An app that only answers
+   * permission questions — a worker, a read replica, an app administering
+   * grants elsewhere — should not acquire a write path by having wired reads,
+   * and granting one should be a visible line in its wiring. Omitted, the
+   * service is still injectable and refuses on first use with an error naming
+   * this option, rather than failing to resolve at boot.
+   */
+  prismaWriteProvider?: Provider;
 
   /**
    * The preferred wiring: say only who is calling and in which organization,
@@ -102,9 +117,12 @@ export class PermissionsModule {
     const providers: Provider[] = [
       { provide: PERMISSIONS_OPTIONS, useValue: options },
       PermissionsService,
+      PermissionsWriteService,
       FeatureGuard,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider);
+    if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider);
+    else providers.push({ provide: PERMISSIONS_PRISMA_WRITE, useValue: undefined });
     // A resolver is just a provider: listing it here is what puts the module's
     // queries into the app's code-first schema. Nothing to stitch.
     if (exposeGraphql) providers.push(PermissionsResolver);
@@ -114,7 +132,7 @@ export class PermissionsModule {
       imports: options.imports ?? [],
       controllers: exposeRest ? [PermissionsController] : [],
       providers,
-      exports: [FeatureGuard, PermissionsService, PERMISSIONS_OPTIONS],
+      exports: [FeatureGuard, PermissionsService, PermissionsWriteService, PERMISSIONS_OPTIONS],
       global: true,
     };
   }
