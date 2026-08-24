@@ -1,0 +1,21 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+catalog:
+  typescript: 7.0.2
+  '@types/node': 24.10.1
+
+# pnpm 11 does not run dependency install scripts unless they are allowlisted
+# here. Keep it to packages that genuinely need a build step and no more.
+#
+#   @prisma/engines  the schema engine binary that backs migrate/introspect
+#   prisma           CLI postinstall
+#   lefthook         installs the hook binary and syncs .git/hooks
+#
+# Under Prisma 7 the client itself needs no build step: it is generated as
+# TypeScript source, with no Rust engine to download.
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  lefthook: true

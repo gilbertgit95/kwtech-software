@@ -1,0 +1,29 @@
+# Client operations owned by the module.
+#
+# Consuming apps add this path to their graphql-codegen `documents` glob:
+#   documents: ['src/**/*.{tsx,graphql}', '../../packages/module-*/src/graphql/*.graphql']
+# so the generated hooks land in the app, typed against the composed schema.
+# See docs/PLAN.md §9 for why the hooks are generated app-side rather than here.
+
+query MyPermissions {
+  myPermissions {
+    subjectId
+    organizationId
+    workspaceId
+    effective
+    granted
+    entitled
+    grantedAtAppLevel
+    accessibleWorkspaceIds
+  }
+}
+
+query PermissionFeatures {
+  permissionFeatures {
+    key
+    module
+    label
+    description
+    isPrivileged
+  }
+}

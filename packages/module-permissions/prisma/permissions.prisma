@@ -1,0 +1,355 @@
+// The permissions module's slice of the data model.
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Perm` and mapped to `perm_*` so a module
+// can never collide with another module's names in a schema it does not own.
+//
+// Shape of a decision:
+//
+//   user ──membership──▶ organization ──subscription──▶ plan ──▶ entitlements
+//                │              │                                     │
+//                │              └──▶ workspace ◀── workspace member    │
+//                │                       ▲                            │
+//                └──▶ role grants ───────┘ (scoped, or org-wide) ──────┴──▶ allowed
+//
+// Both levels are shared, and sharing is explicit at both: a person joins an
+// organization by PermMembership and a workspace by PermWorkspaceMember. Being
+// in the organization does NOT imply seeing every workspace — that is a right
+// (`workspaces:access_all`), granted by a role, not a structural shortcut.
+//
+// A feature is allowed when the caller's ROLES grant it — in the active
+// workspace or organization-wide — AND the organization's PLAN includes it.
+// Grants and entitlements are kept separate deliberately: see src/check.ts.
+//
+// Scope levels, deliberately only two: organization and workspace. Every extra
+// level multiplies the resolution rules, and nobody can predict what a grant
+// means three levels deep.
+
+/// Enumerated rather than free-form strings. A row holding 'Active' or
+/// 'organization ' would otherwise match nothing, producing a role that grants
+/// nothing or a subscription that entitles nothing — with no error anywhere.
+/// Silent denial is the safe direction and the undiagnosable one.
+enum PermRoleLevel {
+  app
+  organization
+  workspace
+}
+
+enum PermMembershipStatus {
+  active
+  invited
+  suspended
+}
+
+enum PermSubscriptionStatus {
+  active
+  past_due
+  canceled
+}
+
+// ─── identity boundary ──────────────────────────────────────────────────────
+// PermUser is intentionally absent: userId below is a bare string with no
+// foreign key, so the users this module grants against may live in another
+// module, another database or an external IdP. See docs/PLAN.md §12.12 — this
+// is the open decision that most affects the model.
+
+model PermOrganization {
+  id   String @id @default(cuid())
+  key  String @unique
+  name String
+
+  memberships   PermMembership[]
+  roles         PermRole[]
+  subscriptions PermSubscription[]
+  workspaces    PermWorkspace[]
+
+  @@map("perm_organization")
+}
+
+/// A workspace belongs to exactly one organization. Subscriptions do NOT live
+/// here: the organization is the billing entity, so entitlement is uniform
+/// across its workspaces and only the grants vary.
+model PermWorkspace {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  name           String
+  archivedAt     DateTime?
+
+  organization PermOrganization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members       PermWorkspaceMember[]
+  subscriptions PermSubscription[]
+
+  @@unique([organizationId, key])
+  @@map("perm_workspace")
+}
+
+/// Membership of one workspace, and the unit workspace-level roles hang from.
+///
+/// An organization has indefinitely many members; each has organization-level
+/// roles. It has indefinitely many workspaces; each workspace has its own
+/// members, each with workspace-level roles. So a workspace role cannot exist
+/// without workspace membership — that is structural here, not a rule anyone
+/// has to remember.
+///
+/// Keyed off the organization membership rather than the user: you cannot be in
+/// a workspace of an organization you do not belong to, and routing it through
+/// the membership makes that impossible to express rather than merely wrong.
+model PermWorkspaceMember {
+  id           String   @id @default(cuid())
+  membershipId String
+  workspaceId  String
+  addedAt      DateTime @default(now())
+
+  membership PermMembership            @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  workspace  PermWorkspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  roles      PermWorkspaceMemberRole[]
+
+  @@unique([membershipId, workspaceId])
+  @@index([workspaceId])
+  @@map("perm_workspace_member")
+}
+
+/// A workspace-level role held by a workspace member.
+model PermWorkspaceMemberRole {
+  workspaceMemberId String
+  roleId            String
+  grantedAt         DateTime @default(now())
+
+  workspaceMember PermWorkspaceMember @relation(fields: [workspaceMemberId], references: [id], onDelete: Cascade)
+  role            PermRole            @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceMemberId, roleId])
+  @@map("perm_workspace_member_role")
+}
+
+/// The access-relevant projection of a user: which organization they act in.
+/// Permissions are always answered per (user, organization) — the same person
+/// legitimately holds different rights in two organizations.
+model PermMembership {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  status         PermMembershipStatus @default(active)
+  joinedAt       DateTime @default(now())
+
+  organization PermOrganization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roles        PermMembershipRole[]
+  workspaces   PermWorkspaceMember[]
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@map("perm_membership")
+}
+
+// ─── roles and grants ───────────────────────────────────────────────────────
+
+/// A role is nothing but a named collection of features that can be given to a
+/// user. All the meaning lives in PermRoleFeature.
+///
+/// level says where the role can be used, and which features it may collect:
+///
+///   app          across every organization — platform staff. Granted through
+///                PermUserRole, NOT through a membership, because it is not
+///                scoped to any one organization.
+///   organization everywhere inside one organization.
+///   workspace    inside one workspace.
+///
+/// organizationId null = a preset shared by every organization (or an app-level
+/// role, which never belongs to one). Non-null = a role that organization
+/// defined for itself.
+///
+/// A role may only collect features whose own level matches — enforced in the
+/// service and worth a CHECK in the app's SQL extras, since a workspace role
+/// quietly holding `billing:manage` is a privilege escalation, not a typo.
+model PermRole {
+  id             String        @id @default(cuid())
+  level          PermRoleLevel
+  organizationId String?
+  key            String
+  label          String
+  isSystem       Boolean @default(false)
+
+  organization PermOrganization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  features         PermRoleFeature[]
+  limits           PermRoleLimit[]
+  memberships      PermMembershipRole[]
+  workspaceMembers PermWorkspaceMemberRole[]
+  users            PermUserRole[]
+
+  @@unique([organizationId, key])
+  @@index([level])
+  @@map("perm_role")
+}
+
+/// App-level grants: a role given to a USER outright, with no organization in
+/// the picture.
+///
+/// Separate from PermMembershipRole because a membership is (user,
+/// organization) and an app-level role has neither an organization nor a
+/// workspace to hang from. Forcing it through a membership would mean inventing
+/// a fake organization for staff, which then appears in every organization list
+/// anyone ever queries.
+model PermUserRole {
+  userId    String
+  roleId    String
+  grantedAt DateTime @default(now())
+
+  role PermRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([userId])
+  @@map("perm_user_role")
+}
+
+/// An organization-level role held by an organization member. Applies across
+/// every workspace in that organization.
+///
+/// Workspace roles live on PermWorkspaceMemberRole, not here with a nullable
+/// workspace column. That split is what lets both tables have honest composite
+/// primary keys: a nullable column cannot be part of one, and Postgres treats
+/// NULLs as distinct in a unique index, so the old shape could not stop two
+/// identical organization-wide grants without a hand-written partial index.
+model PermMembershipRole {
+  membershipId String
+  roleId       String
+  grantedAt    DateTime @default(now())
+
+  membership PermMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       PermRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+  @@map("perm_membership_role")
+}
+
+/// The registry mirror. src/feature-keys.ts is the source; the seed task upserts
+/// and marks removed keys deprecated — it never deletes, because grants and the
+/// audit trail have to stay readable.
+model PermFeature {
+  key          String    @id
+  module       String
+  label        String
+  description  String
+  isPrivileged Boolean   @default(false)
+  deprecatedAt DateTime?
+
+  roles PermRoleFeature[]
+  plans PermPlanFeature[]
+
+  @@map("perm_feature")
+}
+
+/// A cap a role grants, as opposed to one a plan sells.
+///
+/// Only meaningful on APP-LEVEL roles today: 'user:organizations' — how many
+/// organizations a person may belong to. That question is asked before any
+/// organization exists, so there is no subscription to answer it; the user's
+/// standing on the application is what decides.
+///
+/// Same key/value shape as PermPlanLimit so both sources resolve through one
+/// registry and one map.
+model PermRoleLimit {
+  roleId   String
+  limitKey String
+  value    Int
+
+  role PermRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, limitKey])
+  @@map("perm_role_limit")
+}
+
+model PermRoleFeature {
+  roleId     String
+  featureKey String
+
+  role    PermRole    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  feature PermFeature @relation(fields: [featureKey], references: [key])
+
+  @@id([roleId, featureKey])
+  @@map("perm_role_feature")
+}
+
+// ─── subscriptions and entitlements ─────────────────────────────────────────
+
+model PermPlan {
+  key      String  @id
+  label    String
+  isPublic Boolean @default(true)
+
+  features      PermPlanFeature[]
+  limits        PermPlanLimit[]
+  subscriptions PermSubscription[]
+
+  @@map("perm_plan")
+}
+
+/// How MANY, as opposed to what. Seats, workspaces, workspace members.
+///
+/// Key/value rather than typed columns so a new limit is a row, not a
+/// migration — the same reason features are keys. Absent from an active plan
+/// means unrestricted for that key: the plan simply does not cap it.
+///
+/// Deliberately separate from PermPlanFeature. A feature answers "may you do
+/// this at all", a limit answers "have you room for one more" — different
+/// questions, asked at different moments (read vs write), and merging them
+/// makes a full organization look like an unauthorised one.
+model PermPlanLimit {
+  planKey String
+  /// 'organization:members', 'organization:workspaces', 'workspace:members'.
+  limitKey String
+  value    Int
+
+  plan PermPlan @relation(fields: [planKey], references: [key], onDelete: Cascade)
+
+  @@id([planKey, limitKey])
+  @@map("perm_plan_limit")
+}
+
+/// What a plan entitles — a plan, like a role, is a collection of features. The
+/// two answer different questions and are never merged: a role says the PERSON
+/// may, a plan says the ORGANIZATION (or workspace) bought it.
+model PermPlanFeature {
+  planKey    String
+  featureKey String
+
+  plan    PermPlan    @relation(fields: [planKey], references: [key], onDelete: Cascade)
+  feature PermFeature @relation(fields: [featureKey], references: [key])
+
+  @@id([planKey, featureKey])
+  @@map("perm_plan_feature")
+}
+
+/// A subscription attaches a plan — and therefore a set of features — to an
+/// organization, or to one workspace inside it.
+///
+///   workspaceId null = the whole organization is entitled to the plan.
+///   workspaceId set  = that workspace additionally is.
+///
+/// The two are ADDITIVE, exactly like role grants: a workspace plan adds to
+/// whatever the organization already bought, it does not replace it. Making it
+/// an override would introduce a precedence rule, and precedence is the part
+/// teams get wrong — a downgraded workspace plan silently revoking an
+/// organization-wide entitlement is the failure that follows.
+///
+/// Status and period are carried here rather than fetched from the billing
+/// provider on every request: a permission check must not depend on a third
+/// party being reachable. The billing integration writes these rows.
+model PermSubscription {
+  id             String    @id @default(cuid())
+  organizationId String
+  workspaceId    String?
+  planKey        String
+  status         PermSubscriptionStatus
+  currentPeriodEnd DateTime?
+  /// Set when superseded. Rows are kept so past entitlement can be reconstructed.
+  endedAt        DateTime?
+
+  organization PermOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    PermWorkspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan         PermPlan         @relation(fields: [planKey], references: [key])
+
+  @@index([organizationId, status])
+  @@index([workspaceId, status])
+  @@map("perm_subscription")
+}

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+
+  // Catalog versions live in pnpm-workspace.yaml, so a change there genuinely
+  // affects every task. .env is deliberately NOT a global dependency — no
+  // cached task reads one, and listing it would make every secret edit
+  // invalidate the entire cache universe. DATABASE_URL is likewise not global;
+  // it is passed to the tasks that genuinely need it.
+  "globalDependencies": ["pnpm-workspace.yaml"],
+  "globalEnv": ["NODE_ENV"],
+
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      // src/generated/** is the Prisma client (TypeScript source under Prisma
+      // 7). It must be in outputs or a cache restore yields a package that
+      // cannot compile.
+      "outputs": ["dist/**", "src/generated/**"],
+      // prisma.config.ts resolves env('DATABASE_URL') eagerly, so generate
+      // fails without it even though it never opens a connection.
+      // passThroughEnv, not env: the URL reaches the task but stays out of the
+      // cache key, because only the schema affects the generated client.
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "lint": {},
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "clean": {
+      "cache": false
+    },
+
+    // Long-running by nature: never cached, never awaited.
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["build"]
+    },
+
+    // ── contracts ─────────────────────────────────────────────────────────
+    // apps/web-server is the only producer: code-first resolvers emit schema.graphql
+    // and @nestjs/swagger emits openapi.json. Every consumer's codegen depends
+    // on it, so the task graph — not a README — enforces the ordering.
+    "schema:generate": {
+      "dependsOn": ["^build"],
+      "outputs": ["schema.graphql", "openapi.json"]
+    },
+    "codegen": {
+      "dependsOn": ["@kwtech/web-server#schema:generate"],
+      "outputs": ["src/generated/**"]
+    },
+    "codegen:watch": {
+      "cache": false,
+      "persistent": true
+    },
+
+    // ── database ──────────────────────────────────────────────────────────
+    // All uncached: they talk to a live database, or write outside the
+    // package. DATABASE_URL is declared per-task rather than globally so it
+    // cannot invalidate build/lint/test.
+    "db:generate": {
+      "cache": false
+    },
+    "db:validate": {
+      "cache": false,
+      "env": ["DATABASE_URL"]
+    },
+    "db:migrate": {
+      "cache": false,
+      "env": ["DATABASE_URL"]
+    },
+    "db:deploy": {
+      "cache": false,
+      "env": ["DATABASE_URL"]
+    },
+    "db:studio": {
+      "cache": false,
+      "persistent": true,
+      "env": ["DATABASE_URL"]
+    },
+
+    // ── front end ─────────────────────────────────────────────────────────
+    // Next writes .next/, not dist/, and .next/cache is its own incremental
+    // cache — restoring it from turbo would be a cache inside a cache.
+    // NEXT_PUBLIC_* values are inlined into the client bundle at build time,
+    // so they genuinely change the output and must be part of the hash.
+    "@kwtech/web-app#build": {
+      "dependsOn": ["^build", "codegen"],
+      "outputs": [".next/**", "!.next/cache/**"],
+      "env": ["NEXT_PUBLIC_*"]
+    }
+  }
+}

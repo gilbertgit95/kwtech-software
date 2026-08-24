@@ -1,0 +1,12 @@
+/*
+ * Tailwind v4 configures itself in CSS. Apps import this once, then their own
+ * globals.css on top — so the design tokens live here, with the components
+ * that consume them, and not in five app-level copies.
+ */
+@import 'tailwindcss';
+
+@theme {
+  /* Design tokens go here. Kept deliberately empty until the first real
+     component needs one — a token nobody references is a token nobody
+     maintains. */
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.6/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.turbo",
+      "!**/generated",
+      "!**/.next",
+      // Static assets, not source. Biome parses a standalone .svg as JSX and
+      // demands a <title> on every icon — an a11y rule that belongs on inline
+      // SVG in components, not on files served verbatim.
+      "!**/public"
+    ]
+  },
+  "css": {
+    "parser": {
+      // Tailwind v4 configures itself in CSS (@theme, @utility, @custom-variant).
+      // Without this the app's globals.css is a parse error, and a file Biome
+      // cannot parse is a file it silently stops checking.
+      "tailwindDirectives": true
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "javascript": {
+    "parser": {
+      // NestJS controllers cannot be written without parameter decorators —
+      // @Body(), @Args() and @Req() are how a handler receives anything at all.
+      "unsafeParameterDecoratorsEnabled": true
+    },
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always",
+      "quoteProperties": "asNeeded",
+      "bracketSpacing": true
+    }
+  }
+}
