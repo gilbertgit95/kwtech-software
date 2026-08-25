@@ -56,6 +56,7 @@ second server app, the worker and the CLI can all reach it.
 | Lint + format | **Biome 2.5.6** — one tool, no ESLint, no Prettier | `biome.jsonc` at root; every package's `lint` is `biome check .` |
 | TypeScript | catalog **7.0.2**; `tsconfig.base.json` at root | no `typescript-config` package — packages extend the base file directly |
 | Git hooks | **lefthook 2.1.10** + **commitlint 21** (conventional commits) | |
+| Dev ports | 8080 API, 8081 web — freed by `scripts/dev-ports.mjs` before `turbo run dev` | turbo isolates each task in its own process group, so an unclean stop orphans them still-listening; §13 |
 | Versions | pnpm **`catalog:`** for `typescript` and `@types/node` | |
 
 Two pnpm 11 mechanisms inherited deliberately:
@@ -272,8 +273,12 @@ packages/module-permissions/
 5. **The module must not own identity.** `PermSubjectRole` references a subject
    by id with no foreign key — the users it grants against may live in a table,
    or a service, it has never heard of.
-6. **Apps configure; modules do not guess.** `forRoot({ resolveSubjectId })` —
-   say where the caller's id lives and the module does the rest.
+6. **Apps configure; modules publish a contract.** `forRoot({ resolveSubjectId })`
+   — say where the caller's id lives and the module does the rest. A module may
+   document environment variables it will read (`API_URL`, `AUTH_JWT_SECRET`)
+   and default to them: that is a contract an app opts into, not a guess, and it
+   is what keeps adoption to two lines. It may never default a **secret** — no
+   value, only a documented source and a boot failure without one. §13.
 7. **Fail closed.** Absent context denies; a `<FeatureGate>` with no keys renders
    its fallback, because an empty gate that renders looks guarded in review while
    guarding nothing.
@@ -443,14 +448,20 @@ adapter, never a second copy of the feature.
 - **Phase 4 — `apps/web-app` vertical slice. PARTLY DONE.** Next 16 app with
   Tailwind 4 via `@kwtech/web-ui/styles.css`, the module catch-all route
   (§12.11 strategy A) and the three auth pages rendering. NOT Auth.js — §12.8
-  closed the other way (below). `PermissionsProvider` and a real feature
-  end to end still to come.
+  closed the other way (below). **The app shell now exists** — main header,
+  collapsible side drawer, account dropdown, Light/Dark/System toggle — with
+  navigation composed from `WEB_MODULES` and filtered by the viewer's grants,
+  and `PermissionsProvider` mounted from a server-resolved context. A real
+  feature end to end is still to come.
 - **Phase 5 — first grid.** `<DataGrid>` in `@kwtech/web-ui`, Infinite Row Model
   over a paginated GraphQL query, shared theme.
 - **Phase 6 — permissions for real.** ~~Grants persisted~~ (done: the write path
   exists and is tested), seed task upserting the registry — which is what finally
   calls `auditRegistry()`, `assertRegistered()` and `assertPlanLimits()` —
-  `<FeatureGate>` on a live control, navigation filtered by the same keys.
+  `<FeatureGate>` on a live control, ~~navigation filtered by the same keys~~
+  (done: the side drawer filters on `composeNav(WEB_MODULES, granted)`, fed by
+  `GET /permissions/me`). Still open: the seed task, `middleware.ts`, and the
+  role editor's body.
 - **Phase 7+ — later scope.** `apps/admin` (extract into `web-ui` driven by what
   the two apps genuinely share), realtime subscriptions, `worker`, `cli`,
   then CI/Docker/remote cache.
@@ -1034,3 +1045,367 @@ Decisions 1, 2, 3 and 5 gate the next step.
   permission check must not have to doubt. Users are excluded too (§12.12), and
   M7's audit trail stays open — but every write method takes the actor, so adding
   it is a new table and a call rather than a change to every signature.
+- **2026-08-25** — **The app shell**: a main header, a collapsible side drawer,
+  an account dropdown and a Light/Dark/System theme toggle, following
+  `../masterdb-mgt-tool`'s `(private)` layout. Radix dropdown + `lucide-react` +
+  `next-themes` + `clsx`/`tailwind-merge` installed as §3 had already decided;
+  `tw-animate-css` added for the menu open/close states, and Geist wired into
+  Tailwind's `--font-sans`. The primitives are hand-owned in the app, NOT in
+  `@kwtech/web-ui`, because that package's own scope rule says a component with
+  one consumer belongs to its consumer — `apps/admin` (§11 Phase 7) is what
+  should drive the extraction, not anticipation of it.
+- **2026-08-25** — **The shell is a COMPONENT, not a layout**, and that is
+  forced rather than chosen. §12.11 strategy A puts every module route behind
+  one catch-all, so Next cannot see the individual routes and cannot give them
+  nested layouts — exactly the cost the catch-all's comment records. `/` and the
+  catch-all each wrap themselves. Moving to generated stubs (strategy C) turns
+  this back into a layout with no change to what it renders.
+- **2026-08-25** — **`ModuleRoute.chrome: 'app' | 'bare'`** added to
+  `@kwtech/module-kit`; the three auth routes declare `'bare'`. The catch-all
+  has to know which shell a route wants, and the alternative — testing whether
+  the path starts with `/auth` — would make a naming convention load-bearing for
+  a rendering decision, so renaming the prefix would silently lose it. Bare
+  pages still get the theme toggle (`BareShell`): someone who needs dark mode
+  needs it on the sign-in screen too.
+- **2026-08-25** — **The drawer is filtered by the same keys the pages check.**
+  `composeNav()` existed since Phase 0 and nothing called it; it does now, fed
+  by a new `getPermissionContext()` reading `GET /permissions/me`. That endpoint
+  requires no feature of its own — asking what you hold is not a privilege, and
+  gating it would deadlock the first render. **It fails CLOSED**: a null context
+  becomes an empty grant list rather than "skip the filter", so an unreachable
+  permissions service shrinks the menu instead of opening it. `AppShell` also
+  mounts `PermissionsProvider` with that context, so `<FeatureGate>` works
+  inside module pages that cannot mount a provider themselves.
+- **2026-08-25** — `module-permissions` is now composed into `WEB_MODULES`, so
+  `/admin/roles` is real. Its body is still the Phase 6 stub, but the entry
+  proves the whole path — descriptor → `composeNav` → grant filter → link — and
+  it is hidden from anyone without `admin:access`, so an unfinished page is not
+  an exposed one. Verified both ways: the seeded user (no grants) sees only
+  Dashboard; with `admin:access` the Administration group appears.
+- **2026-08-25** — ⚠ **`export *` is a trap in any `module-*` react barrel, and
+  it cost a real bug.** TypeScript compiles it to `__exportStar`, which copies
+  keys with `for...in`. Next replaces a `'use client'` module with a
+  client-reference proxy that does not answer that enumeration, so the re-export
+  yielded nothing and `PermissionsProvider` arrived as `undefined` — surfacing
+  as "Element type is invalid" at render, pointing nowhere near the barrel.
+  Both react barrels now use NAMED re-exports, which compile to property
+  getters that read through the proxy. `module-auth` had the same latent bug and
+  escaped it only because `authWebModule` reaches its pages through
+  `module.tsx`, which imports them directly rather than through the barrel.
+- **2026-08-25** — The shell **redirects a signed-out visitor and is not a
+  gate.** It sends them to `/auth/signin` rather than rendering an account menu
+  with no account in it; enforcement stays with the API, which sees the bearer
+  token on every request. Treating a render-time check as protection is how a UI
+  ends up guarded by something an attacker never runs. `apps/web-app` still has
+  no `middleware.ts` — §12.15 and Phase 6 own that.
+- **2026-08-25** — **`pnpm dev` now frees its own ports first**
+  (`scripts/dev-ports.mjs`), because `EADDRINUSE :::8081` on restart was a
+  recurring cost. The cause is structural, not a mistake: **turbo runs each
+  persistent task in its own process group.** A clean Ctrl-C is fine — turbo
+  catches SIGINT and tears the tasks down, verified by signalling the
+  foreground group and watching every process exit. Anything that stops turbo
+  without giving it that chance — a closed terminal, `kill -9`, starting it
+  detached and killing only the top process, or one task dying while the others
+  are still coming up — leaves those groups re-parented to init and still
+  listening. The build/dev race that wiped `web-server/dist` mid-session was
+  exactly this.
+  The script kills the listener's **process group**, not the listener: `nest
+  start --watch` supervises `node dist/main`, so killing the leaf only makes the
+  supervisor spawn a new one. Because turbo isolated the group already, killing
+  it takes down that one task and nothing else.
+  **It refuses to kill anything running from outside this repo** — checked via
+  `/proc/<pid>/cwd`, and it exits non-zero naming the holder instead. Verified
+  both ways: a listener with cwd `/tmp` survives, one with cwd inside the repo
+  is cleared. `dev:api` and `dev:web` free only their own port, so running them
+  in two terminals does not evict each other. `pnpm dev:stop` clears both;
+  `pnpm dev:ports` reports without killing.
+- **2026-08-25** — **Adopting a module is now two lines per surface**, and the
+  auth plumbing moved out of the app into the module that owns it. `module-auth`
+  gained a **`/next` entrypoint** — the credential proxy, the httpOnly cookie
+  handling, sign-out-that-revokes, and the server-side `getViewer()` — so
+  `apps/web-app` deleted ~220 lines of security-critical code it had been
+  carrying. That code was never app-specific: every Next app adopting this
+  module would have rewritten it, and the copy that got a `sameSite` or a
+  missing revoke wrong is the one nobody reviews. `/next` sits alongside
+  `/server` (Nest) and `/react` (browser) as a third optional-peer adapter,
+  which PLAN §9 rule 2 already allows for.
+- **2026-08-25** — **§9 rule 6 refined: apps configure, modules publish a
+  contract.** The rule said modules must not guess, and `/next` reading
+  `API_URL` looks like guessing. The distinction that matters: the module does
+  not *discover* configuration, it *documents an environment contract* — an app
+  that sets those names has configured it, and an app that passes values
+  explicitly never consults them. Without defaults the rule was costing every
+  adopter the same twenty lines of wiring.
+  **The JWT secret is the deliberate exception and has no fallback value.**
+  `AuthModule.forRoot` reads `AUTH_JWT_SECRET` and throws at boot when neither
+  it nor an explicit `jwtSecret` is present — a module-supplied default secret
+  would be the same secret in every deployment that forgot one, which is worse
+  than a failed boot because nothing ever reports it. `issuer`/`audience` do
+  default: they are consistency checks, not credentials.
+- **2026-08-25** — ⚠ **`next/server` does not survive `transpilePackages`.**
+  The route handlers were written with `NextRequest`/`NextResponse`; compiled to
+  CJS and run through Next's transpile step, `require("next/server")` became a
+  binding that is not there — `ReferenceError: server_1 is not defined`, thrown
+  on the first request rather than at build. Rewritten on plain Web
+  `Request`/`Response` with a small `Set-Cookie` serialiser, which costs nothing
+  (route handlers take and return exactly those types) and makes the handlers
+  portable to any Web-standard runtime. `next/headers` is still used for reading
+  cookies in `getViewer` and works fine — the failure is specific to
+  `next/server`.
+- **2026-08-25** — **The web-side seam mirrors the server-side one.**
+  `module-permissions` gained `/next` with `getPermissionContext({ token })`,
+  taking a TOKEN rather than reading a cookie, because it must not import
+  `module-auth` and would be guessing if it picked a cookie name. `AppShell`
+  reads the token from auth and hands it to permissions — one direction, one
+  function, exactly like `resolvePrincipal` on the server.
+- **2026-08-25** — **Two per-module boilerplate lists deleted.**
+  `transpilePackages` is now derived from `package.json`'s `@kwtech/*`
+  dependencies, and `globals.css` uses a single `@source "packages/*/src"` glob
+  instead of a line per module. The glob was previously rejected to avoid
+  padding the stylesheet with an uncomposed module's classes — that traded a
+  small silent cost for a large one, since a forgotten `@source` line does not
+  warn, it renders the app with no CSS at all, which this repo has already
+  shipped once. Adopting a module is now a dependency and nothing else.
+- **2026-08-25** — `apps/web-app/src/config/env.ts` survives as a **boot
+  assertion** rather than a value the app threads around, loaded once from
+  `instrumentation.ts`. The convention that makes setup one line also makes a
+  typo in `API_URL` silent — it falls back to localhost and first shows up as a
+  sign-in hanging in staging. It imports the module's exported defaults rather
+  than repeating them, so the two cannot drift.
+- **2026-08-25** — **The two-line setup reaches the server too, and is now
+  tested rather than asserted.** `AuthModule.forRoot({ prismaProvider })` boots
+  from the environment alone: `resolveAuthOptions` reads `AUTH_JWT_SECRET`,
+  `AUTH_TOKEN_ISSUER`/`AUDIENCE` and the three `AUTH_*_TTL` durations. A new
+  `auth.options.test.ts` (12 cases) boots `forRoot({})` for real and asserts a
+  missing secret still throws — the README's promise had been a claim nobody
+  ran.
+  `apps/web-server` now passes only what is genuinely its own — the Prisma
+  provider, how a reset link reaches a person, where a failed sign-in is
+  logged — down from ten config lines to three.
+- **2026-08-25** — **`JWT_SECRET` renamed `AUTH_JWT_SECRET`** in web-server's
+  `.env`, `.env.example` and env schema, to match the name the module publishes.
+  Consistent with `AUTH_SESSION_TTL` and friends, which were already prefixed.
+- **2026-08-25** — **The TTLs have ONE owner again.** They were declared and
+  parsed in `apps/web-server/src/config/env.ts` and passed to a module that can
+  now read them itself — two parsers, two defaults, and a day when they disagree
+  and each component is correct according to a different number. The declaration
+  and the `duration()` helper were deleted from the app; `parseDuration` is
+  exported from the module for anything that needs the same unit table.
+  **A bare number is rejected rather than assumed**: `AUTH_ACCESS_TOKEN_TTL=15`
+  is ambiguous between seconds and milliseconds, and fifteen seconds looks like
+  an application bug rather than a configuration error. The
+  session-longer-than-access-token check moved with them, into
+  `resolveAuthOptions`, where both values are finally known whatever mix of
+  sources they came from.
+- **2026-08-25** — `packages/module-auth/docs/USAGE.md` written as the module's
+  reference for future developers and agents: entrypoints and what may import
+  what, the sign-in sequence, the two-token trade stated plainly, the security
+  properties not to regress, both halves of the permissions seam, extension
+  points, and a troubleshooting table carrying the two traps that already cost
+  debugging time (`export *` over a `'use client'` barrel, and `next/server`
+  under `transpilePackages`). Verified against the code rather than written from
+  memory — which is how the model list turned out to include three tables that
+  are schema-only.
+- **2026-08-25** — ⚠ **The `@source` glob shipped broken, and the check that
+  passed it was worthless.** `@source "…/packages/*/src"` matches nothing:
+  Tailwind auto-globs a bare directory path, but does not expand a `*` inside
+  one. Every class used only in a package vanished, so the sign-in card lost
+  `max-w-sm` and stretched to the full window while the rest of the app looked
+  fine — because it used the same utilities elsewhere.
+  **The verification was the real failure.** It grepped the built CSS for
+  `rounded-md`, which `apps/web-app` also uses, so it would have passed with the
+  packages not scanned at all. Fixed to
+  `@source "…/packages/*/src/**/*.{ts,tsx}"` and re-checked against all 22
+  classes that appear ONLY in `packages/` — 18 plain, 4 variants — every one now
+  emitted. **When testing whether a source path works, the probe must be a class
+  the other sources cannot supply.**
+- **2026-08-25** — **Themes are swappable, and picking one is a single import.**
+  `@kwtech/web-ui` now ships five palettes — `neutral` (grayscale, the default),
+  `ocean` (blue), `ember` (warm amber), `forest` (green), `violet` — each
+  carrying its own `.dark` block, so switching costs one line in an app's
+  globals.css and nothing else changes. The machinery moved to `src/base.css`
+  (dark variant, `@theme inline` mapping, base layer) and each theme imports it
+  itself, so an app cannot acquire the mapping without a palette (utilities
+  resolving to nothing) or a palette without the mapping (properties nothing can
+  reach). `styles.css` stays as an alias for the default, so existing imports
+  keep working.
+  Every theme shares ONE recipe — identical lightness and chroma per role,
+  differing only in hue — which is what gives them consistent visual weight and
+  makes a new theme a hue change rather than a design exercise. The dark block
+  is a re-decision, not an inversion: `--primary` is lighter and less saturated
+  there, and `--destructive-foreground` flips from light to dark, because the
+  same colour on a dark ground reads muddy or loses contrast.
+- **2026-08-25** — ⚠ **The contrast checker found two failures in the palette
+  already shipped.** `scripts/check-contrast.mjs` measures every
+  foreground/background pair in both modes against WCAG minimums, plus an sRGB
+  gamut budget. On its first run the grayscale theme failed twice:
+  `--muted-foreground` was 4.34:1 on `--muted` (its old comment claimed AA, and
+  it was true only against `--background` — not the surface that text usually
+  sits on), and white `--destructive-foreground` on the dark-mode red was
+  2.77:1, because raising the red's lightness for a dark ground moved it toward
+  the white on top of it. Fixed to `oklch(0.546 0 0)` and a DARK
+  destructive-foreground respectively.
+  The checker **parses the CSS** rather than importing a shared table of values:
+  one fed from the same constants as the output can only confirm that a file
+  matches itself. Wired into `pnpm test`, so a "small" lightness tweak that
+  drops muted text below AA fails the build instead of shipping — that class of
+  regression is invisible in review and invisible on the rendered page.
+- **2026-08-25** — **`apps/web-app` runs on `ocean`** (cool blue) rather than the
+  grayscale default, and its `globals.css` now lists all five theme imports with
+  the unused four commented out — switching is uncommenting one line and
+  commenting another, which is the fastest way to actually look at a palette
+  rather than reason about it.
+  The block warns about the failure mode it creates: two uncommented imports is
+  not an error, it is a silent one. Both palettes are emitted, the later import
+  wins, and the file still reads as deliberate — so "count the uncommented
+  lines" is written down next to the lines themselves. Verified the commented
+  ones are genuinely inert: with `ocean` active, neutral's `#171717` primary
+  appears nowhere in the served CSS.
+- **2026-08-25** — **The palette is now a viewer choice, not a build constant.**
+  Every theme moved from `:root` to its own `[data-palette="…"]` scope, so all
+  five coexist in one stylesheet and switching is one attribute on `<html>` —
+  no reload, no React re-render, nothing below the control even knows. The
+  header dropdown gained a "Colour scheme" group above a rule, with
+  Light/Dark/System below it: they are two questions, not one, because every
+  palette has both a light and a dark form and a flat list would make "Ocean"
+  and "Dark" read as alternatives.
+  Persisted in a **cookie**, not localStorage — the root layout is a Server
+  Component, so it stamps `data-palette` during the render that produces the
+  page. localStorage is only readable after hydration, which would mean a
+  full-page colour flash on every load. (next-themes solves the same problem for
+  the mode with a render-blocking inline script; the server already knows this
+  value, so there is nothing to unblock.) The cookie is **validated, not
+  trusted**: the value becomes an attribute selector, so an edited one would
+  match no rules and render an unstyled page — `isPalette()` falls back instead.
+  `apps/web-app` imports `themes/all.css`; a fixed-palette app still imports one
+  theme and hard-codes the attribute. Costs ~5 sets of custom properties, since
+  no component CSS is duplicated — the utilities resolve through `var()`.
+- **2026-08-25** — Each palette's dark rule is a selector LIST:
+  `[data-palette="x"].dark` matches `<html>`, which carries both; `.dark
+  [data-palette="x"]` matches an element INSIDE a dark page naming a palette it
+  is not in. The second exists for the menu's swatches — each carries
+  `data-palette` so it previews with the real tokens, and without the descendant
+  form it would show light colours on a dark page and misrepresent the choice.
+- **2026-08-25** — ⚠ **CSS comments do not nest, and it took the dev server
+  down.** The generated theme headers documented both import styles with a
+  trailing `/* every palette */` inside an already-open block comment; the inner
+  `*/` closed the outer one, and everything after it parsed as declarations —
+  `Invalid declaration: * @import …`, pointing at a line that is a comment.
+  Fixed in all five, with a nesting check run over every CSS file in the package
+  to confirm none remain.
+- **2026-08-25** — **The three viewer preferences are now uniformly named and
+  have one owner**, `apps/web-app/src/lib/preferences.ts`: `kwtech_palette`
+  (cookie), `kwtech_sidebar_collapsed` (cookie) and `kwtech_theme`
+  (localStorage, via next-themes' `storageKey`). The last was a bare `theme`,
+  which two of these apps on one machine would share — and `pnpm dev` runs
+  exactly that arrangement, so it was a real collision rather than a tidiness
+  point. Collected in one module because "uniform" is a property of the SET, and
+  a set spread across three files drifts the first time someone adds a fourth
+  key without reading the other three. Both cookies now go through one writer,
+  so their attributes cannot diverge either.
+  **The two STORAGE MECHANISMS stay different, and that is not inconsistency.**
+  A cookie is used wherever the server must know the value while rendering — the
+  palette stamps `data-palette` on `<html>`, the drawer renders at its stored
+  width. Light/dark cannot: one of its values is `system`, and what `system`
+  means is `prefers-color-scheme`, which only the browser knows. A cookie could
+  record that choice and still leave the server unable to resolve it, so
+  next-themes keeps it in localStorage and applies it from a script that runs
+  before first paint — verified at byte 2070, ahead of the first content at
+  2908. Neither flashes; they simply cannot share storage.
+  (`Sec-CH-Prefers-Color-Scheme` would tell the server, but it needs an
+  `Accept-CH` round trip and neither Safari nor Firefox sends it.)
+- **2026-08-25** — **Both theme preferences now live in localStorage**
+  (`kwtech_theme`, `kwtech_palette`), reversing the cookie decision above at the
+  user's direction. The reasoning that produced the cookie still holds and is
+  worth keeping visible: the mode cannot be a cookie, because `system` resolves
+  to `prefers-color-scheme` and only the browser knows it, so uniformity had to
+  be reached from the other side — the palette moved to localStorage instead.
+  A cookie-based mode WAS viable and was prototyped: a multi-rule
+  `@custom-variant dark` with a `@media (prefers-color-scheme: dark)` branch
+  resolves all three states in pure CSS from a `data-mode` attribute, needing no
+  script at all (verified compiling under Tailwind 4.3). It was reverted because
+  it meant replacing next-themes; recorded here because it is the answer if that
+  dependency is ever dropped.
+  **The cost of the direction taken, paid explicitly:** localStorage is
+  unreadable on the server, and nothing applies without `data-palette`, so the
+  first paint would be an UNSTYLED page rather than merely a mis-coloured one.
+  Two things prevent it — the server renders `DEFAULT_PALETTE` (which is also
+  what a no-JavaScript visitor keeps), and a 165-byte inline script overrides it
+  before paint. Verified by executing the emitted script against a stub DOM:
+  stored/absent/invalid/`__proto__`/throwing-storage all resolve correctly, and
+  both it and next-themes' script land ahead of the first content.
+- **2026-08-25** — `DEFAULT_PALETTE` is **neutral**, not ocean. It is what a
+  visitor with JavaScript disabled sees permanently, so the palette that cannot
+  clash with anything is the right answer there — the interesting one is a
+  choice the viewer makes.
+  The sidebar's collapsed state stays a COOKIE: it is not theme configuration,
+  has no `system` equivalent, and the shell is a Server Component that can
+  render the drawer at its stored width with no script at all.
+- **2026-08-25** — **The palette RUNTIME moved into `@kwtech/web-ui`; the picker
+  did not.** `palette-runtime.ts` now owns `applyPalette`, `readStoredPalette`,
+  `palettePreloadScript`, `PALETTE_STORAGE_KEY` and `PALETTE_ATTRIBUTE` — the
+  half of a palette picker that is easy to get subtly wrong, and that a second
+  app would otherwise re-derive from prose: validate before the value reaches
+  the DOM, catch storage that throws in private mode, and emit an inline
+  undeferred script so the choice lands before first paint.
+  The dropdown itself stays in the app. Moving it would have dragged
+  `lucide-react`, `next-themes`, Radix, `clsx` and `tailwind-merge` into a
+  package with **zero runtime dependencies today**, and would have mandated
+  next-themes for every future consumer including the planned `mobile-ui`. §9
+  rule 8 and this package's own scope rule both say a component with one
+  consumer belongs in that consumer, and `AppShell`, `Header` and `Sidebar`
+  already stayed for that reason — extracting only the toggle would have been
+  inconsistent as well as premature. Phase 7 (`apps/admin`) is what should drive
+  the rest, once there is real evidence of what two apps share.
+  The split is where the seam actually was: `web-ui` defined the palettes while
+  the app knew how to apply them, so the knowledge and the data lived in
+  different packages. Now the package that defines a palette also knows how to
+  put one on the page. README §"Adding a palette picker to an app" is the
+  copy-paste path, including the two steps an app cannot skip — a
+  server-rendered fallback and the pre-paint script.
+- **2026-08-25** — **`ThemeSwitcher` and the dropdown primitive moved into
+  `@kwtech/web-ui`, behind a new `/react` subpath.** The subpath is what makes
+  it affordable: the package ROOT keeps **zero runtime dependencies** and stays
+  importable by a build script, a test or a non-React consumer, while `/react`
+  declares Radix, lucide, clsx and tailwind-merge as OPTIONAL peers that an app
+  never installs unless it imports that path. Same shape as the module-*
+  packages' `/server` `/react` `/next` split, for the same reason.
+  **The mode is a controlled prop; the palette is not.** The palette is this
+  package's own concern — it defines the palettes, so it owns applying and
+  persisting one. The mode is not, and depending on `next-themes` here would
+  make it a hard requirement of every consumer, including the planned
+  `mobile-ui`, to solve a problem this package did not define. The app's
+  `theme-toggle.tsx` is now nine lines wiring `useTheme()` to the component, and
+  is the entire seam.
+  `cn` and `dropdown-menu` moved with it — `user-menu.tsx` and `sidebar.tsx` now
+  import both from `@kwtech/web-ui/react`, and `apps/web-app/src/components/ui`
+  and `lib/utils.ts` are gone.
+  This is a DELIBERATE exception to the one-consumer scope rule, recorded as
+  such: the switcher is the UI of a system the package already owned, and
+  leaving it out meant `web-ui` defined the palettes while each app separately
+  worked out how to present them. The app SHELL — AppShell, Header, Sidebar,
+  UserMenu — stays put: it is layout rather than vocabulary, and Phase 7's
+  second app should drive that extraction with evidence.
+- **2026-08-25** — **Five more palettes: crimson, rose, clay, gold, teal** —
+  ten in total, spread around the colour wheel and exported in wheel order so a
+  picker reads as a spectrum. Same recipe as the first five (identical lightness
+  per role, hue per theme), with a chroma scale added for hues the eye reads as
+  louder — and for clay, which is not a hue at all but Ember's hue at
+  three-quarters chroma, because brown IS a dark low-chroma orange.
+- **2026-08-25** — ⚠ **A red theme exposed a check the palettes did not have:
+  is the primary action distinguishable from the destructive one?** Contrast
+  ratios cannot answer it — they compare a colour to its own text, so two
+  buttons can each be perfectly legible and still be the same red to the person
+  deciding which to click. Crimson's first draft measured **0.043** apart in
+  oklab from `--destructive` in dark mode; it now sits DEEPER than the danger
+  red rather than lighter, with light text, separating on lightness — the axis
+  the eye reads most reliably.
+  `check-contrast.mjs` gained the check, with a floor **calibrated rather than
+  invented**: 0.12, which is what the tightest already-shipping palette (ember,
+  dark) measures. Anything looser would pass a red-on-red theme; anything
+  tighter would fail a palette that has been fine in use. Verified the check
+  fails when it should by reverting crimson and watching it catch both the
+  separation and the resulting contrast failure.
+  Gold needed the opposite kind of care: at the lightness where yellow reads as
+  yellow, white text on it fails AA, so its primary is closer to olive than
+  lemon. A readable button beats a bright one.
