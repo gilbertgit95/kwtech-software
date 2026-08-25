@@ -23,7 +23,7 @@ export const permissionsWebModule: WebModuleDescriptor = {
       // The same key gates the nav entry, the middleware and the page body —
       // one declaration, so a link can never outlive the permission behind it.
       feature: FEATURE.adminAccess,
-      nav: { group: 'Administration', order: 10 },
+      nav: { group: 'Administration', order: 10, icon: 'shield' },
     },
   ],
 };
