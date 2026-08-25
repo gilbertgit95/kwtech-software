@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import jwt from 'jsonwebtoken';
 import { ACCESS_TOKEN_TTL, expiryFrom, SESSION_TTL } from '../domain/policy.js';
 import type { Principal, TokenScope } from '../types.js';
-import { AUTH_OPTIONS, type AuthModuleOptions } from './auth.options.js';
+import { AUTH_OPTIONS, type ResolvedAuthModuleOptions } from './auth.options.js';
 
 /**
  * Issues and verifies the two tokens, and nothing else — no database, no
@@ -49,7 +49,7 @@ export interface IssuedOpaqueToken {
 
 @Injectable()
 export class TokenService {
-  constructor(@Inject(AUTH_OPTIONS) private readonly options: AuthModuleOptions) {}
+  constructor(@Inject(AUTH_OPTIONS) private readonly options: ResolvedAuthModuleOptions) {}
 
   issueAccess(input: { userId: string; sessionId: string; scope: TokenScope }): IssuedAccessToken {
     const issuedAt = Math.floor(this.now().getTime() / 1000);

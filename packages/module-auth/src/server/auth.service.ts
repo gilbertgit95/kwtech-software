@@ -12,7 +12,7 @@ import {
   PASSWORD_RESET_TTL,
 } from '../domain/policy.js';
 import type { AuthFailureReason, AuthResult, Principal, SessionUser, TokenScope } from '../types.js';
-import { AUTH_OPTIONS, type AuthModuleOptions } from './auth.options.js';
+import { AUTH_OPTIONS, type ResolvedAuthModuleOptions } from './auth.options.js';
 import { AUTH_PRISMA, type AuthPrismaClient, type AuthUserRow } from './auth.repository.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { TokenService } from './token.service.js';
@@ -75,7 +75,7 @@ export class AuthService {
   private dummyHash: Promise<string> | null = null;
 
   constructor(
-    @Inject(AUTH_OPTIONS) private readonly options: AuthModuleOptions,
+    @Inject(AUTH_OPTIONS) private readonly options: ResolvedAuthModuleOptions,
     private readonly tokens: TokenService,
     @Optional() @Inject(AUTH_PRISMA) private readonly prisma?: AuthPrismaClient,
   ) {}

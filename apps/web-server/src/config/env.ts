@@ -10,28 +10,9 @@ import { z } from 'zod';
  *
  * Zod rather than @nestjs/config, following masterdb: a schema that fails at
  * IMPORT time — before Nest builds the DI graph — turns a missing DATABASE_URL
- * or a short JWT_SECRET into one clear line, instead of a connection error on
+ * or a short AUTH_JWT_SECRET into one clear line, instead of a connection error on
  * the first request or a weak signature nobody notices.
  */
-
-/**
- * '15m' / '7d' in configuration, seconds in code. Durations are written the way
- * an operator thinks about them and consumed the way jsonwebtoken and Date
- * arithmetic want them, so nothing downstream has to parse a suffix.
- */
-const UNIT_SECONDS = { s: 1, m: 60, h: 3600, d: 86_400 } as const;
-
-const duration = (fallback: string) =>
-  z
-    .string()
-    .regex(/^\d+[smhd]$/, "must be a duration like '15m', '24h' or '7d'")
-    // Before the transform, not after: .default() in Zod 4 supplies the
-    // schema's OUTPUT, and after a transform that output is a number.
-    .default(fallback)
-    .transform((value) => {
-      const unit = value.slice(-1) as keyof typeof UNIT_SECONDS;
-      return Number(value.slice(0, -1)) * UNIT_SECONDS[unit];
-    });
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required — see .env.example'),
@@ -53,38 +34,19 @@ const envSchema = z.object({
    * means a leak of either compromises both, and rotating one silently
    * invalidates the other.
    */
-  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters — generate with `openssl rand -base64 48`'),
+  AUTH_JWT_SECRET: z
+    .string()
+    .min(32, 'AUTH_JWT_SECRET must be at least 32 characters — generate with `openssl rand -base64 48`'),
 
-  /**
-   * ── how long someone stays signed in ──────────────────────────────────────
+  /*
+   * The three AUTH_*_TTL variables are read by @kwtech/module-auth itself —
+   * see its README, and resolveAuthOptions() for the parsing and the
+   * session-longer-than-access-token check that used to live below this.
    *
-   * ONE WEEK by default, and this is the value that means "stay signed in": it
-   * is the session's real lifetime, because the session row is addressed by the
-   * refresh token and that row is what decides when someone is signed out.
-   * Unset or absent from .env, the fallback below applies.
+   * Not re-declared here on purpose. Two owners of one variable means two
+   * parsers and two defaults, and the day they disagree the app and the module
+   * are each behaving correctly according to a different number.
    */
-  AUTH_SESSION_TTL: duration('7d'),
-
-  /**
-   * How long before the client silently renews. Deliberately NOT a week.
-   *
-   * This API verifies an access token from its signature alone — no database
-   * read, which is what keeps authentication off the hot path. The cost is the
-   * only thing this value controls: **a revoked session stays usable until its
-   * current access token expires.** At 15 minutes that is a nuisance; at a week
-   * it would mean "sign out everywhere", "suspend this account" and a password
-   * reset all do nothing for seven days.
-   *
-   * (masterdb sets its own ACCESS_TOKEN_TTL to 7d, and can: its guard re-reads
-   * the session row on every request, so revocation is immediate there
-   * regardless of token life. This service made the opposite trade — see
-   * AuthSession in packages/module-auth/prisma/auth.prisma — so the two numbers
-   * are not comparable.)
-   */
-  AUTH_ACCESS_TOKEN_TTL: duration('15m'),
-
-  /** A reset link waits in an inbox, which is the least trustworthy place a credential sits. */
-  AUTH_PASSWORD_RESET_TTL: duration('1h'),
 
   /** Browser origins allowed to call this API. Comma-separated; defaults to FRONTEND_URL. */
   CORS_ORIGINS: z
@@ -109,14 +71,11 @@ const envSchema = z.object({
 });
 
 /**
- * A session that dies before the access token it renews produces a sign-out at
- * the first renewal — intermittent and confusing rather than an obvious
- * misconfiguration. Caught at boot instead.
+ * The session-longer-than-access-token check moved into
+ * resolveAuthOptions(): both values are finally known there whatever mix of
+ * sources they came from, and it is the module that breaks if they disagree.
  */
-const validated = envSchema.refine((value) => value.AUTH_SESSION_TTL > value.AUTH_ACCESS_TOKEN_TTL, {
-  path: ['AUTH_SESSION_TTL'],
-  message: 'AUTH_SESSION_TTL must be longer than AUTH_ACCESS_TOKEN_TTL',
-});
+const validated = envSchema;
 
 function readEnv() {
   const parsed = validated.safeParse(process.env);

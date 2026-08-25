@@ -43,7 +43,7 @@ pnpm install
 
 # once: create the database, then apply migrations and seed the first user
 createdb kwtech                       # or: sudo -u postgres createdb kwtech
-cp apps/web-server/.env.example apps/web-server/.env      # set JWT_SECRET
+cp apps/web-server/.env.example apps/web-server/.env      # set AUTH_JWT_SECRET
 cp apps/web-app/.env.example    apps/web-app/.env.local
 pnpm --filter @kwtech/web-server db:migrate
 pnpm --filter @kwtech/web-server db:seed

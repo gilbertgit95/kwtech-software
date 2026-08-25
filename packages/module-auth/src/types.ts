@@ -109,6 +109,13 @@ export interface SessionUser {
   displayName: string | null;
 }
 
+/**
+ * The signed-in user as a page sees it — the same fields as `SessionUser`,
+ * named for the reading side. An alias rather than a second interface, so the
+ * shape the API returns and the shape a page renders cannot drift apart.
+ */
+export type Viewer = SessionUser;
+
 /** What a successful sign-in, refresh or reset hands back. */
 export interface AuthResult {
   user: SessionUser;

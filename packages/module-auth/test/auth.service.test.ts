@@ -1,4 +1,4 @@
-import type { AuthModuleOptions } from '../src/server/auth.options.js';
+import type { ResolvedAuthModuleOptions } from '../src/server/auth.options.js';
 import type {
   AuthPasswordResetRow,
   AuthPrismaClient,
@@ -23,7 +23,7 @@ jest.setTimeout(30_000);
 const PASSWORD = 'correct horse battery staple';
 const CONTEXT = { ipAddress: '203.0.113.9', userAgent: 'jest' };
 
-const OPTIONS: AuthModuleOptions = {
+const OPTIONS: ResolvedAuthModuleOptions = {
   jwtSecret: 'test-secret-not-a-real-one',
   issuer: 'kwtech-test',
   audience: 'kwtech-test-api',
@@ -111,7 +111,7 @@ function harness(state: State = {}) {
     },
   } as unknown as AuthPrismaClient;
 
-  const options: AuthModuleOptions = {
+  const options: ResolvedAuthModuleOptions = {
     ...OPTIONS,
     onAuthFailure: (event) => failures.push(event.reason),
     sendPasswordResetEmail: async ({ token, expiresAt }) => {

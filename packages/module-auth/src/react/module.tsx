@@ -50,10 +50,13 @@ function ResetPasswordRoute({ searchParams }: ModuleRouteProps) {
 
 export const authWebModule: WebModuleDescriptor = {
   key: 'auth',
+  // Every route here is 'bare': these are the pages you reach BECAUSE you have
+  // no session, so the app shell — whose entire content is the navigation and
+  // the account menu of a signed-in user — has nothing to put in itself.
   routes: [
-    { path: '/auth/signin', title: 'Sign in', component: SignInRoute },
-    { path: '/auth/forgot-password', title: 'Reset your password', component: ForgotPasswordRoute },
-    { path: '/auth/reset-password', title: 'Choose a new password', component: ResetPasswordRoute },
+    { path: '/auth/signin', title: 'Sign in', component: SignInRoute, chrome: 'bare' },
+    { path: '/auth/forgot-password', title: 'Reset your password', component: ForgotPasswordRoute, chrome: 'bare' },
+    { path: '/auth/reset-password', title: 'Choose a new password', component: ResetPasswordRoute, chrome: 'bare' },
   ],
   // No features: this module declares no grantable rights. Authentication is
   // who you are; authorisation is module-permissions' business.

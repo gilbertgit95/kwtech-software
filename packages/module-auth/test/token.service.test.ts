@@ -1,14 +1,14 @@
 import jwt from 'jsonwebtoken';
-import type { AuthModuleOptions } from '../src/server/auth.options.js';
+import type { ResolvedAuthModuleOptions } from '../src/server/auth.options.js';
 import { TokenService } from '../src/server/token.service.js';
 
-const OPTIONS: AuthModuleOptions = {
+const OPTIONS: ResolvedAuthModuleOptions = {
   jwtSecret: 'test-secret-not-a-real-one',
   issuer: 'kwtech-test',
   audience: 'kwtech-test-api',
 };
 
-const service = (over: Partial<AuthModuleOptions> = {}) => new TokenService({ ...OPTIONS, ...over });
+const service = (over: Partial<ResolvedAuthModuleOptions> = {}) => new TokenService({ ...OPTIONS, ...over });
 
 describe('issueAccess / verifyAccess', () => {
   it('round-trips a principal', () => {

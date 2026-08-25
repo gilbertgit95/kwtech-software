@@ -2,7 +2,7 @@
   "name": "@kwtech/module-auth",
   "version": "0.0.0",
   "private": true,
-  "description": "The authentication feature, whole: identity tables, credential and token logic, REST surface, Nest wiring and React pages",
+  "description": "The authentication feature, whole: identity tables, credential and token logic, REST surface, Nest wiring, Next route handlers and React pages",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -16,6 +16,10 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "default": "./dist/next/index.js"
     },
     "./prisma": "./prisma/auth.prisma"
   },
@@ -36,6 +40,7 @@
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
     "jsonwebtoken": "^9.0.0",
+    "next": "^16.0.0",
     "react": "^19.0.0",
     "reflect-metadata": "^0.2.0"
   },
@@ -50,6 +55,9 @@
       "optional": true
     },
     "react": {
+      "optional": true
+    },
+    "next": {
       "optional": true
     }
   },
@@ -67,6 +75,7 @@
     "@types/react": "^19.2.18",
     "jest": "^30.4.2",
     "jsonwebtoken": "^9.0.3",
+    "next": "16.3.1",
     "reflect-metadata": "catalog:",
     "typescript": "catalog:"
   }

@@ -5,7 +5,6 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
-import { env } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
 import {
   authPrismaProvider,
@@ -50,13 +49,19 @@ const authFailures = new Logger('AuthFailure');
       { name: 'credential', ttl: 60_000, limit: 10 },
     ]),
 
+    /*
+     * Three things, and every one of them is genuinely this app's:
+     *   - which Prisma client the module writes through
+     *   - how a reset link actually reaches a person
+     *   - where a failed sign-in gets recorded
+     *
+     * The secret, the issuer/audience and the three TTLs are read by the module
+     * from the environment it documents (AUTH_JWT_SECRET and friends). Passing
+     * them here would only move the same values through an extra hop — and a
+     * missing secret still fails at BOOT, in resolveAuthOptions, rather than at
+     * the first sign-in of the day.
+     */
     AuthModule.forRoot({
-      jwtSecret: env.JWT_SECRET,
-      issuer: 'kwtech-web-server',
-      audience: 'kwtech-api',
-      sessionTtl: env.AUTH_SESSION_TTL,
-      accessTokenTtl: env.AUTH_ACCESS_TOKEN_TTL,
-      passwordResetTtl: env.AUTH_PASSWORD_RESET_TTL,
       prismaProvider: authPrismaProvider,
       sendPasswordResetEmail,
       onAuthFailure: (event) => {
