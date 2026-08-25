@@ -49,6 +49,21 @@ export interface ModuleRoute {
   feature?: string;
   /** Omit to keep the route reachable but unlisted. */
   nav?: { group: string; order?: number; icon?: string };
+  /**
+   * Which shell the route renders inside. Defaults to 'app' — the header, the
+   * side drawer and the account menu.
+   *
+   * 'bare' is for the pages that exist BECAUSE there is no session yet:
+   * sign-in, forgot-password, reset-password. Wrapping those in a shell whose
+   * whole content is "who is signed in and what may they reach" would be a
+   * shell with nothing to say, and its account menu would be furniture around
+   * an empty chair.
+   *
+   * Declared per route rather than inferred from the path, because '/auth' is
+   * a naming convention and this is a rendering decision — an app that renamed
+   * the prefix would silently lose the distinction.
+   */
+  chrome?: 'app' | 'bare';
 }
 
 export interface ServerModuleDescriptor {
