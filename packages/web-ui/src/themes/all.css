@@ -1,0 +1,30 @@
+/*
+ * Every palette at once, for an app that lets the viewer choose.
+ *
+ *   @import "tailwindcss";
+ *   @import "@kwtech/web-ui/themes/all.css";
+ *
+ * Each palette is scoped to its own `[data-palette="…"]`, so they coexist
+ * rather than overwrite each other, and switching is one attribute on <html>
+ * with no reload and no re-render. Import a single theme instead when the look
+ * is fixed at build time — that emits one palette rather than ten.
+ *
+ * The cost is honest and small: ten sets of custom properties, because a
+ * palette is ~20 declarations and nothing else. No component CSS is duplicated
+ * — the utilities all resolve through `var()`.
+ *
+ * Ordered around the colour wheel rather than alphabetically, so the picker
+ * that maps over PALETTES reads as a spectrum instead of a word list.
+ *
+ * ../base.css arrives once via the first import; the rest are deduplicated.
+ */
+@import "./neutral.css";
+@import "./crimson.css";
+@import "./rose.css";
+@import "./ember.css";
+@import "./clay.css";
+@import "./gold.css";
+@import "./forest.css";
+@import "./teal.css";
+@import "./ocean.css";
+@import "./violet.css";

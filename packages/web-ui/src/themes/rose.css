@@ -1,0 +1,134 @@
+/*
+ * Rose — a pink light theme.
+ *
+ * Warm pink rather than magenta. Kept clear of the destructive red by hue
+ * in light mode and by lightness in dark mode, where it goes pale rather
+ * than deep.
+ *
+ * SCOPED TO ITS OWN ATTRIBUTE, so palettes coexist. Import one for a fixed
+ * look, or all of them for a palette the viewer can change:
+ *
+ *   @import "@kwtech/web-ui/themes/rose.css";        <- only this palette
+ *   @import "@kwtech/web-ui/themes/all.css";           <- all of them
+ *
+ * Nothing applies until <html data-palette="rose"> is set — deliberately.
+ * A palette that fell back to some default when the attribute was missing
+ * would hide the wiring mistake instead of showing it.
+ *
+ * It pulls in ../base.css itself, so one import brings the dark-mode variant,
+ * the token-to-utility mapping and this palette together.
+ *
+ * ── how to read these values ────────────────────────────────────────────────
+ *
+ * Named by ROLE, not by colour — `--background`, not `--white` — because the
+ * point is that the dark block can change what a colour IS without changing
+ * what it MEANS, so no component has to know which theme is active.
+ *
+ * oklch, not hex: perceptually uniform, so a lightness step looks like the same
+ * step at every hue. That is what lets every theme here share one recipe and
+ * differ only in hue (350° for this one) at comparable visual weight.
+ *
+ * Contrast and danger-vs-primary separation are measured, not eyeballed:
+ *   pnpm --filter @kwtech/web-ui check:contrast
+ */
+@import "../base.css";
+
+[data-palette="rose"] {
+  --radius: 0.5rem;
+
+  /*
+   * The page itself. Tinted a touch toward the theme hue rather than pure
+   * white, so cards can be pure white and still separate.
+   */
+  --background: oklch(0.985 0.004 350);
+  --foreground: oklch(0.21 0.03 350);
+
+  /*
+   * Pure white, one step above --background. That difference IS the
+   * elevation; there is no shadow doing this work.
+   */
+  --card: oklch(1 0 350);
+  --card-foreground: oklch(0.21 0.03 350);
+  --popover: oklch(1 0 350);
+  --popover-foreground: oklch(0.21 0.03 350);
+
+  /* The action colour. Lightness is chosen so the text on it clears AA. */
+  --primary: oklch(0.52 0.17 350);
+  --primary-foreground: oklch(0.985 0.006 350);
+  --secondary: oklch(0.96 0.014 350);
+  --secondary-foreground: oklch(0.28 0.032 350);
+  --muted: oklch(0.96 0.014 350);
+
+  /*
+   * Deliberately dark enough to clear AA on --background AND on --muted.
+   * "Muted" is a visual weight, not a licence to make text unreadable.
+   */
+  --muted-foreground: oklch(0.52 0.028 350);
+
+  /*
+   * Hover and selected states. One step more saturated than --muted so a
+   * hovered row is distinguishable from a disabled one.
+   */
+  --accent: oklch(0.95 0.022 350);
+  --accent-foreground: oklch(0.28 0.035 350);
+
+  /*
+   * Red stays red in every theme. Danger is not a branding decision, and a
+   * destructive button that matched the palette would be a destructive
+   * button nobody notices.
+   */
+  --destructive: oklch(0.577 0.245 27.3);
+  --destructive-foreground: oklch(0.985 0.006 27.3);
+  --border: oklch(0.9 0.016 350);
+  --input: oklch(0.9 0.016 350);
+
+  /*
+   * Matches --primary: the focus ring is the same "this is interactive"
+   * signal as the action colour.
+   */
+  --ring: oklch(0.52 0.17 350);
+}
+
+/*
+ * BOTH forms on purpose. The first matches <html> itself, which carries the
+ * palette attribute and the dark class together. The second matches any
+ * ELEMENT INSIDE a dark page that names a palette — a swatch previewing a
+ * theme it is not currently in. Without it such a preview would show light
+ * colours on a dark page and quietly misrepresent the choice it offers.
+ */
+[data-palette="rose"].dark,
+.dark [data-palette="rose"] {
+  /*
+   * Not black. A near-black with the theme hue in it keeps the palette
+   * recognisable in dark mode instead of collapsing to grey.
+   */
+  --background: oklch(0.18 0.022 350);
+  --foreground: oklch(0.97 0.012 350);
+  --card: oklch(0.22 0.028 350);
+  --card-foreground: oklch(0.97 0.012 350);
+  --popover: oklch(0.22 0.028 350);
+  --popover-foreground: oklch(0.97 0.012 350);
+
+  /*
+   * Lighter and less saturated than the light-mode primary: the same colour
+   * on a dark ground reads muddy and loses contrast.
+   */
+  --primary: oklch(0.82 0.1 350);
+  --primary-foreground: oklch(0.19 0.03 350);
+  --secondary: oklch(0.28 0.03 350);
+  --secondary-foreground: oklch(0.97 0.012 350);
+  --muted: oklch(0.28 0.03 350);
+  --muted-foreground: oklch(0.74 0.024 350);
+  --accent: oklch(0.3 0.038 350);
+  --accent-foreground: oklch(0.97 0.012 350);
+
+  /* Lighter than the light-mode red, for the same reason. */
+  --destructive: oklch(0.704 0.191 22.2);
+  --destructive-foreground: oklch(0.18 0.03 22.2);
+
+  /* Alpha, not a solid colour: a border that lets the surface beneath it
+     show through stays correct on --background and --card alike. */
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.82 0.1 350);
+}

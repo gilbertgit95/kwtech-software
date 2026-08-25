@@ -1,0 +1,76 @@
+/*
+ * The theme MACHINERY: the dark-mode variant, the token-to-utility mapping and
+ * the base layer. No colours live here — a theme file supplies those.
+ *
+ * Split from the palette so an app can choose its colours with one import and
+ * still get identical structure. Every theme in ./themes defines the same token
+ * names, so a component written against `bg-background` works under all of them
+ * and switching is a one-line change with nothing to audit.
+ *
+ * Imported BY each theme file rather than alongside it, so an app cannot get
+ * the mapping without a palette (utilities that resolve to nothing) or a
+ * palette without the mapping (custom properties nothing can reach). One
+ * import, both halves.
+ *
+ * Deliberately NOT `@import "tailwindcss"` — the importing app does that first,
+ * and doing it here as well emits the whole preflight twice.
+ */
+
+/*
+ * Class-based dark mode, so `next-themes` can toggle it without a round trip
+ * and without fighting the OS preference. `:where()` keeps the selector at zero
+ * specificity, so a `dark:` utility never outranks a plain one by accident.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * `@theme inline` is what turns the theme's variables into utilities —
+ * `bg-background`, `text-muted-foreground`, `border-input`. Without it they are
+ * just custom properties nothing can reach, and every class referencing them
+ * silently does not exist.
+ *
+ * `inline` matters: it makes the utilities reference `var(--background)` rather
+ * than baking in the light value, which is what lets `.dark` swap them at all.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+/*
+ * Tailwind v4's preflight unsets border colour, so every `border` utility would
+ * otherwise draw with `currentColor` — a black outline in light mode and a
+ * white one in dark.
+ */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+}

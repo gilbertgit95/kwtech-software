@@ -2,34 +2,74 @@
   "name": "@kwtech/web-ui",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared React components, the Tailwind theme and the AG Grid wrapper for the web apps",
+  "description": "Shared React components, the swappable Tailwind themes and the AG Grid wrapper for the web apps",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./styles.css": "./src/styles.css"
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
+    "./styles.css": "./src/styles.css",
+    "./base.css": "./src/base.css",
+    "./themes/*.css": "./src/themes/*.css"
   },
   "files": [
     "dist",
-    "src/styles.css"
+    "src/styles.css",
+    "src/base.css",
+    "src/themes"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput --tsBuildInfoFile dist/.tsbuildinfo.dev",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
-    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "check:contrast": "node scripts/check-contrast.mjs",
+    "test": "node scripts/check-contrast.mjs"
   },
   "peerDependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
     "ag-grid-community": "^36.1.0",
     "ag-grid-react": "^36.1.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.577.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@types/node": "catalog:",
+    "@types/react": "^19.2.18",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.577.0",
+    "react": "19.2.8",
+    "tailwind-merge": "^3.6.0",
     "typescript": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@radix-ui/react-dropdown-menu": {
+      "optional": true
+    },
+    "ag-grid-community": {
+      "optional": true
+    },
+    "ag-grid-react": {
+      "optional": true
+    },
+    "clsx": {
+      "optional": true
+    },
+    "lucide-react": {
+      "optional": true
+    },
+    "tailwind-merge": {
+      "optional": true
+    }
   }
 }

@@ -8,7 +8,16 @@
  *
  * Platform rule: this package is React DOM. When mobile-ui arrives, the parts
  * that are genuinely platform-neutral — design tokens, formatters, validation
- * schemas — move out to a shared package rather than being duplicated. Keep
- * tokens in ./theme so that extraction stays a file move.
+ * schemas — move out to a shared package rather than being duplicated.
+ *
+ * The themes themselves are CSS and are imported by path:
+ *   @import "@kwtech/web-ui/themes/all.css";
  */
-export {};
+export {
+  applyPalette,
+  PALETTE_ATTRIBUTE,
+  PALETTE_STORAGE_KEY,
+  palettePreloadScript,
+  readStoredPalette,
+} from './palette-runtime.js';
+export { DEFAULT_PALETTE, isPalette, PALETTES, type PaletteOption } from './palettes.js';

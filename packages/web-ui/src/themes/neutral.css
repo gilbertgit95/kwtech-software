@@ -1,0 +1,120 @@
+/*
+ * Neutral — the grayscale default, and what every app here rendered before
+ * themes existed.
+ *
+ * Zero chroma throughout, so nothing competes with content or data. The right
+ * choice for dense internal tools and for any app whose screens are mostly
+ * tables; it is also the safest starting point, because a palette that says
+ * nothing can never say the wrong thing.
+ *
+ * SCOPED TO ITS OWN ATTRIBUTE, so palettes coexist. Import one for a fixed
+ * look, or all of them for a palette the viewer can change:
+ *
+ *   @import "@kwtech/web-ui/themes/neutral.css";        <- only this palette
+ *   @import "@kwtech/web-ui/themes/all.css";           <- all of them
+ *
+ * Nothing applies until <html data-palette="neutral"> is set — deliberately.
+ * A palette that fell back to some default when the attribute was missing
+ * would hide the wiring mistake instead of showing it.
+ *
+ * It pulls in ../base.css itself, so one import brings the dark-mode variant,
+ * the token-to-utility mapping and this palette together.
+ *
+ * ── how to read these values ────────────────────────────────────────────────
+ *
+ * Named by ROLE, not by colour — `--background`, not `--white` — because the
+ * point is that the dark block can change what a colour IS without changing
+ * what it MEANS, so no component has to know which theme is active.
+ *
+ * oklch, not hex: perceptually uniform, so a lightness step looks like the same
+ * step at every hue. Here every hue is 0, which is exactly why this theme is
+ * the reference the coloured ones were built against.
+ *
+ * Contrast is measured, not eyeballed — `pnpm --filter @kwtech/web-ui check:contrast`
+ * re-checks every foreground/background pair in both modes.
+ */
+@import "../base.css";
+
+[data-palette="neutral"] {
+  --radius: 0.5rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+
+  --muted: oklch(0.97 0 0);
+  /*
+   * Dark enough to clear WCAG AA on --muted, not merely on --background.
+   * It was 0.556, which cleared 4.5 against white and reached only 4.34 on
+   * the muted surface it is most often painted on — a failure invisible in
+   * review because the token name says "muted", not "unreadable".
+   */
+  --muted-foreground: oklch(0.546 0 0);
+
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+/*
+ * BOTH forms on purpose. The first matches <html> itself, which carries the
+ * palette attribute and the dark class together. The second matches any
+ * ELEMENT INSIDE a dark page that names a palette — a swatch previewing a
+ * theme it is not currently in. Without it such a preview would show light
+ * colours on a dark page and quietly misrepresent the choice it offers.
+ */
+[data-palette="neutral"].dark,
+.dark [data-palette="neutral"] {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  /* Lighter than the light-mode red: the same hue on a dark ground reads
+     muddy and fails contrast. */
+  --destructive: oklch(0.704 0.191 22.216);
+  /*
+   * DARK text on that lighter red, not white. White reached 2.77:1 here —
+   * well under AA — because raising the red's lightness for the dark ground
+   * also raised it toward the white sitting on top of it. The pairing has to
+   * move with it.
+   */
+  --destructive-foreground: oklch(0.2 0.03 22.216);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.556 0 0);
+}

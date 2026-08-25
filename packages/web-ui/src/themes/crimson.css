@@ -1,0 +1,137 @@
+/*
+ * Crimson — a deep red light theme.
+ *
+ * Its dark-mode primary is DEEPER than the destructive red rather than
+ * lighter, and carries light text. That is not a style choice: a red
+ * primary beside a red danger colour is the one palette pairing that can
+ * genuinely mislead, so the two are separated on lightness, the axis the
+ * eye reads most reliably.
+ *
+ * SCOPED TO ITS OWN ATTRIBUTE, so palettes coexist. Import one for a fixed
+ * look, or all of them for a palette the viewer can change:
+ *
+ *   @import "@kwtech/web-ui/themes/crimson.css";        <- only this palette
+ *   @import "@kwtech/web-ui/themes/all.css";           <- all of them
+ *
+ * Nothing applies until <html data-palette="crimson"> is set — deliberately.
+ * A palette that fell back to some default when the attribute was missing
+ * would hide the wiring mistake instead of showing it.
+ *
+ * It pulls in ../base.css itself, so one import brings the dark-mode variant,
+ * the token-to-utility mapping and this palette together.
+ *
+ * ── how to read these values ────────────────────────────────────────────────
+ *
+ * Named by ROLE, not by colour — `--background`, not `--white` — because the
+ * point is that the dark block can change what a colour IS without changing
+ * what it MEANS, so no component has to know which theme is active.
+ *
+ * oklch, not hex: perceptually uniform, so a lightness step looks like the same
+ * step at every hue. That is what lets every theme here share one recipe and
+ * differ only in hue (10° for this one) at comparable visual weight.
+ *
+ * Contrast and danger-vs-primary separation are measured, not eyeballed:
+ *   pnpm --filter @kwtech/web-ui check:contrast
+ */
+@import "../base.css";
+
+[data-palette="crimson"] {
+  --radius: 0.5rem;
+
+  /*
+   * The page itself. Tinted a touch toward the theme hue rather than pure
+   * white, so cards can be pure white and still separate.
+   */
+  --background: oklch(0.985 0.004 10);
+  --foreground: oklch(0.21 0.03 10);
+
+  /*
+   * Pure white, one step above --background. That difference IS the
+   * elevation; there is no shadow doing this work.
+   */
+  --card: oklch(1 0 10);
+  --card-foreground: oklch(0.21 0.03 10);
+  --popover: oklch(1 0 10);
+  --popover-foreground: oklch(0.21 0.03 10);
+
+  /* The action colour. Lightness is chosen so the text on it clears AA. */
+  --primary: oklch(0.47 0.17 10);
+  --primary-foreground: oklch(0.985 0.006 10);
+  --secondary: oklch(0.96 0.014 10);
+  --secondary-foreground: oklch(0.28 0.032 10);
+  --muted: oklch(0.96 0.014 10);
+
+  /*
+   * Deliberately dark enough to clear AA on --background AND on --muted.
+   * "Muted" is a visual weight, not a licence to make text unreadable.
+   */
+  --muted-foreground: oklch(0.52 0.028 10);
+
+  /*
+   * Hover and selected states. One step more saturated than --muted so a
+   * hovered row is distinguishable from a disabled one.
+   */
+  --accent: oklch(0.95 0.022 10);
+  --accent-foreground: oklch(0.28 0.035 10);
+
+  /*
+   * Red stays red in every theme. Danger is not a branding decision, and a
+   * destructive button that matched the palette would be a destructive
+   * button nobody notices.
+   */
+  --destructive: oklch(0.577 0.245 27.3);
+  --destructive-foreground: oklch(0.985 0.006 27.3);
+  --border: oklch(0.9 0.016 10);
+  --input: oklch(0.9 0.016 10);
+
+  /*
+   * Matches --primary: the focus ring is the same "this is interactive"
+   * signal as the action colour.
+   */
+  --ring: oklch(0.47 0.17 10);
+}
+
+/*
+ * BOTH forms on purpose. The first matches <html> itself, which carries the
+ * palette attribute and the dark class together. The second matches any
+ * ELEMENT INSIDE a dark page that names a palette — a swatch previewing a
+ * theme it is not currently in. Without it such a preview would show light
+ * colours on a dark page and quietly misrepresent the choice it offers.
+ */
+[data-palette="crimson"].dark,
+.dark [data-palette="crimson"] {
+  /*
+   * Not black. A near-black with the theme hue in it keeps the palette
+   * recognisable in dark mode instead of collapsing to grey.
+   */
+  --background: oklch(0.18 0.022 10);
+  --foreground: oklch(0.97 0.012 10);
+  --card: oklch(0.22 0.028 10);
+  --card-foreground: oklch(0.97 0.012 10);
+  --popover: oklch(0.22 0.028 10);
+  --popover-foreground: oklch(0.97 0.012 10);
+
+  /*
+   * Deeper than the destructive red, not lighter, and carrying LIGHT text —
+   * so a primary button and a danger button cannot be mistaken for one
+   * another.
+   */
+  --primary: oklch(0.55 0.18 10);
+  --primary-foreground: oklch(0.985 0.006 10);
+  --secondary: oklch(0.28 0.03 10);
+  --secondary-foreground: oklch(0.97 0.012 10);
+  --muted: oklch(0.28 0.03 10);
+  --muted-foreground: oklch(0.74 0.024 10);
+  --accent: oklch(0.3 0.038 10);
+  --accent-foreground: oklch(0.97 0.012 10);
+
+  /* Lighter than the light-mode red, for the same reason. */
+  --destructive: oklch(0.704 0.191 22.2);
+  --destructive-foreground: oklch(0.18 0.03 22.2);
+
+  /* Alpha, not a solid colour: a border that lets the surface beneath it
+     show through stays correct on --background and --card alike. */
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.55 0.18 10);
+}
