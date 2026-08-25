@@ -3,11 +3,26 @@
  *
  * May import the core, never `/server` (PLAN §9 rule 3). That rule is what
  * keeps node:crypto and the JWT secret out of the browser bundle.
+ *
+ * ⚠ NAMED re-exports, never `export *`.
+ *
+ * Most of this barrel is `'use client'`. A Next.js app replaces such a module
+ * with a client-reference proxy, and `export *` compiles to TypeScript's
+ * `__exportStar`, which copies keys with `for...in` — an enumeration that
+ * proxy does not answer. The re-export then yields NOTHING, and the failure
+ * arrives as "Element type is invalid: ... got: undefined" at render, pointing
+ * nowhere near this file.
+ *
+ * Nothing hits that today only because `authWebModule` reaches the pages
+ * through `./module.js`, which imports them directly. The first server
+ * component to import `SignInPage` from this barrel would have found it
+ * undefined.
  */
-export * from './auth-client.js';
-export * from './auth-shell.js';
-export * from './forgot-password-page.js';
-export * from './module.js';
-export * from './reset-password-page.js';
-export * from './sign-in-page.js';
-export * from './use-auth-form.js';
+
+export { type AuthClient, AuthClientError, createAuthClient } from './auth-client.js';
+export { AuthError, AuthField, AuthShell, AuthSubmit } from './auth-shell.js';
+export { ForgotPasswordPage } from './forgot-password-page.js';
+export { authWebModule } from './module.js';
+export { ResetPasswordPage } from './reset-password-page.js';
+export { SignInPage } from './sign-in-page.js';
+export { type AuthFormState, useAuthForm } from './use-auth-form.js';
