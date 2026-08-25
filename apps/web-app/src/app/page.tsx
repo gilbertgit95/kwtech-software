@@ -1,56 +1,45 @@
-import Link from 'next/link';
-import { getViewer } from '@/lib/session';
+import { getViewer } from '@kwtech/module-auth/next';
+import { AppShell } from '@/components/layout/app-shell';
 
 /**
- * The landing page, and for now the only thing behind sign-in.
+ * The dashboard — the application's own page, not a module's, which is why it
+ * is a real file rather than a descriptor behind the catch-all.
  *
- * A server component, deliberately: it reads the httpOnly session cookie, which
- * no client component can. That also makes this the honest proof that the auth
- * loop closes — if the greeting renders, the cookie was set, survived the
- * redirect, and the API accepted it.
+ * A server component: it reads the httpOnly session cookie, which no client
+ * component can. That also makes it the honest proof that the auth loop
+ * closes — if the greeting renders, the cookie was set, survived the redirect,
+ * and the API accepted it.
+ *
+ * No signed-out branch any more: AppShell redirects to /auth/signin when there
+ * is no viewer, so by the time this renders there is one. `getViewer()` is
+ * called twice per request as a result — once by the shell, once here — which
+ * is one extra hit on /auth/profile. Worth fixing with React `cache()` when a
+ * third caller appears; not worth an abstraction for two.
  */
-export default async function HomePage() {
+export default async function DashboardPage() {
   const viewer = await getViewer();
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-sm text-center">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">kwtech</h1>
+    <AppShell title="Dashboard">
+      <div className="mx-auto w-full max-w-3xl">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {viewer?.displayName ?? viewer?.username ?? 'Welcome'}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">Signed in as {viewer?.email}</p>
 
-        {viewer ? (
-          <>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Signed in as{' '}
-              <span className="font-medium text-foreground">
-                {viewer.displayName ?? viewer.username ?? viewer.email}
-              </span>
-            </p>
-            {/*
-              A form POST, not a link: signing out changes server state — it
-              revokes the session — and a GET that mutates is the kind of thing
-              a link prefetcher or a browser extension will fire on its own.
-            */}
-            <form action="/api/auth/signout" method="post" className="mt-6">
-              <button
-                type="submit"
-                className="rounded-md border border-input px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                Sign out
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <p className="mt-2 text-sm text-muted-foreground">You are not signed in.</p>
-            <Link
-              href="/auth/signin"
-              className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-            >
-              Sign in
-            </Link>
-          </>
-        )}
+        <div className="mt-8 rounded-lg border border-border bg-card p-6">
+          <h2 className="text-sm font-medium text-card-foreground">Nothing here yet</h2>
+          {/*
+           * Deliberately empty rather than filled with placeholder tiles. A
+           * dashboard of invented numbers is the kind of thing that gets
+           * screenshotted and believed.
+           */}
+          <p className="mt-2 text-sm text-muted-foreground">
+            The side drawer lists what you can reach. It grows as modules are composed into this app — entries appear
+            only when you hold the feature key behind them.
+          </p>
+        </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -3,24 +3,83 @@
  */
 @import "tailwindcss";
 
-/* The design tokens and the dark-mode variant. Must come after the import
-   above: it is what defines @theme and @custom-variant in the first place. */
-@import "@kwtech/web-ui/styles.css";
+/* The `animate-in` / `fade-out-0` utilities the dropdown menus use for their
+   open and close states. A plugin, so it belongs beside the Tailwind import
+   rather than in the shared token file — those are the palette, this is
+   behaviour. */
+@import "tw-animate-css";
+
+/*
+ * ── THE THEME ───────────────────────────────────────────────────────────────
+ *
+ * EVERY palette, because the viewer picks one at runtime from the header
+ * control. Each is scoped to its own `[data-palette="..."]`, so they coexist
+ * instead of overwriting each other, and switching is one attribute on <html> —
+ * no reload, no re-render, no flash.
+ *
+ * Which one is active comes from `data-palette` in layout.tsx, read server-side
+ * from a cookie. NOTHING APPLIES WITHOUT THAT ATTRIBUTE, deliberately: a
+ * palette that fell back to a default when it was missing would hide the wiring
+ * mistake instead of showing it.
+ *
+ * To ship a FIXED look instead — one palette, no picker — import a single theme
+ * here and hard-code the attribute in layout.tsx:
+ *
+ *   @import "@kwtech/web-ui/themes/ocean.css";
+ *
+ * Must come after the Tailwind import above, which is what defines @theme and
+ * @custom-variant in the first place.
+ *
+ * Contrast is verified per palette:
+ *   pnpm --filter @kwtech/web-ui check:contrast
+ */
+@import "@kwtech/web-ui/themes/all.css";
+
+/* Hand the fonts loaded in layout.tsx to Tailwind, so `font-sans` and
+   `font-mono` resolve to them. The fallbacks matter: next/font swaps the real
+   face in when it is ready, and without a stack behind it the first paint has
+   no font at all. */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+  }
+}
 
 /*
  * Where to look for class names.
  *
  * Tailwind scans this app's own files automatically and **ignores everything
  * reachable through node_modules** — which is how every workspace package is
- * reached in a pnpm monorepo. Without these lines the module pages render with
- * no CSS at all: not merely unthemed, but missing `rounded-md` and `px-3` too,
- * because Tailwind only emits classes it has actually seen written down.
+ * reached in a pnpm monorepo. Without this the module pages render with no CSS
+ * at all: not merely unthemed, but missing `rounded-md` and `px-3` too, because
+ * Tailwind only emits classes it has actually seen written down. That is a bug
+ * this repo has already shipped once.
  *
- * This list mirrors WEB_MODULES in src/modules.ts. Adding a module means adding
- * a line here as well — the alternative, a glob over `packages/*`, would scan
- * packages this app does not compose and quietly grow the stylesheet with
- * classes nothing renders.
+ * A GLOB over every workspace package, not a line per module. The earlier
+ * per-module list was chosen so an uncomposed package would not pad the
+ * stylesheet — but that traded a small, silent cost for a large, silent one:
+ * forgetting a line does not warn, it produces a page with no styling, and the
+ * cause is nowhere near the symptom. Padding the CSS with classes for a module
+ * this app has not adopted is the cheaper mistake, and adopting a module is now
+ * a dependency and nothing else.
+ *
+ * THE FILE PATTERN IS LOAD-BEARING. Pointing @source at packages/[star]/src
+ * looks equivalent and is not: Tailwind auto-globs a bare directory path, but
+ * does not expand a [star] inside one, so that form matches NOTHING and fails
+ * exactly like a missing line -- silently, and only for classes no app file
+ * happens to use as well.
+ *
+ * It shipped once: the sign-in card lost max-w-sm and stretched to the full
+ * window, while everything else looked fine because the app used the same
+ * utilities elsewhere.
+ *
+ * To check a change here, grep the built CSS for a class used ONLY inside a
+ * package -- max-w-sm, py-12 -- never one the app also uses, or the probe
+ * passes with the packages not scanned at all.
  */
-@source "../../../../packages/module-auth/src";
-@source "../../../../packages/module-permissions/src";
-@source "../../../../packages/web-ui/src";
+@source "../../../../packages/*/src/**/*.{ts,tsx}";

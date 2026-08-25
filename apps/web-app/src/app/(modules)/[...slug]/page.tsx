@@ -1,5 +1,7 @@
 import { composeRoutes, matchRoute } from '@kwtech/module-kit';
 import { notFound } from 'next/navigation';
+import { AppShell } from '@/components/layout/app-shell';
+import { BareShell } from '@/components/layout/bare-shell';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -39,5 +41,11 @@ export default async function ModuleRoutePage({
   if (!route) notFound();
 
   const Component = route.component;
-  return <Component searchParams={await searchParams} />;
+  const page = <Component searchParams={await searchParams} />;
+
+  // Which shell the route asked for, declared on the descriptor rather than
+  // guessed from the path here. 'app' is the default because a module route is
+  // normally a page of the application; the auth routes opt out because they
+  // exist for someone who has no session to put in a header.
+  return route.chrome === 'bare' ? <BareShell>{page}</BareShell> : <AppShell title={route.title}>{page}</AppShell>;
 }
