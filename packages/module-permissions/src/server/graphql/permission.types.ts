@@ -1,4 +1,5 @@
 import { Field, ObjectType } from '@nestjs/graphql';
+import type { PermissionContext } from '../../types.js';
 
 /**
  * The module's GraphQL surface, code-first.
@@ -62,4 +63,31 @@ export class PermissionFeatureType {
 
   @Field()
   isPrivileged!: boolean;
+}
+
+/**
+ * Projects the pure `PermissionContext` onto the GraphQL type.
+ *
+ * A mapper rather than a cast, and the difference is not ceremony: the pure
+ * interface declares `readonly FeatureKey[]` because nothing downstream may
+ * mutate a resolved grant set, while a GraphQL ObjectType has to expose plain
+ * arrays for the driver to serialise. Copying is what keeps the first guarantee
+ * true — handing the same array out would let a field resolver splice the
+ * caller's own permissions.
+ *
+ * Written out field by field rather than spread, so a field ADDED to
+ * PermissionContext does not silently appear in the public schema. Exposure is
+ * a decision; this function is where it gets made.
+ */
+export function toPermissionContextType(context: PermissionContext): PermissionContextType {
+  return {
+    subjectId: context.subjectId,
+    organizationId: context.organizationId,
+    workspaceId: context.workspaceId,
+    effective: [...context.effective],
+    granted: [...context.granted],
+    entitled: context.entitled ? [...context.entitled] : null,
+    grantedAtAppLevel: [...context.grantedAtAppLevel],
+    accessibleWorkspaceIds: context.accessibleWorkspaceIds ? [...context.accessibleWorkspaceIds] : null,
+  };
 }

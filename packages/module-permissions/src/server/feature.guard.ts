@@ -10,8 +10,11 @@ import { Reflector } from '@nestjs/core';
 import { canAccessWorkspace, denialReason, hasAllFeatures, hasAnyFeature } from '../check.js';
 import { parseScope, type RequestScope } from '../scope.js';
 import type { DenialReason, FeatureKey, PermissionContext } from '../types.js';
-import { PERMISSIONS_OPTIONS, type PermissionsModuleOptions } from './permissions.module.js';
+import type { PermissionsModuleOptions } from './permissions.module.js';
 import { PermissionsService } from './permissions.service.js';
+// The VALUE comes from the leaf module; the interface is type-only and erased,
+// so importing it from permissions.module.js closes no cycle at runtime.
+import { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
 import { type FeatureMode, REQUIRED_FEATURES, REQUIRED_FEATURES_MODE } from './require-feature.decorator.js';
 import { REQUIRED_SCOPE, type ScopeSpec } from './require-scope.decorator.js';
 

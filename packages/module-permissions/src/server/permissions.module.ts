@@ -7,9 +7,19 @@ import { PermissionsResolver } from './graphql/permissions.resolver.js';
 import { PermissionsController } from './permissions.controller.js';
 import { PERMISSIONS_PRISMA_WRITE } from './permissions.repository.js';
 import { PermissionsService } from './permissions.service.js';
+import { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
 import { PermissionsWriteService } from './permissions-write.service.js';
 
-export const PERMISSIONS_OPTIONS = 'kwtech:permissions-options';
+/*
+ * Re-exported, not declared. It lives in ./permissions.tokens.ts — a file that
+ * imports nothing — because every provider this module registers needs it, and
+ * importing it back from here closes a cycle that leaves the token `undefined`
+ * inside a decorator. See that file for the boot error it produces.
+ *
+ * The re-export keeps `import { PERMISSIONS_OPTIONS } from '.../permissions.module.js'`
+ * working for anything outside the cycle.
+ */
+export { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
 
 export interface PermissionsModuleOptions {
   /** Modules exporting whatever `prismaProvider` depends on — usually the app's DB module. */
