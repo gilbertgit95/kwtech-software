@@ -3,7 +3,9 @@ import { Reflector } from '@nestjs/core';
 import { AuthController } from './auth.controller.js';
 import { AUTH_OPTIONS, type AuthModuleOptions, resolveAuthOptions } from './auth.options.js';
 import { AuthService } from './auth.service.js';
+import { AuthResolver } from './graphql/auth.resolver.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
+import { InMemoryRevocationStore, SESSION_REVOCATION_STORE } from './revocation.js';
 import { TokenService } from './token.service.js';
 
 /**
@@ -29,6 +31,9 @@ export class AuthModule {
     // app booting, not surface as the first sign-in of the day failing.
     const resolved = resolveAuthOptions(options);
 
+    const exposeRest = options.expose?.rest ?? true;
+    const exposeGraphql = options.expose?.graphql ?? true;
+
     const providers: Provider[] = [
       { provide: AUTH_OPTIONS, useValue: resolved },
       // Nest auto-provides Reflector in the ROOT injector, not in a dynamic
@@ -44,11 +49,28 @@ export class AuthModule {
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider);
 
+    /*
+     * On by default. An app that never scales past one node should not have to
+     * run Redis to get correct sign-out, and the alternative to a default is no
+     * revocation at all — which is a security property lost to an omission.
+     *
+     * `null` disables it explicitly, which is the only way to end up without one.
+     */
+    if (options.revocationStore !== null) {
+      providers.push({
+        provide: SESSION_REVOCATION_STORE,
+        useValue: options.revocationStore ?? new InMemoryRevocationStore(),
+      });
+    }
+    // A resolver is just a provider: listing it here is what puts `viewer` and
+    // `session` into the app's code-first schema. Nothing to stitch.
+    if (exposeGraphql) providers.push(AuthResolver);
+
     return {
       module: AuthModule,
-      controllers: [AuthController],
+      controllers: exposeRest ? [AuthController] : [],
       providers,
-      exports: [AuthService, TokenService, JwtAuthGuard, AUTH_OPTIONS],
+      exports: [AuthService, TokenService, JwtAuthGuard, AUTH_OPTIONS, SESSION_REVOCATION_STORE],
       global: true,
     };
   }

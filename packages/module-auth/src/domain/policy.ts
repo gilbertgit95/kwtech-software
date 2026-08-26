@@ -174,3 +174,76 @@ export function isExpired(expiresAt: Date, now: Date): boolean {
 export function expiryFrom(now: Date, ttlSeconds: number): Date {
   return new Date(now.getTime() + ttlSeconds * 1000);
 }
+
+// ─── second factors ─────────────────────────────────────────────────────────
+//
+// The pure half of TOTP: which time step a moment falls in, how much clock
+// drift is forgiven, and what a code may look like. The HMAC itself needs
+// node:crypto and lives in server/totp.ts, so this file stays safe to bundle
+// for a browser — a page that renders a countdown needs TOTP_STEP_SECONDS and
+// must not pull crypto in to get it.
+
+/** Seconds per code. 30 is what every authenticator app assumes. */
+export const TOTP_STEP_SECONDS = 30;
+
+/** RFC 6238 default, and what every app displays. */
+export const TOTP_DIGITS = 6;
+
+/**
+ * How many steps either side of "now" are accepted — ±1, so ±30 seconds.
+ *
+ * Not zero: phone clocks drift, and a user typing the last digit as the code
+ * rolls over would be told they are wrong when they were right, which trains
+ * people to distrust the mechanism. Not larger either — every extra step
+ * multiplies the number of codes valid at any instant, and with 10⁶ codes and a
+ * lockout at MAX_FAILED_LOGINS the guessing odds are the whole security margin.
+ */
+export const TOTP_DRIFT_STEPS = 1;
+
+/** 160 bits, matching HMAC-SHA1's block behaviour and RFC 4226's recommendation. */
+export const TOTP_SECRET_BYTES = 20;
+
+/**
+ * Which time step a moment belongs to — the counter the code is derived from.
+ *
+ * Pure and exported so replay protection (`AuthMfaFactor.lastUsedStep`) is
+ * checked against the same arithmetic that produced the code, rather than
+ * against a second implementation that could round differently.
+ */
+export function totpStepAt(now: Date, stepSeconds: number = TOTP_STEP_SECONDS): number {
+  return Math.floor(now.getTime() / 1000 / stepSeconds);
+}
+
+/** How many recovery codes a confirmation hands out. */
+export const RECOVERY_CODE_COUNT = 10;
+
+/** Bytes of entropy per recovery code — 80 bits, well beyond guessable. */
+export const RECOVERY_CODE_BYTES = 10;
+
+/**
+ * One spelling for a code the user typed.
+ *
+ * People paste `123 456`, and authenticator apps and recovery-code lists both
+ * display groups separated by spaces or hyphens. Rejecting those is refusing a
+ * correct answer because of its whitespace.
+ */
+export function normaliseMfaCode(code: string): string {
+  return code.replace(/[\s-]/g, '').toUpperCase();
+}
+
+/**
+ * Structural check only — whether this is even the shape of a TOTP code.
+ *
+ * Its job is to keep a 900-character body out of the HMAC path, not to decide
+ * anything: a wrong-shaped code and a wrong code are refused identically, since
+ * the difference would tell a caller which of the two credentials they are
+ * being asked for.
+ */
+export function isPlausibleTotpCode(code: string): boolean {
+  return new RegExp(`^\\d{${TOTP_DIGITS}}$`).test(code);
+}
+
+/** The same, for a recovery code: base32 alphabet, fixed length. */
+export function isPlausibleRecoveryCode(code: string): boolean {
+  return new RegExp(`^[A-Z2-7]{${Math.ceil((RECOVERY_CODE_BYTES * 8) / 5)}}$`).test(code);
+}

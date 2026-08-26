@@ -1,0 +1,126 @@
+<%
+/*
+  The shell every email shares. `it.body` is inserted RAW — it is the already-
+  rendered body template, which escaped its own interpolations on the way in.
+
+  Why this looks like 1999 HTML:
+
+    - TABLES, not flexbox or grid. Outlook on Windows renders mail with Microsoft
+      Word's engine, which supports neither. A div-based layout collapses to a
+      full-width unstyled column for a large share of business recipients, and
+      you do not find out because your own client renders it correctly.
+    - INLINE styles carry the design. The <style> block below adds only two
+      things inline styles cannot express — dark mode and a mobile breakpoint —
+      and every rule in it is an OVERRIDE of an inline value that already works.
+      Gmail drops <head> when it clips a long message and a few clients drop
+      <style> outright, so anything that only exists there must be optional.
+    - No web fonts, no external images, no JavaScript. Blocked, stripped, or a
+      privacy leak — often all three.
+
+  Colours are literal hex, deliberately NOT @kwtech/web-ui theme tokens: a CSS
+  variable has nothing to resolve against in an inbox. Keep them in step with the
+  brand by hand; there is no mechanism that can do it for you here.
+
+  ⚠️ COMMENTS IN HERE MUST BE ETA COMMENTS, never `<!-- -->`. An HTML comment is
+  not stripped at render — it is DELIVERED. In the first version of these files
+  922 of the 4005 characters a recipient received were engineering notes,
+  including the reasoning behind the enumeration-oracle wording. Gmail also clips
+  a message at ~102KB and hides the rest, so bytes here are not free.
+
+  THE ONE EXCEPTION is a Microsoft conditional comment — `<!--[if mso]>`. That is
+  not a comment, it is the only way to address Outlook, and it is why the button
+  in password-reset.html renders as a button there instead of a bare link.
+*/
+%><!doctype html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+<%
+    /* Without these two, a client in dark mode inverts the message ITSELF —
+       guessing at colours, usually producing grey text on a grey card. Declaring
+       support hands that decision back to the stylesheet below. */
+%>    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <title><%= it.subject %></title>
+    <style>
+      /* Outlook ignores this and keeps the inline styles, which is the intent. */
+      body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table { border-collapse: collapse !important; }
+      a { text-decoration: none; }
+
+      @media (max-width: 620px) {
+        .sp-x   { padding-left: 22px !important; padding-right: 22px !important; }
+        .btn a  { display: block !important; width: auto !important; }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .page   { background: #18181b !important; }
+        .card   { background: #232327 !important; border-color: #34343a !important; }
+        .ink    { color: #fafafa !important; }
+        .body   { color: #d4d4d8 !important; }
+        .muted  { color: #a1a1aa !important; }
+        .hair   { border-color: #34343a !important; }
+        .well   { background: #1c1c20 !important; border-color: #34343a !important; }
+        /* The button inverts rather than dimming — a dark button on a dark card
+           is the classic dark-mode email that looks disabled. */
+        .btn a  { background: #fafafa !important; color: #18181b !important; }
+        .mark   { background: #fafafa !important; color: #18181b !important; }
+      }
+    </style>
+  </head>
+  <body class="page" style="margin:0;padding:0;background:#f4f4f5;">
+<%
+    /* The preheader: the grey line an inbox shows after the subject. Hidden in
+       the message itself by the zero size and clipping. Left unset, clients fill
+       it with whatever text comes first — usually "Hi," or a link. */
+%>    <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f4f4f5;">
+      <%= it.preheader %>
+    </div>
+
+    <table role="presentation" class="page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;">
+      <tr>
+        <td align="center" style="padding:40px 12px;">
+
+<%
+          /* The masthead sits OUTSIDE the card, so the card can open with the
+             heading. A brand line and a heading stacked inside one box makes the
+             reader do two jobs before reaching the point of the email. */
+%>          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td class="sp-x" style="padding:0 4px 16px 4px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td class="mark" width="26" height="26" align="center" valign="middle"
+                        style="width:26px;height:26px;background:#18181b;border-radius:7px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;color:#ffffff;line-height:26px;mso-line-height-rule:exactly;"><%= it.brand.trim().charAt(0).toUpperCase() %></td>
+                    <td style="padding-left:9px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                      <span class="ink" style="font-size:14px;font-weight:600;color:#18181b;letter-spacing:-0.01em;"><%= it.brand %></span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" class="card" width="100%" cellpadding="0" cellspacing="0" border="0"
+                 style="max-width:560px;background:#ffffff;border-radius:12px;border:1px solid #e4e4e7;">
+            <tr>
+              <td class="body sp-x" style="padding:34px 34px 34px 34px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.62;mso-line-height-rule:exactly;color:#3f3f46;">
+                <%~ it.body %>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td class="muted sp-x" align="center" style="padding:22px 34px 0 34px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.55;mso-line-height-rule:exactly;color:#71717a;">
+                Sent by <%= it.brand %>. This is an automated message — replies to it are not read.
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

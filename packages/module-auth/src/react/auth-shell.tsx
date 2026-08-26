@@ -56,6 +56,7 @@ export function AuthField({
   required = true,
   minLength,
   defaultValue,
+  inputMode,
 }: {
   label: string;
   name: string;
@@ -64,6 +65,14 @@ export function AuthField({
   required?: boolean;
   minLength?: number;
   defaultValue?: string;
+  /**
+   * The keypad a phone offers, independent of the input's TYPE.
+   *
+   * The pair matters for one-time codes: `type="number"` would give the numeric
+   * keypad but also strip leading zeros — which a six-digit code has one time
+   * in ten — so the field stays `type="text"` and asks for the keypad here.
+   */
+  inputMode?: 'text' | 'numeric';
 }) {
   const id = `auth-${name}`;
   return (
@@ -79,6 +88,7 @@ export function AuthField({
         // a sign-in form they cannot fill is one users work around by picking a
         // password they can remember.
         autoComplete={autoComplete}
+        inputMode={inputMode}
         required={required}
         minLength={minLength}
         defaultValue={defaultValue}

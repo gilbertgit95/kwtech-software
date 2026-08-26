@@ -18,6 +18,28 @@ interface SidebarProps {
   groups: NavGroup[];
   /** Read from the cookie by the shell, so the first paint is already correct. */
   defaultCollapsed: boolean;
+  /**
+   * The product name and its second line, from APP_NAME / APP_TAGLINE.
+   *
+   * A PROP, not a `NEXT_PUBLIC_` read. This is a client component, so the only
+   * way it could read the environment itself is a build-time inline — which
+   * would mean one built image could never run under two names, and renaming
+   * the product would need a rebuild rather than a restart.
+   */
+  brand: { name: string; tagline: string | null };
+}
+
+/**
+ * The two-letter mark, derived rather than configured.
+ *
+ * Initials of the first two words when there are two ("Acme Corp" → AC),
+ * otherwise the first two letters ("KWTech" → KW). A third variable for this
+ * would be a third thing to update at a rename, to save one lookup.
+ */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const letters = words.length > 1 ? `${words[0]?.[0] ?? ''}${words[1]?.[0] ?? ''}` : (words[0]?.slice(0, 2) ?? '');
+  return letters.toUpperCase();
 }
 
 function isActive(pathname: string, href: string): boolean {
@@ -26,7 +48,7 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Sidebar({ groups, defaultCollapsed }: SidebarProps) {
+export function Sidebar({ groups, defaultCollapsed, brand }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
@@ -99,7 +121,7 @@ export function Sidebar({ groups, defaultCollapsed }: SidebarProps) {
             'text-xs font-bold leading-none tracking-tight',
           )}
         >
-          kw
+          {initials(brand.name)}
         </span>
         <div
           className={cn(
@@ -107,8 +129,12 @@ export function Sidebar({ groups, defaultCollapsed }: SidebarProps) {
             collapsed ? 'max-w-0 opacity-0' : 'max-w-40 opacity-100',
           )}
         >
-          <p className="truncate text-sm font-semibold leading-tight">kwtech</p>
-          <p className="truncate text-xs leading-tight text-muted-foreground">Software</p>
+          <p className="truncate text-sm font-semibold leading-tight">{brand.name}</p>
+          {/* Omitted rather than replaced by a placeholder: a product without a
+              tagline should show one line, not an empty second one. */}
+          {brand.tagline ? (
+            <p className="truncate text-xs leading-tight text-muted-foreground">{brand.tagline}</p>
+          ) : null}
         </div>
       </div>
 

@@ -1,5 +1,7 @@
 import type { Provider } from '@nestjs/common';
 import type { AuthFailureReason, SessionUser } from '../types.js';
+import type { SessionRevocationStore } from './revocation.js';
+import { readSecretKey } from './secret-box.js';
 
 export const AUTH_OPTIONS = 'kwtech:auth-options';
 
@@ -54,6 +56,107 @@ export interface AuthModuleOptions {
 
   /** Binds the app's Prisma client to AUTH_PRISMA. */
   prismaProvider?: Provider;
+
+  /**
+   * How JwtAuthGuard finds the underlying request, for transports that are not
+   * plain HTTP.
+   *
+   * Unset, the guard calls `context.switchToHttp().getRequest()`, which is
+   * correct for REST and returns UNDEFINED for a GraphQL resolver or a
+   * subscription — the guard then reads `.headers` off nothing and the field
+   * fails with `Cannot read properties of undefined`, which names neither the
+   * transport nor the cause.
+   *
+   * The module cannot supply this itself: knowing that a GraphQL request lives
+   * at `GqlExecutionContext.create(ctx).getContext().req` means importing
+   * @nestjs/graphql, and a module that did would make every consumer install a
+   * GraphQL stack to run a REST API.
+   *
+   * Typed as `unknown` for the same reason — the ExecutionContext is Nest's, and
+   * narrowing it belongs in the app, which already depends on Nest.
+   *
+   *   getRequest: (ctx) => {
+   *     const c = ctx as ExecutionContext;
+   *     return c.getType() === 'graphql'
+   *       ? GqlExecutionContext.create(c).getContext().req
+   *       : c.switchToHttp().getRequest();
+   *   }
+   *
+   * @kwtech/module-permissions publishes the identical hook, and an app that
+   * uses both should hand them the SAME function — two ways of finding the
+   * request is two chances for the authentication guard and the authorisation
+   * guard to disagree about who is calling.
+   */
+  getRequest?: (context: unknown) => unknown;
+
+  /**
+   * Which transports this module mounts. Both on by default.
+   *
+   *   rest     the AuthController — sign-in, refresh, sign-out, the password
+   *            and MFA endpoints. Turning it off leaves an app with NO way to
+   *            exchange a credential, so it is almost never right.
+   *   graphql  the AuthResolver — `viewer` and `session`, reads only. Turn it
+   *            off in an app that mounts no GraphQLModule: the resolver would
+   *            otherwise be a provider whose decorators reference a driver that
+   *            is not there.
+   *
+   * Mirrors `PermissionsModuleOptions.expose` deliberately — two modules with
+   * the same shape of switch is one thing for an app to learn.
+   */
+  expose?: { rest?: boolean; graphql?: boolean };
+
+  /**
+   * Where revoked sessions are remembered until their access tokens expire.
+   *
+   * This is what makes sign-out IMMEDIATE. Without a store, revoking a session
+   * sets a column nothing reads until the next refresh, so a revoked or stolen
+   * token keeps working for the rest of its life — a window that lowering
+   * `accessTokenTtl` bounds but never closes.
+   *
+   * Defaults to `InMemoryRevocationStore`, which is **correct for exactly one
+   * API instance**. A second replica has its own memory and will accept a token
+   * the first just revoked. Supply a Redis-backed implementation when you scale
+   * — the same caveat, and the same remedy, as the in-memory PubSub behind
+   * subscriptions (PLAN §7).
+   *
+   * Pass `null` to disable it and accept the window.
+   */
+  revocationStore?: SessionRevocationStore | null;
+
+  /**
+   * Encrypts TOTP secrets at rest. 32 bytes, base64 or hex; omit it and the
+   * module reads `AUTH_MFA_SECRET_KEY`.
+   *
+   * REQUIRED before anyone can enrol a second factor, and with no default for
+   * the same reason `jwtSecret` has none — except that the consequence here is
+   * worse than a shared secret. A TOTP secret is SYMMETRIC: unlike a password
+   * hash, a stolen row generates valid codes forever, so a module-supplied
+   * default key would mean every deployment that forgot to set one stores
+   * effectively-plaintext second factors.
+   *
+   * Unlike `jwtSecret` this does NOT fail the boot when absent — an app with no
+   * 2FA users has no reason to hold the key. The enrolment endpoint refuses
+   * instead, in the same shape as `sendPasswordResetEmail`: the feature is off
+   * rather than half-on.
+   *
+   * ⚠️ Rotating it makes every enrolled factor undecryptable. Those users fall
+   * back to a recovery code, which is the other half of why
+   * `AuthRecoveryCode` exists — but it is a support event, not a no-op.
+   * Deliberately NOT the same value as `jwtSecret`: rotating that one to
+   * respond to a token incident would otherwise lock every 2FA user out.
+   */
+  mfaSecretKey?: string;
+
+  /**
+   * The name an authenticator app shows above the code — "KWTech", not
+   * "kwtech-api".
+   *
+   * Defaults to `issuer`, which is right for a single-service deployment and
+   * wrong the moment the token audience stops being a human-readable name. A
+   * user with a dozen entries in their app distinguishes them by this string
+   * alone.
+   */
+  mfaIssuerLabel?: string;
 
   /**
    * How a reset link reaches its owner.
@@ -130,6 +233,7 @@ export type ResolvedAuthModuleOptions = AuthModuleOptions & {
   jwtSecret: string;
   issuer: string;
   audience: string;
+  mfaIssuerLabel: string;
 };
 
 /**
@@ -177,11 +281,31 @@ export function resolveAuthOptions(options: AuthModuleOptions): ResolvedAuthModu
     );
   }
 
+  const issuer = options.issuer ?? process.env.AUTH_TOKEN_ISSUER ?? DEFAULT_TOKEN_ISSUER;
+
+  /*
+   * The MFA key is only READ here, never required. An app with no 2FA users has
+   * no reason to hold one, and failing the boot over it would make enabling the
+   * feature a deployment-wide event rather than a per-user one.
+   *
+   * It is validated eagerly all the same — `readSecretKey` runs at enrolment,
+   * but a key of the wrong length set in the environment is a configuration
+   * mistake an operator wants to hear about at boot, not from the first user who
+   * scans a QR code.
+   */
+  const mfaSecretKey = options.mfaSecretKey ?? process.env.AUTH_MFA_SECRET_KEY;
+  if (mfaSecretKey !== undefined) readSecretKey(mfaSecretKey);
+
+  const mfa: Pick<AuthModuleOptions, 'mfaSecretKey'> = {};
+  if (mfaSecretKey !== undefined) mfa.mfaSecretKey = mfaSecretKey;
+
   return {
     ...options,
     ...ttls,
+    ...mfa,
     jwtSecret,
-    issuer: options.issuer ?? process.env.AUTH_TOKEN_ISSUER ?? DEFAULT_TOKEN_ISSUER,
+    issuer,
     audience: options.audience ?? process.env.AUTH_TOKEN_AUDIENCE ?? DEFAULT_TOKEN_AUDIENCE,
+    mfaIssuerLabel: options.mfaIssuerLabel ?? process.env.AUTH_MFA_ISSUER_LABEL ?? issuer,
   };
 }

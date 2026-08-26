@@ -18,6 +18,12 @@ export interface AuthUserRow {
   status: 'active' | 'suspended';
   failedLoginCount: number;
   lockedUntil: Date | null;
+  /**
+   * When a second factor became mandatory for this account — a POLICY, not a
+   * state. "Do they hold a confirmed factor" is a different question, answered
+   * by a row rather than by a column that could drift from one.
+   */
+  mfaRequiredAt: Date | null;
 }
 
 export interface AuthCredentialRow {
@@ -30,6 +36,12 @@ export interface AuthSessionRow {
   userId: string;
   expiresAt: Date;
   revokedAt: Date | null;
+  /**
+   * When the second factor was satisfied for THIS session. Null means password
+   * alone — which is why refresh() re-derives the token scope from this field
+   * instead of trusting the scope of the token being replaced.
+   */
+  mfaSatisfiedAt: Date | null;
   user: AuthUserRow;
 }
 
@@ -41,6 +53,41 @@ export interface AuthPasswordResetRow {
   user: AuthUserRow;
 }
 
+export interface AuthMfaFactorRow {
+  id: string;
+  userId: string;
+  /**
+   * Widened to match the COLUMN, not what this module implements.
+   *
+   * `AuthMfaFactorType` in the schema is `totp | webauthn`, and narrowing the
+   * row to 'totp' would be this interface asserting something about the
+   * database that is not true — a structural client has to describe what Prisma
+   * actually returns or it stops being a safe stand-in. Nothing enrols a
+   * webauthn factor today; every QUERY below pins `type: 'totp'` so that
+   * "owes a factor" and "can satisfy a factor" stay the same set by
+   * construction rather than by remembering.
+   */
+  type: 'totp' | 'webauthn';
+  label: string;
+  /** Ciphertext, always. See server/secret-box.ts for why it cannot be a hash. */
+  secret: string;
+  confirmedAt: Date | null;
+  lastUsedAt: Date | null;
+  /**
+   * Prisma maps `BigInt` to a JS bigint. Kept as one here rather than narrowed
+   * to `number`, so the boundary conversion happens in one visible place
+   * instead of silently at every read.
+   */
+  lastUsedStep: bigint | null;
+}
+
+export interface AuthRecoveryCodeRow {
+  id: string;
+  userId: string;
+  codeHash: string;
+  usedAt: Date | null;
+}
+
 export type AuthTransaction = Omit<AuthPrismaClient, '$transaction'>;
 
 export interface AuthPrismaClient {
@@ -49,6 +96,7 @@ export interface AuthPrismaClient {
   authUser: {
     /** By email at sign-in; by id for the caller's own profile. */
     findUnique(args: { where: { email: string } | { id: string } }): Promise<AuthUserRow | null>;
+
     /**
      * Sign-in accepts an email OR a username, so one query covers both. A
      * username may not contain '@' (domain/policy.ts), so the two branches of
@@ -57,8 +105,16 @@ export interface AuthPrismaClient {
     findFirst(args: { where: { OR: ({ email: string } | { username: string })[] } }): Promise<AuthUserRow | null>;
     update(args: {
       where: { id: string };
-      data: { failedLoginCount?: number; lockedUntil?: Date | null; lastLoginAt?: Date };
-    }): Promise<unknown>;
+      data: {
+        failedLoginCount?: number;
+        lockedUntil?: Date | null;
+        lastLoginAt?: Date;
+        /** Free text the person chose. Never an identifier. */
+        displayName?: string | null;
+        /** Normalised before it gets here. `@unique`, so a clash throws. */
+        username?: string;
+      };
+    }): Promise<AuthUserRow>;
   };
 
   authCredential: {
@@ -74,7 +130,15 @@ export interface AuthPrismaClient {
   };
 
   authSession: {
-    findUnique(args: { where: { refreshTokenHash: string }; include: { user: true } }): Promise<AuthSessionRow | null>;
+    findUnique(args: {
+      where: { refreshTokenHash: string } | { id: string };
+      include: { user: true };
+    }): Promise<AuthSessionRow | null>;
+    /** Ids only, for the revocation denylist — never the token hashes. */
+    findMany(args: {
+      where: { userId: string; revokedAt?: null | { not: null } };
+      select: { id: true };
+    }): Promise<{ id: string }[]>;
     create(args: {
       data: {
         userId: string;
@@ -90,9 +154,68 @@ export interface AuthPrismaClient {
      * so two concurrent refreshes cannot both succeed. See AuthService.refresh.
      */
     updateMany(args: {
-      where: { id?: string; userId?: string; refreshTokenHash?: string; revokedAt?: null };
-      data: { refreshTokenHash?: string; expiresAt?: Date; lastUsedAt?: Date; revokedAt?: Date };
+      where: {
+        id?: string;
+        userId?: string;
+        refreshTokenHash?: string;
+        revokedAt?: null;
+        /** `not` so "every session EXCEPT this one" is expressible — see confirmMfa. */
+        NOT?: { id: string };
+      };
+      data: { refreshTokenHash?: string; expiresAt?: Date; lastUsedAt?: Date; revokedAt?: Date; mfaSatisfiedAt?: Date };
     }): Promise<{ count: number }>;
+  };
+
+  /**
+   * Second factors. Note there is no `findUnique` by id alone: every lookup is
+   * scoped by `userId` as well, so a factor id guessed or leaked from another
+   * account cannot be confirmed or revoked by its non-owner. That is a
+   * property of the query shape, not of a check somebody has to remember.
+   */
+  authMfaFactor: {
+    findFirst(args: {
+      where: { userId: string; id?: string; type?: 'totp'; confirmedAt?: null | { not: null } };
+    }): Promise<AuthMfaFactorRow | null>;
+    findMany(args: {
+      where: { userId: string; type?: 'totp'; confirmedAt?: null | { not: null } };
+      orderBy?: { createdAt: 'asc' | 'desc' };
+    }): Promise<AuthMfaFactorRow[]>;
+    create(args: {
+      data: { userId: string; type: 'totp'; label: string; secret: string };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    /**
+     * `lastUsedStep: { lt }` in the WHERE clause, not just in the data.
+     *
+     * That is what makes a code single-use under concurrency: two requests
+     * carrying the same code race here, and the database — not the read above
+     * — decides that only one of them advances the step. Checking `lastUsedStep`
+     * in application code and writing unconditionally would let both through.
+     */
+    updateMany(args: {
+      where: {
+        id: string;
+        userId: string;
+        confirmedAt?: null | { not: null };
+        OR?: ({ lastUsedStep: null } | { lastUsedStep: { lt: bigint } })[];
+      };
+      data: { confirmedAt?: Date; lastUsedAt?: Date; lastUsedStep?: bigint };
+    }): Promise<{ count: number }>;
+    deleteMany(args: { where: { id?: string; userId: string; confirmedAt?: null } }): Promise<{ count: number }>;
+  };
+
+  /**
+   * The way back in when the factor is lost.
+   *
+   * `codeHash` is `@unique` across the table, so the lookup needs no userId —
+   * but the service checks the row's owner anyway, because a global unique
+   * index is a property of today's schema and the check costs nothing.
+   */
+  authRecoveryCode: {
+    findMany(args: { where: { userId: string; usedAt?: null } }): Promise<AuthRecoveryCodeRow[]>;
+    createMany(args: { data: { userId: string; codeHash: string }[] }): Promise<{ count: number }>;
+    updateMany(args: { where: { id: string; usedAt: null }; data: { usedAt: Date } }): Promise<{ count: number }>;
+    deleteMany(args: { where: { userId: string } }): Promise<{ count: number }>;
   };
 
   authPasswordReset: {

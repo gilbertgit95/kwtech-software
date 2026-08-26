@@ -6,6 +6,7 @@ const OPTIONS: ResolvedAuthModuleOptions = {
   jwtSecret: 'test-secret-not-a-real-one',
   issuer: 'kwtech-test',
   audience: 'kwtech-test-api',
+  mfaIssuerLabel: 'KWTech',
 };
 
 const service = (over: Partial<ResolvedAuthModuleOptions> = {}) => new TokenService({ ...OPTIONS, ...over });

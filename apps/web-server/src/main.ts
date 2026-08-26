@@ -42,7 +42,11 @@ async function bootstrap() {
   // routes appear here with no wiring in this file (PLAN §6, §9).
   const document = SwaggerModule.createDocument(
     app,
-    new DocumentBuilder().setTitle('kwtech API').setVersion('0.0.0').addBearerAuth().build(),
+    // The title is what anyone opening /docs reads, so it follows APP_NAME
+    // like every other displayed name. It was hardcoded 'kwtech API' — the one
+    // place a product rename would have been left behind, and the only one
+    // that is a PAGE rather than a string inside an email.
+    new DocumentBuilder().setTitle(`${env.APP_NAME} API`).setVersion('0.0.0').addBearerAuth().build(),
   );
   SwaggerModule.setup(`${API_PREFIX}/docs`, app, document);
 

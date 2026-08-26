@@ -1,7 +1,10 @@
+import { RECOVERY_CODE_COUNT } from '../src/domain/policy.js';
 import type { ResolvedAuthModuleOptions } from '../src/server/auth.options.js';
 import type {
+  AuthMfaFactorRow,
   AuthPasswordResetRow,
   AuthPrismaClient,
+  AuthRecoveryCodeRow,
   AuthSessionRow,
   AuthUserRow,
 } from '../src/server/auth.repository.js';
@@ -27,6 +30,7 @@ const OPTIONS: ResolvedAuthModuleOptions = {
   jwtSecret: 'test-secret-not-a-real-one',
   issuer: 'kwtech-test',
   audience: 'kwtech-test-api',
+  mfaIssuerLabel: 'KWTech',
 };
 
 interface State {
@@ -36,6 +40,11 @@ interface State {
   reset?: AuthPasswordResetRow | null;
   rotateWins?: boolean;
   consumeWins?: boolean;
+  /** Confirmed factors make the account owe a second factor at sign-in. */
+  factors?: AuthMfaFactorRow[];
+  recoveryCodes?: AuthRecoveryCodeRow[];
+  /** false when a concurrent request already spent the step or the code. */
+  mfaSpendWins?: boolean;
 }
 
 interface Writes {
@@ -45,6 +54,12 @@ interface Writes {
   credentialUpserts: unknown[];
   resetCreates: unknown[];
   resetUpdates: unknown[];
+  factorCreates: unknown[];
+  factorUpdates: unknown[];
+  factorDeletes: unknown[];
+  recoveryCreates: unknown[];
+  recoveryUpdates: unknown[];
+  recoveryDeletes: unknown[];
 }
 
 const user = (over: Partial<AuthUserRow> = {}): AuthUserRow => ({
@@ -55,6 +70,7 @@ const user = (over: Partial<AuthUserRow> = {}): AuthUserRow => ({
   status: 'active',
   failedLoginCount: 0,
   lockedUntil: null,
+  mfaRequiredAt: null,
   ...over,
 });
 
@@ -66,6 +82,12 @@ function harness(state: State = {}) {
     credentialUpserts: [],
     resetCreates: [],
     resetUpdates: [],
+    factorCreates: [],
+    factorUpdates: [],
+    factorDeletes: [],
+    recoveryCreates: [],
+    recoveryUpdates: [],
+    recoveryDeletes: [],
   };
   const failures: AuthFailureReason[] = [];
   const emails: { token: string; expiresAt: Date }[] = [];
@@ -96,6 +118,51 @@ function harness(state: State = {}) {
       updateMany: async (args: unknown) => {
         writes.sessionUpdates.push(args);
         return { count: state.rotateWins === false ? 0 : 1 };
+      },
+    },
+    authMfaFactor: {
+      findFirst: async (args: { where: { confirmedAt?: unknown } }) => {
+        const all = state.factors ?? [];
+        // `confirmedAt: { not: null }` in the query means "a factor that
+        // actually counts" — the fake honours it, because the difference
+        // between a confirmed and an unconfirmed factor is the property most
+        // of these tests are about.
+        const wanted = args.where.confirmedAt === null ? null : 'confirmed';
+        const match = all.find((f) => (wanted === null ? f.confirmedAt === null : f.confirmedAt !== null));
+        return match ?? null;
+      },
+      findMany: async (args: { where: { confirmedAt?: unknown } }) => {
+        const all = state.factors ?? [];
+        if (args.where.confirmedAt === undefined) return all;
+        if (args.where.confirmedAt === null) return all.filter((f) => f.confirmedAt === null);
+        return all.filter((f) => f.confirmedAt !== null);
+      },
+      create: async (args: unknown) => {
+        writes.factorCreates.push(args);
+        return { id: 'f1' };
+      },
+      updateMany: async (args: unknown) => {
+        writes.factorUpdates.push(args);
+        return { count: state.mfaSpendWins === false ? 0 : 1 };
+      },
+      deleteMany: async (args: unknown) => {
+        writes.factorDeletes.push(args);
+        return { count: 1 };
+      },
+    },
+    authRecoveryCode: {
+      findMany: async () => state.recoveryCodes ?? [],
+      createMany: async (args: unknown) => {
+        writes.recoveryCreates.push(args);
+        return { count: RECOVERY_CODE_COUNT };
+      },
+      updateMany: async (args: unknown) => {
+        writes.recoveryUpdates.push(args);
+        return { count: state.mfaSpendWins === false ? 0 : 1 };
+      },
+      deleteMany: async (args: unknown) => {
+        writes.recoveryDeletes.push(args);
+        return { count: 1 };
       },
     },
     authPasswordReset: {
@@ -252,6 +319,9 @@ describe('refresh — rotation, not reuse', () => {
     userId: 'u1',
     expiresAt: new Date(Date.now() + 60_000),
     revokedAt: null,
+    // Password alone. These accounts hold no factor, so refresh() re-derives
+    // 'full' — see test/mfa.test.ts for the case where it must not.
+    mfaSatisfiedAt: null,
     user: user(),
     ...over,
   });
@@ -292,7 +362,9 @@ describe('refresh — rotation, not reuse', () => {
 describe('signOut', () => {
   it('revokes the session named by the principal', async () => {
     const h = harness();
-    await expect(h.svc.signOut({ userId: 'u1', sessionId: 'sess1', scope: 'full', expiresAt: 0 })).resolves.toEqual({
+    await expect(
+      h.svc.signOut({ userId: 'u1', sessionId: 'sess1', scope: 'full', expiresAt: 0, issuedAt: 0 }),
+    ).resolves.toEqual({
       revoked: true,
     });
     expect(h.writes.sessionUpdates[0]).toMatchObject({ where: { id: 'sess1', revokedAt: null } });
@@ -300,7 +372,9 @@ describe('signOut', () => {
 
   it('is idempotent — signing out twice is not an error', async () => {
     const h = harness({ rotateWins: false });
-    await expect(h.svc.signOut({ userId: 'u1', sessionId: 'sess1', scope: 'full', expiresAt: 0 })).resolves.toEqual({
+    await expect(
+      h.svc.signOut({ userId: 'u1', sessionId: 'sess1', scope: 'full', expiresAt: 0, issuedAt: 0 }),
+    ).resolves.toEqual({
       revoked: false,
     });
   });
@@ -432,7 +506,7 @@ describe('resetPassword', () => {
 });
 
 describe('profile', () => {
-  const principal = { userId: 'u1', sessionId: 's1', scope: 'full' as const, expiresAt: 0 };
+  const principal = { userId: 'u1', sessionId: 's1', scope: 'full' as const, expiresAt: 0, issuedAt: 0 };
 
   it('returns the record the token cannot carry', async () => {
     const h = harness({ user: user() });

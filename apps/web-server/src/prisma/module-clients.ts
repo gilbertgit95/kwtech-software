@@ -56,6 +56,8 @@ export const authPrismaProvider: Provider = {
       authCredential: prisma.authCredential,
       authSession: prisma.authSession,
       authPasswordReset: prisma.authPasswordReset,
+      authMfaFactor: prisma.authMfaFactor,
+      authRecoveryCode: prisma.authRecoveryCode,
     }),
 };
 

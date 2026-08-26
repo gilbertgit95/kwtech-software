@@ -1,5 +1,6 @@
 'use client';
 
+import type { NavEntry } from '@kwtech/module-kit';
 import {
   cn,
   DropdownMenu,
@@ -10,10 +11,21 @@ import {
 } from '@kwtech/web-ui/react';
 import { ChevronDown, LogOut } from 'lucide-react';
 import { useRef } from 'react';
+import { iconFor } from '@/components/layout/nav-icons';
 
 interface UserMenuProps {
   name: string | null;
   email: string;
+  /**
+   * What modules contributed to the `Account` group — profile, security, and
+   * whatever a later module adds.
+   *
+   * Plain data, built on the server and already filtered against the caller's
+   * grants. It arrives as a prop rather than being read here because computing
+   * it means touching WEB_MODULES, which holds every module's page components —
+   * importing that from a client component would drag them all into the bundle.
+   */
+  accountNav?: readonly NavEntry[];
 }
 
 /**
@@ -46,7 +58,7 @@ function Avatar({ initials, className }: { initials: string; className?: string 
   );
 }
 
-export function UserMenu({ name, email }: UserMenuProps) {
+export function UserMenu({ name, email, accountNav = [] }: UserMenuProps) {
   const initials = initialsOf(name, email);
   // `||`, not `??`: an empty-string display name is as absent as a null one,
   // and it comes from a nullable column.
@@ -99,10 +111,33 @@ export function UserMenu({ name, email }: UserMenuProps) {
           <DropdownMenuSeparator className="my-1" />
 
           {/*
-           * There is deliberately no "Your account" item yet: this app has no
-           * account page, and a menu entry that 404s is worse than one that is
-           * missing.
+           * The account pages, ABOVE sign-out and separated from it.
+           *
+           * Order is not cosmetic: sign-out is the one item here that cannot be
+           * undone, and putting it last — after a rule — means a mis-aimed click
+           * lands on a navigation rather than on the end of the session.
+           *
+           * Rendered as real <a> elements, so middle-click and "open in new tab"
+           * work and the browser shows the destination on hover. `asChild` hands
+           * Radix the anchor to own instead of wrapping a link in a button.
            */}
+          {accountNav.length > 0 ? (
+            <>
+              {accountNav.map((entry) => {
+                const Icon = iconFor(entry.icon);
+                return (
+                  <DropdownMenuItem key={entry.href} asChild className="gap-2.5 rounded-lg px-2 py-2">
+                    <a href={entry.href}>
+                      <Icon aria-hidden className="opacity-80" />
+                      {entry.label}
+                    </a>
+                  </DropdownMenuItem>
+                );
+              })}
+              <DropdownMenuSeparator className="my-1" />
+            </>
+          ) : null}
+
           <DropdownMenuItem
             onSelect={(event) => {
               // Radix closes the menu after onSelect, which unmounts this row.

@@ -44,3 +44,9 @@ allowBuilds:
   # phone home with analytics about who is installing what. It arrives under
   # Prisma and nothing needs it to run.
   '@scarf/scarf': false
+  # Denied, and on the record for the same reason @scarf/scarf is. It arrives
+  # under @apollo/server purely for USAGE REPORTING to Apollo Studio, which this
+  # deployment does not use and cannot use without an APOLLO_KEY. Its install
+  # script is a vendored protobuf build; nothing on the query path calls it, and
+  # the pure-JS path is what runs either way.
+  '@apollo/protobufjs': false

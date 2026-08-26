@@ -6,6 +6,8 @@
 //
 //   AuthUser ──credential──▶ how they prove it (a password today)
 //       │
+//       ├──mfa factor──▶ a SECOND thing they prove, TOTP today
+//       ├──recovery code──▶ the way back in when that second thing is lost
 //       ├──session──▶ a live sign-in, revocable, refresh-token addressed
 //       └──password reset──▶ a one-shot, hashed, expiring token
 //
@@ -38,17 +40,19 @@ enum AuthCredentialType {
   password
 }
 
-/// ─── second factors: schema now, implementation later ─────────────────────
+/// ─── second factors ───────────────────────────────────────────────────────
 ///
-/// Not yet wired to any endpoint. Present because two of the decisions below
-/// cannot be taken later without a data migration, and because the sign-in path
-/// has to be able to REPRESENT a half-admitted user before it can handle one.
+/// `totp` is IMPLEMENTED (2026-08-26): enrol, confirm, and a sign-in challenge.
+/// `webauthn` is not — it is a value, not a table, precisely so that adding it
+/// is a code change rather than a migration. Every query in the module pins
+/// `type: 'totp'`, so a webauthn row could never make an account owe a factor
+/// no endpoint can satisfy.
 enum AuthMfaFactorType {
-  /// RFC 6238 authenticator app. The secret is symmetric — see the warning on
+  /// RFC 6238 authenticator app. The secret is symmetric — see the note on
   /// AuthMfaFactor.secret.
   totp
   /// A security key or platform authenticator. Stores a PUBLIC key, so it
-  /// carries none of totp's storage risk.
+  /// carries none of totp's storage risk. NOT IMPLEMENTED.
   webauthn
 }
 
@@ -103,6 +107,12 @@ model AuthUser {
   /// denormalised flag is a second source of truth that drifts from the rows it
   /// summarises. Being required to enrol, and having enrolled, are different
   /// facts, and only the first one needs a column.
+  ///
+  /// ⚠️ RECORDED BUT NOT YET ENFORCED at sign-in. Holding a user at a challenge
+  /// they cannot satisfy — required, but not enrolled — would lock them out with
+  /// no way forward. Enforcing it needs a token scope that admits the ENROLMENT
+  /// endpoints and nothing else, and a fourth `TokenScope` is not a thing to add
+  /// quietly. Until then sign-in reads the factor rows, not this column.
   mfaRequiredAt DateTime?
 
   credentials    AuthCredential[]
@@ -115,7 +125,7 @@ model AuthUser {
   @@map("auth_user")
 }
 
-/// A second factor. SCHEMA ONLY — nothing reads or writes this table yet.
+/// A second factor. IN USE for `totp`.
 ///
 /// **`confirmedAt` is the load-bearing column.** A factor is inert until its
 /// owner has proved once that it works. Without that, enrolling a
@@ -123,14 +133,18 @@ model AuthUser {
 /// account with a factor they can never satisfy — and the recovery path for that
 /// is a support ticket, which is exactly what MFA makes expensive to answer.
 ///
-/// ⚠️ **`secret` must be encrypted at rest before any TOTP code is verified.**
-/// It is NOT like a password hash. A password hash is one-way: a stolen database
-/// yields work, not credentials. A TOTP secret is SYMMETRIC — whoever reads it
-/// can generate valid codes forever, so a leaked dump defeats the second factor
-/// entirely. It needs application-level encryption with a key that does not live
-/// in the database. Left as a plain column here precisely so that the person who
-/// implements TOTP has to make that decision explicitly rather than inherit a
-/// silent default. WebAuthn stores a public key and needs none of this.
+/// ⚠️ **`secret` holds CIPHERTEXT, never a plain TOTP secret.** It is not like a
+/// password hash and cannot be one. A password hash is one-way: a stolen
+/// database yields work, not credentials. A TOTP secret is SYMMETRIC — whoever
+/// reads it can generate valid codes forever, so a leaked dump would defeat the
+/// second factor entirely. It is encrypted with AES-256-GCM by
+/// `server/secret-box.ts`, under a key configured as `mfaSecretKey` /
+/// `AUTH_MFA_SECRET_KEY` and deliberately NOT stored in this database — which is
+/// the only thing that makes the dump and the secret separable.
+///
+/// Rotating that key makes every row here undecryptable and pushes the affected
+/// users onto AuthRecoveryCode. WebAuthn would store a public key and need none
+/// of this.
 model AuthMfaFactor {
   id     String            @id @default(cuid())
   userId String
@@ -168,7 +182,7 @@ model AuthMfaFactor {
 }
 
 /// The way back in when the second factor is lost — a phone replaced, stolen or
-/// wiped. SCHEMA ONLY.
+/// wiped, or the encryption key rotated out from under it. IN USE.
 ///
 /// Hashed like a password rather than like a refresh token: a recovery code is
 /// typed by a human, so it is short and low-entropy enough that a fast hash over

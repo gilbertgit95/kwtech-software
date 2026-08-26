@@ -19,10 +19,22 @@
  * undefined.
  */
 
-export { type AuthClient, AuthClientError, createAuthClient } from './auth-client.js';
+export { type AuthActionResult, type AuthClient, AuthClientError, createAuthClient } from './auth-client.js';
 export { AuthError, AuthField, AuthShell, AuthSubmit } from './auth-shell.js';
 export { ForgotPasswordPage } from './forgot-password-page.js';
+export { MfaChallengePage } from './mfa-challenge-page.js';
 export { authWebModule } from './module.js';
 export { ResetPasswordPage } from './reset-password-page.js';
+export { SessionKeeper } from './session-keeper.js';
+export { ProfilePage } from './settings/profile-page.js';
+export { ProfileRouteInner } from './settings/profile-route.js';
+export { SecurityPage } from './settings/security-page.js';
+export {
+  SettingsButton,
+  SettingsCard,
+  SettingsPage,
+  SettingsResult,
+} from './settings/settings-shell.js';
+export { TwoFactorPage } from './settings/two-factor-page.js';
 export { SignInPage } from './sign-in-page.js';
 export { type AuthFormState, useAuthForm } from './use-auth-form.js';

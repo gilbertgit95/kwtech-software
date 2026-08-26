@@ -19,7 +19,20 @@
       "!**/public",
       // Written by Next on every build and stamped "should not be edited".
       // Formatting it is churn that the next build reverses.
-      "!**/next-env.d.ts"
+      "!**/next-env.d.ts",
+      // Emitted by Nest's code-first driver on every boot (autoSchemaFile). It
+      // is committed on purpose — PLAN §6 makes it the contract the frontend
+      // generates types from, so a resolver change that alters the public schema
+      // shows up in review. But formatting it is churn the next boot reverses,
+      // exactly like next-env.d.ts above.
+      "!apps/web-server/schema.graphql",
+      // Email templates. The .html files carry Eta tags (`<%= %>`), which Biome
+      // reads as an unescaped `<` and rejects as a parse error — and a file it
+      // cannot parse is a file it silently stops checking, so excluding them is
+      // explicit rather than incidental. They are templates compiled at runtime,
+      // not documents: the escaping rule that actually matters for them is
+      // enforced by apps/web-server/test/render.test.ts instead.
+      "!apps/web-server/src/mail/templates"
     ]
   },
   "css": {

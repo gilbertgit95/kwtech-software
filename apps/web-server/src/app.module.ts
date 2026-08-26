@@ -2,9 +2,13 @@ import { AuthModule, JwtAuthGuard } from '@kwtech/module-auth/server';
 import { FeatureGuard, PermissionsModule } from '@kwtech/module-permissions/server';
 import { Logger, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
+import { env } from './config/env.js';
+import { graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import {
   authPrismaProvider,
@@ -44,8 +48,15 @@ const authFailures = new Logger('AuthFailure');
      */
     ThrottlerModule.forRoot([
       { name: 'default', ttl: 60_000, limit: 120 },
-      // Named, so a credential endpoint can opt into the tighter bucket with
-      // @Throttle({ credential: {} }) without changing the global one.
+      /*
+       * The tight bucket for endpoints where somebody is GUESSING a secret —
+       * sign-in, the 2FA challenge, forgot- and reset-password.
+       *
+       * Pointed at them by CredentialThrottlerGuard rather than by a @Throttle
+       * decorator, because the handlers live in @kwtech/module-auth and that
+       * package must not depend on @nestjs/throttler. The module publishes the
+       * list; see ./auth/credential-throttler.guard.ts.
+       */
       { name: 'credential', ttl: 60_000, limit: 10 },
     ]),
 
@@ -64,6 +75,26 @@ const authFailures = new Logger('AuthFailure');
     AuthModule.forRoot({
       prismaProvider: authPrismaProvider,
       sendPasswordResetEmail,
+
+      /*
+       * THE SAME FUNCTION the permissions module is given below.
+       *
+       * Authentication and authorisation must agree about who is calling, and
+       * two ways of finding the request is two chances for them not to. It is
+       * what lets one JwtAuthGuard cover REST, GraphQL and — once subscriptions
+       * land — the socket handshake.
+       */
+      getRequest: requestFromContext,
+
+      /*
+       * Passed EXPLICITLY, not left to the module's own AUTH_MFA_ISSUER_LABEL
+       * lookup. The fallback to APP_NAME happens in this app's zod schema, and
+       * a zod default never reaches `process.env` — so leaving the module to
+       * read the variable itself would give it nothing and it would fall back
+       * to the token issuer, `kwtech-web-server`, which is what people would
+       * then see in their authenticator app.
+       */
+      mfaIssuerLabel: env.AUTH_MFA_ISSUER_LABEL,
       onAuthFailure: (event) => {
         // The endpoint tells the caller nothing; an operator still needs to
         // tell an unknown address from a locked account. This is where that
@@ -73,8 +104,27 @@ const authFailures = new Logger('AuthFailure');
       },
     }),
 
+    /*
+     * ONE registration, and no module is named in it.
+     *
+     * Code-first means a module's resolver is just a provider it already
+     * declares, so its queries reach the schema by the module being imported —
+     * see ./graphql/graphql.options.ts. Adding the tenth module costs nothing
+     * here.
+     */
+    GraphQLModule.forRoot(graphqlOptions()),
+
     PermissionsModule.forRoot({
       apiPrefix: '/api/v1',
+
+      /*
+       * How the guard finds the request, on EITHER transport.
+       *
+       * `context.switchToHttp()` returns an empty shell for a GraphQL call, so
+       * without this the FeatureGuard would resolve nobody on every GraphQL
+       * field and refuse everyone. One guard, two transports, one seam.
+       */
+      getRequest: requestFromContext,
       prismaProvider: permissionsPrismaProvider,
       prismaWriteProvider: permissionsWritePrismaProvider,
 
@@ -99,7 +149,7 @@ const authFailures = new Logger('AuthFailure');
     // each module supplies its own. The guards these modules already export are
     // fully wired; this just points APP_GUARD at them.
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: CredentialThrottlerGuard },
     { provide: APP_GUARD, useExisting: FeatureGuard },
   ],
 })

@@ -1,0 +1,61 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type MfaFactor {
+  confirmedAt: String
+  id: String!
+  label: String!
+  lastUsedAt: String
+  type: String!
+}
+
+type Mutation {
+  updateProfile(input: UpdateProfileInput!): Viewer!
+}
+
+type PermissionContext {
+  accessibleWorkspaceIds: [String!]
+  effective: [String!]!
+  entitled: [String!]
+  granted: [String!]!
+  grantedAtAppLevel: [String!]!
+  organizationId: String
+  subjectId: String!
+  workspaceId: String
+}
+
+type PermissionFeature {
+  description: String!
+  isPrivileged: Boolean!
+  key: String!
+  label: String!
+  module: String!
+}
+
+type Query {
+  mfaFactors: [MfaFactor!]!
+  myPermissions: PermissionContext
+  permissionFeatures: [PermissionFeature!]!
+  session: SessionInfo
+  viewer: Viewer
+}
+
+type SessionInfo {
+  accessTokenTtl: Int!
+  expiresAt: Int!
+  scope: String!
+  userId: String!
+}
+
+input UpdateProfileInput {
+  displayName: String
+  username: String
+}
+
+type Viewer {
+  displayName: String
+  email: String!
+  id: String!
+  username: String
+}

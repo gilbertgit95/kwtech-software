@@ -21,7 +21,8 @@
       "types": "./dist/next/index.d.ts",
       "default": "./dist/next/index.js"
     },
-    "./prisma": "./prisma/auth.prisma"
+    "./prisma": "./prisma/auth.prisma",
+    "./graphql": "./src/graphql/operations.graphql"
   },
   "files": [
     "dist",
@@ -42,7 +43,8 @@
     "jsonwebtoken": "^9.0.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
-    "reflect-metadata": "^0.2.0"
+    "reflect-metadata": "^0.2.0",
+    "@nestjs/graphql": "^13.0.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -58,6 +60,9 @@
       "optional": true
     },
     "next": {
+      "optional": true
+    },
+    "@nestjs/graphql": {
       "optional": true
     }
   },
@@ -77,6 +82,8 @@
     "jsonwebtoken": "^9.0.3",
     "next": "16.3.1",
     "reflect-metadata": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "@nestjs/graphql": "^13.4.5",
+    "graphql": "^17.0.2"
   }
 }

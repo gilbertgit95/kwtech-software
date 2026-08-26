@@ -1,3 +1,5 @@
+import { SESSION_TTL } from '../domain/policy.js';
+
 /**
  * How the Next adapter is configured — and why it has defaults at all.
  *
@@ -35,6 +37,8 @@ export interface AuthNextConfig {
    * http on localhost; anything else in production is a session sent in clear.
    */
   secure: boolean;
+  /** Seconds the browser keeps the cookies. See DEFAULT_SESSION_MAX_AGE. */
+  sessionMaxAge: number;
 }
 
 /** The refresh token's cookie is derived, so one name configures both. */
@@ -44,6 +48,33 @@ export function refreshCookieName(config: AuthNextConfig): string {
 
 export const DEFAULT_API_URL = 'http://localhost:8080/api/v1';
 export const DEFAULT_COOKIE_NAME = 'kwtech_session';
+
+/**
+ * How long the browser keeps the session cookies, in seconds.
+ *
+ * Defaults to `SESSION_TTL` — the same constant the API uses for the refresh
+ * token — so the cookie and the row it names expire together.
+ *
+ * ## Why this exists at all
+ *
+ * Written without it, both cookies had no `Max-Age` and no `Expires`, which
+ * makes them SESSION COOKIES: the browser throws them away when it closes. A
+ * seven-day server session was therefore unreachable after a browser restart,
+ * and "stay signed in for a week" actually meant "until you quit your browser".
+ *
+ * ## The trade, stated
+ *
+ * A persistent cookie survives closing the browser, which is what people expect
+ * — and on a shared or public machine it also means the next person to open the
+ * browser is still signed in as you. Applications that care usually put this
+ * behind a "Keep me signed in" checkbox and issue a session cookie when it is
+ * unticked. This deployment keeps people signed in unconditionally; that is a
+ * product decision, and this is where it is made.
+ *
+ * ⚠️ Keep it >= the API's `AUTH_SESSION_TTL`. A shorter cookie signs people out
+ * early for no reason; a longer one merely costs one refused refresh.
+ */
+export const DEFAULT_SESSION_MAX_AGE = SESSION_TTL;
 
 /**
  * Resolved lazily, per call, NOT once at import time.
@@ -57,5 +88,23 @@ export function resolveConfig(overrides?: Partial<AuthNextConfig>): AuthNextConf
     apiUrl: overrides?.apiUrl ?? process.env.API_URL ?? DEFAULT_API_URL,
     cookieName: overrides?.cookieName ?? process.env.SESSION_COOKIE ?? DEFAULT_COOKIE_NAME,
     secure: overrides?.secure ?? process.env.NODE_ENV === 'production',
+    sessionMaxAge: overrides?.sessionMaxAge ?? readSeconds(process.env.SESSION_MAX_AGE) ?? DEFAULT_SESSION_MAX_AGE,
   };
+}
+
+/**
+ * A positive integer of seconds, or undefined.
+ *
+ * Refuses anything else rather than falling back silently: `SESSION_MAX_AGE=7d`
+ * would parse as 7 with `parseInt` and sign everyone out after seven SECONDS,
+ * which is the kind of misconfiguration that reads as a mysterious bug rather
+ * than a typo.
+ */
+function readSeconds(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`SESSION_MAX_AGE must be a whole number of seconds — received '${raw}'`);
+  }
+  const seconds = Number(raw);
+  return seconds > 0 ? seconds : undefined;
 }

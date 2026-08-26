@@ -46,6 +46,21 @@ const APP_NAV: readonly NavEntry[] = [
  */
 const GROUP_ORDER: readonly string[] = ['Overview', 'Administration'];
 
+/**
+ * The group that renders in the ACCOUNT MENU rather than the side drawer.
+ *
+ * A module declares `nav: { group: 'Account' }` and does not care where that
+ * lands — placement is the shell's business, and a module cannot know that this
+ * app happens to have a header dropdown. So the declaration stays plain data and
+ * this constant is the app's decision about where to put it.
+ *
+ * Why not the drawer: the drawer answers "what can I do here", and your own
+ * profile is not a place in the application — it is a property of the person
+ * using it. It belongs next to who you are, which is where the sign-out button
+ * already lives.
+ */
+export const ACCOUNT_GROUP = 'Account';
+
 function groupRank(group: string): number {
   const index = GROUP_ORDER.indexOf(group);
   return index === -1 ? GROUP_ORDER.length : index;
@@ -60,7 +75,11 @@ function groupRank(group: string): number {
  * mismatch one shared key is supposed to prevent.
  */
 export function buildNav(heldFeatures: readonly string[] | undefined): NavGroup[] {
-  const entries = [...APP_NAV, ...composeNav(WEB_MODULES, heldFeatures ?? [])];
+  const entries = [...APP_NAV, ...composeNav(WEB_MODULES, heldFeatures ?? [])].filter(
+    // Rendered by the account menu instead — see ACCOUNT_GROUP. Filtered here
+    // rather than at the source so a module still declares one kind of thing.
+    (entry) => entry.group !== ACCOUNT_GROUP,
+  );
 
   entries.sort(
     (a, b) =>
@@ -77,4 +96,19 @@ export function buildNav(heldFeatures: readonly string[] | undefined): NavGroup[
     else groups.push({ group: entry.group, items: [entry] });
   }
   return groups;
+}
+
+/**
+ * The entries that belong in the account menu.
+ *
+ * Filtered against the caller's grants by the same `composeNav` call the drawer
+ * uses, so an entry cannot appear in the menu that would be refused at the page
+ * — the mismatch one shared feature key exists to prevent. The auth module's
+ * two entries carry no key at all, deliberately: managing your own account is
+ * not a grantable right.
+ */
+export function buildAccountNav(heldFeatures: readonly string[] | undefined): NavEntry[] {
+  return composeNav(WEB_MODULES, heldFeatures ?? [])
+    .filter((entry) => entry.group === ACCOUNT_GROUP)
+    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
 }

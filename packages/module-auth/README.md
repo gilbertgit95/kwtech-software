@@ -24,10 +24,10 @@ export const WEB_MODULES = [authWebModule];
 export { POST } from '@kwtech/module-auth/next';
 ```
 
-That gives you `/auth/signin`, `/auth/forgot-password` and
-`/auth/reset-password` as rendered pages, and `signin`, `forgot-password`,
-`reset-password` and `signout` as endpoints that keep the tokens in httpOnly
-cookies the page's JavaScript cannot read.
+That gives you `/auth/signin`, `/auth/verify`, `/auth/forgot-password` and
+`/auth/reset-password` as rendered pages, and `signin`, `verify-mfa`,
+`forgot-password`, `reset-password` and `signout` as endpoints that keep the
+tokens in httpOnly cookies the page's JavaScript cannot read.
 
 Reading the session, anywhere on the server:
 
@@ -52,8 +52,27 @@ authentication is opt-out via `@Public`, so a handler nobody annotated is
 protected rather than anonymous.
 
 Only the Prisma binding has no default — the database client is the app's.
-Add `sendPasswordResetEmail` before enabling forgot-password: without it the
-endpoint refuses rather than minting a token nobody can receive.
+Two options switch a feature on rather than configure one, and both refuse
+rather than half-working without it:
+
+- `sendPasswordResetEmail` — forgot-password. The obvious fallback, logging the
+  link, writes a working credential into the log aggregator.
+- `mfaSecretKey` (or `AUTH_MFA_SECRET_KEY`) — two-factor authentication. A TOTP
+  secret is symmetric and cannot be hashed, so without a key there is no safe
+  way to store one.
+
+Rate limiting is yours too: the module exports `CREDENTIAL_ENDPOINTS` so a
+throttler can be pointed at the guessing endpoints without matching URLs.
+
+## Two-factor authentication
+
+TOTP, with recovery codes. Sign-in returns `mfaRequired` and a token scoped to
+one endpoint; `refresh()` **re-derives** that scope from the session row, so
+waiting out the access token is not a way past the second factor. Enrolling or
+removing a factor needs the current password, not just a session.
+
+See [docs/USAGE.md §6a](docs/USAGE.md) for the flow, the storage decision and
+what is deliberately not enforced.
 
 ## Environment
 
@@ -67,6 +86,8 @@ is configured; pass values explicitly and none of them is read.
 | `AUTH_JWT_SECRET` | `/server` | **none — `forRoot` throws** |
 | `AUTH_TOKEN_ISSUER` | `/server` | `kwtech-web-server` |
 | `AUTH_TOKEN_AUDIENCE` | `/server` | `kwtech-api` |
+| `AUTH_MFA_SECRET_KEY` | `/server` | **none — enrolment refuses** |
+| `AUTH_MFA_ISSUER_LABEL` | `/server` | falls back to `AUTH_TOKEN_ISSUER` |
 
 The secret is the deliberate exception. A module-supplied fallback would be the
 same secret in every deployment that forgot to set one — worse than a failed

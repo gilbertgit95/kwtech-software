@@ -27,8 +27,15 @@
  */
 import { createAuthRouteHandlers } from './route-handlers.js';
 
-export { type AuthNextConfig, DEFAULT_API_URL, DEFAULT_COOKIE_NAME, refreshCookieName } from './config.js';
+export {
+  type AuthNextConfig,
+  DEFAULT_API_URL,
+  DEFAULT_COOKIE_NAME,
+  DEFAULT_SESSION_MAX_AGE,
+  refreshCookieName,
+} from './config.js';
 export { type CookieAttributes, readCookie, serializeCookie } from './cookies.js';
+export { type RenewalDecision, renewSessionIfNeeded } from './renew.js';
 export { createAuthRouteHandlers } from './route-handlers.js';
 export { getSessionToken, getViewer } from './session.js';
 

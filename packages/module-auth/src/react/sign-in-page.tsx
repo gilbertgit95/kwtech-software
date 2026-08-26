@@ -17,6 +17,7 @@ export function SignInPage({
   onSignedIn,
   redirectTo = '/',
   forgotPasswordHref = '/auth/forgot-password',
+  mfaHref = '/auth/verify',
 }: {
   client?: AuthClient;
   /**
@@ -29,17 +30,41 @@ export function SignInPage({
    * exactly the bug this default exists to prevent.
    */
   redirectTo?: string;
-  /** Overrides the navigation entirely, for an app that wants its own. */
+  /**
+   * Overrides the navigation entirely, for an app that wants its own.
+   *
+   * Called ONLY for a finished sign-in. A user who still owes a second factor
+   * goes to the challenge instead — handing them to `onSignedIn` would tell the
+   * app someone is signed in when the API has not agreed to that yet.
+   */
   onSignedIn?: () => void;
   forgotPasswordHref?: string;
+  /**
+   * Where a half-admitted sign-in continues.
+   *
+   * `?next=` is carried across so the destination survives the extra step;
+   * losing it would land every 2FA user on the home page regardless of what
+   * they were trying to reach.
+   */
+  mfaHref?: string;
 }) {
   const api = useMemo(() => client ?? createAuthClient(), [client]);
 
   const { pending, error, onSubmit } = useAuthForm(async (form) => {
-    await api.signIn({
+    const result = await api.signIn({
       identifier: String(form.get('identifier') ?? ''),
       password: String(form.get('password') ?? ''),
     });
+
+    // The password was right and a second factor is owed. The session cookie is
+    // already set — to a token that may reach the challenge endpoint and
+    // nothing else — so this navigation is the whole handover.
+    if (result?.mfaRequired) {
+      const next = redirectTo === '/' ? '' : `?next=${encodeURIComponent(redirectTo)}`;
+      window.location.assign(`${mfaHref}${next}`);
+      return;
+    }
+
     if (onSignedIn) onSignedIn();
     else window.location.assign(redirectTo);
   });

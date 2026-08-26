@@ -108,12 +108,19 @@ export class TokenService {
     if (typeof claims.sub !== 'string' || claims.sub.length === 0) return null;
     if (typeof claims.sid !== 'string' || claims.sid.length === 0) return null;
     if (typeof claims.exp !== 'number') return null;
+    if (typeof claims.iat !== 'number') return null;
     // Every KNOWN scope is accepted here; deciding which ones may reach a given
     // endpoint is JwtAuthGuard's job (@AllowScopes) and resolvePrincipal's.
     // Verification says "this token is genuine", not "this token is enough".
     if (claims.scope !== 'full' && claims.scope !== 'pwd_change' && claims.scope !== 'mfa') return null;
 
-    return { userId: claims.sub, sessionId: claims.sid, scope: claims.scope, expiresAt: claims.exp };
+    return {
+      userId: claims.sub,
+      sessionId: claims.sid,
+      scope: claims.scope,
+      expiresAt: claims.exp,
+      issuedAt: claims.iat,
+    };
   }
 
   /**

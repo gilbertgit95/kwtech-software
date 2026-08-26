@@ -488,11 +488,355 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 14 | Confirm app-level roles should bypass plan entitlement | Phase 2 | the default: staff must be able to help a lapsed organization. It is the one path that ignores billing state, so it needs a deliberate yes |
 | 15 | Should surfaces declare themselves **public**, rather than being public by omission? | Phase 6 | enforcement is opt-in, so an endpoint that should be guarded looks identical to one deliberately open. A `@Public('reason')` marker plus a coverage report would close it, at the cost of annotating every surface |
 | 16 | ~~Does `PermWorkspaceMember` earn its place?~~ **Closed** | — | yes: workspaces have members, and workspace roles hang off that membership |
+| 17 | A fourth `TokenScope` (`mfa_enrol`) so `AuthUser.mfaRequiredAt` can be enforced | when 2FA is made mandatory | the column is written today and read by nothing. Enforcing it means admitting a half-admitted user to the ENROLMENT endpoints only; without that scope, "required but not enrolled" is a lockout with no way forward |
+| 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-08-27** — **Revocation is now IMMEDIATE, without shortening the token
+  lifetime.** `SessionRevocationStore` holds revoked sessions for exactly as long
+  as an access token can live, and `JwtAuthGuard` checks it after verifying the
+  signature. Entries expire on their own, so the store only ever holds the last
+  few minutes of revocations — a handful of keys and an O(1) lookup, not the
+  per-request database read the whole design exists to avoid.
+  Two kinds of entry, because there are two kinds of revocation: **by session**
+  (sign out this device; change-password, which spares the caller's own session)
+  and **by user before an instant** (sign out everywhere; password reset). The
+  second is one entry however many sessions existed, and it catches a token that
+  was IN FLIGHT when the revocation happened — which a list of known session ids
+  cannot. It compares against the token's `iat`, so `Principal` gained
+  `issuedAt`; comparing against `exp` would be wrong, because two tokens minted
+  seconds apart can share an expiry and the newer one, from a legitimate sign-in
+  AFTER the revocation, must survive.
+  **This decouples revocation from `AUTH_ACCESS_TOKEN_TTL`.** That variable was
+  lowered to 5m yesterday purely to bound the window; with a denylist it is free
+  to go back up, trading refresh chatter for nothing.
+  ⚠️ `InMemoryRevocationStore` is correct for exactly ONE API instance. A second
+  replica has its own Map and will accept a token the first just revoked — the
+  same caveat the in-memory PubSub carries (§7), with the same remedy: pass a
+  Redis-backed store to `forRoot`. On by default anyway, because the alternative
+  to a default is no revocation at all, and an app that never scales should not
+  need Redis for correct sign-out.
+- **2026-08-27** — **Session cookies were killing the seven-day session.** Both
+  were written with no `Max-Age` and no `Expires`, which makes them SESSION
+  cookies: the browser discards them when it closes, so `AUTH_SESSION_TTL=7d`
+  described a row the browser could never reach again. "Stay signed in for a
+  week" actually meant "until you quit your browser". Now persistent, at
+  `DEFAULT_SESSION_MAX_AGE` (= `SESSION_TTL`). The trade is stated where the
+  constant is: a persistent cookie survives a browser restart, and on a shared
+  machine that means the next person is still signed in as you. Most products put
+  this behind a "Keep me signed in" checkbox; this one keeps people signed in
+  unconditionally, which is a product decision and not a default.
+- **2026-08-27** — **Middleware renews before the render**, and it is the other
+  half of the same fix. Persistent cookies alone still bounced people: reopening
+  after five minutes means the access token is expired, the server renders,
+  `getViewer()` is null, and the shell redirects — while the refresh token sits
+  unused. `SessionKeeper` cannot help, because the server decides before any
+  client code runs. `renewSessionIfNeeded` returns plain `Set-Cookie` strings so
+  the module imports no `next/server` (see cookies.ts for the runtime failure
+  that forced that rule), and the app's `middleware.ts` applies them.
+  Two details that would have half-fixed it: the renewed token is put on the
+  REQUEST as well as the response, or the page still reads the old cookie and
+  only the NEXT navigation works; and `/api/auth` is excluded from the matcher so
+  middleware and `SessionKeeper` never rotate the same refresh token at once.
+  It runs on the **Node runtime**, not Edge — it decodes a JWT payload with
+  `Buffer` and reads `process.env` at request time, both of which build cleanly
+  and fail on the first production request under Edge.
+
+- **2026-08-26** — **Nothing ever called `/auth/refresh`.** The refresh cookie was
+  written at sign-in and never read again, so a signed-in person was returned to
+  the sign-in page after fifteen minutes with an unused week-long refresh token
+  beside them. `SessionKeeper` spends it — renewing at 60% of remaining lifetime,
+  plus on `visibilitychange` and `online`, because a backgrounded tab has its
+  timers throttled hard and a slept laptop wakes with an expired token and a
+  timer that never fired. Found while answering "can a background service check
+  the token", which turned out to be the right instinct for the wrong reason.
+- **2026-08-26** — **Refresh ROTATES, so multiple tabs signed each other out.**
+  The update is conditional on the token presented, and the loser is told
+  `session_revoked` — correct on the server, where two callers holding one token
+  is indistinguishable from a theft, and wrong in a browser where it is just a
+  second tab. `visibilitychange` made it near-certain: restoring a minimised
+  window fires it in every visible tab at once. Fixed with Web Locks
+  (origin-scoped, one renewal at a time) AND a single retry on 401 — the lock
+  prevents the race, the retry covers browsers without locks and the tab opened
+  mid-rotation. Both are needed; either alone leaves a hole.
+- **2026-08-26** — **`AUTH_ACCESS_TOKEN_TTL` lowered 15m → 5m**, and the reasoning
+  is quantitative rather than a shrug. This number IS the window in which a
+  revoked or stolen access token still works, because verification reads no
+  database. The cost of lowering it scales with SESSIONS, not requests: about 7
+  queries/sec per 1000 concurrent users at 5m, against ~170/sec if the session row
+  were checked on every request instead — so a short TTL is a ten-times-cheaper
+  approximation of per-request revocation checking. Below ~2m the refresh chatter
+  stops being free and the rotation races tighten.
+  It BOUNDS the window; only a server-side denylist CLOSES it. Deferred until
+  Redis arrives for subscription pub/sub (§7) rather than shipping an in-memory
+  version that stops being correct on the second replica.
+- **2026-08-26** — **A client-side token check is UX, not a control**, and the
+  component says so at the top. Revocation is enforced server-side at
+  `/auth/refresh` by a row; the loop makes an HONEST client notice sooner. It
+  cannot make a stolen token stop working, because whoever stole it will not run
+  the loop — they send the token straight to the API, which verifies it by
+  signature alone. Worth building for the UX; worth never confusing for the other
+  thing.
+- **2026-08-26** — **The revocation window is PUBLISHED, not hardcoded in copy.**
+  `SessionInfo.accessTokenTtl` exists so the sign-out-everywhere prompt can say
+  "5 minutes" and keep being right when a deployment changes the variable. It is
+  not a secret — derivable from any two tokens' `iat` and `exp` — and the
+  alternative was a sentence that becomes a lie on the one screen where being
+  precise matters most. The prompt falls back to "a few minutes" when the query
+  fails: vague and true beats confident and wrong.
+
+- **2026-08-26** — **The account-settings surface lives in `module-auth`**, not in
+  the app: three pages (`/settings/profile`, `/settings/security`,
+  `/settings/two-factor`) shipped as `ModuleRoute`s with nav entries, exactly as
+  the sign-in pages are. Identity is the module's, so the screens for managing it
+  are too — an app gets them by listing `authWebModule`, which it already does.
+  They carry **no feature key**, deliberately: a key answers "may this person do
+  X", and managing your own account is not a grantable right. Gating it would let
+  an administrator remove someone's ability to change their own password.
+- **2026-08-26** — **The password/graph split held under pressure.** `changePassword`
+  and every MFA mutation take the CURRENT password, so they stayed on REST for the
+  same aliasing reason sign-in did — `mutation { a: changePassword(current:"1"…)
+  b: … }` is fifty guesses in one request. `changePassword` joined
+  `CREDENTIAL_ENDPOINTS`, so a stolen cookie plus an unthrottled endpoint is not a
+  password oracle. `updateProfile` and `mfaFactors` carry no secret and went on
+  the graph.
+- **2026-08-26** — **The Next proxy now forwards `/graphql` wholesale, and that is
+  a deliberate widening.** Every other entry in `PROXIED` is one named action,
+  because for REST the unit of authorisation is the PATH. GraphQL has one path and
+  many fields, and the unit is the FIELD — every resolver runs the guards.
+  Allowlisting operation names would be theatre: the name is text the caller
+  chooses. What keeps it safe is the guards on the far side, not a picky handler.
+  The handler also stopped collapsing non-credential responses to `{ ok: true }`:
+  that collapse exists to keep TOKENS out of JavaScript, and a GraphQL envelope or
+  a set of recovery codes carries none.
+- **2026-08-26** — **Self-service email change was NOT built, and the page says so
+  in a sentence rather than showing a disabled input.** Changing the address a
+  reset is delivered to, before the new one is proved, is an account-takeover
+  primitive: take a session, change the email, request a reset, receive it. It
+  needs a confirmation sent to the new address with the old one still working —
+  a flow, not a field. `UpdateProfileInput` has no `email` member so the omission
+  cannot be undone by adding a field name to a document.
+- **2026-08-26** — **"Sign out everywhere" ends THIS session too**, and the page
+  states the fifteen-minute caveat rather than hiding it. Sparing the current
+  device answers a different question from the one the button asks, and the person
+  clicking it usually suspects a device they no longer hold. Revocation bites at
+  the next refresh because access tokens are verified without a database read —
+  the trade that keeps auth off the hot path, and the number to lower if it must
+  bite faster. `changePassword` is the opposite: it spares the current session,
+  because being signed out of the tab you just used reads as a failure.
+- **2026-08-26** — **The module returns the `otpauth://` URI and draws no QR code.**
+  Rendering needs a library, and a package that picked one would decide it for
+  every consumer. `TwoFactorPage` takes a `renderQr` prop; until an app passes
+  one, the page shows the base32 key, which every authenticator accepts. The doc
+  recommends rendering server-side to a data URI — a client-side QR library keeps
+  the secret in the browser's heap for as long as the tab is open.
+
+- **2026-08-26** — **GraphQL is mounted, code-first, and no module is named in
+  the app's configuration.** `GraphQLModule.forRoot(graphqlOptions())` is the
+  whole registration; a module's resolver is an ordinary provider it already
+  declares (`expose.graphql`), so its queries reach the schema by the module
+  being imported. `schema.graphql` is emitted at boot and committed — §6 makes it
+  the contract the frontend generates from, so a resolver change that alters the
+  public schema shows up in review rather than in a frontend build days later.
+  Excluded from Biome for the same reason `next-env.d.ts` is: formatting a
+  generated file is churn the next boot reverses.
+- **2026-08-26** — **THREE guards each assumed HTTP, and each broke GraphQL
+  differently.** `JwtAuthGuard` read `.headers` off undefined; `FeatureGuard`
+  would have resolved nobody and refused everyone; `ThrottlerGuard` read `.ip`
+  off undefined. All three now share ONE function, `requestFromContext` —
+  `module-auth` gained the `getRequest` hook `module-permissions` already
+  published, and the throttler takes an override because it is third-party code.
+  Two ways of finding the request is two chances for authentication and
+  authorisation to disagree about who is calling, and it is what will let the
+  subscription handshake reuse the same path rather than inventing a fourth.
+- **2026-08-26** — **§12.6's split settled in practice: credential exchange stays
+  REST, reads move to the graph.** Not a compromise — moving sign-in onto GraphQL
+  would be a security regression. One operation may repeat a field under
+  different aliases, so `mutation { a: signIn(…) b: signIn(…) … }` is fifty
+  password attempts in a single HTTP request the per-IP throttler counts once;
+  aliasing is core to the language and, unlike batching, cannot be switched off.
+  The tight `credential` bucket is also selected by matching the resolved handler
+  against `AuthController`, which has no equivalent when every operation is one
+  POST. Cookies and sign-out's 303 finish the argument. Six routes stay REST
+  (`signin`, `verify-mfa`, `refresh`, `signout`, `forgot-password`,
+  `reset-password`); `viewer` and `session` are the module's first two queries.
+- **2026-08-26** — **The shell went from two sequential REST calls to one GraphQL
+  request.** `GET /auth/profile` then `GET /permissions/me` each paid a full
+  round trip before the next could start. `@/lib/session-query` asks for both
+  fields in one operation, and it lives in the APP because neither module may
+  name the other's field (§9) — composing them is what an app is for. Wrapped in
+  React `cache()`, so the shell and the page it wraps share one response; that
+  closes the duplicate-`getViewer()` note the dashboard carried. Each module
+  still ships its own `/next` helper for an app that wants them separately.
+- **2026-08-26** — **A circular import cost a boot.** `permissions.module`
+  imports the resolver it registers; the resolver imported the DI token back from
+  it, so ESM handed it a binding still in its temporal dead zone and the
+  decorator ran with `undefined`. Nest failed with `can't resolve dependencies of
+  the PermissionsResolver (?, PermissionsService)` — naming the argument position
+  but not the cause, and suggesting `import type`, which is the opposite of the
+  problem. The token moved to `permissions.tokens.ts`, a file that imports
+  nothing. `FeatureGuard` had survived the same cycle by an accident of
+  evaluation order, which is not a property worth relying on twice.
+
+- **2026-08-26** — **`APP_NAME` is the single source for every displayed product
+  name.** It was three independent strings — the email brand, the authenticator
+  entry, and a hardcoded `kwtech` in the side drawer — which is three chances to
+  rename two of them, and the one that gets missed is always the one a customer
+  sees. `MAIL_BRAND` and `AUTH_MFA_ISSUER_LABEL` are now overrides that fall
+  back to it, resolved in the zod transform so every call site reads a `string`
+  rather than a `string | undefined` it has to remember to default.
+  The `From:` display name is composed from it too — a bare `MAIL_FROM` gets the
+  name attached, a full `Name <addr>` is left alone. That header is the only part
+  of an email every inbox shows in its list view, so a stale name there is the
+  most visible way a rename can be half-done. The two-letter drawer mark is
+  derived (`KWTech` → KW, `Northwind Trading` → NT) rather than configured,
+  because a third variable is a third thing to update to save one lookup.
+- **2026-08-26** — **`APP_NAME` is set TWICE, once per app, and nothing enforces
+  that they match.** `apps/web-server` and `apps/web-app` are separate processes
+  with separate environments and no shared configuration; the alternative — the
+  web app fetching its own name from the API — puts a request in front of the
+  first paint to save a duplicated line. Documented in both `.env.example`s
+  instead.
+- **2026-08-26** — **The web app's name is NOT `NEXT_PUBLIC_`.** That prefix
+  inlines at build time, so one built image could never run under two names and a
+  rename would need a rebuild rather than a restart. The drawer is a client
+  component, so the value is read on the server and passed down as a prop, and
+  the browser tab moved from a static `metadata` export to `generateMetadata()`
+  for the same reason — a static export is evaluated when the route is built.
+
+- **2026-08-26** — **Email copy moved out of TypeScript into template files**
+  (`apps/web-server/src/mail/templates/`, rendered by `render.ts` with Eta).
+  The code passes FACTS — a name, a URL, a duration — and the template writes
+  the sentences, including the subject, which lives on a `Subject:` first line
+  in the `.txt` twin so the HTML and text parts cannot disagree about it.
+  The trigger was a **real bug**: `displayName` is free text the account holder
+  chooses, and the string-concatenated version interpolated it into the HTML
+  unescaped. A display name of `<a href="https://evil.example">Reset here</a>`
+  rendered as a live link inside a genuine, DKIM-signed password-reset email —
+  a phishing primitive handed to anyone who can edit their own profile. Mail
+  clients strip `<script>`; they do not strip anchors.
+  **The property selected for was escaping-by-default, not "templates are
+  files".** The obvious file-based version — `.html` plus
+  `.replace('{{url}}', url)` — has exactly the same hole, only harder to see
+  because the template and the interpolation are in different files. Eta escapes
+  `<%= %>` by default; `<%~ %>` is the opt-out and appears once, inserting an
+  already-escaped body into the layout. The `.txt` part renders through a second
+  Eta instance with escaping OFF, because escaping a plain-text part is how text
+  alternatives end up showing `&#39;` to a reader.
+  Rejected: **react-email** — it is the better DX but puts React into an API with
+  sixteen dependencies and none of them React; revisit at ~10 emails or when
+  someone non-technical needs the preview server. **MJML** — solves Outlook's
+  Word-based rendering engine, which is a real problem for laid-out marketing
+  mail and not for two paragraphs and a button. **Provider-hosted templates
+  (Postmark/Mandrill)** — the copy of a security email is load-bearing and
+  reasoned about in this repo; moving it to a vendor dashboard drops the review
+  trail and does not survive a provider change.
+- **2026-08-26** — **HTML comments in an email template are DELIVERED.** Found
+  by capturing an actual message off the wire: 922 of 4005 characters were
+  engineering notes, including the reasoning behind the enumeration-oracle
+  wording, sent to every recipient. Eta strips `<% /* … */ %>` and does not
+  strip `<!-- … -->`. Converted, and `test/render.test.ts` now asserts no `<!--`
+  survives a render. Gmail also clips a message at ~102KB and hides the
+  remainder, so the bytes were never free either.
+- **2026-08-26** — **Two build-level gotchas that file-based templates bring**,
+  both now handled and both silent failures otherwise:
+  `tsc` copies nothing but JavaScript, so `nest-cli.json` needs an `assets`
+  entry or the templates compile fine and are absent at runtime; and Biome
+  parses `.html`, chokes on `<%` as an unescaped `<`, and **a file it cannot
+  parse is a file it silently stops checking** — so `biome.jsonc` excludes the
+  template directory explicitly rather than incidentally.
+  Paths resolve from `import.meta.url`, never `process.cwd()`: a container's
+  working directory is whatever the entrypoint chose.
+- **2026-08-26** — The reset email is **rendered before the no-mailer branch**,
+  not inside the sending path. Rendering only when SMTP is configured would mean
+  a broken template — a renamed field, a typo in a tag — first surfaced in
+  production, because the whole of local development runs down the other branch.
+
+- **2026-08-26** — **2FA is implemented for TOTP**, replacing the schema-only
+  state recorded on 2026-08-25. The whole feature turns on one line: `refresh()`
+  **re-derives the token scope from `AuthSession.mfaSatisfiedAt`** instead of
+  carrying over the scope of the token it replaces. Without that, the `mfa`
+  scope is decorative — sign in, wait fifteen minutes, refresh, and be `full`
+  for having done nothing. It is the property `test/mfa.test.ts` spends the most
+  tests on.
+  Everything else follows from decisions the schema already fixed: `confirmedAt`
+  keeps an unconfirmed factor inert, `lastUsedStep` is advanced in a CONDITIONAL
+  update so two requests carrying the same code race in the database rather than
+  in application code, and `mfaSatisfiedAt` is per session. Recovery codes are
+  scrypt-hashed and scanned one at a time — ten hashes is about a second, which
+  is a rate limit that needs no configuration on a path used once a year.
+- **2026-08-26** — **The TOTP secret is encrypted, not hashed, and the key is
+  configuration** (`AUTH_MFA_SECRET_KEY`, AES-256-GCM in
+  `server/secret-box.ts`). Unlike a password hash a TOTP secret is symmetric: a
+  stolen row generates valid codes forever, so hashing is not available and
+  plaintext defeats the factor entirely on one dump. GCM rather than CBC or CTR
+  because it authenticates — without a tag a stolen row can be *edited*, and the
+  verifier would derive codes from an attacker's secret while reporting nothing
+  unusual. Deliberately NOT the same value as `AUTH_JWT_SECRET`: rotating that
+  one to respond to a token incident would otherwise lock every 2FA user out.
+  Unlike the JWT secret it does **not** fail the boot when absent — an app with
+  no 2FA users has no reason to hold it — so enrolment refuses instead, the same
+  shape as `sendPasswordResetEmail`.
+- **2026-08-26** — **`AuthUser.mfaRequiredAt` is recorded but NOT enforced at
+  sign-in**, and that is deliberate rather than unfinished. A user who is
+  required but has not enrolled cannot satisfy a challenge, so holding them at
+  one locks them out with no way forward. Enforcing the policy needs a fourth
+  `TokenScope` admitting the enrolment endpoints and nothing else — and adding a
+  scope quietly is the change §12.8's reasoning exists to prevent, since every
+  already-issued token was minted by a verifier that did not know about it.
+- **2026-08-26** — **TOTP is written out rather than taken from a dependency**
+  (`server/totp.ts`, ~40 lines), pinned by RFC 6238's own test vectors including
+  the T=20000000000 one that catches a 32-bit counter. On a path where a silent
+  difference means either "nobody can sign in" or "any code works", vectors are
+  a better argument than a download count. SHA-1 is kept, despite being SHA-1:
+  every authenticator app assumes it, `algorithm=SHA256` is quietly ignored by
+  enough of them that enrolment would appear to work and then reject every code,
+  and HMAC is not affected by the collision weaknesses that retire SHA-1
+  elsewhere.
+- **2026-08-26** — **Enrolling or removing a factor requires the CURRENT
+  PASSWORD**, not just a valid session. A stolen cookie must not be enough to
+  add an authenticator the real owner does not hold, or to strip the one they
+  do — the second is the first move an attacker on a session would make.
+  Confirming an enrolment also **revokes every other session**, which is what
+  keeps the refresh rule above from challenging a user on devices they were
+  already signed in on, minutes after enrolling, with no explanation.
+- **2026-08-26** — **The Next proxy learned to FORWARD the session cookie**, for
+  exactly one action. `PROXIED` is an allowlist and stays one; `verify-mfa` sets
+  `sendsSession` because the credential it needs — the half-admitted `mfa`
+  token — is already in an httpOnly cookie the page cannot read. An `mfa` token
+  is refused at every endpoint but that one, so forwarding it widens nothing.
+  The proxy also now returns `{ ok: true, mfaRequired }`: the tokens stay in the
+  cookies, and that flag is the only field of the API's answer that crosses back
+  into JavaScript, because the sign-in page cannot route without it.
+- **2026-08-26** — **The `credential` throttler bucket was declared but wired to
+  nothing.** `/auth/signin` and `/auth/forgot-password` had been sitting in the
+  default bucket at 120/min per IP since it was added, while USAGE.md §6 claimed
+  both halves of the brute-force defence were in place; only the per-account
+  lockout was. Fixed with `CredentialThrottlerGuard` in the app, which matches on
+  the handler reference the module exports (`CREDENTIAL_ENDPOINTS`) rather than
+  on URL strings — a URL list would be a second list, in a second place, that
+  stops covering an endpoint the day the module adds one. A `@Throttle`
+  decorator in the module was the obvious alternative and was rejected: it would
+  make `@nestjs/throttler` a dependency of every consumer, including ones that
+  never mount an HTTP server.
+- **2026-08-26** — **SMTP is wired, as one `SMTP_URL` rather than five
+  variables**, because that is the form every provider documents and five
+  variables is five chances to set four of them. Postmark, Mandrill, SES and
+  Resend all fit it, so choosing one later is a value change and not a code
+  change. Production now **fails to boot** without it (`config/env.ts`) instead
+  of 500ing on the first reset form of the quarter.
+  The send is deliberately **NOT awaited**: `requestPasswordReset` returns
+  immediately for an address it does not recognise, so awaiting an SMTP round
+  trip would make the known-address path measurably slower — an
+  account-enumeration oracle in the response time, defeating the identical 202
+  the endpoint goes to some trouble to produce. The cost is that a delivery
+  failure cannot be reported to the caller, which the design already answers:
+  the raw token exists only in that closure, so a failed send means the user
+  asks again.
 
 - **2026-08-25** — **The frontend was not actually styled**, and the reason was
   worse than a missing palette. Tailwind ignores everything reachable through

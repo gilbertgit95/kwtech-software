@@ -1,5 +1,5 @@
-import { getViewer } from '@kwtech/module-auth/next';
 import { AppShell } from '@/components/layout/app-shell';
+import { getSessionSnapshot } from '@/lib/session-query';
 
 /**
  * The dashboard — the application's own page, not a module's, which is why it
@@ -11,13 +11,14 @@ import { AppShell } from '@/components/layout/app-shell';
  * and the API accepted it.
  *
  * No signed-out branch any more: AppShell redirects to /auth/signin when there
- * is no viewer, so by the time this renders there is one. `getViewer()` is
- * called twice per request as a result — once by the shell, once here — which
- * is one extra hit on /auth/profile. Worth fixing with React `cache()` when a
- * third caller appears; not worth an abstraction for two.
+ * is no viewer, so by the time this renders there is one. Both call
+ * `getSessionSnapshot()`, which is wrapped in React `cache()` — so the shell and
+ * this page share ONE GraphQL request rather than each making their own. That
+ * used to be two REST round trips per render and is now none extra.
  */
 export default async function DashboardPage() {
-  const viewer = await getViewer();
+  // Deduplicated with the shell's identical call by React `cache()`.
+  const { viewer } = await getSessionSnapshot();
 
   return (
     <AppShell title="Dashboard">

@@ -1,4 +1,4 @@
-import { Circle, LayoutDashboard, type LucideIcon, Settings, Shield, Users } from 'lucide-react';
+import { Circle, LayoutDashboard, type LucideIcon, Settings, Shield, User, Users } from 'lucide-react';
 
 /**
  * The seam between a module's `nav.icon` string and an actual icon component.
@@ -16,6 +16,9 @@ const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   settings: Settings,
   shield: Shield,
+  // Singular — the account's own profile, as opposed to `users`, which is the
+  // administrative list of everyone. Two icons because they are two ideas.
+  user: User,
   users: Users,
 };
 

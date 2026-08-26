@@ -2,6 +2,7 @@ import { DEFAULT_PALETTE, palettePreloadScript } from '@kwtech/web-ui';
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { appBrand } from '@/config/env';
 import { Providers } from './providers';
 import './globals.css';
 
@@ -14,10 +15,18 @@ import './globals.css';
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
-export const metadata: Metadata = {
-  title: 'kwtech',
-  description: 'kwtech web application',
-};
+/**
+ * `generateMetadata`, not a static `metadata` export.
+ *
+ * A static export is evaluated when the route is built, so APP_NAME would be
+ * baked into the bundle and renaming the product would mean a rebuild. This
+ * function runs per request, which is what makes the name a runtime value
+ * everywhere rather than only in the drawer.
+ */
+export function generateMetadata(): Metadata {
+  const { name, tagline } = appBrand();
+  return { title: name, description: tagline ? `${name} — ${tagline}` : name };
+}
 
 /**
  * Applies the stored palette BEFORE the first paint.
