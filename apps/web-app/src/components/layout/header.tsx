@@ -1,5 +1,6 @@
 import type { Viewer } from '@kwtech/module-auth';
 import type { NavEntry } from '@kwtech/module-kit';
+import type { AppRole } from '@kwtech/module-permissions';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { UserMenu } from '@/components/layout/user-menu';
 
@@ -18,6 +19,7 @@ export function Header({
   title,
   viewer,
   accountNav,
+  roles,
 }: {
   title: string;
   viewer: Viewer;
@@ -30,13 +32,20 @@ export function Header({
    * a cast. An empty array already means "nothing to show".
    */
   accountNav: readonly NavEntry[];
+  /** The caller's app-level roles, for the badge beside their name. */
+  roles: readonly AppRole[];
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 sm:px-6">
       <p className="truncate text-sm font-medium text-foreground">{title}</p>
 
       <div className="flex items-center gap-1.5">
-        <UserMenu name={viewer.displayName ?? viewer.username} email={viewer.email} accountNav={accountNav} />
+        <UserMenu
+          name={viewer.displayName ?? viewer.username}
+          email={viewer.email}
+          accountNav={accountNav}
+          roles={roles}
+        />
         {/* A hairline between the two: they are unrelated actions that would
             otherwise read as one segmented group. */}
         <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />

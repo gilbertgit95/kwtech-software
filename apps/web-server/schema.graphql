@@ -25,6 +25,7 @@ type Mutation {
 
 type PermissionContext {
   accessibleWorkspaceIds: [String!]
+  appRoles: [PermissionRole!]!
   effective: [String!]!
   entitled: [String!]
   granted: [String!]!
@@ -48,6 +49,12 @@ type PermissionFeaturePage {
   limit: Int!
   offset: Int!
   total: Int!
+}
+
+type PermissionRole {
+  icon: String
+  key: String!
+  label: String!
 }
 
 type Query {

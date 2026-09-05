@@ -501,6 +501,68 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-05** — **The role badge renders, and the context grew the one field
+  it had no way to answer from.** `PermissionContext.appRoles` carries `{ key,
+  label, icon }` for every APP-level role the caller holds, through GraphQL to
+  the navbar.
+
+  **It had to be a new field, not a derivation.** The context exposed feature
+  keys and no role identity at all, so nothing downstream could name the role a
+  grant came from — `grantedAtAppLevel` says what staff may do and never which
+  role said so. The badge is the first thing to ask WHO rather than WHAT.
+
+  It belongs on the context for the same reason `granted` and `entitled` do:
+  the shape already carries the inputs that produced the answer, so a screen can
+  explain itself rather than only obey. This is the one input with a
+  human-readable name attached, and the shell already fetches the context — a
+  second query for three strings would be a round trip to say something the
+  first request was already answering.
+
+  **App level only, and that is the substance rather than a scoping detail.** An
+  app-level role hangs off no membership, so it is the same wherever the caller
+  is — which is what makes it safe to draw beside a username that is also always
+  the same. An organization role is true only inside one organization and would
+  start lying the moment somebody switched, in the corner of the screen least
+  likely to be re-read. Tested directly: organization and workspace roles are
+  excluded from `appRoles` even when held.
+
+  **The badge carries no authority, and a test says so.** A crown is a label; a
+  role's rights are the list of features it carries. `appRoles` is built from
+  the input roles rather than from the `applies` loop, so nothing about a badge
+  can ever depend on the resolution pipeline's control flow — and a test grants
+  an app role called "Super admin" wearing a crown with an empty feature list
+  and asserts `effective`, `granted` and `grantedAtAppLevel` all stay empty.
+  That is the same objection that sank the `platform:super_admin` wildcard,
+  applied to a picture.
+
+  **Sorted by key and de-duplicated**, because row order out of a database is
+  not a promise and a badge that swaps places between two renders of one session
+  reads as a bug in the session. `label` falls back to the key, so a caller
+  assembling grants by hand — a test, a fixture — need not invent a display name
+  to ask a permission question.
+
+  **Icon only, no label, after two rounds of feedback.** The name is attached
+  rather than dropped: `role="img"` plus `aria-label` names it for a screen
+  reader and an SVG `<title>` gives a mouse the same string on hover. Deleting
+  it would leave an unlabelled graphic for AT and a glyph everyone else has to
+  guess at — a crown reads as rank, but a briefcase and a sprout do not announce
+  themselves.
+
+  Every badge is styled identically — no gold crown, no green sprout. Styling
+  one as more important would be a second account of authority that no check
+  reads and nothing keeps true. The icon distinguishes the roles; the styling
+  must not imply a rank the data does not carry.
+
+  Unlike the username, the icon does NOT hide on a narrow viewport: it costs
+  about sixteen pixels, so the rare case of holding two cannot push the control
+  out of shape, and nothing is rendered at all for the majority holding none.
+
+  **Verified in the running app**, not asserted: signed in through the Next
+  route handler and found `lucide-sprout` in the rendered header between the
+  username and the chevron, carrying `aria-label="Normal user"` and its
+  `<title>`; `myPermissions.appRoles` answers over the live API; and the
+  generated `schema.graphql` gained `PermissionRole` and the `appRoles` field.
+
 - **2026-09-05** — **A role carries a badge ICON, stored as a name.**
   `PermRole.icon` is a nullable string, and the three app-level roles now seed
   one: `crown` for super-admin, `briefcase` for client, `sprout` for normal-user.

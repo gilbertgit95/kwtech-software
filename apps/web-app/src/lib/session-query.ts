@@ -63,6 +63,11 @@ const SESSION_QUERY = `
       entitled
       grantedAtAppLevel
       accessibleWorkspaceIds
+      appRoles {
+        key
+        label
+        icon
+      }
     }
   }
 `;

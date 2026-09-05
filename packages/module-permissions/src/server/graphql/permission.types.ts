@@ -9,6 +9,30 @@ import type { PermissionContext } from '../../types.js';
  * The shapes intentionally mirror ../types.ts — the pure interfaces stay the
  * vocabulary everything else speaks.
  */
+/**
+ * An app-level role the caller holds — the badge beside their name.
+ *
+ * Exposed because an interface has to be able to say WHO someone is, not only
+ * what they may do. It carries no authority and nothing may branch on it; see
+ * `AppRole` in ../../types.ts for why that line is drawn where it is.
+ */
+@ObjectType('PermissionRole')
+export class PermissionRoleType {
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  /**
+   * Nullable, and the client must render a fallback rather than assuming a
+   * name it recognises: a role may name no icon, and a name retired from the
+   * frontend's set must degrade to a generic glyph instead of a blank page.
+   */
+  @Field(() => String, { nullable: true })
+  icon!: string | null;
+}
+
 @ObjectType('PermissionContext')
 export class PermissionContextType {
   @Field()
@@ -45,6 +69,14 @@ export class PermissionContextType {
   /** Null means every workspace in the organization (`workspaces:access_all`). */
   @Field(() => [String], { nullable: true })
   accessibleWorkspaceIds!: string[] | null;
+
+  /**
+   * Who the caller is on the platform, where every field above is what they may
+   * do. App-level only — an organization role would stop being true the moment
+   * they switched organization. Empty for almost everyone.
+   */
+  @Field(() => [PermissionRoleType])
+  appRoles!: PermissionRoleType[];
 }
 
 @ObjectType('PermissionFeature')
@@ -89,6 +121,9 @@ export function toPermissionContextType(context: PermissionContext): PermissionC
     entitled: context.entitled ? [...context.entitled] : null,
     grantedAtAppLevel: [...context.grantedAtAppLevel],
     accessibleWorkspaceIds: context.accessibleWorkspaceIds ? [...context.accessibleWorkspaceIds] : null,
+    // Copied element by element, like every list above: handing out the same
+    // objects would let a field resolver rename the caller's own roles.
+    appRoles: context.appRoles.map((role) => ({ key: role.key, label: role.label, icon: role.icon })),
   };
 }
 

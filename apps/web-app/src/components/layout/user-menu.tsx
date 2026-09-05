@@ -1,6 +1,7 @@
 'use client';
 
 import type { NavEntry } from '@kwtech/module-kit';
+import type { AppRole } from '@kwtech/module-permissions';
 import {
   cn,
   DropdownMenu,
@@ -12,6 +13,7 @@ import {
 import { ChevronDown, LogOut } from 'lucide-react';
 import { useRef } from 'react';
 import { iconFor } from '@/components/layout/nav-icons';
+import { RoleBadge } from '@/components/layout/role-badge';
 
 interface UserMenuProps {
   name: string | null;
@@ -26,6 +28,14 @@ interface UserMenuProps {
    * importing that from a client component would drag them all into the bundle.
    */
   accountNav?: readonly NavEntry[];
+  /**
+   * The caller's APP-level roles, already sorted by key on the server.
+   *
+   * Almost always exactly one, and empty is normal — somebody whose rights come
+   * only from an organization role holds none, and no badge is the right answer
+   * rather than a "none" chip nobody needs to read.
+   */
+  roles?: readonly AppRole[];
 }
 
 /**
@@ -58,7 +68,7 @@ function Avatar({ initials, className }: { initials: string; className?: string 
   );
 }
 
-export function UserMenu({ name, email, accountNav = [] }: UserMenuProps) {
+export function UserMenu({ name, email, accountNav = [], roles = [] }: UserMenuProps) {
   const initials = initialsOf(name, email);
   // `||`, not `??`: an empty-string display name is as absent as a null one,
   // and it comes from a nullable column.
@@ -93,6 +103,16 @@ export function UserMenu({ name, email, accountNav = [] }: UserMenuProps) {
           {/* The name is the first thing to go on a narrow viewport; the avatar
               still identifies the account, so nothing is lost but width. */}
           <span className="hidden max-w-36 truncate font-medium sm:block">{display}</span>
+          {/*
+            Every role, and unlike the name these do NOT hide on a narrow
+            viewport: an icon costs about sixteen pixels, so the rare case of
+            somebody holding two cannot push the control out of shape, and there
+            is nothing to gain by hiding it. Nothing is rendered at all for the
+            majority who hold none.
+          */}
+          {roles.map((role) => (
+            <RoleBadge key={role.key} role={role} />
+          ))}
           <ChevronDown
             aria-hidden
             className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"

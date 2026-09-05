@@ -77,6 +77,10 @@ export interface UserRoleRow {
   role: {
     key: string;
     level: string;
+    /** Read for the badge, not for any check. See PermissionContext.appRoles. */
+    label: string;
+    /** Icon NAME, null for a role that never named one. See PermRole.icon. */
+    icon: string | null;
     features: { featureKey: string }[];
     /** App-level roles carry 'user:organizations'. See domain/limits.ts. */
     limits: { limitKey: string; value: number }[];

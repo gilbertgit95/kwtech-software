@@ -131,7 +131,20 @@ export async function AppShell({ title, children }: { title: string; children: R
           the viewport and undo the definite height above.
         */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Header title={title} viewer={viewer} accountNav={buildAccountNav(permissions?.granted)} />
+          <Header
+            title={title}
+            viewer={viewer}
+            accountNav={buildAccountNav(permissions?.granted)}
+            /*
+             * `?? []` for the same reason the nav filter fails closed: a
+             * permission context that could not be resolved means "holds
+             * nothing", never "assume the usual". Here the cost of guessing is
+             * only a wrong badge — but a badge claiming a rank the API would
+             * refuse is exactly the kind of confident wrongness that gets
+             * reported as a bug in the API.
+             */
+            roles={permissions?.appRoles ?? []}
+          />
           {/* `min-h-0` for the same reason as the column. */}
           <main className="min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6">{children}</main>
           {/*

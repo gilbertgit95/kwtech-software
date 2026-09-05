@@ -13,6 +13,7 @@ const ctx = (effective: string[]): PermissionContext => ({
   limits: {},
   accessibleWorkspaceIds: null,
   entitled: null,
+  appRoles: [],
 });
 
 /**

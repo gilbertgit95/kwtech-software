@@ -1,5 +1,5 @@
 import { FEATURE } from '../feature-keys.js';
-import type { FeatureKey, PermissionContext, RoleLevel } from '../types.js';
+import type { AppRole, FeatureKey, PermissionContext, RoleLevel } from '../types.js';
 import { resolveLimits } from './limits.js';
 
 /**
@@ -11,6 +11,17 @@ export interface RoleGrant {
   roleKey: string;
   level: RoleLevel;
   features: readonly FeatureKey[];
+  /**
+   * The role's display name, for the badge an app-level role produces.
+   *
+   * Optional so a caller assembling grants by hand — a test, a fixture — does
+   * not have to invent one to ask a permission question. It falls back to the
+   * key, which is always present and is what an operator reads in the database
+   * anyway. Pure presentation: nothing resolves against it.
+   */
+  label?: string;
+  /** Icon NAME for the badge, or null. See PermRole.icon. */
+  icon?: string | null;
   /**
    * For workspace-level roles, which workspace the grant is in. Null for app-
    * and organization-level roles, which have no workspace to be scoped to.
@@ -163,6 +174,27 @@ export function composeContext(input: ComposeInput): PermissionContext {
     ? null
     : [...new Set([...(input.workspaceIds ?? []), ...roleWorkspaceIds])].sort();
 
+  /*
+   * Identity, alongside the rights it produced.
+   *
+   * Built from every app-level role the caller holds, NOT from the ones that
+   * `applies` above let through: those two differ at organization and workspace
+   * level only in ways that would make a badge flicker between pages — an app
+   * role applies at every level, so in practice this is the same set, and
+   * deriving it from the input directly says so without depending on the loop's
+   * control flow staying that way.
+   *
+   * Sorted by key, and de-duplicated, so the badge does not reorder itself
+   * between two renders of the same session — the row order a database returns
+   * is not a promise.
+   */
+  const byKey = new Map<string, AppRole>();
+  for (const role of input.roles) {
+    if (role.level !== 'app' || byKey.has(role.roleKey)) continue;
+    byKey.set(role.roleKey, { key: role.roleKey, label: role.label ?? role.roleKey, icon: role.icon ?? null });
+  }
+  const appRoles = [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+
   return {
     subjectId: input.subjectId,
     organizationId,
@@ -173,5 +205,6 @@ export function composeContext(input: ComposeInput): PermissionContext {
     granted: [...granted].sort(),
     grantedAtAppLevel: [...appLevel].sort(),
     entitled,
+    appRoles,
   };
 }

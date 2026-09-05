@@ -96,7 +96,7 @@ const role = (over: Partial<RoleWithFeatures> & Pick<RoleWithFeatures, 'key' | '
  */
 const appRole = (
   over: Partial<UserRoleRow['role']> & Pick<UserRoleRow['role'], 'key' | 'level'>,
-): UserRoleRow['role'] => ({ features: [], limits: [], ...over });
+): UserRoleRow['role'] => ({ features: [], limits: [], label: over.key, icon: null, ...over });
 
 const membership = (over: Partial<MembershipRow> = {}): MembershipRow => ({
   id: 'm1',
@@ -391,6 +391,7 @@ describe('checkCapacity', () => {
     accessibleWorkspaceIds: null,
     entitled: null,
     limits: { [LIMIT.organizationMembers]: 3, [LIMIT.userOrganizations]: 2 },
+    appRoles: [],
   } as const;
 
   it('counts current members against the plan cap', () => {

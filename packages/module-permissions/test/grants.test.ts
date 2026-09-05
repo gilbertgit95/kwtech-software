@@ -323,3 +323,79 @@ describe('composeContext — the seeded client role', () => {
     expect(compose({ roles: [client] }).limits['user:organizations']).toBe(5);
   });
 });
+
+/**
+ * The badge data. Identity, sitting on a structure that otherwise says only
+ * what someone may do — so these tests are mostly about keeping the two apart.
+ */
+describe('composeContext — appRoles', () => {
+  it('reports an app-level role with its label and icon', () => {
+    const ctx = compose({
+      roles: [role({ level: 'app', features: [], roleKey: 'super-admin', label: 'Super admin', icon: 'crown' })],
+    });
+
+    expect(ctx.appRoles).toEqual([{ key: 'super-admin', label: 'Super admin', icon: 'crown' }]);
+  });
+
+  it('falls back to the key when a grant carries no label', () => {
+    // A caller assembling grants by hand should not have to invent a display
+    // name to ask a permission question. The key is always present, and it is
+    // what an operator reads in the database anyway.
+    const ctx = compose({ roles: [role({ level: 'app', features: [], roleKey: 'support' })] });
+
+    expect(ctx.appRoles).toEqual([{ key: 'support', label: 'support', icon: null }]);
+  });
+
+  it('EXCLUDES organization- and workspace-level roles', () => {
+    /*
+     * The load-bearing one. An organization role is true only inside the
+     * organization it belongs to, so drawing it beside a username — which does
+     * not change when somebody switches — would produce a badge that is wrong
+     * and sited where nobody re-reads it.
+     */
+    const ctx = compose({
+      roles: [
+        role({ level: 'organization', features: [], roleKey: 'org-admin', label: 'Org admin', icon: 'shield' }),
+        role({ level: 'workspace', features: [], roleKey: 'ws-editor', label: 'Editor', workspaceId: 'ws1' }),
+      ],
+    });
+
+    expect(ctx.appRoles).toEqual([]);
+  });
+
+  it('sorts by key and collapses duplicates, so a badge does not reorder between renders', () => {
+    // Row order out of a database is not a promise, and a badge that swaps
+    // places between two renders of one session reads as a bug in the session.
+    const ctx = compose({
+      roles: [
+        role({ level: 'app', features: [], roleKey: 'super-admin', label: 'Super admin' }),
+        role({ level: 'app', features: [], roleKey: 'client', label: 'Client' }),
+        role({ level: 'app', features: [], roleKey: 'client', label: 'Client' }),
+      ],
+    });
+
+    expect(ctx.appRoles.map((r) => r.key)).toEqual(['client', 'super-admin']);
+  });
+
+  it('is empty for someone holding no app-level role', () => {
+    const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersManage] })] });
+
+    expect(ctx.appRoles).toEqual([]);
+  });
+
+  it('carries NO authority — a badge is not a grant', () => {
+    /*
+     * A crown is a label. If anything ever resolved a right from the icon or
+     * the label, this is the test that would have caught it: an app role with a
+     * grand name and the most privileged-looking icon in the set still grants
+     * exactly the features it carries, which here is none.
+     */
+    const ctx = compose({
+      roles: [role({ level: 'app', features: [], roleKey: 'looks-important', label: 'Super admin', icon: 'crown' })],
+    });
+
+    expect(ctx.effective).toEqual([]);
+    expect(ctx.granted).toEqual([]);
+    expect(ctx.grantedAtAppLevel).toEqual([]);
+  });
+});

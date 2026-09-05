@@ -119,6 +119,30 @@ export interface FeatureSpec extends FeatureContribution {
 }
 
 /**
+ * A role the caller holds at APP level, as a reader sees it.
+ *
+ * Identity, not authority. It exists so an interface can say WHO someone is on
+ * the platform — a badge beside their name — where every other field on the
+ * context says what they may do. Nothing may branch on it: a role's rights are
+ * the list of features it carries, and reading rank off a label or a picture
+ * would be a second, unenforceable account of the same thing.
+ *
+ * The read-side counterpart of `AppRoleDefinition`, which is what the seeder
+ * WRITES. Kept separate because a definition carries the features and limits
+ * that produce a grant, and none of that belongs in a badge.
+ */
+export interface AppRole {
+  key: string;
+  label: string;
+  /**
+   * An icon NAME — 'crown', 'sprout' — resolved to a component by the
+   * frontend, or null for a role that never named one. Never a component: this
+   * package is imported by the NestJS server. See PermRole.icon.
+   */
+  icon: string | null;
+}
+
+/**
  * The answer to "what may this caller do, right now".
  *
  * Always per (subject, organization): the same person legitimately holds
@@ -184,6 +208,25 @@ export interface PermissionContext {
    * unrestricted entitlement rather than a special case at every call site.
    */
   entitled: readonly FeatureKey[] | null;
+
+  /**
+   * The APP-level roles this caller holds, sorted by key.
+   *
+   * Belongs here for the same reason `granted` and `entitled` do: the context
+   * already carries the inputs that produced the answer, so a screen can
+   * explain it rather than only obey it. This is the one input with a
+   * human-readable name attached.
+   *
+   * **App level only, and that is the point.** An app-level role hangs off no
+   * membership, so it is the same wherever the caller is — which is what makes
+   * it safe to draw beside a username that is also always the same. An
+   * organization-level role is true only inside one organization and would
+   * start lying the moment somebody switched, in the corner of the screen least
+   * likely to be re-read.
+   *
+   * Empty for everyone who holds none, which is the normal case.
+   */
+  appRoles: readonly AppRole[];
 }
 
 /** Why a check failed. The distinction is the point — see check.ts. */

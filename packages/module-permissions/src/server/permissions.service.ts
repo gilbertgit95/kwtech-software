@@ -41,6 +41,9 @@ export class PermissionsService {
     const appRoleGrants: RoleGrant[] = appRoles.map((link) => ({
       roleKey: link.role.key,
       level: toRoleLevel(link.role.level),
+      // Carried for the badge on the context, never for a check — see AppRole.
+      label: link.role.label,
+      icon: link.role.icon,
       features: link.role.features.map((rf) => rf.featureKey),
       workspaceId: null,
       // How many organizations this user may have rides on their app-level
