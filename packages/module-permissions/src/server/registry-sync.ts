@@ -104,12 +104,12 @@ export interface PermissionsRegistryClient {
      * `AppRoleDefinition.level` already says.
      */
     create(args: {
-      data: { key: string; label: string; level: 'app'; organizationId: null; isSystem: boolean };
+      data: { key: string; label: string; level: 'app'; organizationId: null; isSystem: boolean; icon: string | null };
       select: { id: true };
     }): Promise<{ id: string }>;
     update(args: {
       where: { id: string };
-      data: { label: string; level: 'app'; isSystem: boolean };
+      data: { label: string; level: 'app'; isSystem: boolean; icon: string | null };
       select: { id: true };
     }): Promise<{ id: string }>;
   };
@@ -244,10 +244,19 @@ export async function upsertAppRole(
   }
 
   const existing = found[0];
+  /*
+   * `?? null`, never `?? undefined`. Features and limits are REPLACED by this
+   * function rather than merged, and the icon follows the same rule: the
+   * definition the app passes is the whole truth about the role, so an icon
+   * REMOVED from the definition is cleared on the next sync. Leaving it
+   * undefined would make Prisma skip the column, so a retired icon would
+   * linger on the row with nothing in the checkout still naming it.
+   */
+  const icon = definition.icon ?? null;
   const role = existing
     ? await client.permRole.update({
         where: { id: existing.id },
-        data: { label: definition.label, level: definition.level, isSystem: true },
+        data: { label: definition.label, level: definition.level, isSystem: true, icon },
         select: { id: true },
       })
     : await client.permRole.create({
@@ -257,6 +266,7 @@ export async function upsertAppRole(
           level: definition.level,
           organizationId: null,
           isSystem: true,
+          icon,
         },
         select: { id: true },
       });

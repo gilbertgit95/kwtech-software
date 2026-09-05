@@ -34,6 +34,13 @@ const SUPER_ADMIN: AppRoleDefinition = {
   key: 'super-admin',
   label: 'Super admin',
   level: 'app',
+  /*
+   * A crown: the one role that answers to nobody inside the product. It is the
+   * only icon here chosen for RANK rather than for job, which is the honest
+   * signal — every other role is a description of what someone does, and this
+   * one is a description of what they outrank.
+   */
+  icon: 'crown',
   features: registryFeatureKeys(ALL_FEATURES),
   /**
    * Role-sourced limits have no "unlimited" value: `resolveLimits` takes the
@@ -76,6 +83,13 @@ const CLIENT: AppRoleDefinition = {
   key: 'client',
   label: 'Client',
   level: 'app',
+  /*
+   * A briefcase: this role's whole meaning is "a customer, not staff", which is
+   * a commercial relationship rather than a rank or a capability. Deliberately
+   * NOT a person glyph — `user` is already the account's own profile in the
+   * icon set, and reusing it would say "a user", which every role here is.
+   */
+  icon: 'briefcase',
   features: OWN_ACCOUNT,
   limits: { [LIMIT.userOrganizations]: 5 },
 };
@@ -100,6 +114,18 @@ const NORMAL_USER: AppRoleDefinition = {
   key: 'normal-user',
   label: 'Normal user',
   level: 'app',
+  /*
+   * A sprout, where a flower was suggested — the same gentle register, but it
+   * MEANS something the flower does not. This role's defining property is that
+   * it holds nothing: it is the ground floor, the shape every account starts
+   * in. A sprout reads as "starter" and puts it at the bottom of an obvious
+   * scale beside a crown; a flower is decoration, and a reader would have to be
+   * TOLD what it stood for.
+   *
+   * It is one word to change here if you prefer the flower — the icon carries
+   * no authority, so nothing but the drawing moves.
+   */
+  icon: 'sprout',
   /*
    * EMPTY, and it must stay empty: adding anything — even `admin:access` "just
    * to see the dashboard" — would make every denial this role exists to

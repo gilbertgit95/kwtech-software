@@ -1,18 +1,26 @@
 import {
+  Briefcase,
   Building2,
   Circle,
   CreditCard,
+  Crown,
   KeyRound,
   LayoutDashboard,
   type LucideIcon,
   Settings,
   Shield,
+  Sprout,
   User,
   Users,
 } from 'lucide-react';
 
 /**
- * The seam between a module's `nav.icon` string and an actual icon component.
+ * The seam between an icon NAME stored as data and an actual icon component.
+ *
+ * Two vocabularies share it, because they are the same problem: `nav.icon` on a
+ * module descriptor, and `PermRole.icon` on a role row. Both are strings for
+ * the same reason, so both resolve here rather than growing a second map that
+ * would drift.
  *
  * It has to be a string in the descriptor: `@kwtech/module-kit` is the contract
  * every module package implements, and making it name a `LucideIcon` would put
@@ -43,6 +51,14 @@ const ICONS: Record<string, LucideIcon> = {
   // amount, so a card reads more accurately than a currency mark — which would
   // also have to pick a currency.
   billing: CreditCard,
+
+  // ── role badges ───────────────────────────────────────────────────────────
+  // Named by what the ROLE is, not by what it may do. A role's rights are the
+  // list of features it carries and nothing else, so an icon implying a
+  // capability would be a second, unenforceable account of the same thing.
+  crown: Crown,
+  briefcase: Briefcase,
+  sprout: Sprout,
 };
 
 export function iconFor(name: string | undefined): LucideIcon {

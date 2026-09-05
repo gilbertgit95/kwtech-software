@@ -11,6 +11,20 @@ export interface RoleDefinition {
   label: string;
   level: RoleLevel;
   features: readonly FeatureKey[];
+  /**
+   * The badge icon, as a NAME — 'crown', 'sprout' — never a component.
+   *
+   * This package is imported by the NestJS server, so it may not name a
+   * `LucideIcon` any more than `@kwtech/module-kit` may: that is the same rule
+   * `nav.icon` follows, and it is what lets a second frontend draw the same
+   * role in its own set.
+   *
+   * Optional, because a role is still a role without one. It is pure
+   * presentation and carries NO authority — `assertRoleFeatureLevels` ignores
+   * it, and nothing may ever branch on it. A crown is a label, and treating a
+   * label as a right is how a role stops describing what its holder can do.
+   */
+  icon?: string;
 }
 
 /**

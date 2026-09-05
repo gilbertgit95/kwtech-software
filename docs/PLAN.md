@@ -501,6 +501,55 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-05** — **A role carries a badge ICON, stored as a name.**
+  `PermRole.icon` is a nullable string, and the three app-level roles now seed
+  one: `crown` for super-admin, `briefcase` for client, `sprout` for normal-user.
+
+  **A name, never a component or an SVG**, which is the same call `nav.icon`
+  already made and made for the same reason: this package is imported by the
+  NestJS server, so naming a `LucideIcon` here would put React into a package
+  with no business having it. The app's `iconFor` maps the name to a component,
+  which is also what lets a second frontend draw the identical row in its own
+  set. Both vocabularies now resolve through that ONE map rather than through a
+  second one that could drift.
+
+  **An unknown name falls back rather than throwing**, and the distinction from
+  the tag vocabulary is deliberate. `FEATURE_TAG` is closed and `validateDraft`
+  refuses anything outside it, because a tag is a FILTER and a near-miss splits
+  one pile into two. An icon is a drawing: a role predating this column has
+  none, and an icon retired from the app's set would otherwise turn every screen
+  listing that role into a blank page. A generic glyph is strictly better than
+  that, so the fallback is the behaviour and not a lapse.
+
+  **It carries NO authority, and nothing may ever branch on it.** A crown is a
+  label; a role's rights are the list of features it carries and nothing else.
+  Reading rank off an icon would be a second, unenforceable account of what
+  someone may do — the same objection that sank the `platform:super_admin`
+  wildcard, and it applies to a picture just as well as to a key.
+
+  **`?? null`, not `?? undefined`.** `upsertAppRole` REPLACES features and
+  limits rather than merging them, so the definition the app passes is the whole
+  truth about the role, and the icon had to follow: undefined would make Prisma
+  skip the column and leave a retired icon on a row nothing in the checkout
+  still names. Verified rather than assumed — an icon tampered with directly in
+  the database is restored by the next `db:sync`, which exercises the UPDATE
+  path rather than only the create.
+
+  **On the icon chosen for normal-user.** A flower was suggested; a sprout does
+  the same gentle job while meaning something the flower does not. The role's
+  defining property is that it holds nothing — it is the ground floor — and a
+  sprout puts it at the bottom of an obvious scale beside a crown, where a
+  flower is decoration a reader would have to be told the meaning of. One word
+  to change, since nothing but the drawing moves.
+
+  **Deliberately NOT built here:** the navbar badge that renders this, the
+  reusable searchable icon picker, and `appRoles` on `PermissionContext` to
+  carry role identity to the frontend. The context exposes feature-key lists and
+  no role identity at all, so the badge needs a field added through the
+  repository, `composeContext`, the GraphQL type and `session-query` — a
+  separate change. The column and its values land first so that work has
+  something true to read.
+
 - **2026-09-05** — **The usage docs had fallen behind; audited and closed.**
   `PLAN.md` §13 was kept current at every step, but the package READMEs — the
   "how do I use this" docs — were not. An audit of 26 shipped things against the

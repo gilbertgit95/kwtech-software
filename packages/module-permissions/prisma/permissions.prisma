@@ -180,6 +180,18 @@ model PermRole {
   label          String
   isSystem       Boolean @default(false)
 
+  /// The badge drawn beside this role's name — a NAME, never a component or an
+  /// SVG. Same contract as `nav.icon` on a module descriptor, and for the same
+  /// reason: what 'crown' draws is the frontend's decision, so a second
+  /// frontend can render the identical row in its own icon set, and the NestJS
+  /// server never acquires a React dependency to store one.
+  ///
+  /// Nullable, and an unknown name must FALL BACK rather than throw. A role
+  /// predating this column has none, and an icon retired from the app's set
+  /// would otherwise turn every screen listing that role into a blank page —
+  /// far worse than a generic glyph. See the app's `iconFor`.
+  icon           String?
+
   organization PermOrganization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   features         PermRoleFeature[]
   limits           PermRoleLimit[]
