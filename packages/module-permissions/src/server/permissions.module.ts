@@ -82,6 +82,21 @@ export interface PermissionsModuleOptions {
    * convention in scope.ts.
    */
   apiPrefix?: string;
+  /**
+   * Whether a registry BINDING guards its own surface.
+   *
+   * On by default. `features:read` declaring
+   * `graphql_operation: 'Query.permissionFeatures'` is a claim that the query is
+   * checked; honouring it here is what makes the claim true rather than
+   * documentation somebody has to keep in step. `@RequireFeature` still wins
+   * wherever it is present.
+   *
+   * Set false for an app that guards its own surfaces another way and wants the
+   * registry to stay purely descriptive. Nothing else changes: a handler with
+   * neither a decorator nor a binding passes through either way, which is the
+   * opt-in behaviour §4.7 documents.
+   */
+  enforceBindings?: boolean;
 
   /**
    * Reads a handler's arguments, for resolvers declaring @RequireScope. A

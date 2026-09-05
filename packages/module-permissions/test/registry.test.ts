@@ -1,5 +1,5 @@
 import type { ModuleRoute } from '@kwtech/module-kit';
-import { assertRoleFeatureLevels, featuresForLevel, type RoleDefinition } from '../src/domain/roles.js';
+import { allFeatureKeys, assertRoleFeatureLevels, featuresForLevel, type RoleDefinition } from '../src/domain/roles.js';
 import { FEATURE, FEATURE_REGISTRY, isRegisteredFeature } from '../src/feature-keys.js';
 import { assertRegistered, auditRegistry, deriveRouteBindings } from '../src/registry-audit.js';
 import { type FeatureSpec, toRoleLevel } from '../src/types.js';
@@ -130,6 +130,42 @@ describe('assertRoleFeatureLevels', () => {
       expect(() => assertRoleFeatureLevels(role({ level, features: everything }), FEATURE_REGISTRY)).not.toThrow();
     }
   });
+
+  it('lets an APP-level role collect features of every other level', () => {
+    // The escalation the rule guards against needs a lesser right to escalate
+    // from, and an app role has none: it hangs off no membership and no tenant
+    // administrator can mint one. Without the exemption a super admin could
+    // hold only the two app-level keys.
+    expect(() =>
+      assertRoleFeatureLevels(role({ level: 'app', features: ['billing:manage', 'workspaces:share'] }), specs),
+    ).not.toThrow();
+  });
+
+  it('lets an APP-level role hold the ENTIRE real registry', () => {
+    // This is the definition of super admin. If it ever throws, the seeded
+    // role silently stops being all-access.
+    expect(() =>
+      assertRoleFeatureLevels(role({ level: 'app', features: allFeatureKeys(FEATURE_REGISTRY) }), FEATURE_REGISTRY),
+    ).not.toThrow();
+  });
+
+  it('still refuses an unregistered key on an APP-level role', () => {
+    // The level exemption is not an exemption from the registry: a key no spec
+    // declares can never be checked, so it would read as access while granting
+    // nothing.
+    expect(() => assertRoleFeatureLevels(role({ level: 'app', features: ['made:up'] }), specs)).toThrow(
+      /not in the registry/,
+    );
+  });
+});
+
+describe('allFeatureKeys', () => {
+  it('returns every registry key, so super admin follows the registry', () => {
+    expect(allFeatureKeys(FEATURE_REGISTRY)).toHaveLength(FEATURE_REGISTRY.length);
+    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.billingManage);
+    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.platformImpersonate);
+    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.workspacesShare);
+  });
 });
 
 describe('featuresForLevel', () => {
@@ -139,11 +175,24 @@ describe('featuresForLevel', () => {
     expect(workspace.map((s) => s.key)).not.toContain(FEATURE.billingManage);
   });
 
-  it('partitions the registry — every key belongs to exactly one level', () => {
-    const total = (['app', 'organization', 'workspace'] as const)
-      .map((level) => featuresForLevel(FEATURE_REGISTRY, level).length)
-      .reduce((a, b) => a + b, 0);
-    expect(total).toBe(FEATURE_REGISTRY.length);
+  it('partitions the registry across the two SCOPED levels', () => {
+    // App level is no longer part of the partition — it may offer anything —
+    // so the property that every key belongs to exactly one level now holds
+    // over the levels that actually filter.
+    const scoped = (['organization', 'workspace'] as const)
+      .flatMap((level) => featuresForLevel(FEATURE_REGISTRY, level))
+      .map((spec) => spec.key);
+    const appOnly = FEATURE_REGISTRY.filter((spec) => spec.level === 'app').map((spec) => spec.key);
+
+    expect(new Set(scoped).size).toBe(scoped.length);
+    expect(scoped.length + appOnly.length).toBe(FEATURE_REGISTRY.length);
+  });
+
+  it('offers an app-level role the whole registry', () => {
+    // Otherwise the editor presents a shorter list than the write path accepts,
+    // and super admin cannot be composed in the UI at all.
+    expect(featuresForLevel(FEATURE_REGISTRY, 'app')).toHaveLength(FEATURE_REGISTRY.length);
+    expect(featuresForLevel(FEATURE_REGISTRY, 'app').map((s) => s.key)).toContain(FEATURE.billingManage);
   });
 });
 

@@ -44,6 +44,9 @@ function mailer(): Transporter | null {
   return transport;
 }
 
+/** Wide enough to stand out in a terminal, narrow enough not to wrap in a default one. */
+const RULE = '─'.repeat(76);
+
 interface ResetMail {
   email: string;
   displayName: string | null;
@@ -77,7 +80,35 @@ async function deliver({ email, displayName, url, expiresAt }: ResetMail): Promi
       logger.error(`No mailer configured — cannot send a reset link to ${email}`);
       throw new Error('Password reset email is not configured');
     }
-    logger.warn(`[dev only] "${message.subject}" for ${email}, valid until ${expiresAt.toISOString()}:\n  ${url}`);
+    /*
+     * A DELIMITED BLOCK, not a sentence.
+     *
+     * This was already logging the link and was already correct — and the link
+     * was still being missed. Three things made it hard to use: it is one WARN
+     * among Nest's startup chatter, `pnpm dev` interleaves this app's output
+     * with the web app's, and the URL sat at the end of a sentence where
+     * selecting it also caught the punctuation.
+     *
+     * So the URL now sits ALONE on its own line, with no prefix and nothing
+     * after it — a double- or triple-click selects exactly the link. The rules
+     * above and below are there to be found while scrolling, which is the
+     * actual task.
+     *
+     * Still dev-only, and still refused in production above: a reset link in an
+     * aggregated log is a working credential in an aggregated log.
+     */
+    logger.warn(
+      [
+        '',
+        RULE,
+        '  PASSWORD RESET LINK — dev only, no SMTP_URL configured',
+        `  ${email} · expires ${expiresAt.toISOString()}`,
+        '',
+        url,
+        '',
+        RULE,
+      ].join('\n'),
+    );
     return;
   }
 

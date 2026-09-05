@@ -1,7 +1,9 @@
 'use client';
 
+import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TOTP_DIGITS } from '../../domain/policy.js';
+import { AUTH_FEATURE } from '../../features.js';
 import type { MfaEnrolment, MfaFactorSummary } from '../../types.js';
 import { type AuthClient, createAuthClient } from '../auth-client.js';
 import { AuthField } from '../auth-shell.js';
@@ -46,6 +48,14 @@ export function TwoFactorPage({
   renderQr?: (uri: string) => React.ReactNode;
 }) {
   const api = useMemo(() => client ?? createAuthClient(), [client]);
+
+  /*
+   * Two keys, never one. Withholding REMOVAL is how a policy makes 2FA
+   * mandatory; withholding enrolment would stop someone protecting their own
+   * account, which weakens security rather than enforcing it.
+   */
+  const canEnrol = useHoldsFeature(AUTH_FEATURE.accountTwoFactorEnrol);
+  const canRemove = useHoldsFeature(AUTH_FEATURE.accountTwoFactorRemove);
 
   const [factors, setFactors] = useState<MfaFactorSummary[] | null>(null);
   const [enrolment, setEnrolment] = useState<MfaEnrolment | null>(null);
@@ -215,39 +225,58 @@ export function TwoFactorPage({
             </SettingsCard>
           </form>
 
-          <form onSubmit={remove.onSubmit} noValidate>
-            <SettingsCard
-              title="Turn off two-step verification"
-              danger
-              description="Your account will be protected by your password alone."
-              footer={
-                <>
-                  <SettingsButton pending={remove.pending} danger>
-                    Remove
-                  </SettingsButton>
-                  <SettingsResult error={remove.error} />
-                </>
-              }
-            >
-              {/*
+          {/*
+            The whole card, not just its button. Its only action is removal, so
+            without the key it is furniture — and a section headed "Turn off
+            two-step verification" that cannot turn anything off reads as broken
+            rather than as policy.
+
+            This is the direction that matters: a policy requiring 2FA withholds
+            REMOVAL. Withholding enrolment would stop someone protecting their
+            own account, which is why they are separate keys.
+          */}
+          {canRemove ? (
+            <form onSubmit={remove.onSubmit} noValidate>
+              <SettingsCard
+                title="Turn off two-step verification"
+                danger
+                description="Your account will be protected by your password alone."
+                footer={
+                  <>
+                    <SettingsButton pending={remove.pending} danger>
+                      Remove
+                    </SettingsButton>
+                    <SettingsResult error={remove.error} />
+                  </>
+                }
+              >
+                {/*
                 The password is required by the server, not just asked for here.
                 Removing the second factor is the first thing an attacker on a
                 stolen session would do.
               */}
-              <input type="hidden" name="factorId" value={confirmed[0]?.id ?? ''} />
-              <AuthField
-                label="Confirm your password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-              />
-            </SettingsCard>
-          </form>
+                <input type="hidden" name="factorId" value={confirmed[0]?.id ?? ''} />
+                <AuthField
+                  label="Confirm your password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                />
+              </SettingsCard>
+            </form>
+          ) : null}
         </>
       ) : null}
 
       {/* ── not enrolled ──────────────────────────────────────────────────── */}
-      {!enrolment && factors !== null && confirmed.length === 0 ? (
+      {/*
+        `canEnrol` gates the setup card. Someone without it sees the page and
+        whatever they already have, but cannot add a factor — which is the
+        unusual direction and should be rare: the ordinary restrictive policy
+        withholds REMOVAL instead. Both endpoints behind this carry the same key
+        as registry bindings, so hiding the card and refusing the request agree.
+      */}
+      {canEnrol && !enrolment && factors !== null && confirmed.length === 0 ? (
         <form onSubmit={enrol.onSubmit} noValidate>
           <SettingsCard
             title="Set up two-step verification"

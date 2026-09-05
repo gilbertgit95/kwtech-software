@@ -2,6 +2,15 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input FeatureFilterInput {
+  isPrivileged: Boolean
+  levels: [String!]
+  modules: [String!]
+  search: String
+  tags: [String!]
+  unboundOnly: Boolean
+}
+
 type MfaFactor {
   confirmedAt: String
   id: String!
@@ -33,10 +42,18 @@ type PermissionFeature {
   module: String!
 }
 
+type PermissionFeaturePage {
+  hasMore: Boolean!
+  items: [PermissionFeature!]!
+  limit: Int!
+  offset: Int!
+  total: Int!
+}
+
 type Query {
   mfaFactors: [MfaFactor!]!
   myPermissions: PermissionContext
-  permissionFeatures: [PermissionFeature!]!
+  permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
   session: SessionInfo
   viewer: Viewer
 }

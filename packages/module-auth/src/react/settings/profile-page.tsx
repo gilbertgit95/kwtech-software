@@ -1,7 +1,9 @@
 'use client';
 
+import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH } from '../../domain/policy.js';
+import { AUTH_FEATURE } from '../../features.js';
 import type { Viewer } from '../../types.js';
 import { type AuthClient, createAuthClient } from '../auth-client.js';
 import { AuthField } from '../auth-shell.js';
@@ -29,6 +31,8 @@ export function ProfilePage({ viewer, client }: { viewer: Viewer; client?: AuthC
   // full page reload after saving would show the pre-save values again.
   useEffect(() => setCurrent(viewer), [viewer]);
 
+  const canEdit = useHoldsFeature(AUTH_FEATURE.accountProfileWrite);
+
   const { pending, error, done, onSubmit } = useAuthForm(async (form) => {
     const displayName = String(form.get('displayName') ?? '');
     const username = String(form.get('username') ?? '');
@@ -52,7 +56,24 @@ export function ProfilePage({ viewer, client }: { viewer: Viewer; client?: AuthC
           description="Your display name is shown in the header and in the account menu."
           footer={
             <>
-              <SettingsButton pending={pending}>Save changes</SettingsButton>
+              {/*
+                WRITE is gated, not the page or the fields. Someone without the
+                key still sees who they are — hiding that would make the app look
+                broken rather than the permission look absent — and the note
+                below says why the button is gone, so it reads as a policy rather
+                than a bug.
+
+                Not the security boundary: `Mutation.updateProfile` carries the
+                same key as a registry binding, so the control and the mutation
+                cannot disagree.
+              */}
+              {canEdit ? (
+                <SettingsButton pending={pending}>Save changes</SettingsButton>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Your profile is managed for you, so it cannot be changed here.
+                </p>
+              )}
               <SettingsResult error={error} done={done} />
             </>
           }

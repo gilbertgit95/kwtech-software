@@ -21,6 +21,27 @@ catalog:
   '@nestjs/platform-express': 11.1.29
   reflect-metadata: 0.2.2
 
+  # Catalogued for the SAME reason as Nest itself, after the same bug bit twice.
+  #
+  # module-permissions declared '@nestjs/graphql' but not 'graphql', so pnpm
+  # resolved it against a different peer (graphql 16) from the app's (17) — and
+  # a differing peer set means a SEPARATE INSTANCE. Two instances of
+  # @nestjs/graphql means two `TypeMetadataStorage` registries: `@ArgsType()` in
+  # the module registered the class in one, the schema builder in the app read
+  # the other, and the server died at BOOT with
+  #
+  #   CannotDetermineInputTypeError: Cannot determine a GraphQL input type for "limit"
+  #
+  # Object types had survived it by accident — `@Query(() => Type)` hands the
+  # class over directly, so the builder never consults the registry. Args types
+  # cannot: they are looked up by class, in whichever registry the reader owns.
+  #
+  # Found by running it. `tsc` cannot see this; the schema is built at runtime
+  # from decorator metadata, so the build was green and the app would not start.
+  '@nestjs/graphql': 13.4.5
+  '@nestjs/apollo': 13.4.5
+  graphql: 17.0.2
+
 # pnpm 11 does not run dependency install scripts unless they are allowlisted
 # here. Keep it to packages that genuinely need a build step and no more.
 #

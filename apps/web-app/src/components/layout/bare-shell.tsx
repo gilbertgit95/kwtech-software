@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 
 import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { ConnectivityMonitor } from '@/components/status/connectivity-monitor';
+import { StatusBarHost } from '@/components/status/status-bar-host';
 
 /**
  * The frame for routes that declare `chrome: 'bare'` — the pages you reach
@@ -14,10 +16,19 @@ import { ThemeToggle } from '@/components/layout/theme-toggle';
  *
  * Pinned to the corner rather than placed in a header, because these pages
  * have no header and a centred card should stay centred.
+ *
+ * ── and the status bar ──────────────────────────────────────────────────────
+ *
+ * The other thing it adds, and the reason it is not merely a convenience here:
+ * a sign-in that fails because the API is down looks exactly like a sign-in
+ * that fails because the password is wrong. This is the one screen where
+ * "cannot reach the server" changes what the reader should do next, so leaving
+ * the bar to the signed-in shell would omit it precisely where it matters most.
  */
 export function BareShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-dvh">
+      <ConnectivityMonitor />
       {children}
       {/*
        * LAST in the DOM, first in the corner. It is positioned absolutely, so
@@ -28,6 +39,17 @@ export function BareShell({ children }: { children: ReactNode }) {
       <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
         <ThemeToggle className="focus-visible:ring-offset-background" />
       </div>
+
+      {/*
+       * FIXED here, where the app shell has it as a flex item.
+       *
+       * These pages centre a card in the viewport rather than laying out a
+       * column, so there is no bottom of a flow for the bar to sit at — and
+       * giving this one a flex column purely to place it would move the card
+       * off centre. Nothing scrolls on these pages, so a fixed strip covers
+       * nothing.
+       */}
+      <StatusBarHost className="fixed inset-x-0 bottom-0 z-40" />
     </div>
   );
 }

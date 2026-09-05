@@ -1,4 +1,5 @@
 import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
+import { AUTH_FEATURE_REGISTRY } from '../features.js';
 import { ForgotPasswordPage } from './forgot-password-page.js';
 import { MfaChallengePage } from './mfa-challenge-page.js';
 import { ResetPasswordPage } from './reset-password-page.js';
@@ -97,6 +98,23 @@ function TwoFactorRoute(_props: ModuleRouteProps) {
 
 export const authWebModule: WebModuleDescriptor = {
   key: 'auth',
+  /*
+   * This module owns 'Account' — it is the only one contributing to it, and
+   * these are the pages for managing the person rather than the product.
+   *
+   * 90 puts it last among the declared groups, which is where it renders in an
+   * app that shows it in the drawer at all. This one does not: it lifts the
+   * group into the header's account menu instead, and that is the app's call to
+   * make — a module declares WHAT it contributes and roughly where, never which
+   * chrome draws it.
+   */
+  navGroups: [{ group: 'Account', order: 90 }],
+  /*
+   * This module's rights, contributed to the shared registry — currently none.
+   * Its routes need a SESSION, which JwtAuthGuard already requires, not
+   * AUTHORISATION. See ../features.ts for where that line is drawn.
+   */
+  features: AUTH_FEATURE_REGISTRY,
   // Every route here is 'bare': these are the pages you reach BECAUSE you have
   // no session, so the app shell — whose entire content is the navigation and
   // the account menu of a signed-in user — has nothing to put in itself.
@@ -138,7 +156,4 @@ export const authWebModule: WebModuleDescriptor = {
       component: TwoFactorRoute,
     },
   ],
-  // No features: this module declares no grantable rights. Authentication is
-  // who you are; authorisation is module-permissions' business.
-  features: [],
 };

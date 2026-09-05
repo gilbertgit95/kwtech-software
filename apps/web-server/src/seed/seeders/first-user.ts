@@ -6,38 +6,33 @@ import {
   normaliseUsername,
 } from '@kwtech/module-auth';
 import { hashPassword } from '@kwtech/module-auth/server';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { env } from '../config/env.js';
-import { PrismaClient } from '../generated/client.js';
+import type { PrismaClient } from '../../generated/client.js';
+import type { Seeder } from '../types.js';
 
 /**
- * Creates the first user.
+ * The first operator account, from SEED_USER_*.
  *
- * There is no sign-up endpoint, and that is not an oversight: §12.12 put
- * identity in `module-auth`, but nothing yet decides WHO may create an account —
- * open registration, invite-only, or provisioned by an administrator are three
- * different products. Until that is decided, the first account is an explicit
- * operator action, which is what this script is.
+ * Squarely the app's: which person gets the first account is deployment data,
+ * not something `@kwtech/module-auth` could have an opinion about. The module
+ * supplies the parts that must not be reimplemented — the hash, the
+ * normalisation, the password policy — and this composes them.
  *
- * Idempotent: run it twice and the second run updates the existing row rather
- * than failing on the unique index. That matters because the most common reason
- * to run it again is having forgotten the password.
- *
- * Reads its values from the environment so a real password never has to be
- * committed. `pnpm db:seed` supplies the defaults for local development.
+ * Phase 'seed', not 'sync'. It is asked for once per environment; a deploy that
+ * re-asserted an operator's password every time would be a way to lock someone
+ * out of their own account with a stale .env.
  */
 
-interface SeedInput {
+interface SeedUserInput {
   email: string;
   username: string;
   displayName: string;
   password: string;
 }
 
-function readInput(): SeedInput {
+function readInput(): SeedUserInput {
   const required = (name: string) => {
     const value = process.env[name];
-    if (!value) throw new Error(`${name} is required. See package.json's db:seed script.`);
+    if (!value) throw new Error(`${name} is required. See apps/web-server/.env.example.`);
     return value;
   };
 
@@ -49,7 +44,7 @@ function readInput(): SeedInput {
   };
 }
 
-export async function seedUser(prisma: PrismaClient, input: SeedInput): Promise<{ id: string; created: boolean }> {
+export async function seedUser(prisma: PrismaClient, input: SeedUserInput): Promise<{ id: string; created: boolean }> {
   const email = normaliseEmail(input.email);
   const username = normaliseUsername(input.username);
 
@@ -118,28 +113,13 @@ export async function seedUser(prisma: PrismaClient, input: SeedInput): Promise<
   });
 }
 
-async function main() {
-  const input = readInput();
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: env.DATABASE_URL }) });
-
-  try {
+export const firstUserSeeder: Seeder = {
+  name: 'auth:first-user',
+  phase: 'seed',
+  description: 'Create or update the operator account named by SEED_USER_*.',
+  async run({ prisma, log }) {
+    const input = readInput();
     const { id, created } = await seedUser(prisma, input);
-    console.log(
-      `${created ? 'Created' : 'Updated'} user ${id}\n` +
-        `  name:     ${input.displayName}\n` +
-        `  username: ${normaliseUsername(input.username)}\n` +
-        `  email:    ${normaliseEmail(input.email)}\n` +
-        '\nSign in at http://localhost:8081/auth/signin with either the email or the username.',
-    );
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-// Only when run directly, so the function above stays importable by a test.
-if (process.argv[1]?.endsWith('seed-user.js')) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
-  });
-}
+    log(`${created ? 'created' : 'updated'} ${normaliseEmail(input.email)} (${id})`);
+  },
+};

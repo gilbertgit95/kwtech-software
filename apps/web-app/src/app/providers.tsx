@@ -1,5 +1,6 @@
 'use client';
 
+import { StatusProvider } from '@kwtech/module-kit/react';
 import { ThemeProvider } from 'next-themes';
 import type { ReactNode } from 'react';
 
@@ -28,6 +29,11 @@ import { THEME_STORAGE_KEY } from '@/lib/preferences';
  *
  * PermissionsProvider is deliberately NOT here: it needs a value fetched on
  * the server per request, so it is mounted by AppShell, which has one.
+ *
+ * StatusProvider IS here, and for the mirror-image reason: it starts empty and
+ * fills up from the client, and it has to sit above BOTH shells. Mounting it in
+ * AppShell would leave the sign-in page — where "cannot reach the server" is the
+ * single most useful thing the app could say — with nowhere to say it.
  */
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -38,7 +44,7 @@ export function Providers({ children }: { children: ReactNode }) {
       disableTransitionOnChange
       storageKey={THEME_STORAGE_KEY}
     >
-      {children}
+      <StatusProvider>{children}</StatusProvider>
     </ThemeProvider>
   );
 }

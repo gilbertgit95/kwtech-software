@@ -43,7 +43,9 @@
     "@nestjs/common": "^11.0.0",
     "@nestjs/graphql": "^13.0.0",
     "react": "^19.0.0",
-    "reflect-metadata": "^0.2.0"
+    "reflect-metadata": "^0.2.0",
+    "@kwtech/web-ui": "workspace:*",
+    "read-excel-file": "^9.0.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -57,18 +59,27 @@
     },
     "react": {
       "optional": true
+    },
+    "@kwtech/web-ui": {
+      "optional": true
+    },
+    "read-excel-file": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@kwtech/web-ui": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
-    "@nestjs/graphql": "^13.4.5",
+    "@nestjs/graphql": "catalog:",
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
+    "graphql": "catalog:",
     "jest": "^30.4.2",
+    "read-excel-file": "^9.3.10",
     "reflect-metadata": "catalog:",
     "typescript": "catalog:"
   },

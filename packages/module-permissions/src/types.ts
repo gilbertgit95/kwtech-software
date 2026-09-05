@@ -40,6 +40,30 @@ export type FeatureSurface =
   /** A control inside a page — a button, a column, a tab. Identifier: 'RoleEditor'. */
   | 'ui_component';
 
+/**
+ * The surface names, as data.
+ *
+ * Exported because a module may declare a binding through
+ * `@kwtech/module-kit`'s `FeatureContribution`, where `surface` is a plain
+ * `string` — that package must not own this module's vocabulary. Something has
+ * to check the string is one of these on the way back in, and a type cannot do
+ * it at runtime.
+ */
+export const FEATURE_SURFACES: readonly FeatureSurface[] = [
+  'rest_endpoint',
+  'graphql_operation',
+  'graphql_subscription',
+  'graphql_field',
+  'job',
+  'cli_command',
+  'ui_route',
+  'ui_component',
+];
+
+export function isFeatureSurface(value: string): value is FeatureSurface {
+  return (FEATURE_SURFACES as readonly string[]).includes(value);
+}
+
 export interface FeatureBinding {
   surface: FeatureSurface;
   identifier: string;
@@ -60,7 +84,12 @@ export interface FeatureBinding {
  */
 export type RoleLevel = 'app' | 'organization' | 'workspace';
 
-const ROLE_LEVELS: readonly RoleLevel[] = ['app', 'organization', 'workspace'];
+/**
+ * Exported now that the write screens validate a level typed in by hand: the
+ * form's options, the import's check and `toRoleLevel` below must all read the
+ * same list, or one of them accepts a level the others refuse.
+ */
+export const ROLE_LEVELS: readonly RoleLevel[] = ['app', 'organization', 'workspace'];
 
 /**
  * Validates a level read from storage instead of casting it.

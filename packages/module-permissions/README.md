@@ -55,6 +55,28 @@ the composed schema — code-first, no SDL, no stitching.
 </FeatureGate>
 ```
 
+Mounting `PermissionsProvider` also publishes the held keys through
+`@kwtech/module-kit/react`, so any OTHER module can gate its own controls with
+`useHoldsFeature` without importing this package. One source of the list, and no
+cross-module import.
+
+Everything the `/react` entry point exports:
+
+| export | what it is |
+|---|---|
+| `PermissionsProvider`, `usePermissions` | the resolved context |
+| `FeatureGate` | show or hide by key, with a reason |
+| `FeatureDenied`, `denialMessage` | the refusal, worded once |
+| `useHasFeature`, `useHasAllFeatures`, `useHasAnyFeature`, `useFeatureDecision`, `useCanAccessWorkspace` | the same checks the server guard runs |
+| `AdminPage`, `AdminPlaceholder` | the frame the admin screens share |
+| `FeaturesPage`, `FeatureNewPage`, `FeatureImportPage`, `FeatureEditPage` | the registry screens |
+| `RolesPage`, `OrganizationsPage`, `SubscriptionsPage` | placeholders |
+| `permissionsWebModule` | the descriptor an app lists |
+
+The hooks and the guard import the SAME `check.ts`, so a `<FeatureGate>` and a
+`@RequireFeature` cannot disagree about the rules — not because they are kept in
+step, but because there is nothing to keep in step.
+
 ## Three levels of user access
 
 Every level is a **role held by a user**. Nothing else grants anything:
@@ -242,12 +264,24 @@ queries. It also means **a user with only app-level roles has no membership at
 all** — `loadContext` still returns a usable context for them, because returning
 null there would lock support out of every organization.
 
-**A role may only collect features at its own level**, enforced by
-`assertRoleFeatureLevels()`. Without it a workspace-level role can quietly
-contain `billing:manage`, and anyone able to create workspace roles — a routine,
-widely delegated right — could grant themselves an organization-wide one. That is
-privilege escalation, not a typo, so it throws rather than filtering silently.
-`featuresForLevel()` is what the role editor offers for a given level.
+**An organization- or workspace-level role may only collect features at its own
+level**, enforced by `assertRoleFeatureLevels()`. Without it a workspace-level
+role can quietly contain `billing:manage`, and anyone able to create workspace
+roles — a routine, widely delegated right — could grant themselves an
+organization-wide one. That is privilege escalation, not a typo, so it throws
+rather than filtering silently.
+
+**App-level roles are exempt and may collect any level's features.** The
+escalation above needs a lesser right to escalate FROM, and an app-level role
+has none: it hangs off no membership, and no tenant administrator can mint one.
+The exemption is what makes an all-access `super-admin` expressible — only two
+registry keys are app-level, so a strictly-levelled app role could not read an
+organization's roles or fix its billing. An unregistered key is still refused at
+every level, app included.
+
+`featuresForLevel()` is what the role editor offers for a given level, and
+mirrors the same rule: everything for `app`, only its own keys for the two
+scoped levels. `allFeatureKeys()` is what `super-admin` is seeded from.
 
 **Level is a filter, not a precedence chain.** App, organization and workspace
 grants all simply apply; nothing overrides anything, so there is no "which wins"
@@ -347,13 +381,168 @@ the app's own wrapper.
   signature. See [docs/PERMISSIONS-REVIEW.md](../../docs/PERMISSIONS-REVIEW.md) M7.
 
 ⚠️ **Still caller obligations.** `auditRegistry()`, `assertRegistered()` and
-`assertPlanLimits()` are exported for a seed task and CI that do not exist yet,
-so nothing calls them. `assertRoleFeatureLevels()` is now called — by
-`assertRoleDefinable()`, on the write path.
+`assertPlanLimits()` are exported for CI that does not exist yet, so nothing
+calls them. `assertRoleFeatureLevels()` is called by `assertRoleDefinable()` on
+the write path.
+
+## Syncing the registry into the database
+
+`perm_role_feature` carries a foreign key to `perm_feature`, so **until the
+registry has been written to the database, no role can be granted anything at
+all.** That makes it reference-data migration rather than seeding: it belongs on
+every deploy, not in a one-off script somebody remembers.
+
+`@kwtech/module-permissions/server` ships the mechanics, because they must agree
+with this module's own read path — which filters `deprecatedAt: null` — and
+because they are identical for every app that adopts it:
+
+```ts
+import { FEATURE_REGISTRY } from '@kwtech/module-permissions';
+import { grantAppRole, syncFeatureRegistry, upsertAppRole } from '@kwtech/module-permissions/server';
+
+await syncFeatureRegistry(prisma, FEATURE_REGISTRY);          // upsert + deprecate, never delete
+await upsertAppRole(prisma, SUPER_ADMIN, FEATURE_REGISTRY);   // your role definitions
+await grantAppRole(prisma, { userId, roleKey: 'super-admin' });
+```
+
+`prisma` here is anything satisfying `PermissionsRegistryClient` — a third
+structural interface alongside the read and write clients, kept separate because
+it is used once by a script at deploy time rather than injected into a running
+service. This package still opens no connection.
+
+**What stays yours:** which roles exist and what they are called, and resolving a
+person to a `userId` — that reads `auth_user`, which belongs to
+`@kwtech/module-auth`, and these two modules never import each other. See
+`apps/web-server/src/seed/README.md` for how one app composes it.
+
+## The admin screens this module ships
+
+A consuming app does not build these. It lists the module and the routes appear.
+
+| route | key | what it is |
+|---|---|---|
+| `/admin/features` | `features:read` | the registry, in a searchable grid |
+| `/admin/features/new/manual` | `features:create` | define one by hand |
+| `/admin/features/new/import` | `features:import` | many, from a spreadsheet |
+| `/admin/features/:featureId/edit` | `features:update` | change one |
+| `/admin/roles` | `admin:access` | role editor (placeholder) |
+| `/admin/organizations` | `members:manage` | placeholder |
+| `/admin/subscriptions` | `billing:manage` | placeholder |
+
+The five `features:*` keys are split by RISK, not by convenience:
+
+- **`features:read`** is organization level — someone building roles has to see
+  what a role can contain.
+- **`features:create` / `import` / `update` / `delete`** are **app** level, so
+  `assertRoleFeatureLevels` refuses them inside an organization-level role.
+  That is the escalation being guarded against: anyone able to invent a feature
+  could invent one that grants anything.
+- **`create`, `import` and `update` are three keys, not one.** Create adds a key
+  nobody holds; import does the same at very different scale; update changes what
+  an EXISTING key means under everyone already holding it. Keeping update with
+  create would make the safe right imply the risky one.
+
+### The write screens produce registry source, not rows
+
+`syncFeatureRegistry` deprecates every `perm_feature` row absent from the
+registry, and `assertRegistered` refuses an unregistered key — so a feature
+written straight to the table would be switched off by the next deploy and could
+never be granted meanwhile. It would look saved and be inert.
+
+So the screens validate and compose, and emit the entry to paste into
+`feature-keys.ts`. See `docs/PLAN.md` §12.22 for the open question of reversing
+that.
+
+### Denials
+
+`FeatureDenied` renders the refusal, and `denialMessage(reason)` is the sentence
+alone for a caller owning its own layout:
+
+```tsx
+import { FeatureDenied, denialMessage } from '@kwtech/module-permissions/react';
+```
+
+One wording in one place. "Upgrade your plan" and "ask an administrator" are
+different errands, and sending someone on the wrong one wastes a support ticket.
+
+## Tags, filtering and paging
+
+### Tags
+
+A feature already has three groupings — module, level, and the namespace in its
+key — and every one is a HIERARCHY: a key belongs to exactly one. Tags exist for
+the groupings that are not. `admin` spans `features:*`, `roles:*`, `members:*`
+and `billing:*`, which no single tree can say without duplicating something.
+
+```ts
+import { FEATURE_TAG, normaliseTags, tagsInUse } from '@kwtech/module-permissions';
+```
+
+The vocabulary is CLOSED — `FEATURE_TAG` declares them and validation refuses
+anything else. Free text acquires `admin`, `Admin` and `administration` within a
+month, and the filter meant to collapse a list into a few piles then produces
+three piles meaning one thing.
+
+⚠️ **Tags never grant.** Nothing in `checkFeature`, the guard, or any decision
+reads them. "Everyone with the admin tag" would be the wildcard grant this model
+already rejected — a role row must describe what its holder can do, and a tag is
+a label somebody can edit. Asserted in the tests, not merely intended.
+
+### Filtering
+
+`filterFeatures` is a pure function used by the API **and** the page, so the
+endpoint and the screen cannot answer different questions:
+
+```ts
+filterFeatures(FEATURE_REGISTRY, { search, modules, levels, tags, isPrivileged, unboundOnly });
+```
+
+Two rules within a facet, and one of them is arithmetic rather than preference:
+
+- **`modules`, `levels` — ANY of.** A feature has exactly one of each, so
+  requiring all would always match nothing.
+- **`tags` — ALL of.** A feature has many, so intersecting is meaningful and
+  each one narrows.
+
+Facets always AND with each other. `unboundOnly` answers the most useful audit
+question the registry has: which keys read as coverage in a role editor while
+guarding nothing?
+
+### Paging
+
+```ts
+paginate(rows, { limit, offset }); // -> { items, total, limit, offset, hasMore }
+```
+
+`MAX_PAGE_SIZE` **equals** `DEFAULT_PAGE_SIZE` (100), so `limit` can only ever
+narrow. A default protects the caller who does not ask; a CAP protects the server
+from the one who asks for everything — `?limit=100000` against a default-only
+endpoint is the same unbounded query with extra steps. Out-of-range values are
+clamped, not refused, and the response echoes the limit actually applied.
+
+Both `Query.permissionFeatures` and `GET /permissions/features` filter **then**
+page. The other order counts rows the caller never asked about and leaves page
+two missing rows page one filtered out.
 
 ## Enforcement is opt-in
 
 **Only registered features are checked. Everything else is untouched.**
+
+### Bindings enforce themselves
+
+A handler declaring no `@RequireFeature` is checked against the registry's own
+BINDINGS before being let through. `features:read` declaring
+`graphql_operation: 'Query.permissionFeatures'` guards that query by the
+declaration existing.
+
+That closes a real gap: the binding once named the query while the query had no
+guard at all, so the UI hid the page and the API served the data anyway. A claim
+and its enforcement in two places is the arrangement that produced it; now there
+is nothing to drift.
+
+`@RequireFeature` still wins where present — it is more specific, and it is what
+a reader sees on the handler. `enforceBindings: false` turns the fallback off for
+an app that guards its surfaces another way.
 
 `/auth/signin` is a route, not a feature — no key, no gate, no check, and no
 context is even loaded for it. The same holds at every surface: a controller

@@ -11,4 +11,5 @@
  */
 
 export * from './domain/index.js';
+export * from './features.js';
 export * from './types.js';

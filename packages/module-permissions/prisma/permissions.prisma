@@ -159,9 +159,19 @@ model PermMembership {
 /// role, which never belongs to one). Non-null = a role that organization
 /// defined for itself.
 ///
-/// A role may only collect features whose own level matches — enforced in the
-/// service and worth a CHECK in the app's SQL extras, since a workspace role
-/// quietly holding `billing:manage` is a privilege escalation, not a typo.
+/// An organization- or workspace-level role may only collect features whose own
+/// level matches — enforced in the service, since a workspace role quietly
+/// holding `billing:manage` is a privilege escalation, not a typo.
+///
+/// APP-level roles are exempt and may collect any level's features. The
+/// escalation above needs a lesser right to escalate from, and there is none
+/// here: an app role hangs off no membership and no tenant administrator can
+/// mint one. The exemption is what makes an all-access super admin expressible
+/// at all — only two registry keys are app-level, so a strictly-levelled app
+/// role could not read an organization's roles or fix its billing.
+///
+/// Note this is NOT a candidate for a SQL CHECK constraint: the rule now
+/// depends on the role's level, and app rows must be allowed to hold anything.
 model PermRole {
   id             String        @id @default(cuid())
   level          PermRoleLevel

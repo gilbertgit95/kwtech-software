@@ -11,7 +11,7 @@
  * in prisma/_modules/, which is gitignored and rebuilt on every generate — a
  * checked-in copy would be a second source that drifts.
  */
-import { copyFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,8 +19,32 @@ const here = dirname(fileURLToPath(import.meta.url));
 const app = join(here, '..');
 const packages = join(app, '..', '..', 'packages');
 
-/** Add a line here when the app adopts a new module. Nothing else changes. */
-const MODULES = ['module-auth', 'module-permissions'];
+/**
+ * Every `@kwtech/module-*` dependency, DERIVED from package.json rather than
+ * listed — the same trick, for the same reason, as `workspacePackages()` in the
+ * web app's next.config.ts.
+ *
+ * It used to be a hand-kept array, which made adopting a module a dependency
+ * PLUS an edit here that nothing would remind you about. Forgetting it does not
+ * fail loudly: the module's tables simply never reach the schema, and the first
+ * symptom is a migration that drops them or a query against a table that does
+ * not exist.
+ *
+ * A module with no `prisma/` folder is skipped rather than treated as an error —
+ * plenty of modules will declare no tables at all, and `@kwtech/module-kit` is
+ * one of them today.
+ */
+function moduleDirectories() {
+  const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8'));
+
+  return Object.keys(manifest.dependencies ?? {})
+    .filter((name) => name.startsWith('@kwtech/module-'))
+    .map((name) => name.slice('@kwtech/'.length))
+    .sort()
+    .filter((dir) => existsSync(join(packages, dir, 'prisma')));
+}
+
+const MODULES = moduleDirectories();
 
 const target = join(app, 'prisma', '_modules');
 rmSync(target, { recursive: true, force: true });

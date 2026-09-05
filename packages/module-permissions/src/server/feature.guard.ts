@@ -8,8 +8,16 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { canAccessWorkspace, denialReason, hasAllFeatures, hasAnyFeature } from '../check.js';
+import { FEATURE_REGISTRY } from '../feature-keys.js';
 import { parseScope, type RequestScope } from '../scope.js';
 import type { DenialReason, FeatureKey, PermissionContext } from '../types.js';
+import {
+  type BindingIndex,
+  buildBindingIndex,
+  featuresForSurface,
+  graphqlIdentifier,
+  restIdentifier,
+} from './binding-index.js';
 import type { PermissionsModuleOptions } from './permissions.module.js';
 import { PermissionsService } from './permissions.service.js';
 // The VALUE comes from the leaf module; the interface is type-only and erased,
@@ -39,6 +47,18 @@ export const PERMISSION_CONTEXT_KEY = 'kwtechPermissions';
  * The cost of opt-in, stated plainly: an endpoint that SHOULD be guarded and is
  * not looks exactly like one that is deliberately public. Nothing here can tell
  * them apart — see docs/PLAN.md §12.15.
+ *
+ * ── bindings enforce themselves ────────────────────────────────────────────
+ *
+ * A handler with no `@RequireFeature` is checked against the registry's own
+ * BINDINGS before being let through. `features:read` declares
+ * `graphql_operation: 'Query.permissionFeatures'`, so that query is guarded by
+ * the declaration existing — no decorator required, and no way for the binding
+ * to claim enforcement it does not have. That exact drift is what happened:
+ * the binding named the query while the query had no guard.
+ *
+ * The decorator still wins where present. It is more specific — several keys,
+ * or `anyOf` — and it is what a reader looking at the handler sees first.
  */
 @Injectable()
 export class FeatureGuard implements CanActivate {
@@ -48,11 +68,31 @@ export class FeatureGuard implements CanActivate {
     private readonly permissions: PermissionsService,
   ) {}
 
+  /** Built once per process: the registry is a compile-time constant. */
+  private static readonly bindings: BindingIndex = buildBindingIndex(FEATURE_REGISTRY);
+
+  private boundFeatures(context: ExecutionContext): readonly FeatureKey[] | undefined {
+    // Off by default? No — a declared binding that does not enforce is the bug
+    // this closes. `enforceBindings: false` exists for an app that guards its
+    // own surfaces some other way and wants the registry purely descriptive.
+    if (this.options.enforceBindings === false) return undefined;
+    return boundFeaturesFor(context, FeatureGuard.bindings, this.options.apiPrefix, this.options.getRequest);
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const required = this.reflector.getAllAndOverride<FeatureKey[] | undefined>(REQUIRED_FEATURES, [
+    // `declaredFeatures`, not `declared` — the scope spec below already owns
+    // that name in this method.
+    const declaredFeatures = this.reflector.getAllAndOverride<FeatureKey[] | undefined>(REQUIRED_FEATURES, [
       context.getHandler(),
       context.getClass(),
     ]);
+
+    /*
+     * Decorator first, registry second. Falling back only when nothing is
+     * declared keeps `@RequireFeature` authoritative — a handler that names its
+     * own keys is never silently widened or narrowed by a binding elsewhere.
+     */
+    const required = declaredFeatures?.length ? declaredFeatures : this.boundFeatures(context);
     if (!required || required.length === 0) return true;
 
     const mode =
@@ -189,4 +229,46 @@ export class FeatureGuard implements CanActivate {
     if (bag) bag[PERMISSION_CONTEXT_KEY] = resolved;
     return { kind: 'ok', context: resolved };
   }
+}
+
+/**
+ * The registry keys bound to whatever surface this request is, or undefined.
+ *
+ * Reads the transport STRUCTURALLY rather than importing `@nestjs/graphql`.
+ * That package is an optional peer here, and a guard that imported it would
+ * make every REST-only consumer install a GraphQL library to answer questions
+ * about REST.
+ */
+export function boundFeaturesFor(
+  context: ExecutionContext,
+  index: BindingIndex,
+  apiPrefix: string | undefined,
+  getRequest?: (context: unknown) => unknown,
+): readonly FeatureKey[] | undefined {
+  if (context.getType<'graphql'>() === 'graphql') {
+    /*
+     * Nest hands a resolver (root, args, context, info); `info` carries the
+     * schema-level names, which is what a binding names — the RESOLVER METHOD is
+     * called `features` while the query is `permissionFeatures`, and binding to
+     * the method name would tie the registry to an implementation detail.
+     */
+    const info = context.getArgs()[3] as { fieldName?: string; parentType?: { name?: string } } | undefined;
+    const parent = info?.parentType?.name;
+    const field = info?.fieldName;
+    if (!parent || !field) return undefined;
+    return featuresForSurface(index, graphqlIdentifier(parent, field));
+  }
+
+  const request = (getRequest ? getRequest(context) : context.switchToHttp().getRequest()) as
+    | { method?: string; url?: string; originalUrl?: string; path?: string }
+    | undefined;
+
+  const method = request?.method;
+  // `originalUrl` before `url`: Express rewrites `url` when a router is mounted
+  // under a prefix, so `url` can be the path MINUS a prefix that was never in
+  // the binding — matching on it would silently guard the wrong route.
+  const path = request?.originalUrl ?? request?.url ?? request?.path;
+  if (!method || !path) return undefined;
+
+  return featuresForSurface(index, restIdentifier(method, path, apiPrefix));
 }

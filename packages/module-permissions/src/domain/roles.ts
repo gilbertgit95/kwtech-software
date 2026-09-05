@@ -14,12 +14,31 @@ export interface RoleDefinition {
 }
 
 /**
- * A role may only collect features at its own level.
+ * A role may only collect features at its own level — EXCEPT at app level.
  *
- * Without this a workspace-level role can quietly contain `billing:manage`, and
- * anyone able to create workspace roles — which is a routine, widely delegated
- * right — can grant themselves an organization-wide one. That is privilege
- * escalation, not a typo, so it fails loudly rather than being filtered out.
+ * The rule exists because creating workspace roles is a routine, widely
+ * delegated right: without it, anyone able to define a workspace role can put
+ * `billing:manage` in one and grant themselves an organization-wide power. That
+ * is privilege escalation, not a typo, so it fails loudly rather than being
+ * filtered out.
+ *
+ * App level is exempt because the escalation it guards against cannot happen
+ * there. An app-level role is not attached to a membership and is not
+ * creatable by a tenant administrator; minting one is a platform operation, so
+ * there is no lesser right to escalate FROM. Applying the rule there bought no
+ * safety and made "platform staff who can do everything" impossible to express:
+ * only two registry keys are app-level, so the strictest possible super admin
+ * could still not read an organization's roles or fix its billing.
+ *
+ * The read path already assumed this shape. `composeContext` applies an
+ * app-level role at every scope and unions its features in AFTER the
+ * subscription filter, so an app role holding organization-level features
+ * resolves exactly as intended — everywhere, regardless of what the customer
+ * bought. Only this write-time assertion stood in the way. See domain/grants.ts.
+ *
+ * An unregistered key is still refused at every level, app included: a key no
+ * spec declares can never be checked, so a role carrying one grants nothing
+ * while reading as access.
  */
 export function assertRoleFeatureLevels(role: RoleDefinition, specs: readonly FeatureSpec[]): void {
   const byKey = new Map(specs.map((spec) => [spec.key, spec]));
@@ -31,7 +50,7 @@ export function assertRoleFeatureLevels(role: RoleDefinition, specs: readonly Fe
       problems.push(`'${key}' is not in the registry`);
       continue;
     }
-    if (spec.level !== role.level) {
+    if (role.level !== 'app' && spec.level !== role.level) {
       problems.push(`'${key}' is ${spec.level}-level, role '${role.key}' is ${role.level}-level`);
     }
   }
@@ -41,7 +60,27 @@ export function assertRoleFeatureLevels(role: RoleDefinition, specs: readonly Fe
   }
 }
 
-/** What the role editor may offer for a role at this level. */
+/**
+ * What the role editor may offer for a role at this level.
+ *
+ * Mirrors assertRoleFeatureLevels rather than partitioning the registry: an
+ * app-level role may collect anything, so the editor offers it everything.
+ * Organization and workspace roles still see only their own level's keys, which
+ * is what stops the editor presenting a choice the write path will refuse.
+ */
 export function featuresForLevel(specs: readonly FeatureSpec[], level: RoleLevel): FeatureSpec[] {
+  if (level === 'app') return [...specs];
   return specs.filter((spec) => spec.level === level);
+}
+
+/**
+ * Every feature in the registry, for the role that is meant to hold all of them.
+ *
+ * Derived rather than listed so a key added to the registry is granted by the
+ * super admin role on the next seed run. A hand-maintained list would decay
+ * silently: the role would keep its name and quietly stop being all-access,
+ * which is discovered as a denied request months later.
+ */
+export function allFeatureKeys(specs: readonly FeatureSpec[]): FeatureKey[] {
+  return specs.map((spec) => spec.key).sort();
 }

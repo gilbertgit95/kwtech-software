@@ -18,5 +18,6 @@ export * from './jwt-auth.guard.js';
 export * from './password.js';
 export * from './revocation.js';
 export * from './secret-box.js';
+export * from './server-module.js';
 export * from './token.service.js';
 export * from './totp.js';

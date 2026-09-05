@@ -53,9 +53,82 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* The status strip's four levels — see the :root block below for why these
+     are palette-independent. */
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-error: var(--status-error);
+  --color-status-error-foreground: var(--status-error-foreground);
+
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);
+}
+
+/*
+ * ── status colours ──────────────────────────────────────────────────────────
+ *
+ * The four levels of the global status bar, and the ONLY colours in this system
+ * that do not come from the palette.
+ *
+ * That is deliberate. Every other token is named by role so a theme can change
+ * what it IS without changing what it MEANS — but "error" already means
+ * something, and it does not mean "whatever hue this app chose". On the forest
+ * palette a palette-derived danger colour would be green, which is not a
+ * restrained design decision, it is a wrong one: the reader has to STOP and
+ * read to learn that something is broken, at the one moment the colour was
+ * supposed to tell them first.
+ *
+ * So they live here in base.css rather than in the ten theme files. One
+ * definition, every palette, and adding an eleventh theme does not mean
+ * choosing a red again.
+ *
+ * Low chroma on purpose. This is a persistent strip at the bottom of the
+ * window, not a toast: it is in view the whole time someone works, and a
+ * saturated bar becomes something they learn to stop seeing.
+ *
+ * Contrast is measured like everything else here —
+ * `pnpm --filter @kwtech/web-ui check:contrast` reads THIS file for these pairs.
+ */
+:root {
+  --status-info: oklch(0.94 0.03 240);
+  --status-info-foreground: oklch(0.4 0.1 240);
+
+  --status-success: oklch(0.94 0.042 150);
+  --status-success-foreground: oklch(0.38 0.09 150);
+
+  --status-warning: oklch(0.94 0.055 85);
+  --status-warning-foreground: oklch(0.42 0.1 85);
+
+  --status-error: oklch(0.94 0.03 25);
+  --status-error-foreground: oklch(0.45 0.15 25);
+}
+
+/*
+ * `:root.dark` and `.dark` both, mirroring the theme files: the first is the
+ * <html> element next-themes toggles, the second covers a dark container
+ * previewing the bar inside an otherwise light page.
+ *
+ * The surfaces go dark and the text goes light — the roles swap rather than the
+ * hues, so an error is the same red idea in both modes.
+ */
+:root.dark,
+.dark {
+  --status-info: oklch(0.27 0.045 240);
+  --status-info-foreground: oklch(0.8 0.09 240);
+
+  --status-success: oklch(0.27 0.045 150);
+  --status-success-foreground: oklch(0.8 0.13 150);
+
+  --status-warning: oklch(0.28 0.05 85);
+  --status-warning-foreground: oklch(0.8 0.16 85);
+
+  --status-error: oklch(0.28 0.06 25);
+  --status-error-foreground: oklch(0.75 0.145 25);
 }
 
 /*

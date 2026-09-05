@@ -485,16 +485,1049 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 11 | Next route strategy: catch-all vs generated stubs (§9) | Phase 4 | start catch-all; the module is identical either way |
 | 12 | ~~Does `module-permissions` own user identity?~~ **Closed: no** | — | Identity lives in **`@kwtech/module-auth`**. `perm_*` still holds `userId` as a bare string with no FK to `auth_user`; the two meet only in the app's `resolvePrincipal` |
 | 13 | Where the active organization and workspace come from on a request | Phase 2 | header, subdomain or session — `resolvePrincipal` reads it; the module does not guess |
-| 14 | Confirm app-level roles should bypass plan entitlement | Phase 2 | the default: staff must be able to help a lapsed organization. It is the one path that ignores billing state, so it needs a deliberate yes |
+| 14 | ~~Confirm app-level roles should bypass plan entitlement~~ **Closed: yes** | — | Confirmed 2026-08-30 while seeding `super-admin`. Staff must be able to help a lapsed organization, so this is the one path that ignores billing state. Verified end to end: a super admin resolves all 9 features inside an organization he is not a member of and which has no subscription at all |
 | 15 | Should surfaces declare themselves **public**, rather than being public by omission? | Phase 6 | enforcement is opt-in, so an endpoint that should be guarded looks identical to one deliberately open. A `@Public('reason')` marker plus a coverage report would close it, at the cost of annotating every surface |
 | 16 | ~~Does `PermWorkspaceMember` earn its place?~~ **Closed** | — | yes: workspaces have members, and workspace roles hang off that membership |
 | 17 | A fourth `TokenScope` (`mfa_enrol`) so `AuthUser.mfaRequiredAt` can be enforced | when 2FA is made mandatory | the column is written today and read by nothing. Enforcing it means admitting a half-admitted user to the ENROLMENT endpoints only; without that scope, "required but not enrolled" is a lockout with no way forward |
+| 19 | A home for raw-SQL schema extras (partial unique indexes, CHECKs) | before a second app-level role is created by hand | `@@unique([organizationId, key])` on `PermRole` does NOT enforce uniqueness for the rows that matter most: `organizationId` is null for app-level roles and shared presets, and Postgres treats NULLs as **distinct** in a unique index, so two `super-admin` rows can coexist. Closing it needs `CREATE UNIQUE INDEX ... ON perm_role (key) WHERE "organizationId" IS NULL`, which Prisma cannot express — and a hand-written migration would then read as drift on the next `migrate dev`. `upsertAppRole()` in the module refuses loudly on a duplicate as a stopgap |
+| 23 | ~~Should the account features gate the settings pages?~~ **Closed: no** | — | **A surface gets a key only when it needs AUTHORISATION, not merely a session.** `/settings/*` needs a session, which `JwtAuthGuard` already requires; the three `account:*` keys were removed and deprecated. See the decision log |
+| 21 | Should the feature form be able to declare BINDINGS? | before anyone relies on the create screens | `draftToSpec` emits `bindings: []`, so every feature authored through the UI is "Not enforced anywhere" by construction — the audit flags it and the Features grid says so in its own column. That is honest today, because a binding names a controller handler or a route that does not exist until someone writes it. The alternative is letting the form declare a surface that is not there yet, which is worse: the audit would report coverage for an endpoint nobody wrote. Resolve alongside decision 22 |
+| 22 | Should the DATABASE become the source and the registry a cache? | before the create screens write anything | `syncFeatureRegistry` deprecates any `perm_feature` row absent from `FEATURE_REGISTRY`, so a UI-created feature is switched off by the next deploy and `assertRegistered` refuses it meanwhile. Reversing it makes the screens write for real and costs the typed `FEATURE.adminAccess` constants, the build-time `assertRegistered`, and the property that a checkout fully describes what can be granted |
+| 20 | Should `ConnectivityMonitor` move to `web-ui` when `apps/admin` appears? | when a second web app exists | it is small and app-shaped today — it names `/api/health` and calls `router.refresh()`, both app decisions. A second app duplicating twenty lines is the cheaper mistake than a shared component that has to take both as options before anyone needs it |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-05** — **The usage docs had fallen behind; audited and closed.**
+  `PLAN.md` §13 was kept current at every step, but the package READMEs — the
+  "how do I use this" docs — were not. An audit of 26 shipped things against the
+  four READMEs found **16 undocumented**, including whole features: tags,
+  filtering, pagination, dynamic route segments, `useHoldsFeature`, `MultiSelect`,
+  `useDebouncedValue`, the five `features:*` keys, and the admin screens.
+
+  A decision log records WHY something was done for whoever is deciding whether
+  to change it. A README tells the next person HOW to use it. Keeping only the
+  first is how a package accumulates capability nobody discovers — and the
+  discovery cost lands on whoever adopts it, who is exactly the person the module
+  pattern exists to help.
+
+  Now documented: module-kit's dynamic `:param` routes and the cross-module
+  feature-access contract; module-auth's own feature registry, the
+  session-versus-authorisation rule and the server descriptor's boot-time secret
+  assertion; web-ui's grid pagination, selection and editing gotchas, the
+  multi-select and the debounce hook; module-permissions' admin screens, the
+  risk-based `features:*` split, tags, filtering, paging, binding enforcement and
+  the full `/react` export table.
+
+  Verified rather than asserted: every symbol named in a code example was
+  checked to exist in the built package — 28 across five entry points, none
+  missing. The same audit that caught the gap was re-run to confirm it closed.
+
+- **2026-09-05** — **Two module-consumption defects fixed; two proposed
+  refactors rejected after checking them.**
+
+  **`composeFeatures` was dead code, and the app had a second copy of it.**
+  Defined and tested in module-kit, never called — while `seed/registry.ts`
+  hand-rolled the same duplicate-key rule. Now the seeder composes through it,
+  so "two modules may not define one key" has one implementation.
+
+  **`authServerModule` dropped its own features.** `permissionsServerModule`
+  passed `features: FEATURE_REGISTRY`; the auth one passed nothing. Latent
+  rather than broken — the seeder reads the registries directly — but the day
+  anything composed from `SERVER_MODULES`, auth's keys would have been silently
+  absent. The list is legitimately empty-ish today; empty and PRESENT is the
+  honest shape, because a missing field cannot be told from an oversight.
+
+  **The seeder still does NOT compose from `SERVER_MODULES`, and that is
+  deliberate:** building those descriptors calls `AuthModule.forRoot()`, which
+  asserts `AUTH_JWT_SECRET` at construction. A seed task wanting only a list of
+  keys would fail on a secret it never uses. Confirmed by trying it.
+
+  Narrowing `FeatureContribution` to `FeatureSpec` is now CHECKED rather than
+  cast. The two differ exactly where module-kit stayed loose — `level` optional,
+  `surface` a plain string — and a cast would have written a row nothing can
+  grant, or a binding naming a surface that does not exist. `FEATURE_SURFACES`
+  and `isFeatureSurface` were added for it. All three checks verified to fire.
+
+  **One denial screen, not two.** `AdminDenied` and the app's `RouteDenied` had
+  the same four sentences copied between them; the copy in the app was the one
+  nobody would think to update. Both now render `FeatureDenied` from the module.
+
+  ## Rejected, after checking
+
+  **Moving `ConnectivityMonitor` and `StatusBarHost` into web-ui** — proposed
+  first and withdrawn. Both import from `next/navigation` (`useRouter`,
+  `usePathname`), and web-ui has no Next dependency and should not gain one for
+  two components. They are Next-coupled app glue and belong in the app. Extract
+  when a second app exists and it is clear what actually varies.
+
+  **Composing `WebModuleDescriptor.Provider`** — the field is declared and
+  nothing reads it, but exactly one provider exists. Building the composition
+  machinery for a single consumer is the same speculative move. The field should
+  probably be DELETED: an extension point that is declared, documented and
+  silently does nothing is worse than none, because someone will set it and
+  wonder why their context never mounts.
+
+- **2026-09-05** — **Feature filtering lives at the QUERY, and the page calls
+  the same function.** `filterFeatures` is a pure domain function over a list;
+  both `Query.permissionFeatures` and `GET /permissions/features` apply it
+  server-side, and the Features page applies the identical one.
+
+  A pure function is the only shape both can share. Put the rules in SQL and the
+  page cannot reuse them; put them in the page and the endpoint answers a
+  different question from the screen. The page still reads a compiled constant,
+  so there is no WHERE clause to push into today — but the SEMANTICS are the
+  query's, not a second implementation, and the day this becomes a table the
+  page swaps a constant for a fetch with every rule already matching.
+
+  **Filter first, then page.** The other order pages the whole registry and then
+  narrows what came back, so `total` counts rows the caller never asked about
+  and page two is missing rows page one filtered out.
+
+  **Two rules within a facet, and one of them is arithmetic rather than
+  preference.** `modules` and `levels` are ANY-of: a feature has exactly one of
+  each, so requiring all would always match nothing. `tags` are ALL-of: a
+  feature has many, so intersecting is meaningful and each one narrows. Facets
+  always AND with each other. Both are tested, because the distinction is
+  invisible until someone picks two modules and gets an empty grid.
+
+  Facets are built from the DATA — a module or level nobody uses never becomes
+  an empty option. Two boolean filters came with it: `isPrivileged` (where
+  `false` is a real filter, not the absence of one — `!filter.isPrivileged`
+  would have got that wrong) and `unboundOnly`, which answers the most useful
+  audit question the list has: which keys read as coverage in a role editor
+  while guarding nothing?
+
+  **The search is debounced at 250ms**, and the input stays bound to the RAW
+  value while only the filter waits. Binding the field to the debounced value is
+  the classic version of this bug — characters appear a beat after they are
+  typed. Debounce rather than throttle: throttling emits during the burst, which
+  is exactly the prefixes nobody wanted, and out-of-order responses would leave
+  the grid showing results for "featur".
+
+  **Module, Level and Tags are dropdowns showing a count**, not rows of chips.
+  Chips were better while the vocabulary was short — everything visible, every
+  grouping discoverable — and stop being better as it grows: twenty tags wrap
+  into a block that pushes the grid off screen. `Tags (2)` costs one click and
+  takes constant space. The count is the load-bearing half; a collapsed facet
+  that does not say it is active is how someone spends a minute wondering why a
+  list is short. It is in the accessible name too, for the same reason.
+
+  Level is a dropdown as well, though three values would still fit: one facet
+  rendered differently from its neighbours reads as an accident, and a fourth
+  level would force the change anyway.
+
+  `MultiSelect` went into `@kwtech/web-ui` rather than the page — the next
+  filter bar needs it. Its one non-obvious line is `event.preventDefault()` on
+  select: Radix dismisses on select by default, which for a multi-select means
+  one click per re-open — technically working and unusable for its whole purpose.
+
+- **2026-09-05** — **Bounded reads: the feature endpoints paginate, the grid
+  paginates, and a duplicate `@nestjs/graphql` was found doing it.**
+
+  Page sizes 10 / 50 / 100, default **100**, and — the part that matters —
+  `MAX_PAGE_SIZE` **equals** the default, so `limit` can only ever narrow. A
+  default alone protects the caller who does not ask; a CAP protects the server
+  from the one who asks for everything, and `?limit=100000` on an endpoint with
+  only a default is the same unbounded query with extra steps. The cap equals
+  the largest page the UI offers, so nothing can ask the API for more than a
+  person could have asked for through the interface.
+
+  Out-of-range values are CLAMPED, not refused: a caller asking for 5000 wants
+  "as many as I can have", and a 400 turns a reasonable request into an error
+  somebody has to handle. The response echoes the limit actually applied, so
+  nothing has to infer it from a short page. Fractions and NaN fall back rather
+  than truncating — `limit=1.5` is a client bug, and answering 1 would make a
+  broken client look like a working one.
+
+  Both endpoints return the same `Page<T>` shape — `items`, `total`, `limit`,
+  `offset`, `hasMore` — because a paginated list the caller cannot count is one
+  they cannot render controls for. `hasMore` is computed from the TOTAL, so a
+  final page that happens to be exactly `limit` long does not claim more.
+  `DataGrid` paginates by default at 100, since a grid handed ten thousand rows
+  builds ten thousand rows of DOM, and the list that grows past the point of
+  pain always does so in production.
+
+  **The find:** the `@ArgsType()` class for the paging arguments would not boot —
+  `CannotDetermineInputTypeError: Cannot determine a GraphQL input type for
+  "limit"`. Two copies of `@nestjs/graphql` were installed, because
+  `module-permissions` declared it but NOT `graphql`, so pnpm resolved it
+  against a different peer (16) from the app's (17) — and a differing peer set
+  means a separate instance. Two instances means two `TypeMetadataStorage`
+  registries: the module registered the args class in one, the app's schema
+  builder read the other.
+
+  Object types had survived the same split BY ACCIDENT — `@Query(() => Type)`
+  hands the class over directly, so the builder never consults the registry.
+  Args types are looked up by class, in whichever registry the reader owns, so
+  they were the first thing to expose it.
+
+  `@nestjs/graphql`, `@nestjs/apollo` and `graphql` are now CATALOGUED, for
+  exactly the reason `@nestjs/common` already is: "a SECOND copy is not a
+  duplicate — it is a bug." All three packages resolve one instance and the
+  server boots.
+
+  Worth recording how it was found: `pnpm build` and `pnpm typecheck` were both
+  GREEN throughout. The schema is built at runtime from decorator metadata, so
+  nothing static could see it — only starting the app did.
+
+- **2026-09-05** — **Features carry TAGS, and the features grid filters on
+  them.** `tags?: readonly string[]` on `FeatureContribution`, so any module can
+  tag its own keys.
+
+  A feature already had three groupings — module, level, and the namespace in
+  its key — and every one of them is a HIERARCHY: a key belongs to exactly one.
+  Tags earn their place because the useful groupings are not hierarchical.
+  `admin` spans `features:*`, `roles:*`, `members:*` and `billing:*`, and no
+  single tree says that without duplicating something. Concretely: `admin` now
+  collects 9 keys and `admin` + `access-control` narrows to 6, neither of which
+  the key prefix could express.
+
+  **The vocabulary is closed.** `FEATURE_TAG` declares the eight tags and
+  `validateDraft` refuses anything else. Free text acquires `admin`, `Admin` and
+  `administration` within a month, and a filter meant to collapse a long list
+  into a few piles then produces three piles meaning one thing. Adding a tag is
+  a one-line edit, which is the deliberate act it should be. Input is normalised
+  — lower-cased, spaces to hyphens, de-duplicated, sorted — so `Access Control`
+  and `access-control` are one tag.
+
+  **Tags are presentation only, and that is enforced rather than trusted.**
+  `feature-tags.test.ts` asserts that holding a tag name as if it were a key
+  grants nothing, and that holding one key does not extend to its tag-mates.
+  "Everyone with the admin tag" would be the wildcard grant this log already
+  rejected for `platform:super_admin` — a role row has to describe what its
+  holder can do, and a tag is a label somebody can edit.
+
+  **Registry-only, no migration.** `perm_feature` mirrors neither `level` nor
+  `bindings` already, so tags follow the same precedent — the grid reads the
+  compiled registry, and the database stays the mirror of what can be GRANTED
+  rather than of how it is filed.
+
+  Filtering intersects rather than unions: each chip should narrow, and "admin +
+  billing" growing the list on the second click is not what anyone means by a
+  filter. It runs before the grid rather than through AG Grid's filter model, so
+  it composes with the quick-search box instead of competing with it. The Clear
+  link and the "6 of 17" count appear only while filtering — a permanent "17 of
+  17" is noise that trains the eye to skip the line.
+
+  Tags are editable in all three entry points — the manual form, the spreadsheet
+  column, and the staging grid — so a feature created through the UI can be
+  filed like every other. 333 tests.
+
+- **2026-09-05** — **Own-account WRITE keys, so a restricted role can exist
+  later.** Three keys, granted to every seeded role so nothing changed today:
+  `account:profile_write`, `account:two_factor_enrol`,
+  `account:two_factor_remove`. The role that withholds them is not created yet;
+  the mechanism is.
+
+  **Reads are never keyed, writes are.** Every settings route stays unkeyed, so
+  the pages remain reachable and a withheld key costs a disabled control rather
+  than a locked door. Denying the read makes the app look broken; denying the
+  write is the actual requirement. The profile page says *"Your profile is
+  managed for you"* in place of the save button, so it reads as policy rather
+  than a bug.
+
+  **Enrol and remove are separate keys.** Withholding REMOVAL is how a policy
+  makes 2FA mandatory. Withholding enrolment stops someone protecting their own
+  account, which weakens security rather than enforcing it — one key could not
+  express the difference.
+
+  **Password change is deliberately not keyed**, and this is the substantive
+  judgement. Keying it would be either leaky or dangerous with nothing in
+  between: `/auth/forgot-password` is unkeyed and always reachable, so blocking
+  the settings page stops nothing — and closing that hole too would leave
+  someone with a compromised password unable to fix it, with **no admin-side
+  reset to fall back on** (`platform:impersonate` has no implementation). The
+  key arrives with that tooling. If the real intent is "these credentials are
+  centrally managed", that belongs on the ACCOUNT — an externally-managed-
+  identity flag — not on a role, because it follows the account rather than
+  whichever role it happens to hold.
+
+  **A gap this exposed and closed:** `module-auth` could gate a ROUTE through
+  its descriptor but could not gate a BUTTON inside its own page — `FeatureGate`
+  lives in `module-permissions` and no module may import it. So
+  `@kwtech/module-kit/react` gained `FeatureAccessProvider` / `useHoldsFeature`,
+  the same split the status channel already uses: the contract where everyone
+  may depend on it, the answer supplied by whoever resolves permissions.
+  `PermissionsProvider` mounts it internally, so there is one source of the list
+  and the app needed no change at all.
+
+  It defaults to an empty list, so a missing provider HIDES controls rather than
+  revealing them — verified: rendering `ProfilePage` with no provider shows the
+  policy note and no save button.
+
+  Verified end to end: the registry now enforces
+  `POST /auth/mfa/enrol` and `/mfa/confirm` on `two_factor_enrol`,
+  `DELETE /auth/mfa/factors` on `two_factor_remove`, and
+  `Mutation.updateProfile` on `profile_write`, while `change-password`,
+  `forgot-password` and `signin` stay open to any session. 17 keys synced,
+  super-admin 17, client and normal-user 3 each.
+
+- **2026-09-05** — **A surface gets a feature key only when it needs
+  AUTHORISATION, not merely a session.** The three `account:*` keys added
+  earlier the same day were removed and deprecated; `/settings/profile`,
+  `/settings/security` and `/settings/two-factor` carry no key again, which is
+  where `module-auth` started.
+
+  The rule that settles it, now written down in `module-auth/src/features.ts`:
+
+  | needs | example | key? |
+  |---|---|---|
+  | neither sign-in nor authorisation | `/auth/signin`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/verify` | no |
+  | sign-in only | `/settings/*`, `Mutation.updateProfile`, `Query.mfaFactors` | **no** |
+  | sign-in AND authorisation | `/admin/*`, `Query.permissionFeatures` | yes |
+
+  The middle row is the one that was got wrong. Requiring a key there does not
+  add safety — `JwtAuthGuard` already refuses anyone without a session, and
+  change-password additionally requires the CURRENT password, which is a
+  stronger check than any key. What it adds is a way to lock someone out of
+  their own account: a role omitting `account:security` leaves a person unable
+  to change a password they believe is compromised.
+
+  `AUTH_FEATURE_REGISTRY` is kept as an EMPTY exported array rather than
+  deleted, so the app's composed registry keeps naming the module and the seam
+  stays proven. The first real key arrives with the first surface acting on
+  SOMEBODY ELSE'S account — an administrator resetting another person's
+  password — which is a right worth granting and worth withholding.
+
+  Everything built to get here stays and was worth it: `FeatureContribution`
+  now carries `level` and `bindings`, so a module CAN declare a complete
+  feature; and `seed/registry.ts` composes every module's registry, so the next
+  one to declare a key does not need the seeder changed. Verified: `db:sync`
+  deprecated all three keys rather than deleting them, the roles are back to
+  14 / 0 / 0, and nothing that needs only a session is gated.
+
+- **2026-09-05** — **`module-auth` can now declare features, and does — which
+  required `FeatureContribution` to grow up.** Asked for features covering the
+  existing surfaces (profile, security) assigned to both roles.
+
+  The blocker was structural: `FeatureContribution` in `@kwtech/module-kit` had
+  only key/module/label/description/isPrivileged. A module could name a right
+  and say nothing about how far it reached or where it was enforced, so
+  `module-auth` **could not declare a complete feature at all** — `level` and
+  `bindings` lived in `module-permissions`' own `FeatureSpec`, and the two
+  modules must not import each other.
+
+  `level` and `bindings` moved onto `FeatureContribution`, both optional. That
+  is the same argument the interface already made for itself: every module
+  declares rights, only one enforces them — and a right is not fully declared
+  without saying how far it reaches. `FeatureSpec` still narrows `level` to
+  required, so nothing changed for the enforcer. `FeatureLevel` is duplicated in
+  module-kit rather than imported, because the dependency runs the other way and
+  three string literals cost less than inverting it.
+
+  **The seeder was reading one module's registry.** `syncFeatureRegistry` took
+  `FEATURE_REGISTRY` from `module-permissions` alone, which quietly meant
+  "permissions is the only module allowed to declare rights". Nothing was
+  missing while auth had none to declare; the moment it did, its keys would have
+  been absent from `perm_feature` and therefore ungrantable. A new
+  `seed/registry.ts` composes both — in the app, because neither module may
+  import the other — and refuses duplicate keys and missing levels with the
+  offending key named.
+
+  Three keys: `account:profile`, `account:security`, `account:two_factor`, all
+  app level, since they are about the person rather than any organization.
+  Granted to **super-admin, client and normal-user** alike.
+
+  **What is deliberately NOT gated:** the credential endpoints. Sign-in,
+  refresh, forgot-password, reset-password and the 2FA challenge are reached
+  BEFORE a session exists or in order to recover one; a key on any of them is a
+  right you need an account to hold and an account you cannot reach without it.
+  `POST /auth/change-password` and `/auth/signout-all` are also unbound — both
+  already require the current password, a stronger check than a key, and binding
+  them would let an administrator remove someone's ability to secure their own
+  account.
+
+  Verified: `perm_feature` holds 17 keys across two modules, super-admin has all
+  17, client and normal-user have exactly the three account keys; the real demo
+  account resolves `effective` to those three and still gets **403** on
+  `/permissions/features`; and the settings routes are reachable for both roles.
+
+  **Worth knowing:** the auth settings pages do NOT gate themselves — no
+  `FeatureGate`, no `AdminPage` — so the catch-all's route check is the only
+  thing protecting them. That check was added earlier the same day; without it
+  these keys would have been decoration.
+
+- **2026-09-05** — **A `normal-user` role and a demo account, as the control
+  case for access checking.** `normal-user` is app level and holds NOTHING, and
+  must stay that way: adding anything — even `admin:access` "just to see the
+  dashboard" — would make every denial it exists to demonstrate ambiguous.
+
+  It deliberately overlaps `client`, which also grants nothing. Kept apart
+  because they answer different questions: `client` says "this account is a
+  customer, not staff", a fact about billing and support; `normal-user` says
+  "this account is here to verify that gating works". Merging them would turn a
+  test fixture into a business classification. Drop it once there are real
+  organization-level roles to test against.
+
+  The account comes from `SEED_DEMO_USER_*` through a new `demo:user` seeder,
+  not from a one-off script: `prisma migrate reset` drops everything, and a test
+  account recreated by hand is one nobody recreates. It reuses the same
+  `seedUser` the first-operator seeder uses, so both accounts are made by the
+  same rules. Skipped entirely when the variables are unset, so a demo account
+  cannot appear on production because someone ran the seed task.
+
+  **Credentials live in `apps/web-server/.env`, which is gitignored.**
+  `.env.example` documents the variable NAMES with empty values. (The
+  pre-existing `SEED_USER_PASSWORD` in `.env.example` is still a real-looking
+  password in a committed file and should be blanked the same way.)
+
+  **Verified end to end against the running API and the real account:**
+  sign-in succeeds; `myPermissions` returns `granted: []`, `grantedAtAppLevel:
+  []`, `effective: []`; `GET /permissions/features` returns **403** and
+  `Query.permissionFeatures` returns *"Requires all of: features:read"* with no
+  data; the drawer shows no Administration group; all seven `/admin/*` pages
+  refuse; and `/settings/profile` and `/settings/security` still render, since
+  managing your own account is not a grantable right.
+
+  **One inconsistency found:** `GET /permissions/me` returns an empty body for
+  this user while GraphQL `myPermissions` returns the full context. The REST
+  handler reads the context the guard stashes, and the guard only loads one when
+  a feature is required — so an unguarded handler sees nothing. Harmless today
+  (the frontend uses GraphQL) but the two endpoints answer the same question
+  differently, which is the shape of a future bug.
+
+- **2026-09-05** — **Registry BINDINGS now enforce themselves on the backend.**
+  `FeatureGuard` consults the registry for any handler that declares no
+  `@RequireFeature`, so `features:read` declaring
+  `graphql_operation: 'Query.permissionFeatures'` guards that query by the
+  declaration existing. The decorator still wins where present — it is more
+  specific (several keys, `anyOf`) and it is what a reader sees on the handler.
+
+  The alternative was to keep checking bindings in CI and leave enforcement
+  manual. Rejected: a claim and its enforcement in two places is the arrangement
+  that already produced the bug — `features:read` named the GraphQL query while
+  the query had no guard, so the UI hid the page and the API served the data.
+  Now there is nothing to drift.
+
+  **Enforcement stays opt-in** for surfaces nobody declared: a handler with
+  neither a decorator nor a binding passes through untouched, which is §4.7 and
+  why sign-in and health checks need no annotation. This narrows the gap between
+  "declared" and "enforced"; it does not close the one between "unguarded" and
+  "deliberately public" (§12.15).
+
+  Two implementation notes worth keeping. The guard reads the transport
+  STRUCTURALLY — `getArgs()[3]` for GraphQL's `info` — rather than importing
+  `@nestjs/graphql`, which is an optional peer here and would otherwise become a
+  GraphQL dependency for REST-only consumers. And it binds to the SCHEMA name
+  (`Query.permissionFeatures`), not the resolver method (`features`), so the
+  registry does not name an implementation detail.
+
+  The index is split into exact and parameterised entries because the guard now
+  runs a lookup on nearly every request: an exact hit is one `Map.get`, and a
+  miss scans only parameterised bindings, of which there are currently none.
+  `enforceBindings: false` turns the whole fallback off for an app that guards
+  its surfaces another way.
+
+  **Level semantics confirmed unchanged:** checks resolve against `effective`,
+  which unions app, organization and workspace grants. App-level-only was raised
+  and rejected — it would have emptied the organization tier, since
+  `admin:access`, `features:read`, `members:manage` and `billing:manage` are all
+  organization-level.
+
+- **2026-09-05** — **Feature checking was UI-only in places the code claimed it
+  was not. Three gaps closed.**
+
+  **1. `Query.permissionFeatures` was unguarded.** It returned the whole
+  grantable vocabulary to any authenticated caller, while the UI hid
+  `/admin/features` from anyone without `features:read`. The interface said one
+  thing and the API said another, which is the arrangement where the API wins.
+  It now carries `@RequireFeature(FEATURE.featuresRead)`, and
+  `GET /permissions/features` moved from `admin:access` to the same key — two
+  keys for one question is two places for them to drift. `myPermissions` and
+  `GET /permissions/me` stay deliberately unguarded: asking what you hold is not
+  a privilege.
+
+  **2. `ModuleRoute.feature` claimed middleware read it. It did not.** The
+  comment promised the key was read by "the navigation filter AND the app's
+  middleware, so a route cannot be linked-to-but-unprotected" — but middleware
+  renews a session and explicitly does not decide who may see what. So a module
+  route whose component did not gate ITSELF was reachable by anyone signed in,
+  with the descriptor saying otherwise. Nothing was exposed today (every
+  permissions page self-gates); the next module to contribute a route would have
+  been.
+
+  **3. The catch-all now enforces `route.feature` before calling the
+  component**, which makes the promise true for every module at once rather than
+  asking each page to remember. Pages keep their own `FeatureGate` — a backstop,
+  not a replacement, and defence in depth is cheap when both layers read the
+  same key.
+
+  Two states are deliberately NOT denials, and both were bugs waiting to be
+  reintroduced: an unreachable API renders the outage panel (refusing there
+  reports an outage as the reader's own fault), and no session redirects to
+  sign-in. Verified end to end against a stopped API — outage panel with a
+  cookie, 307 to sign-in without one. `getSessionSnapshot` is `cache()`-wrapped,
+  so the catch-all's call and AppShell's are one request per render.
+
+  **A new test suite asserts bindings match guards.** The registry's
+  `rest_endpoint` and `graphql_operation` bindings are claims about where a key
+  is enforced, and nothing checked them — which is how the GraphQL binding came
+  to name an unguarded query. `surface-coverage.test.ts` reads the same
+  decorator metadata the guard reads, so a binding and its guard cannot drift
+  apart silently again.
+
+  **Still open and worth stating:** enforcement remains opt-in (§4.7), and 8 of
+  14 keys have no API binding and no server guard — `roles:manage`,
+  `members:manage`, `billing:manage` and the workspace keys gate UI only. They
+  are honest about it now (no binding claims otherwise), but a key that guards
+  nothing on the server is a key an API caller ignores.
+
+- **2026-09-05** — **`features:author` split into `create`, `import` and
+  `update`, so a role can hold some and not others.** The registry now carries
+  five keys for the feature screens: `features:read` (organization) plus
+  `create`, `import`, `update` and `delete` (all app level, all privileged).
+
+  They are three different risks, not three spellings of one:
+
+  - **create** adds a key nobody holds yet. It grants nothing until a role picks
+    it up, so the blast radius on the day is zero.
+  - **import** does the same act at very different scale — a hundred keys from a
+    file — and scale is the reason someone might be trusted with one and not the
+    other.
+  - **update** changes what an EXISTING key means, under everyone already
+    holding it. That is the dangerous one, and keeping it with create would have
+    made the safe right imply the risky one.
+
+  No umbrella key was kept. An umbrella that implies the others contradicts the
+  model's stated core — no inheritance, everything a role means is the list it
+  carries — and would put the implication in code rather than in the row.
+
+  Verified across seven grant sets: read+create shows only New, read+import only
+  Import, read+update only Edit, read+delete only Delete, and each write page is
+  reachable only with its own key. `features:author` was DEPRECATED rather than
+  deleted by the next `db:sync` (14 keys upserted, one deprecated), and
+  super-admin re-derived to hold all of them without an edit — both behaving
+  exactly as the registry model says they should.
+
+  **Known and deliberate:** `features:create` without `features:read` gives
+  someone who can reach the create screen but not browse the list, and whose
+  Back link leads somewhere they are refused. That is the honest consequence of
+  genuinely independent keys rather than a hierarchy; the alternative is
+  implying read from every write key, which is inheritance by another name.
+  Granting read alongside is the administrator's call.
+
+  The coarse keys elsewhere — `members:manage`, `roles:manage`,
+  `billing:manage`, `workspaces:manage` — are untouched. Splitting those the
+  same way is a separate decision, and this is the worked example for it.
+
+- **2026-09-05** — **The feature admin screens got their own registry entries,
+  split by LEVEL rather than lumped under `roles:manage`.** Three keys:
+
+  | key | level | privileged | why |
+  |---|---|---|---|
+  | `features:read` | organization | no | someone building roles inside one organization has to see what a role can contain; the list is the dictionary, not any organization's records |
+  | `features:author` | **app** | yes | a feature is a platform-wide right — inventing one is not something a tenant administrator does for their own organization |
+  | `features:delete` | **app** | yes | same reason as authoring |
+
+  The level split is the substance, not the naming. `assertRoleFeatureLevels`
+  refuses an app-level feature inside an organization-level role, so an org
+  administrator **cannot** be granted `features:author` at all — verified. That
+  matters because anyone able to invent a feature could invent one that grants
+  anything, which is exactly the escalation the level rule exists to stop.
+  Previously all four screens sat behind `roles:manage`, an ORGANIZATION-level
+  key, so an org admin could have reached the authoring screens.
+
+  Enforcement is at three surfaces, from one declaration each: the route
+  descriptor (nav entry + middleware), the page body via `AdminPage`, and the
+  individual toolbar controls via `FeatureGate`. Verified across four grant
+  sets — a reader sees the page and the nav entry but no write controls and is
+  refused on the write pages; an author gets Edit/New/Import but not Delete.
+
+  Bindings name only surfaces that EXIST: `ui_route` and `ui_component`. No
+  `rest_endpoint` or `graphql_operation` binding was written, because neither
+  exists — these screens emit registry source rather than calling an endpoint.
+  Naming a surface that is not there would be worse than naming none, since the
+  audit would then report coverage for code nobody wrote. Two new open decisions
+  (21, 22) record what has to happen before that changes.
+
+  `perm_feature` carries no `level` column — level is registry-only, which is
+  consistent with the registry being the source, and worth knowing before
+  anyone tries to filter by it in SQL.
+
+- **2026-09-05** — **Importing a second file now asks Replace or Add, and the
+  words were the decision.** Previously a second file appended silently, which
+  is a reasonable default and a bad assumption — someone who opened the wrong
+  file first wants the opposite.
+
+  **"Replace", not "Overwrite".** Nothing has been written anywhere at this
+  point: the staged rows are discarded, not overwritten in storage, and
+  "overwrite" would imply the database is involved. Each label names what
+  happens to the rows ALREADY STAGED rather than to the file, because that is
+  the half at risk — the incoming file arrives either way.
+
+  **Asked only when there is something to lose.** With an empty grid, "replace
+  nothing" and "add to nothing" are the same outcome, so the first import is not
+  interrupted by a question with one answer. Prompting regardless is how people
+  learn to dismiss dialogs without reading them, which is what makes the one
+  that mattered get dismissed too.
+
+  **Parsed before asking**, so the dialog can say "12 rows from features.csv"
+  rather than "the file" — and a file that could not be read reports its error
+  instead of prompting for a choice about nothing.
+
+  `ConfirmDialog` gained an optional `alternative`, a third button between
+  Cancel and Confirm. Replace keeps the destructive styling and Add is neutral:
+  if both were emphasised the reader would have to read both to find the safe
+  one. Without the prop the dialog is an ordinary two-button confirmation, which
+  the delete and clear dialogs still are.
+
+- **2026-09-05** — **The import page became an editable STAGING GRID rather than
+  an importer.** A file is parsed into an AG Grid, corrected in place, added to
+  by hand, and nothing leaves the page until "Save with validation" is pressed.
+  That is the difference between an import that rejects a hundred-row file and
+  one that lets you fix the three rows that were wrong.
+
+  Validation is live: `validateDraftList` runs on every edit, so the count under
+  the grid tracks what is actually in it and Save is not a moment of discovery.
+  Errors are DERIVED on render rather than stored beside the rows — two things
+  to update on every keystroke is one thing to forget, and the day it is missed
+  the grid shows an error for a value already fixed.
+
+  `validateDraftList` was extracted so the file import and the grid share one
+  implementation of the cross-row rule. It flags the SECOND use of a duplicated
+  key rather than the first (the first is where the key legitimately lives), and
+  a malformed key never claims a slot — claiming it would report the same
+  problem twice on two rows. Eight tests.
+
+  Two details that are correctness, not polish:
+  `stopEditingWhenCellsLoseFocus` on the grid, because without it typing in a
+  cell and then clicking Save DISCARDS what was typed — AG Grid keeps the editor
+  open, the value never reaches the row, and the edit looks accepted; and a
+  second file APPENDS rather than replacing, because wiping staged work
+  (including hand-typed rows) as a side effect of opening another file is a
+  destructive surprise. Clear is an explicit button and it asks first.
+
+  Save stays disabled only on an EMPTY grid. With invalid rows it stays live and
+  refuses on press — a disabled button explains nothing, and the count beside it
+  already says what is wrong. Errors are outlined per FIELD, not per row: a row
+  with a bad key and a good label should point at the key.
+
+- **2026-09-05** — **The confirm dialog rendered in the top-left corner, and the
+  cause was Tailwind Preflight.** A modal `<dialog>` is centred by the UA
+  stylesheet's `margin: auto` against the `inset: 0` it gives `dialog:modal`.
+  Preflight emits `*, ::before, ::after, ::backdrop { margin: 0; padding: 0 }`,
+  which overrides it — author styles beat the UA sheet — so the dialog collapsed
+  into the corner. `m-auto` restores it and wins on specificity (0,1,0 against
+  the universal selector's 0,0,0).
+
+  Worth recording rather than just fixing: it is a general consequence of using
+  a native `<dialog>` in a Tailwind app, so the next one needs the same line,
+  and nothing about the symptom points at a CSS reset. Noted in web-ui's README
+  beside the component.
+
+  A height cap came with it — `max-h-[calc(100dvh-4rem)]` plus `overflow-y-auto`
+  — because the UA caps a modal's height but does not make the overflow
+  reachable: a long list of selected rows would be clipped with the buttons
+  underneath it out of reach.
+
+- **2026-09-05** — **Feature write screens, and dynamic route segments to reach
+  them.** Added `/admin/features/new/manual`, `/admin/features/new/import` and
+  `/admin/features/:featureId/edit`, plus New / Import / Edit / Delete on the
+  list, double-click-to-edit, and a confirmation dialog.
+
+  **module-kit gained `:param` routes**, which it did not have —
+  `ModuleRouteProps.params` existed and nothing ever populated it.
+  `matchRouteWithParams` scores literal segments above dynamic ones, so
+  `/admin/features/new/manual` beats `/admin/features/:featureId/edit`
+  regardless of declaration order; asserted, because the alternative is a route
+  that works until someone reorders `WEB_MODULES`. The old prefix fallback is
+  kept and only reached when nothing matches exactly.
+
+  **The screens produce registry source, not database rows.** This is the part
+  worth arguing with. `syncFeatureRegistry` deprecates every `perm_feature` row
+  absent from `FEATURE_REGISTRY`, and `assertRegistered` refuses an unregistered
+  key — so a feature written straight to the table is switched off by the next
+  `pnpm db:sync` and cannot be granted to anyone in the meantime. It would look
+  saved and be inert. So the screens validate and compose, and emit the entry to
+  paste into `feature-keys.ts`; the delete dialog says the same thing rather than
+  deleting a row the next sync rewrites.
+
+  **The open decision this raises:** should the DATABASE become the source and
+  the registry a cache? That would make these screens write for real, and would
+  cost the typed `FEATURE.adminAccess` constants, the build-time
+  `assertRegistered`, and the property that a checkout fully describes what can
+  be granted. Not taken either way here.
+
+  Validation is one function — `validateDraft` — shared by the form and the
+  import, so the two cannot disagree about what a valid feature is. Every row of
+  an import is validated and reported with its source line; nothing is emitted
+  until all of them pass, since half a file imported is the half nobody
+  remembers to finish. CSV/TSV is parsed in-repo (thirty lines, and it is the
+  format this screen documents); `.xlsx` uses `read-excel-file` behind a dynamic
+  import from its `/browser` subpath — the package ships no root export — so
+  someone who only pastes CSV never downloads it.
+
+  `ConfirmDialog` in web-ui is the native `<dialog>` element, not Radix: focus
+  trapping, the inert background, Escape, and the top layer are all platform
+  behaviour now, and the top layer is the part a hand-rolled overlay gets wrong.
+  It opens with `showModal()` rather than the `open` attribute, which renders
+  inline with none of that.
+
+  Two grid details that are correctness rather than polish: `getRowId` is the
+  feature key, so sorting or filtering cannot slide a selection onto different
+  rows before a bulk delete; and row activation is DOUBLE click, because single
+  click is how a row is selected and making it navigate would stop anyone
+  ticking a checkbox. The Edit button exists alongside it — a double-click is
+  unfindable and impossible on a touchscreen, so it is a shortcut, not the only
+  route.
+
+- **2026-09-05** — **The app shell got a definite height, which fixed a latent
+  scroll bug and made a full-height data grid possible.** Asked for the features
+  grid to span the available height and width.
+
+  The shell was `flex min-h-dvh`, so its height was `auto`: `flex-1` on `<main>`
+  resolved against its own content and `overflow-auto` never fired. Tall content
+  grew the shell and the whole PAGE scrolled, carrying the header, the drawer and
+  the status bar off screen — while the status bar's own comment already claimed
+  "main already owns its own scrollbar". `h-dvh` plus `min-h-0` on the column and
+  on `<main>` makes that true: the chrome stays put, content scrolls inside, and
+  a child asking for `h-full` finally has something to resolve against.
+
+  Safe for the drawer, which was already `min-h-0 flex-1 overflow-y-auto` — a nav
+  longer than the viewport scrolls within the sidebar rather than clipping.
+
+  `AdminPage` gained `layout: 'prose' | 'fill'` — ONE prop, not a `wide` and a
+  `fill`. A screen that wants the whole width wants the whole height for the same
+  reason, and two independent flags would make three of the four combinations
+  meaningless. 'prose' keeps the readable measure for forms and settings; 'fill'
+  is full width with the body taking the height the heading leaves.
+
+  `DataGrid.height` gained `'fill'`, expressed through flexbox rather than as a
+  percentage: AG Grid needs a RESOLVED height, and `height: 100%` inside a parent
+  that has none collapses it to nothing. `'fill'` degrades to a short grid rather
+  than to no grid when an ancestor forgets its own height.
+
+  Verified by server-rendering both variants: Features renders
+  `flex h-full w-full flex-col` → `mt-6 min-h-0 flex-1` → grid `h-full min-h-0` →
+  wrapper `min-h-0 flex-1`, with no max-width cap and no fixed pixel height;
+  Roles still renders `mx-auto w-full max-w-4xl`, unchanged.
+
+- **2026-09-05** — **`<DataGrid>` exists, and it follows the palette through CSS
+  variables rather than a theme object per mode.** PLAN §8 had specified this
+  ("build one shared theme in `@kwtech/web-ui` mapped to the Tailwind v4 tokens";
+  "apps import `<DataGrid>`, never `ag-grid-react` directly") and nothing had
+  been built; `ag-grid-community` and `ag-grid-react` were declared as optional
+  peers of web-ui with no code behind them.
+
+  The decision that mattered was how to follow theme toggling. The obvious route
+  with AG Grid's v33+ Theming API is two JS theme objects swapped in React state.
+  Rejected on three counts: the grid re-renders on every theme change, it knows
+  nothing about the TEN palettes (so `data-palette="ocean"` would leave the grid
+  grey), and the swap lags the rest of the page by a frame.
+
+  Instead every colour parameter is a `var(--token)` reference. Verified by
+  inspecting what AG Grid emits — it writes the REFERENCE, not a resolved value:
+  `--ag-background-color: var(--background)`, `--ag-accent-color: var(--primary)`,
+  `--ag-header-background-color: var(--muted)`, `--ag-row-hover-color:
+  var(--accent)`. So the browser re-resolves against whatever `<html>` carries,
+  and both the palette and the mode repaint with no React involvement at all.
+
+  `browserColorScheme: 'inherit'` is the non-obvious one: native widgets inside
+  the grid — scrollbars, date pickers, filter inputs — are painted by the browser
+  and ignore custom properties. Without it a dark grid keeps light scrollbars.
+
+  `DataGridColumn` is re-exported from web-ui so §8's wrapper rule holds for
+  TYPES too. A page writing `ColDef` from 'ag-grid-community' would satisfy the
+  letter of the rule while leaving an Enterprise upgrade just as expensive.
+
+  **The cost, on the record:** `module-permissions` now declares
+  `@kwtech/web-ui` as an optional peer, because its `/react` subpath ships real
+  screens and a real screen needs a grid. That is the first module → UI-package
+  edge in the workspace. It does not breach "a module ships components, not a
+  design system" — web-ui is entirely token-driven, so the app still owns every
+  colour — but it does mean adopting the module's React surface now implies
+  adopting web-ui. `/server` consumers still pull in nothing. Revisit if a
+  second frontend wants these pages with a different kit.
+
+- **2026-09-05** — **The server composes from a list too, and the last two
+  hand-kept module registries are gone.** The web side had always composed
+  (`WEB_MODULES`); the server hand-wrote `AuthModule.forRoot({...})` and
+  `PermissionsModule.forRoot({...})` straight into `imports`, so adopting a
+  module was a different shape of edit depending on which side you were on — and
+  `permissionsServerModule()` had been sitting in the package, tested and unused,
+  since it was written.
+
+  Added `authServerModule()` (module-auth had none at all) and switched
+  `app.module.ts` to `SERVER_MODULES` + `serverModuleImports` +
+  `serverRoutePrefixes`. Verified by booting against the live database: both
+  modules' routes answer through the descriptors — `/auth/signin` 400 and
+  `/permissions/features` 401 rather than 404, GraphQL still carries `viewer`,
+  `session` and `myPermissions`, `/docs` 200.
+
+  `compose-schema.mjs` had the third hand-kept list (`['module-auth',
+  'module-permissions']`). It now derives from `@kwtech/module-*` dependencies,
+  exactly as the web app's `next.config.ts` derives `transpilePackages`, and
+  skips a module with no `prisma/` folder. Forgetting that array was the worst
+  of the three to forget: it fails silently, and the first symptom is a
+  migration that drops tables or a query against one that does not exist.
+
+  Two narrowing casts were needed in `app.module.ts`, and they are the right
+  shape: `serverModuleImports` returns `unknown[]` because module-kit carries
+  Nest modules as opaque values so it never imports Nest. The app is the layer
+  that already depends on Nest, so the narrowing belongs there — the same
+  arrangement as `requestFromContext`.
+
+  **What deliberately stays app-side**, so this is not read as unfinished:
+  `resolvePrincipal` (the seam), `module-clients.ts` (the app owns the Prisma
+  client), `session-query.ts` (neither module may name the other's GraphQL
+  field), the `APP_GUARD` order (identify → rate-limit → authorise, with an
+  app-owned guard in the middle), and `nav-icons.ts` (a descriptor naming a
+  `LucideIcon` would put React into a package the Nest server imports).
+
+- **2026-09-05** — **Nav group placement moved onto the module descriptor, and
+  the Administration entries reordered.** The drawer now reads Features, Roles,
+  Subscriptions, Organizations — vocabulary before the roles assembled from it,
+  then commercial state.
+
+  The larger half: the nav ENTRIES already came from the modules via
+  `composeNav`, but their GROUP's position did not. The app kept a hand-written
+  `GROUP_ORDER = ['Overview', 'Administration']`, so adopting a module was a
+  one-line edit in `@/modules` **plus** a second edit nobody would think of — and
+  forgetting it silently dropped that module's whole group to the bottom of the
+  drawer. That is precisely the per-module app edit the descriptor exists to
+  remove.
+
+  `WebModuleDescriptor.navGroups` plus `composeNavGroups` / `navGroupRank` close
+  it. `module-permissions` places `Administration` at 50, `module-auth` places
+  `Account` at 90, and the app names only its own `Overview`. Verified: a new
+  module carrying `navGroups` slots itself between Overview and Administration
+  with ZERO app edits, and the same module without them lands last rather than
+  first.
+
+  Two rules, both deliberate. **Lowest order wins for a shared group** — routes
+  and feature keys throw on duplicates because two modules owning one is a bug,
+  but a group is a shared namespace by design, so two modules naming a position
+  is normal. Taking the minimum makes the drawer independent of the order
+  modules are listed in, which is the property that matters. **An unplaced group
+  sorts last** — visible and harmless, where ranking it first would put an
+  unknown module's pages above the dashboard on install day.
+
+  Still app-side, and correctly so: `nav-icons.ts` maps a module's icon NAME to
+  a component, because making the descriptor name a `LucideIcon` would put a
+  React dependency into a package the Nest server imports. An unknown name falls
+  back to a dot rather than throwing, so it degrades rather than breaks.
+
+- **2026-09-05** — **Seeders split by OWNER and by LIFECYCLE, and the app got a
+  registry so developers can add their own.** Asked whether keeping seeders in
+  `apps/web-server` was a good idea. Partly: the two files were three different
+  things wearing one name.
+
+  **By owner.** `syncFeatureRegistry`, `upsertAppRole` and `grantAppRole` moved
+  into `@kwtech/module-permissions/server`. They had no app-specific content —
+  `FEATURE_REGISTRY` in, `perm_feature` out — and, worse, the invariant was
+  split across packages: the module's READ path filters `deprecatedAt: null`
+  while the write that SET it lived in the app, with nothing making the two
+  agree. Change how the module represents a retired key and the app keeps
+  writing the old field, no compile error, deprecation silently stops working.
+  That is exactly what `satisfies-modules.ts` exists to prevent everywhere else.
+
+  What stayed app-side is what genuinely varies: `SUPER_ADMIN`/`CLIENT` are
+  product decisions a second app would answer differently, and resolving an
+  email to a `userId` reads `auth_user`, which is `module-auth`'s. So
+  `grantAppRole` now takes a `userId` rather than an email — the same seam as
+  `resolvePrincipal` and `session-query`.
+
+  The move needed a third structural client, `PermissionsRegistryClient`, kept
+  separate from the read and write clients because it is used once by a script
+  at deploy time rather than injected into a running service. It caught a real
+  bug on the first typecheck: `level: string` is wider than the `PermRoleLevel`
+  enum and no generated Prisma client satisfies it — the same trap already
+  documented on `permSubscription.status`.
+
+  **By lifecycle, which matters more.** `perm_role_feature` references
+  `perm_feature`, so until the registry is synced a newly added key CANNOT BE
+  GRANTED TO ANYONE. That is reference-data migration, not sample data, and it
+  belongs on every deploy — while seeding an operator account must NOT happen on
+  a deploy, or a stale `SEED_USER_PASSWORD` silently rewrites somebody's
+  password. They were welded into one `pnpm db:seed`. Now `db:sync` (deploys)
+  and `db:seed` (once per environment, and it runs sync first, because seed data
+  references reference data).
+
+  **And a registry.** `src/seed/seeders/index.ts` is one array, the same idea as
+  `WEB_MODULES`: adding a seeder is a file plus a line, and `package.json` never
+  names an individual one. `--list`, `--only` and `--phase` are on the runner.
+  Every seeder must be IDEMPOTENT, which is what replaces a transaction around
+  the run — one spanning every seeder would be the long-lived interactive
+  transaction Prisma times out on, and would not help across invocations anyway.
+  Convergence does.
+
+  Two smaller fixes came with it. One client for the whole run, where two
+  `&&`-chained scripts had meant two processes, two pools, and a half-seeded
+  database when the second failed. And `prisma.config.ts` now registers
+  `migrations.seed`, so `prisma migrate reset` re-seeds instead of leaving an
+  empty `perm_feature` in which the app denies everyone.
+
+  Verified against the live database: repeated `db:sync` converges (9 features,
+  2 roles, no accumulation, existing grants untouched), a key absent from the
+  registry is DEPRECATED rather than deleted, and `--only`, `--phase` and both
+  error paths behave.
+
+  *Rejected: leaving it all in the app.* Simplest, and it is what a second app
+  adopting the module would have to copy — with the read/write invariant still
+  split across a boundary nothing checks.
+
+- **2026-09-05** — **The Administration drawer group grew to four pages, each on
+  a DIFFERENT feature key.** Added Features, Organizations and Subscriptions
+  beside Roles. The keys were the only real decision: `admin:access` (Roles) is
+  the baseline right to open the admin app, `roles:manage` (Features) because
+  the registry is the vocabulary a role is assembled from and someone who cannot
+  define roles has nothing to do with it, `members:manage` (Organizations)
+  because that is where people are invited and re-roled, and `billing:manage`
+  (Subscriptions), which the registry already describes as entitlement rather
+  than authorisation.
+
+  Four keys rather than one is the point of declaring them on the descriptor:
+  `composeNav` filters once, so someone who can manage members but not billing
+  sees Organizations and not Subscriptions — instead of every page discovering
+  it is not allowed after the reader has already clicked. Verified across four
+  grant sets, including the empty one, which yields no Administration group at
+  all.
+
+  Features has a real screen; the other two are placeholders. The split is not
+  arbitrary: `FEATURE_REGISTRY` is a constant compiled into the package, so that
+  page needs no query, no resolver and no loading state, while
+  `PermOrganization` and `PermSubscription` live in tables no API exposes yet.
+  It renders all 9 keys across three level sections with their bindings, flags
+  the 6 privileged ones, and marks what the viewer holds from `effective` rather
+  than `granted` — `granted` would tick features the organization has not
+  bought, which is the confusion `entitled` exists to prevent.
+
+  Two smaller things came with it. `AdminPage` was extracted so four pages do not
+  each open with their own heading markup, and `RolesPage` moved onto it —
+  `module-auth`'s `SettingsPage` is the same shape for the same reason. And the
+  denial path now uses `renderDenied(reason)` instead of a flat string: the
+  module already separates `not_entitled` from `not_granted`, and "upgrade your
+  plan" and "ask an administrator" are different errands to send someone on.
+
+- **2026-09-05** — **The global status bar lives in `module-kit`, not
+  `module-auth`.** Asked for an online/offline indicator with automatic retry,
+  plus a bottom status bar any page can write to. `module-auth` was the obvious
+  home — it owns the session and already polls the API in `SessionKeeper` — and
+  was rejected on one test: reachability is a transport concern, and *every*
+  module has something to say in a status bar. Putting the channel there would
+  force `module-permissions`, and module number three, to depend on
+  `module-auth` to publish a sentence, closing the cycle §9 keeps open and
+  making the two-line seam between those modules a three-line one permanently.
+
+  The rule is the one `FeatureContribution` already follows: every module
+  declares, one thing renders. So the vocabulary and the store are in
+  `@kwtech/module-kit` (React-free, testable without a renderer), the provider
+  and hooks in a new `@kwtech/module-kit/react` entry point (so the root export
+  stays runtime-free and `react` stays an optional peer), `<StatusBar>` in
+  `@kwtech/web-ui`, and the probe route, monitor and host in `apps/web-app`.
+
+  `web-ui` deliberately does not import `module-kit` — it is not a module.
+  `StatusBarMessage` is declared structurally and the shapes meet in
+  `StatusBarHost`, where a disagreement fails to compile. Same arrangement, same
+  reason, as `satisfies-modules.ts`.
+
+  *Rejected: an app-only channel with no module access.* Simplest, but
+  `RolesPage` and the settings pages arrive from packages and would have had
+  nothing to write to — the bar would be for app pages only, which is not what
+  "global" means.
+
+- **2026-09-05** — **`getSessionSnapshot` conflated "signed out" with "could not
+  ask", and the redirect turned every outage into an apparent sign-out.** Found
+  while deciding where the connectivity monitor should mount. With the API down,
+  `viewer` came back null, `AppShell` redirected to `/auth/signin`, and signing
+  in failed too — because the thing that was down was the thing sign-in needs.
+  Nobody would ever have seen the new status bar, because nobody was ever left
+  in a shell that renders one.
+
+  `SessionSnapshot.reachable` now carries the distinction. A 4xx is the API
+  answering (sign out and redirect); a 5xx, a rejected fetch or a timeout is the
+  API failing (stay put, render an outage panel, poll). An absent cookie is
+  `reachable: true` — it is an answer this app already has, and reporting it as
+  an outage would put "cannot reach the server" on the sign-in page of a
+  perfectly healthy deployment.
+
+  Verified against a stopped API: no cookie still redirects (307 to
+  `/auth/signin`); a session cookie now renders "Cannot reach the server" with a
+  200 instead of bouncing. `SessionKeeper` needed no change — it already
+  retried on `!response.ok` and only redirected on a confirmed 401.
+
+- **2026-09-05** — **The browser cannot probe the API, so `/api/health` proxies
+  it.** `API_URL` is deliberately not `NEXT_PUBLIC_`: the browser talks to this
+  app's route handlers, never to the API, which is what keeps tokens in httpOnly
+  cookies. A client-side probe would have published the API origin to every
+  visitor to save one hop.
+
+  The proxy is the better test anyway — it exercises the actual path every
+  request takes rather than a second path that could be healthy while the real
+  one is not — and it yields three answers where a direct probe yields two:
+  unreachable, degraded (API up, database down) and ok. The upstream `/health`
+  already drew that last distinction and it was being thrown away; it is worth
+  carrying, because "we cannot reach the server" and "the server cannot reach
+  its database" send someone to different people. All three verified end to end
+  against a stub.
+
+- **2026-09-05** — **Status colours are the one thing the palette does not
+  own.** Every other token is named by role so a theme can change what a colour
+  *is* without changing what it *means*. "Error" already means something, and it
+  does not mean "whatever hue this app chose" — on the forest palette a
+  palette-derived danger colour is green, which forces the reader to stop and
+  *read* to learn something is broken at the one moment colour was supposed to
+  tell them first.
+
+  So the four levels are defined once in `base.css` for all ten palettes, and
+  `check:contrast` was extended to measure them. It immediately caught two real
+  defects in the first values: a light-mode red 0.045 outside sRGB, and
+  warning/error only 0.04 apart in oklab — two tints nobody could have told
+  apart. The separation check measures the *foregrounds*, not the surfaces:
+  the surfaces are deliberately near-neutral tints, so two of them are always
+  close, and holding them to `MIN_DANGER_SEPARATION` would force exactly the
+  saturated bar the design avoids. 188 pairs green.
+
+
+- **2026-08-30** — **App-level roles may collect features at ANY level; every
+  other level still may not.** Asked for a `super-admin` role with all access,
+  and found it was not expressible: `assertRoleFeatureLevels` required a role's
+  features to match its own level, and only 2 of the 9 registry keys are
+  app-level — so the strictest possible super admin could not read an
+  organization's roles or fix its billing.
+
+  The rule was kept for `organization` and `workspace` and dropped for `app`,
+  because the escalation it guards against needs a lesser right to escalate
+  FROM. Creating workspace roles is routine and widely delegated, which is what
+  makes a workspace role holding `billing:manage` dangerous; minting an
+  app-level role is a platform operation attached to no membership, so there is
+  no equivalent path. An unregistered key is still refused at every level.
+
+  *Rejected: a `platform:super_admin` wildcard that `checkFeature` short-circuits
+  on.* It would have left the level rule untouched, but it contradicts the
+  model's stated core — "no inheritance, no implied rights, everything a role
+  means is the list it carries" — and would make a role row stop describing what
+  its holder can do.
+
+  The read path already assumed the relaxed shape: `composeContext` applies an
+  app-level role at every scope and unions its features in AFTER the
+  subscription filter, so an app role holding organization-level features
+  resolves exactly as intended. Only the write-time assertion stood in the way.
+
+- **2026-08-30** — **The feature registry now has a seed task, three months
+  after `feature-keys.ts` started claiming it did.** `perm_feature` was empty,
+  and since `perm_role_feature` carries a foreign key to it, no role could be
+  granted anything at all — the registry was a source with no mirror.
+  the seed task upserts every spec (now `syncFeatureRegistry` in the module,
+  invoked by the app's `permissions:features` seeder), marks
+  removed keys deprecated rather than deleting them (grants and the audit trail
+  have to stay readable; the read path already filters `deprecatedAt: null`),
+  and seeds the two app-level system roles.
+
+  `super-admin` derives its features from `FEATURE_REGISTRY` on every run rather
+  than listing them, so a key added later is granted on the next seed. A frozen
+  list would leave the role named "super admin" while quietly ceasing to be
+  all-access — discovered as a denied request months later.
+
+  Both roles carry an explicit `user:organizations` cap (9999 and 5). Necessary,
+  not decorative: role-sourced limits have no "unlimited" value — `resolveLimits`
+  takes the MAX any app role assigns and falls back to the registry floor of
+  **1** when none does, so a super admin with no limit row would have been
+  capped at one organization.
 
 - **2026-08-27** — **Revocation is now IMMEDIATE, without shortening the token
   lifetime.** `SessionRevocationStore` holds revoked sessions for exactly as long

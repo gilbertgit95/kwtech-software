@@ -33,6 +33,11 @@ function execution(meta: Record<string, unknown>, request: unknown = { url: '/' 
     getHandler: () => handler,
     getClass: () => class Controller {},
     switchToHttp: () => ({ getRequest: () => request }),
+    // Present on every real ExecutionContext. The guard reads them to decide
+    // which transport a request arrived on, so a mock without them stops
+    // exercising the path the guard actually takes.
+    getType: () => 'http',
+    getArgs: () => [],
   } as unknown as ExecutionContext;
 }
 

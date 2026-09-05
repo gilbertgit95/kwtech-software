@@ -1,4 +1,15 @@
-import { Circle, LayoutDashboard, type LucideIcon, Settings, Shield, User, Users } from 'lucide-react';
+import {
+  Building2,
+  Circle,
+  CreditCard,
+  KeyRound,
+  LayoutDashboard,
+  type LucideIcon,
+  Settings,
+  Shield,
+  User,
+  Users,
+} from 'lucide-react';
 
 /**
  * The seam between a module's `nav.icon` string and an actual icon component.
@@ -20,6 +31,18 @@ const ICONS: Record<string, LucideIcon> = {
   // administrative list of everyone. Two icons because they are two ideas.
   user: User,
   users: Users,
+  // A key for the feature registry: a feature IS a key, in both senses, and the
+  // registry is the ring of them a role is assembled from.
+  key: KeyRound,
+  // The tenant, drawn as a building rather than as `users`. An organization is
+  // not its member list — that distinction is the whole reason PermMembership
+  // is a separate table — and reusing the people icon would blur it in the one
+  // place a reader scans fastest.
+  organization: Building2,
+  // Billing, not money: the page is about which plan is in force, not about an
+  // amount, so a card reads more accurately than a currency mark — which would
+  // also have to pick a currency.
+  billing: CreditCard,
 };
 
 export function iconFor(name: string | undefined): LucideIcon {

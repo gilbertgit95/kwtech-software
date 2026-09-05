@@ -1,12 +1,21 @@
 import { Inject } from '@nestjs/common';
-import { Context, Query, Resolver } from '@nestjs/graphql';
-import { FEATURE_REGISTRY } from '../../feature-keys.js';
+import { Args, Context, Query, Resolver } from '@nestjs/graphql';
+import { filterFeatures } from '../../domain/feature-filter.js';
+import { paginate } from '../../domain/pagination.js';
+import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
 import type { PermissionsModuleOptions } from '../permissions.module.js';
 import { PermissionsService } from '../permissions.service.js';
 // The VALUE comes from the leaf module; the interface is type-only and erased,
 // so importing it from permissions.module.js closes no cycle at runtime.
 import { PERMISSIONS_OPTIONS } from '../permissions.tokens.js';
-import { PermissionContextType, PermissionFeatureType, toPermissionContextType } from './permission.types.js';
+import { RequireFeature } from '../require-feature.decorator.js';
+import {
+  FeatureFilterInput,
+  PaginationArgs,
+  PermissionContextType,
+  PermissionFeaturePageType,
+  toPermissionContextType,
+} from './permission.types.js';
 
 /**
  * Registering this resolver in the host app's GraphQLModule is all it takes to
@@ -25,16 +34,53 @@ export class PermissionsResolver {
     private readonly permissions: PermissionsService,
   ) {}
 
-  /** The full registry, for the role editor. Static data — no subject involved. */
-  @Query(() => [PermissionFeatureType], { name: 'permissionFeatures' })
-  features(): PermissionFeatureType[] {
-    return FEATURE_REGISTRY.map((spec) => ({
-      key: spec.key,
-      module: spec.module,
-      label: spec.label,
-      description: spec.description,
-      isPrivileged: spec.isPrivileged ?? false,
-    }));
+  /**
+   * The full registry, for the role editor.
+   *
+   * GUARDED, and it was not. "Static data — no subject involved" was true of the
+   * VALUE and wrong about the question: the whole vocabulary is a map of what
+   * this platform can grant, and it was readable by anyone with a session while
+   * the UI hid the page from anyone without `features:read`. The interface said
+   * one thing and the API said another, which is the arrangement where the API
+   * wins.
+   *
+   * The same key as the REST endpoint below it and as the `/admin/features`
+   * route. One key, three surfaces — which is what the registry's bindings
+   * claim, and now what is true.
+   */
+  /*
+   * PAGED, and bounded by the server rather than by the caller's manners. The
+   * registry is fourteen keys today and this list is the one that grows with
+   * every module adopted — an endpoint that returns "all of them" is fine until
+   * the day it is not, and that day arrives without a deploy.
+   *
+   * `limit` may only ever narrow: it is clamped to MAX_PAGE_SIZE, which equals
+   * the largest page the UI offers, so nothing can ask the API for more than a
+   * person could have asked for through the interface.
+   */
+  @RequireFeature(FEATURE.featuresRead)
+  @Query(() => PermissionFeaturePageType, { name: 'permissionFeatures' })
+  features(
+    @Args() args: PaginationArgs,
+    @Args('filter', { type: () => FeatureFilterInput, nullable: true }) filter?: FeatureFilterInput,
+  ): PermissionFeaturePageType {
+    /*
+     * FILTER FIRST, then page. The other order pages the whole registry and
+     * then narrows what came back, so `total` would count rows the caller never
+     * asked about and page two would be missing rows page one filtered out.
+     */
+    const page = paginate(filterFeatures(FEATURE_REGISTRY, filter ?? {}), args);
+
+    return {
+      ...page,
+      items: page.items.map((spec) => ({
+        key: spec.key,
+        module: spec.module,
+        label: spec.label,
+        description: spec.description,
+        isPrivileged: spec.isPrivileged ?? false,
+      })),
+    };
   }
 
   /**

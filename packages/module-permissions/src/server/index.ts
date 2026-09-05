@@ -6,6 +6,7 @@
  * them in.
  */
 
+export * from './binding-index.js';
 export * from './feature.guard.js';
 export * from './graphql/permission.types.js';
 export * from './graphql/permissions.resolver.js';
@@ -14,6 +15,7 @@ export * from './permissions.module.js';
 export * from './permissions.repository.js';
 export * from './permissions.service.js';
 export * from './permissions-write.service.js';
+export * from './registry-sync.js';
 export * from './require-feature.decorator.js';
 export * from './require-scope.decorator.js';
 export * from './server-module.js';

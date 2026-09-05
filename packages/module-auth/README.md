@@ -103,6 +103,46 @@ export const { POST } = createAuthRouteHandlers({ apiUrl, cookieName, secure });
 
 `getViewer` and `getSessionToken` take the same overrides.
 
+## Features this module declares
+
+`AUTH_FEATURE_REGISTRY` carries the module's grantable rights, typed by
+`@kwtech/module-kit` rather than by `@kwtech/module-permissions` — the two
+modules never import each other.
+
+```ts
+import { AUTH_FEATURE, AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
+```
+
+| key | governs |
+|---|---|
+| `account:profile_write` | change your own display name and username |
+| `account:two_factor_enrol` | add a second factor |
+| `account:two_factor_remove` | take one off |
+
+**The rule this module follows: a surface gets a key only when it needs
+AUTHORISATION, not merely a session.** Those are different questions, and
+conflating them is how people get locked out of their own accounts.
+
+| needs | example | key? |
+|---|---|---|
+| neither sign-in nor authorisation | `/auth/signin`, `/auth/forgot-password` | no |
+| sign-in only | `/settings/*` (reaching them) | **no** |
+| sign-in **and** authorisation | changing your profile, removing a factor | yes |
+
+So the settings ROUTES carry no key — the pages stay reachable and a withheld
+key costs a disabled control rather than a locked door — while the writes behind
+them do.
+
+**Enrol and remove are separate keys on purpose.** Withholding removal is how a
+policy makes 2FA mandatory; withholding enrolment would stop someone protecting
+their own account, which weakens security rather than enforcing it.
+
+**Password change is deliberately unkeyed.** Keying it would be leaky or
+dangerous with nothing in between: `/auth/forgot-password` is unkeyed and always
+reachable, so blocking the settings page stops nothing — and closing that hole
+too would leave someone with a compromised password unable to fix it, with no
+admin-side reset to fall back on.
+
 ## Entrypoints
 
 | Import | What it is | Safe in |
@@ -116,6 +156,29 @@ export const { POST } = createAuthRouteHandlers({ apiUrl, cookieName, secure });
 `/react` never imports `/server` (PLAN §9 rule 3) — that is what keeps
 `node:crypto` and the JWT secret out of the browser bundle. `/next` does not
 either: it talks to the API over HTTP exactly as the browser does.
+
+## The server descriptor
+
+`authServerModule()` returns a `ServerModuleDescriptor`, so an app composes this
+module the same way it composes any other:
+
+```ts
+const SERVER_MODULES = [authServerModule({ prismaProvider, getRequest, ... }), permissionsServerModule({ ... })];
+
+@Module({ imports: [...serverModuleImports(SERVER_MODULES)] })
+export class AppModule {}
+```
+
+It carries `features: AUTH_FEATURE_REGISTRY`, so anything composing from a list
+of descriptors sees this module's rights. No `routePrefix` by default —
+`AuthController` is `@Controller('auth')` under the app's global prefix, so
+passing one would nest it twice.
+
+⚠️ Constructing the descriptor calls `AuthModule.forRoot()`, which asserts
+`AUTH_JWT_SECRET` at construction. That is deliberate — a missing secret fails
+at boot rather than at the first sign-in — but it means a SCRIPT that only wants
+the feature list should import `AUTH_FEATURE_REGISTRY` directly rather than
+building the descriptor.
 
 ## The seam
 

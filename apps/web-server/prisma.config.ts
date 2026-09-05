@@ -16,6 +16,24 @@ import 'dotenv/config';
 import { defineConfig, env } from 'prisma/config';
 
 export default defineConfig({
+  migrations: {
+    /*
+     * Run after `prisma migrate reset` and `prisma migrate dev` create a fresh
+     * database.
+     *
+     * It was not registered, so a reset dropped everything and re-seeded
+     * nothing — leaving a schema with an EMPTY perm_feature, in which no role
+     * can be granted anything because perm_role_feature references it. The
+     * symptom was a working app that denied everyone, and the fix was a command
+     * you had to know to run.
+     *
+     * `--phase=seed`, which runs the sync seeders first and then the
+     * once-per-environment ones. That is right for a database that was just
+     * dropped; a DEPLOY runs `pnpm db:sync` instead, which stops before
+     * re-asserting anybody's account.
+     */
+    seed: 'pnpm db:seed',
+  },
   // A folder, not a file: schema.prisma plus every module fragment that
   // scripts/compose-schema.mjs copied into prisma/_modules.
   schema: 'prisma',

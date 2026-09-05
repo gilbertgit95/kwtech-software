@@ -1,9 +1,12 @@
 import {
   composeFeatures,
   composeNav,
+  composeNavGroups,
   composeRoutes,
   ModuleCompositionError,
   matchRoute,
+  matchRouteWithParams,
+  navGroupRank,
   serverModuleImports,
   serverRoutePrefixes,
 } from '../src/compose.js';
@@ -179,5 +182,167 @@ describe('server wiring helpers', () => {
 
   it('emits a prefix entry only for modules that asked for one', () => {
     expect(serverRoutePrefixes(modules)).toEqual([{ path: 'perm', module: A }]);
+  });
+});
+
+describe('composeNavGroups', () => {
+  const mod = (key: string, navGroups: { group: string; order: number }[]) => ({ key, navGroups });
+
+  it('is empty when no module places a group', () => {
+    expect(composeNavGroups([{ key: 'a' }])).toEqual([]);
+  });
+
+  it('sorts declared groups by order', () => {
+    const groups = composeNavGroups([
+      mod('a', [
+        { group: 'Account', order: 90 },
+        { group: 'Overview', order: 10 },
+      ]),
+    ]);
+    expect(groups.map((g) => g.group)).toEqual(['Overview', 'Account']);
+  });
+
+  /**
+   * A shared group is the normal case, not a wiring bug — unlike a duplicate
+   * route or feature key, which throw. Two modules contributing to
+   * 'Administration' must not fail the boot.
+   */
+  it('does not throw when two modules place the same group', () => {
+    expect(() =>
+      composeNavGroups([
+        mod('a', [{ group: 'Administration', order: 50 }]),
+        mod('b', [{ group: 'Administration', order: 70 }]),
+      ]),
+    ).not.toThrow();
+  });
+
+  it('takes the lowest order for a shared group', () => {
+    const groups = composeNavGroups([
+      mod('a', [{ group: 'Administration', order: 50 }]),
+      mod('b', [{ group: 'Administration', order: 20 }]),
+    ]);
+    expect(groups).toEqual([{ group: 'Administration', order: 20 }]);
+  });
+
+  /** The property that matters: the drawer cannot depend on module list order. */
+  it('is independent of the order modules are listed in', () => {
+    const a = mod('a', [
+      { group: 'Administration', order: 50 },
+      { group: 'Overview', order: 10 },
+    ]);
+    const b = mod('b', [{ group: 'Administration', order: 20 }]);
+    expect(composeNavGroups([a, b])).toEqual(composeNavGroups([b, a]));
+  });
+
+  it('breaks an order tie alphabetically', () => {
+    const groups = composeNavGroups([
+      mod('a', [
+        { group: 'Zulu', order: 10 },
+        { group: 'Alpha', order: 10 },
+      ]),
+    ]);
+    expect(groups.map((g) => g.group)).toEqual(['Alpha', 'Zulu']);
+  });
+});
+
+describe('navGroupRank', () => {
+  const groups = [
+    { group: 'Overview', order: 10 },
+    { group: 'Administration', order: 50 },
+  ];
+
+  it('returns the declared order', () => {
+    expect(navGroupRank(groups, 'Overview')).toBe(10);
+    expect(navGroupRank(groups, 'Administration')).toBe(50);
+  });
+
+  /**
+   * A new module whose group nobody placed appears at the BOTTOM, which is
+   * visible and harmless. Ranking it first would put an unknown module's pages
+   * above the dashboard on the day it was installed.
+   */
+  it('ranks an undeclared group after every declared one', () => {
+    expect(navGroupRank(groups, 'Whatever')).toBeGreaterThan(50);
+  });
+});
+
+describe('matchRouteWithParams', () => {
+  const route = (path: string) => ({ path, title: path, component: (() => null) as never });
+  const ROUTES = [
+    route('/admin/features'),
+    route('/admin/features/new/manual'),
+    route('/admin/features/new/import'),
+    route('/admin/features/:featureId/edit'),
+    route('/admin/roles'),
+  ];
+
+  it('matches a literal path with no params', () => {
+    const match = matchRouteWithParams(ROUTES, '/admin/features');
+    expect(match?.route.path).toBe('/admin/features');
+    expect(match?.params).toEqual({});
+  });
+
+  it('captures a dynamic segment', () => {
+    const match = matchRouteWithParams(ROUTES, '/admin/features/billing:manage/edit');
+    expect(match?.route.path).toBe('/admin/features/:featureId/edit');
+    expect(match?.params).toEqual({ featureId: 'billing:manage' });
+  });
+
+  /**
+   * The reason specificity is scored rather than left to array order:
+   * '/admin/features/new/manual' and '/admin/features/:featureId/edit' are both
+   * four segments, and without scoring the winner would be whichever module
+   * happened to be listed first.
+   */
+  it('prefers a literal segment over a dynamic one', () => {
+    expect(matchRouteWithParams(ROUTES, '/admin/features/new/manual')?.route.path).toBe('/admin/features/new/manual');
+    expect(matchRouteWithParams(ROUTES, '/admin/features/new/import')?.route.path).toBe('/admin/features/new/import');
+  });
+
+  it('is independent of route declaration order', () => {
+    const reversed = [...ROUTES].reverse();
+    expect(matchRouteWithParams(reversed, '/admin/features/new/manual')?.route.path).toBe('/admin/features/new/manual');
+  });
+
+  it('URL-decodes a captured value', () => {
+    const match = matchRouteWithParams(ROUTES, '/admin/features/billing%3Amanage/edit');
+    expect(match?.params.featureId).toBe('billing:manage');
+  });
+
+  /** A pattern that swallowed extra segments would capture 'new' here. */
+  it('does not let a dynamic segment span several path segments', () => {
+    expect(matchRouteWithParams([route('/admin/features/:featureId')], '/admin/features/new/manual')).toBeUndefined();
+  });
+
+  /**
+   * In isolation, so the prefix fallback does not mask it: an empty segment is
+   * not a value, and '/features//edit' must not match with an id of ''.
+   */
+  it('refuses an empty dynamic segment', () => {
+    expect(matchRouteWithParams([route('/admin/features/:featureId/edit')], '/admin/features//edit')).toBeUndefined();
+  });
+
+  /**
+   * With a prefix owner present it falls through to that instead — the empty
+   * segment still fails the pattern, and '/admin/features' legitimately owns
+   * everything beneath it.
+   */
+  it('falls back to the prefix owner when a dynamic match is refused', () => {
+    expect(matchRouteWithParams(ROUTES, '/admin/features//edit')?.route.path).toBe('/admin/features');
+  });
+
+  it('is undefined when nothing matches', () => {
+    expect(matchRouteWithParams(ROUTES, '/nope')).toBeUndefined();
+  });
+
+  /** The pre-existing prefix behaviour, kept: a route may own everything beneath it. */
+  it('falls back to the longest prefix owner when nothing matches exactly', () => {
+    const match = matchRouteWithParams([route('/admin'), route('/admin/features')], '/admin/features/deep/path');
+    expect(match?.route.path).toBe('/admin/features');
+    expect(match?.params).toEqual({});
+  });
+
+  it('matchRoute returns just the route', () => {
+    expect(matchRoute(ROUTES, '/admin/features/x/edit')?.path).toBe('/admin/features/:featureId/edit');
   });
 });

@@ -337,3 +337,243 @@ The app shell — `AppShell`, `Header`, `Sidebar`, `UserMenu` — deliberately s
 in `apps/web-app`. It is layout, not vocabulary, and there is no second app yet
 to show which parts are genuinely shared. PLAN §11 Phase 7 (`apps/admin`) is
 what should drive that, with evidence rather than anticipation.
+
+## The status bar
+
+`<StatusBar>` renders the application's bottom strip: one line, saying the most
+important true thing right now.
+
+```tsx
+import { StatusBar } from '@kwtech/web-ui/react';
+
+<StatusBar messages={[{ id: 'conn', level: 'error', text: 'Cannot reach the server.' }]} />;
+```
+
+**Presentation only.** It takes a list and renders it — no subscription, no
+state but "is the overflow list open" — so it can be driven from a literal array
+in a story or a test. The channel that feeds it in the apps is
+`@kwtech/module-kit/react`, and **this package deliberately does not import
+it**: web-ui is not a module and has no business in the module contract. The two
+message types are structurally identical instead, and the app that wires them
+together is where a mismatch fails to compile.
+
+It renders `null` when there is nothing to say. A permanent empty strip is a
+permanent strip of wasted screen, and worse, it trains the eye to skip the
+region — so the day it does say something, nobody looks.
+
+### The four levels are the one palette-independent colour
+
+Every other token here is named by role so a theme can change what a colour *is*
+without changing what it *means*. Status colours invert that: "error" already
+means something, and it does not mean "whatever hue this app chose". On the
+forest palette a palette-derived danger colour would be green — the reader has
+to stop and *read* to learn something is broken, at the one moment the colour
+was supposed to tell them first.
+
+So `--status-info`, `--status-success`, `--status-warning` and `--status-error`
+(each with a `-foreground`) live in `base.css`, defined once for every palette.
+Adding an eleventh theme does not mean choosing a red again.
+
+`check:contrast` measures them like everything else, with one difference: the
+warning/error separation is measured on the **foregrounds**, not the surfaces.
+The surfaces are deliberately near-neutral tints — the point of a strip someone
+stares at all day — so two of them are always close in oklab, and holding them
+to `MIN_DANGER_SEPARATION` would force exactly the saturated bar this avoids.
+What tells a warning from a failure at a glance is the icon and the text.
+
+## The data grid
+
+`<DataGrid>` is the workspace's one AG Grid. **Nothing else imports
+`ag-grid-react`** — that is PLAN §8's rule, and the reason is that an Enterprise
+upgrade, or a swap to TanStack Table, should be a change to one file rather than
+to every screen with a table.
+
+```tsx
+import { DataGrid, type DataGridColumn } from '@kwtech/web-ui/react';
+
+const COLUMNS: readonly DataGridColumn<Row>[] = [
+  { field: 'name', headerName: 'Name', flex: 2 },
+  { field: 'status', headerName: 'Status', minWidth: 120 },
+];
+
+<DataGrid rows={rows} columns={COLUMNS} searchPlaceholder="Search…" height={560} />;
+```
+
+`DataGridColumn` is re-exported so the rule holds for TYPES too — a page writing
+`ColDef` from `ag-grid-community` would satisfy the letter of it while making
+the swap just as expensive.
+
+### Theming: CSS variables, not a theme object per mode
+
+The obvious way to follow a light/dark toggle with AG Grid's v33+ Theming API is
+to build two theme objects and swap them in React state. This does not do that,
+because it would be worse in three ways: the grid would re-render on every theme
+change, it would know nothing about the ten palettes (so `data-palette="ocean"`
+would leave the grid grey), and the swap would lag the rest of the page by a
+frame.
+
+Instead every colour parameter is a `var(--token)` reference into the same token
+set every other component uses. AG Grid emits them as CSS custom properties
+holding the reference rather than a resolved value:
+
+```
+--ag-background-color        -> var(--background)
+--ag-accent-color            -> var(--primary)
+--ag-header-background-color -> var(--muted)
+--ag-row-hover-color         -> var(--accent)
+--ag-browser-color-scheme    -> inherit
+```
+
+So the browser re-resolves them against whatever `<html>` currently carries —
+`data-palette` for the palette, `.dark` for the mode. Changing either repaints
+the grid with no React involvement, in the same frame as everything else.
+
+The practical test: switch to Ocean and the grid's header and selection turn
+blue, without `data-grid.tsx` knowing Ocean exists.
+
+`browserColorScheme: 'inherit'` is the one non-obvious entry. Native widgets
+inside the grid — scrollbars, date pickers, filter inputs — are painted by the
+browser and ignore custom properties; `inherit` makes them follow the page's own
+`color-scheme`, which next-themes sets alongside the `.dark` class. Without it a
+dark grid keeps light scrollbars.
+
+### Pagination
+
+**On by default, at 100 rows**, with a 10 / 50 / 100 size selector. A grid handed
+ten thousand rows without it builds ten thousand rows of DOM and the tab stops
+responding — and the list that grows past the point of pain always does so in
+production, not in the fixture somebody tested with. Defaulting to bounded means
+a new grid is safe before anyone has thought about it.
+
+```tsx
+<DataGrid rows={rows} columns={COLUMNS} />                     // 100 per page
+<DataGrid rows={rows} columns={COLUMNS} pageSize={50} />       // a different default
+<DataGrid rows={rows} columns={COLUMNS} pageSize={false} />    // no pager
+```
+
+`PAGE_SIZES` and `DEFAULT_PAGE_SIZE` are exported, and match
+`@kwtech/module-permissions`' own constants so the interface cannot offer a page
+the server would refuse to fill. They are duplicated rather than imported —
+web-ui must not depend on a feature module.
+
+Pagination turns itself off with `height="auto"`, since a pager under a grid
+that has already rendered everything is a control with nothing to control.
+
+### Editing and selection
+
+```tsx
+<DataGrid
+  rows={rows}
+  columns={[{ field: 'name', editable: true }]}
+  onCellEdit={(row) => save(row)}
+  onSelectionChange={setSelected}
+  getRowId={(row) => row.id}
+  onRowActivate={(row) => open(row)}
+/>
+```
+
+- **`getRowId` matters whenever selection is on.** Without it AG Grid identifies
+  rows by index, so sorting or filtering slides the selection onto whatever now
+  sits there — and a delete confirmed on three rows removes three different ones.
+- **`onRowActivate` is DOUBLE click.** Single click is how a row gets selected;
+  making it navigate would stop anyone ticking a checkbox. It is a shortcut, not
+  a replacement — whatever it does must also be reachable by a visible control,
+  since a double-click is unfindable and impossible on a touchscreen.
+- **`onCellEdit` also sets `stopEditingWhenCellsLoseFocus`.** Without it, typing
+  in a cell and then clicking Save discards what was typed: AG Grid keeps the
+  editor open, the value never reaches the row, and the edit looks accepted.
+
+### Defaults
+
+Columns are sortable, resizable, filterable and wrapping unless a column says
+otherwise. `searchPlaceholder` wires AG Grid's **quick filter** — one box
+matching across every column, which is what someone means by "search this
+table"; omit it and the box disappears rather than sitting there doing nothing.
+
+`height` is a number or `'auto'`, never a percentage: AG Grid needs a resolved
+height, and `height: 100%` inside a parent that has none collapses the grid to
+nothing — the most common way to render an invisible table.
+
+Modules are registered once at module scope
+(`ModuleRegistry.registerModules([AllCommunityModule])`), which AG Grid v33+
+requires and which must not happen per mount.
+
+## The confirm dialog
+
+`<ConfirmDialog>` is the native `<dialog>` element, not a Radix one. Focus
+trapping, the inert background, Escape-to-close and the top layer are all
+platform behaviour now — and the top layer is the part a hand-rolled overlay
+usually gets wrong. Radix earns its place for the dropdown, whose keyboard model
+has no native equivalent; this does not.
+
+It opens with `showModal()` rather than the `open` attribute — `<dialog open>`
+renders the element inline, with no backdrop, no focus trap and no top layer. It
+looks like it works until something with a `z-index` sits on top of it.
+
+### `m-auto` is load-bearing
+
+A modal `<dialog>` is centred by the UA stylesheet's `margin: auto` against the
+`inset: 0` it gives `dialog:modal`. Tailwind's Preflight then emits
+
+```css
+*, ::before, ::after, ::backdrop { margin: 0; padding: 0 }
+```
+
+which overrides it, because author styles beat the UA sheet — and the dialog
+collapses into the **top-left corner**. Nothing about that reads as a CSS reset
+problem from the outside; it reads as a broken dialog.
+
+`m-auto` restores it and wins on specificity (0,1,0 against the universal
+selector's 0,0,0). Any other native `<dialog>` in a Tailwind app needs the same
+line.
+
+The height is capped at `calc(100dvh - 4rem)` with `overflow-y-auto`, because the
+UA caps a modal's height but does not make the overflow reachable — a long list
+would be clipped with the buttons underneath it out of reach.
+
+## The multi-select
+
+A filter facet as a dropdown, showing only how many are chosen.
+
+```tsx
+<MultiSelect
+  label="Tags"
+  hint="All of the chosen — each one narrows."
+  options={tags}
+  selected={filter.tags ?? []}
+  onToggle={(value) => toggle('tags', value)}
+  onClear={() => clear('tags')}
+/>
+```
+
+Chips are better while a facet is short and stable — everything visible, every
+grouping discoverable without a click. They stop being better the moment the
+list grows: eight tags fit on a line, twenty wrap into a block that pushes the
+content off screen. A trigger reading `Tags (2)` costs one click and takes
+constant space whatever the vocabulary does.
+
+**The count is the load-bearing half.** A collapsed facet that does not say it is
+active is how someone spends a minute wondering why a list is short. It is in
+the accessible name too — `"Tags, 2 selected"` — for the same reason.
+
+Its one non-obvious line is `event.preventDefault()` on select: Radix dismisses
+on select by default, which for a multi-select means one click per re-open —
+technically working and unusable for its whole purpose.
+
+## Debouncing a search box
+
+```tsx
+const [text, setText] = useState('');
+const query = useDebouncedValue(text, 250);
+
+<input value={text} onChange={(e) => setText(e.target.value)} />   // raw
+useEffect(() => { search(query); }, [query]);                      // debounced
+```
+
+**Bind the input to the RAW value and the query to the debounced one.** Binding
+the field itself to the debounced value is the classic version of this bug:
+characters appear a beat after they are typed.
+
+Debounce rather than throttle. Throttling emits during the burst, which is
+exactly the prefixes nobody wanted — and responses can arrive out of order,
+leaving the results showing matches for `featur`.

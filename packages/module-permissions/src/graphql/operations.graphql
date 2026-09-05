@@ -18,12 +18,21 @@ query MyPermissions {
   }
 }
 
-query PermissionFeatures {
-  permissionFeatures {
-    key
-    module
-    label
-    description
-    isPrivileged
+# Paged, and the variables are OPTIONAL because the server has its own default
+# and its own cap — a client that omits them gets a bounded page rather than
+# everything, and one that asks for more than the cap gets the cap.
+query PermissionFeatures($limit: Int, $offset: Int) {
+  permissionFeatures(limit: $limit, offset: $offset) {
+    total
+    limit
+    offset
+    hasMore
+    items {
+      key
+      module
+      label
+      description
+      isPrivileged
+    }
   }
 }

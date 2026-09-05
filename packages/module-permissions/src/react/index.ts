@@ -18,9 +18,19 @@
  * components with server-side data like a descriptor.
  */
 
+export { denialMessage, FeatureDenied, type FeatureDeniedProps } from './feature-denied.js';
 export { FeatureGate, type FeatureGateProps } from './feature-gate.js';
 export { permissionsWebModule } from './module.js';
+export { AdminPage, AdminPlaceholder } from './pages/admin-page.js';
+export { FeatureEditPage } from './pages/feature-edit-page.js';
+export { FeatureForm } from './pages/feature-form.js';
+export { FeatureImportPage } from './pages/feature-import-page.js';
+export { FeatureNewPage } from './pages/feature-new-page.js';
+export { FeaturesPage } from './pages/features-page.js';
+export { OrganizationsPage } from './pages/organizations-page.js';
+export { RegistryOutput } from './pages/registry-output.js';
 export { RolesPage } from './pages/roles-page.js';
+export { SubscriptionsPage } from './pages/subscriptions-page.js';
 export { PermissionsProvider, type PermissionsProviderProps, PermissionsReactContext } from './permissions-provider.js';
 export {
   useCanAccessWorkspace,

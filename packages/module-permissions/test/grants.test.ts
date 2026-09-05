@@ -1,5 +1,6 @@
 import { type ComposeInput, composeContext, type PlanEntitlement, type RoleGrant } from '../src/domain/grants.js';
-import { FEATURE } from '../src/feature-keys.js';
+import { allFeatureKeys } from '../src/domain/roles.js';
+import { FEATURE, FEATURE_REGISTRY } from '../src/feature-keys.js';
 
 /**
  * The resolution pipeline (PLAN §13, check.ts):
@@ -224,5 +225,101 @@ describe('composeContext — accessible workspaces', () => {
   it('is an empty array for a member who has been shared nothing — a normal state', () => {
     const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersManage] })] });
     expect(ctx.accessibleWorkspaceIds).toEqual([]);
+  });
+});
+
+describe('composeContext — a super admin holding the whole registry', () => {
+  /**
+   * The seeded `super-admin` role, as the read path sees it: one app-level
+   * grant carrying every key in FEATURE_REGISTRY.
+   *
+   * These tests are the reason the level rule was relaxed for app roles. They
+   * assert the property the role is named for — that nothing an organization
+   * does, buys or fails to buy can take a right away from platform staff.
+   */
+  const superAdmin = role({
+    roleKey: 'super-admin',
+    level: 'app',
+    features: allFeatureKeys(FEATURE_REGISTRY),
+    limits: { 'user:organizations': 9999 },
+  });
+
+  it('overrides the subscription — every feature survives an empty plan list', () => {
+    const ctx = compose({ roles: [superAdmin], plans: [] });
+
+    // No active plan entitles nothing, and a member with these same rights via
+    // organization roles would come out with nothing at all. Step 3 unions the
+    // app level in after the filter, so all of it survives.
+    expect(ctx.entitled).toEqual([]);
+    expect(ctx.effective).toEqual(allFeatureKeys(FEATURE_REGISTRY));
+  });
+
+  it('overrides a plan that entitles a single feature', () => {
+    const ctx = compose({ roles: [superAdmin], plans: [plan([FEATURE.membersManage])] });
+    expect(ctx.effective).toEqual(allFeatureKeys(FEATURE_REGISTRY));
+  });
+
+  it('rescues a feature a scoped role also grants from the plan filter', () => {
+    // The same key held at both levels is pulled OUT of `scoped` and into the
+    // app union, so the app grant decides. This is the "overwrite" that makes
+    // an org role's key survive a plan that omits it.
+    const ctx = compose({
+      roles: [superAdmin, role({ level: 'organization', features: [FEATURE.billingManage] })],
+      plans: [plan([])],
+    });
+
+    expect(ctx.effective).toContain(FEATURE.billingManage);
+    expect(ctx.grantedAtAppLevel).toContain(FEATURE.billingManage);
+  });
+
+  it('applies at workspace scope with no workspace role and no membership', () => {
+    const ctx = composeContext({
+      subjectId: 'u1',
+      organizationId: 'org1',
+      workspaceId: 'ws1',
+      roles: [superAdmin],
+      plans: [],
+    });
+
+    expect(ctx.effective).toContain(FEATURE.workspacesShare);
+    // access_all and support_access both set this; either makes every
+    // workspace enterable without membership.
+    expect(ctx.accessibleWorkspaceIds).toBeNull();
+  });
+
+  it('answers an app-level request with the whole registry', () => {
+    const ctx = composeContext({ subjectId: 'u1', organizationId: null, roles: [superAdmin] });
+    expect(ctx.effective).toEqual(allFeatureKeys(FEATURE_REGISTRY));
+  });
+
+  it('lifts the organization cap that would otherwise floor at 1', () => {
+    // Role-sourced limits have no "unlimited": absent a row the registry floor
+    // of 1 applies, which would cap a super admin at one organization.
+    expect(compose({ roles: [superAdmin] }).limits['user:organizations']).toBe(9999);
+    expect(compose({ roles: [] }).limits['user:organizations']).toBe(1);
+  });
+});
+
+describe('composeContext — the seeded client role', () => {
+  const client = role({ roleKey: 'client', level: 'app', features: [], limits: { 'user:organizations': 5 } });
+
+  it('grants nothing at app level', () => {
+    expect(composeContext({ subjectId: 'u1', organizationId: null, roles: [client] }).effective).toEqual([]);
+  });
+
+  it('does not exempt the organization roles they hold from the plan filter', () => {
+    // A marker role must not accidentally behave like staff: holding it changes
+    // no scoped grant's relationship to the subscription.
+    const ctx = compose({
+      roles: [client, role({ level: 'organization', features: [FEATURE.billingManage] })],
+      plans: [plan([])],
+    });
+
+    expect(ctx.granted).toEqual([FEATURE.billingManage]);
+    expect(ctx.effective).toEqual([]);
+  });
+
+  it('raises the organization cap to 5', () => {
+    expect(compose({ roles: [client] }).limits['user:organizations']).toBe(5);
   });
 });

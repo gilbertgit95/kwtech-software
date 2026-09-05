@@ -1,4 +1,10 @@
-import { composeNav, type NavEntry } from '@kwtech/module-kit';
+import {
+  composeNav,
+  composeNavGroups,
+  type NavEntry,
+  navGroupRank,
+  type WebModuleDescriptor,
+} from '@kwtech/module-kit';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -17,6 +23,12 @@ import { WEB_MODULES } from '@/modules';
  *     contribute.
  *   - composeNav(WEB_MODULES): everything the composed modules contribute,
  *     already filtered against the caller's grants.
+ *
+ * GROUP PLACEMENT comes from the modules too, via `composeNavGroups`. It used to
+ * be a hand-written array here, which meant adopting a module was a one-line
+ * edit in @/modules PLUS a second edit nobody would think of — and forgetting it
+ * silently dropped that module's group to the bottom of the drawer. Now the only
+ * groups named in this file are the app's own.
  */
 
 /** A `group` with its entries, in the order the drawer should render them. */
@@ -37,14 +49,26 @@ const APP_NAV: readonly NavEntry[] = [
 ];
 
 /**
- * Group order, by name, because `composeNav` can only sort alphabetically and
- * "Administration" is not what should greet someone above "Overview".
+ * The app's OWN groups, declared in the same shape a module uses.
  *
- * Anything not listed sorts after these, alphabetically — a new module's group
- * appears at the bottom rather than silently jumping to the top, and this array
- * is the one place to promote it.
+ * A descriptor with no routes: `/` is a real Next page rather than a module
+ * contribution, so it cannot be a `ModuleRoute` — but its GROUP can be placed by
+ * exactly the same mechanism, which keeps one merging rule instead of two.
+ *
+ * 'Administration' and 'Account' are deliberately absent. They belong to
+ * module-permissions and module-auth, and both now say so themselves.
  */
-const GROUP_ORDER: readonly string[] = ['Overview', 'Administration'];
+const APP_GROUPS: WebModuleDescriptor = {
+  key: 'app',
+  navGroups: [{ group: 'Overview', order: 10 }],
+};
+
+/**
+ * Merged across every module plus this app, so a group nobody placed sorts last
+ * rather than jumping to the top. Computed once at module scope: the modules do
+ * not change between requests.
+ */
+const NAV_GROUPS = composeNavGroups([...WEB_MODULES, APP_GROUPS]);
 
 /**
  * The group that renders in the ACCOUNT MENU rather than the side drawer.
@@ -60,11 +84,6 @@ const GROUP_ORDER: readonly string[] = ['Overview', 'Administration'];
  * already lives.
  */
 export const ACCOUNT_GROUP = 'Account';
-
-function groupRank(group: string): number {
-  const index = GROUP_ORDER.indexOf(group);
-  return index === -1 ? GROUP_ORDER.length : index;
-}
 
 /**
  * @param heldFeatures the caller's granted keys, or undefined when no
@@ -83,7 +102,9 @@ export function buildNav(heldFeatures: readonly string[] | undefined): NavGroup[
 
   entries.sort(
     (a, b) =>
-      groupRank(a.group) - groupRank(b.group) ||
+      navGroupRank(NAV_GROUPS, a.group) - navGroupRank(NAV_GROUPS, b.group) ||
+      // Two groups nobody placed both rank last; alphabetical keeps them stable
+      // relative to each other rather than dependent on module list order.
       a.group.localeCompare(b.group) ||
       a.order - b.order ||
       a.label.localeCompare(b.label),

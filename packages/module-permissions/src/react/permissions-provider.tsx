@@ -1,5 +1,7 @@
 'use client';
 
+import { FeatureAccessProvider } from '@kwtech/module-kit/react';
+
 import { createContext, type ReactNode } from 'react';
 import type { PermissionContext } from '../types.js';
 
@@ -18,5 +20,20 @@ export interface PermissionsProviderProps {
  * hidden button and an unguarded endpoint is still an unguarded endpoint.
  */
 export function PermissionsProvider({ value, children }: PermissionsProviderProps) {
-  return <PermissionsReactContext.Provider value={value}>{children}</PermissionsReactContext.Provider>;
+  return (
+    <PermissionsReactContext.Provider value={value}>
+      {/*
+        Also published through @kwtech/module-kit, so any OTHER module can gate
+        its own controls without importing this one — which PLAN section 9
+        forbids. `module-auth` needs exactly that to hide a button on its own
+        settings page.
+
+        Mounted here rather than beside this provider in the app, so there is
+        one source of the list and no way for the two to disagree. `effective`,
+        not `granted`: what the viewer can actually use after plan entitlement,
+        which is what a control should reflect.
+      */}
+      <FeatureAccessProvider value={value?.effective ?? []}>{children}</FeatureAccessProvider>
+    </PermissionsReactContext.Provider>
+  );
 }

@@ -281,11 +281,27 @@ queries. Consequence handled: a staff user has *no membership at all*, so
 `loadContext` must still return a usable context for them — returning null there
 would have locked support out of every organization.
 
-**A role may only collect features at its own level** (`assertRoleFeatureLevels`).
-Without it a workspace-level role could contain `billing:manage`, and creating
-workspace roles is a routine, widely delegated right — so that would be a direct
-path to granting yourself organization-wide power. It throws rather than
-filtering silently.
+**An organization- or workspace-level role may only collect features at its own
+level** (`assertRoleFeatureLevels`). Without it a workspace-level role could
+contain `billing:manage`, and creating workspace roles is a routine, widely
+delegated right — so that would be a direct path to granting yourself
+organization-wide power. It throws rather than filtering silently.
+
+**App level is exempt** (2026-08-30). The escalation above needs a lesser right
+to escalate FROM; an app-level role hangs off no membership and no tenant
+administrator can mint one, so there is none. Applying the rule there bought no
+safety and made an all-access `super-admin` impossible to express — only two of
+the nine registry keys are app-level, so the strictest possible super admin
+could not read an organization's roles or fix its billing. The read path had
+already assumed the relaxed shape: `composeContext` applies an app-level role at
+every scope and unions its features in *after* the subscription filter, so an
+app role holding organization-level features resolves exactly as intended.
+Unregistered keys are still refused everywhere.
+
+Rejected: a `platform:super_admin` wildcard short-circuited in `checkFeature`. It
+would have preserved the rule, but it contradicts the model's core — "no
+inheritance, no implied rights" — and a role row would stop describing what its
+holder can do.
 
 ### 4.3 Membership, and the restructure
 
@@ -494,6 +510,135 @@ GraphQL operation. Now keyed on scope as well.
 
 ---
 
+## Part 5b — The status bar and server reachability
+
+### 5b.1 Why it is not in `module-auth`
+
+The obvious home was `module-auth`: it already owns the session, already polls
+the API in `SessionKeeper`, and already knows when a call fails. It was rejected
+on one test — reachability is not an auth concern, it is a transport concern,
+and **every** module has something to say in a status bar.
+
+Putting the channel there would force `module-permissions` — and module number
+three — to depend on `module-auth` to publish a sentence. That is precisely the
+cycle §9 keeps open, and the seam between the two modules is currently two lines
+(`resolvePrincipal`, `AppShell`). A status channel owned by auth would have made
+it three, permanently.
+
+The rule is the one `FeatureContribution` already follows: **every module
+declares, one thing renders.** So the channel lives in `module-kit`.
+
+### 5b.2 Three homes, one feature
+
+| Piece | Home | Why there |
+|---|---|---|
+| `StatusLevel`, `StatusMessage`, ordering, the store | `@kwtech/module-kit` (root) | the one package every module already depends on; React-free, so it is testable without a renderer and a Nest app importing `composeFeatures` still pulls in nothing |
+| `StatusProvider`, `useStatusChannel`, `PublishStatus` | `@kwtech/module-kit/react` | a separate entry point, so the root export stays runtime-free and `react` stays an optional peer |
+| `<StatusBar>` | `@kwtech/web-ui` | it is a themed component with no domain knowledge; renderable from a literal array |
+| health route, `ConnectivityMonitor`, `StatusBarHost` | `apps/web-app` | the probe URL and the Next route file are app decisions |
+
+`web-ui` deliberately does **not** import `module-kit`. It is not a module and
+has no business in the module contract, so `StatusBarMessage` is declared
+structurally and the two shapes meet in `StatusBarHost` — where a disagreement
+fails to compile. Same arrangement, same reason, as `satisfies-modules.ts` on the
+server: the assertion belongs at the seam, not inside either side.
+
+### 5b.3 The browser cannot probe the API
+
+`API_URL` is not `NEXT_PUBLIC_`, deliberately (see `@/config/env`): the browser
+talks to this app's route handlers, never to the API, which is what keeps tokens
+in httpOnly cookies. A client-side probe of the API origin would publish that
+origin to every visitor to save one hop.
+
+So the probe goes through `/api/health`, and that is the better test anyway — it
+exercises the actual path every request takes rather than a second path that
+could be healthy while the real one is not. It also yields three answers where a
+direct probe yields two:
+
+| Result | Meaning |
+|---|---|
+| fetch rejects, or `navigator.onLine === false` | the browser is offline, or this app is down |
+| `503 {state:'unreachable'}` | Next is up, the API is not |
+| `200 {state:'degraded'}` | the API is up, its database is not |
+
+The upstream `/health` already drew the last distinction; it was being thrown
+away. It is worth carrying because "we cannot reach the server" and "the server
+cannot reach its database" send someone to different people.
+
+### 5b.4 The bug this uncovered
+
+`getSessionSnapshot` returned the same empty value for *"nobody is signed in"*
+and *"I could not ask"*. With the API down, `viewer` came back null and
+`AppShell` redirected to `/auth/signin` — where signing in also failed, because
+the thing that was down was the thing sign-in needs.
+
+So a signed-in person experienced an outage as being **signed out**, which is the
+one explanation that makes it look like their own fault. And they never saw the
+status bar, because they were never left in a shell that renders one.
+
+`SessionSnapshot.reachable` now carries that separately. A 4xx is the API
+answering (sign out); a 5xx, a rejected fetch or a timeout is the API failing
+(stay put, say so, poll). An absent cookie is `reachable: true` — it is an answer
+this app already has, and reporting it as an outage would put "cannot reach the
+server" on the sign-in page of a healthy deployment.
+
+`SessionKeeper` needed no change: it already retried on `!response.ok` and only
+redirected on a confirmed 401.
+
+### 5b.5 Status colours are the one thing the palette does not own
+
+Every other token is named by role so a theme can change what a colour *is*
+without changing what it *means*. Status colours invert that: "error" already
+means something, and it does not mean "whatever hue this app chose". On the
+forest palette a palette-derived danger colour is green — not a restrained
+choice, a wrong one, because the reader has to stop and *read* to learn something
+is broken at the one moment the colour was supposed to tell them first.
+
+So they live in `base.css`, defined once for all ten palettes, and
+`check:contrast` was extended to measure them like everything else. It
+immediately caught two real defects in the first values: a light-mode red 0.045
+outside sRGB, and warning/error only 0.04 apart in oklab — two tints nobody could
+have told apart.
+
+The separation check measures the **foregrounds**, not the surfaces. The surfaces
+are deliberately near-neutral tints — the point of a strip someone stares at all
+day — so two of them are always close, and holding them to the palette's
+`MIN_DANGER_SEPARATION` would force exactly the saturated bar the design avoids.
+What tells a warning from a failure at a glance is the icon and the text.
+
+### 5b.6 A strip, not a toast
+
+A toast is for something that **happened**; this is for something that **is**.
+"The server is unreachable" has no moment — it is a condition, and a
+notification that slides away takes the answer with it, leaving someone to
+wonder why nothing saves.
+
+Consequences that follow from that choice:
+
+- **Absent when there is nothing to say.** A permanent empty strip trains the eye
+  to skip the region, so the day it speaks nobody looks.
+- **Sticky messages cannot be dismissed.** Closing "cannot reach the server"
+  would hide a fact that is still true — and since the monitor only republishes
+  on a state *change*, it would stay hidden for the whole outage. News can be
+  dismissed; a condition cannot.
+- **Transient messages clear on navigation.** A page's message is about that
+  page. Connectivity is sticky because a server being down is not a property of
+  the route you happen to be on.
+- **`role="status"`, not `role="alert"`.** Assertive announcement is right for a
+  failed submission and wrong for a bar that also says "Reconnected".
+
+### 5b.7 Recovery re-fetches
+
+`router.refresh()` fires when reachability returns. Server components rendered
+during the outage got the fallback — an empty list, a missing viewer — and
+nothing about recovery re-runs them. Without it the bar goes green over a page
+still showing the outage's data, which is the most misleading state of the three.
+
+It is also what makes the outage panel self-healing: the monitor polls, recovery
+re-runs the render, and the session comes back without anyone reloading.
+
+---
+
 ## Part 6 — Rejected alternatives, indexed
 
 | Rejected | In favour of | Why |
@@ -513,6 +658,12 @@ GraphQL operation. Now keyed on scope as well.
 | a deny rule on roles | additive only | subtractive grants turn every question into an ordering question |
 | limit floor of 0 | floor of 1 | zero stopped a founder from being their own organization's first member |
 | `PermMembershipRole.workspaceId` | `PermWorkspaceMemberRole` | nullable column blocks a real primary key; NULLs are distinct in unique indexes |
+| the status channel in `module-auth` | `module-kit` | reachability is a transport concern; every module publishes, one renders |
+| `web-ui` importing `module-kit` | structural message shape | web-ui is not a module; the app is where the two shapes must agree |
+| `NEXT_PUBLIC_API_URL` for a client probe | `/api/health` proxy | publishes the API origin to every visitor, and tests a path no request uses |
+| a toast for connectivity | a persistent strip | a condition has no moment; a notification that slides away takes the answer with it |
+| status colours from the palette | fixed in `base.css` | an error must not be green on the forest palette |
+| `useState` in the provider | an external store | the provider wraps the whole tree; a poller would re-render every page |
 
 ---
 
@@ -554,7 +705,11 @@ codebase will do.
    fail for different reasons and need different advice, and merged answers send
    the ticket to the wrong team.
 
-7. **Name the cost.** Opt-in enforcement cannot distinguish an unguarded endpoint
+7. **Distinguish "no" from "I don't know."** A null viewer meant both signed-out
+   and unreachable, and the redirect that followed turned an outage into an
+   apparent sign-out. Any answer that can fail should say which of the two it is.
+
+8. **Name the cost.** Opt-in enforcement cannot distinguish an unguarded endpoint
    from a deliberately public one. App-level roles bypass billing state. Both are
    written down rather than papered over, with the mitigation recorded as an open
    decision the reader can take or leave.

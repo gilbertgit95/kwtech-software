@@ -15,6 +15,14 @@
  * where that cost a debugging session.
  */
 
+export { ConfirmDialog, type ConfirmDialogProps } from './confirm-dialog.js';
+export {
+  DataGrid,
+  type DataGridColumn,
+  type DataGridProps,
+  DEFAULT_PAGE_SIZE,
+  PAGE_SIZES,
+} from './data-grid.js';
 export {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,5 +31,8 @@ export {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './dropdown-menu.js';
+export { MultiSelect, type MultiSelectProps } from './multi-select.js';
+export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
 export { type ThemeMode, ThemeSwitcher, type ThemeSwitcherProps } from './theme-switcher.js';
+export { useDebouncedValue } from './use-debounced-value.js';
 export { cn } from './utils.js';

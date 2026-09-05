@@ -1,7 +1,7 @@
 'use client';
 
 import { FEATURE } from '../../feature-keys.js';
-import { FeatureGate } from '../feature-gate.js';
+import { AdminPage, AdminPlaceholder } from './admin-page.js';
 
 /**
  * The role editor — the module's own page, shipped with the module.
@@ -11,11 +11,15 @@ import { FeatureGate } from '../feature-gate.js';
  */
 export function RolesPage() {
   return (
-    <FeatureGate allOf={[FEATURE.adminAccess]} fallback={<p>You do not have access to role administration.</p>}>
-      <section>
-        <h1>Roles</h1>
-        {/* Phase 6: role list and grant editor over the module's own operations. */}
-      </section>
-    </FeatureGate>
+    <AdminPage
+      title="Roles"
+      description="What each role grants, and who holds it. A role is exactly the list of features it carries — there is no inheritance."
+      feature={FEATURE.adminAccess}
+    >
+      {/* Phase 6: role list and grant editor over the module's own operations. */}
+      <AdminPlaceholder>
+        The role list and grant editor are not built yet. The vocabulary they edit is already visible under Features.
+      </AdminPlaceholder>
+    </AdminPage>
   );
 }
