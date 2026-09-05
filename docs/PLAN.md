@@ -501,6 +501,54 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-05** — **The settings pages got the Back link the admin sub pages
+  already had, and it exposed that "sub page" means two different things.**
+  `SettingsPage` gained `backTo`, matching `AdminPage`.
+
+  **Only ONE of the three is a real child.** `/settings/two-factor` is unlisted
+  in the navigation and reached only from Security, so "back" has one true
+  answer. `/settings/profile` and `/settings/security` are PEERS — both sit in
+  the Account nav group, neither is inside the other — so there was no parent to
+  name. They point at the app's home instead, which is the honest answer to "how
+  do I get out of settings" rather than an invented hierarchy.
+
+  *Rejected: a bare browser-history Back.* It lands somewhere different for
+  every reader, so it cannot be labelled — and the whole value of "Back to
+  Security" over "Back" is that it says where you will land without your having
+  to remember how you arrived. It is also wrong for anyone who opened a deep
+  link, which is exactly how a password-reset or 2FA URL gets used.
+
+  **`backTo` is a prop with a default, not a constant**, like `twoFactorHref`
+  beside it: an app mounting these under a different prefix would otherwise get
+  a link to a 404. The module ships the zero-configuration answer and lets the
+  app disagree.
+
+  **Forwarded through all three states of `ProfileRouteInner`**, not just the
+  loaded one. Otherwise the link pops in after the fetch and shifts the heading
+  down, and the ERROR state — the one where somebody most needs a way off the
+  page — would have been the single state without it.
+
+  **A second copy of `BackLink`, deliberately.** The two modules may not import
+  each other (§9), and neither shared home is right: `@kwtech/module-kit` is the
+  contract the NestJS server imports, so a styled component does not belong in
+  it, and `@kwtech/web-ui` would hand `module-auth` a UI-package dependency it
+  does not otherwise have — the edge already flagged as a cost when
+  `module-permissions` took it for a data grid. Twenty lines of markup is the
+  cheaper duplicate, and the same call this package already makes by inlining
+  SVGs rather than starting an icon dependency. Revisit at a third copy.
+
+  **A gap this did NOT close, and it is worth knowing.** `AdminPage` gives its
+  denial screen a back link on the stated grounds that "someone refused a page
+  needs a way off it more than anyone" — but the catch-all's ROUTE check fires
+  first and renders `FeatureDenied` without one, because `ModuleRoute` has no
+  parent to name. So a sub page you are refused still strands you. Closing it
+  means putting `backTo` on the route descriptor, which is a wider change than
+  this one.
+
+  Verified in the running app: `/settings/profile` and `/settings/security`
+  render `Back to Dashboard` → `/`, and `/settings/two-factor` renders
+  `Back to Security` → `/settings/security`.
+
 - **2026-09-05** — **The role badge renders, and the context grew the one field
   it had no way to answer from.** `PermissionContext.appRoles` carries `{ key,
   label, icon }` for every APP-level role the caller holds, through GraphQL to

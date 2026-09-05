@@ -103,6 +103,25 @@ export const { POST } = createAuthRouteHandlers({ apiUrl, cookieName, secure });
 
 `getViewer` and `getSessionToken` take the same overrides.
 
+### The settings pages' Back link
+
+`ProfilePage`, `SecurityPage` and `TwoFactorPage` render a "Back to …" link
+above the heading, and each takes `backTo` to move it:
+
+```tsx
+<ProfilePage viewer={viewer} backTo={{ href: '/account', label: 'Account' }} />
+```
+
+The defaults assume these routes are mounted where the descriptor puts them.
+`TwoFactorPage` points at `/settings/security`, which is its real parent — it is
+unlisted in the navigation and reached only from Security. Profile and Security
+are PEERS rather than children of one another, so they point at the app's home
+(`/`, labelled "Dashboard"); override `backTo` if yours lives elsewhere or if
+you mount these under a prefix.
+
+Pass it to `ProfileRouteInner` instead when you use the descriptor's route, and
+it reaches the loading and error states too — not just the loaded form.
+
 ## Features this module declares
 
 `AUTH_FEATURE_REGISTRY` carries the module's grantable rights, typed by

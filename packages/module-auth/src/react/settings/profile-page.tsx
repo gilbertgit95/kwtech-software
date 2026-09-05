@@ -23,7 +23,22 @@ import { SettingsButton, SettingsCard, SettingsPage, SettingsResult } from './se
  * inputs; a page that cannot render without a network call is also a page that
  * cannot be tested without one.
  */
-export function ProfilePage({ viewer, client }: { viewer: Viewer; client?: AuthClient }) {
+export function ProfilePage({
+  viewer,
+  client,
+  // See SecurityPage: a peer, not a child, so the app's home is the honest
+  // destination rather than an invented parent.
+  backTo = { href: '/', label: 'Dashboard' },
+}: {
+  viewer: Viewer;
+  client?: AuthClient;
+  /**
+   * Where the Back link points. Overridable because a consuming app may mount
+   * these pages under a different prefix — the same reason `SecurityPage`
+   * takes `twoFactorHref` rather than hard-coding it.
+   */
+  backTo?: { href: string; label: string };
+}) {
   const api = useMemo(() => client ?? createAuthClient(), [client]);
   const [current, setCurrent] = useState(viewer);
 
@@ -49,7 +64,7 @@ export function ProfilePage({ viewer, client }: { viewer: Viewer; client?: AuthC
   });
 
   return (
-    <SettingsPage title="Profile" description="How you appear in this application.">
+    <SettingsPage title="Profile" description="How you appear in this application." backTo={backTo}>
       <form onSubmit={onSubmit} noValidate>
         <SettingsCard
           title="Your details"

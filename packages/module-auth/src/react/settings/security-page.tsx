@@ -19,10 +19,24 @@ export function SecurityPage({
   client,
   signInHref = '/auth/signin',
   twoFactorHref = '/settings/two-factor',
+  /*
+   * The app's home, because this page has no parent inside the module: Profile
+   * and Security are PEERS reached from the account menu, not children of one
+   * another. Naming the home is the honest answer to "how do I leave" — the
+   * alternative, a bare browser-history Back, lands somewhere different for
+   * every reader and cannot be labelled.
+   */
+  backTo = { href: '/', label: 'Dashboard' },
 }: {
   client?: AuthClient;
   signInHref?: string;
   twoFactorHref?: string;
+  /**
+   * Where the Back link points. Overridable because a consuming app may mount
+   * these pages under a different prefix — the same reason `SecurityPage`
+   * takes `twoFactorHref` rather than hard-coding it.
+   */
+  backTo?: { href: string; label: string };
 }) {
   const api = useMemo(() => client ?? createAuthClient(), [client]);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -72,7 +86,7 @@ export function SecurityPage({
   });
 
   return (
-    <SettingsPage title="Security" description="Your password, and where you are signed in.">
+    <SettingsPage title="Security" description="Your password, and where you are signed in." backTo={backTo}>
       <form onSubmit={password.onSubmit} noValidate>
         <SettingsCard
           title="Change password"

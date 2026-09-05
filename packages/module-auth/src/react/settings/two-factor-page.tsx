@@ -35,6 +35,12 @@ import { SettingsButton, SettingsCard, SettingsPage, SettingsResult } from './se
 export function TwoFactorPage({
   client,
   renderQr,
+  /*
+   * A REAL parent, unlike the two pages beside it: this screen is unlisted in
+   * the navigation and reached only from Security, so "back" has one true
+   * answer and naming it costs the reader nothing to verify.
+   */
+  backTo = { href: '/settings/security', label: 'Security' },
 }: {
   client?: AuthClient;
   /**
@@ -46,6 +52,12 @@ export function TwoFactorPage({
    * is open.
    */
   renderQr?: (uri: string) => React.ReactNode;
+  /**
+   * Where the Back link points. Overridable because a consuming app may mount
+   * these pages under a different prefix — the same reason `SecurityPage`
+   * takes `twoFactorHref` rather than hard-coding it.
+   */
+  backTo?: { href: string; label: string };
 }) {
   const api = useMemo(() => client ?? createAuthClient(), [client]);
 
@@ -115,6 +127,7 @@ export function TwoFactorPage({
     <SettingsPage
       title="Two-step verification"
       description="After your password, a six-digit code from an authenticator app on your phone."
+      backTo={backTo}
     >
       {loadError ? <SettingsResult error={loadError} /> : null}
 
