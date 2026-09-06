@@ -49,6 +49,11 @@ describe('every declared API binding names a guard that exists', () => {
   const GUARDED: Record<string, string[] | undefined> = {
     'Query.permissionFeatures': required(PermissionsResolver.prototype, 'features'),
     'GET /permissions/features': required(PermissionsController.prototype, 'features'),
+    'Query.permissionRoles': required(PermissionsResolver.prototype, 'roles'),
+    'Mutation.createRole': required(PermissionsResolver.prototype, 'createRole'),
+    'Mutation.updateRole': required(PermissionsResolver.prototype, 'updateRole'),
+    'Mutation.setRoleDisabled': required(PermissionsResolver.prototype, 'setRoleDisabled'),
+    'Mutation.previewRoleClone': required(PermissionsResolver.prototype, 'previewRoleClone'),
   };
 
   const apiBindings = FEATURE_REGISTRY.flatMap((spec) =>

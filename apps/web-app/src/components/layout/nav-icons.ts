@@ -5,6 +5,7 @@ import {
   CreditCard,
   Crown,
   KeyRound,
+  Layers,
   LayoutDashboard,
   type LucideIcon,
   Settings,
@@ -31,7 +32,12 @@ import {
  * An unknown name falls back rather than throwing. A misspelled icon should
  * cost a generic dot in the drawer, not a blank page.
  */
-const ICONS: Record<string, LucideIcon> = {
+/**
+ * Exported so the app can publish it to `<IconSetProvider>` — the picker draws
+ * exactly what `iconFor` can resolve, which is what stops someone choosing an
+ * icon that renders as a fallback dot.
+ */
+export const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   settings: Settings,
   shield: Shield,
@@ -59,6 +65,9 @@ const ICONS: Record<string, LucideIcon> = {
   crown: Crown,
   briefcase: Briefcase,
   sprout: Sprout,
+  // Stacked planes: a workspace is one slice of an organization, not a
+  // separate building — which is what `organization` (Building2) already says.
+  workspace: Layers,
 };
 
 export function iconFor(name: string | undefined): LucideIcon {

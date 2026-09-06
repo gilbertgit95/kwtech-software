@@ -501,6 +501,109 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-05** — **Roles became writable, there is no delete, and the
+  registry audit found two contradictions on the way.**
+
+  **Five keys where there was one.** `roles:manage` is deprecated; `roles:read`,
+  `roles:create`, `roles:update` and `roles:disable` split it by risk, the same
+  way `features:author` was split. All four are ORGANIZATION level, because
+  defining roles inside your own tenant is the ordinary administrative act —
+  unlike inventing a FEATURE, which is platform-wide and therefore app level.
+
+  **`roles:manage_app` guards the level, not the features.** The escalation the
+  existing rule does not close: `assertRoleFeatureLevels` stops an organization
+  role collecting app-level features, but nothing stopped an organization
+  administrator MINTING an app-level role — which applies in every organization
+  and skips the subscription filter. So the dangerous half is the role's own
+  level, and that is what the fifth key guards.
+
+  **NO DELETE, by request and on the evidence.** Every grant ever made points at
+  the role row, so deleting one either cascades that history away — destroying
+  the answer to "what could this person do last March" — or fails on a foreign
+  key at the worst moment. `PermRole.disabledAt` follows `PermFeature.
+  deprecatedAt`, `AuthSession.revokedAt` and `PermWorkspace.archivedAt`: set a
+  timestamp, never DELETE.
+
+  A disabled role must GRANT NOTHING, and that is enforced in the READ path, not
+  at the write: `loadContext` filters `disabledAt: null` at all three levels,
+  the write service's own re-derivation does too, and `requireRole` refuses to
+  ASSIGN a disabled role — otherwise the grant row would exist, grant nothing,
+  and look identical in a members list to one that works. Making the structural
+  client require the filter is what forced all five write-path call sites to
+  decide rather than inherit the old behaviour.
+
+  **The admin list deliberately shows disabled roles**, where every grant path
+  hides them. A list that hid them would make the switch look like a delete and
+  leave nobody able to find the role to turn it back on.
+
+  **No escalation: you may not put a right into a role that you do not hold.**
+  Not asked for and taken as the safe default, because without it one coarse
+  "create roles" key is indirectly every key in the system — compose a role
+  granting everything, assign it to yourself, and the model has been walked
+  around rather than broken. Cloning is the fastest route to it, so clone runs
+  through the same rule rather than trusting its source.
+
+  **Clone FILTERS rather than refusing.** A super admin's features cloned into
+  an organization role would fail validation wholesale, leaving the person to
+  un-tick them one at a time. Dropping what cannot apply and SAYING SO — with
+  the reason per key — leaves a working role and an accurate list. Replace and
+  Add are named for what happens to the features ALREADY THERE, like the feature
+  import's dialog, because that is the half at risk. Nothing is written: the
+  preview is staged into the form and saved through `updateRole`, so a clone
+  cannot reach a rule a manual edit obeys.
+
+  **Key and level are immutable after creation.** Both are read by grants that
+  already exist: changing a level silently re-interprets every grant made from
+  the role — an organization role becoming a workspace one stops applying
+  organization-wide, with no event anywhere saying so.
+
+  **System roles are refused.** `db:sync` REPLACES what they grant on every run,
+  so an edit through the API would look saved and be reverted on the next
+  deploy — the trap the feature screens are built around.
+
+  **The duplicate-key check lives in application code** because the database
+  cannot do it for the rows that matter most (§12.19): `@@unique([organizationId,
+  key])` does not constrain app-level roles or shared presets, since
+  organizationId is null there and Postgres treats NULLs as distinct.
+
+  **Four shared presets, and they needed no organization.** `organization-admin`,
+  `organization-user`, `workspace-admin` and `workspace-user` are seeded with
+  `organizationId: null`, which the schema defines as "a preset shared by every
+  organization" rather than one tenant's definition — which is what makes them
+  seedable when `perm_organization` is still empty. `upsertAppRole` became
+  `upsertSystemRole`, taking any level. Their features are LISTED rather than
+  derived: deriving "every organization-level key" would silently widen an admin
+  preset the moment a key is added.
+
+  `workspace-admin` holds exactly one feature, and that is honest rather than
+  unfinished: `workspaces:share` is currently the only workspace-level key —
+  `workspaces:access_all` and `workspaces:manage` are organization-level,
+  because seeing or creating every workspace is a decision the organization
+  makes, not one a workspace makes about itself.
+
+  ## Two contradictions the audit caught
+
+  `/admin/roles` ended up claimed by BOTH `admin:access` and `roles:read`, and
+  `auditRegistry.contested` refused it — correctly: two keys naming one route
+  means the interface cannot say which right gates the page. The route moved to
+  `roles:read`, and `admin:access` is now a baseline "may open the admin app"
+  with NO bindings, which the audit reports as unbound and which is true.
+
+  The surface-coverage suite then refused four bindings naming guards that did
+  not exist yet — which is what it is for. The `ui_route` bindings for the
+  create and edit SCREENS were removed rather than left aspirational, because
+  naming a route nobody has written makes the audit report coverage for absent
+  code. They return with the screens.
+
+  ## Not built: the screens
+
+  The server side is complete and verified; the roles ADMIN UI is not. The
+  module's React layer has no data-fetching seam at all — every existing page
+  reads a compiled constant or context — and roles are the first screen needing
+  live data. Introducing one means deciding how `module-permissions/react`
+  reaches the API without naming `module-auth`'s route handler, which is a §9
+  question and not a detail to settle in passing.
+
 - **2026-09-05** — **The settings pages got the Back link the admin sub pages
   already had, and it exposed that "sub page" means two different things.**
   `SettingsPage` gained `backTo`, matching `AdminPage`.

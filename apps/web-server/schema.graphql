@@ -20,7 +20,11 @@ type MfaFactor {
 }
 
 type Mutation {
+  createRole(input: RoleDraftInput!): PermissionRoleDetail!
+  previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
+  setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
   updateProfile(input: UpdateProfileInput!): Viewer!
+  updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
 }
 
 type PermissionContext {
@@ -40,7 +44,9 @@ type PermissionFeature {
   isPrivileged: Boolean!
   key: String!
   label: String!
+  level: String!
   module: String!
+  tags: [String!]!
 }
 
 type PermissionFeaturePage {
@@ -57,12 +63,44 @@ type PermissionRole {
   label: String!
 }
 
+type PermissionRoleDetail {
+  disabled: Boolean!
+  features: [String!]!
+  icon: String
+  id: String!
+  isSystem: Boolean!
+  key: String!
+  label: String!
+  level: String!
+  organizationId: String
+}
+
 type Query {
   mfaFactors: [MfaFactor!]!
   myPermissions: PermissionContext
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
+  permissionRoles(organizationId: String): [PermissionRoleDetail!]!
   session: SessionInfo
   viewer: Viewer
+}
+
+type RoleClonePreview {
+  added: [String!]!
+  features: [String!]!
+  skipped: [RoleCloneSkip!]!
+}
+
+type RoleCloneSkip {
+  key: String!
+  reason: String!
+}
+
+input RoleDraftInput {
+  features: [String!]!
+  icon: String
+  key: String!
+  label: String!
+  level: String!
 }
 
 type SessionInfo {

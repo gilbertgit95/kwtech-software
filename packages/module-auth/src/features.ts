@@ -83,7 +83,7 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
     key: AUTH_FEATURE.accountProfileWrite,
     module: 'auth',
-    tags: ['account'],
+    tags: ['auth'],
     level: 'app',
     label: 'Edit your own profile',
     description: 'Change your own display name and username. Your email address cannot be changed here.',
@@ -95,7 +95,7 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
     key: AUTH_FEATURE.accountTwoFactorEnrol,
     module: 'auth',
-    tags: ['account'],
+    tags: ['auth'],
     level: 'app',
     label: 'Add two-step verification',
     /*
@@ -114,7 +114,7 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
     key: AUTH_FEATURE.accountTwoFactorRemove,
     module: 'auth',
-    tags: ['account'],
+    tags: ['auth'],
     level: 'app',
     label: 'Remove two-step verification',
     description: 'Take a second factor off your own account.',

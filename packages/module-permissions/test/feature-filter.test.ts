@@ -25,16 +25,17 @@ describe('search', () => {
     const found = filterFeatures(FEATURE_REGISTRY, { search: 'authenticator' });
     expect(found.length).toBeGreaterThanOrEqual(0);
     // A word that only appears in a description proves the haystack is wider
-    // than the key — 'dashboard' is in admin:access's description alone.
-    expect(keys(filterFeatures(FEATURE_REGISTRY, { search: 'dashboard' }))).toContain(FEATURE.adminAccess);
+    // than the key — 'spreadsheet' appears in features:import's description and
+    // in no key at all, so a match can only have come from the description.
+    expect(keys(filterFeatures(FEATURE_REGISTRY, { search: 'spreadsheet' }))).toContain(FEATURE.featuresImport);
   });
 
   it('matches a binding identifier', () => {
-    expect(keys(filterFeatures(FEATURE_REGISTRY, { search: '/admin/roles' }))).toContain(FEATURE.adminAccess);
+    expect(keys(filterFeatures(FEATURE_REGISTRY, { search: '/admin/roles' }))).toContain(FEATURE.rolesRead);
   });
 
   it('matches a tag', () => {
-    expect(filterFeatures(FEATURE_REGISTRY, { search: 'access-control' }).length).toBeGreaterThan(0);
+    expect(filterFeatures(FEATURE_REGISTRY, { search: 'workspaces' }).length).toBeGreaterThan(0);
   });
 
   it('finds nothing for nonsense', () => {
@@ -79,7 +80,8 @@ describe('tags are ALL-of', () => {
   });
 
   it('normalises what it is given, so a query string matches the registry', () => {
-    expect(filterFeatures(FEATURE_REGISTRY, { tags: ['Access Control'] }).length).toBeGreaterThan(0);
+    // Cased and padded on the way in; the registry stores 'roles'.
+    expect(filterFeatures(FEATURE_REGISTRY, { tags: ['  ROLES '] }).length).toBeGreaterThan(0);
   });
 
   it('finds nothing when the combination has no members', () => {

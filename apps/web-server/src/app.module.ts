@@ -17,6 +17,7 @@ import {
   permissionsWritePrismaProvider,
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { ALL_FEATURES } from './seed/registry.js';
 
 /**
  * The whole application, as a list of modules and the four lines that connect
@@ -99,6 +100,20 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
 
   permissionsServerModule({
     apiPrefix: '/api/v1',
+
+    /*
+     * EVERY module's features, not just this module's own.
+     *
+     * The same composed list the seeder writes to `perm_feature`, so what a
+     * role may be GIVEN and what exists in the table are the same set by
+     * construction. Without it the module validates against its own registry
+     * alone, and `module-auth`'s three `account:*` keys — registered, granted,
+     * undeprecated — are refused as "not in the registry" by every role write.
+     *
+     * Composed here because neither module may import the other (PLAN §9).
+     * Same seam as `resolvePrincipal`.
+     */
+    featureRegistry: ALL_FEATURES,
 
     /*
      * How the guard finds the request, on EITHER transport.

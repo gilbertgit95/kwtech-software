@@ -1,10 +1,12 @@
-import type { WebModuleDescriptor } from '@kwtech/module-kit';
+import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { FEATURE, FEATURE_REGISTRY } from '../feature-keys.js';
 import { FeatureEditPage } from './pages/feature-edit-page.js';
 import { FeatureImportPage } from './pages/feature-import-page.js';
 import { FeatureNewPage } from './pages/feature-new-page.js';
 import { FeaturesPage } from './pages/features-page.js';
 import { OrganizationsPage } from './pages/organizations-page.js';
+import { RoleEditPage } from './pages/role-edit-page.js';
+import { RoleNewPage } from './pages/role-new-page.js';
 import { RolesPage } from './pages/roles-page.js';
 import { SubscriptionsPage } from './pages/subscriptions-page.js';
 
@@ -18,6 +20,39 @@ import { SubscriptionsPage } from './pages/subscriptions-page.js';
  * and its rendered routes. Nothing here is permissions-specific machinery:
  * every module-* package exports exactly this shape.
  */
+
+/*
+ * ── route adapters ──────────────────────────────────────────────────────────
+ *
+ * ⚠ These must render JSX, never CALL the page.
+ *
+ * `RolesPage({})` looks equivalent and is not: the pages are `'use client'`,
+ * and across that boundary Next replaces the module with a client-reference
+ * proxy. Invoking one from a server component throws "Attempted to call
+ * RolesPage() from the server but RolesPage is on the client" — it can only be
+ * RENDERED. That is the whole reason this file is `.tsx` rather than `.ts`,
+ * and the same reason `module-auth`'s descriptor is.
+ *
+ * A `ModuleRoute` component is handed `params` and `searchParams` and nothing
+ * else, so the pages' richer props are supplied here — the same arrangement
+ * `module-auth` uses for its settings routes. The pages stay renderable, and
+ * testable, outside a router: an app that wants to pass its own client or its
+ * own icon set imports the page directly.
+ */
+function RolesRoute(_props: ModuleRouteProps) {
+  return <RolesPage />;
+}
+
+function RoleNewRoute(_props: ModuleRouteProps) {
+  return <RoleNewPage />;
+}
+
+function RoleEditRoute({ params }: ModuleRouteProps) {
+  // The dynamic segment declared on the route below. `matchRouteWithParams`
+  // populates it; a direct import passes it by hand.
+  return <RoleEditPage roleId={params?.roleId} />;
+}
+
 export const permissionsWebModule: WebModuleDescriptor = {
   key: 'permissions',
   features: FEATURE_REGISTRY,
@@ -47,12 +82,37 @@ export const permissionsWebModule: WebModuleDescriptor = {
   routes: [
     {
       path: '/admin/roles',
-      component: RolesPage,
+      component: RolesRoute,
       title: 'Roles',
       // The same key gates the nav entry, the middleware and the page body —
       // one declaration, so a link can never outlive the permission behind it.
-      feature: FEATURE.adminAccess,
+      //
+      // `roles:read`, not `admin:access`: reading the roles that exist is its
+      // own right, for the reason the Features page took `features:read`. Two
+      // keys claiming one route is a contradiction the registry audit refuses
+      // — and it refused this one, which is how the change was found.
+      feature: FEATURE.rolesRead,
       nav: { group: 'Administration', order: 20, icon: 'shield' },
+    },
+    /*
+     * The role write screens, UNLISTED — reached from the toolbar on the list,
+     * which is where somebody is when they want them. One key each, so a role
+     * can hold create without update.
+     *
+     * The literal path is declared before the dynamic one for reading order
+     * only; `matchRouteWithParams` scores literal segments above dynamic ones.
+     */
+    {
+      path: '/admin/roles/new',
+      component: RoleNewRoute,
+      title: 'New role',
+      feature: FEATURE.rolesCreate,
+    },
+    {
+      path: '/admin/roles/:roleId/edit',
+      component: RoleEditRoute,
+      title: 'Edit role',
+      feature: FEATURE.rolesUpdate,
     },
     {
       path: '/admin/features',

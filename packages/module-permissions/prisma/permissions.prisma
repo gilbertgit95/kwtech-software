@@ -192,6 +192,20 @@ model PermRole {
   /// far worse than a generic glyph. See the app's `iconFor`.
   icon           String?
 
+  /// Turned off without being destroyed. Null means live.
+  ///
+  /// There is no delete path for a role, deliberately. Every grant ever made
+  /// points at this row, so deleting one either cascades the grants away —
+  /// destroying the answer to "what could this person do last March" — or fails
+  /// on a foreign key at the worst possible moment. The same call
+  /// `PermFeature.deprecatedAt` and `AuthSession.revokedAt` already make.
+  ///
+  /// ⚠ A disabled role must GRANT NOTHING, and that is enforced in the read
+  /// path rather than here: `PermissionsService.loadContext` filters
+  /// `disabledAt: null` at all three levels. A column nothing reads would be a
+  /// switch that looks like it works.
+  disabledAt     DateTime?
+
   organization PermOrganization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   features         PermRoleFeature[]
   limits           PermRoleLimit[]

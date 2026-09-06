@@ -95,6 +95,27 @@ export class PermissionFeatureType {
 
   @Field()
   isPrivileged!: boolean;
+
+  /**
+   * The level a role must be at to grant this.
+   *
+   * Exposed because the role editor filters on it: an organization-level role
+   * may only collect organization-level keys, so offering the rest would
+   * present a choice the write path refuses. Registry-only data — `perm_feature`
+   * does not mirror it — which is precisely why the client cannot get it from
+   * anywhere else.
+   */
+  @Field()
+  level!: string;
+
+  /**
+   * The tag PATH, outermost first. Drives the editor's grouped picker.
+   *
+   * Also registry-only, and ordered: `['admin', 'roles']` nests as admin >
+   * roles. See feature-tags.ts.
+   */
+  @Field(() => [String])
+  tags!: string[];
 }
 
 /**
@@ -215,4 +236,108 @@ export class FeatureFilterInput {
   /** Keys with no binding — the ones that read as coverage while guarding nothing. */
   @Field(() => Boolean, { nullable: true })
   unboundOnly?: boolean;
+}
+
+/**
+ * A role DEFINITION, as the admin screens read it.
+ *
+ * Distinct from `PermissionRole`, which is the badge on a context: that one
+ * says who somebody is, this one says what a role is and is loaded for every
+ * role rather than the ones a person holds. `disabled` and `isSystem` appear
+ * here and nowhere else, because no permission CHECK consults either.
+ */
+@ObjectType('PermissionRoleDetail')
+export class PermissionRoleDetailType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  level!: string;
+
+  @Field(() => String, { nullable: true })
+  organizationId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  icon!: string | null;
+
+  /**
+   * Defined in the application and replaced on every deploy, so the screens
+   * offer no edit. Exposed rather than inferred from the key, because "is this
+   * mine to change" is the question the UI actually asks.
+   */
+  @Field()
+  isSystem!: boolean;
+
+  /** Grants nothing while true. The row, and every grant from it, stay put. */
+  @Field()
+  disabled!: boolean;
+
+  @Field(() => [String])
+  features!: string[];
+}
+
+/**
+ * A role being written. One input for create and update, because the FORM is
+ * one form — and two inputs would be two places for the field list to drift.
+ *
+ * `key` and `level` are ignored on update: both are read by grants that
+ * already exist, and changing one silently re-interprets them. See `updateRole`.
+ *
+ * There is no `organizationId`. Every role written here is a shared preset —
+ * what scopes a role is its LEVEL, not an owner. See domain/role-draft.ts.
+ */
+@InputType('RoleDraftInput')
+export class RoleDraftInput {
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  level!: string;
+
+  @Field(() => String, { nullable: true })
+  icon!: string | null;
+
+  @Field(() => [String])
+  features!: string[];
+}
+
+/** One feature a clone could not bring across, and why. */
+@ObjectType('RoleCloneSkip')
+export class RoleCloneSkipType {
+  @Field()
+  key!: string;
+
+  /** 'wrong_level' | 'not_held' | 'unregistered'. */
+  @Field()
+  reason!: string;
+}
+
+/**
+ * What a clone WOULD do. Nothing is written until the form is saved, so this is
+ * the dialog's content rather than a result.
+ */
+@ObjectType('RoleClonePreview')
+export class RoleClonePreviewType {
+  @Field(() => [String])
+  features!: string[];
+
+  @Field(() => [String])
+  added!: string[];
+
+  /**
+   * Shown, never swallowed. A clone that granted less than the role it copied
+   * and said nothing would be discovered as a denial weeks later, by which time
+   * nobody remembers cloning anything.
+   */
+  @Field(() => [RoleCloneSkipType])
+  skipped!: RoleCloneSkipType[];
 }

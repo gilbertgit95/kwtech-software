@@ -1,4 +1,20 @@
 /**
+ * ⚠ TAGS ARE AN ORDERED PATH, not a set.
+ *
+ * A feature's tags read outermost-first: `['admin', 'roles']` means "the roles
+ * area of the admin app", and the role editor nests its picker on exactly that
+ * — `admin` containing `roles` containing the features themselves. Reversing
+ * them would build the tree upside down.
+ *
+ * Filtering is unaffected and still treats them as a set: a feature tagged
+ * `['admin', 'roles']` matches a filter for `admin`, for `roles`, or for both.
+ * The order only decides how they NEST.
+ *
+ * Two levels is the shape everything uses today. Nothing enforces a maximum —
+ * the tree renders whatever depth it is given — but a third level should be a
+ * deliberate decision rather than a tag somebody appended.
+ */
+/**
  * The controlled vocabulary for feature tags.
  *
  * ## Why a vocabulary and not free text
@@ -21,22 +37,27 @@
  */
 
 export const FEATURE_TAG = {
-  /** Reached from the admin app. Cuts across roles, members, billing and features. */
+  // ── roots ─────────────────────────────────────────────────────────────────
+  /** Reached from the admin app: the platform's own back office. */
   admin: 'admin',
   /** Platform staff rights, held across every organization rather than inside one. */
   platform: 'platform',
-  /** Helping a customer: support access, impersonation. */
-  support: 'support',
+  /** Signing in and looking after your own account. */
+  auth: 'auth',
+
+  // ── areas, used as the SECOND tag ─────────────────────────────────────────
+  /** The permission system's roles. */
+  roles: 'roles',
+  /** The feature registry itself. */
+  features: 'features',
   /** Who is in an organization, and what they hold. */
   members: 'members',
   /** Workspaces and what happens inside them. */
   workspaces: 'workspaces',
-  /** The permission system itself — roles and the feature vocabulary. */
-  accessControl: 'access-control',
   /** Plans, subscriptions and entitlement. */
   billing: 'billing',
-  /** Your own account, as opposed to anybody else's. */
-  account: 'account',
+  /** Helping a customer: support access, impersonation. */
+  support: 'support',
 } as const;
 
 export type FeatureTag = (typeof FEATURE_TAG)[keyof typeof FEATURE_TAG];

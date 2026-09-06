@@ -31,8 +31,16 @@ export {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './dropdown-menu.js';
+export {
+  type IconOption,
+  IconPicker,
+  type IconPickerProps,
+  IconSetProvider,
+  useIconSet,
+} from './icon-picker.js';
 export { MultiSelect, type MultiSelectProps } from './multi-select.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
 export { type ThemeMode, ThemeSwitcher, type ThemeSwitcherProps } from './theme-switcher.js';
+export { TreeSelect, type TreeSelectNode, type TreeSelectProps } from './tree-select.js';
 export { useDebouncedValue } from './use-debounced-value.js';
 export { cn } from './utils.js';

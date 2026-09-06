@@ -1,7 +1,7 @@
 import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { RequestScope } from '../scope.js';
-import type { PermissionContext } from '../types.js';
+import type { FeatureSpec, PermissionContext } from '../types.js';
 import { FeatureGuard } from './feature.guard.js';
 import { PermissionsResolver } from './graphql/permissions.resolver.js';
 import { PermissionsController } from './permissions.controller.js';
@@ -97,6 +97,28 @@ export interface PermissionsModuleOptions {
    * opt-in behaviour §4.7 documents.
    */
   enforceBindings?: boolean;
+
+  /**
+   * EVERY module's features, composed by the app.
+   *
+   * Defaults to this module's own registry, which is correct for an app that
+   * mounts only this module and wrong the moment it mounts a second one.
+   *
+   * ## Why the app has to supply it
+   *
+   * A role may grant any registered feature, whoever declared it — but no
+   * module may import another (PLAN §9), so `module-permissions` cannot see
+   * `module-auth`'s keys, or a third module's. Validating a role against its
+   * own registry alone quietly means "permissions is the only module allowed to
+   * declare rights", which is the exact bug `seed/registry.ts` was written to
+   * fix on the seeding side. It reappeared here: cloning a role that held
+   * `account:profile_write` reported it as "not in the registry" and dropped
+   * it, while the key sat in `perm_feature`, undeprecated, held by two roles.
+   *
+   * The app composes both lists already — pass the same `ALL_FEATURES` here and
+   * the seeder and the write path agree by construction rather than by luck.
+   */
+  featureRegistry?: readonly FeatureSpec[];
 
   /**
    * Reads a handler's arguments, for resolvers declaring @RequireScope. A

@@ -30,9 +30,6 @@ import type { FeatureSpec } from './types.js';
  * Starter vocabulary — expand per area as each is built out.
  */
 export const FEATURE = {
-  /** Sign in to the internal dashboard. The baseline right inside an organization. */
-  adminAccess: 'admin:access',
-
   // ── app level: platform staff, across every organization ────────────────
   /**
    * Enter any organization to help its users. Held by support, not by customers.
@@ -42,8 +39,6 @@ export const FEATURE = {
    * customer's subscription locks out the people trying to fix it.
    */
   platformSupportAccess: 'platform:support_access',
-  /** Act as a user, for reproducing what they see. Always audited. */
-  platformImpersonate: 'platform:impersonate',
 
   /** Invite, remove and re-role people in the organization. */
   membersManage: 'members:manage',
@@ -59,8 +54,53 @@ export const FEATURE = {
   workspacesAccessAll: 'workspaces:access_all',
   /** Share a workspace with another member. */
   workspacesShare: 'workspaces:share',
-  /** Define roles and choose what they grant. */
-  rolesManage: 'roles:manage',
+  /*
+   * ── roles ───────────────────────────────────────────────────────────────
+   *
+   * Split from a single `roles:manage` for the reason `features:author` was
+   * split: read, create, update and delete are different risks, and one key
+   * meant an organization could not have someone who reviews roles without
+   * also letting them rewrite one.
+   *
+   * All four are ORGANIZATION level. Defining roles inside your own
+   * organization is the normal administrative act a tenant admin performs —
+   * unlike inventing a FEATURE, which is platform-wide and therefore app level.
+   */
+  /** See the roles that exist and what each one grants. */
+  rolesRead: 'roles:read',
+  /** Define a new role. */
+  rolesCreate: 'roles:create',
+  /** Change what an existing role grants, including cloning another role into it. */
+  rolesUpdate: 'roles:update',
+  /**
+   * Disable a role, so it grants nothing — and enable it again.
+   *
+   * There is deliberately NO delete. A role is referenced by every grant ever
+   * made from it, so deleting one either cascades those away — destroying the
+   * answer to "what could this person do last March" — or fails on a foreign
+   * key at the worst moment. Disabling keeps the row, keeps the history, and is
+   * reversible by the person who got it wrong.
+   *
+   * The same call `PermFeature.deprecatedAt`, `AuthSession.revokedAt` and
+   * `PermWorkspace.archivedAt` already make: set a timestamp, never DELETE.
+   */
+  rolesDisable: 'roles:disable',
+  /**
+   * Write a role whose own level is APP — required IN ADDITION to create,
+   * update or delete.
+   *
+   * The escalation this closes is specific and not covered by the level rule.
+   * `assertRoleFeatureLevels` stops an ORGANIZATION role from collecting
+   * app-level features, but nothing stops an organization administrator
+   * creating an APP-level role — and an app role applies in every organization
+   * and skips the subscription filter entirely. Someone could take the rights
+   * they legitimately hold in one tenant and mint a role carrying them across
+   * all of them.
+   *
+   * So the dangerous half is not WHICH features a role carries; it is the
+   * role's own level. This key guards exactly that, and nothing else.
+   */
+  rolesManageApp: 'roles:manage_app',
 
   // ── the feature registry itself ─────────────────────────────────────────
   /**
@@ -107,23 +147,9 @@ export type KnownFeatureKey = (typeof FEATURE)[keyof typeof FEATURE];
 
 export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
-    key: FEATURE.adminAccess,
-    module: 'permissions',
-    tags: [FEATURE_TAG.admin],
-    level: 'organization',
-    label: 'Access the admin app',
-    description: 'Sign in to the internal dashboard.',
-    bindings: [
-      // The registry endpoints moved to `features:read`, which is what they are
-      // actually about. This key is the baseline right to open the admin app.
-      { surface: 'ui_route', identifier: '/admin/roles' },
-      { surface: 'ui_component', identifier: 'RolesPage' },
-    ],
-  },
-  {
     key: FEATURE.featuresRead,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.accessControl],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.features],
     level: 'organization',
     label: 'View the feature registry',
     description: 'See every right a role can grant, and where each one is enforced.',
@@ -144,7 +170,7 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.featuresCreate,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.accessControl],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.features],
     level: 'app',
     label: 'Create features',
     description: 'Define one new feature by hand.',
@@ -165,7 +191,7 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.featuresImport,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.accessControl],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.features],
     level: 'app',
     label: 'Import features',
     description: 'Define many features at once from a spreadsheet.',
@@ -178,7 +204,7 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.featuresUpdate,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.accessControl],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.features],
     level: 'app',
     label: 'Update features',
     description: "Change an existing feature's definition, for everyone already holding it.",
@@ -191,7 +217,7 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.featuresDelete,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.accessControl],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.features],
     level: 'app',
     label: 'Retire features',
     description: 'Remove a feature from the registry. Deprecates rather than deletes, so grants stay readable.',
@@ -215,16 +241,6 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     bindings: [],
   },
   {
-    key: FEATURE.platformImpersonate,
-    module: 'permissions',
-    tags: [FEATURE_TAG.platform, FEATURE_TAG.support],
-    level: 'app',
-    label: 'Impersonate a user',
-    description: 'Act as a user to reproduce what they see. Always audited.',
-    isPrivileged: true,
-    bindings: [],
-  },
-  {
     key: FEATURE.membersManage,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.members],
@@ -237,7 +253,7 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.workspacesManage,
     module: 'permissions',
-    tags: [FEATURE_TAG.workspaces],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.workspaces],
     level: 'organization',
     label: 'Manage workspaces',
     description: 'Create, rename and archive workspaces.',
@@ -246,7 +262,7 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.workspacesAccessAll,
     module: 'permissions',
-    tags: [FEATURE_TAG.workspaces],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.workspaces],
     level: 'organization',
     label: 'Access all workspaces',
     description: 'See every workspace in the organization without being added to it.',
@@ -256,19 +272,71 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
   {
     key: FEATURE.workspacesShare,
     module: 'permissions',
-    tags: [FEATURE_TAG.workspaces],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.workspaces],
     level: 'workspace',
     label: 'Share workspaces',
     description: 'Give another member access to a workspace.',
     bindings: [],
   },
   {
-    key: FEATURE.rolesManage,
+    key: FEATURE.rolesRead,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.accessControl],
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
     level: 'organization',
-    label: 'Manage roles',
-    description: 'Define roles and choose what they grant.',
+    label: 'Read roles',
+    description: 'See the roles that exist and what each one grants.',
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/roles' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionRoles' },
+    ],
+  },
+  {
+    key: FEATURE.rolesCreate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
+    level: 'organization',
+    label: 'Create roles',
+    description: 'Define a new role and choose what it grants.',
+    isPrivileged: true,
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/roles/new' },
+      { surface: 'graphql_operation', identifier: 'Mutation.createRole' },
+    ],
+  },
+  {
+    key: FEATURE.rolesUpdate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
+    level: 'organization',
+    label: 'Update roles',
+    description: 'Change what an existing role grants, including cloning another role into it.',
+    isPrivileged: true,
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/roles/:roleId/edit' },
+      { surface: 'graphql_operation', identifier: 'Mutation.updateRole' },
+      // Cloning is an UPDATE wearing a different button: it stages a feature
+      // list into the form and saves through updateRole, so it is guarded by
+      // the same key rather than a key of its own.
+      { surface: 'graphql_operation', identifier: 'Mutation.previewRoleClone' },
+    ],
+  },
+  {
+    key: FEATURE.rolesDisable,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
+    level: 'organization',
+    label: 'Disable roles',
+    description: 'Turn a role off so it grants nothing, and turn it back on. Roles are never deleted.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.setRoleDisabled' }],
+  },
+  {
+    key: FEATURE.rolesManageApp,
+    module: 'permissions',
+    tags: [FEATURE_TAG.platform, FEATURE_TAG.roles],
+    level: 'app',
+    label: 'Manage app-level roles',
+    description: 'Write roles that apply across every organization. Required alongside create, update or delete.',
     isPrivileged: true,
     bindings: [],
   },

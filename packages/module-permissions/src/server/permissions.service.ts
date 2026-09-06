@@ -26,6 +26,38 @@ export class PermissionsService {
    * organization-wide question — workspace-scoped grants are then excluded,
    * not treated as universal.
    */
+  /**
+   * Every role defined in one scope, for the admin screens.
+   *
+   * INCLUDES disabled roles, unlike every other role read in this file. The
+   * grant paths filter them out because a disabled role must grant nothing; a
+   * LIST must show them, or the switch looks like a delete and nobody can find
+   * the role to turn it back on.
+   *
+   * `organizationId: null` is the shared scope — app-level roles and the
+   * presets every organization can use. A tenant passes its own id and sees
+   * only what it defined.
+   */
+  async listRoles(organizationId: string | null = null) {
+    const rows = await this.prisma.permRole.findMany({
+      where: { organizationId },
+      include: { features: { select: { featureKey: true } } },
+      orderBy: { key: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      key: row.key,
+      label: row.label,
+      level: row.level,
+      organizationId: row.organizationId,
+      icon: row.icon,
+      isSystem: row.isSystem,
+      disabled: row.disabledAt !== null,
+      features: row.features.map((feature) => feature.featureKey).sort(),
+    }));
+  }
+
   async loadContext(
     userId: string,
     scope: { organizationId?: string | undefined; workspaceId?: string | null | undefined } = {},
@@ -33,8 +65,19 @@ export class PermissionsService {
     // App-level roles are granted to the user outright, with no organization in
     // the picture. Loaded first because a support engineer holding one has no
     // membership anywhere and must still get a usable context.
+    /*
+     * `disabledAt: null` at all three levels below, alongside the feature
+     * filter that was already here.
+     *
+     * A disabled role must GRANT NOTHING — that is the entire meaning of the
+     * switch, and it is enforced here rather than at the write path, because a
+     * role can be disabled long after it was handed out. Filtering in the QUERY
+     * rather than in code afterwards is the same call the `deprecatedAt` filter
+     * beside it makes: a grant that is loaded and then dropped still exists in
+     * memory for something later to read by mistake.
+     */
     const appRoles = await this.prisma.permUserRole.findMany({
-      where: { userId },
+      where: { userId, role: { disabledAt: null } },
       include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
     });
 
@@ -63,7 +106,10 @@ export class PermissionsService {
     const membership = await this.prisma.permMembership.findFirst({
       where: { userId, status: 'active', organizationId: scope.organizationId },
       include: {
-        roles: { include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } } },
+        roles: {
+          where: { role: { disabledAt: null } },
+          include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } },
+        },
         workspaces: { select: { workspaceId: true } },
       },
     });
@@ -125,7 +171,10 @@ export class PermissionsService {
       const workspaceMember = await this.prisma.permWorkspaceMember.findFirst({
         where: { membershipId: membership.id, workspaceId },
         include: {
-          roles: { include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } } },
+          roles: {
+            where: { role: { disabledAt: null } },
+            include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } },
+          },
         },
       });
 

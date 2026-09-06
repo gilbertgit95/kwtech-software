@@ -21,6 +21,7 @@ import { PermissionsService } from '../src/server/permissions.service.js';
  */
 
 interface Db {
+  roles?: import('../src/server/permissions.repository.js').RoleDefinitionRow[];
   userRoles?: UserRoleRow[];
   membership?: MembershipRow | null;
   workspace?: { id: string } | null;
@@ -41,6 +42,9 @@ interface Calls {
 function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Calls } {
   const calls: Calls = { userRole: [], membership: [], workspace: [], workspaceMember: [], subscription: [] };
   const client: PermissionsPrismaClient = {
+    // The admin read path; no test here exercises it, but the interface is
+    // structural, so a stub is what keeps the fake honest about its shape.
+    permRole: { findMany: async () => db.roles ?? [] },
     permUserRole: {
       findMany: async (args) => {
         calls.userRole.push(args);
@@ -238,7 +242,7 @@ describe('C3 — a role defined by one organization never grants in another', ()
               key: 'preset',
               level: 'organization',
               organizationId: null,
-              features: [{ featureKey: FEATURE.adminAccess }],
+              features: [{ featureKey: FEATURE.featuresRead }],
             }),
           },
         ],
@@ -247,7 +251,7 @@ describe('C3 — a role defined by one organization never grants in another', ()
 
     return svc
       .loadContext('u1', { organizationId: 'org1' })
-      .then((ctx) => expect(ctx?.granted).toEqual([FEATURE.adminAccess]));
+      .then((ctx) => expect(ctx?.granted).toEqual([FEATURE.featuresRead]));
   });
 
   it('applies the same filter to workspace roles', () => {
@@ -424,5 +428,77 @@ describe('checkCapacity', () => {
     return svc
       .checkCapacity(ctx, LIMIT.workspaceMembers, { workspaceId: 'other' })
       .then((d) => expect(d).toMatchObject({ allowed: true, limit: null }));
+  });
+});
+
+/**
+ * A DISABLED role must grant nothing.
+ *
+ * That is the entire meaning of the switch, and it is enforced in the READ
+ * path rather than at the write — a role can be disabled long after it was
+ * handed out, so filtering at grant time would leave every existing holder
+ * unaffected.
+ *
+ * These assert the QUERY carries the filter, at all three levels, because that
+ * is where the guarantee lives. A row-shape test would pass just as happily
+ * against a query that fetched disabled roles and forgot to drop them, which is
+ * exactly the regression worth catching: it fails open, silently, and only for
+ * the roles somebody deliberately switched off.
+ */
+describe('disabled roles are excluded from every grant path', () => {
+  it('filters app-level roles granted to the user outright', async () => {
+    const { svc, calls } = service({ userRoles: [{ role: appRole({ key: 'staff', level: 'app' }) }] });
+    await svc.loadContext('u1');
+
+    expect(calls.userRole[0]).toMatchObject({ where: { userId: 'u1', role: { disabledAt: null } } });
+  });
+
+  it('filters organization-level roles held through a membership', async () => {
+    const { svc, calls } = service({ membership: membership() });
+    await svc.loadContext('u1', { organizationId: 'org1' });
+
+    expect(calls.membership[0]).toMatchObject({
+      include: { roles: { where: { role: { disabledAt: null } } } },
+    });
+  });
+
+  it('filters workspace-level roles held through a workspace membership', async () => {
+    const { svc, calls } = service({
+      membership: membership(),
+      workspaceMember: { id: 'wm1', workspaceId: 'ws1', roles: [] },
+    });
+    await svc.loadContext('u1', { organizationId: 'org1', workspaceId: 'ws1' });
+
+    expect(calls.workspaceMember[0]).toMatchObject({
+      include: { roles: { where: { role: { disabledAt: null } } } },
+    });
+  });
+
+  it('reports the disabled state to the admin list, which must SHOW them', () => {
+    /*
+     * The opposite of the grant paths, deliberately. An administrator has to
+     * see a disabled role in order to turn it back on; a list that hid them
+     * would make the switch read as a delete.
+     */
+    const { svc } = service({
+      roles: [
+        {
+          id: 'r1',
+          key: 'off',
+          label: 'Off',
+          level: 'app',
+          organizationId: null,
+          icon: null,
+          isSystem: false,
+          disabledAt: new Date(),
+          features: [{ featureKey: 'admin:access' }],
+        },
+      ],
+    });
+
+    return svc.listRoles().then((roles) => {
+      expect(roles).toHaveLength(1);
+      expect(roles[0]?.disabled).toBe(true);
+    });
   });
 });

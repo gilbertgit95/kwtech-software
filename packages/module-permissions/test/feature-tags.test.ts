@@ -33,17 +33,17 @@ describe('tags never influence access', () => {
     // Someone who somehow ended up with 'admin' in their grant list must not
     // thereby hold every feature tagged 'admin'.
     const context = ctx([FEATURE_TAG.admin]);
-    expect(checkFeature(context, FEATURE.adminAccess).allowed).toBe(false);
     expect(checkFeature(context, FEATURE.featuresRead).allowed).toBe(false);
-    expect(hasAnyFeature(context, [FEATURE.rolesManage])).toBe(false);
+    expect(checkFeature(context, FEATURE.featuresRead).allowed).toBe(false);
+    expect(hasAnyFeature(context, [FEATURE.rolesUpdate])).toBe(false);
   });
 
   it('holding one key does not extend to its tag-mates', () => {
     const context = ctx([FEATURE.featuresRead]);
     expect(checkFeature(context, FEATURE.featuresRead).allowed).toBe(true);
-    // Same 'admin' + 'access-control' tags, different key.
-    expect(checkFeature(context, FEATURE.rolesManage).allowed).toBe(false);
-    expect(hasAllFeatures(context, [FEATURE.featuresRead, FEATURE.rolesManage])).toBe(false);
+    // Same 'admin' + 'roles' tags, different key.
+    expect(checkFeature(context, FEATURE.rolesUpdate).allowed).toBe(false);
+    expect(hasAllFeatures(context, [FEATURE.featuresRead, FEATURE.rolesUpdate])).toBe(false);
   });
 
   it('a decision is identical whether or not the spec carries tags', () => {
@@ -82,6 +82,9 @@ describe('normalisation', () => {
   it.each([
     ['Admin', 'admin'],
     ['  admin  ', 'admin'],
+    // Not a tag in the vocabulary, and deliberately so: `normaliseTag` is pure
+    // spelling and never consults FEATURE_TAG. Using a real tag here would stop
+    // the case proving that.
     ['Access Control', 'access-control'],
     ['ACCESS   CONTROL', 'access-control'],
   ])('%s -> %s', (input, expected) => {

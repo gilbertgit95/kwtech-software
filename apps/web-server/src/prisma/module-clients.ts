@@ -79,6 +79,9 @@ export const permissionsWritePrismaProvider: Provider = {
       permWorkspaceMember: prisma.permWorkspaceMember,
       permSubscription: prisma.permSubscription,
       permRole: prisma.permRole,
+      // Role definitions are written now, not only read: see the roles admin
+      // screens. The feature rows are replaced wholesale on every save.
+      permRoleFeature: prisma.permRoleFeature,
       permMembershipRole: prisma.permMembershipRole,
       permWorkspaceMemberRole: prisma.permWorkspaceMemberRole,
     }),

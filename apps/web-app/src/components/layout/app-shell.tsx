@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { BareShell } from '@/components/layout/bare-shell';
 import { Header } from '@/components/layout/header';
+import { AppIconSet } from '@/components/layout/icon-set';
 import { buildAccountNav, buildNav } from '@/components/layout/nav';
 import { Sidebar } from '@/components/layout/sidebar';
 import { isCollapsedValue, SIDEBAR_COOKIE } from '@/components/layout/sidebar-state';
@@ -93,18 +94,28 @@ export async function AppShell({ title, children }: { title: string; children: R
      * is already correct: a gate that started as "denied" and flipped open
      * after hydration would flash every privileged control at everyone.
      */
-    <PermissionsProvider value={permissions ?? undefined}>
-      {/*
+    /*
+     * The app names what its icons DRAW; the packages only ever handle names.
+     * Mounted here so a picker inside a page that arrives from a module — which
+     * a route descriptor hands `params` and nothing else — still has the set,
+     * with no prop threaded through the descriptor.
+     *
+     * A CLIENT wrapper, not `IconSetProvider` directly: the map holds React
+     * components, and a function cannot cross the server/client boundary.
+     */
+    <AppIconSet>
+      <PermissionsProvider value={permissions ?? undefined}>
+        {/*
         Renders nothing. It spends the refresh token before the access token
         expires — without it a signed-in person was returned to the sign-in page
         after fifteen minutes, with an unused week-long refresh cookie beside
         them. It also notices a session revoked from another device, though that
         is UX rather than enforcement: see the component.
       */}
-      <SessionKeeper expiresAt={expiresAt} />
-      {/* Renders nothing either. Publishes reachability onto the status channel. */}
-      <ConnectivityMonitor />
-      {/*
+        <SessionKeeper expiresAt={expiresAt} />
+        {/* Renders nothing either. Publishes reachability onto the status channel. */}
+        <ConnectivityMonitor />
+        {/*
         `h-dvh`, NOT `min-h-dvh` — and this was a latent bug as well as what the
         grid pages need.
 
@@ -119,35 +130,35 @@ export async function AppShell({ title, children }: { title: string; children: R
         has something to resolve against — which is what lets a data grid fill
         the space instead of collapsing to nothing.
       */}
-      <div className="flex h-dvh">
-        <Sidebar
-          groups={buildNav(permissions?.granted)}
-          defaultCollapsed={isCollapsedValue(cookieStore.get(SIDEBAR_COOKIE)?.value)}
-          brand={appBrand()}
-        />
-        {/*
+        <div className="flex h-dvh">
+          <Sidebar
+            groups={buildNav(permissions?.granted)}
+            defaultCollapsed={isCollapsedValue(cookieStore.get(SIDEBAR_COOKIE)?.value)}
+            brand={appBrand()}
+          />
+          {/*
           `min-h-0` alongside `flex-1`: a flex item's default `min-height: auto`
           refuses to shrink below its content, which would push the column past
           the viewport and undo the definite height above.
         */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Header
-            title={title}
-            viewer={viewer}
-            accountNav={buildAccountNav(permissions?.granted)}
-            /*
-             * `?? []` for the same reason the nav filter fails closed: a
-             * permission context that could not be resolved means "holds
-             * nothing", never "assume the usual". Here the cost of guessing is
-             * only a wrong badge — but a badge claiming a rank the API would
-             * refuse is exactly the kind of confident wrongness that gets
-             * reported as a bug in the API.
-             */
-            roles={permissions?.appRoles ?? []}
-          />
-          {/* `min-h-0` for the same reason as the column. */}
-          <main className="min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6">{children}</main>
-          {/*
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <Header
+              title={title}
+              viewer={viewer}
+              accountNav={buildAccountNav(permissions?.granted)}
+              /*
+               * `?? []` for the same reason the nav filter fails closed: a
+               * permission context that could not be resolved means "holds
+               * nothing", never "assume the usual". Here the cost of guessing is
+               * only a wrong badge — but a badge claiming a rank the API would
+               * refuse is exactly the kind of confident wrongness that gets
+               * reported as a bug in the API.
+               */
+              roles={permissions?.appRoles ?? []}
+            />
+            {/* `min-h-0` for the same reason as the column. */}
+            <main className="min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6">{children}</main>
+            {/*
             A flex ITEM after the scrolling main, not a fixed overlay.
             `main` already owns its own scrollbar, so the bar sits below it and
             stays in view without covering anything — a fixed strip would hide
@@ -157,9 +168,10 @@ export async function AppShell({ title, children }: { title: string; children: R
             It renders nothing at all when there is nothing to say, so it costs
             no height in the ordinary case.
           */}
-          <StatusBarHost />
+            <StatusBarHost />
+          </div>
         </div>
-      </div>
-    </PermissionsProvider>
+      </PermissionsProvider>
+    </AppIconSet>
   );
 }

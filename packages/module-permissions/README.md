@@ -398,10 +398,10 @@ because they are identical for every app that adopts it:
 
 ```ts
 import { FEATURE_REGISTRY } from '@kwtech/module-permissions';
-import { grantAppRole, syncFeatureRegistry, upsertAppRole } from '@kwtech/module-permissions/server';
+import { grantAppRole, syncFeatureRegistry, upsertSystemRole } from '@kwtech/module-permissions/server';
 
 await syncFeatureRegistry(prisma, FEATURE_REGISTRY);          // upsert + deprecate, never delete
-await upsertAppRole(prisma, SUPER_ADMIN, FEATURE_REGISTRY);   // your role definitions
+await upsertSystemRole(prisma, SUPER_ADMIN, FEATURE_REGISTRY);   // your role definitions
 await grantAppRole(prisma, { userId, roleKey: 'super-admin' });
 ```
 

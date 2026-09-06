@@ -1,6 +1,6 @@
 import type { RoleDefinition } from '../domain/roles.js';
 import { assertRoleDefinable } from '../domain/writes.js';
-import type { FeatureKey, FeatureSpec } from '../types.js';
+import type { FeatureKey, FeatureSpec, RoleLevel } from '../types.js';
 
 /**
  * Writing the module's REFERENCE DATA into the database it was given.
@@ -90,26 +90,33 @@ export interface PermissionsRegistryClient {
   permRole: {
     findMany(args: { where: { key: string; organizationId: null }; select: { id: true } }): Promise<{ id: string }[]>;
     findFirst(args: {
-      where: { key: string; organizationId: null; level: 'app' };
+      where: { key: string; organizationId: null; level: RoleLevel };
       select: { id: true };
     }): Promise<{ id: string } | null>;
     /*
-     * `level: 'app'`, the LITERAL, not `RoleLevel` and not `string`.
+     * `RoleLevel`, the enum union — NOT `string`.
      *
      * PermRoleLevel is an enum in the schema, so a wider type here stops a
      * generated Prisma client satisfying this interface at all — the same trap
      * documented on `permSubscription.status` in permissions.repository.ts, and
      * it caught this file on the first typecheck. The narrowing costs nothing:
-     * these two functions only ever write app-level system roles, which is what
-     * `AppRoleDefinition.level` already says.
+     * `RoleLevel` is exactly the enum's members, so it satisfies a generated
+     * client where a bare `string` would not.
      */
     create(args: {
-      data: { key: string; label: string; level: 'app'; organizationId: null; isSystem: boolean; icon: string | null };
+      data: {
+        key: string;
+        label: string;
+        level: RoleLevel;
+        organizationId: null;
+        isSystem: boolean;
+        icon: string | null;
+      };
       select: { id: true };
     }): Promise<{ id: string }>;
     update(args: {
       where: { id: string };
-      data: { label: string; level: 'app'; isSystem: boolean; icon: string | null };
+      data: { label: string; level: RoleLevel; isSystem: boolean; icon: string | null };
       select: { id: true };
     }): Promise<{ id: string }>;
   };
@@ -139,11 +146,31 @@ export interface PermissionsRegistryClient {
 }
 
 /** The definition of an app-level system role, as an app supplies it. */
-export interface AppRoleDefinition extends RoleDefinition {
-  level: 'app';
+/**
+ * A role the SEEDER owns, at any level.
+ *
+ * `organizationId` is always null, which means two different things depending
+ * on the level and both are intended (see the schema comment on PermRole):
+ *
+ *   app           belongs to no organization, because it applies across all of
+ *                 them. Platform staff.
+ *   organization  a PRESET every organization can use, rather than one tenant's
+ *                 own definition. This is what makes "organization admin"
+ *                 seedable before any organization exists.
+ *   workspace     the same, one level down.
+ *
+ * Every one of these is written with `isSystem: true` and is REPLACED on each
+ * `db:sync`, so the checkout is the source. That is exactly why the admin
+ * screens refuse to edit them: an edit would look saved and be reverted on the
+ * next deploy.
+ */
+export interface SystemRoleDefinition extends RoleDefinition {
   /** Caps this role sets. See domain/limits.ts. */
   limits: Readonly<Record<string, number>>;
 }
+
+/** @deprecated Name kept while callers migrate; `level` is no longer fixed to 'app'. */
+export type AppRoleDefinition = SystemRoleDefinition;
 
 export interface FeatureSyncResult {
   upserted: number;
@@ -196,7 +223,7 @@ export async function syncFeatureRegistry(
 }
 
 /**
- * Upserts one app-level system role and re-syncs what it grants.
+ * Upserts one system role — at any level — and re-syncs what it grants.
  *
  * Features and limits are REPLACED rather than merged, so the definition the app
  * passes is the whole truth about the role: a key removed from it is actually
@@ -210,9 +237,9 @@ export async function syncFeatureRegistry(
  * passes — because whether these writes share one with the app's own seed steps
  * is the app's call, not this module's.
  */
-export async function upsertAppRole(
+export async function upsertSystemRole(
   client: PermissionsRegistryClient,
-  definition: AppRoleDefinition,
+  definition: SystemRoleDefinition,
   registry: readonly FeatureSpec[],
 ): Promise<{ key: string; id: string; features: number }> {
   assertRoleDefinable(definition, registry);

@@ -87,10 +87,47 @@ export interface UserRoleRow {
   };
 }
 
+/**
+ * A role as the ADMIN screens read it — the definition, not a grant.
+ *
+ * Distinct from `RoleWithFeatures`, which is what the permission pipeline
+ * loads: this one carries `isSystem`, `disabledAt` and `icon`, none of which a
+ * check ever consults, and it is loaded for every role rather than for the ones
+ * a particular person holds.
+ */
+export interface RoleDefinitionRow {
+  id: string;
+  key: string;
+  label: string;
+  level: string;
+  organizationId: string | null;
+  icon: string | null;
+  isSystem: boolean;
+  disabledAt: Date | null;
+  features: { featureKey: string }[];
+}
+
 export interface PermissionsPrismaClient {
+  permRole: {
+    /**
+     * Every role in a scope, INCLUDING disabled ones.
+     *
+     * The opposite of the grant path deliberately: an administrator has to see
+     * a disabled role in order to turn it back on, and a list that hid them
+     * would make the switch look like a delete — which is the one thing it is
+     * not.
+     */
+    findMany(args: {
+      where: { organizationId: string | null };
+      include: { features: { select: { featureKey: true } } };
+      orderBy: { key: 'asc' };
+    }): Promise<RoleDefinitionRow[]>;
+  };
   permUserRole: {
     findMany(args: {
-      where: { userId: string };
+      // `role: { disabledAt: null }` — a disabled role grants nothing, filtered
+      // in the query for the same reason ActiveFeaturesInclude is.
+      where: { userId: string; role: { disabledAt: null } };
       include: { role: { include: { features: ActiveFeaturesInclude; limits: true } } };
     }): Promise<UserRoleRow[]>;
   };
@@ -99,7 +136,10 @@ export interface PermissionsPrismaClient {
     findFirst(args: {
       where: { userId: string; organizationId?: string; status?: 'active' };
       include: {
-        roles: { include: { role: { include: { features: ActiveFeaturesInclude } } } };
+        roles: {
+          where: { role: { disabledAt: null } };
+          include: { role: { include: { features: ActiveFeaturesInclude } } };
+        };
         workspaces: { select: { workspaceId: true } };
       };
     }): Promise<MembershipRow | null>;
@@ -107,7 +147,12 @@ export interface PermissionsPrismaClient {
   permWorkspaceMember: {
     findFirst(args: {
       where: { membershipId: string; workspaceId: string };
-      include: { roles: { include: { role: { include: { features: ActiveFeaturesInclude } } } } };
+      include: {
+        roles: {
+          where: { role: { disabledAt: null } };
+          include: { role: { include: { features: ActiveFeaturesInclude } } };
+        };
+      };
     }): Promise<WorkspaceMemberRow | null>;
     count(args: { where: { workspaceId: string } }): Promise<number>;
   };
@@ -205,11 +250,53 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
    * never trusted from the caller: the caller supplies a roleId, and a roleId
    * from one tenant attached to a membership in another is precisely C3.
    */
-  permRole: {
+  permRole: PermissionsPrismaClient['permRole'] & {
     findFirst(args: {
       where: { id: string };
-      select: { id: true; key: true; level: true; organizationId: true };
-    }): Promise<{ id: string; key: string; level: string; organizationId: string | null } | null>;
+      select: {
+        id: true;
+        key: true;
+        level: true;
+        organizationId: true;
+        isSystem: true;
+        disabledAt: true;
+      };
+    }): Promise<{
+      id: string;
+      key: string;
+      level: string;
+      organizationId: string | null;
+      isSystem: boolean;
+      disabledAt: Date | null;
+    } | null>;
+    create(args: {
+      data: {
+        key: string;
+        label: string;
+        level: 'app' | 'organization' | 'workspace';
+        organizationId: string | null;
+        icon: string | null;
+        isSystem: boolean;
+      };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    update(args: {
+      where: { id: string };
+      // `level` is absent on purpose — see updateRole. Changing a role's level
+      // re-interprets every grant ever made from it.
+      data: { label?: string; icon?: string | null; disabledAt?: Date | null };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+  };
+
+  permRoleFeature: {
+    /** One role's feature list, for the clone preview. */
+    findMany(args: { where: { roleId: string }; select: { featureKey: true } }): Promise<{ featureKey: string }[]>;
+    deleteMany(args: { where: { roleId: string; featureKey?: { notIn: string[] } } }): Promise<{ count: number }>;
+    createMany(args: {
+      data: { roleId: string; featureKey: string }[];
+      skipDuplicates: true;
+    }): Promise<{ count: number }>;
   };
 
   permMembershipRole: {

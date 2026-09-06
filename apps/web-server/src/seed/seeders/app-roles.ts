@@ -1,4 +1,4 @@
-import { upsertAppRole } from '@kwtech/module-permissions/server';
+import { upsertSystemRole } from '@kwtech/module-permissions/server';
 import { APP_ROLES } from '../app-roles.js';
 import { ALL_FEATURES } from '../registry.js';
 import type { Seeder } from '../types.js';
@@ -20,7 +20,7 @@ export const appRolesSeeder: Seeder = {
   description: 'Upsert the app-level system roles and re-sync what they grant.',
   async run({ prisma, log }) {
     for (const definition of APP_ROLES) {
-      const role = await prisma.$transaction((tx) => upsertAppRole(tx, definition, ALL_FEATURES));
+      const role = await prisma.$transaction((tx) => upsertSystemRole(tx, definition, ALL_FEATURES));
       log(`${role.key}: ${role.features} feature(s)`);
     }
   },

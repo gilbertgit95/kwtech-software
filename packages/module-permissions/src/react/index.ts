@@ -29,8 +29,18 @@ export { FeatureNewPage } from './pages/feature-new-page.js';
 export { FeaturesPage } from './pages/features-page.js';
 export { OrganizationsPage } from './pages/organizations-page.js';
 export { RegistryOutput } from './pages/registry-output.js';
+export { RoleEditPage } from './pages/role-edit-page.js';
+export { RoleForm, type RoleFormProps } from './pages/role-form.js';
+export { RoleNewPage } from './pages/role-new-page.js';
 export { RolesPage } from './pages/roles-page.js';
 export { SubscriptionsPage } from './pages/subscriptions-page.js';
+export {
+  createPermissionsClient,
+  DEFAULT_GRAPHQL_PATH,
+  type PermissionsClient,
+  type RoleInput,
+  type RoleView,
+} from './permissions-client.js';
 export { PermissionsProvider, type PermissionsProviderProps, PermissionsReactContext } from './permissions-provider.js';
 export {
   useCanAccessWorkspace,

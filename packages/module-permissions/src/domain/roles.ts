@@ -28,31 +28,70 @@ export interface RoleDefinition {
 }
 
 /**
- * A role may only collect features at its own level — EXCEPT at app level.
+ * How wide a level reaches. LOWER is broader.
  *
- * The rule exists because creating workspace roles is a routine, widely
- * delegated right: without it, anyone able to define a workspace role can put
- * `billing:manage` in one and grant themselves an organization-wide power. That
- * is privilege escalation, not a typo, so it fails loudly rather than being
- * filtered out.
+ *   app 0          every organization
+ *   organization 1 one organization, all its workspaces
+ *   workspace 2    one workspace
+ */
+const LEVEL_REACH: Record<RoleLevel, number> = { app: 0, organization: 1, workspace: 2 };
+
+/**
+ * May a role at `roleLevel` grant a feature declared at `featureLevel`?
  *
- * App level is exempt because the escalation it guards against cannot happen
- * there. An app-level role is not attached to a membership and is not
- * creatable by a tenant administrator; minting one is a platform operation, so
- * there is no lesser right to escalate FROM. Applying the rule there bought no
- * safety and made "platform staff who can do everything" impossible to express:
- * only two registry keys are app-level, so the strictest possible super admin
- * could still not read an organization's roles or fix its billing.
+ * **Downward yes, upward never.** A role may collect features at its own level
+ * and at any NARROWER one; it may never collect a broader one.
  *
- * The read path already assumed this shape. `composeContext` applies an
- * app-level role at every scope and unions its features in AFTER the
- * subscription filter, so an app role holding organization-level features
- * resolves exactly as intended — everywhere, regardless of what the customer
- * bought. Only this write-time assertion stood in the way. See domain/grants.ts.
+ *   app role          → app, organization and workspace features
+ *   organization role → organization and workspace features
+ *   workspace role    → workspace features only
  *
- * An unregistered key is still refused at every level, app included: a key no
- * spec declares can never be checked, so a role carrying one grants nothing
- * while reading as access.
+ * ## Why downward is safe
+ *
+ * Granting a narrower right from a broader role adds nothing the role did not
+ * already reach. An organization role already applies inside every workspace of
+ * its organization (see `composeContext`), so letting it carry
+ * `workspaces:share` lets it say something it was already entitled to say.
+ *
+ * ## Why upward is the dangerous direction
+ *
+ * Creating workspace roles is routine and widely delegated. If a workspace role
+ * could carry `billing:manage`, anyone able to define one could grant
+ * themselves an organization-wide power from inside a single workspace. That is
+ * privilege escalation, not a typo, which is why it fails loudly rather than
+ * being quietly filtered.
+ *
+ * This REPLACES the old exact-match rule and its app-level exemption: "app may
+ * collect anything" is no longer a special case, it is what this rule says when
+ * the role is at reach 0.
+ *
+ * ONE implementation, deliberately. The same question was previously answered
+ * in five places — the write assertion, the editor's option list, the draft
+ * validator, the clone filter and the role form — and five copies of a
+ * security rule is four chances for one of them to drift.
+ */
+export function canRoleGrant(roleLevel: RoleLevel, featureLevel: RoleLevel): boolean {
+  return LEVEL_REACH[featureLevel] >= LEVEL_REACH[roleLevel];
+}
+
+/**
+ * A role may only collect features its level actually reaches.
+ *
+ * The rule is `canRoleGrant` above: own level or narrower, never broader. It
+ * exists because creating workspace roles is a routine, widely delegated right
+ * — without it, anyone able to define a workspace role can put `billing:manage`
+ * in one and grant themselves an organization-wide power. That is privilege
+ * escalation, not a typo, so it fails loudly rather than being filtered out.
+ *
+ * The read path already assumed the permissive direction. `composeContext`
+ * applies an app-level role at every scope and an organization role inside
+ * every workspace, unioning app-level features in AFTER the subscription
+ * filter — so a broader role carrying a narrower feature resolves exactly as
+ * intended. Only this write-time assertion stood in the way.
+ *
+ * An unregistered key is still refused at every level: a key no spec declares
+ * can never be checked, so a role carrying one grants nothing while reading as
+ * access.
  */
 export function assertRoleFeatureLevels(role: RoleDefinition, specs: readonly FeatureSpec[]): void {
   const byKey = new Map(specs.map((spec) => [spec.key, spec]));
@@ -64,8 +103,8 @@ export function assertRoleFeatureLevels(role: RoleDefinition, specs: readonly Fe
       problems.push(`'${key}' is not in the registry`);
       continue;
     }
-    if (role.level !== 'app' && spec.level !== role.level) {
-      problems.push(`'${key}' is ${spec.level}-level, role '${role.key}' is ${role.level}-level`);
+    if (!canRoleGrant(role.level, spec.level)) {
+      problems.push(`'${key}' is ${spec.level}-level, which is broader than ${role.level}-level role '${role.key}'`);
     }
   }
 
@@ -83,8 +122,7 @@ export function assertRoleFeatureLevels(role: RoleDefinition, specs: readonly Fe
  * is what stops the editor presenting a choice the write path will refuse.
  */
 export function featuresForLevel(specs: readonly FeatureSpec[], level: RoleLevel): FeatureSpec[] {
-  if (level === 'app') return [...specs];
-  return specs.filter((spec) => spec.level === level);
+  return specs.filter((spec) => canRoleGrant(level, spec.level));
 }
 
 /**

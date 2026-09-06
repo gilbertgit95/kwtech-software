@@ -86,7 +86,7 @@ describe('assertRoleFeatureLevels', () => {
     // Creating workspace roles is a routine, widely delegated right. Without
     // this it is also a path to an organization-wide one.
     expect(() => assertRoleFeatureLevels(role({ features: ['billing:manage'] }), specs)).toThrow(
-      /'billing:manage' is organization-level, role 'r' is workspace-level/,
+      /'billing:manage' is organization-level, which is broader than workspace-level role 'r'/,
     );
   });
 
@@ -163,7 +163,7 @@ describe('allFeatureKeys', () => {
   it('returns every registry key, so super admin follows the registry', () => {
     expect(allFeatureKeys(FEATURE_REGISTRY)).toHaveLength(FEATURE_REGISTRY.length);
     expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.billingManage);
-    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.platformImpersonate);
+    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.featuresCreate);
     expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.workspacesShare);
   });
 });
@@ -175,17 +175,30 @@ describe('featuresForLevel', () => {
     expect(workspace.map((s) => s.key)).not.toContain(FEATURE.billingManage);
   });
 
-  it('partitions the registry across the two SCOPED levels', () => {
-    // App level is no longer part of the partition — it may offer anything —
-    // so the property that every key belongs to exactly one level now holds
-    // over the levels that actually filter.
-    const scoped = (['organization', 'workspace'] as const)
-      .flatMap((level) => featuresForLevel(FEATURE_REGISTRY, level))
-      .map((spec) => spec.key);
-    const appOnly = FEATURE_REGISTRY.filter((spec) => spec.level === 'app').map((spec) => spec.key);
+  it('NESTS the levels rather than partitioning them', () => {
+    /*
+     * The levels used to be disjoint — each offered exactly its own keys. They
+     * are now nested: a role may collect its own level and any NARROWER one, so
+     * what an organization role can offer is a superset of what a workspace
+     * role can, and app offers everything.
+     *
+     * Asserted as a containment chain rather than as three fixed counts, so
+     * adding a key to the registry cannot make this fail for the wrong reason.
+     */
+    const keys = (level: 'app' | 'organization' | 'workspace') =>
+      new Set(featuresForLevel(FEATURE_REGISTRY, level).map((spec) => spec.key));
 
-    expect(new Set(scoped).size).toBe(scoped.length);
-    expect(scoped.length + appOnly.length).toBe(FEATURE_REGISTRY.length);
+    const app = keys('app');
+    const organization = keys('organization');
+    const workspace = keys('workspace');
+
+    expect([...workspace].every((key) => organization.has(key))).toBe(true);
+    expect([...organization].every((key) => app.has(key))).toBe(true);
+    expect(app.size).toBe(FEATURE_REGISTRY.length);
+    // And the nesting is STRICT while more than one level is in use — otherwise
+    // this would still pass if the rule collapsed into "everything, always".
+    expect(organization.size).toBeLessThan(app.size);
+    expect(workspace.size).toBeLessThan(organization.size);
   });
 
   it('offers an app-level role the whole registry', () => {
@@ -283,9 +296,8 @@ describe('auditRegistry', () => {
       [
         FEATURE.billingManage,
         FEATURE.membersManage,
-        FEATURE.platformImpersonate,
         FEATURE.platformSupportAccess,
-        FEATURE.rolesManage,
+        FEATURE.rolesManageApp,
         FEATURE.workspacesAccessAll,
         FEATURE.workspacesManage,
         FEATURE.workspacesShare,

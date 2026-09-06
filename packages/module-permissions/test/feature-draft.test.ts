@@ -296,7 +296,9 @@ describe('tags', () => {
   });
 
   it('accepts several, in any spelling', () => {
-    expect(validateDraft({ ...valid, tags: 'Admin, Access Control' }).tags).toBeUndefined();
+    // Casing and surrounding space are normalised away before the vocabulary is
+    // consulted, so these are the same two tags the registry declares.
+    expect(validateDraft({ ...valid, tags: 'Admin,  ROLES ' }).tags).toBeUndefined();
   });
 
   it('refuses an unknown tag rather than silently keeping it', () => {

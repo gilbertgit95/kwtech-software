@@ -63,7 +63,7 @@ describe('checkFeature', () => {
   it('reports not_granted, not not_entitled, when BOTH are missing', () => {
     // Otherwise every member of a free-plan organization is told to upgrade for
     // rights their role would never have given them anyway.
-    expect(checkFeature(ungranted, FEATURE.rolesManage)).toEqual({ allowed: false, reason: 'not_granted' });
+    expect(checkFeature(ungranted, FEATURE.rolesUpdate)).toEqual({ allowed: false, reason: 'not_granted' });
   });
 });
 
@@ -102,11 +102,11 @@ describe('denialReason', () => {
       subjectId: 'u1',
       organizationId: 'org1',
       roles: [{ roleKey: 'r', level: 'organization', workspaceId: null, features: [FEATURE.billingManage] }],
-      plans: [{ planKey: 'p', workspaceId: null, features: [FEATURE.rolesManage] }],
+      plans: [{ planKey: 'p', workspaceId: null, features: [FEATURE.rolesUpdate] }],
     });
 
-    // billingManage is granted-not-entitled; rolesManage is entitled-not-granted.
-    expect(denialReason(ctx, [FEATURE.billingManage, FEATURE.rolesManage])).toBe('not_granted');
+    // billingManage is granted-not-entitled; rolesUpdate is entitled-not-granted.
+    expect(denialReason(ctx, [FEATURE.billingManage, FEATURE.rolesUpdate])).toBe('not_granted');
   });
 
   it('is undefined when nothing was denied', () => {

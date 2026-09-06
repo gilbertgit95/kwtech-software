@@ -124,7 +124,7 @@ describe('composeContext — the trigger level decides which roles participate',
       subjectId: 'u1',
       organizationId: null,
       roles: [
-        role({ level: 'app', features: [FEATURE.platformImpersonate] }),
+        role({ level: 'app', features: [FEATURE.featuresCreate] }),
         role({ level: 'organization', features: [FEATURE.membersManage] }),
         role({ level: 'workspace', features: [FEATURE.workspacesShare], workspaceId: 'ws1' }),
       ],
@@ -132,7 +132,7 @@ describe('composeContext — the trigger level decides which roles participate',
 
     // The organization role is not "also true" here — it is unasked, because
     // the request named no organization for it to be true about.
-    expect(ctx.granted).toEqual([FEATURE.platformImpersonate]);
+    expect(ctx.granted).toEqual([FEATURE.featuresCreate]);
   });
 
   it('excludes workspace roles from an organization-wide question', () => {
@@ -188,7 +188,7 @@ describe('composeContext — additive, never subtractive', () => {
     const withTwo = compose({
       roles: [
         role({ level: 'organization', features: [FEATURE.membersManage] }),
-        role({ level: 'organization', features: [FEATURE.rolesManage], roleKey: 'second' }),
+        role({ level: 'organization', features: [FEATURE.rolesUpdate], roleKey: 'second' }),
       ],
     });
 
