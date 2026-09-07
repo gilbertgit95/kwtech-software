@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
+import { invitationState } from '../domain/invitation.js';
 import { checkLimit, LIMIT, LIMIT_REGISTRY, type LimitDecision, type LimitKey } from '../domain/limits.js';
 import { type PermissionContext, toRoleLevel } from '../types.js';
 import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.repository.js';
@@ -58,6 +59,307 @@ export class PermissionsService {
     }));
   }
 
+  /**
+   * Every plan the platform defines, for the catalogue screens.
+   *
+   * INCLUDES archived plans, unlike the entitlement query above — the same call
+   * `listRoles` makes about disabled roles. An administrator has to see an
+   * archived plan in order to bring it back, and a list that hid them would
+   * make the switch look like a delete.
+   */
+  async listPlans() {
+    const rows = await this.prisma.permPlan.findMany({
+      include: {
+        // Deprecated keys excluded: the plan editor loads this, and showing a
+        // feature the registry no longer has would produce a draft that fails
+        // its own validation on save.
+        features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
+      orderBy: { key: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      key: row.key,
+      label: row.label,
+      isPublic: row.isPublic,
+      icon: row.icon,
+      archived: row.archivedAt !== null,
+      features: row.features.map((feature) => feature.featureKey).sort(),
+      limits: Object.fromEntries(row.limits.map((limit) => [limit.limitKey, limit.value])),
+    }));
+  }
+
+  /**
+   * Who is on what.
+   *
+   * INCLUDES ended subscriptions, and for a different reason than the two
+   * lists above: an ended row is not something anybody turns back on, it is
+   * the HISTORY — "what was this organization entitled to in March" is
+   * answered by reading these, and a list that showed only live rows would
+   * make a plan change look like it had always been that way. The screen sorts
+   * them apart rather than hiding them.
+   *
+   * @param organizationId narrows to one tenant. Null lists every one, which
+   * is what platform staff administering subscriptions actually need — and is
+   * why the query behind it is guarded by `subscriptions:read` rather than
+   * being reachable from an organization-scoped route.
+   */
+  async listSubscriptions(organizationId: string | null = null) {
+    /*
+     * Two queries and a join in memory, rather than one query with the
+     * organization and workspace relations included.
+     *
+     * Not a preference: `permSubscription.findMany` has ONE signature, because
+     * Prisma's generated generic method cannot satisfy an overloaded one (see
+     * `SubscriptionRow`), and widening that one signature's `include` to carry
+     * the two relations would make `loadContext` — the hot path on every
+     * request — fetch an organization row and a workspace row it never reads.
+     *
+     * The join is over the tenants, of which there are few, and this is an
+     * administrative screen. If that stops being true, the answer is a
+     * dedicated billing client interface, not a bigger include on the request
+     * path.
+     */
+    const [rows, organizations] = await Promise.all([
+      this.prisma.permSubscription.findMany({
+        where: organizationId ? { organizationId } : {},
+        // A retired key stops ENTITLING as well as granting — filtered in the
+        // query, like the role-feature reads, so it never reaches composition.
+        include: { plan: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.permOrganization.findMany({
+        include: {
+          workspaces: { select: { id: true, key: true, name: true, archivedAt: true } },
+          memberships: { select: { id: true, status: true } },
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    const organizationNames = new Map(organizations.map((row) => [row.id, row.name]));
+    // Every workspace, ARCHIVED ONES INCLUDED: a subscription outlives the
+    // workspace it was attached to, and a row with a blank where a name belongs
+    // explains nothing to whoever is trying to work out what a customer had.
+    const workspaceNames = new Map(
+      organizations.flatMap((row) => row.workspaces.map((workspace) => [workspace.id, workspace.name] as const)),
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organizationId,
+      /*
+       * Falls back to the id rather than throwing or blanking. The organization
+       * cascades its subscriptions away when deleted, so this should be
+       * unreachable — and an admin screen that renders nothing because one row
+       * is inconsistent is worse than one showing a cuid somebody can search on.
+       */
+      organizationName: organizationNames.get(row.organizationId) ?? row.organizationId,
+      workspaceId: row.workspaceId,
+      workspaceName: row.workspaceId ? (workspaceNames.get(row.workspaceId) ?? row.workspaceId) : null,
+      planKey: row.planKey,
+      planLabel: row.plan.label,
+      // Read so a screen can explain why a live-looking subscription entitles
+      // nothing: `loadContext` filters archived plans out, and a row pointing
+      // at one is otherwise indistinguishable from a working subscription.
+      planArchived: row.plan.archivedAt !== null,
+      status: row.status,
+      currentPeriodEnd: row.currentPeriodEnd,
+      endedAt: row.endedAt,
+    }));
+  }
+
+  /**
+   * The tenants and their live workspaces, for the subscription form's pickers.
+   *
+   * The only place this module exposes the organization list, and it exists for
+   * that one screen — see the `billing:manage` bindings in feature-keys.ts. It
+   * is not the Organizations screen's query; that one arrives with its own key
+   * when the screen does.
+   */
+  async listOrganizations() {
+    const rows = await this.prisma.permOrganization.findMany({
+      include: {
+        workspaces: { select: { id: true, key: true, name: true, archivedAt: true } },
+        memberships: { select: { id: true, status: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      // ACTIVE members only. An invited or suspended row is a person who cannot
+      // act, and counting them would make a seat cap look breached when it is
+      // not — `assertCapacity` counts the same way.
+      memberCount: row.memberships.filter((membership) => membership.status === 'active').length,
+      workspaceCount: row.workspaces.filter((workspace) => workspace.archivedAt === null).length,
+      workspaces: row.workspaces
+        /*
+         * Archived workspaces are dropped HERE rather than in the query, and
+         * only here. This list feeds a picker, and offering an archived
+         * workspace would let somebody subscribe one that no longer resolves —
+         * `loadContext` refuses an archived workspace outright. The
+         * subscription LIST reads the same query and keeps them, because it has
+         * to be able to name one. See `OrganizationRow`.
+         */
+        .filter((workspace) => workspace.archivedAt === null)
+        .map((workspace) => ({ id: workspace.id, key: workspace.key, name: workspace.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+  }
+
+  /**
+   * One organization, with its people and workspaces, for the admin screens.
+   *
+   * Null when it does not exist — not an error. The caller is a screen loading
+   * from a URL, and a stale bookmark is an ordinary state rather than a fault.
+   *
+   * Returns `userId` and nothing else about a person: this module does not own
+   * identity (§12.12), so names and email addresses are the app's to join. That
+   * is the same boundary `grantAppRole` keeps by taking a userId rather than an
+   * email.
+   */
+  async listOrganizationDetail(organizationId: string) {
+    const row = await this.prisma.permOrganization.findFirst({
+      where: { id: organizationId },
+      include: {
+        // No tokenHash — see InvitationRow. It is the only thing between a
+        // database read and a working link.
+        invitations: {
+          select: {
+            id: true,
+            email: true,
+            status: true,
+            expiresAt: true,
+            createdAt: true,
+            acceptedAt: true,
+            revokedAt: true,
+            invitedByUserId: true,
+            acceptedByUserId: true,
+            role: { select: { id: true, key: true, label: true, level: true, icon: true } },
+          },
+        },
+        workspaces: {
+          include: {
+            members: {
+              include: {
+                roles: { include: { role: { select: { id: true, key: true, label: true, level: true, icon: true } } } },
+              },
+            },
+          },
+        },
+        memberships: {
+          include: {
+            roles: { include: { role: { select: { id: true, key: true, label: true, level: true, icon: true } } } },
+            workspaces: { select: { workspaceId: true } },
+          },
+        },
+      },
+    });
+    if (!row) return null;
+
+    /*
+     * membershipId → userId, so a workspace's members can be named.
+     *
+     * The workspace rows carry a `membershipId`; every screen and every write
+     * takes a `userId`. Resolving it HERE rather than in the client means the
+     * two lists cannot disagree about who a membership belongs to — they came
+     * from one query.
+     */
+    const userIdByMembership = new Map(row.memberships.map((membership) => [membership.id, membership.userId]));
+    const now = new Date();
+
+    return {
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      invitations: row.invitations
+        .map((invitation) => ({
+          id: invitation.id,
+          email: invitation.email,
+          /*
+           * The DERIVED state, not the column. An invitation that has run out
+           * still reads `pending` in storage, and a list showing that would
+           * disagree with the accept path one click later — see
+           * `invitationState`, which is the one implementation both use.
+           */
+          state: invitationState(invitation, now),
+          expiresAt: invitation.expiresAt,
+          createdAt: invitation.createdAt,
+          acceptedAt: invitation.acceptedAt,
+          revokedAt: invitation.revokedAt,
+          invitedByUserId: invitation.invitedByUserId,
+          acceptedByUserId: invitation.acceptedByUserId,
+          role: invitation.role,
+        }))
+        // Live ones first, then by most recently sent — an administrator opens
+        // this to see who is still waiting, not to read history.
+        .sort(
+          (a, b) =>
+            Number(a.state !== 'pending') - Number(b.state !== 'pending') ||
+            b.createdAt.getTime() - a.createdAt.getTime(),
+        ),
+      workspaces: row.workspaces
+        .map((workspace) => ({
+          id: workspace.id,
+          key: workspace.key,
+          name: workspace.name,
+          archived: workspace.archivedAt !== null,
+          memberCount: workspace.members.length,
+          members: workspace.members
+            .map((member) => ({
+              workspaceMemberId: member.id,
+              membershipId: member.membershipId,
+              /*
+               * Empty for a membership that is not in this organization's list —
+               * which should be unreachable, and is exactly the cross-tenant row
+               * that WAS insertable (§12.34). Empty rather than thrown: an admin
+               * screen that cannot render because one row is inconsistent is
+               * worse than one showing a blank you can act on.
+               */
+              userId: userIdByMembership.get(member.membershipId) ?? '',
+              roles: member.roles
+                .map((link) => ({
+                  id: link.role.id,
+                  key: link.role.key,
+                  label: link.role.label,
+                  level: link.role.level,
+                  icon: link.role.icon,
+                }))
+                .sort((a, b) => a.key.localeCompare(b.key)),
+            }))
+            .sort((a, b) => a.userId.localeCompare(b.userId)),
+        }))
+        // Live first, then archived; alphabetical within each. The same
+        // ordering the plans list uses, and for the same reason: the switch
+        // must not look like a delete, but retired rows belong at the bottom.
+        .sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name)),
+      members: row.memberships
+        .map((membership) => ({
+          membershipId: membership.id,
+          userId: membership.userId,
+          status: membership.status,
+          joinedAt: membership.joinedAt,
+          roles: membership.roles
+            .map((link) => ({
+              id: link.role.id,
+              key: link.role.key,
+              label: link.role.label,
+              level: link.role.level,
+              icon: link.role.icon,
+            }))
+            .sort((a, b) => a.key.localeCompare(b.key)),
+          workspaceIds: membership.workspaces.map((link) => link.workspaceId).sort(),
+        }))
+        // By userId, which is stable and total. Sorting by name is the app's
+        // job once it has joined them — this layer has no name to sort on.
+        .sort((a, b) => a.userId.localeCompare(b.userId)),
+    };
+  }
+
   async loadContext(
     userId: string,
     scope: { organizationId?: string | undefined; workspaceId?: string | null | undefined } = {},
@@ -110,7 +412,17 @@ export class PermissionsService {
           where: { role: { disabledAt: null } },
           include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } } } } },
         },
-        workspaces: { select: { workspaceId: true } },
+        /*
+         * Scoped to THIS organization's live workspaces. Both halves matter and
+         * both were verified as real leaks — see the interface. Filtered in the
+         * query rather than afterwards, like every other defensive filter here:
+         * an id that is loaded and then dropped is still there for something
+         * later to read by mistake.
+         */
+        workspaces: {
+          where: { workspace: { organizationId: scope.organizationId, archivedAt: null } },
+          select: { workspaceId: true },
+        },
       },
     });
     // No membership is not the same as no access: platform staff legitimately
@@ -195,10 +507,21 @@ export class PermissionsService {
     const subscriptions = await this.prisma.permSubscription.findMany({
       where: {
         organizationId: membership.organizationId,
+        // Every field below is optional on the interface so ONE signature can
+        // serve the admin list too. Omitting `status` here would silently
+        // entitle a canceled subscription, which is why all four are passed.
         status: 'active',
+        // An ARCHIVED plan stops entitling. Filtered in the query rather than
+        // afterwards, exactly as `disabledAt` and `deprecatedAt` are above: a
+        // row loaded and then dropped still exists for something later to read
+        // by mistake, and a column nothing reads is a switch that looks like it
+        // works.
+        plan: { archivedAt: null },
         OR: workspaceId ? [{ workspaceId: null }, { workspaceId }] : [{ workspaceId: null }],
       },
-      include: { plan: { include: { features: true, limits: true } } },
+      // A retired key stops ENTITLING as well as granting — filtered in the
+      // query, like the role-feature reads, so it never reaches composition.
+      include: { plan: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
     });
 
     // An empty list, not undefined: no active subscription entitles nothing.

@@ -43,7 +43,7 @@ import { AUTH_PRISMA, type AuthMfaFactorRow, type AuthPrismaClient, type AuthUse
 import { hashPassword, verifyPassword } from './password.js';
 import { SESSION_REVOCATION_STORE, type SessionRevocationStore } from './revocation.js';
 import { open, readSecretKey, seal } from './secret-box.js';
-import { TokenService } from './token.service.js';
+import { type IssuedWsTicket, TokenService } from './token.service.js';
 import { generateTotpSecret, otpauthUri, toBase32, verifyTotp } from './totp.js';
 
 /**
@@ -191,6 +191,96 @@ export class AuthService {
      * Until then the column records the policy and sign-in reads only the rows.
      */
     return this.startSession(user, context, (await this.mfaOwed(user.id)) ? 'mfa' : 'full');
+  }
+
+  /**
+   * Creates an account and signs it in. NOT an endpoint, and that is the point.
+   *
+   * ## Why this is a method and not a route
+   *
+   * There is no public sign-up in this system. Exposing one is a product
+   * decision with a spam problem attached, and this module deliberately does
+   * not make it: nothing in `auth.controller.ts` or `auth.resolver.ts` reaches
+   * this. It exists so an app can compose account creation with something that
+   * already establishes the address is real — today, an organization invitation
+   * whose token was delivered to that mailbox.
+   *
+   * The caller is responsible for that proof. This method checks that the
+   * address is well formed, free, and that the password passes policy; it
+   * cannot check WHY the account should exist, and pretending otherwise by
+   * asking for a "reason" argument would be theatre.
+   *
+   * ## An existing address is refused plainly
+   *
+   * `signIn` goes to some trouble not to reveal which addresses have accounts.
+   * Here it is unavoidable and correct: whoever calls this is creating an
+   * account at a specific address, and "that address already has one, sign in
+   * instead" is the only useful thing to say. That is another reason it is not
+   * a route — as an open endpoint it would be an enumeration oracle.
+   *
+   * ## No email verification, because the caller already did it
+   *
+   * A `verifiedAt` column would be the honest place to record this, and the
+   * schema has none. The composition is what carries the proof: an invitation
+   * token arrives at an address and comes back, which is the same evidence a
+   * verification email collects.
+   *
+   * ## It does NOT sign anybody in
+   *
+   * It returns the row, not an `AuthResult`. Issuing a session here would put
+   * token minting on a path that is not `/auth/signin` — and the reason every
+   * credential exchange stays on the REST controller (see AuthResolver) is that
+   * the throttler buckets by path and the cookies are written by one reviewed
+   * adapter. The caller signs the new account in the ordinary way, with the
+   * password it was just given, and every protection on that path applies.
+   */
+  async createAccount(input: {
+    email: string;
+    displayName?: string | null;
+    password: string;
+  }): Promise<{ id: string; email: string; displayName: string | null }> {
+    const db = this.client();
+
+    const email = normaliseEmail(requireString(input.email, 'email'));
+    if (!isPlausibleEmail(email)) {
+      throw new BadRequestException({ message: 'That does not look like an email address' });
+    }
+
+    const complaint = checkPassword(requireString(input.password, 'password'));
+    if (!complaint.ok) {
+      // Told precisely, like `resetPassword` does: it is about the value they
+      // just chose, not about whether an account exists.
+      throw new UnauthorizedException({
+        message: complaint.reason === 'too_short' ? 'Password is too short' : 'Password is too easily guessed',
+        reason: 'weak_password' satisfies AuthFailureReason,
+      });
+    }
+
+    const existing = await db.authUser.findUnique({ where: { email } });
+    if (existing) {
+      throw new ConflictException({ message: 'An account already exists for that address' });
+    }
+
+    const secret = await hashPassword(input.password);
+    const displayName = input.displayName?.trim() || null;
+
+    const user = await db.$transaction(async (tx) => {
+      /*
+       * Both rows or neither. A user with no credential cannot sign in and
+       * cannot be repaired by trying again — the address is taken, so the
+       * second attempt fails on the uniqueness check — which is the worst
+       * possible outcome for somebody who just typed a password.
+       *
+       * The unique index on `email` is what makes the race safe: two
+       * simultaneous accepts of the same invitation, or one arriving beside a
+       * seeded account, lose here rather than producing a duplicate.
+       */
+      const created = await tx.authUser.create({ data: { email, displayName } });
+      await tx.authCredential.create({ data: { userId: created.id, type: 'password', secret } });
+      return created;
+    });
+
+    return { id: user.id, email: user.email, displayName: user.displayName };
   }
 
   // ── refresh ───────────────────────────────────────────────────────────────
@@ -1097,6 +1187,38 @@ export class AuthService {
    * One exception for every reason. The reason goes to the operator hook; the
    * caller gets a constant.
    */
+  /**
+   * Mints a short-lived ticket the browser may use to open a WebSocket.
+   *
+   * The session is re-read and checked for revocation FIRST, which the ticket's
+   * own signature cannot do: an access token is verified statelessly, so a
+   * session revoked five minutes ago still presents a perfectly valid bearer
+   * until it expires. That is an accepted trade for a request that lasts
+   * milliseconds; it is not an acceptable one for a socket that may stay open
+   * until the token's expiry, because "sign out everywhere" would leave a live
+   * stream running behind it.
+   *
+   * So this is the one credential path that costs a database read, and the
+   * reason is the connection's lifetime rather than its privilege.
+   */
+  async issueWsTicket(principal: Principal): Promise<IssuedWsTicket> {
+    const db = this.client();
+
+    // `findUnique` with the id, not a filtered `findFirst`: the narrow client
+    // interface exposes only the reads this module actually needs, and adding a
+    // method to it would be widening the contract every host has to satisfy for
+    // a check that is one comparison in code.
+    const session = await db.authSession.findUnique({
+      where: { id: principal.sessionId },
+      include: { user: true },
+    });
+    if (!session || session.revokedAt !== null || session.userId !== principal.userId) {
+      throw this.refuse('session_revoked', { userId: principal.userId });
+    }
+
+    return this.tokens.issueWsTicket(principal);
+  }
+
   private refuse(
     reason: AuthFailureReason,
     detail: { email?: string; userId?: string; ip?: string | null } = {},

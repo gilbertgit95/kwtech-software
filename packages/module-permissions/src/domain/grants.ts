@@ -151,24 +151,50 @@ export function composeContext(input: ComposeInput): PermissionContext {
   const effective = new Set(entitledSet === null ? scoped : scoped.filter((f) => entitledSet.has(f)));
   for (const feature of appLevel) effective.add(feature);
 
-  // Which workspaces this user may enter.
-  //
-  // Their workspace memberships, which is where workspace roles hang from — so
-  // holding a role in a workspace you cannot enter is now impossible to express
-  // rather than merely wrong. The union with role-derived ids is kept as a
-  // belt-and-braces guard for any caller assembling grants by hand.
-  //
-  // Seeing every workspace is a granted right rather than a structural rule, so
-  // an organization can compose it into whichever role it wants.
+  /*
+   * Which workspaces this user may enter.
+   *
+   * ── WORKSPACE MEMBERSHIP IS REQUIRED ──────────────────────────────────────
+   *
+   * One rule for every tenant user: you are in a workspace, or you are not.
+   * There is no role that lets somebody into a workspace they were never added
+   * to, and that is the point — a second route to workspace access is a second
+   * thing to check, a second thing to revoke, and a second answer to "why can
+   * they see this".
+   *
+   * `workspaces:access_all` USED TO BE that second route and has been removed
+   * from the registry. It was also the single feature that bypassed plan
+   * entitlement, because this line reads `granted` rather than `effective` —
+   * so a lapsed organization could still enter every workspace while being
+   * unable to act in any of them. Deleting the key removes the exception rather
+   * than papering over it.
+   *
+   * The ids come from workspace MEMBERSHIPS, unioned with any workspace a
+   * role grant names. That union is belt and braces for a caller assembling
+   * grants by hand: a workspace role hangs off workspace membership in the
+   * schema, so holding one for a workspace you are not in is already
+   * impossible to express.
+   */
   const roleWorkspaceIds = input.roles
     .filter((role) => role.level === 'workspace' && role.workspaceId)
     .map((role) => role.workspaceId as string);
 
-  // Platform support counts as access-all: a support engineer holds no
-  // membership anywhere, and the whole point of the right is entering an
-  // organization they do not belong to. Without this, C1's enforcement would
-  // lock out exactly the people it must not.
-  const seesEveryWorkspace = granted.has(FEATURE.workspacesAccessAll) || granted.has(FEATURE.platformSupportAccess);
+  /*
+   * PLATFORM SUPPORT IS THE ONE EXEMPTION, and it has to be.
+   *
+   * A support engineer holds no membership anywhere — entering an organization
+   * they do not belong to is the entire content of the right. Requiring
+   * membership of them would mean adding staff to a customer's workspaces to
+   * help with them, which is worse in every direction: it changes the
+   * customer's member list, it counts against their seat cap, and somebody has
+   * to remember to remove it afterwards.
+   *
+   * It is the same exemption app-level grants already have from the
+   * subscription filter (see the pipeline above), for the same reason and with
+   * the same blast radius: `platform:support_access` is app level, so no tenant
+   * administrator can mint a role carrying it.
+   */
+  const seesEveryWorkspace = granted.has(FEATURE.platformSupportAccess);
 
   const accessibleWorkspaceIds = seesEveryWorkspace
     ? null

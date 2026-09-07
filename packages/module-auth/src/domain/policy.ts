@@ -45,6 +45,27 @@ export const ACCESS_TOKEN_TTL = 15 * 60;
  */
 export const PASSWORD_RESET_TTL = 60 * 60;
 
+/**
+ * How long a WebSocket ticket is good for. SIXTY SECONDS.
+ *
+ * A ticket exists because the session lives in an httpOnly cookie the page
+ * cannot read, and a browser opening a WebSocket has to put SOMETHING in
+ * `connectionParams`. Handing over the access token would undo the whole
+ * httpOnly design — any XSS could read a credential good for
+ * `ACCESS_TOKEN_TTL`. So the browser asks the same-origin proxy for a ticket
+ * instead, and the session never leaves the server.
+ *
+ * A minute is the window between "the page decided to connect" and "the socket
+ * opened", with room for a slow network and a retry. Anything longer is a
+ * credential sitting in client memory for no reason; anything shorter starts
+ * failing on bad connections.
+ *
+ * What a stolen ticket is worth: ONE connection, opened within a minute, that
+ * closes when the access token it was minted from would have expired. It
+ * authenticates no HTTP request at all — `verifyAccess` refuses it on `typ`.
+ */
+export const WS_TICKET_TTL = 60;
+
 /** Failures before the account locks. Per account; the per-IP limit is the app's throttler. */
 export const MAX_FAILED_LOGINS = 10;
 

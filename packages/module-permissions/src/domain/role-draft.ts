@@ -1,5 +1,6 @@
 import type { FeatureKey, FeatureSpec, RoleLevel } from '../types.js';
 import { ROLE_LEVELS } from '../types.js';
+import { type CloneMode, type CloneResult, mergeFeatures } from './feature-merge.js';
 import { canRoleGrant } from './roles.js';
 
 /**
@@ -182,36 +183,18 @@ function validateRoleFeatures(
 }
 
 /**
- * How a clone combines with what the role already carries.
- *
- * The same two answers the feature import offers, and named for what happens to
- * the rows ALREADY THERE rather than to the incoming ones — that is the half at
- * risk, since the source role's features arrive either way.
- */
-export type CloneMode = 'replace' | 'add';
-
-export interface CloneResult {
-  /** What the role should carry afterwards, sorted and de-duplicated. */
-  features: FeatureKey[];
-  /** Newly present that were not there before. */
-  added: FeatureKey[];
-  /**
-   * Dropped, and WHY — a clone that silently grants less than the role it
-   * copied would be discovered as a denial weeks later. The screen shows this.
-   */
-  skipped: { key: FeatureKey; reason: 'wrong_level' | 'not_held' | 'unregistered' }[];
-}
-
-/**
  * Copies one role's features onto another, filtered by the same rules a manual
  * edit obeys.
  *
- * Filtering rather than refusing is deliberate: a super admin's 17 features
- * cloned into an organization role would fail validation wholesale, and the
- * person would have no way to act on that except to un-tick them one at a time.
- * Dropping what cannot apply and SAYING SO leaves them with a working role and
- * an accurate list of what did not come across.
+ * A thin wrapper over `mergeFeatures`, which plans share: the only role-shaped
+ * parts are the level rule (`canRoleGrant`, own level or narrower) and the
+ * no-escalation rule (you may not put a right into a role that you do not hold
+ * yourself). Cloning is the fastest route to that escalation, which is why it
+ * filters through the same predicate a hand edit does rather than trusting its
+ * source.
  */
+export type { CloneMode, CloneResult, CloneSkip } from './feature-merge.js';
+
 export function cloneFeatures(
   current: readonly FeatureKey[],
   incoming: readonly FeatureKey[],
@@ -219,38 +202,11 @@ export function cloneFeatures(
   level: RoleLevel,
   options: { registry: readonly FeatureSpec[]; actorFeatures?: readonly FeatureKey[] },
 ): CloneResult {
-  const byKey = new Map(options.registry.map((spec) => [spec.key, spec]));
-  const actor = options.actorFeatures ? new Set(options.actorFeatures) : null;
-  const skipped: CloneResult['skipped'] = [];
-  const accepted: FeatureKey[] = [];
-
-  for (const key of incoming) {
-    const spec = byKey.get(key);
-    if (!spec) {
-      skipped.push({ key, reason: 'unregistered' });
-      continue;
-    }
-    if (!canRoleGrant(level, spec.level)) {
-      skipped.push({ key, reason: 'wrong_level' });
-      continue;
-    }
-    if (actor && !actor.has(key)) {
-      skipped.push({ key, reason: 'not_held' });
-      continue;
-    }
-    accepted.push(key);
-  }
-
-  /*
-   * 'replace' discards what was there; 'add' keeps it. Neither touches the
-   * database — this is the STAGED list the form then shows, so nothing is
-   * committed until Save, exactly as the feature import stages its rows.
-   */
-  const base = mode === 'replace' ? [] : [...current];
-  const features = [...new Set([...base, ...accepted])].sort();
-  const before = new Set(current);
-
-  return { features, added: features.filter((key) => !before.has(key)), skipped };
+  return mergeFeatures(current, incoming, mode, {
+    registry: options.registry,
+    accepts: (spec) => canRoleGrant(level, spec.level),
+    ...(options.actorFeatures ? { actorFeatures: options.actorFeatures } : {}),
+  });
 }
 
 /**

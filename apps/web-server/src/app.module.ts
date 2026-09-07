@@ -1,16 +1,20 @@
-import { authServerModule, JwtAuthGuard } from '@kwtech/module-auth/server';
+import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
-import { FeatureGuard, permissionsServerModule } from '@kwtech/module-permissions/server';
+import { FeatureGuard, PERMISSIONS_PUBSUB, permissionsServerModule } from '@kwtech/module-permissions/server';
+import type { ApolloDriverConfig } from '@nestjs/apollo';
 import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD, RouterModule } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { PubSub } from 'graphql-subscriptions';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
 import { env } from './config/env.js';
-import { graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
+import { GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
+import { InvitationsResolver } from './invitations/invitations.resolver.js';
+import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import {
   authPrismaProvider,
   permissionsPrismaProvider,
@@ -18,6 +22,7 @@ import {
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ALL_FEATURES } from './seed/registry.js';
+import { UsersResolver } from './users/users.resolver.js';
 
 /**
  * The whole application, as a list of modules and the four lines that connect
@@ -102,6 +107,33 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
     apiPrefix: '/api/v1',
 
     /*
+     * How an invitation link reaches the person invited — the app's job, for
+     * the same reason `sendPasswordResetEmail` is, one module over. The module
+     * mints and hashes the token and hands the raw value to this once; it has
+     * no email transport and knows nothing about the frontend route the link
+     * points at.
+     *
+     * REQUIRED rather than optional: without it `inviteMember` refuses before
+     * writing anything, which beats a pending invitation nobody can ever
+     * accept.
+     */
+    sendInvitationEmail,
+
+    /*
+     * The pub/sub engine, chosen HERE because it is a deployment fact rather
+     * than a module one.
+     *
+     * `graphql-subscriptions`' in-memory PubSub serves ONE API instance — a
+     * publish reaches only the subscribers connected to this process. The
+     * moment `apps/web-server` runs more than one replica, an event published
+     * on replica A never reaches a socket held by replica B, and the failure is
+     * silent: the UI simply does not update for half the users. Swap in
+     * `graphql-redis-subscriptions` at that point; the module depends on the
+     * structural `PermissionsPubSub` and nothing in it changes (PLAN §7).
+     */
+    pubsubProvider: { provide: PERMISSIONS_PUBSUB, useValue: new PubSub() },
+
+    /*
      * EVERY module's features, not just this module's own.
      *
      * The same composed list the seeder writes to `perm_feature`, so what a
@@ -183,7 +215,20 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
      * see ./graphql/graphql.options.ts. Adding the tenth module costs nothing
      * here.
      */
-    GraphQLModule.forRoot(graphqlOptions()),
+    /*
+     * `forRootAsync`, because the WebSocket handshake needs the app's
+     * `TokenService` to verify a ticket — see graphql.options.ts. That is the
+     * one thing GraphQL configuration cannot derive for itself: authentication
+     * belongs to `@kwtech/module-auth`, and injecting it keeps this file from
+     * importing a verifier of its own. One issuer, one verification path, for
+     * REST, GraphQL and the socket alike (§12.8).
+     */
+    GraphQLModule.forRootAsync<ApolloDriverConfig>({
+      // Asserted BEFORE the factory runs, so it cannot come from inside it.
+      driver: GRAPHQL_DRIVER,
+      inject: [TokenService],
+      useFactory: (tokens: TokenService) => graphqlOptions(tokens),
+    }),
 
     /*
      * Every module in SERVER_MODULES, in one line. Adding the tenth is an entry
@@ -211,6 +256,23 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useClass: CredentialThrottlerGuard },
     { provide: APP_GUARD, useExisting: FeatureGuard },
+
+    /*
+     * The one resolver this app owns, rather than composing from a module.
+     *
+     * It exists because turning an email into a userId needs `auth_user` (which
+     * module-auth owns) AND a permissions key to guard it (which
+     * module-permissions owns), and neither module may import the other. The
+     * app is the only layer that already depends on both — the same reason
+     * `resolvePrincipal` lives here. See ./users/users.resolver.ts.
+     */
+    UsersResolver,
+    /*
+     * Accepting an invitation, including from somebody with no account yet.
+     * Composes AuthService with PermissionsWriteService — which is why it is
+     * here and not in either module (PLAN §9).
+     */
+    InvitationsResolver,
   ],
 })
 export class AppModule {}

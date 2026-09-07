@@ -14,8 +14,13 @@
 //
 // Both levels are shared, and sharing is explicit at both: a person joins an
 // organization by PermMembership and a workspace by PermWorkspaceMember. Being
-// in the organization does NOT imply seeing every workspace — that is a right
-// (`workspaces:access_all`), granted by a role, not a structural shortcut.
+// in the organization does NOT imply seeing its workspaces, and no role widens
+// that — WORKSPACE MEMBERSHIP IS REQUIRED. One rule, so "why can they see this"
+// has one answer: somebody added them.
+//
+// Platform support is the single exemption, because a support engineer holds no
+// membership anywhere and entering an organization they do not belong to is the
+// entire content of the right. See domain/grants.ts.
 //
 // A feature is allowed when the caller's ROLES grant it — in the active
 // workspace or organization-wide — AND the organization's PLAN includes it.
@@ -41,6 +46,19 @@ enum PermMembershipStatus {
   suspended
 }
 
+/// Where an invitation is in its life.
+///
+/// `expired` is deliberately ABSENT: it is derived from `expiresAt` against the
+/// clock, not stored. A stored one needs something to write it — a sweeper, or
+/// a check on every read that then has to write — and an invitation that is
+/// expired in fact but `pending` in the column is the kind of disagreement
+/// nobody notices until somebody accepts one they should not have.
+enum PermInvitationStatus {
+  pending
+  accepted
+  revoked
+}
+
 enum PermSubscriptionStatus {
   active
   past_due
@@ -58,6 +76,7 @@ model PermOrganization {
   key  String @unique
   name String
 
+  invitations   PermInvitation[]
   memberships   PermMembership[]
   roles         PermRole[]
   subscriptions PermSubscription[]
@@ -120,6 +139,17 @@ model PermWorkspaceMemberRole {
   role            PermRole            @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([workspaceMemberId, roleId])
+  /// ONE workspace-level role per workspace member, the same rule
+  /// PermMembershipRole carries one level up — and for the same reason.
+  ///
+  /// A person is one thing in a workspace. Wanting the features of two roles is
+  /// a reason to define a role carrying both, or to add the feature to the role
+  /// they already hold — not a reason to stack two and leave "what is this
+  /// person here" without an answer.
+  ///
+  /// The composite primary key stays and is not redundant with this: the key
+  /// stops the SAME role twice, this stops two DIFFERENT ones.
+  @@unique([workspaceMemberId])
   @@map("perm_workspace_member_role")
 }
 
@@ -207,6 +237,7 @@ model PermRole {
   disabledAt     DateTime?
 
   organization PermOrganization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitations      PermInvitation[]
   features         PermRoleFeature[]
   limits           PermRoleLimit[]
   memberships      PermMembershipRole[]
@@ -255,6 +286,22 @@ model PermMembershipRole {
   role       PermRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([membershipId, roleId])
+  /// ONE organization-level role per member, and the database is what makes it
+  /// true rather than a rule the write path is trusted to remember.
+  ///
+  /// A person is one thing in an organization: an owner, or an administrator,
+  /// or a member. Wanting the rights of two is a reason to define a THIRD role
+  /// carrying both — which `previewRoleClone` exists to make cheap — not a
+  /// reason to stack two and leave "what is this person" without an answer.
+  ///
+  /// The composite primary key above still stands and is not redundant with
+  /// this: it is what stops the same role being granted twice, and this is what
+  /// stops two DIFFERENT roles. Removing either brings back a different bug.
+  ///
+  /// The same rule applies one level down, on PermWorkspaceMemberRole.
+  /// PermUserRole — app level, platform staff — is still a collection and is
+  /// the remaining open question (docs/PLAN.md §12.32).
+  @@unique([membershipId])
   @@map("perm_membership_role")
 }
 
@@ -306,12 +353,116 @@ model PermRoleFeature {
   @@map("perm_role_feature")
 }
 
+/// An invitation to join an organization, addressed to an EMAIL rather than to
+/// a user.
+///
+/// It has to be its own table and cannot be a PermMembership with status
+/// `invited`: a membership carries a `userId`, and the whole point of an
+/// invitation is that the recipient may not have an account yet. Inventing a
+/// placeholder user to hold the row would put a fake person in every count,
+/// every seat cap and every members list.
+///
+/// The email is stored NORMALISED — trimmed, lower-cased — the same way
+/// `auth_user.email` is. Storing it as typed would mean an invitation to
+/// `Alice@Acme.com` never matching a sign-up as `alice@acme.com`, which is the
+/// bug that only appears for the one person whose mail client capitalises.
+model PermInvitation {
+  id             String @id @default(cuid())
+  organizationId String
+  /// Normalised. See above.
+  email          String
+
+  /// The organization role to grant on acceptance. Null invites them with none,
+  /// which is a legitimate state — a member with no role holds nothing.
+  ///
+  /// `onDelete: SetNull` rather than Cascade: a role being retired must not
+  /// silently delete the invitations that named it. They stay, and the person
+  /// joins with no role, which is visible and fixable.
+  roleId         String?
+
+  /// Who sent it. A bare id with no foreign key, like every other user
+  /// reference here — this module does not own identity (§12.12).
+  invitedByUserId String
+
+  /// The link's secret, HASHED. The token itself is handed out once, in the
+  /// email, and never stored — the same rule `AuthPasswordReset` follows, and
+  /// for the same reason: a database that can be read must not yield working
+  /// invitations.
+  tokenHash String @unique
+
+  status     PermInvitationStatus @default(pending)
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  acceptedAt DateTime?
+  /// Who accepted it, which need not be anybody the inviter expected — an
+  /// address can be claimed by whoever reads the mailbox.
+  acceptedByUserId String?
+  revokedAt  DateTime?
+
+  organization PermOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         PermRole?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  /// NOT unique on (organizationId, email): an address that was invited,
+  /// revoked and invited again is an ordinary history, and a unique index would
+  /// make the second invitation impossible without deleting the first — which
+  /// would destroy the record of the revocation. One PENDING invitation per
+  /// address is enforced in the write path instead.
+  @@index([organizationId, status])
+  @@index([email])
+  @@map("perm_invitation")
+}
+
 // ─── subscriptions and entitlements ─────────────────────────────────────────
 
+/// A plan is a named collection of features an organization can BUY — the
+/// entitlement counterpart of PermRole, which is a named collection of features
+/// a person can be GIVEN. Everything a plan means is PermPlanFeature and
+/// PermPlanLimit; there is no inheritance and no precedence, for the same
+/// reasons a role has none.
+///
+/// A plan may only collect ORGANIZATION- and WORKSPACE-level features, and that
+/// is not a style rule. App-level grants are unioned in AFTER the entitlement
+/// filter (see domain/grants.ts), so an app-level key inside a plan entitles
+/// nobody to anything: it would read as a sold feature in the catalogue while
+/// changing no decision anywhere. Enforced in `assertPlanFeatureLevels`.
 model PermPlan {
   key      String  @id
   label    String
+  /// Whether the plan appears in a catalogue customers can see. A private plan
+  /// is still fully live for whoever is already subscribed to it — this is
+  /// listing, not entitlement, which is why it is not `archivedAt` below.
   isPublic Boolean @default(true)
+
+  /// The badge drawn beside this plan's name — a NAME, never a component or an
+  /// SVG. The same contract as `PermRole.icon`, and for the same reasons: what
+  /// 'gem' draws is the frontend's decision, so a second frontend can render
+  /// the identical row in its own icon set, and the NestJS server never
+  /// acquires a React dependency to store one.
+  ///
+  /// Nullable, and an unknown name must FALL BACK rather than throw. A plan
+  /// predating this column has none, and an icon retired from the app's set
+  /// would otherwise turn every screen listing that plan into a blank page.
+  ///
+  /// Pure presentation, carrying NO commercial meaning:
+  /// `assertPlanFeatureLevels` ignores it and nothing may branch on it. A plan
+  /// is exactly the features and caps it carries — an icon implying a tier
+  /// would be a second, unenforceable account of what a customer bought.
+  icon     String?
+
+  /// Retired without being destroyed. Null means live.
+  ///
+  /// There is no delete path for a plan, for the same reason there is none for
+  /// a role: every subscription ever written points at this row, so deleting
+  /// one either cascades that history away — destroying the answer to "what was
+  /// this organization entitled to last March" — or fails on a foreign key at
+  /// the worst possible moment. The same call `PermRole.disabledAt`,
+  /// `PermFeature.deprecatedAt` and `PermWorkspace.archivedAt` already make.
+  ///
+  /// ⚠ An archived plan must stop entitling, and that is enforced in the READ
+  /// path — `PermissionsService.loadContext` filters `plan: { archivedAt: null }`
+  /// alongside the `status: 'active'` it already applied. A column nothing
+  /// reads would be a switch that looks like it works.
+  archivedAt DateTime?
 
   features      PermPlanFeature[]
   limits        PermPlanLimit[]

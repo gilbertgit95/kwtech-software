@@ -77,13 +77,34 @@ export const permissionsWritePrismaProvider: Provider = {
       permMembership: prisma.permMembership,
       permWorkspace: prisma.permWorkspace,
       permWorkspaceMember: prisma.permWorkspaceMember,
+      /*
+       * Subscriptions are written now, not only read.
+       *
+       * That reverses an explicit earlier decision — billing was to own this
+       * table — and the reversal, with the idempotency questions it had to
+       * answer first, is recorded in docs/PLAN.md §12 and on
+       * `PermissionsWriteService`. Binding the delegate here is the app's half
+       * of it: the module still opens no connection.
+       */
       permSubscription: prisma.permSubscription,
+      // A plan is the entitlement counterpart of a role: the definition, its
+      // feature rows and its caps, all replaced wholesale on every save.
+      permPlan: prisma.permPlan,
+      permPlanFeature: prisma.permPlanFeature,
+      permPlanLimit: prisma.permPlanLimit,
       permRole: prisma.permRole,
       // Role definitions are written now, not only read: see the roles admin
       // screens. The feature rows are replaced wholesale on every save.
       permRoleFeature: prisma.permRoleFeature,
       permMembershipRole: prisma.permMembershipRole,
       permWorkspaceMemberRole: prisma.permWorkspaceMemberRole,
+      /*
+       * Invitations: created, revoked and accepted, never deleted. The delegate
+       * the module declares has no `delete` on it at all, which is the rule
+       * expressed as a type rather than as a comment — a revoked invitation is
+       * the record of somebody having been asked and the asking undone.
+       */
+      permInvitation: prisma.permInvitation,
     }),
 };
 

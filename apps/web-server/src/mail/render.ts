@@ -80,6 +80,16 @@ export interface EmailData {
     /** Rendered as a phrase — "one hour" — because a reader is not parsing seconds. */
     expiresIn: string;
   };
+  'organization-invitation': {
+    /**
+     * Free text somebody typed when the tenant was created. Escaped by the
+     * template; exactly as untrustworthy as a display name.
+     */
+    organizationName: string;
+    url: string;
+    /** "seven days", for the same reason as above. */
+    expiresIn: string;
+  };
 }
 
 export interface RenderedEmail {

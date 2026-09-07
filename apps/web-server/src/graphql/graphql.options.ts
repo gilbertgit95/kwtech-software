@@ -1,8 +1,15 @@
 import { join } from 'node:path';
+import type { TokenService } from '@kwtech/module-auth/server';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import type { ExecutionContext } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { env } from '../config/env.js';
+import {
+  authenticateConnection,
+  closeWhenAuthorizationExpires,
+  connectionContext,
+  rememberConnection,
+} from './ws-context.js';
 
 /**
  * The one place this app configures GraphQL.
@@ -30,6 +37,17 @@ import { env } from '../config/env.js';
 export const GRAPHQL_PATH = 'graphql';
 
 /**
+ * The driver, exported because `forRootAsync` demands it OUTSIDE the factory.
+ *
+ * Nest asserts the driver before it ever calls `useFactory`, so returning it
+ * from `graphqlOptions()` is not enough — the boot fails with "Missing driver
+ * option" and a migration-guide link that has nothing to do with the cause.
+ * Naming it here keeps this file the single place GraphQL is configured, rather
+ * than having app.module.ts import ApolloDriver for one line.
+ */
+export const GRAPHQL_DRIVER = ApolloDriver;
+
+/**
  * Pulls the underlying HTTP request out of EITHER kind of execution context.
  *
  * Handed to `PermissionsModule` as `getRequest`, and this is the seam that
@@ -52,7 +70,14 @@ export function requestFromContext(context: unknown): unknown {
   return ctx.switchToHttp().getRequest();
 }
 
-export function graphqlOptions(): ApolloDriverConfig {
+/**
+ * @param tokens the app's TokenService, for the WebSocket handshake.
+ *
+ * Passed in rather than imported so this stays a pure function of its inputs
+ * and the module wires it — `AppModule` uses `useFactory` with `inject`, which
+ * is also what lets a test hand it a stub verifier.
+ */
+export function graphqlOptions(tokens: Pick<TokenService, 'verifyWsTicket'>): ApolloDriverConfig {
   return {
     driver: ApolloDriver,
     path: `/api/v1/${GRAPHQL_PATH}`,
@@ -76,13 +101,96 @@ export function graphqlOptions(): ApolloDriverConfig {
     introspection: env.NODE_ENV !== 'production',
     playground: false,
 
-    /*
-     * `req` on the GraphQL context is what every resolver reads the principal
-     * off. JwtAuthGuard runs first and leaves it there, exactly as it does for a
-     * REST handler — which is the point: one authentication path, two
-     * transports. See requestFromContext above.
+    /**
+     * ONE context function, serving BOTH transports — and it has to be one,
+     * because `GqlSubscriptionService` passes this very function to
+     * `useServer` as the socket's context builder.
+     *
+     * `req` is what every resolver reads the principal off. Over HTTP,
+     * `JwtAuthGuard` runs first and leaves it there. Over a WebSocket there is
+     * no request and no HTTP guard, so the principal comes from the socket's
+     * `extra`, where the handshake put it — see ./ws-context.ts.
+     *
+     * Distinguished by `extra`, which only `graphql-ws`' Context carries;
+     * Apollo's HTTP argument is `{ req, res }` and has none. That check is the
+     * whole branch: everything downstream sees the identical `{ req }` shape
+     * and no guard, resolver or `resolvePrincipal` learns which transport it
+     * is on.
+     *
+     * ⚠ It cannot be split into a `context` inside the `graphql-ws` block —
+     * that is where this started, and Nest's `GraphQLWsSubscriptionsConfig`
+     * does not declare the property, so it would need a cast that hides exactly
+     * the coupling worth stating.
      */
-    context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
+    context: (arg: { req?: unknown; res?: unknown; extra?: unknown }) =>
+      'extra' in arg ? connectionContext(arg.extra) : { req: arg.req, res: arg.res },
+
+    /*
+     * ── subscriptions ───────────────────────────────────────────────────────
+     *
+     * `graphql-ws` only. The older `subscriptions-transport-ws` is unmaintained
+     * and Apollo Server 5 does not ship it; supporting both would mean two
+     * handshakes to authenticate and two places to get that wrong.
+     *
+     * The path is the SAME as the HTTP endpoint. One URL, two protocols — a
+     * client upgrades where it would have posted, which is what the plan means
+     * by "subscriptions ride graphql-ws over one WebSocket" (§7).
+     *
+     * ⚠ This is why the API cannot be serverless (§5, §12.4): a Vercel function
+     * cannot hold a connection open, and the failure is SILENT — the socket
+     * never connects and the UI simply never updates.
+     */
+    subscriptions: {
+      'graphql-ws': {
+        /**
+         * Authenticates ONCE, at connection_init, and shapes the result to look
+         * like an authenticated HTTP request — see ./ws-context.ts. Everything
+         * downstream (`requestFromContext`, `resolvePrincipal`, `FeatureGuard`)
+         * is unchanged and unaware.
+         *
+         * Throwing closes the socket, which is the behaviour wanted: a
+         * connection that failed to authenticate must not linger in a state
+         * where a later `subscribe` might be evaluated against no principal.
+         */
+        onConnect: (ctx: { connectionParams?: Record<string, unknown> | undefined; extra?: unknown }) => {
+          const connection = authenticateConnection(tokens, ctx.connectionParams);
+          /*
+           * FALSE, not a throw. `graphql-ws` closes a thrown error as 4500
+           * "internal server error", which tells the client to retry — and a
+           * bad ticket cannot become good. Returning false closes it as 4403,
+           * the library's own "declined", which clients treat as fatal.
+           */
+          if (!connection) return false;
+
+          /*
+           * Stashed on `extra`, NEVER returned. An object returned from
+           * `onConnect` is sent to the client as the connection_ack payload —
+           * returning the connection would publish the principal to the
+           * browser. See `rememberConnection`.
+           */
+          rememberConnection(ctx.extra, connection);
+
+          /*
+           * The socket closes when the authorization that opened it expires.
+           *
+           * The one property that makes subscriptions safe to add: a query is
+           * authorized per request, a subscription once at subscribe time. See
+           * `closeWhenAuthorizationExpires`.
+           *
+           * `extra` is `unknown` on the library's Context — whatever the server
+           * implementation put there, which for the ws adapter is
+           * `{ socket, request }`. Narrowed defensively rather than cast: an
+           * adapter without a socket must lose the expiry timer, not throw
+           * inside the handshake and refuse every connection.
+           */
+          const socket = (ctx.extra as { socket?: { close(code: number, reason: string): void } } | undefined)?.socket;
+          if (socket) closeWhenAuthorizationExpires(socket, connection.expiresAt);
+
+          // `true`, not the connection. See above.
+          return true;
+        },
+      },
+    },
 
     /*
      * A resolver that throws a Nest HttpException surfaces its status in

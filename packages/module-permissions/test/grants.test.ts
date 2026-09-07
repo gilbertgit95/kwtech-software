@@ -209,9 +209,25 @@ describe('composeContext — accessible workspaces', () => {
     expect(ctx.accessibleWorkspaceIds).toEqual(['ws1', 'ws9']);
   });
 
-  it('is null — every workspace — for workspaces:access_all', () => {
-    const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.workspacesAccessAll] })] });
-    expect(ctx.accessibleWorkspaceIds).toBeNull();
+  /**
+   * WORKSPACE MEMBERSHIP IS REQUIRED, and this is the assertion that says so.
+   *
+   * `workspaces:access_all` used to widen this and has been removed from the
+   * registry — a second route into a workspace is a second thing to check, a
+   * second thing to revoke, and a second answer to "why can they see this". It
+   * was also the one feature that bypassed plan entitlement, because this reads
+   * `granted` rather than `effective`.
+   *
+   * An organization role now reaches INTO the workspaces its holder belongs to,
+   * and no further.
+   */
+  it('is NOT widened by any organization role — membership is the only route', () => {
+    const ctx = compose({
+      roles: [role({ level: 'organization', features: [FEATURE.membersManage, FEATURE.workspacesManage] })],
+      workspaceIds: ['ws1'],
+    });
+
+    expect(ctx.accessibleWorkspaceIds).toEqual(['ws1']);
   });
 
   it('is null for platform:support_access, who hold no membership anywhere', () => {

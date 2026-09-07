@@ -1,16 +1,39 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { hasFeature } from '../check.js';
-import { LIMIT, type LimitKey } from '../domain/limits.js';
-import { type CloneMode, cloneFeatures, type RoleDraft, validateRoleDraft } from '../domain/role-draft.js';
+import type { CloneMode } from '../domain/feature-merge.js';
+import {
+  INVITATION_TTL_MS,
+  type InvitationDraft,
+  isAcceptable,
+  normaliseInviteEmail,
+  validateInvitationDraft,
+} from '../domain/invitation.js';
+import { assertPlanLimits, LIMIT, type LimitKey } from '../domain/limits.js';
+import { clonePlanFeatures, type PlanDraft, planLimitValues, validatePlanDraft } from '../domain/plan-draft.js';
+import { cloneFeatures, type RoleDraft, validateRoleDraft } from '../domain/role-draft.js';
+import {
+  type SubscriptionDraft,
+  subscriptionPeriodEnd,
+  validateSubscriptionDraft,
+} from '../domain/subscription-draft.js';
 import {
   type AssignableRole,
   assertNotAppLevel,
   assertRoleAssignable,
   PermissionWriteError,
+  type WriteRefusalReason,
 } from '../domain/writes.js';
 import { FEATURE, FEATURE_REGISTRY } from '../feature-keys.js';
-import { type FeatureKey, type FeatureSpec, type PermissionContext, toRoleLevel } from '../types.js';
+import {
+  type FeatureKey,
+  type FeatureSpec,
+  type PermissionContext,
+  toRoleLevel,
+  toSubscriptionStatus,
+} from '../types.js';
 import type { PermissionsModuleOptions } from './permissions.module.js';
+import { NULL_PUBSUB, PERMISSIONS_EVENT, PERMISSIONS_PUBSUB, type PermissionsPubSub } from './permissions.pubsub.js';
 import {
   PERMISSIONS_PRISMA_WRITE,
   type PermissionsTransaction,
@@ -41,24 +64,66 @@ import { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
  *
  * NOT here, and deliberately:
  *
- *   subscriptions  written by the billing integration, not by a user action.
- *                  Who writes them, with what idempotency, and what happens
- *                  between a payment failing and `status` changing are open
- *                  questions (PERMISSIONS-REVIEW, "Missing information"), and
- *                  guessing at them would put a wrong answer in the one table a
- *                  permission check must not have to doubt.
  *   users          the module does not own identity (§12.12). It grants against
  *                  a userId it never issues.
  *   an audit trail M7. Every method below takes the actor, so recording WHO did
  *                  this becomes a new table and a call, not a change to every
  *                  signature.
+ *
+ * ## Subscriptions are written here now, and they were not
+ *
+ * This service previously refused to touch `perm_subscription` on the grounds
+ * that billing owns it and the idempotency questions were unanswered. That
+ * decision is reversed (docs/PLAN.md §12), and the questions it deferred are
+ * answered rather than dropped:
+ *
+ *   who writes    an administrator holding `billing:manage`, through the
+ *                 subscription screens. A billing provider integrating later
+ *                 must RECONCILE against these rows — read them, then supersede
+ *                 what disagrees — rather than assume it is the only writer.
+ *   idempotency   the live row for one (organization, workspace, plan) is
+ *                 unique: `startSubscription` refuses a second while the first
+ *                 has no `endedAt`, so a retried request cannot double-entitle.
+ *                 There is no upsert, because a subscription is not a
+ *                 fact-of-the-day to be overwritten — it is an event with a
+ *                 beginning and an end.
+ *   payment fails `status` moves to `past_due` and the row stays. Entitlement
+ *                 stops immediately, because `loadContext` reads only `active`;
+ *                 nothing is deleted, so recovering is a status change rather
+ *                 than a re-subscription.
  */
 @Injectable()
 export class PermissionsWriteService {
   constructor(
     @Optional() @Inject(PERMISSIONS_PRISMA_WRITE) private readonly prisma?: PermissionsWriteClient,
     @Optional() @Inject(PERMISSIONS_OPTIONS) private readonly options?: PermissionsModuleOptions,
+    /**
+     * Optional, and absent is a normal state rather than a misconfiguration: a
+     * worker or a CLI importing this service has no socket and nobody to tell.
+     * See NULL_PUBSUB.
+     */
+    @Optional() @Inject(PERMISSIONS_PUBSUB) private readonly pubsub?: PermissionsPubSub,
   ) {}
+
+  /**
+   * Announces a change, AFTER the transaction that made it has committed.
+   *
+   * Order matters and is easy to get backwards: publishing inside the
+   * transaction would tell subscribers about a write that can still roll back,
+   * and a client that re-reads on the event would race the commit and fetch the
+   * old row. Every call site below therefore awaits its `$transaction` first.
+   *
+   * Never throws. A failed publish must not fail the write that already
+   * happened — the row is committed, and turning a notification problem into a
+   * write error would make an administrator retry a save that succeeded.
+   */
+  private async announce(event: string, payload: unknown): Promise<void> {
+    try {
+      await (this.pubsub ?? NULL_PUBSUB).publish(event, payload);
+    } catch {
+      // Deliberately swallowed. See above.
+    }
+  }
 
   /**
    * Every registered feature, from wherever it was declared.
@@ -104,6 +169,65 @@ export class PermissionsWriteService {
 
       return { organizationId: organization.id, membershipId: membership.id };
     });
+  }
+
+  /**
+   * Renames an organization, or changes its key.
+   *
+   * ## Why a name is editable at all
+   *
+   * Because it is a LABEL, not an identity. A company is typed into a form once,
+   * by somebody who may mistype it, and then rebrands, gets acquired, or drops
+   * the "Ltd" — and an organization that can never be renamed makes the wrong
+   * name permanent for everyone who reads it.
+   *
+   * ## The key is editable too, which a role's and a plan's are not
+   *
+   * That is not inconsistency. Those are referenced BY key — a plan key is the
+   * primary key every subscription points at — while an organization is
+   * addressed by `id` everywhere in this codebase, and its key exists for
+   * humans. The same argument `updateWorkspace` makes, one level up.
+   *
+   * ⚠ It is still `@unique`, so renaming onto a key another tenant holds throws
+   * from the database. That is left as a constraint violation rather than a
+   * pre-check on purpose: a pre-check is a race — two renames to the same key
+   * can both pass it — and the index is the thing that is actually true.
+   *
+   * ## Nothing is renamed by omission
+   *
+   * Both fields are required and both are trimmed. An update that took optional
+   * fields would make "leave the key alone" and "set the key to empty" the same
+   * request shape, and the screen sends what it is showing anyway.
+   */
+  async updateOrganization(actor: PermissionContext, input: { organizationId: string; key: string; name: string }) {
+    this.assertPermitted(actor, FEATURE.organizationsManage);
+    const db = this.client();
+
+    const key = input.key.trim();
+    const name = input.name.trim();
+    if (!key || !name) {
+      throw new PermissionWriteError('draft_invalid', 'An organization needs a key and a name', {
+        organizationId: input.organizationId,
+      });
+    }
+
+    /*
+     * `updateMany`, not `update`, even though the `where` is a unique id.
+     *
+     * It is what lets a missing row come back as `count: 0` — a
+     * `PermissionWriteError` with a sentence — instead of Prisma's
+     * record-not-found exception surfacing as a 500 on a screen where somebody
+     * simply followed a stale link.
+     */
+    const { count } = await db.permOrganization.updateMany({
+      where: { id: input.organizationId },
+      data: { key, name },
+    });
+    if (count === 0) {
+      throw new PermissionWriteError('not_found', 'No such organization', { organizationId: input.organizationId });
+    }
+
+    return { organizationId: input.organizationId, renamed: true };
   }
 
   // ── role definitions ──────────────────────────────────────────────────────
@@ -324,6 +448,350 @@ export class PermissionsWriteService {
     }
   }
 
+  // ── plan definitions ──────────────────────────────────────────────────────
+  //
+  // Defining a plan, as opposed to selling one. `startSubscription` below
+  // attaches an existing plan to a tenant; these four decide what a plan IS.
+  //
+  // The exact shape of the role block above, and deliberately so: a plan is a
+  // named collection of features an organization can BUY, as a role is one a
+  // person can be GIVEN. Where they differ is documented at each difference and
+  // nowhere else.
+  //
+  // There is no delete. Every subscription ever written points at the plan row,
+  // so removing it either cascades that history away or fails on a foreign key
+  // — `setPlanArchived` is the reversible answer, and both the read path and
+  // `startSubscription` stop honouring an archived plan.
+
+  /**
+   * Defines a new plan.
+   *
+   * ONE right, not two. `createRole` also checks `roles:manage_app` because a
+   * role carries its own level and an app-level one escapes every tenant
+   * boundary; a plan has no level to escalate through — `plans:create` is
+   * already app level and privileged, so the equivalent check would be the same
+   * key twice.
+   */
+  async createPlan(actor: PermissionContext, draft: PlanDraft) {
+    this.assertPermitted(actor, FEATURE.plansCreate);
+    const db = this.client();
+
+    const result = await db.$transaction(async (tx) => {
+      const errors = validatePlanDraft(draft, {
+        registry: this.registry,
+        existingKeys: await this.planKeys(tx),
+      });
+      assertNoDraftErrors(errors, 'draft_invalid');
+
+      const key = draft.key.trim();
+      const limits = planLimitValues(draft.limits);
+      /*
+       * Belt and braces, and worth the duplication: `validatePlanDraft` already
+       * refuses a missing required cap with a per-field message, but this is
+       * the assertion the SEED path runs, and a plan that reaches the database
+       * without it silently caps a paying customer at the registry floor of
+       * one. The two must agree, and the way to guarantee that is for both to
+       * read LIMIT_REGISTRY.
+       */
+      assertPlanLimits(key, limits);
+
+      await tx.permPlan.create({
+        data: { key, label: draft.label.trim(), isPublic: draft.isPublic, icon: draft.icon.trim() || null },
+        select: { key: true },
+      });
+      await this.replacePlanFeatures(tx, key, draft.features);
+      await this.replacePlanLimits(tx, key, limits);
+
+      return { planKey: key };
+    });
+
+    await this.announcePlan(result.planKey);
+    return result;
+  }
+
+  /** Announced after the commit, never inside it. See `announce`. */
+  private async announcePlan(planKey: string): Promise<void> {
+    await this.announce(PERMISSIONS_EVENT.planChanged, { planKey });
+  }
+
+  /**
+   * Changes what an existing plan is and entitles.
+   *
+   * The plan's KEY is not changeable, for the reason a role's is not: it is the
+   * primary key, and `PermPlanFeature`, `PermPlanLimit` and every
+   * `PermSubscription` reference it. Renaming would either cascade the history
+   * away or fail on a foreign key.
+   *
+   * ⚠ This changes what everyone ALREADY SUBSCRIBED is entitled to, on the next
+   * request. That is the intended behaviour — a plan is the live definition of
+   * a product, not a snapshot taken at signup — but it is why the key is app
+   * level and privileged, and why the screen says so before anyone saves.
+   */
+  async updatePlan(actor: PermissionContext, planKey: string, draft: PlanDraft) {
+    this.assertPermitted(actor, FEATURE.plansUpdate);
+    const db = this.client();
+
+    const result = await db.$transaction(async (tx) => {
+      const existing = await this.requirePlan(tx, planKey);
+
+      const errors = validatePlanDraft({ ...draft, key: existing.key }, { registry: this.registry });
+      assertNoDraftErrors(errors, 'draft_invalid');
+
+      const limits = planLimitValues(draft.limits);
+      assertPlanLimits(existing.key, limits);
+
+      await tx.permPlan.update({
+        where: { key: existing.key },
+        data: { label: draft.label.trim(), isPublic: draft.isPublic, icon: draft.icon.trim() || null },
+        select: { key: true },
+      });
+      await this.replacePlanFeatures(tx, existing.key, draft.features);
+      await this.replacePlanLimits(tx, existing.key, limits);
+
+      return { planKey: existing.key };
+    });
+
+    await this.announcePlan(result.planKey);
+    return result;
+  }
+
+  /**
+   * Retires a plan, or brings it back.
+   *
+   * Archived means it entitles nothing and nothing new may subscribe to it:
+   * `loadContext` filters `plan: { archivedAt: null }`, and `startSubscription`
+   * refuses one. The row, its feature list and every subscription made from it
+   * stay exactly where they are, so un-archiving restores what customers had
+   * rather than asking somebody to remember it.
+   *
+   * ⚠ Note what this does to LIVE subscribers: they stop being entitled
+   * immediately, which is stronger than "stop selling it". Archiving is the
+   * end-of-life switch; hiding a plan from a catalogue while honouring it for
+   * whoever already has it is `isPublic`, which is a different field for
+   * exactly this reason.
+   */
+  async setPlanArchived(actor: PermissionContext, planKey: string, archived: boolean) {
+    this.assertPermitted(actor, FEATURE.plansArchive);
+    const db = this.client();
+
+    const result = await db.$transaction(async (tx) => {
+      const existing = await this.requirePlan(tx, planKey);
+      await tx.permPlan.update({
+        where: { key: existing.key },
+        data: { archivedAt: archived ? this.now() : null },
+        select: { key: true },
+      });
+      return { planKey: existing.key, archived };
+    });
+
+    /*
+     * The event that matters most of the three: archiving cuts entitlement off
+     * for every live subscriber at once, so an open screen showing a plan as
+     * live is wrong the moment this commits.
+     */
+    await this.announcePlan(result.planKey);
+    return result;
+  }
+
+  /**
+   * What cloning one plan into another would produce — WITHOUT writing it.
+   *
+   * The role clone's twin, and it takes no actor features: a plan entitles
+   * rather than grants, so there is no escalation to prevent. See
+   * `validatePlanFeatures` in domain/plan-draft.ts.
+   */
+  async previewPlanClone(
+    actor: PermissionContext,
+    input: { sourcePlanKey: string; current: readonly FeatureKey[]; mode: CloneMode },
+  ) {
+    this.assertPermitted(actor, FEATURE.plansUpdate);
+    const db = this.client();
+
+    const source = await db.permPlan.findFirst({
+      where: { key: input.sourcePlanKey },
+      select: { key: true, label: true, isPublic: true, icon: true, archivedAt: true },
+    });
+    if (!source) throw new PermissionWriteError('not_found', 'No such plan', { planKey: input.sourcePlanKey });
+
+    const features = await db.permPlanFeature.findMany({
+      where: { planKey: source.key },
+      select: { featureKey: true },
+    });
+
+    return clonePlanFeatures(
+      input.current,
+      features.map((row: { featureKey: string }) => row.featureKey),
+      input.mode,
+      { registry: this.registry },
+    );
+  }
+
+  // ── subscriptions ─────────────────────────────────────────────────────────
+  //
+  // Attaching a plan to a tenant, as opposed to defining what the plan is.
+  //
+  // Guarded by `billing:manage` throughout — ONE key for all three, unlike
+  // roles, which split create from update from disable. The split existed there
+  // because reviewing roles and rewriting one are genuinely different jobs
+  // people hold separately. Starting, amending and ending a subscription are
+  // not: anybody trusted to do one is trusted to do the others, and three keys
+  // that are always granted together are one key with extra rows.
+  //
+  // `subscriptions:read` IS separate, because reading who is on what is what
+  // support needs to answer "why can they not do this" without being able to
+  // change anybody's entitlement.
+
+  /**
+   * Starts a subscription: attaches a plan to an organization, or to one
+   * workspace inside it.
+   *
+   * Everything is re-read INSIDE the transaction and judged there — the plan,
+   * the organization, and the workspace's membership of that organization. The
+   * caller supplies three ids, and a workspace id from one tenant paired with
+   * an organization id from another is a perfectly well-formed request that
+   * would entitle one customer's workspace off another customer's plan. This is
+   * the same argument `assignRole` makes about a roleId, one table over.
+   *
+   * IDEMPOTENCY: a live row for the same (organization, workspace, plan) is
+   * refused rather than duplicated. Two identical active subscriptions entitle
+   * exactly what one does, so the second is silent noise in the one table an
+   * auditor reads to answer what a customer was sold.
+   */
+  async startSubscription(actor: PermissionContext, draft: SubscriptionDraft) {
+    this.assertPermitted(actor, FEATURE.billingManage);
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const errors = validateSubscriptionDraft(draft);
+      assertNoDraftErrors(errors, 'draft_invalid');
+
+      await this.requireOrganization(tx, draft.organizationId);
+
+      // The workspace must belong to THIS organization and not be archived —
+      // the same pairing check `loadContext` makes before honouring a scope.
+      if (draft.workspaceId) {
+        await this.requireWorkspace(tx, draft.organizationId, draft.workspaceId);
+      }
+
+      const plan = await this.requirePlan(tx, draft.planKey);
+      if (plan.archivedAt) {
+        throw new PermissionWriteError('not_found', 'That plan is archived and cannot be subscribed to', {
+          planKey: plan.key,
+        });
+      }
+
+      const live = await tx.permSubscription.findFirst({
+        where: {
+          organizationId: draft.organizationId,
+          workspaceId: draft.workspaceId,
+          planKey: plan.key,
+          endedAt: null,
+        },
+        select: { id: true, organizationId: true, workspaceId: true, planKey: true, status: true, endedAt: true },
+      });
+      if (live) {
+        /*
+         * REFUSED, not returned as a no-op.
+         *
+         * `assignRole` is idempotent because re-granting a role somebody holds
+         * leaves the world in the state asked for. This is different: the
+         * existing row carries a status and a period the caller did not send,
+         * so silently succeeding would report "subscribed" while the dates and
+         * the status stay whatever they were. End it or edit it — both are
+         * visible acts.
+         */
+        throw new PermissionWriteError('already_exists', 'That subscription is already live', {
+          subscriptionId: live.id,
+          planKey: plan.key,
+        });
+      }
+
+      const subscription = await tx.permSubscription.create({
+        data: {
+          organizationId: draft.organizationId,
+          workspaceId: draft.workspaceId,
+          planKey: plan.key,
+          // Validated, not cast: a row holding 'Active' would pass every check
+          // here and then entitle nothing, with no error to explain it.
+          status: toSubscriptionStatus(draft.status),
+          currentPeriodEnd: subscriptionPeriodEnd(draft.currentPeriodEnd),
+        },
+        select: { id: true },
+      });
+
+      return { subscriptionId: subscription.id };
+    });
+  }
+
+  /**
+   * Changes a live subscription's status or renewal date.
+   *
+   * The TARGET and the PLAN are not changeable, and that is deliberate rather
+   * than unimplemented — the same call `updateRole` makes about key and level.
+   * Every entitlement decision this row ever produced read all three, so moving
+   * a live subscription to another plan silently re-interprets the history:
+   * "what was this organization entitled to in March" would answer with what
+   * they are entitled to now. Changing plan is two acts, `endSubscription` then
+   * `startSubscription`, and the two rows plus `endedAt` reconstruct it.
+   *
+   * An ENDED subscription is refused. Editing the status of a row that already
+   * has an `endedAt` would produce something that reads as live in a list and
+   * entitles nothing — the worst of both, and unexplainable afterwards.
+   */
+  async updateSubscription(
+    actor: PermissionContext,
+    subscriptionId: string,
+    input: { status: string; currentPeriodEnd: string },
+  ) {
+    this.assertPermitted(actor, FEATURE.billingManage);
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const existing = await this.requireLiveSubscription(tx, subscriptionId);
+
+      await tx.permSubscription.update({
+        where: { id: existing.id },
+        data: {
+          status: toSubscriptionStatus(input.status),
+          currentPeriodEnd: subscriptionPeriodEnd(input.currentPeriodEnd),
+        },
+        select: { id: true },
+      });
+
+      return { subscriptionId: existing.id };
+    });
+  }
+
+  /**
+   * Ends a subscription. The row stays.
+   *
+   * Sets `endedAt` AND `status: 'canceled'`, both, because they answer
+   * different questions and a reader needs both to be true: `endedAt` is when
+   * this row stopped being the current answer, `status` is why. Setting only
+   * the timestamp would leave a row that says `active` forever in every list
+   * and every export.
+   *
+   * There is no un-end. Bringing a customer back is a NEW subscription — a new
+   * row, with its own start — which is what makes a gap in entitlement visible
+   * rather than erased.
+   */
+  async endSubscription(actor: PermissionContext, subscriptionId: string) {
+    this.assertPermitted(actor, FEATURE.billingManage);
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const existing = await this.requireLiveSubscription(tx, subscriptionId);
+
+      await tx.permSubscription.update({
+        where: { id: existing.id },
+        data: { endedAt: this.now(), status: 'canceled' },
+        select: { id: true },
+      });
+
+      return { subscriptionId: existing.id, ended: true };
+    });
+  }
+
   // ── members ───────────────────────────────────────────────────────────────
 
   /**
@@ -339,11 +807,13 @@ export class PermissionsWriteService {
     const db = this.client();
 
     return db.$transaction(async (tx) => {
+      await this.requireOrganization(tx, input.organizationId);
+
       const existing = await tx.permMembership.findFirst({
         where: { userId: input.userId, organizationId: input.organizationId },
         include: {
           roles: activeRoleGrants,
-          workspaces: { select: { workspaceId: true } },
+          workspaces: membershipWorkspaces(input.organizationId),
         },
       });
       if (existing) {
@@ -380,10 +850,335 @@ export class PermissionsWriteService {
     return { removed: count };
   }
 
+  // ── invitations ───────────────────────────────────────────────────────────
+  //
+  // Inviting somebody who may not have an account yet, which is why an
+  // invitation is its own table rather than a membership with a status: a
+  // membership carries a userId, and the whole point is that there may not be
+  // one. See PermInvitation.
+
+  /**
+   * Invites an address to join an organization.
+   *
+   * ## The token never comes back here
+   *
+   * It is minted, hashed, stored as the hash, and handed to the app's
+   * `sendInvitationEmail` hook — once, inside this method. It is NOT returned,
+   * so no caller and no GraphQL response ever holds a working invitation link.
+   * That is the same shape `AuthPasswordReset` uses, and it is the reason the
+   * hook is required rather than optional: a module with no way to deliver
+   * could only either return a credential to a browser or write a row nobody
+   * can accept.
+   *
+   * The refusal for a missing hook happens BEFORE the row is written. Failing
+   * afterwards would leave a pending invitation that can never be used and
+   * blocks the address from being invited again.
+   *
+   * ⚠ It does NOT check whether the address already belongs to a member, and
+   * cannot: that means resolving an email to a userId, which reads `auth_user`
+   * — a table this module may not import (§12.12). The screen checks it by
+   * composing the app's lookup with the member list, and `acceptInvitation` is
+   * idempotent for somebody already in, so the worst case is a wasted email.
+   */
+  async inviteMember(actor: PermissionContext, organizationId: string, draft: InvitationDraft) {
+    this.assertPermitted(actor, FEATURE.membersManage);
+    const send = this.options?.sendInvitationEmail;
+    if (!send) {
+      throw new PermissionWriteError(
+        'not_configured',
+        'Invitations are not configured: the host must supply sendInvitationEmail',
+        {},
+      );
+    }
+    const db = this.client();
+
+    const created = await db.$transaction(async (tx) => {
+      const organization = await this.requireOrganization(tx, organizationId);
+
+      const pending = await tx.permInvitation.findMany({
+        where: { organizationId, status: 'pending' },
+        select: { email: true, status: true, expiresAt: true },
+      });
+      const errors = validateInvitationDraft(draft, {
+        /*
+         * Only the LIVE ones block a new invitation. An expired row still reads
+         * `pending` in the column — expiry is derived, not written — so this
+         * filters through the same `isAcceptable` the accept path uses.
+         * Without it, one forgotten invitation would block an address forever.
+         */
+        pendingEmails: pending.filter((row) => isAcceptable(row, this.now())).map((row) => row.email),
+      });
+      assertNoDraftErrors(errors, 'draft_invalid');
+
+      if (draft.roleId) {
+        const role = await this.requireRole(tx, draft.roleId);
+        assertNotAppLevel(role);
+        // The same check `assignRole` makes, made HERE rather than at
+        // acceptance: an invitation naming a role that cannot be granted is one
+        // that fails at the worst moment, in front of somebody who just signed
+        // up and cannot do anything about it.
+        assertRoleAssignable(role, { organizationId, level: 'organization' });
+      }
+
+      /*
+       * 32 random bytes, hex — the same shape `TokenService.issueOpaque` mints.
+       * Not a JWT: there is nothing to encode, the row IS the state, and a
+       * signed token would be revocable only by keeping a list of revocations,
+       * which is the row again.
+       */
+      const token = randomBytes(32).toString('hex');
+      const expiresAt = new Date(this.now().getTime() + INVITATION_TTL_MS);
+      const invitation = await tx.permInvitation.create({
+        data: {
+          organizationId,
+          email: normaliseInviteEmail(draft.email),
+          roleId: draft.roleId || null,
+          invitedByUserId: actor.subjectId,
+          tokenHash: hashInvitationToken(token),
+          expiresAt,
+        },
+        select: { id: true },
+      });
+
+      return { invitationId: invitation.id, token, organization, expiresAt };
+    });
+
+    /*
+     * Delivery is AFTER the commit, and awaited.
+     *
+     * After, because a hook that reaches an SMTP server inside a transaction
+     * holds a database connection open for the length of a network round trip —
+     * and a rollback cannot unsend an email anyway.
+     *
+     * Awaited, unlike `sendPasswordResetEmail`, because the reason that one is
+     * fire-and-forget does not apply: this caller is an authenticated
+     * administrator, so there is no account-enumeration oracle in the response
+     * time, and there IS somebody on the other end who needs to know the email
+     * did not go out.
+     *
+     * A failure is REPORTED, not rethrown. The invitation exists and is valid;
+     * losing that fact to a mail outage would leave a live row the screen never
+     * mentioned. `delivered: false` lets the screen say what actually happened
+     * and offer to revoke.
+     */
+    let delivered = true;
+    try {
+      await send({
+        email: normaliseInviteEmail(draft.email),
+        token: created.token,
+        organization: created.organization,
+        invitedByUserId: actor.subjectId,
+        expiresAt: created.expiresAt,
+      });
+    } catch {
+      // Never the token, and never the error's message either: a mail library
+      // reporting a failed send has been known to include the payload.
+      delivered = false;
+    }
+
+    return { invitationId: created.invitationId, delivered };
+  }
+
+  /**
+   * Withdraws an invitation. The row stays.
+   *
+   * A revoked invitation is the record of somebody having been asked and the
+   * asking having been undone — "who let them in", and "who nearly did". A
+   * delete answers both wrongly rather than not at all.
+   *
+   * There is no un-revoke: inviting again is a new invitation, with a new
+   * token and a new expiry, which is what makes the second asking visible.
+   */
+  async revokeInvitation(actor: PermissionContext, organizationId: string, invitationId: string) {
+    this.assertPermitted(actor, FEATURE.membersManage);
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const invitation = await tx.permInvitation.findFirst({
+        where: { id: invitationId, organizationId },
+        select: INVITATION_SELECT,
+      });
+      // Scoped by organizationId as well as id: nothing else stops one tenant
+      // revoking another's invitation.
+      if (!invitation) {
+        throw new PermissionWriteError('not_found', 'No such invitation in this organization', { invitationId });
+      }
+      if (invitation.status !== 'pending') {
+        throw new PermissionWriteError('already_exists', `That invitation is already ${invitation.status}`, {
+          invitationId,
+          status: invitation.status,
+        });
+      }
+
+      await tx.permInvitation.update({
+        where: { id: invitation.id },
+        data: { status: 'revoked', revokedAt: this.now() },
+        select: { id: true },
+      });
+      return { invitationId: invitation.id, revoked: true };
+    });
+  }
+
+  /**
+   * What an invitation SAYS, for whoever is holding the link.
+   *
+   * ## Unguarded, like `acceptInvitation`, and for the same reason
+   *
+   * The person reading it holds nothing — they may not have an account at all.
+   * The token is the authorisation, and it is the only argument: this answers
+   * for the bearer of one specific link and cannot be pointed at anything else.
+   *
+   * ## Why the accept page needs it
+   *
+   * Without it the page can only say "you have been invited somewhere". It has
+   * to say WHICH organization, or somebody deciding whether to create an
+   * account is deciding blind — and an invitation is the one email in this
+   * system that is genuinely unsolicited.
+   *
+   * ## What it deliberately does not say
+   *
+   * Nothing about whether an account exists for the address. That is the app's
+   * to answer, because only the app can read `auth_user` (§12.12) — and it is
+   * the app that decides whether the page shows a sign-in or a sign-up.
+   *
+   * Returns null for anything not live — unknown, revoked, accepted, expired.
+   * ONE answer for all four, exactly as `acceptInvitation` refuses with one
+   * message: the difference is what somebody probing tokens wants, and the
+   * person holding a stale link has to ask the sender either way.
+   */
+  async previewInvitation(token: string) {
+    const db = this.client();
+    const invitation = await db.permInvitation.findFirst({
+      where: { tokenHash: hashInvitationToken(token) },
+      select: INVITATION_SELECT,
+    });
+    if (!invitation || !isAcceptable(invitation, this.now())) return null;
+
+    return {
+      organizationId: invitation.organizationId,
+      organizationName: invitation.organization.name,
+      /** The address it was SENT to. The page shows it; it is not a claim about who is reading. */
+      email: invitation.email,
+      roleLabel: invitation.role?.label ?? null,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
+  /**
+   * Accepts an invitation, making the bearer a member.
+   *
+   * ## NO ACTOR CHECK, and that is the design
+   *
+   * Every other write here takes a `PermissionContext` and checks a feature.
+   * This one takes a userId and a token, because the person accepting holds
+   * NOTHING yet — they are not in the organization, which is the entire point.
+   * The token is the authorisation, and it is why the token is 32 random bytes
+   * stored only as a hash.
+   *
+   * The caller must have established WHO the userId belongs to. In this app
+   * that is the signed-in session, or the account just created through the
+   * invitation itself.
+   *
+   * ## Whoever holds the link
+   *
+   * `acceptedByUserId` need not be the person the address was sent to: an email
+   * address is a mailbox, and anybody who reads it can follow the link. That is
+   * recorded rather than prevented — the row says who actually accepted, so a
+   * surprise is visible afterwards. Preventing it would mean verifying the
+   * accepting account's email against the invitation, which locks out the
+   * ordinary case of somebody whose work address forwards to a personal one.
+   */
+  async acceptInvitation(input: { token: string; userId: string }) {
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const invitation = await tx.permInvitation.findFirst({
+        where: { tokenHash: hashInvitationToken(input.token) },
+        select: INVITATION_SELECT,
+      });
+      /*
+       * ONE refusal for every failure — unknown token, revoked, already
+       * accepted, expired. The difference between "no such invitation" and
+       * "that one expired" is exactly what somebody probing tokens wants, and
+       * the person legitimately holding a stale link needs to ask the sender
+       * either way.
+       */
+      if (!invitation || !isAcceptable(invitation, this.now())) {
+        throw new PermissionWriteError('not_found', 'That invitation is not valid', {});
+      }
+
+      const existing = await tx.permMembership.findFirst({
+        where: { userId: input.userId, organizationId: invitation.organizationId },
+        include: { roles: activeRoleGrants, workspaces: membershipWorkspaces(invitation.organizationId) },
+      });
+
+      let membershipId = existing?.id;
+      if (!membershipId) {
+        /*
+         * The seat cap is NOT checked here, deliberately.
+         *
+         * `assertCapacity` reads the ACTOR's resolved limits, and there is no
+         * actor — the person accepting holds nothing. Checking it against the
+         * organization's plan would be right, and is a real gap: an invitation
+         * sent when there was room can be accepted after there is not.
+         * Recorded at docs/PLAN.md §12.35 rather than half-solved here, because
+         * the honest fix is to check at INVITE time and again on accept, and
+         * the second needs a limit lookup this method cannot reach.
+         */
+        const membership = await tx.permMembership.create({
+          data: { userId: input.userId, organizationId: invitation.organizationId, status: 'active' },
+          select: { id: true },
+        });
+        membershipId = membership.id;
+      }
+
+      if (invitation.roleId) {
+        // Replaces, like every other organization-role write: a member holds
+        // one. An existing member accepting an invitation that names a role
+        // therefore has their role CHANGED, which is what the inviter asked for.
+        await tx.permMembershipRole.deleteMany({ where: { membershipId } });
+        await tx.permMembershipRole.create({ data: { membershipId, roleId: invitation.roleId } });
+      }
+
+      await tx.permInvitation.update({
+        where: { id: invitation.id },
+        data: { status: 'accepted', acceptedAt: this.now(), acceptedByUserId: input.userId },
+        select: { id: true },
+      });
+
+      return {
+        organizationId: invitation.organizationId,
+        membershipId,
+        // False when they were already in — the invitation still closes, but
+        // nothing about their membership changed.
+        joined: !existing,
+      };
+    });
+  }
+
   // ── organization-level role grants ────────────────────────────────────────
 
   /**
-   * Grants an organization-level role to a member.
+   * SETS a member's organization-level role, replacing whatever they held.
+   *
+   * ## One role, not a collection
+   *
+   * A member holds AT MOST ONE organization-level role — enforced by the
+   * `@@unique([membershipId])` on PermMembershipRole, so it is true of the
+   * database rather than of this method. A person is one thing in an
+   * organization: an owner, or an administrator, or a member. Wanting the
+   * rights of two is a reason to define a THIRD role carrying both, which
+   * `previewRoleClone` exists to make cheap — not a reason to stack two and
+   * leave "what is this person" without an answer.
+   *
+   * So this REPLACES. Adding without clearing would hit the constraint on the
+   * second grant, turning an ordinary re-role into an error somebody works
+   * around by revoking first — two calls where the interface offers one, and a
+   * window in between where the person holds nothing.
+   *
+   * Still idempotent: assigning the role they already hold reports
+   * `granted: false` and writes nothing, because that leaves the world in the
+   * state asked for.
    *
    * The role is read INSIDE the transaction and judged there — never trusted
    * from the caller, who supplies only an id. A roleId from one tenant attached
@@ -406,10 +1201,20 @@ export class PermissionsWriteService {
       });
       // Idempotent where it can be: re-granting a role someone already holds is
       // not an error, and making it one turns every retry into a support ticket.
-      if (already) return { granted: false };
+      if (already) return { granted: false, replaced: false };
+
+      /*
+       * Clears any OTHER role first, in the same transaction. Without the
+       * `roleId` filter this deletes whatever is there — which is the point:
+       * the unique constraint permits exactly one row, so the old one has to go
+       * before the new one can land.
+       */
+      const { count } = await tx.permMembershipRole.deleteMany({ where: { membershipId: membership.id } });
 
       await tx.permMembershipRole.create({ data: { membershipId: membership.id, roleId: input.roleId } });
-      return { granted: true };
+      // `replaced` says whether somebody LOST a role in the process, which is a
+      // different sentence for a screen than "granted".
+      return { granted: true, replaced: count > 0 };
     });
   }
 
@@ -434,6 +1239,7 @@ export class PermissionsWriteService {
     const db = this.client();
 
     return db.$transaction(async (tx) => {
+      await this.requireOrganization(tx, input.organizationId);
       await this.assertCapacity(tx, actor, LIMIT.organizationWorkspaces, { organizationId: input.organizationId });
 
       const workspace = await tx.permWorkspace.create({
@@ -442,6 +1248,51 @@ export class PermissionsWriteService {
       });
       return { workspaceId: workspace.id };
     });
+  }
+
+  /**
+   * Renames a workspace, or changes its key.
+   *
+   * `workspaces:manage` has described itself as "Create, rename and archive"
+   * since it was written, and rename was the third of those with nothing behind
+   * it. This is that.
+   *
+   * The KEY is changeable, which a role's and a plan's are not — and the
+   * difference is not inconsistency. Those are referenced BY key: a plan key is
+   * the primary key that every subscription points at. A workspace is addressed
+   * by `id` everywhere, and its key exists for humans reading a URL, so
+   * changing one breaks nothing.
+   *
+   * Scoped by `organizationId` as well as `id`. Nothing else stops a caller
+   * renaming another tenant's workspace — the id alone is a unique `where`, and
+   * a unique `where` cannot carry a tenant check.
+   */
+  async updateWorkspace(
+    actor: PermissionContext,
+    input: { organizationId: string; workspaceId: string; key: string; name: string },
+  ) {
+    this.assertPermitted(actor, FEATURE.workspacesManage);
+    const db = this.client();
+
+    const key = input.key.trim();
+    const name = input.name.trim();
+    if (!key || !name) {
+      throw new PermissionWriteError('draft_invalid', 'A workspace needs a key and a name', {
+        workspaceId: input.workspaceId,
+      });
+    }
+
+    const { count } = await db.permWorkspace.updateMany({
+      where: { id: input.workspaceId, organizationId: input.organizationId },
+      data: { key, name },
+    });
+    if (count === 0) {
+      throw new PermissionWriteError('not_found', 'No such workspace in this organization', {
+        workspaceId: input.workspaceId,
+        organizationId: input.organizationId,
+      });
+    }
+    return { workspaceId: input.workspaceId, renamed: true };
   }
 
   /**
@@ -520,12 +1371,18 @@ export class PermissionsWriteService {
   // ── workspace-level role grants ───────────────────────────────────────────
 
   /**
-   * Grants a workspace-level role, which requires workspace membership first.
+   * SETS a workspace member's role, replacing whatever they held.
    *
-   * That order is structural rather than checked: the grant hangs off
-   * PermWorkspaceMember, so there is nowhere to put a role for someone who is
-   * not in the workspace. Hence the explicit not_found rather than an implicit
-   * insert of both.
+   * The same rule as `assignRole` one level up, enforced the same way — by
+   * `@@unique([workspaceMemberId])` on PermWorkspaceMemberRole rather than by
+   * this method. A person is one thing in a workspace, and wanting the features
+   * of two roles is a reason to define a role carrying both, or to add the
+   * feature to the role they already hold.
+   *
+   * Workspace membership is required FIRST, and that order is structural rather
+   * than checked: the grant hangs off PermWorkspaceMember, so there is nowhere
+   * to put a role for someone who is not in the workspace. Hence the explicit
+   * not_found rather than an implicit insert of both.
    */
   async assignWorkspaceRole(
     actor: PermissionContext,
@@ -555,10 +1412,17 @@ export class PermissionsWriteService {
       const already = await tx.permWorkspaceMemberRole.findFirst({
         where: { workspaceMemberId, roleId: input.roleId },
       });
-      if (already) return { granted: false };
+      if (already) return { granted: false, replaced: false };
+
+      /*
+       * Clears any OTHER role first, in the same transaction — see the note
+       * above. Without the `roleId` filter this deletes whatever is there,
+       * which is the point: the unique constraint permits exactly one row.
+       */
+      const { count } = await tx.permWorkspaceMemberRole.deleteMany({ where: { workspaceMemberId } });
 
       await tx.permWorkspaceMemberRole.create({ data: { workspaceMemberId, roleId: input.roleId } });
-      return { granted: true };
+      return { granted: true, replaced: count > 0 };
     });
   }
 
@@ -577,6 +1441,97 @@ export class PermissionsWriteService {
       });
       return { revoked: count > 0 };
     });
+  }
+
+  /** Every plan key already taken. A plan key is the primary key, so this is global. */
+  private async planKeys(tx: PermissionsTransaction): Promise<string[]> {
+    const rows = await tx.permPlan.findMany({
+      include: {
+        // Only the keys are read here, but the shape has to match the interface
+        // — which now filters deprecation, so a retired key never reaches an
+        // editor that would refuse to save it.
+        features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
+      orderBy: { key: 'asc' },
+    });
+    return rows.map((row) => row.key);
+  }
+
+  /**
+   * The plan exists.
+   *
+   * There is no `isSystem` counterpart to `requireWritableRole`, and that stays
+   * true now that an app CAN seed a starting catalogue: `createPlanIfAbsent`
+   * creates what is missing and never rewrites what is there, so a seeded plan
+   * is an ordinary row from the moment it exists. Every plan is the operator's
+   * to change — which is the whole point of the screens, and the reason plans
+   * are not re-asserted on deploy the way system roles are.
+   */
+  private async requirePlan(tx: PermissionsTransaction, planKey: string) {
+    const plan = await tx.permPlan.findFirst({
+      where: { key: planKey },
+      select: { key: true, label: true, isPublic: true, icon: true, archivedAt: true },
+    });
+    if (!plan) throw new PermissionWriteError('not_found', 'No such plan', { planKey });
+    return plan;
+  }
+
+  /** A subscription that exists and has not been ended. See `updateSubscription`. */
+  private async requireLiveSubscription(tx: PermissionsTransaction, subscriptionId: string) {
+    const subscription = await tx.permSubscription.findFirst({
+      where: { id: subscriptionId, endedAt: null },
+      select: { id: true, organizationId: true, workspaceId: true, planKey: true, status: true, endedAt: true },
+    });
+    if (!subscription) {
+      throw new PermissionWriteError('not_found', 'No such subscription, or it has already ended', {
+        subscriptionId,
+      });
+    }
+    return subscription;
+  }
+
+  /**
+   * REPLACES the feature list rather than merging into it — the same rule
+   * `replaceRoleFeatures` follows, and for the same reason: the list the caller
+   * sends is the whole truth about the plan, so a key removed in the form is
+   * actually un-sold instead of lingering because nothing deleted it.
+   */
+  private async replacePlanFeatures(tx: PermissionsTransaction, planKey: string, features: readonly FeatureKey[]) {
+    const keep = [...new Set(features)];
+    await tx.permPlanFeature.deleteMany({ where: { planKey, featureKey: { notIn: keep } } });
+    if (keep.length > 0) {
+      await tx.permPlanFeature.createMany({
+        data: keep.map((featureKey) => ({ planKey, featureKey })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  /**
+   * Replaces the caps, and UPSERTS rather than recreating them.
+   *
+   * The difference from the features beside it is not stylistic: a feature row
+   * is (planKey, featureKey) and carries nothing else, so deleting and
+   * re-inserting is a no-op on the data. A limit row carries a VALUE, and
+   * delete-then-insert would briefly leave a live plan with no seat cap at all
+   * — inside a transaction, but visible to anything reading at a lower
+   * isolation level.
+   */
+  private async replacePlanLimits(
+    tx: PermissionsTransaction,
+    planKey: string,
+    limits: Readonly<Record<string, number>>,
+  ) {
+    const keys = Object.keys(limits);
+    await tx.permPlanLimit.deleteMany({ where: { planKey, limitKey: { notIn: keys } } });
+    for (const [limitKey, value] of Object.entries(limits)) {
+      await tx.permPlanLimit.upsert({
+        where: { planKey_limitKey: { planKey, limitKey } },
+        create: { planKey, limitKey, value },
+        update: { value },
+      });
+    }
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
@@ -646,13 +1601,41 @@ export class PermissionsWriteService {
       where: { userId, organizationId, status: 'active' },
       include: {
         roles: activeRoleGrants,
-        workspaces: { select: { workspaceId: true } },
+        workspaces: membershipWorkspaces(organizationId),
       },
     });
     if (!membership) {
       throw new PermissionWriteError('not_found', 'No such member in this organization', { userId, organizationId });
     }
     return membership;
+  }
+
+  /**
+   * The organization exists.
+   *
+   * Checked before any insert that carries `organizationId`, because the
+   * DATABASE would otherwise be the one to refuse — as a foreign-key violation
+   * naming a constraint, through a stack trace, in a message written for whoever
+   * wrote Prisma rather than for whoever typed the id. Every other refusal in
+   * this service is a `PermissionWriteError` with a sentence a caller can act
+   * on, and a bad tenant id has no business being the exception.
+   *
+   * It is not a substitute for the constraint. The row could be deleted between
+   * this read and the insert; the foreign key is what makes that impossible to
+   * get wrong, and this is what makes the common case explicable.
+   */
+  private async requireOrganization(tx: PermissionsTransaction, organizationId: string) {
+    const organization = await tx.permOrganization.findFirst({
+      where: { id: organizationId },
+      // Name and key as well as id: an invitation email says which organization
+      // somebody is being asked to join, and a second query for two columns
+      // this one already had in hand would be a query for nothing.
+      select: { id: true, key: true, name: true },
+    });
+    if (!organization) {
+      throw new PermissionWriteError('not_found', 'No such organization', { organizationId });
+    }
+    return organization;
   }
 
   private async requireWorkspace(tx: PermissionsTransaction, organizationId: string, workspaceId: string) {
@@ -709,6 +1692,51 @@ export class PermissionsWriteService {
   }
 }
 
+/**
+ * The workspace ids a membership read may return: THIS organization's, live
+ * only.
+ *
+ * A function rather than a constant because the filter names the organization,
+ * and one shared object would have to be rebuilt per call anyway. Written once
+ * so the two membership reads here cannot drift from the one in
+ * `PermissionsService` — the leak it closes is described on the client
+ * interface, and nothing in the schema prevents it.
+ */
+function membershipWorkspaces(organizationId: string) {
+  return { where: { workspace: { organizationId, archivedAt: null } }, select: { workspaceId: true } } as const;
+}
+
+/**
+ * The invitation token, as it is stored.
+ *
+ * SHA-256, the same one-way shape `TokenService.hashOpaque` uses for a refresh
+ * token and a password reset. No salt and no work factor, and deliberately: the
+ * input is 32 bytes of CSPRNG output, so there is no dictionary to attack and
+ * nothing a slow hash would buy. That reasoning does NOT transfer to passwords,
+ * which is why they use scrypt.
+ */
+/**
+ * What every invitation read asks for. ONE object, because the structural
+ * client declares one signature — see the note on `permInvitation.findFirst`.
+ *
+ * `as const` matters: without it these are `boolean`, and the delegate's
+ * argument type wants the literal `true`.
+ */
+const INVITATION_SELECT = {
+  id: true,
+  organizationId: true,
+  email: true,
+  roleId: true,
+  status: true,
+  expiresAt: true,
+  organization: { select: { key: true, name: true } },
+  role: { select: { label: true } },
+} as const;
+
+function hashInvitationToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 /** The deprecation filter every role-feature read carries (H2). */
 const activeFeatures = { where: { feature: { deprecatedAt: null } } } as const;
 
@@ -734,11 +1762,20 @@ const activeRoleGrants = {
  * an endpoint that reports one error per request makes a client play twenty
  * questions with it.
  */
-function assertNoDraftErrors(errors: Record<string, string | undefined>): void {
+function assertNoDraftErrors(
+  errors: Record<string, string | undefined>,
+  /*
+   * Roles keep `role_features_invalid`, which names the specific rule their
+   * validator is mostly enforcing and which callers already match on. Plans and
+   * subscriptions get the general reason: a blank plan label reporting itself
+   * as a role feature problem would send a reader looking in the wrong table.
+   */
+  reason: WriteRefusalReason = 'role_features_invalid',
+): void {
   const problems = Object.entries(errors)
     .filter(([, message]) => message)
     .map(([field, message]) => `${field}: ${message}`);
   if (problems.length > 0) {
-    throw new PermissionWriteError('role_features_invalid', problems.join('; '), {});
+    throw new PermissionWriteError(reason, problems.join('; '), {});
   }
 }

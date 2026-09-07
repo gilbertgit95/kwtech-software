@@ -66,7 +66,11 @@ export class PermissionContextType {
   @Field(() => [String])
   grantedAtAppLevel!: string[];
 
-  /** Null means every workspace in the organization (`workspaces:access_all`). */
+  /**
+   * The workspaces the caller has been ADDED to. Membership is required — no
+   * role widens it. Null means every workspace, which only platform support
+   * produces.
+   */
   @Field(() => [String], { nullable: true })
   accessibleWorkspaceIds!: string[] | null;
 
@@ -340,4 +344,517 @@ export class RoleClonePreviewType {
    */
   @Field(() => [RoleCloneSkipType])
   skipped!: RoleCloneSkipType[];
+}
+
+/**
+ * A plan DEFINITION, as the admin screens read it.
+ *
+ * The entitlement counterpart of `PermissionRoleDetail`: that one says what a
+ * role grants, this says what a plan sells. `archived` and `isPublic` appear
+ * here and nowhere else, because no entitlement CHECK consults either — the
+ * read path filters archived plans in its query, and `isPublic` is about a
+ * catalogue rather than about access at all.
+ */
+@ObjectType('PermissionPlanDetail')
+export class PermissionPlanDetailType {
+  /** The primary key, and the id every screen addresses a plan by. */
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  /** Whether the plan appears in a catalogue customers can see. Listing, not entitlement. */
+  @Field()
+  isPublic!: boolean;
+
+  /**
+   * The badge icon NAME, or null.
+   *
+   * Nullable, and the client must render a fallback rather than assuming a name
+   * it recognises — the same contract `PermissionRole.icon` carries: a plan may
+   * name no icon, and a name retired from the frontend's set must degrade to a
+   * generic glyph instead of a blank page.
+   */
+  @Field(() => String, { nullable: true })
+  icon!: string | null;
+
+  /** Entitles nothing while true. The row, and every subscription from it, stay put. */
+  @Field()
+  archived!: boolean;
+
+  @Field(() => [String])
+  features!: string[];
+
+  /**
+   * The caps this plan sells, as key/value pairs rather than a map.
+   *
+   * GraphQL has no untyped-object scalar in this schema, and adding one to
+   * carry four integers would put an unvalidated blob in the public contract.
+   * A list of pairs is longer to read and impossible to get wrong.
+   */
+  @Field(() => [PermissionPlanLimitType])
+  limits!: PermissionPlanLimitType[];
+}
+
+@ObjectType('PermissionPlanLimit')
+export class PermissionPlanLimitType {
+  /** A key from LIMIT_REGISTRY: 'organization:members', 'workspace:members'. */
+  @Field()
+  limitKey!: string;
+
+  @Field(() => Int)
+  value!: number;
+}
+
+@InputType('PlanLimitInput')
+export class PlanLimitInput {
+  @Field()
+  limitKey!: string;
+
+  /**
+   * A STRING, deliberately, matching `PlanDraft.limits`.
+   *
+   * The form's `<input type="number">` yields `''` mid-edit and the domain
+   * validator is the single place that decides what a number is. Accepting an
+   * `Int` here would move half of that decision into the GraphQL layer, where
+   * "blank" becomes indistinguishable from "absent" and the error message a
+   * person sees stops naming the field.
+   */
+  @Field()
+  value!: string;
+}
+
+/**
+ * A plan being written. One input for create and update, because the FORM is
+ * one form — the same argument `RoleDraftInput` makes.
+ *
+ * `key` is ignored on update: it is the primary key, referenced by every
+ * subscription and every plan-feature row. See `updatePlan`.
+ */
+@InputType('PlanDraftInput')
+export class PlanDraftInput {
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  isPublic!: boolean;
+
+  @Field(() => String, { nullable: true })
+  icon!: string | null;
+
+  @Field(() => [String])
+  features!: string[];
+
+  @Field(() => [PlanLimitInput])
+  limits!: PlanLimitInput[];
+}
+
+/** What a plan clone WOULD do. Nothing is written until the form is saved. */
+@ObjectType('PlanClonePreview')
+export class PlanClonePreviewType {
+  @Field(() => [String])
+  features!: string[];
+
+  @Field(() => [String])
+  added!: string[];
+
+  /**
+   * Shown, never swallowed — the same rule the role clone follows. A clone that
+   * sold less than the plan it copied and said nothing would be discovered as a
+   * customer's denial weeks later.
+   */
+  @Field(() => [RoleCloneSkipType])
+  skipped!: RoleCloneSkipType[];
+}
+
+/**
+ * A subscription, as the admin screens read it: who is on what.
+ *
+ * Carries the organization and workspace NAMES beside their ids. A grid of
+ * cuids is not a screen anybody can read, and the alternative is a join done in
+ * a browser over the network.
+ */
+@ObjectType('PermissionSubscription')
+export class PermissionSubscriptionType {
+  @Field()
+  id!: string;
+
+  @Field()
+  organizationId!: string;
+
+  @Field()
+  organizationName!: string;
+
+  /** Null means the whole organization is entitled. See PermSubscription. */
+  @Field(() => String, { nullable: true })
+  workspaceId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  workspaceName!: string | null;
+
+  @Field()
+  planKey!: string;
+
+  @Field()
+  planLabel!: string;
+
+  /**
+   * Whether the plan behind this row has been archived.
+   *
+   * Exposed because an archived plan entitles nothing — `loadContext` filters
+   * it out — so a row that still reads `active` can be entitling nobody. That
+   * is exactly the state somebody opens this screen to explain, and without
+   * this field the screen cannot.
+   */
+  @Field()
+  planArchived!: boolean;
+
+  /** 'active' | 'past_due' | 'canceled'. Only 'active' entitles. */
+  @Field()
+  status!: string;
+
+  /** ISO date, or null for a subscription with no renewal date recorded. */
+  @Field(() => String, { nullable: true })
+  currentPeriodEnd!: string | null;
+
+  /** Set when the subscription was ended. Rows are kept, never deleted. */
+  @Field(() => String, { nullable: true })
+  endedAt!: string | null;
+}
+
+/**
+ * A subscription being STARTED. There is no update counterpart carrying these
+ * fields, and that is the point: the target and the plan are fixed at creation
+ * because every entitlement decision the row produced read all three. See
+ * domain/subscription-draft.ts.
+ */
+@InputType('SubscriptionDraftInput')
+export class SubscriptionDraftInput {
+  @Field()
+  organizationId!: string;
+
+  /** Null for an organization-wide subscription; an id for one workspace. */
+  @Field(() => String, { nullable: true })
+  workspaceId!: string | null;
+
+  @Field()
+  planKey!: string;
+
+  @Field()
+  status!: string;
+
+  /** `YYYY-MM-DD`, or empty for no renewal date. */
+  @Field()
+  currentPeriodEnd!: string;
+}
+
+/** An organization and its live workspaces, for the subscription form's pickers. */
+@ObjectType('PermissionOrganization')
+export class PermissionOrganizationType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  name!: string;
+
+  /** ACTIVE members only — an invited or suspended row cannot act. */
+  @Field(() => Int)
+  memberCount!: number;
+
+  /** Live workspaces only; archived ones are excluded from the count. */
+  @Field(() => Int)
+  workspaceCount!: number;
+
+  /** LIVE workspaces, for the subscription form's scope picker. */
+  @Field(() => [PermissionWorkspaceType])
+  workspaces!: PermissionWorkspaceType[];
+}
+
+@ObjectType('PermissionWorkspace')
+export class PermissionWorkspaceType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  name!: string;
+}
+
+/**
+ * What `planChanged` delivers.
+ *
+ * Deliberately just the key. A subscription payload is not filtered per
+ * subscriber the way a query result is — everyone on the topic gets the same
+ * object — so pushing the whole plan would hand every reader whatever the
+ * writer could see. A key, plus a re-read through the guarded `permissionPlans`
+ * query, keeps ONE authorization path rather than two that must agree.
+ *
+ * It is also what makes the event cheap enough to publish on every write: no
+ * joins, no per-subscriber work, and a client that is not showing that plan can
+ * ignore it without a round trip.
+ */
+@ObjectType('PermissionPlanChanged')
+export class PermissionPlanChangedType {
+  @Field()
+  planKey!: string;
+}
+
+/**
+ * One organization, with its people and workspaces.
+ *
+ * ⚠ A member is a `userId` and nothing else — no name, no email. This module
+ * does not own identity (§12.12), and inventing a `name` field here would be
+ * the module claiming something it cannot know. The app joins display names by
+ * composing this with its own user query, which is the only layer allowed to
+ * import both modules.
+ */
+@ObjectType('PermissionOrganizationDetail')
+export class PermissionOrganizationDetailType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  name!: string;
+
+  @Field(() => [PermissionWorkspaceDetailType])
+  workspaces!: PermissionWorkspaceDetailType[];
+
+  @Field(() => [PermissionMemberType])
+  members!: PermissionMemberType[];
+
+  /** Who has been ASKED, and what became of the asking. */
+  @Field(() => [PermissionInvitationType])
+  invitations!: PermissionInvitationType[];
+}
+
+@ObjectType('PermissionWorkspaceDetail')
+export class PermissionWorkspaceDetailType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  name!: string;
+
+  /** Archived workspaces are SHOWN, so the switch does not read as a delete. */
+  @Field()
+  archived!: boolean;
+
+  @Field(() => Int)
+  memberCount!: number;
+
+  /** Who is in it, and what they hold THERE. Workspace-level roles only. */
+  @Field(() => [PermissionWorkspaceMemberType])
+  members!: PermissionWorkspaceMemberType[];
+}
+
+@ObjectType('PermissionWorkspaceMember')
+export class PermissionWorkspaceMemberType {
+  /** The PermWorkspaceMember row, which workspace role grants hang from. */
+  @Field()
+  workspaceMemberId!: string;
+
+  /** The organization membership. A workspace member is always one of these. */
+  @Field()
+  membershipId!: string;
+
+  /** The person, as an opaque id — the app joins the name. */
+  @Field()
+  userId!: string;
+
+  /**
+   * The WORKSPACE-level role, held here rather than on the membership.
+   *
+   * At most ONE — the same rule as an organization role, enforced by
+   * `@@unique([workspaceMemberId])`. A list rather than a single field because
+   * the shape predates the rule and a row written before it should still
+   * render; readers take the first.
+   */
+  @Field(() => [PermissionMemberRoleType])
+  roles!: PermissionMemberRoleType[];
+}
+
+@ObjectType('PermissionMember')
+export class PermissionMemberType {
+  /** The membership row, which is what workspace membership and grants hang from. */
+  @Field()
+  membershipId!: string;
+
+  /**
+   * The person, as an opaque id. See the note on PermissionOrganizationDetail:
+   * resolving it to a name is the app's job, not this module's.
+   */
+  @Field()
+  userId!: string;
+
+  /** 'active' | 'invited' | 'suspended'. Only `active` participates in a check. */
+  @Field()
+  status!: string;
+
+  /** ISO timestamp. */
+  @Field()
+  joinedAt!: string;
+
+  /** Organization-level roles only. Workspace roles hang off workspace membership. */
+  @Field(() => [PermissionMemberRoleType])
+  roles!: PermissionMemberRoleType[];
+
+  /** Which workspaces they have been added to. */
+  @Field(() => [String])
+  workspaceIds!: string[];
+}
+
+/**
+ * A role as it appears on a member.
+ *
+ * Distinct from `PermissionRoleDetail` — that one carries what a role GRANTS,
+ * loaded for every role. This is the badge on a person, and deliberately
+ * carries no feature list: a members grid showing every role's features would
+ * be answering a question the roles screen already answers.
+ */
+@ObjectType('PermissionMemberRole')
+export class PermissionMemberRoleType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  level!: string;
+
+  @Field(() => String, { nullable: true })
+  icon!: string | null;
+}
+
+/** What a write returned. A result, not a row — the screen re-reads to render. */
+@ObjectType('PermissionWriteResult')
+export class PermissionWriteResultType {
+  /**
+   * Whether the write CHANGED anything.
+   *
+   * False is a success, not a failure: re-granting a role somebody already
+   * holds, or removing them from a workspace they are not in, leaves the world
+   * in the state asked for. Distinguishing it lets a screen say "already done"
+   * rather than claiming an action it did not take — see `assignRole`.
+   */
+  @Field()
+  changed!: boolean;
+
+  /** The row the write produced or acted on, when there is one. */
+  @Field(() => String, { nullable: true })
+  id!: string | null;
+
+  /**
+   * Whether something was DISPLACED to make room.
+   *
+   * Only `assignRole` sets it today: a member holds at most one
+   * organization-level role, so granting one silently removes the previous
+   * one. A screen that said "granted" and nothing else would be hiding the
+   * half of the outcome somebody might not have intended.
+   */
+  @Field()
+  replaced!: boolean;
+}
+
+/**
+ * An invitation, as the organization screen shows it.
+ *
+ * ⚠ There is no token field and never will be. The token is handed out ONCE,
+ * in the email, and stored only as a hash — a field here would put a working
+ * invitation link behind any read of this query.
+ */
+@ObjectType('PermissionInvitation')
+export class PermissionInvitationType {
+  @Field()
+  id!: string;
+
+  @Field()
+  email!: string;
+
+  /**
+   * 'pending' | 'accepted' | 'revoked' | 'expired'.
+   *
+   * DERIVED, not the stored column: expiry is computed from `expiresAt`, so a
+   * row that has run out reads `expired` here while still saying `pending` in
+   * storage. One implementation — `invitationState` — so this and the accept
+   * path cannot disagree.
+   */
+  @Field()
+  state!: string;
+
+  /** ISO timestamps. Rendered, never computed with. */
+  @Field()
+  expiresAt!: string;
+
+  @Field()
+  createdAt!: string;
+
+  @Field(() => String, { nullable: true })
+  acceptedAt!: string | null;
+
+  @Field(() => String, { nullable: true })
+  revokedAt!: string | null;
+
+  /** Who sent it. An opaque id — the app joins the name. */
+  @Field()
+  invitedByUserId!: string;
+
+  /**
+   * Who accepted, which need not be who was invited: an address is a mailbox,
+   * and anybody who reads it can follow the link. Recorded rather than
+   * prevented, so a surprise is visible afterwards.
+   */
+  @Field(() => String, { nullable: true })
+  acceptedByUserId!: string | null;
+
+  /** The organization role they will hold on acceptance. Null invites with none. */
+  @Field(() => PermissionMemberRoleType, { nullable: true })
+  role!: PermissionMemberRoleType | null;
+}
+
+/**
+ * What `inviteMember` returns.
+ *
+ * ⚠ NO TOKEN, and there will never be one. The token is minted, hashed, stored
+ * as the hash and handed straight to the host's `sendInvitationEmail` hook — it
+ * never leaves the server. Returning it here would put a working invitation
+ * link in a browser, in a network tab, and in whatever logs the response along
+ * the way, for the sake of a value the client has nothing to do with.
+ *
+ * So the client learns two things: which row was made, and whether the email
+ * actually went out.
+ */
+@ObjectType('PermissionInvitationResult')
+export class PermissionInvitationResultType {
+  @Field()
+  invitationId!: string;
+
+  /**
+   * Whether the email was accepted for delivery.
+   *
+   * False means the invitation EXISTS and is valid but nobody was told about
+   * it — a mail outage, a missing SMTP configuration. The row is deliberately
+   * kept rather than rolled back, so the screen can say so and offer to revoke,
+   * instead of a live invitation existing that nothing ever mentioned.
+   */
+  @Field()
+  delivered!: boolean;
 }

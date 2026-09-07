@@ -35,6 +35,16 @@ describe('declared API surfaces are actually guarded', () => {
    * Deliberately unguarded: asking what you hold is not a privilege, and a
    * signed-in caller with no grants must still be able to learn that.
    */
+  /**
+   * Unguarded ON PURPOSE, like `myPermissions` below: the person accepting an
+   * invitation holds nothing in the organization — that is what an invitation
+   * is — so requiring a feature of them would mean only administrators could
+   * accept. The token authorises; the session says who joins.
+   */
+  it('acceptInvitation stays unguarded, because the token is the authorisation', () => {
+    expect(required(PermissionsResolver.prototype, 'acceptInvitation')).toBeUndefined();
+  });
+
   it('myPermissions stays unguarded', () => {
     expect(required(PermissionsResolver.prototype, 'mine')).toBeUndefined();
   });
@@ -54,11 +64,53 @@ describe('every declared API binding names a guard that exists', () => {
     'Mutation.updateRole': required(PermissionsResolver.prototype, 'updateRole'),
     'Mutation.setRoleDisabled': required(PermissionsResolver.prototype, 'setRoleDisabled'),
     'Mutation.previewRoleClone': required(PermissionsResolver.prototype, 'previewRoleClone'),
+    'Query.permissionPlans': required(PermissionsResolver.prototype, 'plans'),
+    'Subscription.planChanged': required(PermissionsResolver.prototype, 'planChanged'),
+    'Mutation.createPlan': required(PermissionsResolver.prototype, 'createPlan'),
+    'Mutation.updatePlan': required(PermissionsResolver.prototype, 'updatePlan'),
+    'Mutation.setPlanArchived': required(PermissionsResolver.prototype, 'setPlanArchived'),
+    'Mutation.previewPlanClone': required(PermissionsResolver.prototype, 'previewPlanClone'),
+    'Query.permissionSubscriptions': required(PermissionsResolver.prototype, 'subscriptions'),
+    'Query.permissionOrganizations': required(PermissionsResolver.prototype, 'organizations'),
+    'Mutation.createSubscription': required(PermissionsResolver.prototype, 'createSubscription'),
+    'Mutation.updateSubscription': required(PermissionsResolver.prototype, 'updateSubscription'),
+    'Mutation.endSubscription': required(PermissionsResolver.prototype, 'endSubscription'),
+    'Query.permissionOrganizationDetail': required(PermissionsResolver.prototype, 'organizationDetail'),
+    'Mutation.updateOrganization': required(PermissionsResolver.prototype, 'updateOrganization'),
+    'Mutation.addMember': required(PermissionsResolver.prototype, 'addMember'),
+    'Mutation.removeMember': required(PermissionsResolver.prototype, 'removeMember'),
+    'Mutation.assignRole': required(PermissionsResolver.prototype, 'assignRole'),
+    'Mutation.revokeRole': required(PermissionsResolver.prototype, 'revokeRole'),
+    'Mutation.createWorkspace': required(PermissionsResolver.prototype, 'createWorkspace'),
+    'Mutation.updateWorkspace': required(PermissionsResolver.prototype, 'updateWorkspace'),
+    'Mutation.archiveWorkspace': required(PermissionsResolver.prototype, 'archiveWorkspace'),
+    'Mutation.shareWorkspace': required(PermissionsResolver.prototype, 'shareWorkspace'),
+    'Mutation.unshareWorkspace': required(PermissionsResolver.prototype, 'unshareWorkspace'),
+    'Mutation.assignWorkspaceRole': required(PermissionsResolver.prototype, 'assignWorkspaceRole'),
+    'Mutation.revokeWorkspaceRole': required(PermissionsResolver.prototype, 'revokeWorkspaceRole'),
+    /*
+     * Guarded in the APP, not in this module: it queries `auth_user` and is
+     * bound to a permissions key, and neither module may import the other. The
+     * app's own suite asserts the guard; this entry records that the binding is
+     * deliberate rather than unverified.
+     */
+    'Query.findUserByEmail': [FEATURE.membersManage],
+    'Query.findUsersByIds': [FEATURE.membersManage],
+    'Mutation.inviteMember': required(PermissionsResolver.prototype, 'inviteMember'),
+    'Mutation.revokeInvitation': required(PermissionsResolver.prototype, 'revokeInvitation'),
   };
 
   const apiBindings = FEATURE_REGISTRY.flatMap((spec) =>
     (spec.bindings ?? [])
-      .filter((b) => b.surface === 'rest_endpoint' || b.surface === 'graphql_operation')
+      .filter(
+        (b) =>
+          b.surface === 'rest_endpoint' ||
+          b.surface === 'graphql_operation' ||
+          // Enforced at the handshake rather than per request, which is exactly
+          // why it is a separate surface — and exactly why it has to be checked
+          // here too rather than assumed to inherit the query's guard.
+          b.surface === 'graphql_subscription',
+      )
       .map((b) => ({ key: spec.key, identifier: b.identifier })),
   );
 

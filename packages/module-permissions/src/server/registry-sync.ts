@@ -1,3 +1,5 @@
+import { assertPlanLimits } from '../domain/limits.js';
+import { assertPlanFeatureLevels, type PlanDefinition } from '../domain/plans.js';
 import type { RoleDefinition } from '../domain/roles.js';
 import { assertRoleDefinable } from '../domain/writes.js';
 import type { FeatureKey, FeatureSpec, RoleLevel } from '../types.js';
@@ -142,6 +144,31 @@ export interface PermissionsRegistryClient {
       select: { userId: true };
     }): Promise<{ userId: string } | null>;
     create(args: { data: { userId: string; roleId: string } }): Promise<unknown>;
+  };
+
+  /*
+   * Read and CREATE only — no update, no delete. `createPlanIfAbsent` never
+   * rewrites a plan that exists, so the methods that would let it do so are
+   * deliberately not in the contract a host has to satisfy. See that function.
+   */
+  permPlan: {
+    findFirst(args: { where: { key: string }; select: { key: true } }): Promise<{ key: string } | null>;
+    create(args: {
+      data: { key: string; label: string; isPublic: boolean; icon: string | null };
+      select: { key: true };
+    }): Promise<{ key: string }>;
+  };
+  permPlanFeature: {
+    createMany(args: {
+      data: { planKey: string; featureKey: string }[];
+      skipDuplicates: true;
+    }): Promise<{ count: number }>;
+  };
+  permPlanLimit: {
+    createMany(args: {
+      data: { planKey: string; limitKey: string; value: number }[];
+      skipDuplicates: true;
+    }): Promise<{ count: number }>;
   };
 }
 
@@ -320,6 +347,86 @@ export async function upsertSystemRole(
   }
 
   return { key: definition.key, id: role.id, features: definition.features.length };
+}
+
+/**
+ * Creates a plan if it is not already there, and leaves it ALONE if it is.
+ *
+ * ## Why this is not `upsertSystemPlan`
+ *
+ * `upsertSystemRole` REPLACES: a system role's features and limits are
+ * rewritten from the checkout on every `db:sync`, and the admin screens refuse
+ * to edit one because an edit would look saved and be reverted at the next
+ * release. That is right for roles, whose meaning is code — a role that grants
+ * `roles:read` has to keep granting it or the guards lie.
+ *
+ * It is wrong for plans. What a plan sells is a PRODUCT decision, and product
+ * decisions change without a deploy: an operator adding a feature to `pro`, or
+ * raising its seat cap for a customer segment, is the ordinary use of the
+ * screens this module ships. Re-asserting the definition every deploy would
+ * silently undo that work — the same trap, pointed at the people the feature
+ * was built for.
+ *
+ * So the seed gives a STARTING CATALOGUE and then gets out of the way. Running
+ * it twice does nothing the second time, which is what makes it idempotent
+ * without being authoritative.
+ *
+ * ## What that costs, stated plainly
+ *
+ * A plan whose definition changes in the checkout will NOT change in a database
+ * that already has it. That is the intended trade, and it means the definitions
+ * an app ships are a starting point rather than a specification — edit the row,
+ * not the file, once an environment is live.
+ *
+ * The caller supplies the transaction, like `upsertSystemRole`, so whether
+ * these writes share one with the app's other seed steps is the app's call.
+ */
+export async function createPlanIfAbsent(
+  client: PermissionsRegistryClient,
+  definition: PlanDefinition,
+  registry: readonly FeatureSpec[],
+): Promise<{ key: string; created: boolean; features: number }> {
+  /*
+   * Validated BEFORE the existence check, so a malformed definition fails on
+   * every run rather than only on the first. A seed that silently stops
+   * checking itself once the row exists is a seed that drifts.
+   */
+  assertPlanFeatureLevels(definition, registry);
+  // A plan missing a required cap falls back to the registry floor of ONE and
+  // quietly caps a paying customer at a single seat. See domain/limits.ts.
+  assertPlanLimits(definition.key, definition.limits);
+
+  const existing = await client.permPlan.findFirst({ where: { key: definition.key }, select: { key: true } });
+  if (existing) return { key: definition.key, created: false, features: definition.features.length };
+
+  await client.permPlan.create({
+    data: {
+      key: definition.key,
+      label: definition.label,
+      isPublic: definition.isPublic,
+      // `?? null`, never undefined: Prisma skips an undefined column, and a
+      // plan created without an icon should hold null rather than nothing.
+      icon: definition.icon ?? null,
+    },
+    select: { key: true },
+  });
+
+  if (definition.features.length > 0) {
+    await client.permPlanFeature.createMany({
+      data: [...new Set(definition.features)].map((featureKey) => ({ planKey: definition.key, featureKey })),
+      skipDuplicates: true,
+    });
+  }
+
+  const limits = Object.entries(definition.limits);
+  if (limits.length > 0) {
+    await client.permPlanLimit.createMany({
+      data: limits.map(([limitKey, value]) => ({ planKey: definition.key, limitKey, value })),
+      skipDuplicates: true,
+    });
+  }
+
+  return { key: definition.key, created: true, features: definition.features.length };
 }
 
 /**

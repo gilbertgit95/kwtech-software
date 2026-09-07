@@ -69,6 +69,194 @@ export interface ClonePreview {
   skipped: { key: string; reason: string }[];
 }
 
+/** A plan definition, as the screens read it. Mirrors `PermissionPlanDetail`. */
+export interface PlanView {
+  /** The primary key, and the id every screen addresses a plan by. */
+  key: string;
+  label: string;
+  isPublic: boolean;
+  /** Icon NAME, or null. Resolved to a component by the frontend. See PermPlan.icon. */
+  icon: string | null;
+  archived: boolean;
+  features: string[];
+  /** Key/value pairs rather than a map — see `PermissionPlanDetailType.limits`. */
+  limits: { limitKey: string; value: number }[];
+}
+
+export interface PlanInput {
+  key: string;
+  label: string;
+  isPublic: boolean;
+  icon: string | null;
+  features: string[];
+  /** Values are STRINGS, matching `PlanDraft.limits`: the domain validator owns what a number is. */
+  limits: { limitKey: string; value: string }[];
+}
+
+/** A subscription, as the screens read it. Mirrors `PermissionSubscription`. */
+export interface SubscriptionView {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
+  planKey: string;
+  planLabel: string;
+  /** An archived plan entitles nothing, however live this row looks. */
+  planArchived: boolean;
+  status: string;
+  /** ISO timestamps, or null. Rendered, never computed with — see `toSubscriptionView`. */
+  currentPeriodEnd: string | null;
+  endedAt: string | null;
+}
+
+export interface SubscriptionInput {
+  organizationId: string;
+  workspaceId: string | null;
+  planKey: string;
+  status: string;
+  /** `YYYY-MM-DD`, or empty for no renewal date. */
+  currentPeriodEnd: string;
+}
+
+/** An organization, for the admin list and the subscription form's pickers. */
+export interface OrganizationView {
+  id: string;
+  key: string;
+  name: string;
+  /** Active members only. */
+  memberCount: number;
+  /** Live workspaces only. */
+  workspaceCount: number;
+  workspaces: { id: string; key: string; name: string }[];
+}
+
+/**
+ * One organization, with its people and workspaces.
+ *
+ * ⚠ A member is a `userId` and nothing else. The permissions module does not
+ * own identity, so a NAME has to be joined by whoever is rendering — see
+ * `findUserByEmail` and the note on `MemberView.user`.
+ */
+export interface OrganizationDetailView {
+  id: string;
+  key: string;
+  name: string;
+  workspaces: WorkspaceDetailView[];
+  members: MemberView[];
+  /** Who has been ASKED, and what became of the asking. */
+  invitations: InvitationView[];
+}
+
+/**
+ * An invitation, as the organization screen shows it.
+ *
+ * No token: it is handed out once, in the email, and stored only as a hash.
+ * `InviteResult` below is the only place it ever appears.
+ */
+export interface InvitationView {
+  id: string;
+  email: string;
+  /** 'pending' | 'accepted' | 'revoked' | 'expired'. DERIVED — see `invitationState`. */
+  state: string;
+  expiresAt: string;
+  createdAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  invitedByUserId: string;
+  /** Who accepted, which need not be who was invited — an address is a mailbox. */
+  acceptedByUserId: string | null;
+  role: MemberRoleView | null;
+}
+
+/**
+ * What sending an invitation reports back.
+ *
+ * No token — deliberately. The server mints it, hashes it and hands it to the
+ * mailer; the browser never holds a working invitation link, so nothing here
+ * has to be treated as a credential.
+ */
+export interface InviteResult {
+  invitationId: string;
+  /**
+   * Whether the email actually went out.
+   *
+   * False still means the invitation EXISTS: it is live and acceptable, and
+   * nobody has been told. Worth saying on screen — the address can be told
+   * another way, or the invitation revoked.
+   */
+  delivered: boolean;
+}
+
+export interface WorkspaceDetailView {
+  id: string;
+  key: string;
+  name: string;
+  /** Archived workspaces are shown, so the switch does not read as a delete. */
+  archived: boolean;
+  memberCount: number;
+  members: WorkspaceMemberView[];
+}
+
+export interface WorkspaceMemberView {
+  workspaceMemberId: string;
+  membershipId: string;
+  userId: string;
+  /**
+   * The WORKSPACE-level role. At most one, like an organization role — a list
+   * because the shape predates the rule, and readers take the first.
+   */
+  roles: MemberRoleView[];
+}
+
+export interface MemberView {
+  membershipId: string;
+  userId: string;
+  /** 'active' | 'invited' | 'suspended'. Only `active` participates in a check. */
+  status: string;
+  joinedAt: string;
+  roles: MemberRoleView[];
+  workspaceIds: string[];
+}
+
+export interface MemberRoleView {
+  id: string;
+  key: string;
+  label: string;
+  level: string;
+  icon: string | null;
+}
+
+/** What `findUserByEmail` returns. Null means no account with that address. */
+export interface FoundUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  username: string | null;
+}
+
+/**
+ * What a write did.
+ *
+ * `changed: false` is a SUCCESS — re-granting a role somebody holds, or
+ * removing them from a workspace they are not in, leaves the world in the state
+ * asked for. A screen says "already done" rather than claiming an action it did
+ * not take.
+ */
+export interface WriteResult {
+  changed: boolean;
+  id: string | null;
+  /**
+   * Whether something was DISPLACED to make room.
+   *
+   * Only `assignRole` sets it: a member holds at most one organization-level
+   * role, so granting one silently removes the previous. A screen saying only
+   * "granted" would hide the half of the outcome somebody might not have
+   * intended.
+   */
+  replaced: boolean;
+}
+
 export interface PermissionsClient {
   /** Every grantable feature, from every module the app composed. */
   listFeatures(): Promise<FeatureView[]>;
@@ -82,9 +270,104 @@ export interface PermissionsClient {
     level: string;
     mode: CloneMode;
   }): Promise<ClonePreview>;
+
+  /** Every plan the platform defines, archived ones included. */
+  listPlans(): Promise<PlanView[]>;
+  createPlan(input: PlanInput): Promise<PlanView>;
+  updatePlan(planKey: string, input: PlanInput): Promise<PlanView>;
+  setPlanArchived(planKey: string, archived: boolean): Promise<PlanView>;
+  previewPlanClone(input: {
+    sourcePlanKey: string;
+    current: readonly string[];
+    mode: CloneMode;
+  }): Promise<ClonePreview>;
+
+  /** Who is on what. Ended subscriptions included — they are the history. */
+  listSubscriptions(organizationId?: string | null): Promise<SubscriptionView[]>;
+  /** The tenants, for the admin list and the subscription form. */
+  listOrganizations(): Promise<OrganizationView[]>;
+  /** One organization, with its people and workspaces. Null when it does not exist. */
+  getOrganization(organizationId: string): Promise<OrganizationDetailView | null>;
+  createOrganization(key: string, name: string): Promise<WriteResult>;
+  /**
+   * Renames an organization.
+   *
+   * Both fields, always — the caller sends what it is showing. An update taking
+   * optional ones would make "leave the key" and "clear the key" the same
+   * request.
+   */
+  updateOrganization(organizationId: string, key: string, name: string): Promise<WriteResult>;
+  /*
+   * ── two APP-provided operations ──────────────────────────────────────────
+   *
+   * ⚠ `findUserByEmail` and `findUsersByIds` are NOT defined by this module.
+   * They query `auth_user`, which `@kwtech/module-auth` owns, guarded by a key
+   * this module owns — so neither module can host them and the APP does (see
+   * apps/web-server/src/users/). This client names them by CONVENTION, the same
+   * way `DEFAULT_GRAPHQL_PATH` names a route module-auth mounts.
+   *
+   * An app that adopts this module without defining them gets a members screen
+   * that still works and shows raw ids: every caller below FAILS SOFT. That is
+   * the price of the convention, and it is paid where a reader can see it
+   * rather than in a blank page.
+   */
+
+  /**
+   * Turns an email into the id every member write needs.
+   *
+   * Exact match, one address at a time, and null for an unknown one — the
+   * lookup is deliberately not a search. See the app's `UsersResolver`.
+   */
+  findUserByEmail(email: string): Promise<FoundUser | null>;
+  /**
+   * The people behind a set of ids, for a screen holding membership rows and no
+   * names. Returns FEWER rows than asked for when an id has no account — a
+   * membership can outlive the account it names.
+   */
+  findUsersByIds(ids: readonly string[]): Promise<FoundUser[]>;
+  addMember(organizationId: string, userId: string): Promise<WriteResult>;
+  /**
+   * Invites an ADDRESS, which may have no account yet.
+   *
+   * That is the difference from `addMember`, which needs a userId and therefore
+   * needs the person to have signed up already. The server emails the link.
+   */
+  inviteMember(organizationId: string, email: string, roleId: string | null): Promise<InviteResult>;
+  revokeInvitation(organizationId: string, invitationId: string): Promise<WriteResult>;
+  /** Accepts for the SIGNED-IN caller. The token authorises; the session says who joins. */
+  acceptInvitation(token: string): Promise<WriteResult>;
+  removeMember(organizationId: string, userId: string): Promise<WriteResult>;
+  assignRole(organizationId: string, userId: string, roleId: string): Promise<WriteResult>;
+  revokeRole(organizationId: string, userId: string, roleId: string): Promise<WriteResult>;
+  createWorkspace(organizationId: string, key: string, name: string): Promise<WriteResult>;
+  /** Rename, or change the key. Both are free — nothing references a workspace by key. */
+  updateWorkspace(organizationId: string, workspaceId: string, key: string, name: string): Promise<WriteResult>;
+  archiveWorkspace(organizationId: string, workspaceId: string): Promise<WriteResult>;
+  shareWorkspace(organizationId: string, workspaceId: string, userId: string): Promise<WriteResult>;
+  unshareWorkspace(organizationId: string, workspaceId: string, userId: string): Promise<WriteResult>;
+  assignWorkspaceRole(
+    organizationId: string,
+    workspaceId: string,
+    userId: string,
+    roleId: string,
+  ): Promise<WriteResult>;
+  revokeWorkspaceRole(
+    organizationId: string,
+    workspaceId: string,
+    userId: string,
+    roleId: string,
+  ): Promise<WriteResult>;
+  createSubscription(input: SubscriptionInput): Promise<SubscriptionView>;
+  /** Status and renewal date only. The target and the plan are fixed at creation. */
+  updateSubscription(subscriptionId: string, status: string, currentPeriodEnd: string): Promise<SubscriptionView>;
+  endSubscription(subscriptionId: string): Promise<SubscriptionView>;
 }
 
 const ROLE_FIELDS = 'id key label level organizationId icon isSystem disabled features';
+const PLAN_FIELDS = 'key label isPublic icon archived features limits { limitKey value }';
+const SUBSCRIPTION_FIELDS = `id organizationId organizationName workspaceId workspaceName
+  planKey planLabel planArchived status currentPeriodEnd endedAt`;
+const WRITE_RESULT = 'changed id replaced';
 
 export function createPermissionsClient(options: { graphqlPath?: string } = {}): PermissionsClient {
   const path = options.graphqlPath ?? DEFAULT_GRAPHQL_PATH;
@@ -176,6 +459,340 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
         { roleId, disabled },
       );
       return data.setRoleDisabled;
+    },
+
+    async listPlans() {
+      const data = await graphql<{ permissionPlans: PlanView[] }>(
+        `query PermissionPlans { permissionPlans { ${PLAN_FIELDS} } }`,
+      );
+      return data.permissionPlans;
+    },
+
+    async createPlan(input) {
+      const data = await graphql<{ createPlan: PlanView }>(
+        `mutation CreatePlan($input: PlanDraftInput!) {
+           createPlan(input: $input) { ${PLAN_FIELDS} }
+         }`,
+        { input },
+      );
+      return data.createPlan;
+    },
+
+    async updatePlan(planKey, input) {
+      const data = await graphql<{ updatePlan: PlanView }>(
+        `mutation UpdatePlan($planKey: String!, $input: PlanDraftInput!) {
+           updatePlan(planKey: $planKey, input: $input) { ${PLAN_FIELDS} }
+         }`,
+        { planKey, input },
+      );
+      return data.updatePlan;
+    },
+
+    async setPlanArchived(planKey, archived) {
+      const data = await graphql<{ setPlanArchived: PlanView }>(
+        `mutation SetPlanArchived($planKey: String!, $archived: Boolean!) {
+           setPlanArchived(planKey: $planKey, archived: $archived) { ${PLAN_FIELDS} }
+         }`,
+        { planKey, archived },
+      );
+      return data.setPlanArchived;
+    },
+
+    async previewPlanClone({ sourcePlanKey, current, mode }) {
+      const data = await graphql<{ previewPlanClone: ClonePreview }>(
+        `mutation PreviewPlanClone($sourcePlanKey: String!, $mode: String!, $current: [String!]!) {
+           previewPlanClone(sourcePlanKey: $sourcePlanKey, mode: $mode, current: $current) {
+             features added skipped { key reason }
+           }
+         }`,
+        { sourcePlanKey, mode, current: [...current] },
+      );
+      return data.previewPlanClone;
+    },
+
+    async listSubscriptions(organizationId = null) {
+      const data = await graphql<{ permissionSubscriptions: SubscriptionView[] }>(
+        `query PermissionSubscriptions($organizationId: String) {
+           permissionSubscriptions(organizationId: $organizationId) { ${SUBSCRIPTION_FIELDS} }
+         }`,
+        { organizationId },
+      );
+      return data.permissionSubscriptions;
+    },
+
+    async listOrganizations() {
+      const data = await graphql<{ permissionOrganizations: OrganizationView[] }>(
+        `query PermissionOrganizations {
+           permissionOrganizations { id key name memberCount workspaceCount workspaces { id key name } }
+         }`,
+      );
+      return data.permissionOrganizations;
+    },
+
+    async getOrganization(organizationId) {
+      const data = await graphql<{ permissionOrganizationDetail: OrganizationDetailView | null }>(
+        `query PermissionOrganizationDetail($organizationId: String!) {
+           permissionOrganizationDetail(organizationId: $organizationId) {
+             id key name
+             invitations {
+               id email state expiresAt createdAt acceptedAt revokedAt
+               invitedByUserId acceptedByUserId
+               role { id key label level icon }
+             }
+             workspaces {
+               id key name archived memberCount
+               members { workspaceMemberId membershipId userId roles { id key label level icon } }
+             }
+             members {
+               membershipId userId status joinedAt workspaceIds
+               roles { id key label level icon }
+             }
+           }
+         }`,
+        { organizationId },
+      );
+      return data.permissionOrganizationDetail;
+    },
+
+    async updateOrganization(organizationId, key, name) {
+      const data = await graphql<{ updateOrganization: WriteResult }>(
+        `mutation UpdateOrganization($organizationId: String!, $key: String!, $name: String!) {
+           updateOrganization(organizationId: $organizationId, key: $key, name: $name) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, key, name },
+      );
+      return data.updateOrganization;
+    },
+
+    async createOrganization(key, name) {
+      const data = await graphql<{ createOrganization: WriteResult }>(
+        `mutation CreateOrganization($key: String!, $name: String!) {
+           createOrganization(key: $key, name: $name) { ${WRITE_RESULT} }
+         }`,
+        { key, name },
+      );
+      return data.createOrganization;
+    },
+
+    async findUserByEmail(email) {
+      const data = await graphql<{ findUserByEmail: FoundUser | null }>(
+        `query FindUserByEmail($email: String!) {
+           findUserByEmail(email: $email) { id email displayName username }
+         }`,
+        { email },
+      );
+      return data.findUserByEmail;
+    },
+
+    async findUsersByIds(ids) {
+      if (ids.length === 0) return [];
+      try {
+        const data = await graphql<{ findUsersByIds: FoundUser[] }>(
+          `query FindUsersByIds($ids: [String!]!) {
+             findUsersByIds(ids: $ids) { id email displayName username }
+           }`,
+          { ids: [...ids] },
+        );
+        return data.findUsersByIds;
+      } catch {
+        /*
+         * FAILS SOFT, alone among the calls in this file.
+         *
+         * This is a DECORATION: it turns ids into names on a screen that is
+         * fully usable without it. An app that never defined the query, or a
+         * caller without `members:manage`, should get a members list showing
+         * ids — not an error page instead of the members list. Every other call
+         * here throws, because every other call is the thing the screen is for.
+         */
+        return [];
+      }
+    },
+
+    async addMember(organizationId, userId) {
+      const data = await graphql<{ addMember: WriteResult }>(
+        `mutation AddMember($organizationId: String!, $userId: String!) {
+           addMember(organizationId: $organizationId, userId: $userId) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, userId },
+      );
+      return data.addMember;
+    },
+
+    async inviteMember(organizationId, email, roleId) {
+      const data = await graphql<{ inviteMember: InviteResult }>(
+        `mutation InviteMember($organizationId: String!, $email: String!, $roleId: String) {
+           inviteMember(organizationId: $organizationId, email: $email, roleId: $roleId) {
+             invitationId
+             delivered
+           }
+         }`,
+        { organizationId, email, roleId },
+      );
+      return data.inviteMember;
+    },
+
+    async revokeInvitation(organizationId, invitationId) {
+      const data = await graphql<{ revokeInvitation: WriteResult }>(
+        `mutation RevokeInvitation($organizationId: String!, $invitationId: String!) {
+           revokeInvitation(organizationId: $organizationId, invitationId: $invitationId) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, invitationId },
+      );
+      return data.revokeInvitation;
+    },
+
+    async acceptInvitation(token) {
+      const data = await graphql<{ acceptInvitation: WriteResult }>(
+        `mutation AcceptInvitation($token: String!) {
+           acceptInvitation(token: $token) { ${WRITE_RESULT} }
+         }`,
+        { token },
+      );
+      return data.acceptInvitation;
+    },
+
+    async removeMember(organizationId, userId) {
+      const data = await graphql<{ removeMember: WriteResult }>(
+        `mutation RemoveMember($organizationId: String!, $userId: String!) {
+           removeMember(organizationId: $organizationId, userId: $userId) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, userId },
+      );
+      return data.removeMember;
+    },
+
+    async assignRole(organizationId, userId, roleId) {
+      const data = await graphql<{ assignRole: WriteResult }>(
+        `mutation AssignRole($organizationId: String!, $userId: String!, $roleId: String!) {
+           assignRole(organizationId: $organizationId, userId: $userId, roleId: $roleId) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, userId, roleId },
+      );
+      return data.assignRole;
+    },
+
+    async revokeRole(organizationId, userId, roleId) {
+      const data = await graphql<{ revokeRole: WriteResult }>(
+        `mutation RevokeRole($organizationId: String!, $userId: String!, $roleId: String!) {
+           revokeRole(organizationId: $organizationId, userId: $userId, roleId: $roleId) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, userId, roleId },
+      );
+      return data.revokeRole;
+    },
+
+    async createWorkspace(organizationId, key, name) {
+      const data = await graphql<{ createWorkspace: WriteResult }>(
+        `mutation CreateWorkspace($organizationId: String!, $key: String!, $name: String!) {
+           createWorkspace(organizationId: $organizationId, key: $key, name: $name) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, key, name },
+      );
+      return data.createWorkspace;
+    },
+
+    async updateWorkspace(organizationId, workspaceId, key, name) {
+      const data = await graphql<{ updateWorkspace: WriteResult }>(
+        `mutation UpdateWorkspace($organizationId: String!, $workspaceId: String!, $key: String!, $name: String!) {
+           updateWorkspace(organizationId: $organizationId, workspaceId: $workspaceId, key: $key, name: $name) {
+             ${WRITE_RESULT}
+           }
+         }`,
+        { organizationId, workspaceId, key, name },
+      );
+      return data.updateWorkspace;
+    },
+
+    async archiveWorkspace(organizationId, workspaceId) {
+      const data = await graphql<{ archiveWorkspace: WriteResult }>(
+        `mutation ArchiveWorkspace($organizationId: String!, $workspaceId: String!) {
+           archiveWorkspace(organizationId: $organizationId, workspaceId: $workspaceId) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, workspaceId },
+      );
+      return data.archiveWorkspace;
+    },
+
+    async shareWorkspace(organizationId, workspaceId, userId) {
+      const data = await graphql<{ shareWorkspace: WriteResult }>(
+        `mutation ShareWorkspace($organizationId: String!, $workspaceId: String!, $userId: String!) {
+           shareWorkspace(organizationId: $organizationId, workspaceId: $workspaceId, userId: $userId) {
+             ${WRITE_RESULT}
+           }
+         }`,
+        { organizationId, workspaceId, userId },
+      );
+      return data.shareWorkspace;
+    },
+
+    async unshareWorkspace(organizationId, workspaceId, userId) {
+      const data = await graphql<{ unshareWorkspace: WriteResult }>(
+        `mutation UnshareWorkspace($organizationId: String!, $workspaceId: String!, $userId: String!) {
+           unshareWorkspace(organizationId: $organizationId, workspaceId: $workspaceId, userId: $userId) {
+             ${WRITE_RESULT}
+           }
+         }`,
+        { organizationId, workspaceId, userId },
+      );
+      return data.unshareWorkspace;
+    },
+
+    async assignWorkspaceRole(organizationId, workspaceId, userId, roleId) {
+      const data = await graphql<{ assignWorkspaceRole: WriteResult }>(
+        `mutation AssignWorkspaceRole($organizationId: String!, $workspaceId: String!, $userId: String!, $roleId: String!) {
+           assignWorkspaceRole(
+             organizationId: $organizationId, workspaceId: $workspaceId, userId: $userId, roleId: $roleId
+           ) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, workspaceId, userId, roleId },
+      );
+      return data.assignWorkspaceRole;
+    },
+
+    async revokeWorkspaceRole(organizationId, workspaceId, userId, roleId) {
+      const data = await graphql<{ revokeWorkspaceRole: WriteResult }>(
+        `mutation RevokeWorkspaceRole($organizationId: String!, $workspaceId: String!, $userId: String!, $roleId: String!) {
+           revokeWorkspaceRole(
+             organizationId: $organizationId, workspaceId: $workspaceId, userId: $userId, roleId: $roleId
+           ) { ${WRITE_RESULT} }
+         }`,
+        { organizationId, workspaceId, userId, roleId },
+      );
+      return data.revokeWorkspaceRole;
+    },
+
+    async createSubscription(input) {
+      const data = await graphql<{ createSubscription: SubscriptionView }>(
+        `mutation CreateSubscription($input: SubscriptionDraftInput!) {
+           createSubscription(input: $input) { ${SUBSCRIPTION_FIELDS} }
+         }`,
+        { input },
+      );
+      return data.createSubscription;
+    },
+
+    async updateSubscription(subscriptionId, status, currentPeriodEnd) {
+      const data = await graphql<{ updateSubscription: SubscriptionView }>(
+        `mutation UpdateSubscription($subscriptionId: String!, $status: String!, $currentPeriodEnd: String!) {
+           updateSubscription(
+             subscriptionId: $subscriptionId
+             status: $status
+             currentPeriodEnd: $currentPeriodEnd
+           ) { ${SUBSCRIPTION_FIELDS} }
+         }`,
+        { subscriptionId, status, currentPeriodEnd },
+      );
+      return data.updateSubscription;
+    },
+
+    async endSubscription(subscriptionId) {
+      const data = await graphql<{ endSubscription: SubscriptionView }>(
+        `mutation EndSubscription($subscriptionId: String!) {
+           endSubscription(subscriptionId: $subscriptionId) { ${SUBSCRIPTION_FIELDS} }
+         }`,
+        { subscriptionId },
+      );
+      return data.endSubscription;
     },
 
     async previewClone({ sourceRoleId, current, level, mode }) {

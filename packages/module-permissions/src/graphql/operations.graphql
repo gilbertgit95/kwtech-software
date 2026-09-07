@@ -41,3 +41,49 @@ query PermissionFeatures($limit: Int, $offset: Int) {
     }
   }
 }
+
+# ── plans and subscriptions ───────────────────────────────────────────────────
+#
+# A plan is a named collection of features an organization can BUY, as a role is
+# one a person can be GIVEN. The two are never merged: a role says the PERSON
+# may, a plan says the ORGANIZATION bought it, and a feature needs both — which
+# is what lets a denial say "ask an administrator" or "upgrade your plan".
+
+# Includes ARCHIVED plans. An administrator has to see one in order to restore
+# it, and a list that hid them would make the switch look like a delete.
+query PermissionPlans {
+  permissionPlans {
+    key
+    label
+    isPublic
+    icon
+    archived
+    features
+    limits {
+      limitKey
+      value
+    }
+  }
+}
+
+# Includes ENDED subscriptions, for a different reason: an ended row has no
+# switch to flip, it IS the history. "What was this organization entitled to in
+# March" is answered by reading these.
+query PermissionSubscriptions($organizationId: String) {
+  permissionSubscriptions(organizationId: $organizationId) {
+    id
+    organizationId
+    organizationName
+    workspaceId
+    workspaceName
+    planKey
+    planLabel
+    # An archived plan entitles nothing, however live the row looks. Without
+    # this field a screen cannot explain a subscription that reads `active` and
+    # is giving nobody anything.
+    planArchived
+    status
+    currentPeriodEnd
+    endedAt
+  }
+}

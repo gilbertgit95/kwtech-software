@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { TokenScope } from '../types.js';
+import type { Principal, TokenScope } from '../types.js';
 import { ALLOWED_SCOPES, IS_PUBLIC, PRINCIPAL_KEY } from './auth.decorators.js';
 // Imported straight from auth.options.js, and no leaf-token file is needed:
 // nothing in that file imports a provider, so there is no cycle for the token to
@@ -62,8 +62,37 @@ export class JwtAuthGuard implements CanActivate {
       string,
       unknown
     >;
+    /*
+     * A principal the TRANSPORT already established, or a bearer token.
+     *
+     * The first case is the WebSocket. A socket has one upgrade request and
+     * then frames — there is no per-operation header to read — so it
+     * authenticates at the handshake and hands every operation a request-shaped
+     * object carrying the result. Without this branch the guard reads no header,
+     * finds no token and refuses every subscription with "Not signed in", which
+     * is exactly what it did until this was written.
+     *
+     * ⚠ It is not a bypass, and the two things that make it safe are worth
+     * stating because they are easy to remove by accident:
+     *
+     *   1. Nothing outside the process can set this. `request` here is Express's
+     *      own object on HTTP, and a header, query parameter or body field
+     *      cannot become a property on it — `PRINCIPAL_KEY` is only ever
+     *      assigned by this guard, or by a transport adapter inside the app that
+     *      verified a credential first.
+     *   2. Every check below still runs on it. The scope rule and the revocation
+     *      lookup do not care where the principal came from, so a socket opened
+     *      by a session that was later signed out is refused on its next
+     *      operation exactly as an HTTP call would be.
+     *
+     * What it deliberately does NOT do is re-verify a signature. There is no
+     * token here to verify — the ticket was consumed at the handshake, and
+     * re-checking would mean keeping a credential alive for the life of the
+     * connection, which is the thing the ticket design avoids.
+     */
+    const established = request[PRINCIPAL_KEY] as Principal | undefined;
     const header = (request.headers as Record<string, unknown> | undefined)?.authorization;
-    const principal = this.tokens.verifyAccess(TokenService.bearer(header));
+    const principal = established ?? this.tokens.verifyAccess(TokenService.bearer(header));
 
     // 401, not 403: the caller has not proved who they are. A frontend reads
     // the first as "sign in" and the second as "stop asking".

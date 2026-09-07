@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Post, Req } from '@nestjs/comm
 import type { AuthResult, MfaEnrolment, MfaFactorSummary, MfaRecoveryCodes, Principal, SessionUser } from '../types.js';
 import { AllowScopes, CurrentPrincipal, Public } from './auth.decorators.js';
 import { AuthService, type RequestContext } from './auth.service.js';
+import type { IssuedWsTicket } from './token.service.js';
 
 /**
  * /auth/* — the credential intake.
@@ -123,6 +124,25 @@ export class AuthController {
    * the Next route handler can do that — the same reason /auth/signout is not a
    * mutation.
    */
+  /**
+   * A short-lived ticket for the WebSocket handshake.
+   *
+   * AUTHENTICATED, and deliberately not `@Public`: it converts a session the
+   * caller already holds into a credential their JavaScript may hold for sixty
+   * seconds. It grants nothing new — see `TokenService.issueWsTicket`.
+   *
+   * It exists because the session is an httpOnly cookie and a browser opening a
+   * WebSocket must put something in `connectionParams`. The alternative, handing
+   * the access token to the page, is the arrangement the whole cookie design
+   * exists to avoid: it would turn any XSS into a credential good for the full
+   * access-token TTL, on every endpoint, rather than one socket for a minute.
+   */
+  @Post('ws-ticket')
+  @HttpCode(200)
+  wsTicket(@CurrentPrincipal() principal: Principal): Promise<IssuedWsTicket> {
+    return this.auth.issueWsTicket(principal);
+  }
+
   @Post('signout-all')
   @HttpCode(200)
   signOutEverywhere(@CurrentPrincipal() principal: Principal): Promise<{ revoked: number }> {

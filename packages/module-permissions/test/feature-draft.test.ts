@@ -44,7 +44,7 @@ describe('validateDraft', () => {
     expect(validateDraft({ ...valid, key }).key).toBeDefined();
   });
 
-  it.each(['admin:access', 'platform:support_access', 'workspaces:access_all'])(
+  it.each(['admin:access', 'platform:support_access', 'workspaces:manage'])(
     'accepts %s, which the registry already uses',
     (key) => {
       expect(validateDraft({ ...valid, key }).key).toBeUndefined();

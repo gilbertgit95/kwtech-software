@@ -40,7 +40,7 @@ export const EMPTY_DRAFT: FeatureDraft = {
  * `namespace:action`, lower case, dots and underscores allowed inside a part.
  *
  * Derived from the keys already in the registry — `admin:access`,
- * `platform:support_access`, `workspaces:access_all` — rather than invented, so
+ * `platform:support_access`, `workspaces:manage` — rather than invented, so
  * a key that passes here looks like the ones beside it. The colon is required:
  * it is what makes a key readable as "what area, what action" in a role editor
  * listing forty of them.

@@ -27,21 +27,53 @@ export { FeatureForm } from './pages/feature-form.js';
 export { FeatureImportPage } from './pages/feature-import-page.js';
 export { FeatureNewPage } from './pages/feature-new-page.js';
 export { FeaturesPage } from './pages/features-page.js';
+export { OrganizationDetailPage } from './pages/organization-detail-page.js';
+export { OrganizationNewPage } from './pages/organization-new-page.js';
 export { OrganizationsPage } from './pages/organizations-page.js';
+export { Person, personLabel } from './pages/person.js';
+export { PlanEditPage } from './pages/plan-edit-page.js';
+export { PlanForm, type PlanFormProps } from './pages/plan-form.js';
+export { PlanNewPage } from './pages/plan-new-page.js';
+export { PlansPage } from './pages/plans-page.js';
 export { RegistryOutput } from './pages/registry-output.js';
 export { RoleEditPage } from './pages/role-edit-page.js';
 export { RoleForm, type RoleFormProps } from './pages/role-form.js';
 export { RoleNewPage } from './pages/role-new-page.js';
 export { RolesPage } from './pages/roles-page.js';
+export { SubscriptionEditPage } from './pages/subscription-edit-page.js';
+export { SubscriptionForm, type SubscriptionFormProps } from './pages/subscription-form.js';
+export { SubscriptionNewPage } from './pages/subscription-new-page.js';
 export { SubscriptionsPage } from './pages/subscriptions-page.js';
+export { WorkspaceDetailPage } from './pages/workspace-detail-page.js';
 export {
   createPermissionsClient,
   DEFAULT_GRAPHQL_PATH,
+  type FoundUser,
+  type InvitationView,
+  type InviteResult,
+  type MemberRoleView,
+  type MemberView,
+  type OrganizationDetailView,
+  type OrganizationView,
   type PermissionsClient,
+  type PlanInput,
+  type PlanView,
   type RoleInput,
   type RoleView,
+  type SubscriptionInput,
+  type SubscriptionView,
+  type WorkspaceDetailView,
+  type WorkspaceMemberView,
+  type WriteResult,
 } from './permissions-client.js';
 export { PermissionsProvider, type PermissionsProviderProps, PermissionsReactContext } from './permissions-provider.js';
+export {
+  createRealtimeConnection,
+  DEFAULT_WS_TICKET_PATH,
+  PLAN_CHANGED,
+  type RealtimeConnection,
+  type RealtimeOptions,
+} from './permissions-realtime.js';
 export {
   useCanAccessWorkspace,
   useFeatureDecision,

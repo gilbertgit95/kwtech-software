@@ -67,6 +67,22 @@ export interface PermissionsModuleOptions {
   resolveContext?: (request: unknown) => PermissionContext | undefined | Promise<PermissionContext | undefined>;
 
   /**
+   * Binds a pub/sub engine to PERMISSIONS_PUBSUB, enabling this module's
+   * GraphQL subscriptions:
+   *   { provide: PERMISSIONS_PUBSUB, useValue: new PubSub() }
+   *
+   * Optional, and omitting it is a normal configuration rather than a mistake:
+   * a worker or a CLI importing the module for its services has no socket and
+   * nobody to notify. Without it, publishing is a no-op and subscribing yields
+   * a stream that ends immediately — see NULL_PUBSUB.
+   *
+   * The module never picks an engine. `graphql-subscriptions`' in-memory
+   * `PubSub` serves one API instance; past a single replica the host swaps in
+   * `graphql-redis-subscriptions` and nothing here changes (PLAN §7).
+   */
+  pubsubProvider?: Provider;
+
+  /**
    * Which transports the module publishes. Both default to on: importing the
    * module is meant to BE the registration — REST routes appear in the app and
    * in openapi.json, resolvers join the composed GraphQL schema, and the app
@@ -121,6 +137,34 @@ export interface PermissionsModuleOptions {
   featureRegistry?: readonly FeatureSpec[];
 
   /**
+   * How an invitation link REACHES the person invited.
+   *
+   * The module mints the token, stores only its hash, and hands the raw value
+   * to this function exactly once — the same contract `module-auth` uses for
+   * `sendPasswordResetEmail`, and for the same reason: delivery is the app's.
+   * This package has no email transport and should not acquire one. It also
+   * does not know the URL an invitation link should point at, which is a route
+   * in the frontend the app owns.
+   *
+   * ⚠ `token` is a working credential. Do not log it, and do not put it
+   * anywhere an access log will see it.
+   *
+   * WITHOUT this hook `inviteMember` REFUSES, before writing anything. The
+   * alternative — creating the row and dropping the token — produces an
+   * invitation nobody can ever accept, which looks like success on the screen
+   * that made it and like a broken product to the person waiting for an email.
+   */
+  sendInvitationEmail?: (invitation: {
+    /** Normalised, exactly as stored. */
+    email: string;
+    /** The raw token. Handed over ONCE — see above. */
+    token: string;
+    organization: { id: string; key: string; name: string };
+    invitedByUserId: string;
+    expiresAt: Date;
+  }) => void | Promise<void>;
+
+  /**
    * Reads a handler's arguments, for resolvers declaring @RequireScope. A
    * GraphQL app passes `(ctx) => GqlExecutionContext.create(ctx).getArgs()`,
    * which keeps the @nestjs/graphql import in the app that already has it.
@@ -173,6 +217,7 @@ export class PermissionsModule {
       PermissionsWriteService,
       FeatureGuard,
     ];
+    if (options.pubsubProvider) providers.push(options.pubsubProvider);
     if (options.prismaProvider) providers.push(options.prismaProvider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider);
     else providers.push({ provide: PERMISSIONS_PRISMA_WRITE, useValue: undefined });

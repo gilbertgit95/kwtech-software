@@ -225,18 +225,15 @@ const WORKSPACE_USER: SystemRoleDefinition = {
  *
  * ## What to give it, when organization features exist
  *
- * Two different mechanisms make an owner an owner, and only one is a level:
+ * An organization role applies at organization AND workspace scope
+ * (`composeContext`), so its grants are already true inside every workspace its
+ * holder BELONGS TO. That needs no feature at all.
  *
- *   the ROLE's level    an organization role applies at organization AND
- *                       workspace scope (`composeContext`), so its grants are
- *                       already true inside every workspace of its organization.
- *                       This needs no feature at all.
- *   `workspaces:access_all`
- *                       which workspaces they may ENTER is a granted right, not
- *                       a structural consequence — deliberately, so an
- *                       organization composes it into whichever role it wants.
- *                       Without it an owner reaches workspace scope but only in
- *                       the workspaces they personally joined.
+ * ⚠ It does not let them into workspaces they were never added to. Workspace
+ * membership is required and no role widens it (docs/PLAN.md §13, 2026-09-07) —
+ * `workspaces:access_all` used to be that route and has been removed. An owner
+ * who should see every workspace is added to every workspace, which is one
+ * mechanism instead of two and leaves "why can they see this" with one answer.
  *
  * Levels now reach downward, so an organization role may also carry
  * workspace-level keys such as `workspaces:share`. It may NEVER carry

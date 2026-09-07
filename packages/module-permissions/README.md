@@ -69,9 +69,30 @@ Everything the `/react` entry point exports:
 | `FeatureDenied`, `denialMessage` | the refusal, worded once |
 | `useHasFeature`, `useHasAllFeatures`, `useHasAnyFeature`, `useFeatureDecision`, `useCanAccessWorkspace` | the same checks the server guard runs |
 | `AdminPage`, `AdminPlaceholder` | the frame the admin screens share |
-| `FeaturesPage`, `FeatureNewPage`, `FeatureImportPage`, `FeatureEditPage` | the registry screens |
-| `RolesPage`, `OrganizationsPage`, `SubscriptionsPage` | placeholders |
+| `FeaturesPage`, `FeatureNewPage`, `FeatureImportPage`, `FeatureEditPage` | the registry screens — the grantable vocabulary |
+| `RolesPage`, `RoleNewPage`, `RoleEditPage`, `RoleForm` | the role screens — what a PERSON may do |
+| `PlansPage`, `PlanNewPage`, `PlanEditPage`, `PlanForm` | the plan screens — what an ORGANIZATION bought |
+| `SubscriptionsPage`, `SubscriptionNewPage`, `SubscriptionEditPage`, `SubscriptionForm` | who is on which plan |
+| `OrganizationsPage` | placeholder |
 | `permissionsWebModule` | the descriptor an app lists |
+
+The plan screens are the deliberate mirror of the role screens, because a plan
+and a role are the same shape of thing pointed at different questions: a named
+collection of features, with no inheritance and no precedence. They are never
+merged — a role says the PERSON may, a plan says the ORGANIZATION bought it, and
+a feature needs both. That is what lets a denial say "ask an administrator" or
+"upgrade your plan" instead of one flat refusal.
+
+Two places the mirror deliberately breaks, both documented at the code:
+
+- **A plan may only sell organization- and workspace-level features.** App-level
+  grants are unioned in AFTER the entitlement filter, so an app-level key inside
+  a plan is never consulted — it would read as a sold feature and entitle
+  nobody. `assertPlanFeatureLevels` refuses it rather than filtering it out.
+- **No no-escalation rule on plans.** A role grants, so putting a right into one
+  you do not hold is escalation; a plan entitles, and whoever uses the feature
+  still needs a role that grants it. The plan editor therefore offers the whole
+  catalogue.
 
 The hooks and the guard import the SAME `check.ts`, so a `<FeatureGate>` and a
 `@RequireFeature` cannot disagree about the rules — not because they are kept in

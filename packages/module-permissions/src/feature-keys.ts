@@ -40,18 +40,47 @@ export const FEATURE = {
    */
   platformSupportAccess: 'platform:support_access',
 
+  /**
+   * Read the list of organizations on the platform, and one organization's
+   * members and workspaces.
+   *
+   * APP level, and that is what the key IS: this reads across EVERY tenant, so
+   * it is a platform view rather than something an organization grants about
+   * itself. A tenant administrator reading their OWN organization is a
+   * different question, answered by their membership plus the scope of the
+   * request — see PLAN §12.13, still open.
+   *
+   * Split from `members:manage` for the reason `roles:read` is split from
+   * `roles:create`: seeing which tenants exist and changing who is in one are
+   * different risks, and support needs the first far more often than the
+   * second.
+   */
+  organizationsRead: 'organizations:read',
+
+  /**
+   * Rename an organization — its display name, and the key that names it in a
+   * URL.
+   *
+   * APP level, like `organizations:read` and for the same reason: today the
+   * only screen that reaches it is the platform's organization list, which
+   * resolves at app level. It is deliberately NOT folded into
+   * `organizations:read` — support staff need to look at a tenant constantly
+   * and to rename one almost never, and one key for both would hand every
+   * support engineer the ability to rename a customer.
+   *
+   * ⚠ When PLAN §12.13 lands the active-organization scope, this is a
+   * candidate to be joined by an organization-level twin so a tenant's own
+   * owner can rename their own organization. That is a second key, not a
+   * re-levelling of this one: "rename any tenant" and "rename mine" are
+   * different rights, and collapsing them would silently give a customer the
+   * first.
+   */
+  organizationsManage: 'organizations:manage',
+
   /** Invite, remove and re-role people in the organization. */
   membersManage: 'members:manage',
   /** Create, rename and archive workspaces. */
   workspacesManage: 'workspaces:manage',
-  /**
-   * See every workspace in the organization without being added to it.
-   *
-   * Expressed as a right rather than as a structural rule, so "admins see
-   * everything" is a role composition an organization can change, not a
-   * condition buried in a query.
-   */
-  workspacesAccessAll: 'workspaces:access_all',
   /** Share a workspace with another member. */
   workspacesShare: 'workspaces:share',
   /*
@@ -62,15 +91,35 @@ export const FEATURE = {
    * meant an organization could not have someone who reviews roles without
    * also letting them rewrite one.
    *
-   * All four are ORGANIZATION level. Defining roles inside your own
-   * organization is the normal administrative act a tenant admin performs —
-   * unlike inventing a FEATURE, which is platform-wide and therefore app level.
+   * READ is ORGANIZATION level; the three WRITES are APP level, and that split
+   * is forced by what the write path actually does rather than chosen.
+   *
+   * `createRole` writes `organizationId: null` — a SHARED PRESET, which the
+   * schema defines as "a preset shared by every organization" — and `listRoles`
+   * reads that same null scope for everyone. So creating, changing or disabling
+   * a role is a PLATFORM operation today: the row it touches is visible to
+   * every tenant, and `assertRoleAssignable` lets any organization grant it.
+   * Guarding a platform-wide write with an organization-level key would let one
+   * tenant's administrator edit a role every other tenant can see.
+   *
+   * Reading stays organization level, because reading the preset catalogue
+   * tells you nothing about any tenant's data — it is the same argument
+   * `features:read` makes — and a tenant admin needs it to assign roles.
+   *
+   * ⚠ This is provisional, and the condition for reversing it is precise: when
+   * role writes are scoped to the actor's organization (PLAN §12.13 — the
+   * resolver has no active organization on the request, which is exactly why
+   * `role-draft.ts` cannot offer an organization picker), these three become
+   * genuinely tenant-local and belong back at organization level.
    */
   /** See the roles that exist and what each one grants. */
   rolesRead: 'roles:read',
-  /** Define a new role. */
+  /** Define a new role. APP level — every role written is a shared preset. */
   rolesCreate: 'roles:create',
-  /** Change what an existing role grants, including cloning another role into it. */
+  /**
+   * Change what an existing role grants, including cloning another role into it.
+   * APP level, for the reason above: the row is shared across every tenant.
+   */
   rolesUpdate: 'roles:update',
   /**
    * Disable a role, so it grants nothing — and enable it again.
@@ -83,6 +132,9 @@ export const FEATURE = {
    *
    * The same call `PermFeature.deprecatedAt`, `AuthSession.revokedAt` and
    * `PermWorkspace.archivedAt` already make: set a timestamp, never DELETE.
+   *
+   * APP level. Disabling a shared preset stops it granting for EVERY tenant at
+   * once, which is the sharpest form of the mismatch this section describes.
    */
   rolesDisable: 'roles:disable',
   /**
@@ -99,6 +151,13 @@ export const FEATURE = {
    *
    * So the dangerous half is not WHICH features a role carries; it is the
    * role's own level. This key guards exactly that, and nothing else.
+   *
+   * Still earns its place now that the three writes are app level, and the job
+   * has narrowed rather than disappeared: it splits platform staff who may
+   * define ORGANIZATION and WORKSPACE presets from those who may mint an
+   * APP-level role — which applies in every organization and skips the
+   * subscription filter. Without it, anyone able to create a role at all could
+   * mint a second super admin.
    */
   rolesManageApp: 'roles:manage_app',
 
@@ -139,7 +198,64 @@ export const FEATURE = {
   featuresUpdate: 'features:update',
   /** Retire a feature. */
   featuresDelete: 'features:delete',
-  /** View and change the plan. Entitlement, not authorisation — see check.ts. */
+  /*
+   * ── plans: the catalogue ────────────────────────────────────────────────
+   *
+   * A plan is a named collection of features an organization can BUY, exactly
+   * as a role is one a person can be GIVEN — so the keys split the same four
+   * ways, for the same reason: read, create, update and retire are different
+   * risks, and one `plans:manage` would mean the platform cannot have someone
+   * who reviews the catalogue without also being able to rewrite what a paying
+   * customer is entitled to.
+   *
+   * READ is organization level; the other three are APP level. That asymmetry
+   * is the same one the feature registry already makes and rests on the same
+   * distinction: an administrator inside one tenant has to see what they could
+   * subscribe to, while DEFINING what the platform sells is a platform act. A
+   * tenant admin who could edit a plan could sell themselves anything.
+   */
+  /** See the plans that exist and what each one entitles. */
+  plansRead: 'plans:read',
+  /** Define a new plan and choose what it entitles. */
+  plansCreate: 'plans:create',
+  /** Change what an existing plan entitles, under everyone already on it. */
+  plansUpdate: 'plans:update',
+  /**
+   * Retire a plan, and bring one back.
+   *
+   * There is deliberately NO delete, the same call `roles:disable` makes: every
+   * subscription ever written points at the plan row, so deleting one either
+   * cascades that history away — destroying the answer to "what was this
+   * organization entitled to last March" — or fails on a foreign key at the
+   * worst moment. Archiving keeps the row and is reversible.
+   */
+  plansArchive: 'plans:archive',
+
+  // ── subscriptions: who is on what ───────────────────────────────────────
+  /**
+   * See which plan an organization is on, and when it renews.
+   *
+   * Its own key rather than part of `billing:manage`, for the reason
+   * `roles:read` is separate from `roles:create`: reading what a tenant is
+   * subscribed to is what an administrator or a support engineer needs to
+   * answer "why can they not do this", and it is not the same right as being
+   * able to change it.
+   */
+  subscriptionsRead: 'subscriptions:read',
+  /**
+   * Start, change or end a subscription — attach a plan to an organization or
+   * one of its workspaces.
+   *
+   * ENTITLEMENT, not authorisation, and the distinction is the model's: this
+   * decides what the organization BOUGHT, while a role decides what a person
+   * MAY DO. A feature needs both, which is what lets a denial say "upgrade your
+   * plan" or "ask an administrator" rather than one flat refusal — see
+   * check.ts.
+   *
+   * The key predates the subscription screens and was worded "view and change
+   * the plan". Viewing is now `subscriptions:read` above; this is the write
+   * half, and it is the only key that changes what a tenant is entitled to.
+   */
   billingManage: 'billing:manage',
 } as const;
 
@@ -241,6 +357,32 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     bindings: [],
   },
   {
+    key: FEATURE.organizationsRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.members],
+    // APP, not organization: this reads across every tenant. See the key.
+    level: 'app',
+    label: 'Read organizations',
+    description: 'See the organizations on the platform, and one organization’s members and workspaces.',
+    isPrivileged: true,
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/organizations' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionOrganizations' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionOrganizationDetail' },
+    ],
+  },
+  {
+    key: FEATURE.organizationsManage,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin],
+    // APP, like the read key beside it. See the key for why it is separate.
+    level: 'app',
+    label: 'Rename organizations',
+    description: 'Change an organization’s name or key.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.updateOrganization' }],
+  },
+  {
     key: FEATURE.membersManage,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.members],
@@ -248,7 +390,35 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     label: 'Manage members',
     description: 'Invite, remove and re-role people in the organization.',
     isPrivileged: true,
-    bindings: [],
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/organizations/:organizationId' },
+      { surface: 'graphql_operation', identifier: 'Mutation.addMember' },
+      { surface: 'graphql_operation', identifier: 'Mutation.removeMember' },
+      { surface: 'graphql_operation', identifier: 'Mutation.assignRole' },
+      { surface: 'graphql_operation', identifier: 'Mutation.revokeRole' },
+      /*
+       * The user lookup that turns an email into the id `addMember` needs.
+       * It lives in the APP, not in either module: it queries `auth_user` and
+       * is guarded by a permissions key, and neither module may import the
+       * other. The binding is declared here because this is where the key is
+       * declared — see apps/web-server/src/users/.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.findUserByEmail' },
+      // Its batch twin: the members grid holds ids and needs names. Same key,
+      // same reason, same place — see apps/web-server/src/users/.
+      { surface: 'graphql_operation', identifier: 'Query.findUsersByIds' },
+      { surface: 'graphql_operation', identifier: 'Mutation.inviteMember' },
+      { surface: 'graphql_operation', identifier: 'Mutation.revokeInvitation' },
+      /*
+       * `Mutation.acceptInvitation` is deliberately NOT bound to this key, and
+       * is deliberately unguarded. The person accepting holds nothing in the
+       * organization — that is the point of an invitation — so requiring
+       * `members:manage` of them would mean only administrators could accept.
+       * The TOKEN is the authorisation, and a signed-in session is still
+       * required so the membership is created for the caller rather than for
+       * an id somebody supplied.
+       */
+    ],
   },
   {
     key: FEATURE.workspacesManage,
@@ -257,17 +427,12 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     level: 'organization',
     label: 'Manage workspaces',
     description: 'Create, rename and archive workspaces.',
-    bindings: [],
-  },
-  {
-    key: FEATURE.workspacesAccessAll,
-    module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.workspaces],
-    level: 'organization',
-    label: 'Access all workspaces',
-    description: 'See every workspace in the organization without being added to it.',
-    isPrivileged: true,
-    bindings: [],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.createWorkspace' },
+      { surface: 'graphql_operation', identifier: 'Mutation.updateWorkspace' },
+      { surface: 'graphql_operation', identifier: 'Mutation.archiveWorkspace' },
+      { surface: 'ui_route', identifier: '/admin/organizations/:organizationId/workspaces/:workspaceId' },
+    ],
   },
   {
     key: FEATURE.workspacesShare,
@@ -276,7 +441,12 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     level: 'workspace',
     label: 'Share workspaces',
     description: 'Give another member access to a workspace.',
-    bindings: [],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.shareWorkspace' },
+      { surface: 'graphql_operation', identifier: 'Mutation.unshareWorkspace' },
+      { surface: 'graphql_operation', identifier: 'Mutation.assignWorkspaceRole' },
+      { surface: 'graphql_operation', identifier: 'Mutation.revokeWorkspaceRole' },
+    ],
   },
   {
     key: FEATURE.rolesRead,
@@ -294,7 +464,9 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     key: FEATURE.rolesCreate,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
-    level: 'organization',
+    // APP, not organization: every role written is a shared preset visible to
+    // every tenant. See the roles section above.
+    level: 'app',
     label: 'Create roles',
     description: 'Define a new role and choose what it grants.',
     isPrivileged: true,
@@ -307,7 +479,9 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     key: FEATURE.rolesUpdate,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
-    level: 'organization',
+    // APP, not organization: every role written is a shared preset visible to
+    // every tenant. See the roles section above.
+    level: 'app',
     label: 'Update roles',
     description: 'Change what an existing role grants, including cloning another role into it.',
     isPrivileged: true,
@@ -324,7 +498,9 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     key: FEATURE.rolesDisable,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.roles],
-    level: 'organization',
+    // APP, not organization: every role written is a shared preset visible to
+    // every tenant. See the roles section above.
+    level: 'app',
     label: 'Disable roles',
     description: 'Turn a role off so it grants nothing, and turn it back on. Roles are never deleted.',
     isPrivileged: true,
@@ -341,14 +517,95 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     bindings: [],
   },
   {
+    key: FEATURE.plansRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
+    level: 'organization',
+    label: 'Read plans',
+    description: 'See the plans that exist and what each one entitles.',
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/plans' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionPlans' },
+      /*
+       * The first `graphql_subscription` binding in the registry, and the
+       * surface has existed since types.ts was written waiting for one.
+       *
+       * Declared SEPARATELY from the query even though both take `plans:read`,
+       * because they are enforced at different moments — the WebSocket
+       * handshake versus the request. DESIGN-NOTES is explicit that conflating
+       * them "leaves a real hole"; listing both is what makes the claim
+       * checkable by `surface-coverage.test.ts` rather than assumed.
+       */
+      { surface: 'graphql_subscription', identifier: 'Subscription.planChanged' },
+    ],
+  },
+  {
+    key: FEATURE.plansCreate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
+    level: 'app',
+    label: 'Create plans',
+    description: 'Define a new plan and choose what it entitles.',
+    isPrivileged: true,
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/plans/new' },
+      { surface: 'graphql_operation', identifier: 'Mutation.createPlan' },
+    ],
+  },
+  {
+    key: FEATURE.plansUpdate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
+    level: 'app',
+    label: 'Update plans',
+    description: 'Change what an existing plan entitles, under everyone already subscribed to it.',
+    isPrivileged: true,
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/plans/:planKey/edit' },
+      { surface: 'graphql_operation', identifier: 'Mutation.updatePlan' },
+      // Cloning is an UPDATE wearing a different button: it stages a feature
+      // list into the form and saves through updatePlan, so it is guarded by
+      // the same key rather than one of its own — exactly as previewRoleClone is.
+      { surface: 'graphql_operation', identifier: 'Mutation.previewPlanClone' },
+    ],
+  },
+  {
+    key: FEATURE.plansArchive,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
+    level: 'app',
+    label: 'Archive plans',
+    description: 'Retire a plan so nothing new can subscribe to it, and bring one back. Plans are never deleted.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.setPlanArchived' }],
+  },
+  {
+    key: FEATURE.subscriptionsRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
+    level: 'organization',
+    label: 'Read subscriptions',
+    description: 'See which plan an organization is on, its status and when it renews.',
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/subscriptions' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionSubscriptions' },
+    ],
+  },
+  {
     key: FEATURE.billingManage,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
     level: 'organization',
     label: 'Manage billing',
-    description: 'View and change the organization plan.',
+    description: 'Start, change or end an organization or workspace subscription.',
     isPrivileged: true,
-    bindings: [],
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/subscriptions/new' },
+      { surface: 'ui_route', identifier: '/admin/subscriptions/:subscriptionId/edit' },
+      { surface: 'graphql_operation', identifier: 'Mutation.createSubscription' },
+      { surface: 'graphql_operation', identifier: 'Mutation.updateSubscription' },
+      { surface: 'graphql_operation', identifier: 'Mutation.endSubscription' },
+    ],
   },
 ] as const;
 

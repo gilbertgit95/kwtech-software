@@ -16,7 +16,7 @@ Reference repo: **`../masterdb-mgt-tool`** — the newest of the Sensorbee repos
 the template for toolchain, conventions and versions here. `../coseller-mono` is
 consulted only where masterdb has not built something yet (notably GraphQL, §6).
 
-Last updated: 2026-08-25
+Last updated: 2026-09-07
 
 ---
 
@@ -494,12 +494,729 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 21 | Should the feature form be able to declare BINDINGS? | before anyone relies on the create screens | `draftToSpec` emits `bindings: []`, so every feature authored through the UI is "Not enforced anywhere" by construction — the audit flags it and the Features grid says so in its own column. That is honest today, because a binding names a controller handler or a route that does not exist until someone writes it. The alternative is letting the form declare a surface that is not there yet, which is worse: the audit would report coverage for an endpoint nobody wrote. Resolve alongside decision 22 |
 | 22 | Should the DATABASE become the source and the registry a cache? | before the create screens write anything | `syncFeatureRegistry` deprecates any `perm_feature` row absent from `FEATURE_REGISTRY`, so a UI-created feature is switched off by the next deploy and `assertRegistered` refuses it meanwhile. Reversing it makes the screens write for real and costs the typed `FEATURE.adminAccess` constants, the build-time `assertRegistered`, and the property that a checkout fully describes what can be granted |
 | 20 | Should `ConnectivityMonitor` move to `web-ui` when `apps/admin` appears? | when a second web app exists | it is small and app-shaped today — it names `/api/health` and calls `router.refresh()`, both app decisions. A second app duplicating twenty lines is the cheaper mistake than a shared component that has to take both as options before anyone needs it |
+| 24 | ~~Are subscription writes billing-owned, and out of the module?~~ **Closed: reversed** | — | **Reversed 2026-09-06.** They were kept out on the grounds that a billing provider owns `perm_subscription` and the idempotency questions were unanswered; the plan and subscription screens needed them, and the questions are now answered rather than deferred (see the decision log). A provider integrating later must RECONCILE against these rows — read, then supersede what disagrees — rather than assume it is the only writer |
+| 25 | Where does a billing provider's webhook write, and who wins a conflict? | before a payment provider is connected | `PermissionsWriteService` now owns the write path and keys idempotency on the live (organization, workspace, plan) row. A provider that writes the same table needs either a `source` column and a precedence rule, or a reconciliation job that treats the provider as authoritative and supersedes admin rows. Precedence is the part teams get wrong, so decide it before the first webhook, not after |
+| 26 | ~~Should plans be SEEDED, like app roles are?~~ **Closed: yes, on request** | — | **Reversed 2026-09-07.** They were left unseeded on the grounds that which products a platform sells is an operator decision. They are now seeded as a STARTING catalogue — `free`, `starter`, `pro`, `enterprise` — with `createPlanIfAbsent`, which creates what is missing and never rewrites what is there. Phase 'seed', not 'sync': the operator decision is preserved by the seed getting out of the way, not by there being no seed. Original entry: | app roles are seeded because the SHAPE is fixed and the definitions are product decisions living app-side. Plans are the same shape of thing, and deliberately not seeded today: which products a platform sells is an operator decision, and a seeded `free` plan would be this repo deciding it. The screens create them instead. Revisit if a fresh environment needs a plan before anyone can subscribe anybody |
+| 27 | Scope role writes to the actor's organization, and put `roles:create/update/disable` back at organization level | with §12.13 | `createRole` writes `organizationId: null` — a SHARED PRESET every tenant sees — and `listRoles` reads that same null scope, so a role write is a platform operation. The three write keys were raised to APP level on 2026-09-07 to say so. Reversing it needs the active organization on the request (§12.13), which is exactly why `role-draft.ts` cannot offer an organization picker today. Do both together or neither |
+| 28 | Redis-backed pub/sub, before `web-server` scales past one replica | before a second replica | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7) |
+| 29 | Rate-limiting subscription volume on an open socket | when realtime carries real traffic | `CredentialThrottlerGuard` skips WebSocket operations — it writes rate-limit headers onto a response a socket does not have, and per-request IP limiting is not the question a socket asks. Bounded today only by the handshake needing a live-session ticket and the connection closing at token expiry. Belongs in `graphql-ws`' `onSubscribe`, which can see the connection |
+| 30 | ~~A per-workspace member screen, for WORKSPACE-level role grants~~ **Closed** | — | **2026-09-07.** Each workspace on the organization detail screen expands to its members and their workspace roles, and an Add-member dialog picks from organization members not already in it, with an optional workspace role beside it. `assignWorkspaceRole` and `revokeWorkspaceRole` now have a UI. Original entry: | `assignWorkspaceRole` and `revokeWorkspaceRole` are exposed and guarded and reachable only through the API. The organization detail screen already toggles workspace MEMBERSHIP per member; adding a second role picker to that same row is how a screen becomes unreadable, so the grants belong on a workspace's own screen |
+| 31 | ~~An invite flow for an address with no account~~ **Closed** | — | **2026-09-07.** `PermInvitation` + `inviteMember`/`revokeInvitation`/`acceptInvitation`, a seven-day single-use token stored as a SHA-256 hash, an app-supplied `sendInvitationEmail` hook, and `/invitations/accept` — which creates the account when there is none. `PermMembershipStatus.invited` is still unwritten and now never will be: an invitation is addressed to an EMAIL, and a membership carries a userId there may not be one of. See the decision log |
+| 34 | A composite foreign key tying a workspace membership to ONE organization | with §12.19 (raw-SQL schema extras) | `PermWorkspaceMember` references a MEMBERSHIP and a WORKSPACE independently, so nothing in the schema stops a membership in org A being linked to a workspace in org B. A cross-tenant row was inserted against a live database and surfaced in `accessibleWorkspaceIds`. The read path now filters it (C3's defence, one table over) and the write path always checked it — but the row is still writable. Closing it needs `organizationId` denormalised onto the row plus compound uniques on both parents, which is the same raw-SQL-extras question as §12.19 |
+| 33 | ~~How does somebody reach a workspace they were not added to?~~ **Closed: they do not** | — | **2026-09-07.** Workspace membership is REQUIRED; `workspaces:access_all` is removed from the registry. Platform support is the single exemption, because a support engineer holds no membership anywhere. See the decision log |
+| 32 | Should the one-role rule extend to APP level? | when a second app-level role is worth holding | **Workspace level: closed 2026-09-07 — yes.** `@@unique([workspaceMemberId])` matches the organization rule. `PermUserRole` is the last collection: an app-level role is platform staff, and `super-admin` + `normal-user` at once would be incoherent — but nothing needs it decided yet, and it is the one level where holding two is at least arguable (a support role plus a billing-operations role). Decide on evidence, not symmetry |
+| 35 | The seat cap is not checked when an invitation is ACCEPTED | when a plan's seat cap is enforced commercially | `assertCapacity` reads the ACTOR's resolved limits, and on the accept path there is no actor — the person joining holds nothing. So an invitation sent when there was room can be accepted after there is not, and the organization ends up one seat over. The honest fix is to check at invite time AND again on accept, and the second needs a limit lookup that does not go through a `PermissionContext` |
+| 36 | Sign-up exists only through an invitation | when self-service registration is a product decision | `AuthService.createAccount` is a METHOD with no route: the only thing that calls it is `signUpFromInvitation`, which supplies the address from the invitation rather than from the form. There is no public registration page and adding one is a product decision with a spam problem attached — not something to arrive at by leaving an endpoint exposed. Note what an open endpoint would also be: `createAccount` says plainly that an address is taken, which is an enumeration oracle anywhere but behind a token |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-07** — **Following an invitation while signed in as somebody else no
+  longer joins the wrong account silently.**
+
+  Reported from real use, and it had already done damage: the owner of a live
+  organization opened an invitation addressed to another address while signed in
+  as themselves, pressed Join, and their OWN membership took the invitation —
+  which, because acceptance replaces the organization role, demoted them from
+  `organization-owner` to the `organization-admin` the invitation offered. The
+  role was restored and the test invitation removed.
+
+  The page had one Join button for anybody with a session and mentioned the
+  invited address in a passing sentence. It did not compare the two, because it
+  was never given the viewer's address to compare — only whether there was a
+  session at all.
+
+  **The rule it was built on is still right.** An invitation is addressed to a
+  MAILBOX, and whoever reads it may legitimately hold a different account — a
+  work address forwarding to a personal one is ordinary, and `acceptedByUserId`
+  exists precisely to record that. So a mismatch is not refused. It is made
+  loud, and it takes a deliberate click either way: sign out and return as the
+  invited address, or join as who you are, having been told that this uses up
+  the invitation and the invited person will need a new one.
+
+  **Signing out can now say where to land.** `POST /api/auth/signout?next=…`,
+  so "sign out, sign in as them, come back to this link" is one control rather
+  than three steps the user has to know about. The parameter is attacker-supplied
+  on an endpoint anyone can reach, so it is accepted only as a PATH on this
+  origin — an absolute URL, a protocol-relative one, a backslash some browsers
+  normalise, or a control character all fall back to the default. Falling back
+  rather than refusing: by then the session is already gone, and failing a
+  sign-out over a malformed query parameter leaves somebody signed in who asked
+  not to be.
+
+  What made this worth writing down: the silent version passed every test it
+  had. The behaviour was correct against its own documented rule, and only
+  wrong against what somebody would expect while looking at it.
+
+- **2026-09-07** — **An organization can be renamed, and renaming one is its own
+  right.**
+
+  An organization could be created and never edited: no `updateOrganization`, no
+  write key for it, and `PermOrganization` has no `archivedAt` either. Members,
+  invitations and workspaces were all editable around a tenant whose own name was
+  write-once.
+
+  **A name is a LABEL, not an identity.** It is typed once, by somebody who may
+  mistype it, and then the company rebrands or is acquired. The key is editable
+  with it, which a role's key and a plan's are not — and that is not
+  inconsistency: those are referenced BY key (a plan key is the primary key every
+  subscription points at), while an organization is addressed by `id` everywhere
+  in this codebase and its key exists for humans. The same argument
+  `updateWorkspace` makes, one level up.
+
+  **`organizations:manage`, separate from `organizations:read`.** Support staff
+  look at tenants constantly and rename one almost never; a single key for both
+  would hand every support engineer the ability to rename a customer. App level,
+  like the read key, because the only screen reaching it today is the platform's
+  organization list. When §12.13 lands the active-organization scope, a tenant's
+  own owner renaming their own organization is a SECOND key, not a re-levelling
+  of this one — "rename any tenant" and "rename mine" are different rights.
+
+  **Guarded, unlike `createOrganization` beside it**, and the asymmetry is the
+  model: creating one is bounded by the `user:organizations` LIMIT because there
+  is no organization yet to grant the right, while renaming an existing one is
+  a right something can grant.
+
+  The uniqueness of `key` is left to the index rather than pre-checked. A
+  pre-check is a race — two renames to the same key can both pass it — and the
+  constraint is the thing that is actually true. The write is `updateMany` over
+  a unique id for the reason `updateWorkspace` is: a missing row comes back as
+  `count: 0` and becomes a sentence, instead of Prisma's record-not-found
+  surfacing as a 500 on a stale link.
+
+  Verified against the running database: renamed the live tenant and put it
+  back, and confirmed a blank name and an unknown id are both refused with a
+  message rather than a stack trace.
+
+- **2026-09-07** — **People are INVITED, by email, and an invitation can create
+  the account it is waiting for.**
+
+  Closes §12.31. "Add member" is gone from the organization screen; there is an
+  address field, an optional organization role, and an invitation list below the
+  members showing state, who sent it, and who accepted.
+
+  **An invitation is addressed to an EMAIL, which is why `PermInvitation` is its
+  own table** rather than `PermMembership.status = 'invited'` — the value that
+  has sat in the enum unwritten since it was defined. A membership carries a
+  userId; the entire point is that there may not be one. Writing a placeholder
+  account to hold the row would put a fake person in every members list, every
+  count, and every seat cap.
+
+  **Expiry is DERIVED, never stored.** `invitationState()` computes it from
+  `expiresAt`, so the list, the accept path and any future reminder job cannot
+  disagree — a row that reads "Waiting" in a table and is refused on use is the
+  disagreement that makes somebody distrust the whole screen. The column holds
+  three values; the state has four.
+
+  **The token never reaches a browser.** It is minted, hashed, stored as the
+  hash, and handed to the host's `sendInvitationEmail` hook — the same
+  arrangement `sendPasswordResetEmail` has, and for the same reason: the module
+  has no email transport and knows nothing of the frontend route a link points
+  at. `inviteMember` REFUSES when no hook is wired, before writing anything: an
+  invitation nobody can be told about looks like success and blocks the address
+  from being invited again. A delivery failure is reported instead
+  (`delivered: false`) and the row kept, because losing a real invitation to a
+  mail outage is worse than an administrator seeing that the email did not go.
+
+  **`acceptInvitation` takes no actor and checks no feature.** The person
+  accepting holds nothing in the organization — that IS the invitation — so the
+  token is the authorisation. It is unbound in the registry, with a comment
+  saying so, and a test asserts the resolver carries no `@RequireFeature`.
+  `acceptedByUserId` records who actually accepted, which need not be who was
+  invited: an address is a mailbox, and that is recorded rather than prevented.
+
+  **An invitation can create an account, and that is the only way to create
+  one.** `AuthService.createAccount` is a method with no route; `signUpFromInvitation`
+  in the APP composes it with `acceptInvitation`, because creating an
+  `auth_user` and a `perm_membership` in one gesture is exactly what no module
+  may do (§9). The address comes from the invitation, never the form. It does
+  not sign anybody in — the page then posts to `/auth/signin` like any other
+  sign-in, so token minting, the credential throttler and the cookie adapter
+  stay on the one path built for them.
+
+  **One refusal for every dead token** — unknown, revoked, accepted, expired.
+  The difference is precisely what somebody probing tokens wants, and the person
+  holding a stale link has to ask the sender either way.
+
+  Two supporting changes elsewhere. `graphql` in module-auth's Next proxy gained
+  `optionalSession`: the graph now carries `@Public` fields, and refusing a
+  signed-out request there would be a proxy overruling the guards. And
+  `requireOrganization` selects `key` and `name` as well as `id`, because the
+  email has to say which organization somebody is being asked to join.
+
+  Verified against the running database end to end: invited an address with no
+  account, followed the logged link, previewed it with no session, signed up,
+  signed in with the new account, and found the membership created, the
+  invitation `accepted` with the acceptor recorded, and the token spent.
+
+- **2026-09-07** — **A workspace gets its own page, and `updateWorkspace` —
+  the mutation `workspaces:manage` had been promising since it was written.**
+
+  The organization screen's workspaces are now a GRID: name, key, members, how
+  many of those hold a workspace role, and status. Double-click opens
+  `/admin/organizations/:organizationId/workspaces/:workspaceId`.
+
+  They had been expandable rows with member management inline, which put three
+  different jobs — renaming, adding people, granting roles — inside a row of a
+  list whose purpose is comparing workspaces against each other. A list is for
+  finding the one you want; a page is for working on it.
+
+  **`workspaces:manage` has described itself as "Create, rename and archive"
+  since the day it was written, and rename was the third of those with nothing
+  behind it.** `updateWorkspace` is that. A workspace's KEY is changeable, which
+  a role's and a plan's are not, and the difference is not inconsistency: those
+  are referenced BY key — a plan key is the primary key every subscription
+  points at — while a workspace is addressed by `id` everywhere and its key
+  exists for humans reading a URL.
+
+  It uses `updateMany` rather than `update`, scoped by `organizationId` as well
+  as `id`. `update` takes a unique `where`, which is the id alone, and a unique
+  `where` cannot carry a tenant check — so nothing would stop one tenant
+  renaming another's workspace. Verified: a rename under the wrong organization
+  id is refused as `not_found`.
+
+  **⚠ The route is under `/admin`, deliberately.** The bare
+  `/organizations/:orgId/workspaces/:workspaceId` is the convention `scope.ts`
+  parses, and a route there resolves at WORKSPACE level — the tenant-facing area
+  §12.13 still defers. These are platform-staff screens and resolve at app
+  level; putting them on the tenant path would quietly change what the guard
+  reads.
+
+  **One query, not two.** The workspace page loads
+  `permissionOrganizationDetail` and picks its workspace out. That looks
+  wasteful and is not: the add-member picker needs every ORGANIZATION member,
+  since only they can be added, so the page needs both lists whatever it does —
+  and one query means the two cannot disagree about who is in what.
+
+  `Person` and `personLabel` moved to their own file, now that two screens
+  render membership rows. Two copies of the fallback chain would eventually
+  disagree about what to show when there is no account behind an id.
+
+- **2026-09-07** — **One WORKSPACE role per member too. The rule now holds at
+  both tenant levels; app level is the last collection.**
+
+  Extends the organization rule down a level, and enforced the same way:
+  `@@unique([workspaceMemberId])` on `PermWorkspaceMemberRole`, so
+  `assignWorkspaceRole` REPLACES and returns `replaced`. The composite primary
+  key stays alongside it — the key stops the same role twice, the unique stops
+  two different ones.
+
+  The workspace role control became a select, matching the organization one.
+  It had been chips-with-a-remove precisely because workspace roles were a
+  collection; the same argument that made that right now makes it wrong, and a
+  control offering a second role would be offering what the database refuses.
+
+  "No workspace role" stays a real option: membership is what lets somebody
+  REACH a workspace, a role is what they may DO once there, and somebody with
+  none still acts through their organization role.
+
+  ⚠ A test asserting the opposite — "does not apply to workspace roles" — was
+  inverted rather than deleted. It had been written the day the organization
+  rule landed, and the pair of them is the record of the decision moving.
+
+  Verified against the running database: assigning over an existing workspace
+  role reported `replaced: true` and left one row, re-assigning the same
+  reported `changed: false`, and a hand-written `INSERT` of a second was refused
+  by `perm_workspace_member_role_workspaceMemberId_key`.
+
+- **2026-09-07** — **Adding somebody to a workspace is a dialog: who, then
+  optionally what they do there.**
+
+  Closes §12.30. Each workspace on the organization detail screen now expands to
+  its members and their WORKSPACE roles, and "Add member" opens a picker.
+
+  **The candidate list is organization members NOT already in the workspace**,
+  and both halves are load-bearing. Only organization members, because a
+  workspace membership hangs off an organization membership — anyone else is
+  impossible to express rather than merely refused. And not-already-in, because
+  offering somebody who is already a member is offering a no-op: the write
+  returns `changed: false` and the reader wonders what happened.
+
+  **The role is optional, and that is the model.** Being IN a workspace and
+  holding a role in it are different things: membership is what lets somebody
+  reach it, a role is what they may do once there. Somebody added with no
+  workspace role still acts through whatever their ORGANIZATION role grants,
+  which is the common case.
+
+  **Two writes, in a forced order.** `assignWorkspaceRole` refuses somebody who
+  is not in the workspace — the grant hangs off the membership row, so there is
+  nowhere to put it first. Share, then grant. If the grant fails the share
+  stands, which is the right way round: they are in the workspace with no role,
+  rather than in neither state.
+
+  **Workspace roles stay a COLLECTION**, shown as chips with a remove on each,
+  where the organization role is a single select. The one-role rule is
+  organization level only (§12.32) — stacking two workspace roles is far less
+  confusing than stacking two organization ones.
+
+  The per-member workspace chips are GONE. Adding somebody now happens from the
+  workspace, where the role choice belongs and where you can see who is already
+  in it; the member row lists their workspaces read-only. Two places to do one
+  thing is two places for them to behave differently.
+
+- **2026-09-07** — **A workspace member can only be an organization member —
+  already true structurally — and probing it found a real cross-tenant leak.**
+
+  The rule was asked for and turned out to be enforced by the schema already:
+  `PermWorkspaceMember` keys off `membershipId`, not `userId`, so being in a
+  workspace requires a membership row to hang it from. "You cannot be in a
+  workspace of an organization you do not belong to" is impossible to express
+  rather than merely refused.
+
+  **What was NOT enforced: that the membership and the workspace belong to the
+  SAME organization.** The row references each independently. Verified by
+  inserting one against the live database:
+
+  - the cross-tenant row inserted cleanly — the schema permits it;
+  - it surfaced in `accessibleWorkspaceIds`;
+  - `canAccessWorkspace` returned **true** for another tenant's workspace;
+  - `loadContext` scoped AT that workspace still returned null, so the guard
+    held.
+
+  So no request was ever served — but `useCanAccessWorkspace` exposes
+  `canAccessWorkspace` to React, and a UI would have linked somewhere the API
+  turns away. That is the "link outliving the permission" mismatch one shared
+  key exists to prevent, arriving through the back door.
+
+  **Fixed in the READ, where C3's defence already lives**: the membership's
+  workspace include now filters `{ workspace: { organizationId, archivedAt:
+  null } }`. The same filter closed a second leak found at the same time —
+  ARCHIVED workspaces were listed as accessible, promising something
+  `loadContext` refuses one call later. Both halves re-verified as false after
+  the change, and the regression test asserts the QUERY rather than the result,
+  because a fake cannot reproduce a foreign key the schema does not have.
+
+  The row is still writable, which the read path only defends against. Closing
+  it properly needs a composite foreign key — §12.34, and the same raw-SQL
+  question as §12.19.
+
+- **2026-09-07** — **Workspace membership is REQUIRED. `workspaces:access_all`
+  is removed, and with it the last feature that bypassed billing.**
+
+  Asked for as a simplification — "so that the condition will not complicate" —
+  and it removes more complication than it looks like.
+
+  There were TWO routes into a workspace: being a member of it, or holding a
+  role granting `workspaces:access_all`. Two routes means two things to check,
+  two things to revoke, and two answers to "why can they see this". Now there is
+  one: somebody added them.
+
+  **It also closed a real incoherence, which testing surfaced rather than
+  reasoning.** `composeContext` computed workspace access from `granted` — role
+  grants — while every other decision reads `effective`, which is grants ∩ plan.
+  So `workspaces:access_all` was the single feature that bypassed subscription
+  entitlement. Demonstrated against the database on an organization with no
+  subscription: the member could ENTER every workspace and do NOTHING in any of
+  them. Deleting the key removes the exception instead of papering over it.
+
+  **Platform support remains the one exemption, and has to.** A support engineer
+  holds no membership anywhere — entering an organization they do not belong to
+  is the entire content of the right. Requiring membership of them would mean
+  adding staff to a customer's workspaces to help with them: it changes the
+  customer's member list, counts against their seat cap, and somebody has to
+  remember to remove it. It is the same exemption app-level grants already have
+  from the entitlement filter, with the same blast radius —
+  `platform:support_access` is app level, so no tenant administrator can mint a
+  role carrying it.
+
+  An organization role still applies INSIDE the workspaces its holder belongs
+  to, which is what `composeContext` has always done. It simply no longer widens
+  which those are.
+
+  **Deprecation now covers PLANS too.** Retiring the key exposed an asymmetry:
+  role-feature reads filtered `deprecatedAt`, plan-feature reads did not. So a
+  retired key stayed in `entitled`, and — worse — stayed visible to the plan
+  editor, which would then refuse to save the plan because
+  `validatePlanDraft` rejects an unregistered key. Both read paths now filter,
+  and the rows are KEPT rather than deleted, exactly as deprecated role features
+  are: `pro` and `enterprise` still carry the row, and no longer sell it.
+
+- **2026-09-07** — **A member holds ONE organization role. Combining rights
+  means defining a role that carries both.**
+
+  Asked for directly, and it is a real change to a model that was explicitly
+  additive: `composeContext` unions features from every role a person holds, and
+  `PermMembershipRole`'s composite key allowed as many as you liked.
+
+  **Enforced by the DATABASE, not by the write path.**
+  `@@unique([membershipId])` on `PermMembershipRole` — which lands exactly where
+  intended because that table holds ONLY organization-level roles (`assignRole`
+  asserts `level: 'organization'`; workspace grants live on
+  `PermWorkspaceMemberRole`). The composite primary key stays and is not
+  redundant with it: the key stops the same role twice, the unique stops two
+  different ones. Removing either brings back a different bug.
+
+  **`assignRole` therefore REPLACES.** Adding without clearing would hit the
+  constraint on the second grant, turning an ordinary re-role into an error
+  somebody works around by revoking first — two calls where the interface offers
+  one, and a window in between where the person holds nothing. It clears and
+  inserts in one transaction, and still reports `granted: false` when the role
+  was already held.
+
+  It also returns **`replaced`**, and the screens say so: granting a role
+  silently removes the previous one, and somebody who did not know the rule
+  would otherwise discover it as a missing permission weeks later. The members
+  grid became a single select, with the rule stated once at the top — a dropdown
+  that simply lacks a second slot does not explain itself, and the answer
+  (define a role carrying both, cloning an existing one as a start) is the part
+  a reader needs.
+
+  **No precedence was introduced**, which is what makes this safe: the model's
+  rule was "level filters, never overrides, and there is no deny". One role is
+  simply a union of one. Nothing had to learn an ordering.
+
+  ⚠ ORGANIZATION LEVEL ONLY. Workspace and app-level roles are still
+  collections — §12.32, decided on their own evidence rather than by symmetry.
+
+  Verified against the running database: assigning over an existing role
+  reported `replaced: true` and left one row; re-assigning the same reported
+  `changed: false`; and a hand-written `INSERT` of a second role was refused by
+  `perm_membership_role_membershipId_key`.
+
+- **2026-09-07** — **The organization screens: ten built-and-unreachable write
+  methods get a door, and the auth/permissions seam gets its third call site —
+  in the app, where it belongs.**
+
+  `PermissionsWriteService` had `createOrganization`, `addMember`,
+  `removeMember`, `assignRole`, `revokeRole`, `createWorkspace`,
+  `archiveWorkspace`, `shareWorkspace`, `unshareWorkspace`,
+  `assignWorkspaceRole` and `revokeWorkspaceRole` — every one with its actor
+  check, capacity check and cross-tenant refusal, and every one reachable by
+  nothing. Eleven mutations now expose them. **Three unbound keys retired**:
+  `members:manage`, `workspaces:manage` and `workspaces:share` had been claims
+  in the registry with no surface behind them; the pinned list is down from six
+  to three.
+
+  **`organizations:read`, at APP level.** Listing every tenant is a platform
+  question, so the key is app level even though `members:manage` beside it is
+  organization level. The consequence is deliberate and is the whole reason
+  they are two keys: support can read a tenant and change nothing in it. It also
+  means these screens are for PLATFORM STAFF — a tenant administrator sees
+  nothing under `/admin/*`, because that path resolves at app level and their
+  organization role never participates. Tenant self-service needs §12.13.
+
+  `permissionOrganizations` MOVED from `billing:manage` to `organizations:read`.
+  The old key was always wrong — the query lists every tenant — but the
+  consequence is a real coupling worth stating: the subscription form now needs
+  both keys.
+
+  **The user lookup lives in the APP, and can live nowhere else.** Turning an
+  email into the `userId` that `addMember` takes reads `auth_user`, which
+  `module-auth` owns, and must be guarded by `members:manage`, which
+  `module-permissions` owns. Neither module may import the other, so neither can
+  host it. `apps/web-server/src/users/users.resolver.ts` composes them — the
+  same arrangement as `resolvePrincipal`, and it does not widen the seam: the
+  modules still know nothing of each other.
+
+  A BATCH twin, `findUsersByIds`, does the reverse for the members grid — which
+  holds ids and needs names. It is acceptable as a batch precisely because it is
+  by id: the caller already holds those ids, from a query that was itself
+  guarded, so it discloses nothing new. Capped at 200 and de-duplicated, because
+  an uncapped `in` list is an unbounded query somebody can send.
+
+  ⚠ Both are named by the module's CLIENT by convention, the way
+  `DEFAULT_GRAPHQL_PATH` names a route module-auth mounts — the module does not
+  define them and cannot. So `findUsersByIds` is the one call in
+  `permissions-client.ts` that FAILS SOFT: an app adopting the module without
+  defining it gets a members screen showing raw ids rather than an error page
+  instead of the members screen. Every other call throws, because every other
+  call is the thing the screen is for.
+
+  It is EXACT-MATCH ONLY, one address at a time. A prefix search over
+  `auth_user` is a customer-list harvester for anyone holding `members:manage`.
+  ⚠ It still discloses whether an address is registered — an accepted trade,
+  not an oversight, and the alternative is the invite flow at §12.31.
+
+  **A bad `organizationId` now refuses cleanly.** Found by calling the API with
+  an empty id and getting a Prisma foreign-key violation, naming a constraint,
+  through a stack trace. `addMember` and `createWorkspace` join
+  `startSubscription` in reading the organization first, so the answer is
+  `not_found` with a sentence rather than a message written for whoever wrote
+  the ORM. The constraint is still what makes it impossible; this is what makes
+  it explicable.
+
+- **2026-09-07** — **Plans get an icon, and the shared icon set grows from 13
+  names to 96.**
+
+  `PermPlan.icon` mirrors `PermRole.icon` exactly — a NAME, never a component,
+  nullable, and an unknown name falls back to a dot rather than throwing. The
+  same reasons hold: this package is imported by the NestJS server, so it may
+  not name a `LucideIcon`, and a second frontend draws the same plan in its own
+  set. Pure presentation, carrying no commercial meaning:
+  `assertPlanFeatureLevels` ignores it and nothing branches on it, because a
+  plan is exactly the features and caps it holds.
+
+  **`apps/web-app`'s `ICONS` map now serves three vocabularies** — `nav.icon`,
+  `PermRole.icon`, `PermPlan.icon` — which is why it is one map and not three.
+  Names are kebab-case and STABLE: they are stored in the database, so renaming
+  one silently turns every row holding it into a fallback dot. Every name was
+  checked against `lucide-react`'s actual exports before being added rather than
+  assumed — a missing export is a build error, but a wrong-but-existing name is
+  a silently wrong drawing.
+
+  The seeded ladder reads as one: `sprout` → `rocket` → `zap` → `gem`, ordered
+  so a reader can tell the tiers apart without being told which is which.
+  `sprout` is shared with the `normal-user` role deliberately — both mean
+  "starting from nothing", one about a person and one about a plan.
+
+  ⚠ `createPlanIfAbsent` does not update existing rows, so adding an icon to
+  `seed/plans.ts` does NOT give it to a plan an environment already has. That is
+  the same trade the seeder documents, and the fix is the icon picker on the
+  edit screen — or a one-line `UPDATE`, which is what the existing four got.
+
+- **2026-09-07** — **A starting plan catalogue is seeded — and it CREATES
+  rather than upserts, which is the whole decision.**
+
+  Reverses §12.26, which had said plans should not be seeded because which
+  products a platform sells is an operator decision. The generic ladder was
+  asked for: `free`, `starter`, `pro`, `enterprise`.
+
+  **`createPlanIfAbsent`, not `upsertSystemPlan`, and the asymmetry with roles
+  is the point.** `upsertSystemRole` REPLACES features and limits on every
+  `db:sync`, and the admin screens refuse to edit a system role, because a
+  role's meaning is code — a role granting `roles:read` has to keep granting it
+  or the guards lie. A plan is the other kind of thing: what it sells is a
+  product decision that changes without a deploy, and adjusting `pro` through
+  the screens is the ordinary use of what was just built. Re-asserting the
+  definitions every release would silently undo an operator's work — the same
+  revert trap the feature screens are built around, pointed at the people the
+  feature was for.
+
+  So the seed hands over a catalogue and gets out of the way. It runs in phase
+  **'seed'** rather than 'sync', is idempotent by creating nothing twice, and
+  `PermPlan` still has no `isSystem` column: a seeded plan is an ordinary,
+  editable row from the moment it exists. The cost, stated where the definitions
+  live: editing `seed/plans.ts` does NOT change an environment that already has
+  the rows. The file is a starting point, not a specification.
+
+  **Every tier sells the billing keys, including free.** `billing:manage`,
+  `plans:read` and `subscriptions:read` are organization-level, so they pass
+  through the entitlement filter like anything else — a free plan that omitted
+  them would produce a customer who cannot open the screen that would let them
+  upgrade. Locked out of paying you, by the free tier. Any new tier must carry
+  them too.
+
+  **Enterprise is DERIVED from the composed registry**, the same call
+  `super-admin` makes: a frozen list would leave the tier named "Enterprise"
+  while quietly ceasing to include everything. Its caps are large finite numbers
+  rather than unlimited, because `resolveLimits` takes a number or falls back to
+  the floor — there is no unlimited to express.
+
+  ⚠ **Pro and Enterprise currently sell the SAME nine features** and differ only
+  in caps. Not a mistake: the registry has exactly nine organization- and
+  workspace-level keys today and they are all administrative, so there is
+  nothing product-shaped to withhold from Pro. Manufacturing a difference would
+  mean crippling Pro arbitrarily. The tiers differentiate on features as real
+  features get registered; until then, caps are the product.
+
+- **2026-09-07** — **`graphql-ws` wired end to end, ahead of the features that
+  will need it — and three silent bugs found by testing it rather than
+  shipping it.**
+
+  Asked for deliberately up front: realtime features are coming, and retrofitting
+  a transport through an authorization model is worse than building it once.
+  §7's design — "sharing auth with HTTP via a connection-init token check in the
+  Nest WS context" — is now real rather than planned.
+
+  **The credential is a sixty-second TICKET, not the session.** A browser opening
+  a WebSocket cannot send an httpOnly cookie cross-origin and cannot read it to
+  send itself, so it asks the same-origin proxy (`/api/auth/ws-ticket`) and
+  presents the result in `connectionParams`. The ticket is a distinct token
+  **type** (`typ: 'ws'`), NOT a fourth `TokenScope` — which is the security
+  argument: `verifyAccess` refuses anything whose `typ` is not `'user'` as its
+  first check, so a ticket authenticates no HTTP request whatever a future
+  `@AllowScopes` says. A scope would have made that a matter of every guard
+  remembering to exclude it, and `resolvePrincipal` — the one seam — would have
+  had to learn a new word. The ticket is EXCHANGED at the handshake for an
+  ordinary `full` principal; `ws` never travels further. Minting costs a
+  database read (the only credential path that does), because a socket may live
+  fifteen minutes and "sign out everywhere" must not leave a stream running.
+
+  **The socket closes when its authorization expires.** `Principal.expiresAt`
+  has said "The WebSocket layer closes on it" since the type was written; it now
+  does. This is the property that makes subscriptions safe to add at all: a
+  query re-authorizes on every request, a subscription authorizes ONCE and then
+  streams, so without a cap a disabled role or a lapsed plan would keep
+  delivering until the socket happened to drop. The staleness window is now
+  `AUTH_ACCESS_TOKEN_TTL` — the same bound an HTTP caller already lives with.
+
+  **Three bugs, all silent, all found by an end-to-end test:**
+
+  1. ⚠ **The principal was being sent to the browser.** `onConnect`'s object
+     return is not the context — `graphql-ws` sends it to the client as the
+     `connection_ack` payload. Returning the connection published userId and
+     sessionId to the page, which is exactly the disclosure the httpOnly design
+     exists to prevent, and nothing failed: the socket worked. It is now stashed
+     on `extra` under a Symbol, with a regression test.
+  2. **Every subscription was denied.** Nest passes the driver's TOP-LEVEL
+     `context` to `useServer`, so a socket resolved against an HTTP-shaped
+     `{ req, res }` handler and found no principal. One `context` function now
+     serves both, branching on `extra`, which only the socket carries.
+  3. **The throttler crashed every subscription.** `ThrottlerGuard` writes
+     rate-limit headers onto a response a socket does not have. It now skips
+     WebSocket operations — see §12.29 for what that leaves uncovered.
+
+  **`JwtAuthGuard` now accepts a principal the TRANSPORT established.** Not a
+  bypass: nothing outside the process can set it (Express's request object is
+  not reachable from a header or a body), and the scope rule and the revocation
+  lookup still run on it — so a socket opened by a session that was later signed
+  out is refused on its next operation.
+
+  **One real subscription, not a demo.** `planChanged` is guarded by
+  `plans:read`, the same key as `permissionPlans`, and declared as the
+  registry's first `graphql_subscription` binding — a surface `types.ts` has
+  carried since it was written, waiting for one. It fixes something real: two
+  administrators no longer see different truths until one reloads. The payload
+  is the KEY only, and the page re-reads through the guarded query, so there is
+  ONE authorization path rather than a second one on the socket.
+
+  **`resolve` is required and its absence is silent.** `graphql-subscriptions`
+  assumes a payload is already keyed by the field name; without a resolver the
+  client gets `data: null` with no error anywhere. That cost a debugging round.
+
+- **2026-09-07** — **`roles:create`, `roles:update` and `roles:disable` raised
+  to APP level. `roles:read` stays organization level.**
+
+  Found by reading the plan feature tree: those three were being offered as
+  things a PLAN could sell, which prompted the question of whether they were at
+  the right level at all. They were not, and the reason is not about taste.
+
+  **The write path only produces shared presets.** `createRole` writes
+  `organizationId: null` — which the schema defines as "a preset shared by every
+  organization" — and `listRoles()` reads that same null scope for everyone. So
+  creating, changing or disabling a role touches a row every tenant can see, and
+  `assertRoleAssignable` lets any organization grant it. An organization-level
+  key guarding that would let one tenant's administrator edit a role every other
+  tenant relies on. `roles:disable` is the sharpest case: disabling a shared
+  preset stops it granting for all tenants at once.
+
+  Two things bounded it and one did not: seeded presets are `isSystem` and
+  `requireWritableRole` refuses them, and the no-escalation rule limits which
+  features a role may carry — but a NON-system preset created by one tenant was
+  fully editable by another.
+
+  **Read stays at organization level.** Reading the preset catalogue tells you
+  nothing about any tenant's data — the same argument `features:read` makes —
+  and a tenant administrator needs it to assign roles.
+
+  **`roles:manage_app` still earns its place**, with a narrower job: it now
+  splits platform staff who may define organization and workspace presets from
+  those who may mint an APP-level role. Without it, anyone able to create a role
+  at all could mint a second super admin.
+
+  **Consequences, all intended.** The three drop out of the plan picker (9
+  sellable features, down from 12) — you should not sell "create roles" as a
+  product feature while it is a platform operation. An organization-level role
+  can no longer carry them, which `assertRoleFeatureLevels` enforces; the seeded
+  organization presets are empty, so nothing regressed. `super-admin` keeps them
+  because it derives the whole registry. `level` is registry-only, so no
+  migration and no `perm_feature` change.
+
+  **PROVISIONAL, with a precise reversal condition — §12.27.** When role writes
+  are scoped to the actor's organization these become genuinely tenant-local and
+  belong back at organization level. That needs the active organization on the
+  request (§12.13), which is the same thing blocking `role-draft.ts` from
+  offering an organization picker. Do both together or neither.
+
+- **2026-09-06** — **Plans and subscriptions, built as the entitlement twin of
+  roles and features — and a decision reversed to do it.**
+
+  **What a "subscription" turned out to be, twice.** The request was to build
+  subscriptions "just like roles and features — a collection of features, but
+  organization- and workspace-level ones". The model already splits that in two:
+  `PermPlan` is the named collection of features, `PermSubscription` attaches
+  one to a tenant. So both were built rather than collapsing them — `/admin/plans`
+  is the exact mirror of `/admin/roles`, and `/admin/subscriptions` is who is on
+  what. Collapsing them would have meant one screen answering "what do we sell"
+  and "who bought it" with one row shape, and no way to change a customer's plan
+  without rewriting the history of what they had been entitled to.
+
+  **⚠ REVERSED: subscription writes were explicitly out of this module.** The
+  standing decision was that billing owns `perm_subscription` and that guessing
+  at idempotency "would put a wrong answer in the one table a permission check
+  must not have to doubt". That is now reversed, and the deferred questions are
+  answered instead of dropped:
+
+  - *who writes* — an administrator holding `billing:manage`, through the
+    screens. A billing provider integrating later must RECONCILE against these
+    rows, not assume it is the only writer. §12.25 is the open half of that.
+  - *idempotency* — the live row for one (organization, workspace, plan) is
+    unique: a second `startSubscription` while the first has no `endedAt` is
+    REFUSED, not returned as a no-op. That differs from `assignRole`, which is
+    idempotent because re-granting leaves the world as asked; a subscription
+    carries a status and a period the caller did not send, so silently
+    succeeding would report "subscribed" while the dates stayed stale.
+  - *payment fails* — `status` moves to `past_due` and the row stays.
+    Entitlement stops at once because `loadContext` reads only `active`, and
+    recovering is a status change rather than a re-subscription.
+
+  **A plan may only sell organization- and workspace-level features, and that is
+  a rule rather than a convention.** App-level grants are unioned in AFTER the
+  entitlement filter (§14, `composeContext`), so an app-level key inside a plan
+  is never consulted: it would read as a sold feature in the catalogue and
+  entitle nobody. `assertPlanFeatureLevels` refuses it loudly instead of
+  filtering it out.
+
+  **No no-escalation rule on plans, deliberately — the one place the twin is not
+  symmetric.** A role GRANTS, so putting a right into one you do not hold turns a
+  single "create roles" key into every key, and `validateRoleDraft` refuses it.
+  A plan ENTITLES: it lifts the subscription filter off a feature and nothing
+  more, and whoever uses it still needs a role that grants it — a role still
+  bound by the escalation rule. So the plan editor offers the whole catalogue,
+  which is what somebody defining products needs. `plans:create`/`plans:update`
+  are app level and privileged, which is where the real constraint on who
+  defines products lives.
+
+  **Five new keys, split by risk the same way roles were.** `plans:read` is
+  ORGANIZATION level while `plans:create`, `plans:update` and `plans:archive`
+  are APP level — the same asymmetry `features:read` already has, and for the
+  same reason: an administrator inside one tenant must see what they could
+  subscribe to, while defining what the platform sells is a platform act. A
+  tenant admin who could edit a plan could sell themselves anything.
+  `subscriptions:read` is separate from `billing:manage` so support can answer
+  "why can they not do this" without being able to change anybody's
+  entitlement; `billing:manage` keeps all three writes, because starting,
+  amending and ending are not jobs people hold separately and three keys always
+  granted together are one key with extra rows.
+
+  **`PermPlan.archivedAt`, and it is NOT `isPublic`.** The two were nearly
+  conflated and mean opposite things: `isPublic` stops OFFERING a plan while
+  honouring it for everyone already on it (a bespoke or grandfathered tier),
+  `archivedAt` stops HONOURING it — every live subscriber loses those features
+  on their next request. The read path enforces the second (`plan: { archivedAt:
+  null }` in the entitlement query, filtered in the QUERY for the reason
+  `disabledAt` and `deprecatedAt` are), and `startSubscription` refuses an
+  archived plan. There is no delete: every subscription ever written points at
+  the plan row.
+
+  **The target and the plan are immutable on a subscription**, exactly as key
+  and level are on a role, and for the same reason: every entitlement decision
+  the row ever produced read all three. Changing plan is End then New, which
+  leaves two rows and a timestamp that reconstruct the change; a mutated row
+  cannot. There is no un-end either — bringing a customer back is a new
+  subscription, which is what makes the gap visible rather than erased.
+
+  **One `findMany` signature, not two, and the reason is worth recording.**
+  `permSubscription` is read by both the entitlement pipeline and the admin
+  list, which want different `where` clauses and different rows. Declaring it as
+  an OVERLOADED interface member compiles inside the module and then fails the
+  app's `satisfies-modules.ts` assertion: Prisma's generated `findMany` is a
+  single generic method, and TypeScript will not match it against a
+  two-signature target — it collapses the delegate to `never`. So there is one
+  signature with optional `where` fields and one row type, and `listSubscriptions`
+  joins the organization and workspace NAMES from a second query rather than
+  widening the include on the request path. That assertion file did its job
+  twice in this change: it also caught the three unbound plan delegates.
+
+  **`Date.parse('2026-02-31')` is not NaN.** JavaScript rolls the overflow
+  forward to the 3rd of March, so the obvious renewal-date check passes and
+  records the wrong month. `subscription-draft.ts` round-trips the parsed date
+  back to a string and compares, in BOTH the validator and the writer — a value
+  the form refused must not be silently accepted with a different date by
+  anything calling the write service directly.
 
 - **2026-09-05** — **Roles became writable, there is no delete, and the
   registry audit found two contradictions on the way.**

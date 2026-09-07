@@ -52,6 +52,8 @@ interface Writes {
   sessionCreates: unknown[];
   sessionUpdates: unknown[];
   credentialUpserts: unknown[];
+  credentialCreates: unknown[];
+  userCreates: unknown[];
   resetCreates: unknown[];
   resetUpdates: unknown[];
   factorCreates: unknown[];
@@ -80,6 +82,8 @@ function harness(state: State = {}) {
     sessionCreates: [],
     sessionUpdates: [],
     credentialUpserts: [],
+    credentialCreates: [],
+    userCreates: [],
     resetCreates: [],
     resetUpdates: [],
     factorCreates: [],
@@ -101,11 +105,19 @@ function harness(state: State = {}) {
         writes.userUpdates.push(args);
         return {};
       },
+      create: async (args: { data: { email: string; displayName: string | null } }) => {
+        writes.userCreates.push(args);
+        return user({ id: 'new1', email: args.data.email, displayName: args.data.displayName, username: null });
+      },
     },
     authCredential: {
       findFirst: async () => (state.secret ? { id: 'c1', secret: state.secret } : null),
       upsert: async (args: unknown) => {
         writes.credentialUpserts.push(args);
+        return {};
+      },
+      create: async (args: unknown) => {
+        writes.credentialCreates.push(args);
         return {};
       },
     },
@@ -527,6 +539,46 @@ describe('profile', () => {
 
   it('returns null for a user deleted since the token was issued', async () => {
     await expect(harness({}).svc.profile(principal)).resolves.toBeNull();
+  });
+});
+
+describe('creating an account', () => {
+  /*
+   * The composition this exists for lives in the app (invitations.resolver.ts).
+   * What is checked here is the part the module owns: policy, both rows, and
+   * the absence of a session.
+   */
+  it('writes the user and the credential, and signs nobody in', async () => {
+    const h = harness({});
+    const created = await h.svc.createAccount({
+      email: 'New@Example.com ',
+      displayName: ' Grace ',
+      password: PASSWORD,
+    });
+
+    expect(created.email).toBe('new@example.com');
+    expect(created.displayName).toBe('Grace');
+    expect(h.writes.userCreates).toHaveLength(1);
+    expect(h.writes.credentialCreates).toHaveLength(1);
+    // The whole reason it returns a row rather than an AuthResult: token
+    // minting stays on /auth/signin, where the throttler and the cookie
+    // adapter are.
+    expect(h.writes.sessionCreates).toHaveLength(0);
+  });
+
+  it('refuses a password the policy rejects, before writing anything', async () => {
+    const h = harness({});
+    await expect(h.svc.createAccount({ email: 'new@example.com', password: 'short' })).rejects.toThrow();
+    expect(h.writes.userCreates).toHaveLength(0);
+  });
+
+  it('refuses an address that already has an account', async () => {
+    // Plainly, unlike signIn — whoever is here is creating an account at one
+    // specific address, and "sign in instead" is the only useful answer. It is
+    // also why this is a method and not a route.
+    const h = harness({ user: user() });
+    await expect(h.svc.createAccount({ email: 'ada@example.com', password: PASSWORD })).rejects.toThrow();
+    expect(h.writes.userCreates).toHaveLength(0);
   });
 });
 

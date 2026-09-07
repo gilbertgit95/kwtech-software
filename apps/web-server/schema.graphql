@@ -11,6 +11,26 @@ input FeatureFilterInput {
   unboundOnly: Boolean
 }
 
+type FoundUser {
+  displayName: String
+  email: String!
+  id: String!
+  username: String
+}
+
+type InvitationPreview {
+  email: String!
+  expiresAt: String!
+  hasAccount: Boolean!
+  organizationName: String!
+  roleLabel: String
+}
+
+type InvitationSignUpResult {
+  email: String!
+  organizationName: String!
+}
+
 type MfaFactor {
   confirmedAt: String
   id: String!
@@ -20,11 +40,35 @@ type MfaFactor {
 }
 
 type Mutation {
+  acceptInvitation(token: String!): PermissionWriteResult!
+  addMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  archiveWorkspace(organizationId: String!, workspaceId: String!): PermissionWriteResult!
+  assignRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
+  assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  createOrganization(key: String!, name: String!): PermissionWriteResult!
+  createPlan(input: PlanDraftInput!): PermissionPlanDetail!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
+  createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
+  createWorkspace(key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  endSubscription(subscriptionId: String!): PermissionSubscription!
+  inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
+  previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
+  removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
+  revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
+  revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
+  shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
+  unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  updateOrganization(key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
   updateProfile(input: UpdateProfileInput!): Viewer!
   updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
+  updateSubscription(currentPeriodEnd: String!, status: String!, subscriptionId: String!): PermissionSubscription!
+  updateWorkspace(key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
 }
 
 type PermissionContext {
@@ -57,6 +101,78 @@ type PermissionFeaturePage {
   total: Int!
 }
 
+type PermissionInvitation {
+  acceptedAt: String
+  acceptedByUserId: String
+  createdAt: String!
+  email: String!
+  expiresAt: String!
+  id: String!
+  invitedByUserId: String!
+  revokedAt: String
+  role: PermissionMemberRole
+  state: String!
+}
+
+type PermissionInvitationResult {
+  delivered: Boolean!
+  invitationId: String!
+}
+
+type PermissionMember {
+  joinedAt: String!
+  membershipId: String!
+  roles: [PermissionMemberRole!]!
+  status: String!
+  userId: String!
+  workspaceIds: [String!]!
+}
+
+type PermissionMemberRole {
+  icon: String
+  id: String!
+  key: String!
+  label: String!
+  level: String!
+}
+
+type PermissionOrganization {
+  id: String!
+  key: String!
+  memberCount: Int!
+  name: String!
+  workspaceCount: Int!
+  workspaces: [PermissionWorkspace!]!
+}
+
+type PermissionOrganizationDetail {
+  id: String!
+  invitations: [PermissionInvitation!]!
+  key: String!
+  members: [PermissionMember!]!
+  name: String!
+  workspaces: [PermissionWorkspaceDetail!]!
+}
+
+type PermissionPlanChanged {
+  planKey: String!
+}
+
+type PermissionPlanDetail {
+  archived: Boolean!
+  features: [String!]!
+  icon: String
+  isPublic: Boolean!
+  key: String!
+  label: String!
+  limits: [PermissionPlanLimit!]!
+}
+
+type PermissionPlanLimit {
+  limitKey: String!
+  value: Int!
+}
+
 type PermissionRole {
   icon: String
   key: String!
@@ -75,11 +191,80 @@ type PermissionRoleDetail {
   organizationId: String
 }
 
+type PermissionSubscription {
+  currentPeriodEnd: String
+  endedAt: String
+  id: String!
+  organizationId: String!
+  organizationName: String!
+  planArchived: Boolean!
+  planKey: String!
+  planLabel: String!
+  status: String!
+  workspaceId: String
+  workspaceName: String
+}
+
+type PermissionWorkspace {
+  id: String!
+  key: String!
+  name: String!
+}
+
+type PermissionWorkspaceDetail {
+  archived: Boolean!
+  id: String!
+  key: String!
+  memberCount: Int!
+  members: [PermissionWorkspaceMember!]!
+  name: String!
+}
+
+type PermissionWorkspaceMember {
+  membershipId: String!
+  roles: [PermissionMemberRole!]!
+  userId: String!
+  workspaceMemberId: String!
+}
+
+type PermissionWriteResult {
+  changed: Boolean!
+  id: String
+  replaced: Boolean!
+}
+
+type PlanClonePreview {
+  added: [String!]!
+  features: [String!]!
+  skipped: [RoleCloneSkip!]!
+}
+
+input PlanDraftInput {
+  features: [String!]!
+  icon: String
+  isPublic: Boolean!
+  key: String!
+  label: String!
+  limits: [PlanLimitInput!]!
+}
+
+input PlanLimitInput {
+  limitKey: String!
+  value: String!
+}
+
 type Query {
+  findUserByEmail(email: String!): FoundUser
+  findUsersByIds(ids: [String!]!): [FoundUser!]!
+  invitationPreview(token: String!): InvitationPreview
   mfaFactors: [MfaFactor!]!
   myPermissions: PermissionContext
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
+  permissionOrganizationDetail(organizationId: String!): PermissionOrganizationDetail
+  permissionOrganizations: [PermissionOrganization!]!
+  permissionPlans: [PermissionPlanDetail!]!
   permissionRoles(organizationId: String): [PermissionRoleDetail!]!
+  permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
   session: SessionInfo
   viewer: Viewer
 }
@@ -108,6 +293,18 @@ type SessionInfo {
   expiresAt: Int!
   scope: String!
   userId: String!
+}
+
+type Subscription {
+  planChanged: PermissionPlanChanged!
+}
+
+input SubscriptionDraftInput {
+  currentPeriodEnd: String!
+  organizationId: String!
+  planKey: String!
+  status: String!
+  workspaceId: String
 }
 
 input UpdateProfileInput {

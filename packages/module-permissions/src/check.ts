@@ -64,9 +64,11 @@ export function denialReason(ctx: PermissionContext | undefined, required: reado
 }
 
 /**
- * Whether the caller may enter a workspace at all — a question about sharing,
- * asked before any feature question. `accessibleWorkspaceIds === null` means
- * they hold `workspaces:access_all`.
+ * Whether the caller may enter a workspace at all — a question about SHARING,
+ * asked before any feature question.
+ *
+ * Membership is required: no role widens this for a tenant user.
+ * `accessibleWorkspaceIds === null` means platform support, the one exemption.
  *
  * Kept separate from checkFeature because the two answer different questions:
  * this one is "may you be here", that one is "may you do this here".

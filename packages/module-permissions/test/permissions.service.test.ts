@@ -2,7 +2,10 @@ import { LIMIT } from '../src/domain/limits.js';
 import { FEATURE } from '../src/feature-keys.js';
 import type {
   MembershipRow,
+  OrganizationDetailRow,
+  OrganizationRow,
   PermissionsPrismaClient,
+  PlanDefinitionRow,
   RoleWithFeatures,
   SubscriptionRow,
   UserRoleRow,
@@ -27,6 +30,9 @@ interface Db {
   workspace?: { id: string } | null;
   workspaceMember?: WorkspaceMemberRow | null;
   subscriptions?: SubscriptionRow[];
+  plans?: PlanDefinitionRow[];
+  organizations?: OrganizationRow[];
+  organizationDetail?: OrganizationDetailRow | null;
   counts?: Partial<Record<'membership' | 'workspace' | 'workspaceMember', number>>;
 }
 
@@ -73,10 +79,34 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
       count: async () => db.counts?.workspaceMember ?? 0,
     },
     permSubscription: {
+      /*
+       * OVERLOADED on the interface: the entitlement query and the admin list
+       * ask the same table different questions and get different row shapes. An
+       * object literal cannot declare overloads, so the implementation is
+       * written once and asserted against the interface's own member type —
+       * which still fails the moment that member changes shape, which is the
+       * point of the fake being structural.
+       *
+       * Only the entitlement half is exercised here; `listSubscriptions` has
+       * its own test below.
+       */
       findMany: async (args) => {
         calls.subscription.push(args);
         return db.subscriptions ?? [];
       },
+    },
+    // The admin read paths. No permission decision consults either, but the
+    // interface is structural, so a stub is what keeps the fake honest.
+    permPlan: { findMany: async () => db.plans ?? [] },
+    permOrganization: {
+      findMany: async () => db.organizations ?? [],
+      /*
+       * The detail read, stubbed rather than exercised: `listOrganizationDetail`
+       * is a projection with no decision in it. The stub is here because the
+       * client is STRUCTURAL — leaving it out is a type error, which is the
+       * property that stops the fake quietly drifting from the interface.
+       */
+      findFirst: async () => db.organizationDetail ?? null,
     },
   };
   return { client, calls };
@@ -110,10 +140,35 @@ const membership = (over: Partial<MembershipRow> = {}): MembershipRow => ({
   ...over,
 });
 
-const plan = (features: string[], limits: { limitKey: string; value: number }[] = []): SubscriptionRow => ({
+/**
+ * One subscription row.
+ *
+ * Carries more than `loadContext` reads, because ONE row type serves both the
+ * entitlement pipeline and the admin list — Prisma's generic `findMany` cannot
+ * satisfy an overloaded interface member, so there is one signature and one
+ * shape. See `SubscriptionRow`.
+ */
+const plan = (
+  features: string[],
+  limits: { limitKey: string; value: number }[] = [],
+  over: Partial<Omit<SubscriptionRow, 'plan'>> & { plan?: Partial<SubscriptionRow['plan']> } = {},
+): SubscriptionRow => ({
+  id: 'sub1',
+  organizationId: 'org1',
   planKey: 'pro',
   workspaceId: null,
-  plan: { features: features.map((featureKey) => ({ featureKey })), limits },
+  status: 'active',
+  currentPeriodEnd: null,
+  endedAt: null,
+  ...over,
+  plan: {
+    key: 'pro',
+    label: 'Pro',
+    archivedAt: null,
+    features: features.map((featureKey) => ({ featureKey })),
+    limits,
+    ...over.plan,
+  },
 });
 
 describe('loadContext — app level short-circuits', () => {
@@ -350,6 +405,128 @@ describe('loadContext — subscriptions', () => {
       expect(ctx?.limits[LIMIT.organizationMembers]).toBe(50);
     });
   });
+
+  /**
+   * An ARCHIVED plan must entitle nothing, and the filter has to be in the
+   * QUERY rather than applied to what came back — the same call the
+   * `disabledAt` and `deprecatedAt` filters beside it make. A row loaded and
+   * then dropped still exists for something later to read by mistake, and a
+   * column nothing reads is a switch that only looks like it works.
+   */
+  it('never loads an archived plan', () => {
+    const { svc, calls } = service({ membership: membership() });
+
+    return svc.loadContext('u1', { organizationId: 'org1' }).then(() => {
+      expect(calls.subscription[0]).toMatchObject({ where: { plan: { archivedAt: null } } });
+    });
+  });
+});
+
+describe('the admin read paths', () => {
+  /**
+   * The opposite of the entitlement query, deliberately — the same argument
+   * `listRoles` makes about disabled roles. An administrator has to see an
+   * archived plan in order to restore it, and a list that hid them would make
+   * the switch read as a delete.
+   */
+  it('shows archived plans, and flattens their limits into a map', () => {
+    const { svc } = service({
+      plans: [
+        {
+          key: 'legacy',
+          label: 'Legacy',
+          isPublic: false,
+          icon: 'gem',
+          archivedAt: new Date(),
+          features: [{ featureKey: FEATURE.membersManage }],
+          limits: [{ limitKey: LIMIT.organizationMembers, value: 50 }],
+        },
+      ],
+    });
+
+    return svc.listPlans().then((plans) => {
+      expect(plans).toHaveLength(1);
+      expect(plans[0]?.archived).toBe(true);
+      expect(plans[0]?.isPublic).toBe(false);
+      // Presentation, carried through untouched — the grid draws it, nothing
+      // branches on it.
+      expect(plans[0]?.icon).toBe('gem');
+      expect(plans[0]?.limits).toEqual({ [LIMIT.organizationMembers]: 50 });
+    });
+  });
+
+  /**
+   * Ended subscriptions are shown for a DIFFERENT reason than archived plans:
+   * they have no switch to flip, they are the history. And `planArchived` is
+   * carried so a screen can explain a row that reads `active` and is entitling
+   * nobody.
+   */
+  it('joins the organization and workspace names, and says whether the plan is archived', () => {
+    const { svc } = service({
+      subscriptions: [plan([], [], { workspaceId: 'ws1', plan: { archivedAt: new Date() } })],
+      organizations: [
+        {
+          id: 'org1',
+          key: 'acme',
+          name: 'Acme',
+          memberships: [],
+          workspaces: [{ id: 'ws1', key: 'lab', name: 'Lab', archivedAt: null }],
+        },
+      ],
+    });
+
+    return svc.listSubscriptions().then((rows) => {
+      expect(rows[0]).toMatchObject({
+        organizationName: 'Acme',
+        workspaceName: 'Lab',
+        // The row reads `active` and entitles nobody, because the plan behind
+        // it is archived. Without this field no screen could say why.
+        status: 'active',
+        planArchived: true,
+      });
+    });
+  });
+
+  /**
+   * A subscription outlives the workspace it was attached to, so the LIST keeps
+   * archived workspaces where the picker drops them. A row with a blank where a
+   * name belongs explains nothing to whoever is working out what a customer had.
+   */
+  it('still names a workspace that has since been archived', () => {
+    const db = {
+      subscriptions: [plan([], [], { workspaceId: 'ws1' })],
+      organizations: [
+        {
+          id: 'org1',
+          key: 'acme',
+          name: 'Acme',
+          memberships: [],
+          workspaces: [{ id: 'ws1', key: 'lab', name: 'Lab', archivedAt: new Date() }],
+        },
+      ],
+    };
+
+    return Promise.all([service(db).svc.listSubscriptions(), service(db).svc.listOrganizations()]).then(
+      ([subscriptions, organizations]) => {
+        expect(subscriptions[0]?.workspaceName).toBe('Lab');
+        // The picker, on the same query, offers nothing archived.
+        expect(organizations[0]?.workspaces).toEqual([]);
+      },
+    );
+  });
+
+  it('reads an organization-wide subscription as one with no workspace', () => {
+    const { svc } = service({
+      subscriptions: [plan([])],
+      organizations: [{ id: 'org1', key: 'acme', name: 'Acme', memberships: [], workspaces: [] }],
+    });
+
+    return svc.listSubscriptions().then((rows) => {
+      expect(rows[0]?.workspaceId).toBeNull();
+      expect(rows[0]?.workspaceName).toBeNull();
+      expect(rows[0]?.planArchived).toBe(false);
+    });
+  });
 });
 
 describe('loadContext — accessible workspaces', () => {
@@ -362,25 +539,54 @@ describe('loadContext — accessible workspaces', () => {
       .then((ctx) => expect(ctx?.accessibleWorkspaceIds).toEqual(['ws1', 'ws2']));
   });
 
-  it('is null for an organization admin holding workspaces:access_all', () => {
+  /**
+   * Even an organization administrator sees only the workspaces they were added
+   * to. Membership is required and no role widens it — see `composeContext`.
+   */
+  /**
+   * ⚠ REGRESSION TEST FOR A DEMONSTRATED LEAK.
+   *
+   * Nothing in the schema ties a workspace membership's MEMBERSHIP to its
+   * WORKSPACE's organization — the row references each independently, so a
+   * cross-tenant row is insertable and one was, against a live database. It
+   * surfaced in `accessibleWorkspaceIds`, and `canAccessWorkspace` then returned
+   * true for another tenant's workspace. The guard still refused a request
+   * naming it, but the UI would have linked somewhere the API turns away.
+   *
+   * The fix is a `where` on the include, so this asserts the QUERY rather than
+   * the result — a fake cannot reproduce a foreign key the schema does not have,
+   * and the filter is the thing that must not be removed.
+   */
+  it('asks only for THIS organization’s live workspaces', () => {
+    const { svc, calls } = service({ membership: membership() });
+
+    return svc.loadContext('u1', { organizationId: 'org1' }).then(() => {
+      expect(calls.membership[0]).toMatchObject({
+        include: { workspaces: { where: { workspace: { organizationId: 'org1', archivedAt: null } } } },
+      });
+    });
+  });
+
+  it('is not widened for an organization admin, however privileged the role', () => {
     const { svc } = service({
       membership: membership({
+        workspaces: [{ workspaceId: 'ws1' }],
         roles: [
           {
             role: role({
               key: 'admin',
               level: 'organization',
-              features: [{ featureKey: FEATURE.workspacesAccessAll }],
+              features: [{ featureKey: FEATURE.membersManage }, { featureKey: FEATURE.workspacesManage }],
             }),
           },
         ],
       }),
-      subscriptions: [plan([FEATURE.workspacesAccessAll])],
+      subscriptions: [plan([FEATURE.membersManage, FEATURE.workspacesManage])],
     });
 
     return svc
       .loadContext('u1', { organizationId: 'org1' })
-      .then((ctx) => expect(ctx?.accessibleWorkspaceIds).toBeNull());
+      .then((ctx) => expect(ctx?.accessibleWorkspaceIds).toEqual(['ws1']));
   });
 });
 

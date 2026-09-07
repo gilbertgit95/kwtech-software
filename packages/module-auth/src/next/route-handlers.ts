@@ -43,6 +43,19 @@ interface ProxiedAction {
    * forwarding it widens nothing.
    */
   sendsSession?: boolean;
+  /**
+   * The session is FORWARDED when present and the request goes on without it
+   * when it is not, instead of being refused here.
+   *
+   * Only meaningful with `sendsSession`, and only correct for a path that has
+   * something to say to somebody signed out. For `verify-mfa` the local refusal
+   * is right — no cookie means there is no half-finished sign-in to complete,
+   * so forwarding could not possibly succeed. The graph is the opposite: it
+   * carries fields marked `@Public`, and refusing here would mean this proxy
+   * deciding who may read them, which is precisely the decision that belongs to
+   * the guards on the far side.
+   */
+  optionalSession?: boolean;
   /** Upstream method, when it is not POST. The browser always POSTs to us. */
   method?: 'POST' | 'DELETE';
   /**
@@ -78,6 +91,23 @@ const PROXIED: Record<string, ProxiedAction> = {
   // Removal is a DELETE upstream; this handler only speaks POST, so the method
   // is overridden per-action rather than inferred from the browser's request.
   'mfa-remove': { path: '/auth/mfa/factors', setsSession: false, sendsSession: true, method: 'DELETE' },
+
+  /*
+   * ── the realtime seam ───────────────────────────────────────────────────
+   *
+   * The ONLY action whose response is meant to be read by client JavaScript,
+   * and the exception is the point rather than a slip.
+   *
+   * A browser opening a WebSocket cannot send the httpOnly cookie to another
+   * origin, and cannot read it to send itself. So it asks here, with the
+   * session attached server-side as usual, and gets back a ticket that is good
+   * for sixty seconds, buys exactly one socket, and authenticates no HTTP
+   * request at all (`verifyAccess` refuses it on `typ`).
+   *
+   * `setsSession: false` — nothing about the cookie changes. The session stays
+   * where it is; this hands out a projection of it, not a copy.
+   */
+  'ws-ticket': { path: '/auth/ws-ticket', setsSession: false, sendsSession: true },
   /*
    * `clearsSession`, because revoking the ROW is only half of it. The other half
    * is making this browser stop presenting a token that still verifies — see
@@ -105,7 +135,14 @@ const PROXIED: Record<string, ProxiedAction> = {
    * So this forwards the whole body. What keeps it safe is that the guards are
    * on the far side, not that this handler is picky.
    */
-  graphql: { path: '/graphql', setsSession: false, sendsSession: true },
+  /*
+   * `optionalSession`, because the graph is reachable BEFORE there is a session.
+   * Accepting an invitation is the case that put it there: the person following
+   * the link may have no account at all, and the fields they need are marked
+   * `@Public` on the API. Refusing them here for want of a cookie would be this
+   * proxy overruling a decision the resolvers already make.
+   */
+  graphql: { path: '/graphql', setsSession: false, sendsSession: true, optionalSession: true },
 };
 
 /**
@@ -176,6 +213,39 @@ async function handleRefresh(request: Request, config: AuthNextConfig): Promise<
 /** Where sign-out sends the browser once the session is gone. */
 const SIGNED_OUT_DESTINATION = '/auth/signin';
 
+/**
+ * Where to land after signing out, when the caller asked for somewhere
+ * specific — `POST /api/auth/signout?next=/auth/signin%3Fnext%3D…`.
+ *
+ * The case that needed it: an invitation addressed to one account, opened in a
+ * browser signed in as another. "Sign out and sign in as the invited person" is
+ * two steps the user should not have to know are two steps, and without a
+ * destination they land on a bare sign-in page having lost the link they were
+ * following.
+ *
+ * ⚠ An OPEN REDIRECT is the risk here, and it is a real one: this endpoint is
+ * reachable by anyone, and a link that signs you out and then bounces you to an
+ * attacker's copy of the sign-in page is a credible phishing flow. So a
+ * destination is accepted only if it is a PATH on this origin:
+ *
+ *   '/x'    yes
+ *   '//evil.example'  no — protocol-relative, a different host
+ *   'https://evil.example'  no
+ *   '/\evil.example'  no — some browsers normalise the backslash to '/'
+ *
+ * Anything else falls back to the default rather than being refused: the
+ * session is already gone by then, and failing the sign-out over a malformed
+ * query parameter would be the worse outcome.
+ */
+export function safeSignOutDestination(next: string | null): string {
+  if (!next?.startsWith('/')) return SIGNED_OUT_DESTINATION;
+  if (next.startsWith('//') || next.startsWith('/\\')) return SIGNED_OUT_DESTINATION;
+  // A control character in a Location header is header injection, not a path.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: that is the point.
+  if (/[\u0000-\u001f\u007f]/.test(next)) return SIGNED_OUT_DESTINATION;
+  return next;
+}
+
 function sessionCookieOptions(config: AuthNextConfig) {
   return {
     httpOnly: true,
@@ -233,7 +303,8 @@ async function handleSignOut(request: Request, config: AuthNextConfig): Promise<
 
   // 303, so the browser follows with a GET. A form POST that redirected with
   // 307 would re-POST to the target.
-  const headers = new Headers({ location: new URL(SIGNED_OUT_DESTINATION, request.url).toString() });
+  const destination = safeSignOutDestination(new URL(request.url).searchParams.get('next'));
+  const headers = new Headers({ location: new URL(destination, request.url).toString() });
   for (const name of [config.cookieName, refreshCookieName(config)]) {
     // Max-Age=0 is the deletion, and it must repeat the attributes the cookie
     // was set with — a browser treats a different Path as a different cookie
@@ -264,9 +335,12 @@ async function handleProxied(request: Request, action: ProxiedAction, config: Au
     const token = readCookie(request, config.cookieName);
     // No cookie means no half-admitted sign-in to complete. Refused here rather
     // than forwarded, so the API is not asked to answer for a request that
-    // cannot possibly be valid.
-    if (!token) return json({ message: 'Your sign-in has expired. Start again.' }, { status: 401 });
-    headers.authorization = `Bearer ${token}`;
+    // cannot possibly be valid — unless the action says a signed-out caller has
+    // business there, which today is the graph and its @Public fields.
+    if (!token && !action.optionalSession) {
+      return json({ message: 'Your sign-in has expired. Start again.' }, { status: 401 });
+    }
+    if (token) headers.authorization = `Bearer ${token}`;
   }
 
   let upstream: Response;

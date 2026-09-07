@@ -3,6 +3,7 @@ import { appRolesSeeder } from './app-roles.js';
 import { demoUserSeeder } from './demo-user.js';
 import { firstUserSeeder } from './first-user.js';
 import { permissionsRegistrySeeder } from './permissions-registry.js';
+import { plansSeeder } from './plans.js';
 import { superAdminGrantSeeder } from './super-admin-grant.js';
 
 /**
@@ -42,6 +43,13 @@ export const SEEDERS: readonly Seeder[] = [
   appRolesSeeder,
 
   // ── seed: once per environment, on request ──────────────────────────────
+  /*
+   * The plan catalogue. 'seed' rather than 'sync' because what a plan sells is
+   * a product decision an operator changes through the admin screens — see the
+   * seeder. It depends on the registry above having run, which is a cross-phase
+   * dependency and the same one superAdminGrantSeeder already has.
+   */
+  plansSeeder,
   firstUserSeeder,
   superAdminGrantSeeder,
   // After the roles above: it grants one, so the role has to exist first.

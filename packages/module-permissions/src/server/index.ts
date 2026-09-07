@@ -12,6 +12,7 @@ export * from './graphql/permission.types.js';
 export * from './graphql/permissions.resolver.js';
 export * from './permissions.controller.js';
 export * from './permissions.module.js';
+export * from './permissions.pubsub.js';
 export * from './permissions.repository.js';
 export * from './permissions.service.js';
 export * from './permissions-write.service.js';

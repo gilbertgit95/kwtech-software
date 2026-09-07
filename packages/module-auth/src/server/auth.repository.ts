@@ -103,6 +103,17 @@ export interface AuthPrismaClient {
      * the OR can never match different users for the same input.
      */
     findFirst(args: { where: { OR: ({ email: string } | { username: string })[] } }): Promise<AuthUserRow | null>;
+
+    /**
+     * Creating an account — `createAccount`, and nothing else in this module.
+     *
+     * No `username` and no `status` in the shape, deliberately. A username is
+     * chosen later, from a settings screen that can tell somebody theirs is
+     * taken; an account created here is `active` by the column's default, and
+     * letting a caller pass anything else would make "suspended on arrival" a
+     * state something could reach by accident.
+     */
+    create(args: { data: { email: string; displayName: string | null } }): Promise<AuthUserRow>;
     update(args: {
       where: { id: string };
       data: {
@@ -127,6 +138,7 @@ export interface AuthPrismaClient {
       create: { userId: string; type: 'password'; secret: string };
       update: { secret: string };
     }): Promise<unknown>;
+    create(args: { data: { userId: string; type: 'password'; secret: string } }): Promise<unknown>;
   };
 
   authSession: {

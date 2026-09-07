@@ -100,6 +100,17 @@ const envSchema = z
     AUTH_RESET_URL_BASE: z.url().default('http://localhost:8081/auth/reset-password'),
 
     /**
+     * Where an emailed INVITATION link points — also a page in the Next app.
+     *
+     * Separate from AUTH_RESET_URL_BASE rather than derived from a shared
+     * origin, for the reason the reset one is a whole URL: these are routes,
+     * and a route is not something a deployment should have to reconstruct from
+     * a base plus a path this file assumes. The two also need not live in the
+     * same app forever.
+     */
+    PERMISSIONS_INVITE_URL_BASE: z.url().default('http://localhost:8081/invitations/accept'),
+
+    /**
      * ── mail ──────────────────────────────────────────────────────────────────
      *
      * One URL rather than host/port/user/pass/secure as five variables, because
@@ -179,8 +190,9 @@ const envSchema = z
   .refine((env) => env.NODE_ENV !== 'production' || Boolean(env.SMTP_URL), {
     path: ['SMTP_URL'],
     message:
-      'SMTP_URL is required in production — without it a password reset cannot be delivered, ' +
-      'and the development fallback (logging the link) would write a working credential into the logs.',
+      'SMTP_URL is required in production — without it a password reset and an organization invitation ' +
+      'cannot be delivered, and the development fallback (logging the link) would write a working ' +
+      'credential into the logs.',
   })
   /**
    * Resolves the two display names down to APP_NAME.

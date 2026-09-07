@@ -293,15 +293,27 @@ describe('auditRegistry', () => {
     // Unbound is expected during buildout and must be empty at release. Pinned
     // so that a NEW unbound key is a visible diff rather than a silent one.
     expect(audit.unbound.sort()).toEqual(
-      [
-        FEATURE.billingManage,
-        FEATURE.membersManage,
-        FEATURE.platformSupportAccess,
-        FEATURE.rolesManageApp,
-        FEATURE.workspacesAccessAll,
-        FEATURE.workspacesManage,
-        FEATURE.workspacesShare,
-      ].sort(),
+      /*
+       * Down from six to three. `members:manage`, `workspaces:manage` and
+       * `workspaces:share` were bound when the organization screens exposed the
+       * mutations they guard — the write service had checked all three since it
+       * was written, with nothing reachable to call it.
+       *
+       * The three that remain are genuinely different: two are read in
+       * `composeContext` rather than guarding a surface, and `roles:manage_app`
+       * is a condition inside the write path rather than an endpoint.
+       */
+      /*
+       * Two. `workspaces:access_all` was REMOVED from the registry when
+       * workspace membership became required — it widened access, which is the
+       * thing that no longer happens, and it was the one feature that bypassed
+       * plan entitlement.
+       *
+       * The two that remain are read in `composeContext` and in the write path
+       * rather than guarding a surface, which is why they have no binding and
+       * are not lies.
+       */
+      [FEATURE.platformSupportAccess, FEATURE.rolesManageApp].sort(),
     );
   });
 });

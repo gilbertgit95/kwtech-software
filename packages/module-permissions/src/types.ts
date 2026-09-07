@@ -119,6 +119,42 @@ export interface FeatureSpec extends FeatureContribution {
 }
 
 /**
+ * The lifecycle of a subscription, as the schema's PermSubscriptionStatus enum.
+ *
+ *   active    entitles. The only value `loadContext` reads.
+ *   past_due  payment failed; the row is kept so the history stays readable,
+ *             and it entitles NOTHING until it is active again. Distinct from
+ *             canceled because it is expected to recover.
+ *   canceled  ended. Kept for the same reason a disabled role is kept.
+ *
+ * Only `active` entitles, and the other two are deliberately not collapsed into
+ * one: "your payment bounced" and "you cancelled" need different messages and
+ * lead to different actions, and a screen that cannot tell them apart sends the
+ * reader to the wrong place.
+ */
+export type SubscriptionStatus = 'active' | 'past_due' | 'canceled';
+
+/**
+ * Exported for the same reason `ROLE_LEVELS` is: the form's options, the
+ * validator and `toSubscriptionStatus` must all read one list, or one of them
+ * accepts a status the others refuse.
+ */
+export const SUBSCRIPTION_STATUSES: readonly SubscriptionStatus[] = ['active', 'past_due', 'canceled'];
+
+/**
+ * Validates a status read from storage instead of casting it.
+ *
+ * The same argument as `toRoleLevel`: a row holding 'Active' would cast cleanly
+ * and then match nothing, producing a subscription that entitles nothing with
+ * no error anywhere to explain it. Silent denial is the safe direction and the
+ * undiagnosable one.
+ */
+export function toSubscriptionStatus(value: string): SubscriptionStatus {
+  if ((SUBSCRIPTION_STATUSES as readonly string[]).includes(value)) return value as SubscriptionStatus;
+  throw new Error(`Unknown subscription status '${value}'. Expected one of: ${SUBSCRIPTION_STATUSES.join(', ')}`);
+}
+
+/**
  * A role the caller holds at APP level, as a reader sees it.
  *
  * Identity, not authority. It exists so an interface can say WHO someone is on
@@ -195,9 +231,15 @@ export interface PermissionContext {
   /**
    * Workspaces this caller may enter.
    *
-   * `null` means every workspace in the organization — the caller holds
-   * `workspaces:access_all`. An empty array means none, which is a normal state
-   * for a member who has not been shared anything yet.
+   * WORKSPACE MEMBERSHIP IS REQUIRED: this is the workspaces they have been
+   * added to, and there is no role that widens it. An empty array means none,
+   * which is a normal state for a member who has not been shared anything yet.
+   *
+   * `null` means every workspace, and PLATFORM SUPPORT is the only thing that
+   * produces it — a support engineer holds no membership anywhere, and entering
+   * an organization they do not belong to is the whole content of the right.
+   * Treating null as "some" would lock them out; treating an empty array as
+   * "all" would open everything.
    */
   accessibleWorkspaceIds: readonly string[] | null;
 

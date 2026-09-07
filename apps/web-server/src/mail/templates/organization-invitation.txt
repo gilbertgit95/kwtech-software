@@ -1,0 +1,19 @@
+Subject: You have been invited to join <%= it.organizationName %>
+
+Hi,
+
+Someone at <%= it.organizationName %> has invited you to join them on
+<%= it.brand %>. Use the link below to accept.
+
+<%= it.url %>
+
+If you do not have an account yet, the link will help you create one first —
+you will join <%= it.organizationName %> as soon as you have finished.
+
+This invitation expires in <%= it.expiresIn %> and can only be used once.
+
+Not expecting this? You can ignore this email. Nothing has been created in your
+name, and the link above will expire on its own.
+
+--
+Sent by <%= it.brand %>. This is an automated message — replies to it are not read.

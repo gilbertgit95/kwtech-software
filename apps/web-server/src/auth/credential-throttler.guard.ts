@@ -35,6 +35,34 @@ import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
 @Injectable()
 export class CredentialThrottlerGuard extends ThrottlerGuard {
   /**
+   * WebSocket operations are not throttled here, and that is a decision rather
+   * than an oversight.
+   *
+   * `ThrottlerGuard` writes `X-RateLimit-*` onto the RESPONSE. A subscription
+   * has none — the GraphQL context for a socket carries `req` alone — so the
+   * base class reads `.header` off undefined and every subscription fails with
+   * an INTERNAL_SERVER_ERROR naming the throttler. That is the symptom; the
+   * reason to skip rather than to stub a response is that per-request IP
+   * limiting answers a question a socket does not ask. One connection is one
+   * HTTP upgrade, already counted by the `default` bucket.
+   *
+   * ⚠ What is therefore NOT covered: a client that opens one socket and floods
+   * `subscribe` messages down it. Three things bound that today — the handshake
+   * needs a ticket, a ticket needs a live session, and the socket closes when
+   * the access token expires — but none of them is a rate limit. If subscription
+   * volume ever needs bounding, it belongs in `graphql-ws`' own hooks
+   * (`onSubscribe`), not here, because that is the layer that can see the
+   * connection rather than the request.
+   */
+  protected override async shouldSkip(context: ExecutionContext): Promise<boolean> {
+    if (context.getType<'graphql'>() === 'graphql') {
+      // No `res` means a socket. See above.
+      if (!GqlExecutionContext.create(context).getContext().res) return true;
+    }
+    return super.shouldSkip(context);
+  }
+
+  /**
    * Where the request and response live, on either transport.
    *
    * The third guard in this app to need this — after JwtAuthGuard and

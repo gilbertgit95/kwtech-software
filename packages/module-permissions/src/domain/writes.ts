@@ -32,12 +32,32 @@ export type WriteRefusalReason =
   | 'role_level_mismatch'
   /** The role collects a feature no role at its level may grant. */
   | 'role_features_invalid'
+  /**
+   * The submitted draft is malformed — a missing label, an unparseable cap, a
+   * plan selling an app-level key.
+   *
+   * Separate from `role_features_invalid`, which names one specific rule about
+   * one specific table. This is the general "these fields are wrong" answer the
+   * plan and subscription forms produce, and collapsing the two would make a
+   * refusal about a blank plan label report itself as a role feature problem.
+   */
+  | 'draft_invalid'
   /** A cap is already reached. Distinct from not_permitted: buy more, do not ask an admin. */
   | 'at_capacity'
   /** The target does not exist, or does not belong to the tenant in hand. */
   | 'not_found'
   /** The row is already there. Writes are idempotent where they can be; this is where they cannot. */
-  | 'already_exists';
+  | 'already_exists'
+  /**
+   * The HOST has not wired something the write needs — today, a way to deliver
+   * an invitation email.
+   *
+   * Not the actor's problem and not the row's: nothing the person at the screen
+   * can type will fix it, and it must not read as "you may not do that". It is
+   * a deployment fault, and saying so is what sends it to the person who can
+   * actually resolve it.
+   */
+  | 'not_configured';
 
 /**
  * Thrown by the write path instead of a Nest exception, so the service is
