@@ -255,6 +255,7 @@ type PermissionSubscription {
   organizationId: String!
   organizationName: String!
   planArchived: Boolean!
+  planIcon: String
   planKey: String!
   planLabel: String!
   status: String!
