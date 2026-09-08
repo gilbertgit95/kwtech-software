@@ -2,7 +2,7 @@
 
 import { MIN_PASSWORD_LENGTH } from '@kwtech/module-auth';
 import { AuthError, AuthField, AuthShell, AuthSubmit, createAuthClient } from '@kwtech/module-auth/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * /invitations/accept?token=… — the other end of an invitation email.
@@ -17,27 +17,47 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
  * ## Four ways in, decided by what the reader already has
  *
  *   signed in AS THE INVITED ADDRESS   one button. Joining is one write.
- *   signed in as SOMEBODY ELSE         a warning and two explicit choices.
+ *   signed in as SOMEBODY ELSE         signed out automatically, then one of
+ *                                      the two cases below.
  *   an account, signed out   sent to /auth/signin?next=… and back here after.
  *   no account           a password field. The address is NOT asked for — it
  *                        comes from the invitation, so there is nothing to type
  *                        wrong and no way to point the link at another address.
  *
- * ## The mismatch case is the one that was wrong
+ * ## The mismatch case, and the two things it must not do
  *
- * This page used to show a single Join button to anybody with a session,
+ * This page once showed a single Join button to anybody with a session,
  * mentioning the invited address in a passing sentence. Following an invitation
  * while signed in as a different account therefore joined THAT account,
  * silently — and because acceptance replaces the organization role, an owner
  * who tested their own invitation was quietly demoted to what the invitation
- * offered. It happened, to a real organization, before this branch existed.
+ * offered. It happened, to a real organization.
  *
- * The rule that made it possible is still right: an invitation is addressed to
- * a mailbox, and whoever reads it may legitimately hold a different account —
- * a work address that forwards to a personal one is ordinary. So the mismatch
- * is not REFUSED. It is made loud, and it takes a deliberate click either way:
- * sign out and come back as the invited address, or join as who you are, having
- * been told what that means.
+ * That is still the thing being prevented, and the guarantee is now stronger
+ * rather than louder: **an invitation is only ever accepted by the address it
+ * was sent to.** The wrong session cannot take it, because by the time there is
+ * anything to press, the wrong session is gone.
+ *
+ * So a mismatch is neither refused nor put to the reader as a question. The
+ * page signs the other account out by itself and carries the link through the
+ * sign-out, landing on the sign-in page for the invited address if it has an
+ * account and on the password form if it does not. The alternative — a warning
+ * with two buttons — was correct and nobody wanted to read it: it stops the
+ * person in the middle of following a link, to explain a distinction between
+ * two of their own addresses that they did not have in mind.
+ *
+ * What is given up, deliberately: joining as a DIFFERENT account than the one
+ * invited. `acceptedByUserId` still records who accepted, so the column outlives
+ * the flow, but the only way to use an invitation addressed elsewhere is now to
+ * sign in as that address. A work address forwarding to a personal one needs an
+ * invitation sent to the personal one.
+ *
+ * ## Signing out is attempted ONCE
+ *
+ * `?switched=1` is added to the return link, and its presence stops the page
+ * doing it again. A sign-out that does not take — a cookie that will not clear,
+ * an API that will not revoke — would otherwise be an infinite bounce; instead
+ * the second arrival stops and offers the button by hand.
  *
  * ## Signing up does not sign you in
  *
@@ -90,15 +110,22 @@ function sameAddress(a: string, b: string): boolean {
 export function AcceptInvitation({
   token,
   viewerEmail,
+  alreadySwitched,
 }: {
   token: string | null;
   /** The signed-in account's address, or null when nobody is signed in. */
   viewerEmail: string | null;
+  /**
+   * True when this page has already signed one account out for this link.
+   * The only thing it does is stop it happening twice — see the header.
+   */
+  alreadySwitched: boolean;
 }) {
   const auth = useMemo(() => createAuthClient(), []);
   const [preview, setPreview] = useState<Preview | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const switchForm = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!token) {
@@ -133,6 +160,42 @@ export function AcceptInvitation({
       cancelled = true;
     };
   }, [token]);
+
+  /*
+   * Where signing in — or signing out and back in — returns to. `switched=1` is
+   * carried so the return trip knows an account has already been swapped for
+   * this link and does not try again.
+   */
+  const here = `/invitations/accept?token=${encodeURIComponent(token ?? '')}`;
+  const backHere = `${here}&switched=1`;
+
+  const mismatch = preview != null && viewerEmail != null && !sameAddress(viewerEmail, preview.email);
+  /** The mismatch this page resolves by itself, rather than by asking. */
+  const switching = mismatch && !alreadySwitched;
+
+  /*
+   * Sign out, and land where the invited address can actually get in: the
+   * sign-in page when they have an account, this page's password form when
+   * they do not. Both destinations come back to the LINK, which is the part
+   * that must not be lost — somebody dropped on a bare sign-in page has no way
+   * back to the invitation they were following.
+   *
+   * A form POST rather than a navigation: signing out revokes the session
+   * server-side as well as clearing the cookie, and a GET that changed state
+   * would be followed by every link prefetcher in the browser.
+   */
+  const signOutAction = preview
+    ? `/api/auth/signout?next=${encodeURIComponent(
+        preview.hasAccount ? `/auth/signin?next=${encodeURIComponent(backHere)}` : backHere,
+      )}`
+    : null;
+
+  useEffect(() => {
+    if (!switching) return;
+    // `requestSubmit`, not `submit`: it goes through the same path a real click
+    // would, so nothing about this form is a special case.
+    switchForm.current?.requestSubmit();
+  }, [switching]);
 
   /** Already signed in: one write, then out to the app. */
   const join = useCallback(async () => {
@@ -221,19 +284,59 @@ export function AcceptInvitation({
   }
 
   const role = preview.roleLabel ? ` as ${preview.roleLabel}` : '';
-  // Where signing in — or signing out and back in — returns to.
-  const here = `/invitations/accept?token=${encodeURIComponent(token ?? '')}`;
 
-  if (viewerEmail && !sameAddress(viewerEmail, preview.email)) {
+  /*
+   * The form the effect above submits, and the same one the fallback below
+   * offers by hand. Rendered once, here, so there is a single description of
+   * what signing out for this link means.
+   */
+  const signOutForm = (children: React.ReactNode) => (
+    <form ref={switchForm} action={signOutAction ?? undefined} method="post">
+      {children}
+    </form>
+  );
+
+  if (switching) {
     /*
-     * Sign out, then sign in, then come back here — expressed as ONE control,
-     * because it is one intention. The destination is carried through the
-     * sign-out (`?next=`) and again through the sign-in (`?next=`), so the link
-     * survives both steps; losing it would leave somebody on a bare sign-in
-     * page wondering where their invitation went.
+     * A screen with no choice on it, because there is nothing to decide: the
+     * account in this browser is not the one invited, and the next thing that
+     * happens either way is signing in as the one that is. It says whose
+     * session is ending — a sign-out nobody asked for should not be silent,
+     * even when it is momentary.
      */
-    const signOutAction = `/api/auth/signout?next=${encodeURIComponent(`/auth/signin?next=${encodeURIComponent(here)}`)}`;
+    return (
+      <AuthShell
+        title={`Join ${preview.organizationName}`}
+        description={`This invitation was sent to ${preview.email}. Signing ${viewerEmail} out so you can continue as ${preview.email}…`}
+      >
+        {signOutForm(
+          <>
+            <div className="h-10 animate-pulse rounded-md bg-muted" />
+            {/*
+              Reachable only with JavaScript off or broken, when the effect
+              never runs. It is the same POST either way.
+            */}
+            <noscript>
+              <button
+                type="submit"
+                className="mt-4 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+              >
+                Continue as {preview.email}
+              </button>
+            </noscript>
+          </>,
+        )}
+      </AuthShell>
+    );
+  }
 
+  if (mismatch) {
+    /*
+     * The switch was attempted and the session is still here. Whatever the
+     * cause, retrying automatically would loop, so this asks — and it asks for
+     * the SAME thing, because the guarantee has not changed: this invitation is
+     * accepted as {preview.email} or not at all.
+     */
     return (
       <AuthShell
         title={`Join ${preview.organizationName}`}
@@ -242,42 +345,18 @@ export function AcceptInvitation({
         <AuthError>{error}</AuthError>
 
         <p className="mb-4 rounded-md bg-[var(--status-warning)] px-3 py-2 text-sm text-[var(--status-warning-foreground)]">
-          You are signed in as <strong>{viewerEmail}</strong>, which is not the address this invitation was sent to.
+          You are still signed in as <strong>{viewerEmail}</strong>, which is not the address this invitation was sent
+          to. Signing out did not take effect — try once more.
         </p>
 
-        {/*
-          A form POST, not a link: signing out revokes the session server-side
-          as well as clearing the cookie, and a GET that changed state would be
-          followed by every link prefetcher in the browser.
-        */}
-        <form action={signOutAction} method="post">
+        {signOutForm(
           <button
             type="submit"
             className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
           >
-            Sign out and sign in as {preview.email}
-          </button>
-        </form>
-
-        <div className="mt-6 border-t border-border pt-4">
-          <p className="mb-2 text-sm text-muted-foreground">
-            {/*
-              Says what actually happens, in the words of the consequence rather
-              than of the mechanism. "Uses up the invitation" is the part
-              somebody needs: the person it was sent to cannot then use it.
-            */}
-            Or join as yourself. <strong>{viewerEmail}</strong> becomes a member{role}, this uses up the invitation, and{' '}
-            {preview.email} will need a new one.
-          </p>
-          <button
-            type="button"
-            onClick={() => void join()}
-            disabled={pending}
-            className="w-full rounded-md border border-border px-3 py-2 text-sm font-medium disabled:opacity-60"
-          >
-            {pending ? 'Joining…' : `Join as ${viewerEmail}`}
-          </button>
-        </div>
+            Sign out and continue as {preview.email}
+          </button>,
+        )}
       </AuthShell>
     );
   }

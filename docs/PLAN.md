@@ -514,8 +514,55 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **A wrong session on an invitation link is signed out
+  automatically, not asked about.**
+
+  Supersedes the entry below, from the day before. That one made the mismatch
+  LOUD: a warning naming both addresses, and two deliberate buttons — sign out
+  and return as the invited address, or join as who you are, having been told
+  the invitation is used up. It was correct and it was still the wrong shape.
+  It stops somebody in the middle of following a link to explain a distinction
+  between two of their own addresses that they did not have in mind, and the
+  cheaper of the two buttons is the one that does the damage.
+
+  So the page now resolves it by itself. A mismatch triggers a `POST` to
+  `/api/auth/signout` on mount, carrying `next=` back to the link: to
+  `/auth/signin?next=…` when the invited address has an account, straight to
+  this page's password form when it does not. The reader sees one screen saying
+  whose session is ending, then lands where they can actually get in.
+
+  **The guarantee got stronger, not weaker.** Yesterday's rule was "the wrong
+  account cannot take the invitation without being told"; today's is "the wrong
+  account cannot take it at all", because by the time there is anything to press
+  the wrong session is gone. The bug that started this — an owner demoted from
+  `organization-owner` to `organization-admin` by pressing Join on somebody
+  else's invitation — is now unreachable rather than signposted.
+
+  **What is given up, deliberately.** Accepting as a DIFFERENT account than the
+  one invited. The old entry defended that case and the defence still holds in
+  the abstract — an invitation is addressed to a MAILBOX, and a work address
+  forwarding to a personal one is ordinary. It is dropped anyway: it was worth
+  one button on a screen nobody wanted to read, and the remedy is to send the
+  invitation to the address that will hold the account. `acceptedByUserId`
+  stays — it records who accepted, and outliving this flow is the point of
+  storing it rather than inferring it.
+
+  **The sign-out is attempted ONCE**, marked by `?switched=1` on the return
+  link. A sign-out that does not take — a cookie that will not clear, an API
+  that will not revoke — would otherwise bounce the browser between two pages
+  forever. The second arrival stops and offers the button by hand. This is the
+  only reason the page still has a mismatch screen at all.
+
+  `POST` and not a navigation, for the reason the previous entry gives: signing
+  out revokes server-side as well as clearing the cookie, and a GET that changed
+  state would be followed by every prefetcher in the browser. The
+  `safeSignOutDestination` allowlist is unchanged and now matters more, since
+  the redirect happens without anybody clicking it.
+
 - **2026-09-07** — **Following an invitation while signed in as somebody else no
-  longer joins the wrong account silently.**
+  longer joins the wrong account silently.** *(Superseded 2026-09-08 by the
+  entry above: the mismatch is now resolved by an automatic sign-out rather than
+  by asking. The account of the bug, and the reasoning about `next=`, stand.)*
 
   Reported from real use, and it had already done damage: the owner of a live
   organization opened an invitation addressed to another address while signed in

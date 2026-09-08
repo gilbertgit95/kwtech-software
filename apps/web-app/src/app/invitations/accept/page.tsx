@@ -26,6 +26,16 @@ export default async function AcceptInvitationPage({
   // the same rule the password-reset route applies.
   const token = typeof raw === 'string' && raw.length > 0 ? raw : null;
 
+  /*
+   * Set by the automatic account switch on its way back here, and read for one
+   * reason: to make sure it happens at most once. If the sign-out did not take
+   * — a cookie that would not clear, a session the API would not revoke — a
+   * page that switches whenever it sees a mismatch would switch, land, see the
+   * same mismatch and switch again, forever. With this, the second arrival
+   * stops and asks.
+   */
+  const switched = params.switched === '1';
+
   const { viewer } = await getSessionSnapshot();
 
   return (
@@ -33,9 +43,10 @@ export default async function AcceptInvitationPage({
       {/*
         The viewer's ADDRESS, not merely whether there is one. The page has to
         be able to notice that the person signed in is not the person invited —
-        see AcceptInvitation, and the bug that made it necessary.
+        see AcceptInvitation, and the bug that made it necessary. It now signs
+        that session out by itself rather than asking about it.
       */}
-      <AcceptInvitation token={token} viewerEmail={viewer?.email ?? null} />
+      <AcceptInvitation token={token} viewerEmail={viewer?.email ?? null} alreadySwitched={switched} />
     </BareShell>
   );
 }
