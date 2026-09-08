@@ -1230,6 +1230,8 @@ export class PermissionsWriteService {
       if (invitation.appRoleId) {
         await tx.permUserRole.deleteMany({ where: { userId: input.userId } });
         await tx.permUserRole.create({ data: { userId: input.userId, roleId: invitation.appRoleId } });
+      } else {
+        await this.grantDefaultAppRole(tx, input.userId);
       }
 
       /*
@@ -1787,6 +1789,54 @@ export class PermissionsWriteService {
   /** Overridable in tests; a write path should not be the reason a clock is untestable. */
   protected now(): Date {
     return new Date();
+  }
+
+  /**
+   * The baseline app-level role, for somebody accepting an invitation that
+   * named none.
+   *
+   * ## Why this exists
+   *
+   * The model is additive, so there is no default-on: an account with no
+   * app-level role holds NOTHING — the seeded organization roles carry no
+   * features either — and lands on a settings page whose Save button is
+   * hidden. That happened to a real account created by an organization
+   * invitation, which is what put this here. `defaultAppRoleKey` names the
+   * role; see the option for why it is configuration rather than an argument.
+   *
+   * ## It fills a hole and never overwrites an answer
+   *
+   * Skipped entirely when the person already holds an app-level role, so a
+   * super admin accepting an organization invitation is not quietly demoted to
+   * the baseline. The invitation naming a role is handled by the caller and
+   * wins outright.
+   *
+   * ## A missing or disabled default is not an error
+   *
+   * It is a deployment that has not configured one, or has retired the role
+   * since. The acceptance still succeeds — refusing to let somebody join
+   * because a baseline role was renamed would be the worse failure — and they
+   * arrive with no app role, which is exactly the state this is trying to
+   * avoid but is at least the state that existed before.
+   */
+  private async grantDefaultAppRole(tx: PermissionsTransaction, userId: string): Promise<void> {
+    const key = this.options?.defaultAppRoleKey;
+    if (!key) return;
+
+    const existing = await tx.permUserRole.findMany({
+      where: { userId, role: { disabledAt: null } },
+      include: { role: { include: { features: activeFeatures, limits: true } } },
+    });
+    // Any app-level grant at all means they have an answer already.
+    if (existing.some((row) => row.role.level === 'app')) return;
+
+    const role = await tx.permRole.findFirst({
+      where: { key, level: 'app', organizationId: null, disabledAt: null },
+      select: { id: true, key: true, level: true, label: true, organizationId: true, isSystem: true, disabledAt: true },
+    });
+    if (!role) return;
+
+    await tx.permUserRole.create({ data: { userId, roleId: role.id } });
   }
 
   private assertPermitted(actor: PermissionContext | undefined, feature: FeatureKey): void {

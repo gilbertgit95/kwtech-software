@@ -516,6 +516,48 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **Every new account gets a baseline app-level role, because
+  the model has no default-on.**
+
+  Reported from a real test: an account created by an organization invitation
+  held no app-level role and seemed fine. It was not — it held literally
+  NOTHING. The seeded organization roles carry no features either, so that
+  account could sign in, hold its membership and change its password (the one
+  unkeyed write), and could not set its own display name or enrol a second
+  factor: `account:profile_write` and `account:two_factor_enrol` come from an
+  app-level role and nowhere else. Nobody noticed because nobody opened
+  `/settings/profile`.
+
+  **The cause is the shape of the model, not a missing grant.** Permissions are
+  purely additive — you hold what your roles grant — so "everyone may edit their
+  own profile unless withheld" is not expressible. `module-auth`'s features.ts
+  says the `account:*` keys exist so a genuinely restricted account can be
+  EXPRESSED, which only works if the unrestricted case is the norm. Without a
+  baseline the effect is inverted and every account starts restricted.
+
+  **So a baseline role IS the default mechanism.** `defaultAppRoleKey` is a
+  module option; `acceptInvitation` applies it when the invitation named no app
+  role. Configuration rather than an argument, because "which role is the
+  baseline" is a property of the deployment — and because the APP seeds the
+  roles, so the app is the only layer that can name `normal-user` without a
+  module hardcoding another's seed key.
+
+  **It fills a hole and never overwrites an answer.** An invitation naming a
+  role wins outright, and somebody who already holds an app-level role keeps it
+  — so a super admin accepting an organization invitation is not quietly
+  demoted to the baseline. That is the same class of bug as the invitation
+  mismatch fixed this morning, and it is refused by a check rather than by
+  ordering.
+
+  **A missing or disabled default is not an error.** The acceptance still
+  succeeds: refusing to let somebody join because a baseline role was renamed
+  would be the worse failure, and they arrive in the state that existed before
+  the option did.
+
+  The one account already in that state — the same one the report came from —
+  was granted `normal-user` by hand, guarded so it could not overwrite an
+  existing app role.
+
 - **2026-09-08** — **An account is created by the person who owns it. Everything
   else invites.**
 

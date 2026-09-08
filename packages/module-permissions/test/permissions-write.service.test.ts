@@ -27,7 +27,9 @@ interface State {
   workspaceMembers: { id: string; membershipId: string; workspaceId: string }[];
   membershipRoles: { membershipId: string; roleId: string }[];
   workspaceMemberRoles: { workspaceMemberId: string; roleId: string }[];
-  roles: { id: string; key: string; level: string; organizationId: string | null }[];
+  roles: { id: string; key: string; label: string; level: string; organizationId: string | null }[];
+  /** App-level grants, so the baseline default has something to check. */
+  userRoles: { userId: string; role: Record<string, unknown> }[];
   organizations: { id: string; key: string; name: string }[];
   invitations: {
     id: string;
@@ -61,6 +63,7 @@ const emptyState = (over: Partial<State> = {}): State => ({
   membershipRoles: [],
   workspaceMemberRoles: [],
   roles: [],
+  userRoles: [],
   /*
    * The tenant these tests act in.
    *
@@ -82,6 +85,7 @@ const emptyState = (over: Partial<State> = {}): State => ({
 interface Writes {
   organizations: unknown[];
   memberships: unknown[];
+  userRoles: { userId: string; roleId: string }[];
   workspaces: unknown[];
   workspaceMembers: unknown[];
   membershipRoles: unknown[];
@@ -96,10 +100,11 @@ interface Writes {
   transactions: number;
 }
 
-function fake(state: State = emptyState()) {
+function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: string } = {}) {
   const writes: Writes = {
     organizations: [],
     memberships: [],
+    userRoles: [],
     workspaces: [],
     workspaceMembers: [],
     membershipRoles: [],
@@ -214,7 +219,10 @@ function fake(state: State = emptyState()) {
       },
     },
     permRole: {
-      findFirst: async (args: { where: { id: string } }) => state.roles.find((r) => r.id === args.where.id) ?? null,
+      // By id everywhere, and by KEY for the baseline lookup — the app names
+      // its seeded default by key, because an id differs between databases.
+      findFirst: async (args: { where: { id: string } | { key: string } }) =>
+        state.roles.find((r) => ('id' in args.where ? r.id === args.where.id : r.key === args.where.key)) ?? null,
     },
     permMembershipRole: {
       findFirst: async (args: { where: { membershipId: string; roleId: string } }) =>
@@ -264,7 +272,31 @@ function fake(state: State = emptyState()) {
         return { count: before - state.workspaceMemberRoles.length };
       },
     },
-    permUserRole: { findMany: async () => [] },
+    permUserRole: {
+      findMany: async () => state.userRoles.map((row) => ({ userId: row.userId, role: row.role })),
+      create: async (args: { data: { userId: string; roleId: string } }) => {
+        writes.userRoles.push(args.data);
+        const role = state.roles.find((r) => r.id === args.data.roleId);
+        state.userRoles.push({
+          userId: args.data.userId,
+          role: {
+            id: args.data.roleId,
+            key: role?.key ?? args.data.roleId,
+            label: role?.label ?? args.data.roleId,
+            level: role?.level ?? 'app',
+            icon: null,
+            features: [],
+            limits: [],
+          },
+        });
+        return {};
+      },
+      deleteMany: async (args: { where: { userId: string } }) => {
+        const before = state.userRoles.length;
+        state.userRoles = state.userRoles.filter((row) => row.userId !== args.where.userId);
+        return { count: before - state.userRoles.length };
+      },
+    },
     permPlan: {
       findMany: async () =>
         state.plans.map((plan) => ({ ...plan, features: [], limits: [] })).sort((a, b) => a.key.localeCompare(b.key)),
@@ -434,7 +466,7 @@ function fake(state: State = emptyState()) {
 
   // `client` is handed back so a test can construct a service WITHOUT the
   // mailer, which is the configuration `inviteMember` refuses in.
-  return { svc: new PermissionsWriteService(client, options), client, writes, state };
+  return { svc: new PermissionsWriteService(client, { ...options, ...moduleOptions }), client, writes, state };
 }
 
 const actor = (features: string[], limits: Record<string, number | null> = {}): PermissionContext => ({
@@ -602,7 +634,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
     fake(
       emptyState({
         memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }],
-        roles: [{ id: 'r1', key: 'their-admin', level, organizationId }],
+        roles: [{ id: 'r1', key: 'their-admin', label: 'their-admin', level, organizationId }],
       }),
     );
 
@@ -630,7 +662,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
       emptyState({
         memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }],
         workspaceMembers: [{ id: 'wm1', membershipId: 'm2', workspaceId: 'ws1' }],
-        roles: [{ id: 'r1', key: 'billing', level: 'organization', organizationId: 'org1' }],
+        roles: [{ id: 'r1', key: 'billing', label: 'billing', level: 'organization', organizationId: 'org1' }],
       }),
     );
 
@@ -683,7 +715,9 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
 
 describe('tenancy — a write never crosses an organization boundary', () => {
   it('refuses to grant a role to a non-member', async () => {
-    const { svc } = fake(emptyState({ roles: [{ id: 'r1', key: 'a', level: 'organization', organizationId: null }] }));
+    const { svc } = fake(
+      emptyState({ roles: [{ id: 'r1', key: 'a', label: 'a', level: 'organization', organizationId: null }] }),
+    );
     expect(
       await reason(
         svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'stranger', roleId: 'r1' }),
@@ -772,7 +806,7 @@ describe('idempotence — retrying a write is not an error', () => {
         memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }],
         workspaces: [{ id: 'ws1', organizationId: 'org1', archivedAt: null }],
         workspaceMembers: [{ id: 'wm1', membershipId: 'm2', workspaceId: 'ws1' }],
-        roles: [{ id: 'r1', key: 'viewer', level: 'workspace', organizationId: null }],
+        roles: [{ id: 'r1', key: 'viewer', label: 'viewer', level: 'workspace', organizationId: null }],
       }),
     );
 
@@ -780,7 +814,7 @@ describe('idempotence — retrying a write is not an error', () => {
     const { svc } = fake(
       emptyState({
         memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }],
-        roles: [{ id: 'r1', key: 'a', level: 'organization', organizationId: null }],
+        roles: [{ id: 'r1', key: 'a', label: 'a', level: 'organization', organizationId: null }],
         membershipRoles: [{ membershipId: 'm2', roleId: 'r1' }],
       }),
     );
@@ -826,7 +860,7 @@ describe('workspace roles require workspace membership', () => {
     const { svc } = fake(
       emptyState({
         memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }],
-        roles: [{ id: 'r1', key: 'viewer', level: 'workspace', organizationId: null }],
+        roles: [{ id: 'r1', key: 'viewer', label: 'viewer', level: 'workspace', organizationId: null }],
       }),
     );
 
@@ -847,7 +881,7 @@ describe('workspace roles require workspace membership', () => {
       emptyState({
         memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }],
         workspaceMembers: [{ id: 'wm1', membershipId: 'm2', workspaceId: 'ws1' }],
-        roles: [{ id: 'r1', key: 'viewer', level: 'workspace', organizationId: null }],
+        roles: [{ id: 'r1', key: 'viewer', label: 'viewer', level: 'workspace', organizationId: null }],
       }),
     );
 
@@ -1259,8 +1293,8 @@ describe('a member holds one organization role', () => {
       emptyState({
         memberships: [{ id: 'm1', userId: 'u2', organizationId: 'org1' }],
         roles: [
-          { id: 'r-admin', key: 'admin', level: 'organization', organizationId: null },
-          { id: 'r-owner', key: 'owner', level: 'organization', organizationId: null },
+          { id: 'r-admin', key: 'admin', label: 'admin', level: 'organization', organizationId: null },
+          { id: 'r-owner', key: 'owner', label: 'owner', level: 'organization', organizationId: null },
         ],
       }),
     );
@@ -1324,8 +1358,8 @@ describe('a member holds one organization role', () => {
         workspaces: [{ id: 'ws1', organizationId: 'org1', archivedAt: null }],
         workspaceMembers: [{ id: 'wm1', membershipId: 'm1', workspaceId: 'ws1' }],
         roles: [
-          { id: 'r-a', key: 'a', level: 'workspace', organizationId: null },
-          { id: 'r-b', key: 'b', level: 'workspace', organizationId: null },
+          { id: 'r-a', key: 'a', label: 'a', level: 'workspace', organizationId: null },
+          { id: 'r-b', key: 'b', label: 'b', level: 'workspace', organizationId: null },
         ],
       }),
     );
@@ -1350,7 +1384,7 @@ describe('a member holds one organization role', () => {
         memberships: [{ id: 'm1', userId: 'u2', organizationId: 'org1' }],
         workspaces: [{ id: 'ws1', organizationId: 'org1', archivedAt: null }],
         workspaceMembers: [{ id: 'wm1', membershipId: 'm1', workspaceId: 'ws1' }],
-        roles: [{ id: 'r-a', key: 'a', level: 'workspace', organizationId: null }],
+        roles: [{ id: 'r-a', key: 'a', label: 'a', level: 'workspace', organizationId: null }],
       }),
     );
     const act = actor([FEATURE.workspacesShare]);
@@ -1436,6 +1470,74 @@ describe('invitations', () => {
     expect(result.organizationId).toBe('org1');
     expect(h.state.memberships.some((m) => m.userId === 'newcomer')).toBe(true);
     expect(h.state.invitations[0]?.status).toBe('accepted');
+  });
+
+  /**
+   * The baseline app-level role.
+   *
+   * The model is ADDITIVE, so there is no default-on: an account with no
+   * app-level role holds nothing at all — the seeded organization roles carry
+   * no features either — and lands on a settings page whose Save button is
+   * hidden. A real account created by an organization invitation was in exactly
+   * that state, which is what put `defaultAppRoleKey` in the options.
+   */
+  const withBaseline = (over: Partial<Parameters<typeof emptyState>[0]> = {}) =>
+    fake(
+      emptyState({
+        roles: [{ id: 'baseline', key: 'normal-user', label: 'Normal user', level: 'app', organizationId: null }],
+        ...over,
+      }),
+      { defaultAppRoleKey: 'normal-user' },
+    );
+
+  it('grants the baseline app role to somebody the invitation gave none', async () => {
+    const h = withBaseline();
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+    const token = h.writes.sent[0]?.token ?? '';
+
+    await h.svc.acceptInvitation({ token, userId: 'newcomer' });
+
+    // Without this they would join, sign in, and find they cannot edit their
+    // own name — `account:profile_write` comes from an app-level role.
+    expect(h.writes.userRoles).toEqual([{ userId: 'newcomer', roleId: 'baseline' }]);
+  });
+
+  it('leaves an existing app role alone rather than demoting to the baseline', async () => {
+    const h = withBaseline({
+      userRoles: [
+        {
+          userId: 'staff',
+          role: {
+            id: 'crown',
+            key: 'super-admin',
+            label: 'Super admin',
+            level: 'app',
+            icon: null,
+            features: [],
+            limits: [],
+          },
+        },
+      ],
+    });
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+    const token = h.writes.sent[0]?.token ?? '';
+
+    await h.svc.acceptInvitation({ token, userId: 'staff' });
+
+    // A super admin accepting an organization invitation must not be quietly
+    // demoted. The default fills a hole; it never overwrites an answer.
+    expect(h.writes.userRoles).toHaveLength(0);
+  });
+
+  it('accepts normally when no baseline is configured', async () => {
+    const h = fake();
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+    const token = h.writes.sent[0]?.token ?? '';
+
+    // An unset option is the behaviour that existed before, and joining must
+    // not depend on a role having been configured.
+    await expect(h.svc.acceptInvitation({ token, userId: 'newcomer' })).resolves.toMatchObject({ joined: true });
+    expect(h.writes.userRoles).toHaveLength(0);
   });
 
   it('gives one refusal for an unknown token and a revoked one', async () => {

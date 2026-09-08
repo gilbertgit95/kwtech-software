@@ -21,6 +21,7 @@ import {
   permissionsWritePrismaProvider,
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_FEATURES } from './seed/registry.js';
 import { UsersResolver } from './users/users.resolver.js';
 
@@ -105,6 +106,24 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
 
   permissionsServerModule({
     apiPrefix: '/api/v1',
+
+    /*
+     * The role every new account gets when its invitation named none.
+     *
+     * Named HERE because this app seeds the roles — `seed/app-roles.ts` defines
+     * `normal-user` and the module has never heard of it, which is the whole
+     * reason this is configuration rather than a constant over there.
+     *
+     * It matters because the permission model is additive: an account with no
+     * app-level role holds NOTHING, since the seeded organization roles carry
+     * no features either, and it lands on a settings page whose Save button is
+     * hidden. That is not hypothetical — an account created by an organization
+     * invitation was in exactly that state.
+     *
+     * `normal-user` is the smallest thing that is still an answer: the three
+     * `account:*` keys, which is managing your own profile and nothing else.
+     */
+    defaultAppRoleKey: NORMAL_USER_KEY,
 
     /*
      * How an invitation link reaches the person invited — the app's job, for

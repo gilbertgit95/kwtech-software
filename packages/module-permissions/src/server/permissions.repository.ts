@@ -586,7 +586,12 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
    */
   permRole: PermissionsPrismaClient['permRole'] & {
     findFirst(args: {
-      where: { id: string };
+      /*
+       * By id everywhere except the baseline lookup, which has only a KEY —
+       * the app names its seeded default by key, because an id is generated and
+       * differs between databases.
+       */
+      where: { id: string } | { key: string; level: 'app'; organizationId: null; disabledAt: null };
       select: {
         id: true;
         key: true;

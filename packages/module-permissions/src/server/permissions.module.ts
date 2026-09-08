@@ -154,6 +154,40 @@ export interface PermissionsModuleOptions {
    * invitation nobody can ever accept, which looks like success on the screen
    * that made it and like a broken product to the person waiting for an email.
    */
+  /**
+   * The app-level role every NEW account gets when its invitation named none.
+   *
+   * ## Why a default is needed at all
+   *
+   * This model is purely ADDITIVE: you hold what your roles grant. So "everyone
+   * may edit their own profile unless withheld" cannot be expressed — there is
+   * no default-on. An account with no app-level role holds literally nothing,
+   * because the seeded organization roles carry no features either, and it
+   * signs in to a settings page whose Save button is hidden. That happened to a
+   * real account created by an organization invitation.
+   *
+   * A baseline role IS the mechanism for a default, and `module-auth`'s
+   * `account:*` keys say they exist so a genuinely restricted account can be
+   * EXPRESSED — which only works if the unrestricted case is the norm.
+   *
+   * ## Why it is a module option and not an argument
+   *
+   * A per-call default would let any caller choose it, and "which role is the
+   * baseline" is a property of the deployment rather than of a request. It is
+   * also the APP that seeds the roles, so the app is the only layer that can
+   * name one without a module hardcoding another's seed key.
+   *
+   * ## When it does NOT apply
+   *
+   * Never over an existing grant. An invitation naming a role wins; and
+   * somebody who already holds an app-level role keeps it, so a super admin
+   * accepting an organization invitation is not quietly demoted to the
+   * baseline. It fills a hole; it does not overwrite an answer.
+   *
+   * Unset means no default, which is the behaviour before this existed.
+   */
+  defaultAppRoleKey?: string;
+
   sendInvitationEmail?: (invitation: {
     /** Normalised, exactly as stored. */
     email: string;
