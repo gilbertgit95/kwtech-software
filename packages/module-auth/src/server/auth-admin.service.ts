@@ -6,7 +6,8 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { isPlausibleUsername, normaliseEmail, normaliseUsername } from '../domain/policy.js';
+import { normaliseEmail, normaliseUsername } from '../domain/policy.js';
+import { EMPTY_USER_DRAFT, validateUserDraft } from '../domain/user-draft.js';
 import {
   AUTH_PRISMA,
   type AuthAdminSessionRow,
@@ -33,6 +34,15 @@ import { SESSION_REVOCATION_STORE, type SessionRevocationStore } from './revocat
  * next to `removeTwoFactor(userId)` and make that distinction a matter of
  * reading the argument list carefully. Separating them means the dangerous set
  * is a file you can review in one sitting.
+ *
+ * ## Nothing here DELETES an account
+ *
+ * Suspension is the off switch, and it is the whole of it. Every membership,
+ * invitation and accepted-by record points at the account, and
+ * `perm_membership.userId` has no foreign key to `auth_user` (PLAN §12.12) — so
+ * a delete would leave rows pointing at nobody rather than cascading cleanly.
+ * The same call `roles:disable` and `plans:archive` make: set a state, keep the
+ * row, stay reversible.
  *
  * It DELEGATES rather than reimplements wherever the act already exists —
  * account creation and the reset token both go through `AuthService`, so there
@@ -66,20 +76,18 @@ export class AuthAdminService {
   }
 
   /**
-   * The guard that no feature key can express: an administrator may not aim
-   * these at themselves.
+   * The guard that no feature key can express: an administrator may not suspend
+   * themselves.
    *
-   * Suspending or deleting your own account is a lockout with the same shape as
-   * the invitation bug this codebase already fixed once — a single click, no
-   * warning, and the person who could undo it is the person who just lost
-   * access. `users:suspend` legitimately means "may suspend accounts"; it does
-   * not mean "may suspend the one holding the key", and no grant can make that
-   * a good idea.
+   * It is a lockout with the same shape as the invitation bug this codebase
+   * already fixed once — a single click, no warning, and the person who could
+   * undo it is the person who just lost access. `users:disable` legitimately
+   * means "may suspend accounts"; it does not mean "may suspend the one holding
+   * the key", and no grant can make that a good idea.
    *
-   * It is NOT applied to the recoverable operations. Ending your own sessions
-   * signs you out, which is a thing people deliberately do; resetting your own
-   * password sends you an email. Only the two that cannot be walked back are
-   * refused.
+   * It is NOT applied to the other operations. Ending your own sessions signs
+   * you out, which is a thing people deliberately do; sending yourself a reset
+   * sends you an email. Only the one that locks the door is refused.
    */
   private assertNotSelf(actorUserId: string, targetUserId: string, act: string): void {
     if (actorUserId === targetUserId) {
@@ -209,17 +217,30 @@ export class AuthAdminService {
     const db = this.client();
     await this.requireUser(userId);
 
+    /*
+     * Validated through `validateUserDraft` — the SAME function the form calls.
+     * That is the whole reason it lives in `domain/`: a server validating
+     * separately drifts from the form, and the drift surfaces as a save that
+     * passed every check on screen and is refused here in different words.
+     *
+     * Only the fields actually supplied are checked. An edit carries no address
+     * and no password, which is exactly what `creating: false` means.
+     */
+    const errors = validateUserDraft(
+      {
+        ...EMPTY_USER_DRAFT,
+        displayName: input.displayName ?? '',
+        username: input.username ?? '',
+      },
+      { creating: false },
+    );
+    const complaint = errors.username ?? errors.displayName;
+    if (complaint) throw new BadRequestException({ message: complaint });
+
     const data: { displayName?: string | null; username?: string } = {};
     if (input.displayName !== undefined) data.displayName = input.displayName?.trim() || null;
-
     if (input.username !== undefined && input.username !== null) {
-      const username = normaliseUsername(input.username);
-      // The same rule the settings page applies to your own — a username set by
-      // an administrator must not be one you could never have chosen yourself.
-      if (!isPlausibleUsername(username)) {
-        throw new BadRequestException({ message: 'That username cannot be used' });
-      }
-      data.username = username;
+      data.username = normaliseUsername(input.username);
     }
 
     if (Object.keys(data).length === 0) return this.requireUser(userId);
@@ -332,31 +353,6 @@ export class AuthAdminService {
     const { count } = await db.authMfaFactor.deleteMany({ where: { userId } });
     await db.authRecoveryCode.deleteMany({ where: { userId } });
     return { removed: count };
-  }
-
-  /**
-   * Deletes an account permanently.
-   *
-   * ⚠ Suspension is the reversible answer and is the right one nearly always.
-   * This exists for erasure, where keeping the row is itself the problem.
-   *
-   * Credentials, sessions, factors, recovery codes and reset tokens go with it
-   * by cascade — every one of those has a foreign key to `auth_user`.
-   * `perm_membership` and `perm_user_role` do NOT, by design (PLAN §12.12), so
-   * they are left pointing at nobody and it is the APP's job to remove them
-   * first. This method does not pretend otherwise, and the resolver in front of
-   * it says so.
-   */
-  async deleteUser(actorUserId: string, userId: string): Promise<{ deleted: true; email: string }> {
-    this.assertNotSelf(actorUserId, userId, 'delete');
-    const user = await this.requireUser(userId);
-
-    // Revoked BEFORE the row goes, so a token in flight is refused by the
-    // denylist rather than by a user lookup that now returns nothing. The
-    // difference is a 401 versus an unhandled null on the hot path.
-    await this.endSessions(userId);
-    await this.client().authUser.delete({ where: { id: userId } });
-    return { deleted: true, email: user.email };
   }
 
   /**

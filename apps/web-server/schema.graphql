@@ -86,7 +86,6 @@ type Mutation {
   acceptInvitation(token: String!): PermissionWriteResult!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
   adminCreateUser(displayName: String, email: String!, password: String!): AdminUser!
-  adminDeleteUser(userId: String!): AdminUserWriteResult!
   adminRemoveUserTwoFactor(userId: String!): AdminUserWriteResult!
   adminRevokeUserSessions(userId: String!): AdminUserWriteResult!
   adminSendPasswordReset(userId: String!): AdminUserWriteResult!

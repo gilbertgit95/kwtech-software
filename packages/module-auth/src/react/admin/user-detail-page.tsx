@@ -21,32 +21,43 @@ import {
  * action says what it will do — which is the difference between a decision and
  * an accident.
  *
- * ## Each control is gated by its OWN key
+ * ## Reading and editing are different pages
  *
- * Nine keys exist so a role can hold the recoverable half of this page without
- * the rest (see ../../features.ts). A page that gated everything behind one
- * check would make that split decorative. `useHoldsFeature` comes from
- * `@kwtech/module-kit/react`, which is how a module asks about permissions
- * without importing the module that resolves them.
+ * The profile form used to be here, inline and hidden from anyone without the
+ * write key, which made this page two things at once and gave it a shape that
+ * changed depending on what the reader held. It now lives at
+ * `/admin/users/:userId/edit`, sharing its form with the create screen — the
+ * arrangement `/admin/roles/:roleId/edit` already uses.
  *
- * ⚠ Hiding a control hides an affordance, not an endpoint — every mutation is
- * authorised again at the API, by the same key named on the button.
+ * What stays is everything that is an ACT rather than an edit: the reset, the
+ * sign-out, the factor removal, the suspension.
  *
- * ## The two-step confirmations
+ * ## Controls are gated by the key they need
  *
- * Suspension, factor removal and deletion each ask again, and the delete asks
- * for the address to be TYPED. That is not ceremony: deletion cannot be undone
- * and it leaves permission rows behind that only the app can clean up.
+ * `useHoldsFeature` comes from `@kwtech/module-kit/react`, which is how a
+ * module asks about permissions without importing the module that resolves
+ * them. Hiding a control hides an affordance, not an endpoint — every mutation
+ * is authorised again at the API, by the same key named on the button.
+ *
+ * ## There is no delete
+ *
+ * Suspension is the off switch and the whole of it. Every membership,
+ * invitation and accepted-by record points at the account, and
+ * `perm_membership.userId` has no foreign key to `auth_user` (PLAN §12.12), so
+ * a delete would leave rows pointing at nobody rather than cascading. The same
+ * call `roles:disable` and `plans:archive` make.
  */
 
 export function UserDetailPage({
   userId,
   client,
   backHref = '/admin/users',
+  editHref = (id: string) => `/admin/users/${encodeURIComponent(id)}/edit`,
 }: {
   userId: string;
   client?: UsersAdminClient;
   backHref?: string;
+  editHref?: (userId: string) => string;
 }) {
   const api = useMemo(() => client ?? createUsersAdminClient(), [client]);
 
@@ -56,7 +67,13 @@ export function UserDetailPage({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const mayReadSessions = useHoldsFeature(AUTH_FEATURE.usersSessionsRead);
+  /*
+   * Sessions are under `users:read` with the rest of reading, so anybody who
+   * can open this page sees them. Kept as a named check rather than inlined
+   * `true`: it is the same question the panel asks, and the day sessions get a
+   * key of their own again this is the one line that changes.
+   */
+  const mayReadSessions = useHoldsFeature(AUTH_FEATURE.usersRead);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -159,6 +176,7 @@ export function UserDetailPage({
       feature={AUTH_FEATURE.usersRead}
       layout="prose"
       backTo={{ href: backHref, label: 'Users' }}
+      actions={<EditLink href={editHref(user.id)} />}
     >
       {notice ? (
         <p className="rounded-md bg-muted px-3 py-2 text-sm text-foreground" role="status">
@@ -180,19 +198,13 @@ export function UserDetailPage({
         <Fact label="Username" value={user.username ?? '—'} />
       </dl>
 
-      <ProfileSection
-        user={user}
-        busy={busy}
-        onSave={(input) => run('Profile saved.', () => api.updateProfile(userId, input))}
-      />
-
       {mayReadSessions ? <SessionsSection sessions={sessions} /> : null}
 
       <section className="rounded-md border border-border p-4">
         <h2 className="text-sm font-semibold text-foreground">Account actions</h2>
         <div className="mt-3 flex flex-col gap-3">
           <Action
-            feature={AUTH_FEATURE.usersPasswordReset}
+            feature={AUTH_FEATURE.usersUpdate}
             label="Send a password reset"
             /* Says where it goes. An administrator pressing this needs to know
                the link reaches the ACCOUNT's mailbox and not them. */
@@ -202,7 +214,7 @@ export function UserDetailPage({
           />
 
           <Action
-            feature={AUTH_FEATURE.usersSessionsRevoke}
+            feature={AUTH_FEATURE.usersUpdate}
             label="Sign out everywhere"
             hint="Ends every session immediately. They can sign in again."
             disabled={busy || user.activeSessions === 0}
@@ -210,7 +222,7 @@ export function UserDetailPage({
           />
 
           <Action
-            feature={AUTH_FEATURE.usersTwoFactorRemove}
+            feature={AUTH_FEATURE.usersUpdate}
             label="Remove two-step verification"
             hint="For somebody locked out of their own account. Takes the recovery codes with it."
             confirm={`Remove two-step verification from ${user.email}? They will sign in with a password alone until they enrol again.`}
@@ -219,7 +231,7 @@ export function UserDetailPage({
           />
 
           <Action
-            feature={AUTH_FEATURE.usersSuspend}
+            feature={AUTH_FEATURE.usersDisable}
             label={suspended ? 'Lift the suspension' : 'Suspend this account'}
             hint={
               suspended
@@ -234,14 +246,24 @@ export function UserDetailPage({
           />
         </div>
       </section>
-
-      <DangerZone
-        user={user}
-        busy={busy}
-        onDelete={() => run('Account deleted.', () => api.deleteUser(userId))}
-        backHref={backHref}
-      />
     </AdminShell>
+  );
+}
+
+/**
+ * Shown only to somebody who can actually edit.
+ *
+ * A link, not a button, and gated: a reader with `users:read` alone would
+ * otherwise follow it to a page that refuses them, which is a worse answer than
+ * not offering it.
+ */
+function EditLink({ href }: { href: string }) {
+  const mayEdit = useHoldsFeature(AUTH_FEATURE.usersUpdate);
+  if (!mayEdit) return null;
+  return (
+    <a href={href} className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
+      Edit profile
+    </a>
   );
 }
 
@@ -251,73 +273,6 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="text-foreground">{value}</dd>
     </div>
-  );
-}
-
-function ProfileSection({
-  user,
-  busy,
-  onSave,
-}: {
-  user: AdminUserDetail;
-  busy: boolean;
-  onSave: (input: { displayName?: string; username?: string }) => void;
-}) {
-  const mayWrite = useHoldsFeature(AUTH_FEATURE.usersProfileWrite);
-  if (!mayWrite) return null;
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const displayName = String(form.get('displayName') ?? '').trim();
-    const username = String(form.get('username') ?? '').trim();
-    /*
-     * Only CHANGED fields are sent. The mutation reads an absent argument as
-     * "leave it", so sending both every time would rewrite a username somebody
-     * else edited between this page loading and the save.
-     */
-    onSave({
-      ...(displayName !== (user.displayName ?? '') ? { displayName } : {}),
-      ...(username !== (user.username ?? '') ? { username } : {}),
-    });
-  };
-
-  return (
-    <form onSubmit={submit} className="rounded-md border border-border p-4">
-      <h2 className="text-sm font-semibold text-foreground">Profile</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {/* The one field that is not here, and why — an administrator WILL look
-            for it. */}
-        The email address is the account's identifier and cannot be changed here.
-      </p>
-
-      <label className="mt-3 block text-sm">
-        <span className="text-muted-foreground">Display name</span>
-        <input
-          name="displayName"
-          defaultValue={user.displayName ?? ''}
-          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-foreground"
-        />
-      </label>
-
-      <label className="mt-3 block text-sm">
-        <span className="text-muted-foreground">Username</span>
-        <input
-          name="username"
-          defaultValue={user.username ?? ''}
-          autoComplete="off"
-          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-foreground"
-        />
-      </label>
-
-      <button
-        type="submit"
-        disabled={busy}
-        className="mt-4 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-      >
-        Save profile
-      </button>
-    </form>
   );
 }
 
@@ -393,64 +348,6 @@ function Action({
         {label}
       </button>
     </div>
-  );
-}
-
-/**
- * Deletion, kept apart from everything else on the page.
- *
- * The address has to be TYPED. A confirm dialog is dismissed by reflex; typing
- * the address is the one interaction that cannot be done without reading which
- * account this is.
- */
-function DangerZone({
-  user,
-  busy,
-  onDelete,
-  backHref,
-}: {
-  user: AdminUserDetail;
-  busy: boolean;
-  onDelete: () => void;
-  backHref: string;
-}): ReactNode {
-  const permitted = useHoldsFeature(AUTH_FEATURE.usersDelete);
-  const [typed, setTyped] = useState('');
-  if (!permitted) return null;
-
-  return (
-    <section className="rounded-md border border-[var(--status-danger)] p-4">
-      <h2 className="text-sm font-semibold text-foreground">Delete this account</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Permanent. Credentials, sessions and second factors go with it.{' '}
-        <strong>Suspending is reversible and is usually what you want.</strong> Their organization memberships are not
-        removed by this and have to be tidied separately.
-      </p>
-
-      <label className="mt-3 block text-sm">
-        <span className="text-muted-foreground">Type {user.email} to confirm</span>
-        <input
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-          autoComplete="off"
-          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-foreground"
-        />
-      </label>
-
-      <button
-        type="button"
-        disabled={busy || typed.trim().toLowerCase() !== user.email.toLowerCase()}
-        onClick={() => {
-          onDelete();
-          // Back to the list: staying on the detail page of an account that no
-          // longer exists would show a "not found" the reader just caused.
-          window.location.assign(backHref);
-        }}
-        className="mt-4 rounded-md bg-[var(--status-danger)] px-3 py-2 text-sm font-medium text-[var(--status-danger-foreground)] disabled:opacity-50"
-      >
-        Delete permanently
-      </button>
-    </section>
   );
 }
 

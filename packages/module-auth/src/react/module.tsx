@@ -1,6 +1,7 @@
 import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { AUTH_FEATURE, AUTH_FEATURE_REGISTRY } from '../features.js';
 import { UserDetailPage } from './admin/user-detail-page.js';
+import { UserEditPage } from './admin/user-edit-page.js';
 import { UserNewPage } from './admin/user-new-page.js';
 import { UsersPage } from './admin/users-page.js';
 import { ForgotPasswordPage } from './forgot-password-page.js';
@@ -120,6 +121,11 @@ function UserDetailRoute({ params }: ModuleRouteProps): React.JSX.Element {
   return <UserDetailPage userId={userId} />;
 }
 
+function UserEditRoute({ params }: ModuleRouteProps): React.JSX.Element {
+  const userId = typeof params?.userId === 'string' ? params.userId : '';
+  return <UserEditPage userId={userId} />;
+}
+
 export const authWebModule: WebModuleDescriptor = {
   key: 'auth',
   /*
@@ -232,14 +238,29 @@ export const authWebModule: WebModuleDescriptor = {
       feature: AUTH_FEATURE.usersCreate,
     },
     {
+      /*
+       * Declared BEFORE the bare `:userId`, the ordering rule the roles and
+       * features routes follow. The two cannot actually collide — they have
+       * different segment counts — but the list reads top to bottom and a
+       * reader should not have to prove that to themselves.
+       */
+      path: '/admin/users/:userId/edit',
+      title: 'Edit user',
+      component: UserEditRoute,
+      // The WRITE key, like /admin/roles/:roleId/edit. Reading an account and
+      // changing one are different rights, and this route is the second.
+      feature: AUTH_FEATURE.usersUpdate,
+    },
+    {
       path: '/admin/users/:userId',
       title: 'User',
       component: UserDetailRoute,
       /*
-       * Gated on READ, not on any of the write keys. The page is where every
-       * action lives, and each control gates itself on the key it needs — so an
+       * Gated on READ, not on the write keys. The page is where the account's
+       * ACTIONS live, and each control gates itself on the key it needs — so an
        * auditor holding `users:read` alone sees the account and none of the
-       * buttons, rather than being refused the page.
+       * buttons, rather than being refused the page. Editing the profile is a
+       * route of its own, above.
        */
       feature: AUTH_FEATURE.usersRead,
     },

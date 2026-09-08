@@ -27,7 +27,6 @@ const OPERATION_HANDLER: Record<string, string> = {
   'Mutation.adminSendPasswordReset': 'adminSendPasswordReset',
   'Mutation.adminRevokeUserSessions': 'adminRevokeUserSessions',
   'Mutation.adminRemoveUserTwoFactor': 'adminRemoveUserTwoFactor',
-  'Mutation.adminDeleteUser': 'adminDeleteUser',
 };
 
 function required(method: string): string[] | undefined {
@@ -68,26 +67,44 @@ describe('declared API surfaces are actually guarded', () => {
 
   it('never declares more than one key on a handler', () => {
     /*
-     * Nine keys exist so a role can hold one without the others. A handler
-     * demanding two would collapse that split for whoever holds only one — and
-     * the default mode is 'all', so it would refuse them silently.
+     * The four keys exist so a role can hold one without the others. A handler
+     * demanding two would collapse that for whoever holds only one — and the
+     * default mode is 'all', so it would refuse them silently.
      */
     for (const method of Object.values(OPERATION_HANDLER)) {
       expect(required(method)).toHaveLength(1);
     }
   });
 
-  it('guards the two takeover halves with DIFFERENT keys', () => {
-    // The pair features.ts names: together they are a complete path into any
-    // account. A shared key would make the separation decorative.
-    expect(required('adminSendPasswordReset')).toEqual([AUTH_FEATURE.usersPasswordReset]);
-    expect(required('adminRemoveUserTwoFactor')).toEqual([AUTH_FEATURE.usersTwoFactorRemove]);
+  it('puts the credential operations under users:update, together', () => {
+    /*
+     * ⚠ The trade this vocabulary makes, asserted so it is visible rather than
+     * implied. A reset does not get past a second factor and removing a factor
+     * does not get past an unknown password — but ONE key now grants both, so
+     * `users:update` is a path into any account. features.ts says so at length;
+     * this is the test that will fail the day somebody splits them again, which
+     * is the day to update it deliberately.
+     */
+    expect(required('adminSendPasswordReset')).toEqual([AUTH_FEATURE.usersUpdate]);
+    expect(required('adminRemoveUserTwoFactor')).toEqual([AUTH_FEATURE.usersUpdate]);
+    expect(required('adminUpdateUserProfile')).toEqual([AUTH_FEATURE.usersUpdate]);
   });
 
-  it('reads sessions behind a key of its own, not behind users:read', () => {
-    // A device and location history is not implied by being able to see that an
-    // account exists.
-    expect(required('adminUserSessions')).toEqual([AUTH_FEATURE.usersSessionsRead]);
+  it('suspension is its own key, not part of update', () => {
+    // The `roles:disable` split: changing an account and stopping it signing in
+    // are different acts, and the reversible off switch is the sharper one.
+    expect(required('adminSetUserStatus')).toEqual([AUTH_FEATURE.usersDisable]);
+  });
+
+  it('reading covers the list, the account and its sessions', () => {
     expect(required('adminUsers')).toEqual([AUTH_FEATURE.usersRead]);
+    expect(required('adminUser')).toEqual([AUTH_FEATURE.usersRead]);
+    expect(required('adminUserSessions')).toEqual([AUTH_FEATURE.usersRead]);
+  });
+
+  it('declares no delete', () => {
+    // Accounts are suspended, never removed — see the service and features.ts.
+    expect(Object.keys(OPERATION_HANDLER)).not.toContain('Mutation.adminDeleteUser');
+    expect(declared.map((binding) => binding.key)).not.toContain('users:delete');
   });
 });

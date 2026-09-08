@@ -516,6 +516,56 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **`users:*` collapses from nine keys to four, an account is
+  never deleted, and editing gets its own route.**
+
+  Same day as the nine, and reversing part of it deliberately rather than
+  quietly. Three instructions, one shape: make it like the roles, do not delete
+  a user — disable it, and read/create/update is the vocabulary.
+
+  **`users:read`, `users:create`, `users:update`, `users:disable`** — exactly
+  `roles:*` and `plans:*`. Gone: `users:profile_write`, `users:password_reset`,
+  `users:sessions_read`, `users:sessions_revoke`, `users:two_factor_remove`
+  (all now `users:update`), `users:suspend` (now `users:disable`), and
+  `users:delete` (nothing). `db:sync` marked all seven deprecated rather than
+  deleting them, which is what the registry is built to do — grants and the
+  audit trail stay readable.
+
+  **What this trades away, stated plainly because the nine-key entry argued the
+  opposite this morning.** Sending a password reset and removing a second factor
+  are now one key. Either alone is survivable — a reset does not get past a
+  factor, removing a factor does not get past an unknown password — so
+  `users:update` is a path into any account on the platform. The argument for
+  splitting them still holds in the abstract; it lost to a vocabulary an
+  administrator can hold in their head, which is the same trade the admin app
+  makes everywhere else. Reversing it is one key and a binding, and
+  `surface-coverage.test.ts` asserts the current arrangement so the day somebody
+  splits them is a deliberate one.
+
+  `users:sessions_read` went the same way. A device and location history is the
+  most personal thing in these tables, but a surface where "read" means "read
+  some of it" is not a vocabulary anybody can use.
+
+  **No deletion at all — not a soft delete, not an app-composed one.**
+  Suspension IS the off switch, and `AuthUserStatus` already had the column.
+  Everything the previous entry said about the composed delete (§12 open
+  decision 38) is moot: there is no delete to compose. The open decision stays,
+  because the orphan risk it describes is still real for anybody removing an
+  account by hand — as this session did to a test account before any of this
+  existed.
+
+  **Editing moved to `/admin/users/:userId/edit`**, sharing `UserForm` with the
+  create screen and validating through `validateUserDraft` in `domain/` — the
+  same function `AuthAdminService.updateProfile` calls. That is the `RoleForm` /
+  `role-draft.ts` arrangement, and it exists for the reason that one does: a
+  form validating separately drifts, and the drift surfaces as a save that
+  passed every check on screen and is refused by the API in different words.
+
+  The profile form had been a panel on the detail page, hidden from anyone
+  without the write key — which made that page two things at once and gave it a
+  shape that changed depending on what the reader held. The detail page now only
+  shows and acts; the edit route only edits.
+
 - **2026-09-08** — **User administration is built, in `module-auth`, and the
   feature-metadata contract moved to `module-kit` to allow it.**
 

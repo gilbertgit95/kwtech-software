@@ -31,20 +31,24 @@ import {
  * `@RequireFeature` in the permissions module; it is a property of declarative
  * guarding rather than of this file.
  *
- * ## Why the keys are this fine-grained
+ * ## The four keys
  *
- * Nine of them, split by risk — see features.ts, which explains why
- * `users:password_reset` and `users:two_factor_remove` in particular are two
- * keys and not one. The important consequence for this file is that no handler
- * declares more than the one right it needs: `adminUsers` requires reading and
- * nothing else, so a role built for auditors can hold it alone.
+ * `users:read`, `users:create`, `users:update` and `users:disable` — the shape
+ * `roles:*` and `plans:*` already use. No handler declares more than the one
+ * right it needs, so a role built for auditors holds `users:read` alone and
+ * every mutation below refuses it.
+ *
+ * ⚠ `users:update` carries the credential operations — the reset and the factor
+ * removal — and holding both is a path into any account. features.ts says so at
+ * length; the consequence HERE is that four handlers share one key, and
+ * splitting them again is a decorator change and a binding, not a redesign.
  *
  * ## The actor's own id
  *
- * Read off the request, the way `AuthResolver` reads it, and passed down to the
- * two operations that refuse to act on the caller's own account. That check is
- * in the SERVICE rather than here, because it is an invariant of the operation
- * rather than of the transport — a CLI calling `deleteUser` must not be able to
+ * Read off the request, the way `AuthResolver` reads it, and passed to the one
+ * operation that refuses to act on the caller's own account. That check is in
+ * the SERVICE rather than here, because it is an invariant of the operation
+ * rather than of the transport — a CLI calling `setStatus` must not be able to
  * skip it by not being a resolver.
  */
 @Resolver()
@@ -86,12 +90,15 @@ export class UsersAdminResolver {
   }
 
   /**
-   * A SECOND key on top of reading the account, because this is a device and
-   * location history — the most personal thing in these tables. Somebody who
-   * may look at the account list has not thereby been given everybody's
-   * whereabouts.
+   * Under `users:read` with the rest of reading.
+   *
+   * It was briefly its own key, on the grounds that a device and location
+   * history is the most personal thing in these tables. Folded back in when the
+   * vocabulary was aligned with `roles:*`: an administration surface where
+   * "read" means "read some of it" is one nobody can hold in their head, and
+   * the same key already shows the account it belongs to.
    */
-  @RequireAuthFeature(AUTH_FEATURE.usersSessionsRead)
+  @RequireAuthFeature(AUTH_FEATURE.usersRead)
   @Query(() => [AdminUserSessionType], { name: 'adminUserSessions' })
   async adminUserSessions(@Args('userId') userId: string): Promise<AdminUserSessionType[]> {
     const sessions = await this.admin.listSessions(userId);
@@ -114,7 +121,7 @@ export class UsersAdminResolver {
     return toAdminUser(await this.admin.getUser(created.id));
   }
 
-  @RequireAuthFeature(AUTH_FEATURE.usersProfileWrite)
+  @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserType, { name: 'adminUpdateUserProfile' })
   async adminUpdateUserProfile(
     @Args('userId') userId: string,
@@ -134,7 +141,7 @@ export class UsersAdminResolver {
     return toAdminUser(await this.admin.updateProfile(userId, input));
   }
 
-  @RequireAuthFeature(AUTH_FEATURE.usersSuspend)
+  @RequireAuthFeature(AUTH_FEATURE.usersDisable)
   @Mutation(() => AdminUserWriteResultType, { name: 'adminSetUserStatus' })
   async adminSetUserStatus(
     @Context() gqlContext: { req?: Record<string, unknown> },
@@ -150,7 +157,7 @@ export class UsersAdminResolver {
     return { changed: true, sessionsRevoked, user: toAdminUser(user) };
   }
 
-  @RequireAuthFeature(AUTH_FEATURE.usersPasswordReset)
+  @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserWriteResultType, { name: 'adminSendPasswordReset' })
   async adminSendPasswordReset(
     @Context() gqlContext: { req?: Record<string, unknown> },
@@ -164,37 +171,18 @@ export class UsersAdminResolver {
     return { changed: true, sessionsRevoked: 0, user: toAdminUser(await this.admin.getUser(userId)) };
   }
 
-  @RequireAuthFeature(AUTH_FEATURE.usersSessionsRevoke)
+  @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserWriteResultType, { name: 'adminRevokeUserSessions' })
   async adminRevokeUserSessions(@Args('userId') userId: string): Promise<AdminUserWriteResultType> {
     const { revoked } = await this.admin.revokeSessions(userId);
     return { changed: revoked > 0, sessionsRevoked: revoked, user: toAdminUser(await this.admin.getUser(userId)) };
   }
 
-  @RequireAuthFeature(AUTH_FEATURE.usersTwoFactorRemove)
+  @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserWriteResultType, { name: 'adminRemoveUserTwoFactor' })
   async adminRemoveUserTwoFactor(@Args('userId') userId: string): Promise<AdminUserWriteResultType> {
     const { removed } = await this.admin.removeTwoFactor(userId);
     return { changed: removed > 0, sessionsRevoked: 0, user: toAdminUser(await this.admin.getUser(userId)) };
-  }
-
-  /**
-   * ⚠ Permanent, and it leaves this module's tables clean and the permissions
-   * module's dangling — `perm_membership` has no foreign key here by design.
-   * An app that offers this should remove those rows first; see PLAN §12 open
-   * decision 38, and `AuthAdminService.deleteUser`.
-   */
-  @RequireAuthFeature(AUTH_FEATURE.usersDelete)
-  @Mutation(() => AdminUserWriteResultType, { name: 'adminDeleteUser' })
-  async adminDeleteUser(
-    @Context() gqlContext: { req?: Record<string, unknown> },
-    @Args('userId') userId: string,
-  ): Promise<AdminUserWriteResultType> {
-    const actor = requirePrincipal(gqlContext);
-    await this.admin.deleteUser(actor.userId, userId);
-    // `user: null` — there is nothing to return, and returning the row as it
-    // was a moment ago would show a screen an account that no longer exists.
-    return { changed: true, sessionsRevoked: 0, user: null };
   }
 }
 

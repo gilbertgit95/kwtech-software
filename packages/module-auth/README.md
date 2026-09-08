@@ -141,19 +141,27 @@ Your OWN account:
 | `account:two_factor_remove` | take one off |
 
 SOMEBODY ELSE'S account — the administration surface, all app level and all
-privileged:
+privileged. Four keys, shaped like `roles:*` and `plans:*`:
 
 | key | governs |
 |---|---|
-| `users:read` | list, search and open any account |
+| `users:read` | list, search, open any account, and see where it is signed in |
 | `users:create` | create an account without an invitation |
-| `users:profile_write` | rename another account |
-| `users:suspend` | suspend, and lift a suspension |
-| `users:password_reset` | send a reset to the account's own address |
-| `users:sessions_read` | see where an account is signed in |
-| `users:sessions_revoke` | end every session it holds |
-| `users:two_factor_remove` | take a factor off a locked-out account |
-| `users:delete` | remove an account permanently |
+| `users:update` | rename it, send a password reset, end its sessions, remove its second factor |
+| `users:disable` | suspend it so it cannot sign in, and lift the suspension |
+
+There is deliberately **no `users:delete`**. Every membership, invitation and
+accepted-by record points at the account, and `perm_membership.userId` has no
+foreign key to `auth_user` (PLAN §12.12) — so a delete leaves rows pointing at
+nobody rather than cascading. Suspension keeps the row, keeps the history and is
+reversible, the same call `roles:disable` and `plans:archive` make.
+
+⚠ **`users:update` carries the credential operations.** A reset alone does not
+get past a second factor and removing a factor does not get past an unknown
+password, but one key grants both — so holding it is a path into any account.
+That is a deliberate trade of least privilege for a vocabulary that matches the
+rest of the admin app; splitting the credential half back out is one key and a
+binding move.
 
 **The rule this module follows: a surface gets a key only when it needs
 AUTHORISATION, not merely a session.** Those are different questions, and
@@ -182,8 +190,10 @@ fallback, so the decision is open rather than blocked.
 
 ## Administering users
 
-`/admin/users`, `/admin/users/new` and `/admin/users/:userId`, declared on
-`authWebModule` like every other route this module ships. Nothing to mount:
+`/admin/users`, `/admin/users/new`, `/admin/users/:userId` and
+`/admin/users/:userId/edit`, declared on `authWebModule` like every other route
+this module ships. Reading and editing are separate routes, gated by separate
+keys — the detail page holds the account's ACTIONS, the edit page its profile. Nothing to mount:
 composing the module is what adds them.
 
 ```ts
@@ -204,19 +214,20 @@ importing the other. The guard, and the resolution of who holds what, stay in
 guard has these mutations unguarded — a declaration nothing reads is not a
 check.
 
-**`users:password_reset` + `users:two_factor_remove` is account takeover.**
-Either alone is survivable; together they are a complete path into any account.
-They are two keys so a role can carry the recoverable half, and there is
-deliberately no operation that SETS a password for somebody else — an
-administrator who could would hold that person's credential.
+**There is no operation that SETS a password for somebody else** — only a reset
+to the account's own address. An administrator who could type one would hold
+that person's credential, and every "was that you or support?" question
+afterwards would be unanswerable.
 
 **Suspension ends sessions.** `signIn` refusing a suspended account is only half
 of it: the access token verifies from its signature with no database read, so
 without revocation "suspend" would mean "cannot sign in again" for up to a week.
 
-**Deleting an account leaves permission rows behind.** `perm_membership.userId`
-has no foreign key to `auth_user` (PLAN §12.12), so the composed delete belongs
-to the app. Suspension is reversible and is usually the right answer.
+**Creating and editing share one form.** `UserForm` is used by
+`/admin/users/new` and `/admin/users/:userId/edit`, and both validate through
+`validateUserDraft` in `domain/` — the same function the write path calls, so
+the form cannot accept something the API will refuse. The arrangement
+`RoleForm` uses, for the same reason.
 
 ## Entrypoints
 

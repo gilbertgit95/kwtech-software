@@ -201,7 +201,7 @@ export interface AuthPrismaClient {
         /** Normalised before it gets here. `@unique`, so a clash throws. */
         username?: string;
         /**
-         * Administration only — `users:suspend`. Nothing on the sign-in path
+         * Administration only — `users:disable`. Nothing on the sign-in path
          * writes this: an account arrives `active` by the column's default, and
          * suspension is always somebody's decision rather than a state the
          * system falls into. `signIn` READS it and refuses, which is the half
@@ -224,23 +224,6 @@ export interface AuthPrismaClient {
     }): Promise<AuthAdminUserRow[]>;
 
     count(args: { where: Record<string, unknown> }): Promise<number>;
-
-    /**
-     * ⚠ The only DELETE this module performs, and the only one it ever should.
-     *
-     * Everything else here retires a row with a timestamp — `revokedAt`,
-     * `consumedAt`, `usedAt`, and `status: 'suspended'` for an account. This
-     * exists for erasure, where keeping the row IS the problem, and it is
-     * guarded by `users:delete`.
-     *
-     * What it does NOT clean up: `perm_membership` and `perm_user_role`, which
-     * have no foreign key to `auth_user` because the modules must not join
-     * across the boundary (PLAN §12.12). Those rows are the app's to remove —
-     * see PLAN §12 open decision 38 — and this method is deliberately unaware
-     * of them rather than quietly leaving them out of a transaction that looks
-     * complete.
-     */
-    delete(args: { where: { id: string } }): Promise<AuthUserRow>;
   };
 
   authCredential: {

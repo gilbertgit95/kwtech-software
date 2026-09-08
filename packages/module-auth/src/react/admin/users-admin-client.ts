@@ -68,7 +68,6 @@ export interface UsersAdminClient {
   sendPasswordReset(userId: string): Promise<AdminUserWriteResult>;
   revokeSessions(userId: string): Promise<AdminUserWriteResult>;
   removeTwoFactor(userId: string): Promise<AdminUserWriteResult>;
-  deleteUser(userId: string): Promise<AdminUserWriteResult>;
 }
 
 const USER_FIELDS = 'id email username displayName status createdAt lastLoginAt';
@@ -178,16 +177,6 @@ export function createUsersAdminClient(auth: AuthClient = createAuthClient()): U
         { userId },
       );
       return data.adminRemoveUserTwoFactor;
-    },
-
-    async deleteUser(userId) {
-      const data = await auth.graphql<{ adminDeleteUser: AdminUserWriteResult }>(
-        `mutation AdminDeleteUser($userId: String!) {
-           adminDeleteUser(userId: $userId) { ${WRITE_FIELDS} }
-         }`,
-        { userId },
-      );
-      return data.adminDeleteUser;
     },
   };
 }

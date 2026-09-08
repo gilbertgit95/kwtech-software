@@ -215,23 +215,32 @@ describe('credentials', () => {
   });
 });
 
-describe('deletion', () => {
-  it('refuses to delete the account doing the deleting', async () => {
-    const { admin, writes } = harness();
-    await expect(admin.deleteUser('u1', 'u1')).rejects.toThrow(/your own account/i);
-    expect(writes.userDeletes).toHaveLength(0);
+describe('there is no deletion', () => {
+  it('exposes no delete at all — suspension is the off switch', () => {
+    const { admin } = harness();
+    /*
+     * Asserted on the SHAPE rather than on a behaviour, because the property is
+     * that the operation does not exist. Every membership, invitation and
+     * accepted-by record points at the account, and `perm_membership.userId`
+     * has no foreign key to `auth_user` — so a delete would leave rows pointing
+     * at nobody. The same call `roles:disable` and `plans:archive` make.
+     */
+    expect((admin as unknown as Record<string, unknown>).deleteUser).toBeUndefined();
   });
 
-  it('revokes before it deletes, so a token in flight meets a 401 and not a null', async () => {
-    const { admin, writes } = harness({ sessions: 1 });
-    await admin.deleteUser('admin', 'u1');
+  it('suspends instead, and the account survives to be restored', async () => {
+    const { admin, writes } = harness({ sessions: 2 });
+    await admin.setStatus('admin', 'u1', 'suspended');
+    const lifted = await admin.setStatus('admin', 'u1', 'active');
 
-    expect(writes.revokedBefore).toEqual(['u1']);
-    expect(writes.userDeletes).toEqual(['u1']);
+    expect(lifted.user.status).toBe('active');
+    // The row was updated twice and never removed.
+    expect(writes.userUpdates).toHaveLength(2);
+    expect(writes.userDeletes).toHaveLength(0);
   });
 
   it('is a 404 for an account that is not there', async () => {
     const { admin } = harness({ users: [] });
-    await expect(admin.deleteUser('admin', 'ghost')).rejects.toThrow(/No such account/i);
+    await expect(admin.setStatus('admin', 'ghost', 'suspended')).rejects.toThrow(/No such account/i);
   });
 });

@@ -118,23 +118,45 @@ export const AUTH_FEATURE = {
   /*
    * ── users: administering SOMEBODY ELSE'S account ────────────────────────
    *
+   * FOUR keys, shaped exactly like `roles:*` and `plans:*` in
+   * @kwtech/module-permissions — read, create, update, and a reversible off
+   * switch. Same split for the same reason those give: reviewing accounts and
+   * changing one are different risks, and one `users:manage` would mean the
+   * platform cannot have somebody who looks without also being able to act.
+   *
    * All APP level. There is no organization-scoped version of any of them and
    * there should not be: an account belongs to a person, not to a tenant, and
    * the same address may be a member of several. An organization-level
-   * `users:suspend` would let one tenant's administrator disable a person's
-   * access to every OTHER tenant they belong to.
+   * `users:disable` would let one tenant's administrator cut a person off from
+   * every OTHER tenant they belong to.
+   *
+   * ⚠ WHAT `users:update` CARRIES, and it is more than a rename. Sending a
+   * password reset and removing a second factor are both under it, and holding
+   * both is a complete path into any account on the platform — a reset alone
+   * does not get past a factor, and removing a factor does not get past an
+   * unknown password, but one key now grants both. That is a deliberate trade
+   * of least-privilege for a vocabulary that matches the rest of the admin app;
+   * splitting the credential operations back out is one key and a binding move
+   * if the platform ever wants an auditor-plus-editor role that cannot take an
+   * account over.
    */
 
   /**
-   * List, search and open any account on the platform.
+   * List, search and open any account, and see where one is signed in.
    *
    * ⚠ This is deliberately the customer-list harvester that `findUserByEmail`
    * refuses to be. That query answers one question about one address at a time,
    * specifically so `members:manage` — held inside a tenant — cannot enumerate
-   * the platform's users. This key is the enumeration, granted on purpose, at
+   * the platform's users. This key IS the enumeration, granted on purpose, at
    * app level, to platform staff. The two are not in tension: they are the same
    * judgement about who may see the whole list, answered `no` for a tenant
    * administrator and `yes` for the back office.
+   *
+   * It also covers the session list — device, address, last use — which was
+   * briefly its own key on privacy grounds. Folded in with the rest of reading:
+   * `roles:read` shows everything about a role, and an administration surface
+   * where "read" means "read some of it" is a vocabulary nobody can hold in
+   * their head.
    */
   usersRead: 'users:read',
 
@@ -152,81 +174,51 @@ export const AUTH_FEATURE = {
   usersCreate: 'users:create',
 
   /**
-   * Change another person's display name or username.
+   * Change an existing account: its name, its username, its credentials.
    *
-   * The counterpart of `account:profile_write`, and separate from it for the
-   * reason the whole `users:*` block is separate: editing your own name and
-   * editing somebody else's are not the same right, and a role carrying the
-   * first must not imply the second. Email stays immutable here as it is there.
+   * Covers the rename, sending a password reset, ending every session, and
+   * removing a second factor — everything that alters an account without
+   * changing whether it may sign in at all, which is `users:disable`.
+   *
+   * ⚠ Read the block above on what holding this means. Two narrower operations
+   * live under it deliberately:
+   *
+   *   the password reset      SENDS a reset, and there is no admin path that
+   *                           sets a password directly. An administrator who
+   *                           could type one would hold that person's
+   *                           credential, and every "was that you or support?"
+   *                           question afterwards would be unanswerable. The
+   *                           link goes to the mailbox, which is the one place
+   *                           the account's owner controls.
+   *
+   *   removing a factor       for somebody who lost their phone AND their
+   *                           recovery codes, which is the ordinary case it
+   *                           exists for — which is why it cannot simply be
+   *                           withheld from everyone who may edit a profile.
    */
-  usersProfileWrite: 'users:profile_write',
+  usersUpdate: 'users:update',
 
   /**
-   * Suspend an account, and lift a suspension.
+   * Suspend an account so it cannot sign in, and lift the suspension again.
    *
-   * One key for both directions, the call `roles:disable` already makes: the
-   * act is reversible, and whoever can stop access is the obvious person to
-   * restore it. Splitting them would produce a role that can lock people out
-   * and not let them back in.
+   * The exact call `roles:disable` and `plans:archive` make, and there is
+   * deliberately NO `users:delete` beside it. Every membership, invitation and
+   * accepted-by record points at the account; deleting one either cascades that
+   * history away — destroying the answer to "who accepted this invitation last
+   * March" — or leaves rows pointing at nobody, which is what actually happens
+   * here, because `perm_membership.userId` has no foreign key to `auth_user`
+   * (PLAN §12.12).
    *
-   * `AuthUserStatus` already has `active | suspended` and nothing writes it
-   * yet, so this is a column the schema has been carrying unused.
+   * Suspension keeps the row, keeps the history, and is reversible by whoever
+   * got it wrong. `AuthUserStatus` already had `active | suspended` with
+   * nothing writing it.
+   *
+   * ONE key for both directions, like `roles:disable`: the act is reversible,
+   * and whoever can stop access is the obvious person to restore it. Splitting
+   * them would produce a role that can lock people out and not let them back
+   * in.
    */
-  usersSuspend: 'users:suspend',
-
-  /**
-   * Force a password reset on another account.
-   *
-   * ⚠ Half of the takeover pair — see the header. Deliberately narrow: it
-   * SENDS a reset, and there is no admin path that sets a password directly.
-   * An administrator who could type a new password into somebody's account
-   * would hold their credential, and every "was that you or support?" question
-   * afterwards would be unanswerable. The reset goes to the mailbox, which is
-   * the one place the account's owner controls.
-   */
-  usersPasswordReset: 'users:password_reset',
-
-  /**
-   * See where an account is signed in: device, address, last used.
-   *
-   * Split from revoking, and the split is about PRIVACY rather than damage.
-   * This is a location and device history — the most personal thing in the auth
-   * tables — while ending a session merely inconveniences somebody. Support
-   * needs to end sessions far more often than it needs to read them.
-   */
-  usersSessionsRead: 'users:sessions_read',
-
-  /** End every session an account holds, the way `signOutEverywhere` does. */
-  usersSessionsRevoke: 'users:sessions_revoke',
-
-  /**
-   * Remove another person's second factor.
-   *
-   * ⚠ The other half of the takeover pair. It also has a legitimate and
-   * frequent use — somebody loses their phone and their recovery codes — which
-   * is exactly why it cannot simply be withheld from everyone, and exactly why
-   * it is not folded into `users:password_reset`.
-   */
-  usersTwoFactorRemove: 'users:two_factor_remove',
-
-  /**
-   * Delete an account permanently.
-   *
-   * ⚠ The one key here with no reversible form, and it breaks this codebase's
-   * standing rule — `roles:disable`, `plans:archive`, `AuthSession.revokedAt`,
-   * `PermFeature.deprecatedAt` and `PermWorkspace.archivedAt` all set a
-   * timestamp and never DELETE. Suspension is the reversible answer and covers
-   * nearly every case; this exists for the one that is not a moderation
-   * decision at all — an erasure request, where keeping the row IS the problem.
-   *
-   * It also cannot be done by this module alone. `perm_membership.userId` has
-   * no foreign key to `auth_user` (PLAN §12.12 — the modules must not join
-   * across the boundary), so deleting an account leaves membership and role
-   * rows pointing at nobody. The composed delete belongs in the app, next to
-   * `users.resolver.ts`, and it is the reason this key ships with no binding
-   * yet: the guard exists when the composition does.
-   */
-  usersDelete: 'users:delete',
+  usersDisable: 'users:disable',
 } as const;
 
 export type AuthFeatureKey = (typeof AUTH_FEATURE)[keyof typeof AUTH_FEATURE];
@@ -306,12 +298,13 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     tags: ['admin', 'auth'],
     level: 'app',
     label: 'Read users',
-    description: 'List, search and open any account on the platform.',
+    description: 'List, search and open any account on the platform, and see where one is signed in.',
     // Privileged despite being a read: it is the whole customer list. See the key.
     isPrivileged: true,
     bindings: [
       { surface: 'graphql_operation', identifier: 'Query.adminUsers' },
       { surface: 'graphql_operation', identifier: 'Query.adminUser' },
+      { surface: 'graphql_operation', identifier: 'Query.adminUserSessions' },
       { surface: 'ui_route', identifier: '/admin/users' },
       { surface: 'ui_route', identifier: '/admin/users/:userId' },
     ],
@@ -330,74 +323,30 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     ],
   },
   {
-    key: AUTH_FEATURE.usersProfileWrite,
+    key: AUTH_FEATURE.usersUpdate,
     module: 'auth',
     tags: ['admin', 'auth'],
     level: 'app',
-    label: "Edit a user's profile",
-    description: "Change another person's display name or username. Their email address cannot be changed.",
+    label: 'Update users',
+    description:
+      "Change an account's name and username, send it a password reset, end its sessions, or remove its second factor.",
     isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.adminUpdateUserProfile' }],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.adminUpdateUserProfile' },
+      { surface: 'graphql_operation', identifier: 'Mutation.adminSendPasswordReset' },
+      { surface: 'graphql_operation', identifier: 'Mutation.adminRevokeUserSessions' },
+      { surface: 'graphql_operation', identifier: 'Mutation.adminRemoveUserTwoFactor' },
+      { surface: 'ui_route', identifier: '/admin/users/:userId/edit' },
+    ],
   },
   {
-    key: AUTH_FEATURE.usersSuspend,
+    key: AUTH_FEATURE.usersDisable,
     module: 'auth',
     tags: ['admin', 'auth'],
     level: 'app',
-    label: 'Suspend users',
-    description: 'Suspend an account so it cannot sign in, and lift a suspension again.',
+    label: 'Disable users',
+    description: 'Suspend an account so it cannot sign in, and lift the suspension again. Accounts are never deleted.',
     isPrivileged: true,
     bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.adminSetUserStatus' }],
-  },
-  {
-    key: AUTH_FEATURE.usersPasswordReset,
-    module: 'auth',
-    tags: ['admin', 'auth'],
-    level: 'app',
-    label: "Reset a user's password",
-    description: "Send a password reset to another account's address. Never sets a password directly.",
-    isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.adminSendPasswordReset' }],
-  },
-  {
-    key: AUTH_FEATURE.usersSessionsRead,
-    module: 'auth',
-    tags: ['admin', 'auth'],
-    level: 'app',
-    label: "Read a user's sessions",
-    description: 'See where an account is signed in: device, address and last use.',
-    isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Query.adminUserSessions' }],
-  },
-  {
-    key: AUTH_FEATURE.usersSessionsRevoke,
-    module: 'auth',
-    tags: ['admin', 'auth'],
-    level: 'app',
-    label: "End a user's sessions",
-    description: 'Sign an account out of every device it is signed in on.',
-    isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.adminRevokeUserSessions' }],
-  },
-  {
-    key: AUTH_FEATURE.usersTwoFactorRemove,
-    module: 'auth',
-    tags: ['admin', 'auth'],
-    level: 'app',
-    label: "Remove a user's two-step verification",
-    description: "Take a second factor off another person's account, for somebody locked out of their own.",
-    isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.adminRemoveUserTwoFactor' }],
-  },
-  {
-    key: AUTH_FEATURE.usersDelete,
-    module: 'auth',
-    tags: ['admin', 'auth'],
-    level: 'app',
-    label: 'Delete users',
-    description:
-      'Remove an account permanently. Suspension is the reversible alternative and is usually the right one.',
-    isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.adminDeleteUser' }],
   },
 ];
