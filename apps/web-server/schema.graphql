@@ -62,16 +62,17 @@ type FoundUser {
 }
 
 type InvitationPreview {
+  appRoleLabel: String
   email: String!
   expiresAt: String!
   hasAccount: Boolean!
-  organizationName: String!
+  organizationName: String
   roleLabel: String
 }
 
 type InvitationSignUpResult {
   email: String!
-  organizationName: String!
+  organizationName: String
 }
 
 type MfaFactor {
@@ -85,13 +86,13 @@ type MfaFactor {
 type Mutation {
   acceptInvitation(token: String!): PermissionWriteResult!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
-  adminCreateUser(displayName: String, email: String!, password: String!): AdminUser!
   adminRemoveUserTwoFactor(userId: String!): AdminUserWriteResult!
   adminRevokeUserSessions(userId: String!): AdminUserWriteResult!
   adminSendPasswordReset(userId: String!): AdminUserWriteResult!
   adminSetUserStatus(suspended: Boolean!, userId: String!): AdminUserWriteResult!
   adminUpdateUserProfile(displayName: String, userId: String!, username: String): AdminUser!
   archiveWorkspace(organizationId: String!, workspaceId: String!): PermissionWriteResult!
+  assignAppRole(roleId: String!, userId: String!): PermissionWriteResult!
   assignRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   createOrganization(key: String!, name: String!): PermissionWriteResult!
@@ -101,6 +102,7 @@ type Mutation {
   createWorkspace(key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
+  inviteUser(appRoleId: String!, email: String!, organizationId: String, roleId: String): PermissionInvitationResult!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
@@ -317,6 +319,7 @@ type Query {
   permissionPlans: [PermissionPlanDetail!]!
   permissionRoles(organizationId: String): [PermissionRoleDetail!]!
   permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
+  permissionUserAppRoles(userIds: [String!]!): [UserAppRole!]!
   session: SessionInfo
   viewer: Viewer
 }
@@ -362,6 +365,14 @@ input SubscriptionDraftInput {
 input UpdateProfileInput {
   displayName: String
   username: String
+}
+
+type UserAppRole {
+  roleIcon: String
+  roleId: String!
+  roleKey: String!
+  roleLabel: String!
+  userId: String!
 }
 
 type Viewer {

@@ -2,7 +2,6 @@ import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { AUTH_FEATURE, AUTH_FEATURE_REGISTRY } from '../features.js';
 import { UserDetailPage } from './admin/user-detail-page.js';
 import { UserEditPage } from './admin/user-edit-page.js';
-import { UserNewPage } from './admin/user-new-page.js';
 import { UsersPage } from './admin/users-page.js';
 import { ForgotPasswordPage } from './forgot-password-page.js';
 import { MfaChallengePage } from './mfa-challenge-page.js';
@@ -110,10 +109,6 @@ function TwoFactorRoute(_props: ModuleRouteProps) {
  */
 function UsersRoute(): React.JSX.Element {
   return <UsersPage />;
-}
-
-function UserNewRoute(): React.JSX.Element {
-  return <UserNewPage />;
 }
 
 function UserDetailRoute({ params }: ModuleRouteProps): React.JSX.Element {
@@ -228,14 +223,6 @@ export const authWebModule: WebModuleDescriptor = {
        * ABOUT, and the drawer now says so by putting them last.
        */
       nav: { group: 'Administration', order: 50, icon: 'user' },
-    },
-    {
-      path: '/admin/users/new',
-      title: 'New user',
-      component: UserNewRoute,
-      // Its OWN key, not the read key: somebody who reviews accounts should not
-      // thereby be able to mint one.
-      feature: AUTH_FEATURE.usersCreate,
     },
     {
       /*

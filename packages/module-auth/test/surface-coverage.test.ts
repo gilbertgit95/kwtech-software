@@ -21,7 +21,6 @@ const OPERATION_HANDLER: Record<string, string> = {
   'Query.adminUsers': 'adminUsers',
   'Query.adminUser': 'adminUser',
   'Query.adminUserSessions': 'adminUserSessions',
-  'Mutation.adminCreateUser': 'adminCreateUser',
   'Mutation.adminUpdateUserProfile': 'adminUpdateUserProfile',
   'Mutation.adminSetUserStatus': 'adminSetUserStatus',
   'Mutation.adminSendPasswordReset': 'adminSendPasswordReset',
@@ -102,9 +101,16 @@ describe('declared API surfaces are actually guarded', () => {
     expect(required('adminUserSessions')).toEqual([AUTH_FEATURE.usersRead]);
   });
 
-  it('declares no delete', () => {
-    // Accounts are suspended, never removed — see the service and features.ts.
+  it('declares neither a delete nor a create', () => {
+    /*
+     * Accounts are suspended, never removed — and never created here either:
+     * one comes into being when somebody accepts an invitation and chooses
+     * their own password, which is module-permissions' `inviteUser`.
+     */
     expect(Object.keys(OPERATION_HANDLER)).not.toContain('Mutation.adminDeleteUser');
-    expect(declared.map((binding) => binding.key)).not.toContain('users:delete');
+    expect(Object.keys(OPERATION_HANDLER)).not.toContain('Mutation.adminCreateUser');
+    const keys = declared.map((binding) => binding.key);
+    expect(keys).not.toContain('users:delete');
+    expect(keys).not.toContain('users:create');
   });
 });

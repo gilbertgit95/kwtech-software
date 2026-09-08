@@ -42,11 +42,39 @@ export const sendInvitationEmail: NonNullable<PermissionsModuleOptions['sendInvi
   email,
   token,
   organization,
+  appRole,
   expiresAt,
 }) => {
   const url = `${env.PERMISSIONS_INVITE_URL_BASE}?token=${encodeURIComponent(token)}`;
+  /*
+   * WHAT they are being invited to, in the words of the offer.
+   *
+   * `organization` is null for a PLATFORM invitation — one that grants an
+   * app-level role and no membership. The module hands over the null rather
+   * than a placeholder precisely so this decision is the app's: only the app
+   * knows what its own product is called, and "invited to join —" is the kind
+   * of email that gets reported as phishing.
+   */
+  const brand = env.MAIL_BRAND ?? env.APP_NAME;
   const message = renderEmail('organization-invitation', {
-    organizationName: organization.name,
+    /* The subject's noun. The product itself when no tenant was named. */
+    organizationName: organization?.name ?? brand,
+    /*
+     * Whole SENTENCES rather than fragments the template stitches together.
+     * The two cases differ by more than a name — one is "somebody at a company
+     * has invited you", the other is "the platform has" — and expressing that
+     * as conditionals inside a template is how an email ends up reading like a
+     * form letter with a hole in it.
+     */
+    intro: organization
+      ? `Someone at ${organization.name} has invited you to join them on ${brand}.`
+      : `You have been invited to ${brand}.`,
+    // Named when there is one, because on a platform invitation the role IS the
+    // offer — there is no organization to describe instead.
+    roleLine: appRole ? `You will join as ${appRole.label}.` : '',
+    joinLine: organization
+      ? `you will join ${organization.name} as soon as you have finished.`
+      : 'your account will be ready as soon as you have finished.',
     url,
     expiresIn: 'seven days',
   });
@@ -76,8 +104,10 @@ export const sendInvitationEmail: NonNullable<PermissionsModuleOptions['sendInvi
       [
         '',
         RULE,
-        '  ORGANIZATION INVITATION LINK — dev only, no SMTP_URL configured',
-        `  ${email} → ${organization.name} · expires ${expiresAt.toISOString()}`,
+        '  INVITATION LINK — dev only, no SMTP_URL configured',
+        // Names the offer, which is the thing a developer reading this needs:
+        // an organization, or the platform itself.
+        `  ${email} → ${organization?.name ?? brand}${appRole ? ` (${appRole.label})` : ''} · expires ${expiresAt.toISOString()}`,
         '',
         url,
         '',

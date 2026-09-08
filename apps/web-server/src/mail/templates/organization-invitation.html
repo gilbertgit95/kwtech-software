@@ -22,8 +22,7 @@
 <p style="margin:0 0 10px 0;">Hi,</p>
 
 <p style="margin:0 0 26px 0;">
-  Someone at <strong style="font-weight:600;"><%= it.organizationName %></strong> has invited you to join them on
-  <%= it.brand %>. Use the button below to accept.
+  <%= it.intro %><% if (it.roleLine) { %> <%= it.roleLine %><% } %> Use the button below to accept.
 </p>
 
 <%
@@ -63,8 +62,7 @@
      existing user — that is the whole reason it is not a membership row. */
 %>
 <p class="muted" style="margin:0 0 10px 0;font-size:13px;line-height:1.55;color:#71717a;mso-line-height-rule:exactly;">
-  No account yet? The link will help you create one first — you will join
-  <%= it.organizationName %> as soon as you have finished.
+  No account yet? The link will help you create one first — <%= it.joinLine %>
 </p>
 
 <div class="hair" style="border-top:1px solid #e4e4e7;margin:0 0 20px 0;font-size:0;line-height:0;">&nbsp;</div>

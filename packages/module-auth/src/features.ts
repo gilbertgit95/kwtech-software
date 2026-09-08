@@ -161,19 +161,6 @@ export const AUTH_FEATURE = {
   usersRead: 'users:read',
 
   /**
-   * Create an account directly, without an invitation.
-   *
-   * Its own key because it is its own decision. PLAN §12 open decision 36 says
-   * self-service registration must be a product choice rather than something
-   * arrived at by leaving an endpoint exposed — `AuthService.createAccount` is
-   * a method with no route for exactly that reason, reachable only through
-   * `signUpFromInvitation`. This adds a SECOND way in, and it is defensible
-   * where an open sign-up page is not: it is guarded, app level, privileged,
-   * and every use of it has an administrator's name on it.
-   */
-  usersCreate: 'users:create',
-
-  /**
    * Change an existing account: its name, its username, its credentials.
    *
    * Covers the rename, sending a password reset, ending every session, and
@@ -307,19 +294,6 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       { surface: 'graphql_operation', identifier: 'Query.adminUserSessions' },
       { surface: 'ui_route', identifier: '/admin/users' },
       { surface: 'ui_route', identifier: '/admin/users/:userId' },
-    ],
-  },
-  {
-    key: AUTH_FEATURE.usersCreate,
-    module: 'auth',
-    tags: ['admin', 'auth'],
-    level: 'app',
-    label: 'Create users',
-    description: 'Create an account directly, without an invitation.',
-    isPrivileged: true,
-    bindings: [
-      { surface: 'graphql_operation', identifier: 'Mutation.adminCreateUser' },
-      { surface: 'ui_route', identifier: '/admin/users/new' },
     ],
   },
   {

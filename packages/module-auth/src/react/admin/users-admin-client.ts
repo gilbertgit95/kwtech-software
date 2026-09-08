@@ -86,7 +86,6 @@ export interface UsersAdminClient {
   /** Live sessions only — a revoked row is history, not "signed in now". */
   listSessions(userId: string): Promise<AdminUserSession[]>;
 
-  createUser(input: { email: string; password: string; displayName?: string | null }): Promise<AdminUser>;
   updateProfile(userId: string, input: { displayName?: string; username?: string }): Promise<AdminUser>;
   setSuspended(userId: string, suspended: boolean): Promise<AdminUserWriteResult>;
   sendPasswordReset(userId: string): Promise<AdminUserWriteResult>;
@@ -159,16 +158,6 @@ export function createUsersAdminClient(auth: AuthClient = createAuthClient()): U
         { userId },
       );
       return data.adminUserSessions;
-    },
-
-    async createUser(input) {
-      const data = await auth.graphql<{ adminCreateUser: AdminUser }>(
-        `mutation AdminCreateUser($email: String!, $password: String!, $displayName: String) {
-           adminCreateUser(email: $email, password: $password, displayName: $displayName) { ${USER_FIELDS} }
-         }`,
-        { email: input.email, password: input.password, displayName: input.displayName ?? null },
-      );
-      return data.adminCreateUser;
     },
 
     async updateProfile(userId, input) {

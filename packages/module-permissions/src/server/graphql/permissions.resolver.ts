@@ -311,6 +311,42 @@ export class PermissionsResolver {
     return { invitationId: result.invitationId, delivered: result.delivered };
   }
 
+  /**
+   * Invites an address to the PLATFORM, optionally into an organization too.
+   *
+   * ## Why this is a second mutation and not more arguments on the first
+   *
+   * `inviteMember` above requires an organization and takes `members:manage`;
+   * that is the tenant flow and nothing about it changes. This one may name no
+   * organization at all, and its app-level role is the part that needs
+   * `roles:grant_app` — a key a tenant administrator must not need in order to
+   * invite a colleague.
+   *
+   * Both write the same row through the same method. The DECLARED key here is
+   * the app-role one because that is the argument this mutation exists for; the
+   * organization half is checked inside `inviteUser`, against the actor, so an
+   * administrator without `members:manage` is refused before anything is
+   * written rather than after.
+   */
+  @RequireFeature(FEATURE.rolesGrantApp)
+  @Mutation(() => PermissionInvitationResultType, { name: 'inviteUser' })
+  async inviteUser(
+    @Context() gqlContext: { req?: unknown },
+    @Args('email') email: string,
+    @Args('appRoleId') appRoleId: string,
+    @Args('organizationId', { type: () => String, nullable: true }) organizationId?: string | null,
+    @Args('roleId', { type: () => String, nullable: true }) roleId?: string | null,
+  ): Promise<PermissionInvitationResultType> {
+    const actor = await this.requireActor(gqlContext.req);
+    const result = await this.writes.inviteUser(actor, {
+      email,
+      appRoleId,
+      roleId: roleId ?? '',
+      ...(organizationId ? { organizationId } : {}),
+    });
+    return { invitationId: result.invitationId, delivered: result.delivered };
+  }
+
   /** Withdraws an invitation. The row stays — see `revokeInvitation`. */
   @RequireFeature(FEATURE.membersManage)
   @Mutation(() => PermissionWriteResultType, { name: 'revokeInvitation' })

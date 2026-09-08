@@ -86,6 +86,17 @@ export interface EmailData {
      * template; exactly as untrustworthy as a display name.
      */
     organizationName: string;
+    /**
+     * Whole SENTENCES, composed by the caller, because the two kinds of
+     * invitation differ by more than a name: one is "somebody at a company has
+     * invited you", the other is "the platform has". Conditionals inside a
+     * template are how an email ends up reading like a form letter with a hole
+     * in it.
+     */
+    intro: string;
+    /** Empty when the invitation grants no app-level role. */
+    roleLine: string;
+    joinLine: string;
     url: string;
     /** "seven days", for the same reason as above. */
     expiresIn: string;

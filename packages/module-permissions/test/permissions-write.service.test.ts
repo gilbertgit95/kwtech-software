@@ -92,7 +92,7 @@ interface Writes {
   subscriptions: unknown[];
   invitations: unknown[];
   /** Every invitation email the fake host was asked to send. */
-  sent: { email: string; token: string; organization: { id: string; key: string; name: string } }[];
+  sent: { email: string; token: string; organization: { id: string; key: string; name: string } | null }[];
   transactions: number;
 }
 
@@ -422,7 +422,10 @@ function fake(state: State = emptyState()) {
     sendInvitationEmail: async (invite: {
       email: string;
       token: string;
-      organization: { id: string; key: string; name: string };
+      // Nullable since platform invitations landed: an invitation that names no
+      // organization hands the hook a null rather than a placeholder.
+      organization: { id: string; key: string; name: string } | null;
+      appRole: { key: string; label: string } | null;
     }) => {
       if (state.mailFails) throw new Error('smtp is down');
       writes.sent.push({ email: invite.email, token: invite.token, organization: invite.organization });
@@ -873,7 +876,7 @@ describe('the pure rules, without a service around them', () => {
   it('assertRoleAssignable passes a matching, own-tenant role', () => {
     expect(() =>
       assertRoleAssignable(
-        { key: 'a', level: 'organization', organizationId: 'org1' },
+        { key: 'a', label: 'a', level: 'organization', organizationId: 'org1' },
         {
           organizationId: 'org1',
           level: 'organization',
@@ -885,7 +888,7 @@ describe('the pure rules, without a service around them', () => {
   it('assertRoleAssignable carries the offending ids in detail, for the message a user sees', () => {
     try {
       assertRoleAssignable(
-        { key: 'a', level: 'organization', organizationId: 'org2' },
+        { key: 'a', label: 'a', level: 'organization', organizationId: 'org2' },
         {
           organizationId: 'org1',
           level: 'organization',
@@ -900,7 +903,7 @@ describe('the pure rules, without a service around them', () => {
   });
 
   it('assertNotAppLevel says to use the other table rather than to pick another level', () => {
-    expect(() => assertNotAppLevel({ key: 'staff', level: 'app', organizationId: null })).toThrow(
+    expect(() => assertNotAppLevel({ key: 'staff', label: 'staff', level: 'app', organizationId: null })).toThrow(
       /grant it to the user directly/,
     );
   });

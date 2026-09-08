@@ -507,7 +507,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 32 | Should the one-role rule extend to APP level? | when a second app-level role is worth holding | **Workspace level: closed 2026-09-07 — yes.** `@@unique([workspaceMemberId])` matches the organization rule. `PermUserRole` is the last collection: an app-level role is platform staff, and `super-admin` + `normal-user` at once would be incoherent — but nothing needs it decided yet, and it is the one level where holding two is at least arguable (a support role plus a billing-operations role). Decide on evidence, not symmetry |
 | 35 | The seat cap is not checked when an invitation is ACCEPTED | when a plan's seat cap is enforced commercially | `assertCapacity` reads the ACTOR's resolved limits, and on the accept path there is no actor — the person joining holds nothing. So an invitation sent when there was room can be accepted after there is not, and the organization ends up one seat over. The honest fix is to check at invite time AND again on accept, and the second needs a limit lookup that does not go through a `PermissionContext` |
 | 36 | Sign-up exists only through an invitation | when self-service registration is a product decision | `AuthService.createAccount` is a METHOD with no route: the only thing that calls it is `signUpFromInvitation`, which supplies the address from the invitation rather than from the form. There is no public registration page and adding one is a product decision with a spam problem attached — not something to arrive at by leaving an endpoint exposed. Note what an open endpoint would also be: `createAccount` says plainly that an address is taken, which is an enumeration oracle anywhere but behind a token |
-| 37 | An app-level role can be GRANTED to nobody: `perm_user_role` has no write path | with the user-admin screens | `assignRole` writes `perm_membership_role` and takes an `organizationId`; nothing writes `perm_user_role` at all, so the two app-level grants in the live database were inserted by hand. `roles:manage_app` guards WRITING an app-level role, not granting one — a different act, and currently an unguarded impossibility rather than a hole. The user detail screen is the first surface that wants it, and the key is permissions-side (`roles:*`), not `users:*`: it grants a role, it does not change an account |
+| 37 | ~~An app-level role can be GRANTED to nobody: `perm_user_role` has no write path~~ **Closed** | — | **2026-09-08.** `assignAppRole` behind a new `roles:grant_app` key, plus `inviteUser`, which carries the chosen role on the invitation and applies it at acceptance. Both refuse a role carrying features the granter does not hold, so neither can be used to mint somebody more powerful than yourself. Original entry: | `assignRole` writes `perm_membership_role` and takes an `organizationId`; nothing writes `perm_user_role` at all, so the two app-level grants in the live database were inserted by hand. `roles:manage_app` guards WRITING an app-level role, not granting one — a different act, and currently an unguarded impossibility rather than a hole. The user detail screen is the first surface that wants it, and the key is permissions-side (`roles:*`), not `users:*`: it grants a role, it does not change an account |
 | 38 | Deleting an account orphans its permission rows, and the delete has no home | with `users:delete` | `perm_membership.userId` has no FK to `auth_user` by design (§12.12), so `DELETE FROM auth_user` leaves memberships and role grants pointing at nobody — verified by hand on 2026-09-08 removing a test account, which needed an explicit membership delete first. `findUsersByIds` already tolerates the orphan by falling back to the id. So a composed delete belongs in the APP beside `users.resolver.ts`, which is the only layer allowed to touch both. Suspension covers every case except erasure, so this can wait |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
@@ -515,6 +515,71 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-08** — **An account is created by the person who owns it. Everything
+  else invites.**
+
+  The New user button typed somebody else's password into a form. It is gone,
+  and with it `users:create`, `AuthAdminService.createUser`,
+  `Mutation.adminCreateUser` and `/admin/users/new`. The button now links to
+  `/admin/invitations/new`, which writes ONE `PermInvitation` row; the account
+  appears when the invited person follows the link and chooses a password only
+  they know. The form asks for no display name either — they type their own.
+
+  **Why the screen is in `module-permissions` and not in the app.** The
+  question was raised as "will this mix the two modules", and the honest answer
+  turned out to be that it mixes nothing: inviting touches no auth table at all.
+  Every field is permissions' own — the invitation row, the roles, the
+  organizations — and the account is created on ACCEPTANCE, by the app
+  composition that already existed. The earlier plan to put the screen in the
+  app was answering a problem that the "same flow as the org invite" shape had
+  already removed. The Users list links to it by PATH, which is a string rather
+  than an import — the same kind of crossing as a shared nav group.
+
+  **`PermInvitation.organizationId` is nullable and `appRoleId` is new.** An
+  invitation is an offer, and not every offer is to a tenant. A second table
+  would have duplicated the token, the expiry, the revocation, the email and the
+  accept page for a row differing by one column. Migration additive; the
+  existing row needed no backfill.
+
+  **The app-level role rides on the invitation**, which is how a role is chosen
+  for somebody who does not exist yet: decided when the row is written, applied
+  when `acceptInvitation` finally has a userId — milliseconds after
+  `signUpFromInvitation` creates it. Exactly what `roleId` already did for the
+  organization role, one level up.
+
+  **Required, and defaulted to the LEAST.** Required because an invitation
+  granting no app role produces somebody who signs in and cannot edit their own
+  profile: `account:profile_write` comes from an app-level role and nothing
+  else. Defaulted to the fewest features because a picker whose default is the
+  most powerful role is one somebody accepts by accident — today that is
+  `normal-user` at three, which is also exactly the role that makes the account
+  usable. The two goals agreed, which is not always how this goes.
+
+  **The guards follow the FIELDS, not the method.** `inviteUser` checks
+  `members:manage` when an organization is named and `roles:grant_app` when an
+  app role is, and refuses an invitation offering neither. A static key could
+  only have been the union, which would mean a tenant administrator needed
+  platform rights to invite a colleague. `inviteMember` is unchanged and now
+  delegates to it.
+
+  **The escalation rule is the point, not the key.** `roles:grant_app` says you
+  may hand out app-level roles; without a second rule it would be the whole
+  ladder, since anybody holding it could invite an address they own as
+  `super-admin` and hold everything by proxy. So both grant paths refuse a role
+  carrying features the granter does not hold — `role-draft.ts`'s no-escalation
+  rule, stated for handing a role out rather than composing one. It makes
+  neither path able to increase the total power in the system.
+
+  **`sendInvitationEmail` is handed a NULL organization** rather than a
+  placeholder, and the app composes whole sentences from it. "You have been
+  invited to join —" is the kind of email that gets reported as phishing, and
+  only the app knows what its own product is called.
+
+  Also this turn: an app-role column on the users grid and a picker on the edit
+  view, both fed by operations `module-auth` does not define and names by
+  convention, failing soft; and `user-draft.ts` lost its create mode, because
+  there is no longer a form that creates an account.
 
 - **2026-09-08** — **`users:*` collapses from nine keys to four, an account is
   never deleted, and editing gets its own route.**

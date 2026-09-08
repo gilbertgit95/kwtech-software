@@ -1,13 +1,8 @@
-import {
-  isPlausibleEmail,
-  isPlausibleUsername,
-  MIN_PASSWORD_LENGTH,
-  normaliseEmail,
-  normaliseUsername,
-} from './policy.js';
+import { isPlausibleUsername, normaliseUsername } from './policy.js';
 
 /**
- * What an administrator is typing about an account, and what is wrong with it.
+ * What an administrator is typing about an existing account, and what is wrong
+ * with it.
  *
  * The counterpart of `role-draft.ts` in @kwtech/module-permissions, and here
  * for the same reason that one exists: the FORM and the WRITE PATH must agree
@@ -16,83 +11,47 @@ import {
  * shows up as a save that passes every check on screen and is refused by the
  * server with a message written for a different audience.
  *
+ * ## There is no create mode
+ *
+ * It briefly had one, for a screen that created an account from a form an
+ * administrator filled in — including the password. That screen is gone: an
+ * account now comes into being when somebody accepts an invitation and chooses
+ * their own password, so nothing here validates an address or a credential.
+ * `signUpFromInvitation` checks the password, in the module that hashes it.
+ *
  * Pure — no framework, no client, no Nest. It sits in `domain/` so the browser
  * bundle and the resolver can both import it.
  */
 
 export interface UserDraft {
   /**
-   * Only meaningful when CREATING. An existing account's address is its
-   * identifier — invitations are addressed to it, `findUserByEmail` resolves
-   * members by it, and a reset is delivered to it — so changing it silently
-   * re-points all three. Doing it safely means a verification round trip to the
-   * new address, which is a feature and not a field.
+   * Free text, and optional: plenty of accounts have none, and requiring one
+   * would make an administrator invent a name on somebody else's behalf.
    */
-  email: string;
   displayName: string;
+  /** Optional too, and normalised before it is checked. */
   username: string;
-  /** Only meaningful when creating. An edit never carries one — see below. */
-  password: string;
-  confirm: string;
 }
 
-export const EMPTY_USER_DRAFT: UserDraft = {
-  email: '',
-  displayName: '',
-  username: '',
-  password: '',
-  confirm: '',
-};
+export const EMPTY_USER_DRAFT: UserDraft = { displayName: '', username: '' };
 
 export type UserDraftErrors = Partial<Record<keyof UserDraft, string>>;
-
-export interface ValidateUserOptions {
-  /**
-   * Creating, rather than editing an existing account.
-   *
-   * The two modes check genuinely different things — an edit has no address and
-   * no password to check — and one flag rather than two functions is what keeps
-   * the shared rules (the username, the display name) shared. The same call
-   * `validateRoleDraft` makes with its `editing` option.
-   */
-  creating: boolean;
-}
 
 /**
  * Everything wrong with the draft, by field.
  *
  * All of it at once rather than the first problem: a form that reports one
- * error per submit makes somebody submit four times to learn four things.
+ * error per submit makes somebody submit twice to learn two things.
+ *
+ * The account's EMAIL is deliberately not here. It is the identifier —
+ * invitations are addressed to it, member lookups resolve by it, a reset is
+ * delivered to it — so changing it silently re-points all three, and doing it
+ * safely needs a verification round trip to the new address. That is a feature,
+ * not a field.
  */
-export function validateUserDraft(draft: UserDraft, options: ValidateUserOptions): UserDraftErrors {
+export function validateUserDraft(draft: UserDraft): UserDraftErrors {
   const errors: UserDraftErrors = {};
 
-  if (options.creating) {
-    const email = normaliseEmail(draft.email);
-    if (!email) errors.email = 'An email address is required.';
-    else if (!isPlausibleEmail(email)) errors.email = 'That does not look like an email address.';
-
-    if (!draft.password) errors.password = 'A password is required.';
-    else if (draft.password.length < MIN_PASSWORD_LENGTH) {
-      errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
-    }
-
-    /*
-     * Checked HERE and nowhere on the server, and that is correct rather than a
-     * gap: it is not a rule about the password, it is a check that the typist
-     * typed what they meant, and the server has no second field to compare.
-     */
-    if (draft.password && draft.confirm !== draft.password) {
-      errors.confirm = 'Those two passwords are not the same.';
-    }
-  }
-
-  /*
-   * OPTIONAL, both of them, and empty is a valid answer for each. A username is
-   * chosen, not assigned — plenty of accounts have none — and a display name is
-   * free text somebody may not have given. Requiring either would make an
-   * administrator invent one on somebody else's behalf.
-   */
   const username = normaliseUsername(draft.username);
   if (username && !isPlausibleUsername(username)) {
     errors.username = 'Letters, digits, dots, dashes and underscores only, and not starting or ending with one.';

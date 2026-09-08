@@ -192,19 +192,6 @@ export class AuthAdminService {
   // ── writing ───────────────────────────────────────────────────────────────
 
   /**
-   * Creates an account without an invitation.
-   *
-   * Straight through to `AuthService.createAccount`, which is the only thing in
-   * this codebase that hashes a password into a new credential. The password is
-   * supplied by the administrator and the account is expected to change it —
-   * there is no "must change on first sign-in" flag yet, and inventing one here
-   * would be a column pretending to be enforcement.
-   */
-  async createUser(input: { email: string; displayName?: string | null; password: string }) {
-    return this.auth.createAccount(input);
-  }
-
-  /**
    * Renames an account: display name, username, or both.
    *
    * Email is absent and that is not an oversight. It is the account's
@@ -226,14 +213,11 @@ export class AuthAdminService {
      * Only the fields actually supplied are checked. An edit carries no address
      * and no password, which is exactly what `creating: false` means.
      */
-    const errors = validateUserDraft(
-      {
-        ...EMPTY_USER_DRAFT,
-        displayName: input.displayName ?? '',
-        username: input.username ?? '',
-      },
-      { creating: false },
-    );
+    const errors = validateUserDraft({
+      ...EMPTY_USER_DRAFT,
+      displayName: input.displayName ?? '',
+      username: input.username ?? '',
+    });
     const complaint = errors.username ?? errors.displayName;
     if (complaint) throw new BadRequestException({ message: complaint });
 

@@ -23,7 +23,6 @@ export { AdminShell } from './admin/admin-shell.js';
 export { UserDetailPage } from './admin/user-detail-page.js';
 export { UserEditPage } from './admin/user-edit-page.js';
 export { UserForm } from './admin/user-form.js';
-export { UserNewPage } from './admin/user-new-page.js';
 export {
   type AdminUser,
   type AdminUserDetail,

@@ -2,13 +2,15 @@ Subject: You have been invited to join <%= it.organizationName %>
 
 Hi,
 
-Someone at <%= it.organizationName %> has invited you to join them on
-<%= it.brand %>. Use the link below to accept.
+<%= it.intro %>
+<% if (it.roleLine) { %><%= it.roleLine %>
+<% } %>
+Use the link below to accept.
 
 <%= it.url %>
 
 If you do not have an account yet, the link will help you create one first —
-you will join <%= it.organizationName %> as soon as you have finished.
+<%= it.joinLine %>
 
 This invitation expires in <%= it.expiresIn %> and can only be used once.
 

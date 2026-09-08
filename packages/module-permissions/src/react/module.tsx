@@ -4,6 +4,7 @@ import { FeatureEditPage } from './pages/feature-edit-page.js';
 import { FeatureImportPage } from './pages/feature-import-page.js';
 import { FeatureNewPage } from './pages/feature-new-page.js';
 import { FeaturesPage } from './pages/features-page.js';
+import { InviteUserPage } from './pages/invite-user-page.js';
 import { OrganizationDetailPage } from './pages/organization-detail-page.js';
 import { OrganizationNewPage } from './pages/organization-new-page.js';
 import { OrganizationsPage } from './pages/organizations-page.js';
@@ -99,6 +100,10 @@ function SubscriptionNewRoute(_props: ModuleRouteProps) {
 
 function SubscriptionEditRoute({ params }: ModuleRouteProps) {
   return <SubscriptionEditPage subscriptionId={params?.subscriptionId} />;
+}
+
+function InviteUserRoute(): React.JSX.Element {
+  return <InviteUserPage />;
 }
 
 export const permissionsWebModule: WebModuleDescriptor = {
@@ -278,6 +283,23 @@ export const permissionsWebModule: WebModuleDescriptor = {
      * filtering happens once, in composeNav, rather than in each page
      * discovering it is not allowed after the reader clicked.
      */
+    {
+      /*
+       * NOT under `/admin/users`, which `module-auth` owns. Routes compose in
+       * module order and its `/admin/users/:userId` is declared first, so a
+       * literal `/admin/users/invite` here would be swallowed by that dynamic
+       * segment and read as a user whose id is "invite". The Users list links
+       * here by path instead — a string, not an import.
+       */
+      path: '/admin/invitations/new',
+      component: InviteUserRoute,
+      title: 'Invite a user',
+      // The app-role key, because the app-level role is the field this screen
+      // exists for. The organization half is checked against the actor inside
+      // `inviteUser`, so an administrator without `members:manage` can still
+      // invite to the platform.
+      feature: FEATURE.rolesGrantApp,
+    },
     {
       path: '/admin/plans',
       component: PlansRoute,

@@ -553,7 +553,17 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     description:
       'Give a person an app-level role, or change the one they hold. Refuses any role carrying more than the granter holds.',
     isPrivileged: true,
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.assignAppRole' }],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.assignAppRole' },
+      /*
+       * Inviting somebody with an app-level role attached. The same right as
+       * granting one directly — an invitation is a grant that has not landed
+       * yet, and guarding it more weakly would make the invite screen the way
+       * around the key.
+       */
+      { surface: 'graphql_operation', identifier: 'Mutation.inviteUser' },
+      { surface: 'ui_route', identifier: '/admin/invitations/new' },
+    ],
   },
   {
     key: FEATURE.plansRead,

@@ -27,6 +27,7 @@ export { FeatureForm } from './pages/feature-form.js';
 export { FeatureImportPage } from './pages/feature-import-page.js';
 export { FeatureNewPage } from './pages/feature-new-page.js';
 export { FeaturesPage } from './pages/features-page.js';
+export { InviteUserPage } from './pages/invite-user-page.js';
 export { OrganizationDetailPage } from './pages/organization-detail-page.js';
 export { OrganizationNewPage } from './pages/organization-new-page.js';
 export { OrganizationsPage } from './pages/organizations-page.js';

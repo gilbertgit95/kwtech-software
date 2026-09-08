@@ -33,8 +33,9 @@ import {
  *
  * ## The four keys
  *
- * `users:read`, `users:create`, `users:update` and `users:disable` — the shape
- * `roles:*` and `plans:*` already use. No handler declares more than the one
+ * `users:read`, `users:update` and `users:disable`. There is no create: an
+ * account comes into being when somebody accepts an invitation and chooses
+ * their own password, which is `module-permissions`' `inviteUser`. No handler declares more than the one
  * right it needs, so a role built for auditors holds `users:read` alone and
  * every mutation below refuses it.
  *
@@ -106,20 +107,6 @@ export class UsersAdminResolver {
   }
 
   // ── writing ───────────────────────────────────────────────────────────────
-
-  @RequireAuthFeature(AUTH_FEATURE.usersCreate)
-  @Mutation(() => AdminUserType, { name: 'adminCreateUser' })
-  async adminCreateUser(
-    @Args('email') email: string,
-    @Args('password') password: string,
-    @Args('displayName', { type: () => String, nullable: true }) displayName?: string | null,
-  ): Promise<AdminUserType> {
-    const created = await this.admin.createUser({ email, password, displayName: displayName ?? null });
-    // Read back rather than composed from the create's return, so the row the
-    // screen renders is the row the database holds — `createdAt` and `status`
-    // come from column defaults this module deliberately does not set.
-    return toAdminUser(await this.admin.getUser(created.id));
-  }
 
   @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserType, { name: 'adminUpdateUserProfile' })

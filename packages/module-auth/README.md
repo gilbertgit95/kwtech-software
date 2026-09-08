@@ -146,9 +146,15 @@ privileged. Four keys, shaped like `roles:*` and `plans:*`:
 | key | governs |
 |---|---|
 | `users:read` | list, search, open any account, and see where it is signed in |
-| `users:create` | create an account without an invitation |
 | `users:update` | rename it, send a password reset, end its sessions, remove its second factor |
 | `users:disable` | suspend it so it cannot sign in, and lift the suspension |
+
+There is no `users:create` either. **This module never creates an account from
+an administrator's form.** One comes into being when somebody accepts an
+invitation and chooses their own password — `inviteUser` in
+`@kwtech/module-permissions`, behind `roles:grant_app`. So an administrator
+never types another person's credential, and the Users list's New button is a
+link to that screen.
 
 There is deliberately **no `users:delete`**. Every membership, invitation and
 accepted-by record points at the account, and `perm_membership.userId` has no
@@ -190,10 +196,11 @@ fallback, so the decision is open rather than blocked.
 
 ## Administering users
 
-`/admin/users`, `/admin/users/new`, `/admin/users/:userId` and
-`/admin/users/:userId/edit`, declared on `authWebModule` like every other route
-this module ships. Reading and editing are separate routes, gated by separate
-keys — the detail page holds the account's ACTIONS, the edit page its profile. Nothing to mount:
+`/admin/users`, `/admin/users/:userId` and `/admin/users/:userId/edit`,
+declared on `authWebModule` like every other route this module ships. Reading
+and editing are separate routes, gated by separate keys — the detail page holds
+the account's ACTIONS, the edit page its profile. Creating is not here at all;
+the list links to `/admin/invitations/new`, which `module-permissions` owns. Nothing to mount:
 composing the module is what adds them.
 
 ```ts
@@ -223,11 +230,19 @@ afterwards would be unanswerable.
 of it: the access token verifies from its signature with no database read, so
 without revocation "suspend" would mean "cannot sign in again" for up to a week.
 
-**Creating and editing share one form.** `UserForm` is used by
-`/admin/users/new` and `/admin/users/:userId/edit`, and both validate through
-`validateUserDraft` in `domain/` — the same function the write path calls, so
-the form cannot accept something the API will refuse. The arrangement
-`RoleForm` uses, for the same reason.
+**The edit form validates through `validateUserDraft` in `domain/`** — the same
+function `AuthAdminService.updateProfile` calls, so the form cannot accept
+something the API will refuse. The arrangement `role-draft.ts` uses, for the
+same reason. It has no address or password field: the address is the identifier
+the invitation set, and credentials are changed by sending a reset.
+
+**The app-level role shown on the grid and edited on that form is not this
+module's.** It comes from `permissionUserAppRoles` and `assignAppRole` in
+`module-permissions`, named by convention the way that module's own client names
+the app-provided `findUserByEmail`. The reads fail soft — an app composing this
+module without a permissions module gets an empty column rather than a broken
+page — and the write does not, because a failed grant reporting success would be
+a lie about somebody's permissions.
 
 ## Entrypoints
 

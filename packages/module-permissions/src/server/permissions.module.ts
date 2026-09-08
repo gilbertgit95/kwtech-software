@@ -159,7 +159,18 @@ export interface PermissionsModuleOptions {
     email: string;
     /** The raw token. Handed over ONCE — see above. */
     token: string;
-    organization: { id: string; key: string; name: string };
+    /**
+     * NULL for a PLATFORM invitation — an offer to hold an app-level role and
+     * belong to no tenant.
+     *
+     * The hook has to branch on it, and that is the point of passing null
+     * rather than a placeholder: "You have been invited to join —" is the kind
+     * of email that gets reported as phishing, and only the app knows what its
+     * own product is called.
+     */
+    organization: { id: string; key: string; name: string } | null;
+    /** The app-level role being offered, when the invitation carries one. */
+    appRole: { key: string; label: string } | null;
     invitedByUserId: string;
     expiresAt: Date;
   }) => void | Promise<void>;

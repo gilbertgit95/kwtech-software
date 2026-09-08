@@ -99,6 +99,7 @@ describe('every declared API binding names a guard that exists', () => {
     'Query.findUserByEmail': [FEATURE.membersManage],
     'Query.findUsersByIds': [FEATURE.membersManage],
     'Mutation.inviteMember': required(PermissionsResolver.prototype, 'inviteMember'),
+    'Mutation.inviteUser': required(PermissionsResolver.prototype, 'inviteUser'),
     'Mutation.revokeInvitation': required(PermissionsResolver.prototype, 'revokeInvitation'),
   };
 

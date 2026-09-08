@@ -591,6 +591,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         id: true;
         key: true;
         level: true;
+        label: true;
         organizationId: true;
         isSystem: true;
         disabledAt: true;
@@ -599,6 +600,8 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
       id: string;
       key: string;
       level: string;
+      /** Read only where a role is NAMED to a person — an email, a screen. */
+      label: string;
       organizationId: string | null;
       isSystem: boolean;
       disabledAt: Date | null;
@@ -801,7 +804,10 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
     }): Promise<{ email: string; status: string; expiresAt: Date }[]>;
     create(args: {
       data: {
-        organizationId: string;
+        /** Null for a PLATFORM invitation, which names no tenant. */
+        organizationId: string | null;
+        /** The app-level role to grant on acceptance, when there is one. */
+        appRoleId: string | null;
         email: string;
         roleId: string | null;
         invitedByUserId: string;

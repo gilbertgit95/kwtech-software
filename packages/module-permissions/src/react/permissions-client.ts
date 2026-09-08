@@ -333,6 +333,20 @@ export interface PermissionsClient {
    * needs the person to have signed up already. The server emails the link.
    */
   inviteMember(organizationId: string, email: string, roleId: string | null): Promise<InviteResult>;
+  /**
+   * Invites an address to the PLATFORM, and optionally into an organization at
+   * the same time.
+   *
+   * Distinct from `inviteMember` above because the offer is different: this one
+   * always names an app-level role — what the person may do across the platform
+   * — and may name no organization at all. Both write one `PermInvitation`.
+   */
+  inviteUser(input: {
+    email: string;
+    appRoleId: string;
+    organizationId?: string | null;
+    roleId?: string | null;
+  }): Promise<InviteResult>;
   revokeInvitation(organizationId: string, invitationId: string): Promise<WriteResult>;
   /** Accepts for the SIGNED-IN caller. The token authorises; the session says who joins. */
   acceptInvitation(token: string): Promise<WriteResult>;
@@ -616,6 +630,26 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
         { organizationId, userId },
       );
       return data.addMember;
+    },
+
+    async inviteUser(input) {
+      const data = await graphql<{ inviteUser: InviteResult }>(
+        `mutation InviteUser($email: String!, $appRoleId: String!, $organizationId: String, $roleId: String) {
+           inviteUser(email: $email, appRoleId: $appRoleId, organizationId: $organizationId, roleId: $roleId) {
+             invitationId
+             delivered
+           }
+         }`,
+        {
+          email: input.email,
+          appRoleId: input.appRoleId,
+          // `?? null` on both: an omitted argument and an explicit null are the
+          // same over the wire, and the resolver reads null as "no organization".
+          organizationId: input.organizationId ?? null,
+          roleId: input.roleId ?? null,
+        },
+      );
+      return data.inviteUser;
     },
 
     async inviteMember(organizationId, email, roleId) {

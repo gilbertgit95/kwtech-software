@@ -45,7 +45,7 @@ const PAGE_SIZE = 25;
 
 export function UsersPage({
   client,
-  newHref = '/admin/users/new',
+  newHref = '/admin/invitations/new',
   detailHref = (userId: string) => `/admin/users/${encodeURIComponent(userId)}`,
   editHref = (userId: string) => `/admin/users/${encodeURIComponent(userId)}/edit`,
 }: {
@@ -64,7 +64,15 @@ export function UsersPage({
    * That holds for a button that submits; it does not hold for a link into a
    * route the middleware already refuses.)
    */
-  const mayCreate = useHoldsFeature(AUTH_FEATURE.usersCreate);
+  /*
+   * `roles:grant_app`, not one of this module's keys — because the button no
+   * longer creates an account. It links to the INVITE screen, which lives in
+   * `module-permissions` and writes an invitation naming an app-level role; the
+   * account is created by the person who accepts, with a password only they
+   * know. Asking about the key that actually guards the destination is what
+   * stops the button leading somewhere the reader will be refused.
+   */
+  const mayCreate = useHoldsFeature('roles:grant_app');
   const mayEdit = useHoldsFeature(AUTH_FEATURE.usersUpdate);
 
   /**
@@ -186,7 +194,7 @@ export function UsersPage({
             href={newHref}
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
-            New user
+            Invite a user
           </a>
         ) : null
       }

@@ -79,6 +79,8 @@ export class PermissionWriteError extends Error {
 /** The fields a write needs to judge a role. A partial row, not the whole model. */
 export interface AssignableRole {
   key: string;
+  /** The human name, read where a role is NAMED to somebody — an email, a screen. */
+  label: string;
   level: RoleLevel;
   /** Null for a shared preset, which every organization may use. */
   organizationId: string | null;

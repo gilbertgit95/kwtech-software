@@ -5,7 +5,6 @@ import { type FormEvent, useEffect, useState } from 'react';
 import {
   EMPTY_USER_DRAFT,
   hasUserDraftErrors,
-  MIN_PASSWORD_LENGTH,
   type UserDraft,
   type UserDraftErrors,
   validateUserDraft,
@@ -13,21 +12,17 @@ import {
 import type { AdminUser, AssignableAppRole, UsersAdminClient } from './users-admin-client.js';
 
 /**
- * One form for creating an account and for editing one.
+ * The profile of an existing account: its name and its username.
  *
- * The same arrangement `RoleForm` uses in @kwtech/module-permissions, and for
- * the same reason: the two screens differ by three fields and a verb, and two
- * forms drift — the second one grows a rule the first does not have, and which
- * of them is right becomes a question nobody can answer from the code.
+ * ## It no longer creates
  *
- * ## What changes between the modes
- *
- *   creating   asks for the address and a password. The address is a field
- *              exactly once in an account's life.
- *   editing    shows the address, disabled, and asks for neither password nor
- *              confirmation. Credentials are changed by SENDING A RESET, from
- *              the account's own page — an administrator who could type a
- *              password here would hold that person's credential.
+ * It was one form for two screens, `RoleForm`-style, until account creation
+ * stopped existing: an account now comes into being when somebody accepts an
+ * invitation and chooses their own password. So there is no address field — an
+ * account's address is its identifier and is set once, by the invitation — and
+ * no password field, because an administrator who could type one would hold
+ * that person's credential. Credentials are changed by SENDING A RESET, from
+ * the account's own page.
  *
  * ## The platform role is a SECOND write, behind a second key
  *
@@ -53,20 +48,16 @@ export function UserForm({
   currentAppRoleId,
   onSaved,
   cancelHref,
-  onCreated,
 }: {
   client: UsersAdminClient;
-  /** Absent when creating. Its presence is what puts the form in edit mode. */
-  user?: AdminUser;
+  /** The account being edited. Required — this form no longer creates one. */
+  user: AdminUser;
   /** The app-level role this account holds today, so the picker opens on it. */
   currentAppRoleId?: string | null;
   /** Called after a successful edit, so the page can refresh what it holds. */
   onSaved?: (user: AdminUser) => void;
-  /** Called after a successful create, with the account that now exists. */
-  onCreated?: (user: AdminUser) => void;
   cancelHref: string;
 }) {
-  const editing = user !== undefined;
   /*
    * The key that governs `perm_user_role`, asked through module-kit — the
    * contract that lets a module ask about permissions without importing the
@@ -93,18 +84,22 @@ export function UserForm({
       const sorted = [...found].sort((a, b) => a.features.length - b.features.length || a.key.localeCompare(b.key));
       setAppRoles(sorted);
       // Only when nothing is chosen yet — never overwrite what this account holds.
-      setAppRoleId((current) => current || (editing ? '' : (sorted[0]?.id ?? '')));
+      /*
+       * Never overwrite what this account holds, and never guess: an EDIT opens
+       * on the current role, including "none". The least-privileged default
+       * belongs on the invite screen, where there is no existing answer.
+       */
+      setAppRoleId((current) => current);
     });
     return () => {
       cancelled = true;
     };
-  }, [client, mayGrantAppRole, editing]);
+  }, [client, mayGrantAppRole]);
 
   const [draft, setDraft] = useState<UserDraft>({
     ...EMPTY_USER_DRAFT,
-    email: user?.email ?? '',
-    displayName: user?.displayName ?? '',
-    username: user?.username ?? '',
+    displayName: user.displayName ?? '',
+    username: user.username ?? '',
   });
   const [errors, setErrors] = useState<UserDraftErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -126,41 +121,33 @@ export function UserForm({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const found = validateUserDraft(draft, { creating: !editing });
+    const found = validateUserDraft(draft);
     setErrors(found);
     if (hasUserDraftErrors(found)) return;
 
     setSaving(true);
     setFailure(null);
     try {
-      if (editing) {
-        /*
-         * Only CHANGED fields are sent. The mutation reads an absent argument
-         * as "leave it alone", so sending both every time would rewrite a
-         * username somebody else edited between this page loading and the save.
-         */
-        const updated = await client.updateProfile(user.id, {
-          ...(draft.displayName !== (user.displayName ?? '') ? { displayName: draft.displayName.trim() } : {}),
-          ...(draft.username !== (user.username ?? '') ? { username: draft.username.trim() } : {}),
-        });
-        /*
-         * The role goes SECOND, and only when it changed. Second because the
-         * profile write is the one this form is named for, and a role change
-         * that failed should not also lose a rename that would have worked.
-         */
-        if (mayGrantAppRole && appRoleId && appRoleId !== (currentAppRoleId ?? '')) {
-          await client.setAppRole(user.id, appRoleId);
-        }
-        onSaved?.(updated);
-        setSaved(true);
-      } else {
-        const created = await client.createUser({
-          email: draft.email.trim(),
-          password: draft.password,
-          displayName: draft.displayName.trim() || null,
-        });
-        onCreated?.(created);
+      /*
+       * Only CHANGED fields are sent. The mutation reads an absent argument as
+       * "leave it alone", so sending both every time would rewrite a username
+       * somebody else edited between this page loading and the save.
+       */
+      const updated = await client.updateProfile(user.id, {
+        ...(draft.displayName !== (user.displayName ?? '') ? { displayName: draft.displayName.trim() } : {}),
+        ...(draft.username !== (user.username ?? '') ? { username: draft.username.trim() } : {}),
+      });
+
+      /*
+       * The role goes SECOND, and only when it changed. Second because the
+       * profile write is the one this form is named for, and a role change that
+       * failed should not also lose a rename that would have worked.
+       */
+      if (mayGrantAppRole && appRoleId !== (currentAppRoleId ?? '')) {
+        await client.setAppRole(user.id, appRoleId);
       }
+      onSaved?.(updated);
+      setSaved(true);
     } catch (cause) {
       /*
        * Passed through rather than replaced. The API says whether the address
@@ -190,20 +177,15 @@ export function UserForm({
         </p>
       ) : null}
 
-      <Field
-        label="Email address"
-        value={draft.email}
-        onChange={(value) => set('email', value)}
-        error={errors.email}
-        type="email"
-        /*
-         * DISABLED rather than hidden when editing. The address is what
-         * identifies the account, so a form that omitted it would leave an
-         * administrator editing a name with no way to confirm whose it is.
-         */
-        disabled={editing}
-        hint={editing ? "An account's address cannot be changed here — it is what identifies it." : undefined}
-      />
+      {/*
+        SHOWN, not editable. An administrator editing a name needs to see whose
+        it is, and the address is the identifier the invitation set — changing
+        it would silently re-point invitations, member lookups and resets.
+      */}
+      <div className="text-sm">
+        <span className="text-muted-foreground">Email address</span>
+        <p className="mt-1 text-foreground">{user.email}</p>
+      </div>
 
       <Field
         label="Display name"
@@ -253,38 +235,13 @@ export function UserForm({
         </label>
       ) : null}
 
-      {editing ? null : (
-        <>
-          <Field
-            label="Temporary password"
-            value={draft.password}
-            onChange={(value) => set('password', value)}
-            error={errors.password}
-            type="password"
-            autoComplete="new-password"
-            hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
-          />
-          <Field
-            label="Confirm password"
-            value={draft.confirm}
-            onChange={(value) => set('confirm', value)}
-            error={errors.confirm}
-            type="password"
-            autoComplete="new-password"
-          />
-          <p className="mt-3 text-xs text-muted-foreground">
-            You will know this password. Send a reset from the account's page afterwards, or ask them to change it.
-          </p>
-        </>
-      )}
-
       <div className="mt-5 flex items-center gap-2">
         <button
           type="submit"
           disabled={saving}
           className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
-          {saving ? 'Saving…' : editing ? 'Save changes' : 'Create account'}
+          {saving ? 'Saving…' : 'Save changes'}
         </button>
         <a href={cancelHref} className="rounded-md border border-border px-3 py-2 text-sm">
           Cancel

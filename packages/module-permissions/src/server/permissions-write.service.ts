@@ -367,7 +367,7 @@ export class PermissionsWriteService {
 
     const source = await db.permRole.findFirst({
       where: { id: input.sourceRoleId },
-      select: { id: true, key: true, level: true, organizationId: true, isSystem: true, disabledAt: true },
+      select: { id: true, key: true, level: true, label: true, organizationId: true, isSystem: true, disabledAt: true },
     });
     if (!source) throw new PermissionWriteError('not_found', 'No such role', { roleId: input.sourceRoleId });
 
@@ -413,7 +413,7 @@ export class PermissionsWriteService {
   private async requireWritableRole(tx: PermissionsTransaction, roleId: string, actor: PermissionContext) {
     const role = await tx.permRole.findFirst({
       where: { id: roleId },
-      select: { id: true, key: true, level: true, organizationId: true, isSystem: true, disabledAt: true },
+      select: { id: true, key: true, level: true, label: true, organizationId: true, isSystem: true, disabledAt: true },
     });
     if (!role) throw new PermissionWriteError('not_found', 'No such role', { roleId });
 
@@ -881,7 +881,47 @@ export class PermissionsWriteService {
    * idempotent for somebody already in, so the worst case is a wasted email.
    */
   async inviteMember(actor: PermissionContext, organizationId: string, draft: InvitationDraft) {
-    this.assertPermitted(actor, FEATURE.membersManage);
+    // The members screen's entry point, kept because that is what it calls and
+    // because an invitation to an organization is the common case. It is the
+    // same write: one organization, no app-level role.
+    return this.inviteUser(actor, { ...draft, organizationId });
+  }
+
+  /**
+   * Invites an address — to an organization, to the PLATFORM, or to both.
+   *
+   * ## One method, because it is one row
+   *
+   * `PermInvitation.organizationId` is nullable and `appRoleId` is a column
+   * beside it, so "join this tenant" and "hold this app-level role" are two
+   * fields of one offer rather than two features. Splitting them into two
+   * methods would have duplicated the token, the expiry, the delivery and the
+   * revocation for a row differing in one column.
+   *
+   * ## The guards follow the FIELDS, not the method
+   *
+   * A static key on this method could only be the union of both, which would
+   * mean a tenant administrator needed platform rights to invite a colleague.
+   * So each part is checked when it is present:
+   *
+   *   an organization   `members:manage` — the existing rule, unchanged.
+   *   an app-level role `roles:grant_app`, plus the same no-escalation check
+   *                     `assignAppRole` makes. Without it, inviting an address
+   *                     you own as `super-admin` would be a way to grant
+   *                     yourself anything.
+   *   neither           refused. An invitation to nothing is a link that grants
+   *                     nothing and an email nobody can act on.
+   */
+  async inviteUser(actor: PermissionContext, draft: InvitationDraft) {
+    const organizationId = draft.organizationId?.trim() || null;
+    const appRoleId = draft.appRoleId?.trim() || null;
+
+    if (organizationId) this.assertPermitted(actor, FEATURE.membersManage);
+    if (appRoleId) this.assertPermitted(actor, FEATURE.rolesGrantApp);
+    if (!organizationId && !appRoleId) {
+      throw new PermissionWriteError('draft_invalid', 'An invitation must offer an organization or a role', {});
+    }
+
     const send = this.options?.sendInvitationEmail;
     if (!send) {
       throw new PermissionWriteError(
@@ -893,8 +933,21 @@ export class PermissionsWriteService {
     const db = this.client();
 
     const created = await db.$transaction(async (tx) => {
-      const organization = await this.requireOrganization(tx, organizationId);
+      // Null for a platform invitation, and the mail hook is handed the null
+      // rather than a placeholder — see `sendInvitationEmail`.
+      const organization = organizationId ? await this.requireOrganization(tx, organizationId) : null;
+      /*
+       * Held from the validation below so the email can name the role without a
+       * second read. `requireRole` has already refused a disabled one.
+       */
+      let appRoleRow: AssignableRole | null = null;
 
+      /*
+       * Scoped to THIS offer: the organization's pending invitations, or the
+       * platform's. Two separate buckets, because a platform invitation and an
+       * invitation to a tenant are different offers to the same person and
+       * neither may block the other.
+       */
       const pending = await tx.permInvitation.findMany({
         where: { organizationId, status: 'pending' },
         select: { email: true, status: true, expiresAt: true },
@@ -910,6 +963,34 @@ export class PermissionsWriteService {
       });
       assertNoDraftErrors(errors, 'draft_invalid');
 
+      if (appRoleId) {
+        /*
+         * The same two checks `assignAppRole` makes, at the same strength.
+         * They belong here as well as there because this is the OTHER way an
+         * app-level role reaches somebody, and a guard on one path only is not
+         * a guard.
+         */
+        appRoleRow = await this.requireRole(tx, appRoleId);
+        if (appRoleRow.level !== 'app') {
+          throw new PermissionWriteError('role_level_mismatch', 'That is not an app-level role', {
+            roleId: appRoleId,
+            level: appRoleRow.level,
+          });
+        }
+        const carried = await tx.permRoleFeature.findMany({
+          where: { roleId: appRoleId },
+          select: { featureKey: true },
+        });
+        const held = new Set<string>(actor.effective);
+        const beyond = carried.map((row) => row.featureKey).filter((key) => !held.has(key));
+        if (beyond.length > 0) {
+          throw new PermissionWriteError('not_permitted', 'That role carries rights you do not hold', {
+            roleId: appRoleId,
+            features: beyond.sort(),
+          });
+        }
+      }
+
       if (draft.roleId) {
         const role = await this.requireRole(tx, draft.roleId);
         assertNotAppLevel(role);
@@ -917,6 +998,13 @@ export class PermissionsWriteService {
         // acceptance: an invitation naming a role that cannot be granted is one
         // that fails at the worst moment, in front of somebody who just signed
         // up and cannot do anything about it.
+        // An organization role needs an organization, which the draft
+        // validator also refuses — this is the write path's own check.
+        if (!organizationId) {
+          throw new PermissionWriteError('draft_invalid', 'An organization role needs an organization', {
+            roleId: draft.roleId,
+          });
+        }
         assertRoleAssignable(role, { organizationId, level: 'organization' });
       }
 
@@ -931,6 +1019,7 @@ export class PermissionsWriteService {
       const invitation = await tx.permInvitation.create({
         data: {
           organizationId,
+          appRoleId,
           email: normaliseInviteEmail(draft.email),
           roleId: draft.roleId || null,
           invitedByUserId: actor.subjectId,
@@ -940,7 +1029,15 @@ export class PermissionsWriteService {
         select: { id: true },
       });
 
-      return { invitationId: invitation.id, token, organization, expiresAt };
+      /*
+       * The app role is re-read for its LABEL, which only the email needs. Two
+       * columns rather than a join on the row above, because the create's
+       * select is deliberately `{ id: true }` — an invitation row carries a
+       * token hash, and the less of it that travels the better.
+       */
+      const appRole = appRoleRow ? { key: appRoleRow.key, label: appRoleRow.label } : null;
+
+      return { invitationId: invitation.id, token, organization, appRole, expiresAt };
     });
 
     /*
@@ -967,6 +1064,7 @@ export class PermissionsWriteService {
         email: normaliseInviteEmail(draft.email),
         token: created.token,
         organization: created.organization,
+        appRole: created.appRole,
         invitedByUserId: actor.subjectId,
         expiresAt: created.expiresAt,
       });
@@ -1791,7 +1889,7 @@ export class PermissionsWriteService {
   private async requireRole(tx: PermissionsTransaction, roleId: string): Promise<AssignableRole> {
     const role = await tx.permRole.findFirst({
       where: { id: roleId },
-      select: { id: true, key: true, level: true, organizationId: true, isSystem: true, disabledAt: true },
+      select: { id: true, key: true, level: true, label: true, organizationId: true, isSystem: true, disabledAt: true },
     });
     if (!role) throw new PermissionWriteError('not_found', 'No such role', { roleId });
 
@@ -1809,7 +1907,7 @@ export class PermissionsWriteService {
 
     // Validated, not cast: a row holding 'Organization' would otherwise pass
     // every check here and then match nothing on the read side.
-    return { key: role.key, level: toRoleLevel(role.level), organizationId: role.organizationId };
+    return { key: role.key, label: role.label, level: toRoleLevel(role.level), organizationId: role.organizationId };
   }
 
   private async workspaceMemberId(
