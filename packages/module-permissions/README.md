@@ -373,6 +373,24 @@ PermissionsModule.forRoot({
 | `createWorkspace` / `archiveWorkspace` | `workspaces:manage` | `organization:workspaces` |
 | `shareWorkspace` / `unshareWorkspace` | `workspaces:share` | `workspace:members` |
 | `assignWorkspaceRole` / `revokeWorkspaceRole` | `workspaces:share` | — |
+| `assignAppRole` | `roles:grant_app`, **and** every feature the role carries | — |
+| `inviteMember` | `members:manage` | — |
+| `inviteUser` | `members:manage` if it names an organization, `roles:grant_app` if it names an app role, **and** every feature that role carries | — |
+| `revokeInvitation` | `members:manage` | — |
+| `acceptInvitation` | a SESSION and the token. No feature — the person holds nothing in the organization, which is the point of an invitation | — |
+| `declineInvitation` | the token, and nothing else — not even a session | — |
+
+The two `roles:grant_app` rows carry a second condition the key alone does not
+express: **a role may only be granted by somebody who already holds everything
+it carries.** Without it the key would be the whole ladder — anybody holding it
+could grant `super-admin`, to a colleague or to an address they own, and hold
+everything by proxy the next morning. It is the same no-escalation rule
+`role-draft.ts` applies when composing a role, stated for handing one out.
+
+Note also what acceptance may and may not change. It REPLACES the organization
+role — that decision was made on a screen showing the member list — and it never
+replaces an app-level role, because there the inviter was looking at an address
+rather than at an account. See the invitations section.
 
 Four properties worth relying on:
 
