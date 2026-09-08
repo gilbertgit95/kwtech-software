@@ -209,7 +209,19 @@ export const authWebModule: WebModuleDescriptor = {
       title: 'Users',
       component: UsersRoute,
       feature: AUTH_FEATURE.usersRead,
-      nav: { group: 'Administration', order: 15, icon: 'user' },
+      /*
+       * 50, after every entry module-permissions declares — roles (10),
+       * features (20), plans (25), subscriptions (30) and organizations (40).
+       *
+       * The order is a NUMBER rather than a position for exactly this: two
+       * modules that cannot import each other still have to agree on a drawer,
+       * and leaving a gap after the last known entry is how a module says
+       * "after everything you have" without naming it. It was 15, which put
+       * accounts between Roles and Features and read as though users were part
+       * of the permissions vocabulary — they are the thing the vocabulary is
+       * ABOUT, and the drawer now says so by putting them last.
+       */
+      nav: { group: 'Administration', order: 50, icon: 'user' },
     },
     {
       path: '/admin/users/new',
