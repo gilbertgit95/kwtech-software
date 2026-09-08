@@ -582,6 +582,14 @@ The consequence is that the read fails soft. A reader without
 differently on purpose — the list shows an em dash, which is not the same claim
 as "No plan".
 
+The plan is named with its ICON beside the label, drawn from whatever set the
+app published through `IconSetProvider` — the same arrangement the roles and
+plans grids use. `planIcon` is a NAME, never a component, and an unknown one
+(no provider mounted, or an icon retired from the set) leaves the label alone
+rather than showing a placeholder: the label is the answer and the glyph is the
+decoration. No icon is drawn beside "No plan" or the em dash, which would be
+decorating the absence of one.
+
 Only the ORGANIZATION-WIDE subscription counts as the tenant's plan: active, its
 plan unarchived, and `workspaceId` null. A workspace subscription ADDS to what
 the organization bought rather than being it, so counting one would report a

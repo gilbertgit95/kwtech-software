@@ -172,6 +172,9 @@ const plan = (
   plan: {
     key: 'pro',
     label: 'Pro',
+    // Null: no test here draws one, and a plan without an icon is a real state
+    // the screens fall back to the label for.
+    icon: null,
     archivedAt: null,
     features: features.map((featureKey) => ({ featureKey })),
     limits,

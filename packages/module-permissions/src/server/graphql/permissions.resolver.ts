@@ -997,6 +997,7 @@ function toSubscriptionView(row: {
   workspaceName: string | null;
   planKey: string;
   planLabel: string;
+  planIcon: string | null;
   planArchived: boolean;
   status: string;
   currentPeriodEnd: Date | null;
@@ -1010,6 +1011,7 @@ function toSubscriptionView(row: {
     workspaceName: row.workspaceName,
     planKey: row.planKey,
     planLabel: row.planLabel,
+    planIcon: row.planIcon,
     planArchived: row.planArchived,
     status: row.status,
     currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,

@@ -102,6 +102,8 @@ export interface SubscriptionView {
   workspaceName: string | null;
   planKey: string;
   planLabel: string;
+  /** Icon NAME, null for a plan that never chose one. Drawn by the app's set. */
+  planIcon: string | null;
   /** An archived plan entitles nothing, however live this row looks. */
   planArchived: boolean;
   status: string;
@@ -374,7 +376,7 @@ export interface PermissionsClient {
 const ROLE_FIELDS = 'id key label level organizationId icon isSystem disabled features';
 const PLAN_FIELDS = 'key label isPublic icon archived features limits { limitKey value }';
 const SUBSCRIPTION_FIELDS = `id organizationId organizationName workspaceId workspaceName
-  planKey planLabel planArchived status currentPeriodEnd endedAt`;
+  planKey planLabel planIcon planArchived status currentPeriodEnd endedAt`;
 const WRITE_RESULT = 'changed id replaced';
 
 export function createPermissionsClient(options: { graphqlPath?: string } = {}): PermissionsClient {

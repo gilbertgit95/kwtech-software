@@ -101,6 +101,8 @@ export interface SubscriptionRow {
   plan: {
     key: string;
     label: string;
+    /** Icon NAME, null for a plan that never chose one. See PermPlan.icon. */
+    icon: string | null;
     /** An archived plan entitles nothing, however live the subscription looks. */
     archivedAt: Date | null;
     features: { featureKey: string }[];

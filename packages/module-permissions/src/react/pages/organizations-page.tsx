@@ -1,6 +1,6 @@
 'use client';
 
-import { DataGrid, type DataGridColumn } from '@kwtech/web-ui/react';
+import { DataGrid, type DataGridColumn, useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import {
@@ -45,6 +45,8 @@ interface OrganizationRow extends OrganizationView {
    * allowed to know" — are three sentences rather than three shapes.
    */
   planLabel: string;
+  /** Icon NAME, drawn by whatever set the app published. Null when there is none. */
+  planIcon: string | null;
 }
 
 /**
@@ -79,6 +81,9 @@ function toRow(organization: OrganizationView, subscriptions: readonly Subscript
      * page, so a legitimate reader may see the tenants and not what they bought.
      */
     planLabel: subscriptions === null ? '—' : (plan?.planLabel ?? 'No plan'),
+    // Only when there IS a plan: an icon beside "No plan" or an em dash would
+    // be decorating the absence of one.
+    planIcon: plan?.planIcon ?? null,
   };
 }
 
@@ -92,6 +97,13 @@ export function OrganizationsPage({
   detailHref?: (organizationId: string) => string;
 }) {
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
+  /*
+   * Name → component, from whatever the app published. Null when no
+   * `IconSetProvider` is mounted, in which case the cell degrades to the label
+   * alone — the same arrangement the roles and plans grids use.
+   */
+  const iconSet = useIconSet();
+  const iconsByName = useMemo(() => new Map((iconSet ?? []).map((option) => [option.name, option.Icon])), [iconSet]);
   const [rows, setRows] = useState<OrganizationRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,10 +159,34 @@ export function OrganizationsPage({
        * entitled to nothing at organization level, however many people are in
        * it.
        */
-      { field: 'planLabel', headerName: 'Plan', width: 150 },
+      {
+        field: 'planLabel',
+        headerName: 'Plan',
+        width: 150,
+        cellRenderer: (params: { data?: OrganizationRow }) => {
+          const row = params.data;
+          if (!row) return null;
+          const Icon = row.planIcon ? iconsByName.get(row.planIcon) : undefined;
+          return (
+            <span className="flex items-center gap-2">
+              {/*
+                Drawn only when the app can actually draw it. An unknown name —
+                no provider mounted, or an icon retired from the set — leaves
+                the label alone rather than showing a placeholder, because the
+                LABEL is the answer and the glyph is the decoration.
+              */}
+              {Icon ? <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" /> : null}
+              <span>{row.planLabel}</span>
+            </span>
+          );
+        },
+      },
       { field: 'workspaceText', headerName: 'Workspace names', flex: 3, hide: true },
     ],
-    [],
+    // The plan cell draws from the icon set, so the columns are rebuilt when a
+    // provider mounts — otherwise the glyphs would be missing until something
+    // else re-rendered the grid.
+    [iconsByName],
   );
 
   return (

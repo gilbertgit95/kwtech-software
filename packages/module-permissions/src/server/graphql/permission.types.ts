@@ -503,6 +503,14 @@ export class PermissionSubscriptionType {
   planLabel!: string;
 
   /**
+   * Icon NAME, not a component — the same contract every icon in this module
+   * follows. Null for a plan that never chose one, which a screen draws as a
+   * neutral mark rather than as a guess.
+   */
+  @Field(() => String, { nullable: true })
+  planIcon!: string | null;
+
+  /**
    * Whether the plan behind this row has been archived.
    *
    * Exposed because an archived plan entitles nothing — `loadContext` filters

@@ -1,6 +1,6 @@
 'use client';
 
-import { ConfirmDialog, DataGrid, type DataGridColumn } from '@kwtech/web-ui/react';
+import { ConfirmDialog, DataGrid, type DataGridColumn, useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { INVITATION_TTL_MS } from '../../domain/invitation.js';
 import { FEATURE } from '../../feature-keys.js';
@@ -471,6 +471,14 @@ function OrganizationSettings({
  * are mentioned separately, and only when there are any.
  */
 function PlanSummary({ subscriptions }: { subscriptions: SubscriptionView[] | undefined }) {
+  /*
+   * Called before the early return, because hooks must not sit behind a
+   * condition — and the set is cheap to read whether or not there is a plan to
+   * draw with it.
+   */
+  const iconSet = useIconSet();
+  const iconsByName = useMemo(() => new Map((iconSet ?? []).map((option) => [option.name, option.Icon])), [iconSet]);
+
   if (subscriptions === undefined) return null;
 
   const organizationWide = subscriptions.find(
@@ -487,7 +495,17 @@ function PlanSummary({ subscriptions }: { subscriptions: SubscriptionView[] | un
       <div>
         <span className="text-muted-foreground">Plan: </span>
         {organizationWide ? (
-          <span className="font-medium text-foreground">{organizationWide.planLabel}</span>
+          <span className="inline-flex items-center gap-1.5 align-middle font-medium text-foreground">
+            {/*
+              `aria-hidden`: the label beside it already says which plan this
+              is, so announcing the icon's name would read the same fact twice.
+            */}
+            {(() => {
+              const Icon = organizationWide.planIcon ? iconsByName.get(organizationWide.planIcon) : undefined;
+              return Icon ? <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" /> : null;
+            })()}
+            {organizationWide.planLabel}
+          </span>
         ) : (
           /*
            * Stated as a CONSEQUENCE rather than as an absence. "No plan" alone

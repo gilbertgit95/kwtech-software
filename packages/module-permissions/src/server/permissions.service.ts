@@ -272,6 +272,13 @@ export class PermissionsService {
       workspaceName: row.workspaceId ? (workspaceNames.get(row.workspaceId) ?? row.workspaceId) : null,
       planKey: row.planKey,
       planLabel: row.plan.label,
+      /*
+       * The plan's icon NAME, for a screen naming the plan. Carried beside the
+       * label rather than looked up separately: the two are one identification
+       * of the plan, and a caller that had to fetch the catalogue to draw a
+       * glyph would be making a second request to render one field.
+       */
+      planIcon: row.plan.icon,
       // Read so a screen can explain why a live-looking subscription entitles
       // nothing: `loadContext` filters archived plans out, and a row pointing
       // at one is otherwise indistinguishable from a working subscription.
