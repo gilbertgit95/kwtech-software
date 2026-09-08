@@ -2,6 +2,49 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AdminUser {
+  createdAt: String!
+  displayName: String
+  email: String!
+  id: String!
+  lastLoginAt: String
+  status: String!
+  username: String
+}
+
+type AdminUserDetail {
+  activeSessions: Int!
+  createdAt: String!
+  displayName: String
+  email: String!
+  hasTwoFactor: Boolean!
+  id: String!
+  lastLoginAt: String
+  status: String!
+  username: String
+}
+
+type AdminUserPage {
+  rows: [AdminUser!]!
+  total: Int!
+}
+
+type AdminUserSession {
+  expiresAt: String!
+  id: String!
+  ipAddress: String
+  issuedAt: String!
+  lastUsedAt: String
+  mfaSatisfied: Boolean!
+  userAgent: String
+}
+
+type AdminUserWriteResult {
+  changed: Boolean!
+  sessionsRevoked: Int!
+  user: AdminUser
+}
+
 input FeatureFilterInput {
   isPrivileged: Boolean
   levels: [String!]
@@ -42,6 +85,13 @@ type MfaFactor {
 type Mutation {
   acceptInvitation(token: String!): PermissionWriteResult!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  adminCreateUser(displayName: String, email: String!, password: String!): AdminUser!
+  adminDeleteUser(userId: String!): AdminUserWriteResult!
+  adminRemoveUserTwoFactor(userId: String!): AdminUserWriteResult!
+  adminRevokeUserSessions(userId: String!): AdminUserWriteResult!
+  adminSendPasswordReset(userId: String!): AdminUserWriteResult!
+  adminSetUserStatus(suspended: Boolean!, userId: String!): AdminUserWriteResult!
+  adminUpdateUserProfile(displayName: String, userId: String!, username: String): AdminUser!
   archiveWorkspace(organizationId: String!, workspaceId: String!): PermissionWriteResult!
   assignRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
@@ -254,6 +304,9 @@ input PlanLimitInput {
 }
 
 type Query {
+  adminUser(userId: String!): AdminUserDetail!
+  adminUserSessions(userId: String!): [AdminUserSession!]!
+  adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
   findUserByEmail(email: String!): FoundUser
   findUsersByIds(ids: [String!]!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview

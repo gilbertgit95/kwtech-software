@@ -5,17 +5,22 @@
  * browser bundle that never imports this subpath never pulls them in. This
  * subpath also reaches node:crypto, which is why the core entrypoint does not.
  */
+
 export * from './auth.controller.js';
 export * from './auth.decorators.js';
 export * from './auth.module.js';
 export * from './auth.options.js';
 export * from './auth.repository.js';
 export * from './auth.service.js';
+export * from './auth-admin.service.js';
 export * from './graphql/auth.inputs.js';
 export * from './graphql/auth.resolver.js';
 export * from './graphql/auth.types.js';
+export * from './graphql/users-admin.resolver.js';
+export * from './graphql/users-admin.types.js';
 export * from './jwt-auth.guard.js';
 export * from './password.js';
+export * from './require-feature.decorator.js';
 export * from './revocation.js';
 export * from './secret-box.js';
 export * from './server-module.js';

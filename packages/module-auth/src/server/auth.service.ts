@@ -39,7 +39,13 @@ import type {
   TokenScope,
 } from '../types.js';
 import { AUTH_OPTIONS, type ResolvedAuthModuleOptions } from './auth.options.js';
-import { AUTH_PRISMA, type AuthMfaFactorRow, type AuthPrismaClient, type AuthUserRow } from './auth.repository.js';
+import {
+  AUTH_PRISMA,
+  type AuthMfaFactorRow,
+  type AuthPrismaClient,
+  type AuthUserRow,
+  SESSION_SUMMARY_SELECT,
+} from './auth.repository.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { SESSION_REVOCATION_STORE, type SessionRevocationStore } from './revocation.js';
 import { open, readSecretKey, seal } from './secret-box.js';
@@ -1017,8 +1023,10 @@ export class AuthService {
   private async denylistOtherSessions(userId: string, keepSessionId: string): Promise<void> {
     if (!this.revoked) return;
     const sessions = await this.client().authSession.findMany({
+      // The shared projection — see SESSION_SUMMARY_SELECT. Only `id` is used
+      // here; the port has one session read because Prisma has one method.
       where: { userId, revokedAt: { not: null } },
-      select: { id: true },
+      select: SESSION_SUMMARY_SELECT,
     });
     const ids = sessions.map((session) => session.id).filter((id) => id !== keepSessionId);
     if (ids.length > 0) await this.revoked.revokeSessions(ids, this.accessTokenLifetime());

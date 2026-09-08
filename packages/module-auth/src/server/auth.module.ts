@@ -3,7 +3,9 @@ import { Reflector } from '@nestjs/core';
 import { AuthController } from './auth.controller.js';
 import { AUTH_OPTIONS, type AuthModuleOptions, resolveAuthOptions } from './auth.options.js';
 import { AuthService } from './auth.service.js';
+import { AuthAdminService } from './auth-admin.service.js';
 import { AuthResolver } from './graphql/auth.resolver.js';
+import { UsersAdminResolver } from './graphql/users-admin.resolver.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { InMemoryRevocationStore, SESSION_REVOCATION_STORE } from './revocation.js';
 import { TokenService } from './token.service.js';
@@ -45,6 +47,12 @@ export class AuthModule {
       Reflector,
       TokenService,
       AuthService,
+      /*
+       * Provided unconditionally, unlike the resolver in front of it: it is the
+       * OPERATIONS, and a seed task or a CLI has as much business calling them
+       * as a request does. Only the graph surface is optional.
+       */
+      AuthAdminService,
       JwtAuthGuard,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider);
@@ -64,13 +72,13 @@ export class AuthModule {
     }
     // A resolver is just a provider: listing it here is what puts `viewer` and
     // `session` into the app's code-first schema. Nothing to stitch.
-    if (exposeGraphql) providers.push(AuthResolver);
+    if (exposeGraphql) providers.push(AuthResolver, UsersAdminResolver);
 
     return {
       module: AuthModule,
       controllers: exposeRest ? [AuthController] : [],
       providers,
-      exports: [AuthService, TokenService, JwtAuthGuard, AUTH_OPTIONS, SESSION_REVOCATION_STORE],
+      exports: [AuthService, AuthAdminService, TokenService, JwtAuthGuard, AUTH_OPTIONS, SESSION_REVOCATION_STORE],
       global: true,
     };
   }

@@ -132,11 +132,28 @@ modules never import each other.
 import { AUTH_FEATURE, AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
 ```
 
+Your OWN account:
+
 | key | governs |
 |---|---|
 | `account:profile_write` | change your own display name and username |
 | `account:two_factor_enrol` | add a second factor |
 | `account:two_factor_remove` | take one off |
+
+SOMEBODY ELSE'S account — the administration surface, all app level and all
+privileged:
+
+| key | governs |
+|---|---|
+| `users:read` | list, search and open any account |
+| `users:create` | create an account without an invitation |
+| `users:profile_write` | rename another account |
+| `users:suspend` | suspend, and lift a suspension |
+| `users:password_reset` | send a reset to the account's own address |
+| `users:sessions_read` | see where an account is signed in |
+| `users:sessions_revoke` | end every session it holds |
+| `users:two_factor_remove` | take a factor off a locked-out account |
+| `users:delete` | remove an account permanently |
 
 **The rule this module follows: a surface gets a key only when it needs
 AUTHORISATION, not merely a session.** Those are different questions, and
@@ -159,8 +176,47 @@ their own account, which weakens security rather than enforcing it.
 **Password change is deliberately unkeyed.** Keying it would be leaky or
 dangerous with nothing in between: `/auth/forgot-password` is unkeyed and always
 reachable, so blocking the settings page stops nothing — and closing that hole
-too would leave someone with a compromised password unable to fix it, with no
-admin-side reset to fall back on.
+too would leave someone with a compromised password unable to fix it. That last
+clause is now weaker than it was: `users:password_reset` IS the admin-side
+fallback, so the decision is open rather than blocked.
+
+## Administering users
+
+`/admin/users`, `/admin/users/new` and `/admin/users/:userId`, declared on
+`authWebModule` like every other route this module ships. Nothing to mount:
+composing the module is what adds them.
+
+```ts
+import { AuthAdminService } from '@kwtech/module-auth/server';
+```
+
+**Why user administration is in THIS module.** It reads and writes `auth_user`,
+`auth_session`, `auth_credential` and `auth_mfa_factor` — this module's tables.
+"App-level admin right" does not mean "declared in `module-permissions`": a
+module contributes its own rights through `FeatureContribution`, and the app
+composes the lists. Permissions enforces these keys without learning they exist.
+
+**How a handler here is guarded without importing the guard.**
+`@RequireAuthFeature` writes the metadata `FeatureGuard` reads, and the metadata
+KEY lives in `@kwtech/module-kit` so the two modules agree on it without one
+importing the other. The guard, and the resolution of who holds what, stay in
+`module-permissions`. ⚠ An app that composes this module and installs no feature
+guard has these mutations unguarded — a declaration nothing reads is not a
+check.
+
+**`users:password_reset` + `users:two_factor_remove` is account takeover.**
+Either alone is survivable; together they are a complete path into any account.
+They are two keys so a role can carry the recoverable half, and there is
+deliberately no operation that SETS a password for somebody else — an
+administrator who could would hold that person's credential.
+
+**Suspension ends sessions.** `signIn` refusing a suspended account is only half
+of it: the access token verifies from its signature with no database read, so
+without revocation "suspend" would mean "cannot sign in again" for up to a week.
+
+**Deleting an account leaves permission rows behind.** `perm_membership.userId`
+has no foreign key to `auth_user` (PLAN §12.12), so the composed delete belongs
+to the app. Suspension is reversible and is usually the right answer.
 
 ## Entrypoints
 

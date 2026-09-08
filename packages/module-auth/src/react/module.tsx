@@ -1,5 +1,8 @@
 import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
-import { AUTH_FEATURE_REGISTRY } from '../features.js';
+import { AUTH_FEATURE, AUTH_FEATURE_REGISTRY } from '../features.js';
+import { UserDetailPage } from './admin/user-detail-page.js';
+import { UserNewPage } from './admin/user-new-page.js';
+import { UsersPage } from './admin/users-page.js';
 import { ForgotPasswordPage } from './forgot-password-page.js';
 import { MfaChallengePage } from './mfa-challenge-page.js';
 import { ResetPasswordPage } from './reset-password-page.js';
@@ -96,6 +99,27 @@ function TwoFactorRoute(_props: ModuleRouteProps) {
   return <TwoFactorPage />;
 }
 
+/**
+ * The administration routes' adapters.
+ *
+ * `/admin/users/:userId` is the only one that reads a param. It is a `string`
+ * on `params` and defaulted to '' rather than asserted: a catch-all can be
+ * reached with a malformed path, and an empty id produces a "not found" page
+ * instead of a crash inside a query.
+ */
+function UsersRoute(): React.JSX.Element {
+  return <UsersPage />;
+}
+
+function UserNewRoute(): React.JSX.Element {
+  return <UserNewPage />;
+}
+
+function UserDetailRoute({ params }: ModuleRouteProps): React.JSX.Element {
+  const userId = typeof params?.userId === 'string' ? params.userId : '';
+  return <UserDetailPage userId={userId} />;
+}
+
 export const authWebModule: WebModuleDescriptor = {
   key: 'auth',
   /*
@@ -108,11 +132,22 @@ export const authWebModule: WebModuleDescriptor = {
    * make — a module declares WHAT it contributes and roughly where, never which
    * chrome draws it.
    */
-  navGroups: [{ group: 'Account', order: 90 }],
   /*
-   * This module's rights, contributed to the shared registry — currently none.
-   * Its routes need a SESSION, which JwtAuthGuard already requires, not
-   * AUTHORISATION. See ../features.ts for where that line is drawn.
+   * 'Administration' is also declared by module-permissions, at the same order.
+   * Declaring it here too is not a conflict — `composeNavGroups` keeps the
+   * LOWEST order for a name — and it is what makes this module's admin pages
+   * land in the right group in an app that composes auth without permissions.
+   */
+  navGroups: [
+    { group: 'Account', order: 90 },
+    { group: 'Administration', order: 50 },
+  ],
+  /*
+   * This module's rights, contributed to the shared registry. The `/auth/*` and
+   * `/settings/*` routes need a SESSION, which JwtAuthGuard already requires,
+   * rather than AUTHORISATION — which is why they carry no `feature` below. The
+   * `/admin/users` routes are the opposite and each names its key. See
+   * ../features.ts for where that line is drawn.
    */
   features: AUTH_FEATURE_REGISTRY,
   // Every route here is 'bare': these are the pages you reach BECAUSE you have
@@ -154,6 +189,47 @@ export const authWebModule: WebModuleDescriptor = {
       path: '/settings/two-factor',
       title: 'Two-step verification',
       component: TwoFactorRoute,
+    },
+
+    /*
+     * ── administering other people's accounts ────────────────────────────
+     *
+     * The `feature` on a route does three things at once: it filters the nav
+     * entry, it is what the app's middleware checks, and `AdminShell` gates the
+     * body on the same key. One declaration, three enforcement points — none of
+     * which is the real control, because every request is authorised again at
+     * the API.
+     *
+     * The literal path is declared BEFORE the dynamic one so
+     * '/admin/users/new' cannot be read as a user whose id is 'new' — the same
+     * ordering rule the features and roles routes follow.
+     */
+    {
+      path: '/admin/users',
+      title: 'Users',
+      component: UsersRoute,
+      feature: AUTH_FEATURE.usersRead,
+      nav: { group: 'Administration', order: 15, icon: 'user' },
+    },
+    {
+      path: '/admin/users/new',
+      title: 'New user',
+      component: UserNewRoute,
+      // Its OWN key, not the read key: somebody who reviews accounts should not
+      // thereby be able to mint one.
+      feature: AUTH_FEATURE.usersCreate,
+    },
+    {
+      path: '/admin/users/:userId',
+      title: 'User',
+      component: UserDetailRoute,
+      /*
+       * Gated on READ, not on any of the write keys. The page is where every
+       * action lives, and each control gates itself on the key it needs — so an
+       * auditor holding `users:read` alone sees the account and none of the
+       * buttons, rather than being refused the page.
+       */
+      feature: AUTH_FEATURE.usersRead,
     },
   ],
 };

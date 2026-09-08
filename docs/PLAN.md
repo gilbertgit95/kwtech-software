@@ -507,12 +507,161 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 32 | Should the one-role rule extend to APP level? | when a second app-level role is worth holding | **Workspace level: closed 2026-09-07 — yes.** `@@unique([workspaceMemberId])` matches the organization rule. `PermUserRole` is the last collection: an app-level role is platform staff, and `super-admin` + `normal-user` at once would be incoherent — but nothing needs it decided yet, and it is the one level where holding two is at least arguable (a support role plus a billing-operations role). Decide on evidence, not symmetry |
 | 35 | The seat cap is not checked when an invitation is ACCEPTED | when a plan's seat cap is enforced commercially | `assertCapacity` reads the ACTOR's resolved limits, and on the accept path there is no actor — the person joining holds nothing. So an invitation sent when there was room can be accepted after there is not, and the organization ends up one seat over. The honest fix is to check at invite time AND again on accept, and the second needs a limit lookup that does not go through a `PermissionContext` |
 | 36 | Sign-up exists only through an invitation | when self-service registration is a product decision | `AuthService.createAccount` is a METHOD with no route: the only thing that calls it is `signUpFromInvitation`, which supplies the address from the invitation rather than from the form. There is no public registration page and adding one is a product decision with a spam problem attached — not something to arrive at by leaving an endpoint exposed. Note what an open endpoint would also be: `createAccount` says plainly that an address is taken, which is an enumeration oracle anywhere but behind a token |
+| 37 | An app-level role can be GRANTED to nobody: `perm_user_role` has no write path | with the user-admin screens | `assignRole` writes `perm_membership_role` and takes an `organizationId`; nothing writes `perm_user_role` at all, so the two app-level grants in the live database were inserted by hand. `roles:manage_app` guards WRITING an app-level role, not granting one — a different act, and currently an unguarded impossibility rather than a hole. The user detail screen is the first surface that wants it, and the key is permissions-side (`roles:*`), not `users:*`: it grants a role, it does not change an account |
+| 38 | Deleting an account orphans its permission rows, and the delete has no home | with `users:delete` | `perm_membership.userId` has no FK to `auth_user` by design (§12.12), so `DELETE FROM auth_user` leaves memberships and role grants pointing at nobody — verified by hand on 2026-09-08 removing a test account, which needed an explicit membership delete first. `findUsersByIds` already tolerates the orphan by falling back to the id. So a composed delete belongs in the APP beside `users.resolver.ts`, which is the only layer allowed to touch both. Suspension covers every case except erasure, so this can wait |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-08** — **User administration is built, in `module-auth`, and the
+  feature-metadata contract moved to `module-kit` to allow it.**
+
+  The keys were declared earlier the same day (entry below). Building the
+  surface behind them ran into the one thing that decision had not settled: a
+  handler in `module-auth` cannot say which right it needs, because
+  `@RequireFeature` lives in `module-permissions` and the two modules may not
+  import each other.
+
+  **What moved: the metadata KEYS, and nothing else.** `REQUIRED_FEATURES` and
+  `REQUIRED_FEATURES_MODE` are now in `@kwtech/module-kit`, the package both
+  modules already depend on. Each module wraps them in its own one-line
+  decorator — `RequireFeature` there, `RequireAuthFeature` here. The guard, and
+  the resolution of who holds what, did not move: declaring a requirement is a
+  contract, deciding whether it is met is permissions' job. That is the split
+  `FeatureContribution` (kit) and `FeatureSpec` (permissions) already make.
+
+  The alternative was to copy the string `'kwtech:required-features'` into
+  `module-auth`, and it fails in the worst direction: a drift makes the guard
+  find no declared features and let the request THROUGH. The other alternative —
+  hosting the resolvers in the app, as `users.resolver.ts` does — is right for
+  genuinely joint work and wrong for a whole feature, which would have left the
+  service, the client, the pages and the tables here and only the declaration of
+  who may call them over there.
+
+  ⚠ Consequence, stated in the resolver: an app that composes `module-auth` and
+  installs no `FeatureGuard` gets these mutations unguarded. That was already
+  true of every `@RequireFeature` in permissions — it is a property of
+  declarative guarding — but this is the first module that could be adopted
+  without the enforcer.
+
+  **The port grew, and the app's `satisfies-modules.ts` check earned its
+  keep twice.** `AuthPrismaClient` gained the reads and writes administration
+  needs. Two mistakes were caught by that check rather than by a runtime null:
+  an OVERLOADED `authSession.findMany` (two projections) is not assignable from
+  Prisma's single generic method, so both callers now share one
+  `SESSION_SUMMARY_SELECT` — the denylist reads six columns it ignores, which is
+  the price of the port describing what Prisma actually offers; and
+  `lastUsedAt` was typed `Date` where the column is nullable.
+
+  **`AuthAdminService` is separate from `AuthService`**, because every method
+  there takes a Principal and acts on the caller, and every method here names
+  another account by id. Mixing them would put `removeMfaFactor(principal, id)`
+  beside `removeTwoFactor(userId)` and make the distinction a matter of reading
+  argument lists. It checks no permission — that is the resolver's job — but it
+  does check the one invariant no key can express: an administrator may not
+  suspend or delete their OWN account. Not applied to the recoverable
+  operations; ending your own sessions is a thing people do deliberately.
+
+  **Suspension revokes.** `signIn` refusing a suspended account is half of it:
+  the access token verifies from its signature with no database read, so without
+  the denylist entry "suspend" would have meant "cannot sign in AGAIN" for up to
+  a week. Same two steps as `signOutEverywhere`, for somebody else.
+
+  **There is no admin path that SETS a password.** Only a reset, to the
+  account's own address, through `AuthService.requestPasswordReset` so there is
+  one place that mints reset tokens. An administrator who could type a password
+  into somebody's account would hold their credential, and every "was that you
+  or support?" question afterwards would be unanswerable.
+
+  **The pages ask about permissions through `@kwtech/module-kit/react`.**
+  `useHoldsFeature` already existed for exactly this and named `module-auth` in
+  its own doc comment as the case it was written for. Each control on the detail
+  page gates on its own key, so the nine-way split is real in the UI and not
+  only in the registry. `PermissionsProvider` mounts the provider, so an app
+  composing both gets one source of the list.
+
+  **`users:delete` still leaves permission rows dangling** (§12 open decision
+  38). The page says so in the danger zone rather than implying a clean delete.
+
+  Verified: 897 tests pass, the workspace typechecks, `db:sync` upserted the
+  nine keys and `super-admin` picked them up by derivation, and a real boot
+  regenerated `schema.graphql` with all ten operations.
+
+- **2026-09-08** — **User administration goes in `module-auth`, and its rights
+  are nine keys rather than one.**
+
+  The question asked was whether it belongs to `module-permissions`, since it is
+  admin surface and app level. It does not, and the module had already written
+  the answer down: `features.ts` classified its surfaces three ways and left the
+  third row — "sign-in AND authorisation" — empty, describing in advance what
+  would fill it as "an administrator resetting another person's password, or
+  ending their sessions". That is this.
+
+  **The boundary argument is §12.12's, unchanged.** This reads and writes
+  `auth_user`, `auth_session`, `auth_credential` and `auth_mfa_factor`. Auth
+  became its own module to keep identity data out of permissions, and an admin
+  CRUD over those tables living there would reverse that decision quietly.
+
+  **"App-level admin right" does not mean "declared in module-permissions",**
+  which is the assumption worth killing explicitly. A module declares its own
+  grantable rights through `module-kit`'s `FeatureContribution`, and
+  `seed/registry.ts` composes the lists — `{ key: 'auth', features:
+  AUTH_FEATURE_REGISTRY }` beside the permissions one. So permissions ENFORCES
+  these keys without learning they exist: they arrive as data, and the role
+  editor offers them because they are in the registry, not because it knows what
+  a user is. `AUTH_FEATURE_REGISTRY` has worked this way since it was written;
+  this is the first time it carries anything but self-service keys.
+
+  **Nine keys, split by risk**, the way `roles:*` and `plans:*` are and for the
+  reason they give: read, create, update and retire are different risks, and one
+  `users:manage` means the platform cannot have somebody who reviews accounts
+  without also being able to empty one. `users:read`, `users:create`,
+  `users:profile_write`, `users:suspend`, `users:password_reset`,
+  `users:sessions_read`, `users:sessions_revoke`, `users:two_factor_remove`,
+  `users:delete`. Split NOW because a key is cheap to add and expensive to
+  split: narrowing one after roles have been granted from it silently takes
+  rights away from every holder.
+
+  **`users:password_reset` + `users:two_factor_remove` is account takeover**,
+  and they are two keys precisely so a role can hold the recoverable half alone.
+  Either by itself is survivable — a reset does not get past a second factor,
+  and removing a factor does not get past an unknown password. Together they are
+  a complete path into any account, visible only as two admin actions. Both are
+  `isPrivileged`. Removal still cannot simply be withheld from everyone: losing
+  a phone and the recovery codes with it is the ordinary case it exists for.
+
+  **`users:read` is the enumeration `findUserByEmail` refuses to be**, and that
+  is deliberate rather than a contradiction. That query answers one question
+  about one address at a time so a tenant administrator holding `members:manage`
+  cannot harvest the platform's user list. This key IS that harvest, granted at
+  app level to the back office. Same judgement, opposite answer, different
+  holder.
+
+  **Reads are keyed here and unkeyed in `account:*`.** The rule inverts because
+  the data is somebody else's: withholding `account:profile_write` costs you a
+  greyed-out button on your own page, while withholding `users:read` costs you a
+  page you have no business seeing. A key that hides your own settings is a
+  lockout; a key that hides every account on the platform is the point.
+
+  **No bindings yet, on purpose.** The registry's own rule is that a binding is
+  declared in the commit that adds the guard — one naming a surface nobody wrote
+  reads as coverage in the role editor while guarding nothing. `auditRegistry()`
+  lists all nine as awaiting one, beside `platform:support_access` and
+  `roles:manage_app`.
+
+  **Two gaps this surfaced, now §12 open decisions 37 and 38:** nothing can
+  grant an app-level role (`perm_user_role` has no write path — the live grants
+  were inserted by hand), and deleting an account orphans its permission rows,
+  so the delete has to be composed in the app. Neither blocks the screens.
+
+  `account:password_write` is still NOT declared. `features.ts` deferred it
+  until admin-side reset tooling existed, on the grounds that keying
+  change-password without it could leave somebody unable to fix a compromised
+  password. `users:password_reset` is that tooling — so the condition is met and
+  the decision is now merely open, rather than blocked.
 
 - **2026-09-08** — **A wrong session on an invitation link is signed out
   automatically, not asked about.**

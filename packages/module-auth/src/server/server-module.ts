@@ -37,11 +37,12 @@ import type { AuthModuleOptions } from './auth.options.js';
  * from every consumer that trusted the descriptor. It only went unnoticed
  * because the seeder reads the registries directly.
  *
- * The list is legitimately empty today — see ../features.ts. Signing in is not
- * a grantable right, and the settings pages need a SESSION rather than
- * authorisation. Empty and PRESENT is the honest shape: "this module declares
- * none" is a fact, where a missing field is an omission nobody can tell from a
- * mistake.
+ * The list was legitimately EMPTY for a long time — signing in is not a
+ * grantable right, and the settings pages need a session rather than
+ * authorisation — and carrying it anyway is what made declaring the first real
+ * key a one-line change here rather than a discovery. It now carries twelve:
+ * three `account:*` rights over your own data, and the nine `users:*` rights
+ * over somebody else's.
  */
 export function authServerModule(options: AuthModuleOptions & { routePrefix?: string }): ServerModuleDescriptor {
   const { routePrefix, ...moduleOptions } = options;

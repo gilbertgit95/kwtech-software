@@ -19,6 +19,19 @@
  * undefined.
  */
 
+export { AdminShell } from './admin/admin-shell.js';
+export { UserDetailPage } from './admin/user-detail-page.js';
+export { UserNewPage } from './admin/user-new-page.js';
+export {
+  type AdminUser,
+  type AdminUserDetail,
+  type AdminUserFilter,
+  type AdminUserSession,
+  type AdminUserWriteResult,
+  createUsersAdminClient,
+  type UsersAdminClient,
+} from './admin/users-admin-client.js';
+export { UsersPage } from './admin/users-page.js';
 export { type AuthActionResult, type AuthClient, AuthClientError, createAuthClient } from './auth-client.js';
 export { AuthError, AuthField, AuthShell, AuthSubmit } from './auth-shell.js';
 export { ForgotPasswordPage } from './forgot-password-page.js';
