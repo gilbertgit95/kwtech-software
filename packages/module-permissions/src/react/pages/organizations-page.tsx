@@ -3,7 +3,12 @@
 import { DataGrid, type DataGridColumn } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
-import { createPermissionsClient, type OrganizationView, type PermissionsClient } from '../permissions-client.js';
+import {
+  createPermissionsClient,
+  type OrganizationView,
+  type PermissionsClient,
+  type SubscriptionView,
+} from '../permissions-client.js';
 import { AdminPage } from './admin-page.js';
 
 /**
@@ -32,10 +37,49 @@ import { AdminPage } from './admin-page.js';
 interface OrganizationRow extends OrganizationView {
   /** Joined so the grid's quick filter matches a workspace name by substring. */
   workspaceText: string;
+  /**
+   * What this tenant is currently entitled by, as a label.
+   *
+   * A STRING rather than the subscription, because a grid column reads a field
+   * and the three states it has to distinguish — a live plan, none, and "not
+   * allowed to know" — are three sentences rather than three shapes.
+   */
+  planLabel: string;
 }
 
-function toRow(organization: OrganizationView): OrganizationRow {
-  return { ...organization, workspaceText: organization.workspaces.map((w) => w.name).join(' ') };
+/**
+ * The organization-wide subscription that is actually entitling.
+ *
+ * Three conditions, and each has bitten somewhere in this codebase already:
+ * `status: 'active'` because a canceled row still names a plan; an unarchived
+ * plan because an archived one entitles nothing however live the row looks; and
+ * `workspaceId === null` because a workspace's own plan ADDS to the
+ * organization's rather than being it — showing one in this column would report
+ * a tenant as subscribed on the strength of a plan that covers one workspace.
+ */
+function organizationWidePlan(subscriptions: readonly SubscriptionView[], organizationId: string) {
+  return subscriptions.find(
+    (subscription) =>
+      subscription.organizationId === organizationId &&
+      subscription.workspaceId === null &&
+      subscription.status === 'active' &&
+      !subscription.planArchived,
+  );
+}
+
+function toRow(organization: OrganizationView, subscriptions: readonly SubscriptionView[] | null): OrganizationRow {
+  const plan = subscriptions ? organizationWidePlan(subscriptions, organization.id) : undefined;
+  return {
+    ...organization,
+    workspaceText: organization.workspaces.map((w) => w.name).join(' '),
+    /*
+     * Three states, said in three ways. An em dash for "cannot be read here" is
+     * deliberately not the same as "no plan": the subscriptions read is guarded
+     * by `subscriptions:read`, a different key from the one that opens this
+     * page, so a legitimate reader may see the tenants and not what they bought.
+     */
+    planLabel: subscriptions === null ? '—' : (plan?.planLabel ?? 'No plan'),
+  };
 }
 
 export function OrganizationsPage({
@@ -53,13 +97,22 @@ export function OrganizationsPage({
 
   const load = useCallback(() => {
     let cancelled = false;
-    api
-      .listOrganizations()
-      .then((list) => {
+    /*
+     * Two reads behind two different keys. The subscriptions one FAILS SOFT to
+     * null — a reader holding `organizations:read` and not `subscriptions:read`
+     * is a legitimate configuration, and the honest result for them is a column
+     * that says nothing rather than a page that says nothing.
+     *
+     * Joined here rather than server-side for the same reason: embedding the
+     * plan in the organization read would hand it to whoever may list tenants,
+     * collapsing a split the registry makes on purpose.
+     */
+    Promise.all([api.listOrganizations(), api.listSubscriptions().catch(() => null)])
+      .then(([list, subscriptions]) => {
         if (!cancelled) {
           // Already sorted by name server-side; mapped, not re-sorted, so the
           // two agree about order rather than each having an opinion.
-          setRows(list.map(toRow));
+          setRows(list.map((organization) => toRow(organization, subscriptions)));
           setError(null);
         }
       })
@@ -88,6 +141,13 @@ export function OrganizationsPage({
          */
       },
       { field: 'workspaceCount', headerName: 'Workspaces', width: 130 },
+      /*
+       * What they are entitled BY, which is the question the members and
+       * workspace counts cannot answer: an organization with no active plan is
+       * entitled to nothing at organization level, however many people are in
+       * it.
+       */
+      { field: 'planLabel', headerName: 'Plan', width: 150 },
       { field: 'workspaceText', headerName: 'Workspace names', flex: 3, hide: true },
     ],
     [],

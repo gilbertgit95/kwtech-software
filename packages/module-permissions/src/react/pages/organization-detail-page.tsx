@@ -13,6 +13,7 @@ import {
   type OrganizationDetailView,
   type PermissionsClient,
   type RoleView,
+  type SubscriptionView,
 } from '../permissions-client.js';
 import { AdminPage, AdminPlaceholder } from './admin-page.js';
 import { Person, personLabel } from './person.js';
@@ -106,13 +107,30 @@ export function OrganizationDetailPage({
   const [removing, setRemoving] = useState<MemberView | null>(null);
   const [archiving, setArchiving] = useState<{ id: string; name: string } | null>(null);
   const [revoking, setRevoking] = useState<InvitationView | null>(null);
+  /*
+   * What this tenant is entitled BY. Undefined while unknown — including when
+   * the read is refused, which is a legitimate state: subscriptions are guarded
+   * by `subscriptions:read`, a different key from the one that opens this page.
+   */
+  const [subscriptions, setSubscriptions] = useState<SubscriptionView[] | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!organizationId) return;
     try {
-      const [found, roleList] = await Promise.all([api.getOrganization(organizationId), api.listRoles()]);
+      /*
+       * The subscriptions read FAILS SOFT, unlike the other two: a reader who
+       * may open this organization but not read what it bought should get the
+       * page without the plan, rather than an error about a key they were never
+       * meant to hold.
+       */
+      const [found, roleList, subscriptionList] = await Promise.all([
+        api.getOrganization(organizationId),
+        api.listRoles(),
+        api.listSubscriptions(organizationId).catch(() => undefined),
+      ]);
       setDetail(found);
       setRoles(roleList);
+      setSubscriptions(subscriptionList);
       setError(null);
 
       /*
@@ -222,6 +240,8 @@ export function OrganizationDetailPage({
           {notice}
         </p>
       ) : null}
+
+      {detail ? <PlanSummary subscriptions={subscriptions} /> : null}
 
       {detail === undefined ? (
         <div className="h-64 animate-pulse rounded-md bg-muted" />
@@ -421,6 +441,73 @@ function OrganizationSettings({
         </button>
       </section>
     </FeatureGate>
+  );
+}
+
+/**
+ * What this organization is entitled BY.
+ *
+ * ## Why it is worth a line at the top
+ *
+ * Entitlement is the half of access that the member list cannot show. An
+ * organization with no active plan is entitled to NOTHING at organization
+ * level, however many people are in it and whatever roles they hold — so
+ * "why can this member not do that" has an answer here that is invisible
+ * everywhere else on the page.
+ *
+ * ## Three states, said three ways
+ *
+ * A live plan, no plan, and "not readable here" — the last because
+ * `subscriptions:read` is a different key from the one that opens this page,
+ * and the loader turns a refusal into `undefined`. Saying "No plan" for a
+ * reader who simply may not look would be a claim about the tenant rather than
+ * about the reader.
+ *
+ * ## Only the ORGANIZATION-WIDE one is the answer
+ *
+ * A workspace subscription ADDS to what the organization bought; it is not what
+ * the organization is on. Counting one here would report a tenant as subscribed
+ * on the strength of a plan covering a single workspace — so workspace plans
+ * are mentioned separately, and only when there are any.
+ */
+function PlanSummary({ subscriptions }: { subscriptions: SubscriptionView[] | undefined }) {
+  if (subscriptions === undefined) return null;
+
+  const organizationWide = subscriptions.find(
+    (subscription) =>
+      subscription.workspaceId === null && subscription.status === 'active' && !subscription.planArchived,
+  );
+  const workspacePlans = subscriptions.filter(
+    (subscription) =>
+      subscription.workspaceId !== null && subscription.status === 'active' && !subscription.planArchived,
+  );
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3 text-sm">
+      <div>
+        <span className="text-muted-foreground">Plan: </span>
+        {organizationWide ? (
+          <span className="font-medium text-foreground">{organizationWide.planLabel}</span>
+        ) : (
+          /*
+           * Stated as a CONSEQUENCE rather than as an absence. "No plan" alone
+           * reads as a field nobody filled in; the sentence says what it costs.
+           */
+          <span className="text-foreground">
+            None — this organization is entitled to nothing at organization level.
+          </span>
+        )}
+        {workspacePlans.length > 0 ? (
+          <span className="text-muted-foreground">
+            {' '}
+            · plus {workspacePlans.length} workspace plan{workspacePlans.length === 1 ? '' : 's'}
+          </span>
+        ) : null}
+      </div>
+      {organizationWide?.currentPeriodEnd ? (
+        <span className="text-muted-foreground">Renews {when(organizationWide.currentPeriodEnd)}</span>
+      ) : null}
+    </div>
   );
 }
 

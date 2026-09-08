@@ -482,8 +482,8 @@ A consuming app does not build these. It lists the module and the routes appear.
 | `/admin/roles` | `roles:read` | every role and what it grants |
 | `/admin/roles/new` | `roles:create` | define one |
 | `/admin/roles/:roleId/edit` | `roles:update` | change what one grants |
-| `/admin/organizations` | `organizations:read` | the tenants on the platform |
-| `/admin/organizations/:organizationId` | `members:manage` | one tenant's people, invitations and workspaces |
+| `/admin/organizations` | `organizations:read` | the tenants on the platform, and the plan each is on |
+| `/admin/organizations/:organizationId` | `members:manage` | one tenant's plan, people, invitations and workspaces |
 | `/admin/plans` | `plans:read` | the catalogue |
 | `/admin/subscriptions` | `subscriptions:read` | who is on what |
 | `/admin/invitations/new` | `roles:grant_app` | invite somebody to the PLATFORM |
@@ -567,6 +567,32 @@ Both grants — the invitation's and the baseline's — run only for somebody
 holding NO app-level role. The module cannot ask whether an account is new (it
 may not read `auth_user`), but a brand-new one holds nothing by construction, so
 "holds none" is the same set and is enforced with data the module owns.
+
+### The plan shown on the organization screens
+
+Both read it through `listSubscriptions`, which is guarded by
+`subscriptions:read` — a DIFFERENT key from the one that opens either screen —
+and join it in the browser. Embedding the plan in the organization read would
+hand it to anybody who may list tenants, collapsing a split the registry makes
+on purpose: seeing which tenants exist and seeing what they bought are separate
+rights.
+
+The consequence is that the read fails soft. A reader without
+`subscriptions:read` gets the page without the plan, and the two screens say so
+differently on purpose — the list shows an em dash, which is not the same claim
+as "No plan".
+
+Only the ORGANIZATION-WIDE subscription counts as the tenant's plan: active, its
+plan unarchived, and `workspaceId` null. A workspace subscription ADDS to what
+the organization bought rather than being it, so counting one would report a
+tenant as subscribed on the strength of a plan covering a single workspace. The
+detail page mentions those separately when there are any.
+
+⚠ Worth knowing while reading either screen: an organization with **no active
+plan is entitled to nothing at organization level**, however many members it has
+and whatever roles they hold — `composeContext` treats an empty plan list as
+entitling nothing, and only app-level grants skip the filter. That is why the
+detail page states it as a consequence rather than as an empty field.
 
 ### The write screens produce registry source, not rows
 
