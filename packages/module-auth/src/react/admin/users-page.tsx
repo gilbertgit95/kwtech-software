@@ -1,5 +1,6 @@
 'use client';
 
+import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTH_FEATURE } from '../../features.js';
 import { AdminShell } from './admin-shell.js';
@@ -25,10 +26,14 @@ import { type AdminUser, createUsersAdminClient, type UsersAdminClient } from '.
  *
  * ## Read-only, like the other lists
  *
- * Nothing here changes an account. Suspension, resets and removal live on the
- * DETAIL page, next to the account they act on and the history that says
- * whether they are a good idea — a suspend button in a row is one mis-click
- * away from locking out the wrong person with a similar name.
+ * Nothing here changes an account. Suspension and resets live on the DETAIL
+ * page, next to the account they act on and the history that says whether they
+ * are a good idea — a suspend button in a row is one mis-click away from
+ * locking out the wrong person with a similar name.
+ *
+ * The two things a row DOES offer are navigations: the name opens the account,
+ * and a double click — or the Edit link — opens its editor, which is the
+ * shortcut the roles grid has had all along.
  */
 
 const PAGE_SIZE = 25;
@@ -37,12 +42,48 @@ export function UsersPage({
   client,
   newHref = '/admin/users/new',
   detailHref = (userId: string) => `/admin/users/${encodeURIComponent(userId)}`,
+  editHref = (userId: string) => `/admin/users/${encodeURIComponent(userId)}/edit`,
 }: {
   client?: UsersAdminClient;
   newHref?: string;
   detailHref?: (userId: string) => string;
+  editHref?: (userId: string) => string;
 }) {
   const api = useMemo(() => client ?? createUsersAdminClient(), [client]);
+
+  /*
+   * Both affordances are gated, and both routes are gated too — so an ungated
+   * link would land somebody on the shell's "not available to you" screen,
+   * which is a worse answer than not offering the link. (An earlier version
+   * left New visible on the argument that a refusal names the missing right.
+   * That holds for a button that submits; it does not hold for a link into a
+   * route the middleware already refuses.)
+   */
+  const mayCreate = useHoldsFeature(AUTH_FEATURE.usersCreate);
+  const mayEdit = useHoldsFeature(AUTH_FEATURE.usersUpdate);
+
+  /**
+   * Double-clicking a row opens the EDITOR — the same shortcut the roles grid
+   * offers through `DataGrid.onRowActivate`, implemented by hand because this
+   * table is plain markup.
+   *
+   * DOUBLE click, not single: a single click is how somebody selects text in a
+   * cell, and making it navigate would mean nobody could read an address
+   * without leaving the page. It is also deliberately not the only way there —
+   * a double click is unfindable and impossible on a touchscreen, so every row
+   * carries a visible Edit link to the same place.
+   */
+  const openEditor = useCallback(
+    (userId: string) => {
+      if (!mayEdit) return;
+      // The browser has already selected the text under a double click by the
+      // time this runs; leaving it highlighted through the navigation looks
+      // like a stuck selection.
+      window.getSelection()?.removeAllRanges();
+      window.location.assign(editHref(userId));
+    },
+    [mayEdit, editHref],
+  );
 
   const [rows, setRows] = useState<AdminUser[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -105,18 +146,14 @@ export function UsersPage({
       description="Every account on the platform."
       feature={AUTH_FEATURE.usersRead}
       actions={
-        /*
-         * Shown to everyone who can reach this page, and the API refuses it
-         * without `users:create`. It is not gated on the client because a
-         * missing New button is indistinguishable from a broken page — where a
-         * refusal names the right that is missing.
-         */
-        <a
-          href={newHref}
-          className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-        >
-          New user
-        </a>
+        mayCreate ? (
+          <a
+            href={newHref}
+            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            New user
+          </a>
+        ) : null
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -161,11 +198,25 @@ export function UsersPage({
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="px-3 py-2 font-medium">Last signed in</th>
               <th className="px-3 py-2 font-medium">Created</th>
+              {/* Unlabelled: the column holds one link per row, and "Actions"
+                  over a single verb is a heading that says less than the link. */}
+              <th className="px-3 py-2 font-medium" />
             </tr>
           </thead>
           <tbody>
             {rows?.map((row) => (
-              <tr key={row.id} className="border-t border-border hover:bg-muted/50">
+              <tr
+                key={row.id}
+                onDoubleClick={() => openEditor(row.id)}
+                /*
+                 * `select-none` only because the row is double-clickable: the
+                 * gesture would otherwise highlight whatever it landed on. The
+                 * address is still readable from the detail page, where nothing
+                 * suppresses selection.
+                 */
+                className={`border-t border-border hover:bg-muted/50 ${mayEdit ? 'cursor-pointer select-none' : ''}`}
+                title={mayEdit ? 'Double-click to edit' : undefined}
+              >
                 <td className="px-3 py-2">
                   <a href={detailHref(row.id)} className="font-medium text-foreground hover:underline">
                     {row.displayName ?? row.email}
@@ -181,11 +232,27 @@ export function UsersPage({
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{formatDate(row.lastLoginAt)}</td>
                 <td className="px-3 py-2 text-muted-foreground">{formatDate(row.createdAt)}</td>
+                <td className="px-3 py-2 text-right">
+                  {mayEdit ? (
+                    <a
+                      href={editHref(row.id)}
+                      /*
+                       * Stops the link's click from counting toward a double
+                       * click on the row — without it, a slow double click on
+                       * the link itself navigates twice.
+                       */
+                      onDoubleClick={(event) => event.stopPropagation()}
+                      className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      Edit
+                    </a>
+                  ) : null}
+                </td>
               </tr>
             ))}
             {rows?.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                   {term || status ? 'No accounts match that.' : 'No accounts yet.'}
                 </td>
               </tr>
