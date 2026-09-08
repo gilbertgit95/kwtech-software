@@ -32,6 +32,7 @@ import {
   RoleDraftInput,
   SubscriptionDraftInput,
   toPermissionContextType,
+  UserAppRoleType,
 } from './permission.types.js';
 
 /**
@@ -144,6 +145,26 @@ export class PermissionsResolver {
     @Args('organizationId', { type: () => String, nullable: true }) organizationId?: string | null,
   ): Promise<PermissionRoleDetailType[]> {
     return this.permissions.listRoles(organizationId ?? null);
+  }
+
+  /**
+   * The APP-level role each of these people holds.
+   *
+   * ## Why `roles:read` and not something stronger
+   *
+   * The ids come from a list the caller was already allowed to see, so this
+   * discloses nothing new about WHO exists — it answers "what does this person
+   * hold" for people the caller can already name. The same argument the app's
+   * `findUsersByIds` makes for batching.
+   *
+   * Deliberately not `roles:grant_app`: seeing that somebody is a super admin
+   * is what a support engineer needs to answer "why can they do that", and it
+   * is not the same right as being able to change it.
+   */
+  @RequireFeature(FEATURE.rolesRead)
+  @Query(() => [UserAppRoleType], { name: 'permissionUserAppRoles' })
+  async userAppRoles(@Args('userIds', { type: () => [String] }) userIds: string[]): Promise<UserAppRoleType[]> {
+    return this.permissions.listAppRolesForUsers(userIds);
   }
 
   @RequireFeature(FEATURE.rolesCreate)
@@ -410,6 +431,30 @@ export class PermissionsResolver {
   ): Promise<PermissionWriteResultType> {
     const actor = await this.requireActor(gqlContext.req);
     const { granted, replaced } = await this.writes.assignRole(actor, { organizationId, userId, roleId });
+    return { changed: granted, id: roleId, replaced };
+  }
+
+  /**
+   * Sets a person's APP-LEVEL role, replacing whatever they held.
+   *
+   * No organization argument, and that absence is the whole difference from
+   * `assignRole` above: an app-level role applies everywhere and belongs to no
+   * tenant, which is exactly why it takes a key of its own rather than
+   * `members:manage` — a tenant administrator must not be able to mint platform
+   * staff.
+   *
+   * The service refuses any role carrying features the caller does not hold, so
+   * this cannot be used to grant more than the granter has.
+   */
+  @RequireFeature(FEATURE.rolesGrantApp)
+  @Mutation(() => PermissionWriteResultType, { name: 'assignAppRole' })
+  async assignAppRole(
+    @Context() gqlContext: { req?: unknown },
+    @Args('userId') userId: string,
+    @Args('roleId') roleId: string,
+  ): Promise<PermissionWriteResultType> {
+    const actor = await this.requireActor(gqlContext.req);
+    const { granted, replaced } = await this.writes.assignAppRole(actor, { userId, roleId });
     return { changed: granted, id: roleId, replaced };
   }
 

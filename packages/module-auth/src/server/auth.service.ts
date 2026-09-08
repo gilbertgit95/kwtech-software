@@ -395,7 +395,11 @@ export class AuthService {
    * often shipped, because it reads as helpful. The honest UI copy is "if that
    * address has an account, a link is on its way", which is true either way.
    */
-  async requestPasswordReset(input: { email: string }, context: RequestContext): Promise<{ accepted: true }> {
+  async requestPasswordReset(
+    input: { email: string },
+    context: RequestContext,
+    options: { reason?: 'reset' | 'invitation' } = {},
+  ): Promise<{ accepted: true }> {
     if (!this.options.sendPasswordResetEmail) {
       // A configuration error, not an auth failure: minting a token nobody can
       // receive would look like it worked and lock the user out quietly.
@@ -431,6 +435,8 @@ export class AuthService {
       user: toSessionUser(user),
       token: reset.token,
       expiresAt: reset.expiresAt,
+      // Carried so the app can send a welcome rather than a reset. See the hook.
+      ...(options.reason ? { reason: options.reason } : {}),
     });
 
     return { accepted: true };

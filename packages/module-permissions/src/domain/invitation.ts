@@ -68,6 +68,25 @@ export interface InvitationDraft {
   email: string;
   /** The organization role to grant on acceptance. Empty means none. */
   roleId: string;
+  /**
+   * The organization to join. Empty means a PLATFORM invitation — an offer to
+   * hold an app-level role and no membership anywhere.
+   *
+   * The members screen leaves this alone and passes the organization
+   * separately; it is here for the platform invite screen, which lets the
+   * administrator choose one or none in the same form.
+   */
+  organizationId?: string;
+  /**
+   * The APP-level role to grant on acceptance.
+   *
+   * Empty means none, which is what every invitation written by the members
+   * screen carries — a tenant administrator does not hand out platform rights.
+   * The platform invite screen requires one, and enforces that itself: at this
+   * layer an empty value is only invalid when the caller says so, because the
+   * two screens genuinely disagree about it.
+   */
+  appRoleId?: string;
 }
 
 export const EMPTY_INVITATION_DRAFT: InvitationDraft = { email: '', roleId: '' };
@@ -79,6 +98,18 @@ export interface ValidateInvitationOptions {
   roleIds?: readonly string[];
   /** Addresses with a PENDING invitation already. See the note below. */
   pendingEmails?: readonly string[];
+  /** App-level role ids that may be offered. Omit to skip the check. */
+  appRoleIds?: readonly string[];
+  /**
+   * Whether an app-level role must be chosen.
+   *
+   * True for the platform invite screen, false for the members screen — and it
+   * is an OPTION rather than a rule because the two are different offers. An
+   * invitation to an organization grants a membership and needs no platform
+   * right; an invitation to the platform grants nothing at all without one, and
+   * would land somebody on an account they cannot even rename.
+   */
+  requireAppRole?: boolean;
 }
 
 /**
@@ -102,16 +133,38 @@ export function validateInvitationDraft(
   else if (!isPlausibleInviteEmail(email)) errors.email = 'That does not look like an email address.';
   else if (options.pendingEmails?.includes(email)) {
     /*
-     * One PENDING invitation per address per organization. A second is not an
-     * error of fact — the row would be valid — it is that two live links to the
-     * same organization make "which one did they use" unanswerable, and
-     * revoking one would leave the other working.
+     * One PENDING invitation per address per OFFER — per organization for an
+     * organization invitation, and across the platform ones for a platform
+     * invitation. A second is not an error of fact, the row would be valid; it
+     * is that two live links to the same place make "which one did they use"
+     * unanswerable, and revoking one would leave the other working.
+     *
+     * The two are separate buckets deliberately. A platform invitation and an
+     * invitation to an organization are different offers to the same person,
+     * and letting either block the other would mean an administrator could not
+     * invite a colleague to a tenant because somebody had already invited them
+     * to the platform.
      */
     errors.email = 'That address already has an invitation waiting.';
   }
 
   if (draft.roleId && options.roleIds && !options.roleIds.includes(draft.roleId)) {
     errors.roleId = 'That role does not exist, or is not an organization role.';
+  }
+
+  if (options.requireAppRole && !draft.appRoleId) {
+    errors.appRoleId = 'Choose what this person may do on the platform.';
+  } else if (draft.appRoleId && options.appRoleIds && !options.appRoleIds.includes(draft.appRoleId)) {
+    errors.appRoleId = 'That role does not exist, or is not an app-level role.';
+  }
+
+  /*
+   * An organization ROLE without an organization is a contradiction: there is
+   * no membership for it to sit on. Caught here rather than at the write, so
+   * the form can say which of the two fields to change.
+   */
+  if (draft.roleId && draft.organizationId === '') {
+    errors.roleId = 'Choose an organization before choosing a role in it.';
   }
 
   return errors;

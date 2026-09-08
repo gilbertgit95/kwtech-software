@@ -1,6 +1,7 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { useHoldsFeature } from '@kwtech/module-kit/react';
+import { type FormEvent, useEffect, useState } from 'react';
 import {
   EMPTY_USER_DRAFT,
   hasUserDraftErrors,
@@ -9,7 +10,7 @@ import {
   type UserDraftErrors,
   validateUserDraft,
 } from '../../domain/index.js';
-import type { AdminUser, UsersAdminClient } from './users-admin-client.js';
+import type { AdminUser, AssignableAppRole, UsersAdminClient } from './users-admin-client.js';
 
 /**
  * One form for creating an account and for editing one.
@@ -28,6 +29,18 @@ import type { AdminUser, UsersAdminClient } from './users-admin-client.js';
  *              the account's own page — an administrator who could type a
  *              password here would hold that person's credential.
  *
+ * ## The platform role is a SECOND write, behind a second key
+ *
+ * `roles:grant_app` in `module-permissions`, not one of this module's — the row
+ * it writes is `perm_user_role`, which belongs over there. So the picker
+ * appears only for somebody who may grant, the save sends it only when it
+ * changed, and a refusal names that key rather than the profile one.
+ *
+ * ⚠ It is a separate mutation, so the two halves of one Save can disagree: the
+ * name can be stored and the role refused. The form says which happened rather
+ * than reporting one outcome for two writes — the alternative is a transaction
+ * across two modules' tables, which is exactly what the boundary forbids.
+ *
  * ## Validation is shared with the write path
  *
  * `validateUserDraft` is in `domain/`, so this form and the server apply the
@@ -37,6 +50,7 @@ import type { AdminUser, UsersAdminClient } from './users-admin-client.js';
 export function UserForm({
   client,
   user,
+  currentAppRoleId,
   onSaved,
   cancelHref,
   onCreated,
@@ -44,6 +58,8 @@ export function UserForm({
   client: UsersAdminClient;
   /** Absent when creating. Its presence is what puts the form in edit mode. */
   user?: AdminUser;
+  /** The app-level role this account holds today, so the picker opens on it. */
+  currentAppRoleId?: string | null;
   /** Called after a successful edit, so the page can refresh what it holds. */
   onSaved?: (user: AdminUser) => void;
   /** Called after a successful create, with the account that now exists. */
@@ -51,6 +67,38 @@ export function UserForm({
   cancelHref: string;
 }) {
   const editing = user !== undefined;
+  /*
+   * The key that governs `perm_user_role`, asked through module-kit — the
+   * contract that lets a module ask about permissions without importing the
+   * module that resolves them.
+   */
+  const mayGrantAppRole = useHoldsFeature('roles:grant_app');
+
+  const [appRoles, setAppRoles] = useState<AssignableAppRole[] | null>(null);
+  const [appRoleId, setAppRoleId] = useState(currentAppRoleId ?? '');
+
+  useEffect(() => {
+    if (!mayGrantAppRole) return;
+    let cancelled = false;
+    client.listAssignableAppRoles().then((found) => {
+      if (cancelled) return;
+      /*
+       * LEAST PRIVILEGED FIRST, by how much each grants. That ordering is also
+       * the default for a new account: the top of the list is the smallest
+       * amount of access that is still an answer, and a picker whose first
+       * option is the most powerful role is one somebody accepts by accident.
+       * Ties break by key so the order is total and does not shuffle between
+       * renders.
+       */
+      const sorted = [...found].sort((a, b) => a.features.length - b.features.length || a.key.localeCompare(b.key));
+      setAppRoles(sorted);
+      // Only when nothing is chosen yet — never overwrite what this account holds.
+      setAppRoleId((current) => current || (editing ? '' : (sorted[0]?.id ?? '')));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, mayGrantAppRole, editing]);
 
   const [draft, setDraft] = useState<UserDraft>({
     ...EMPTY_USER_DRAFT,
@@ -95,6 +143,14 @@ export function UserForm({
           ...(draft.displayName !== (user.displayName ?? '') ? { displayName: draft.displayName.trim() } : {}),
           ...(draft.username !== (user.username ?? '') ? { username: draft.username.trim() } : {}),
         });
+        /*
+         * The role goes SECOND, and only when it changed. Second because the
+         * profile write is the one this form is named for, and a role change
+         * that failed should not also lose a rename that would have worked.
+         */
+        if (mayGrantAppRole && appRoleId && appRoleId !== (currentAppRoleId ?? '')) {
+          await client.setAppRole(user.id, appRoleId);
+        }
         onSaved?.(updated);
         setSaved(true);
       } else {
@@ -165,6 +221,37 @@ export function UserForm({
         autoComplete="off"
         hint="Optional. Lower-cased, and usable in place of the address when signing in."
       />
+
+      {mayGrantAppRole ? (
+        <label className="mt-4 block text-sm">
+          <span className="text-muted-foreground">Platform role</span>
+          <select
+            value={appRoleId}
+            onChange={(event) => {
+              setAppRoleId(event.target.value);
+              setSaved(false);
+            }}
+            className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-foreground"
+          >
+            {/*
+              An explicit "no role" option, and it is not the default. Most
+              accounts legitimately hold none — they belong to an organization
+              instead — so it has to be reachable, but the least-privileged real
+              role is what a new account should land on.
+            */}
+            <option value="">No platform role</option>
+            {appRoles?.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.label} — {role.features.length} right{role.features.length === 1 ? '' : 's'}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            What this person may do across the platform, outside any organization. Listed least first; you can only
+            grant a role whose rights you hold yourself.
+          </span>
+        </label>
+      ) : null}
 
       {editing ? null : (
         <>

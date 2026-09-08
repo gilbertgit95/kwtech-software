@@ -42,6 +42,12 @@ export function UserEditPage({
   const api = useMemo(() => client ?? createUsersAdminClient(), [client]);
   const [user, setUser] = useState<AdminUser | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Read separately from the account, because it lives in another module's
+   * table. Undefined until the answer arrives, so the picker does not open on
+   * "no role" for somebody who holds one.
+   */
+  const [appRoleId, setAppRoleId] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +72,16 @@ export function UserEditPage({
    * second save would resend the first save's values as though they were still
    * changes.
    */
+  useEffect(() => {
+    let cancelled = false;
+    api.listUserAppRoles([userId]).then((found) => {
+      if (!cancelled) setAppRoleId(found[0]?.roleId ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, userId]);
+
   const onSaved = useCallback((updated: AdminUser) => setUser(updated), []);
 
   return (
@@ -104,7 +120,17 @@ export function UserEditPage({
             </div>
           ) : null}
 
-          <UserForm client={api} user={user} onSaved={onSaved} cancelHref={detailHref(user.id)} />
+          {appRoleId === undefined ? (
+            <div className="h-64 animate-pulse rounded-md bg-muted" />
+          ) : (
+            <UserForm
+              client={api}
+              user={user}
+              currentAppRoleId={appRoleId}
+              onSaved={onSaved}
+              cancelHref={detailHref(user.id)}
+            />
+          )}
         </>
       )}
     </AdminShell>

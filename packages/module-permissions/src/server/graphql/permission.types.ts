@@ -858,3 +858,29 @@ export class PermissionInvitationResultType {
   @Field()
   delivered!: boolean;
 }
+
+/**
+ * The APP-level role one person holds, for a screen showing many people.
+ *
+ * Its own type rather than a field on a user, because this module has no user
+ * to hang it on — `perm_user_role.userId` is a bare id with no foreign key
+ * (§12.12). The caller joins it to whatever it knows about that id.
+ */
+@ObjectType('UserAppRole')
+export class UserAppRoleType {
+  @Field()
+  userId!: string;
+
+  @Field()
+  roleId!: string;
+
+  @Field()
+  roleKey!: string;
+
+  @Field()
+  roleLabel!: string;
+
+  /** Icon NAME, null for a role that never chose one. */
+  @Field(() => String, { nullable: true })
+  roleIcon!: string | null;
+}

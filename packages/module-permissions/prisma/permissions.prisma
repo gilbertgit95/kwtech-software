@@ -237,7 +237,12 @@ model PermRole {
   disabledAt     DateTime?
 
   organization PermOrganization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Invitations naming this as the ORGANIZATION role to grant.
   invitations      PermInvitation[]
+  /// Invitations naming this as the APP-level role to grant. A second relation
+  /// rather than a second column on one, because they are two different offers
+  /// that happen to point at the same table.
+  appInvitations   PermInvitation[]         @relation("PermInvitationAppRole")
   features         PermRoleFeature[]
   limits           PermRoleLimit[]
   memberships      PermMembershipRole[]
@@ -368,9 +373,35 @@ model PermRoleFeature {
 /// bug that only appears for the one person whose mail client capitalises.
 model PermInvitation {
   id             String @id @default(cuid())
-  organizationId String
+  /// The organization to join, or NULL for a PLATFORM invitation.
+  ///
+  /// Nullable because an invitation is an offer, and not every offer is to a
+  /// tenant: an administrator inviting somebody to the platform itself — to
+  /// hold an app-level role and no membership — has no organization to name.
+  /// The alternative, a second table, would have duplicated the token, the
+  /// expiry, the revocation and the accept page for a row differing by one
+  /// column.
+  ///
+  /// A null here changes who may write the row: an organization invitation is
+  /// `members:manage` inside that tenant, a platform one is `roles:manage_app`.
+  /// See `inviteUser`.
+  organizationId String?
   /// Normalised. See above.
   email          String
+
+  /// The APP-level role to grant on acceptance.
+  ///
+  /// Travels on the invitation for the same reason `roleId` does: the person
+  /// does not exist yet, so the role cannot be granted to them — it is decided
+  /// when the invitation is written and applied when the account appears.
+  ///
+  /// Null for the organization invitations written before platform invitations
+  /// existed, and for any written by the members screen, which does not offer
+  /// one. `acceptInvitation` grants nothing when it is null.
+  ///
+  /// `onDelete: SetNull`, like `roleId`: retiring a role must not delete the
+  /// invitations that named it.
+  appRoleId      String?
 
   /// The organization role to grant on acceptance. Null invites them with none,
   /// which is a legitimate state — a member with no role holds nothing.
@@ -399,8 +430,9 @@ model PermInvitation {
   acceptedByUserId String?
   revokedAt  DateTime?
 
-  organization PermOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  role         PermRole?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  organization PermOrganization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         PermRole?         @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  appRole      PermRole?         @relation("PermInvitationAppRole", fields: [appRoleId], references: [id], onDelete: SetNull)
 
   /// NOT unique on (organizationId, email): an address that was invited,
   /// revoked and invited again is an ordinary history, and a unique index would
@@ -408,6 +440,10 @@ model PermInvitation {
   /// would destroy the record of the revocation. One PENDING invitation per
   /// address is enforced in the write path instead.
   @@index([organizationId, status])
+  /// Platform invitations have no organization, so the index above cannot find
+  /// the pending ones. This is what the "one live invitation per address" check
+  /// reads for them.
+  @@index([status, email])
   @@index([email])
   @@map("perm_invitation")
 }

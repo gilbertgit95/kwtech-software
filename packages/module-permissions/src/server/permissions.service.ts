@@ -13,6 +13,15 @@ import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.
  * and are done. They do not touch perm_* tables, do not know the join path from
  * membership to plan, and do not reimplement role composition.
  */
+/**
+ * The most ids one `listAppRolesForUsers` call may name.
+ *
+ * The same number and the same reason as the app's `findUsersByIds`: an
+ * uncapped `in` list is an unbounded query somebody can send, and the request
+ * that finally hurts is never the one anybody tested.
+ */
+const MAX_USER_ROLE_LOOKUP = 200;
+
 @Injectable()
 export class PermissionsService {
   constructor(@Inject(PERMISSIONS_PRISMA) private readonly prisma: PermissionsPrismaClient) {}
@@ -39,6 +48,50 @@ export class PermissionsService {
    * presets every organization can use. A tenant passes its own id and sees
    * only what it defined.
    */
+  /**
+   * The APP-level role each of these people holds.
+   *
+   * ## Why by ID, and why this is not a search
+   *
+   * The caller already HOLDS these ids — they came from a guarded list — so
+   * this discloses nothing that was not already disclosed, which is what makes
+   * a batch acceptable here. The same argument the app's `findUsersByIds`
+   * makes, in the other direction.
+   *
+   * ## Missing people are simply absent
+   *
+   * An id with no app-level role returns no row rather than a null one. Most
+   * accounts hold none, and a list of nulls the same length as the input is a
+   * shape every caller then has to filter.
+   *
+   * Disabled roles are excluded, for the reason every read here excludes them:
+   * a disabled role grants nothing, and showing one in a column would report a
+   * power the holder does not have.
+   */
+  async listAppRolesForUsers(userIds: readonly string[]) {
+    const unique = [...new Set(userIds.filter((id) => typeof id === 'string' && id.length > 0))].slice(
+      0,
+      MAX_USER_ROLE_LOOKUP,
+    );
+    if (unique.length === 0) return [];
+
+    const rows = await this.prisma.permUserRole.findMany({
+      where: { userId: { in: unique }, role: { disabledAt: null } },
+      // The same include the context load uses — one signature, see the port.
+      include: { role: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
+    });
+
+    return rows
+      .filter((row) => row.role.level === 'app')
+      .map((row) => ({
+        userId: row.userId,
+        roleId: row.role.id,
+        roleKey: row.role.key,
+        roleLabel: row.role.label,
+        roleIcon: row.role.icon,
+      }));
+  }
+
   async listRoles(organizationId: string | null = null) {
     const rows = await this.prisma.permRole.findMany({
       where: { organizationId },

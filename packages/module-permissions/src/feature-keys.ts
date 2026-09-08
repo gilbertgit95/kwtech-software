@@ -160,6 +160,28 @@ export const FEATURE = {
    * mint a second super admin.
    */
   rolesManageApp: 'roles:manage_app',
+  /**
+   * Grant an app-level role TO A PERSON — and take it away again.
+   *
+   * Separate from `roles:manage_app`, which guards WRITING such a role.
+   * Defining "super admin" and handing it to somebody are two different acts
+   * with two different blast radii: the first changes what a role means, the
+   * second changes what a named person can do this afternoon. A platform can
+   * reasonably have somebody who does one and not the other — the same split
+   * `roles:read` and `roles:create` already make.
+   *
+   * It is what `perm_user_role` was missing. The table was readable and nothing
+   * wrote it, so the app-level grants in a live database had been inserted by
+   * hand (PLAN §12 open decision 37). Two surfaces need it: changing an
+   * account's app role from the user administration screens, and choosing the
+   * one an invitation will grant.
+   *
+   * ⚠ The escalation this closes is not the key itself — it is the check beside
+   * it. `assignAppRole` refuses a role carrying features the granter does not
+   * themselves hold, so holding this cannot be used to mint somebody more
+   * powerful than yourself. Without that, one key would be the whole ladder.
+   */
+  rolesGrantApp: 'roles:grant_app',
 
   // ── the feature registry itself ─────────────────────────────────────────
   /**
@@ -458,6 +480,12 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     bindings: [
       { surface: 'ui_route', identifier: '/admin/roles' },
       { surface: 'graphql_operation', identifier: 'Query.permissionRoles' },
+      /*
+       * Reading which app-level role a person holds. Bound to READ rather than
+       * to `roles:grant_app`: seeing that somebody is a super admin is what
+       * answers "why can they do that", and it is not the right to change it.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.permissionUserAppRoles' },
     ],
   },
   {
@@ -515,6 +543,17 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     description: 'Write roles that apply across every organization. Required alongside create, update or delete.',
     isPrivileged: true,
     bindings: [],
+  },
+  {
+    key: FEATURE.rolesGrantApp,
+    module: 'permissions',
+    tags: [FEATURE_TAG.platform, FEATURE_TAG.roles],
+    level: 'app',
+    label: 'Grant app-level roles',
+    description:
+      'Give a person an app-level role, or change the one they hold. Refuses any role carrying more than the granter holds.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.assignAppRole' }],
   },
   {
     key: FEATURE.plansRead,

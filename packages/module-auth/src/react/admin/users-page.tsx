@@ -4,7 +4,12 @@ import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTH_FEATURE } from '../../features.js';
 import { AdminShell } from './admin-shell.js';
-import { type AdminUser, createUsersAdminClient, type UsersAdminClient } from './users-admin-client.js';
+import {
+  type AdminUser,
+  createUsersAdminClient,
+  type UserAppRole,
+  type UsersAdminClient,
+} from './users-admin-client.js';
 
 /**
  * Every account on the platform.
@@ -63,26 +68,32 @@ export function UsersPage({
   const mayEdit = useHoldsFeature(AUTH_FEATURE.usersUpdate);
 
   /**
-   * Double-clicking a row opens the EDITOR — the same shortcut the roles grid
+   * Double-clicking a row OPENS THE ACCOUNT — the shortcut the roles grid
    * offers through `DataGrid.onRowActivate`, implemented by hand because this
    * table is plain markup.
    *
+   * It goes to the VIEW, not the editor. The roles grid opens its editor
+   * because a role has no other page; an account has two, and the one somebody
+   * means by "open this row" is the record — the sessions, the status, the
+   * actions — not a form over two of its fields. Editing has its own link in
+   * the row, and another on the page it lands on.
+   *
    * DOUBLE click, not single: a single click is how somebody selects text in a
    * cell, and making it navigate would mean nobody could read an address
-   * without leaving the page. It is also deliberately not the only way there —
-   * a double click is unfindable and impossible on a touchscreen, so every row
-   * carries a visible Edit link to the same place.
+   * without leaving the page.
+   *
+   * Not gated: it goes where the row's own name link already goes, and every
+   * reader of this page holds `users:read` by definition.
    */
-  const openEditor = useCallback(
+  const openAccount = useCallback(
     (userId: string) => {
-      if (!mayEdit) return;
       // The browser has already selected the text under a double click by the
       // time this runs; leaving it highlighted through the navigation looks
       // like a stuck selection.
       window.getSelection()?.removeAllRanges();
-      window.location.assign(editHref(userId));
+      window.location.assign(detailHref(userId));
     },
-    [mayEdit, editHref],
+    [detailHref],
   );
 
   const [rows, setRows] = useState<AdminUser[] | null>(null);
@@ -91,6 +102,16 @@ export function UsersPage({
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | 'active' | 'suspended'>('');
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Loaded in a SECOND request, after the page of accounts is known.
+   *
+   * Not joined server-side, because `perm_user_role` belongs to
+   * `module-permissions` and this module may not read it — the accounts come
+   * from here and the roles from there, and the join happens in the browser
+   * over ids it already holds. One extra round trip per page, and the column
+   * is empty rather than the page broken if that request is refused.
+   */
+  const [appRoles, setAppRoles] = useState<Map<string, UserAppRole>>(new Map());
 
   /*
    * The search is DEBOUNCED, and the timer is the reason this page does not
@@ -137,6 +158,20 @@ export function UsersPage({
   }, [api, term, status, page]);
 
   useEffect(load, [load]);
+
+  useEffect(() => {
+    if (!rows || rows.length === 0) {
+      setAppRoles(new Map());
+      return;
+    }
+    let cancelled = false;
+    api.listUserAppRoles(rows.map((row) => row.id)).then((found) => {
+      if (!cancelled) setAppRoles(new Map(found.map((entry) => [entry.userId, entry])));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, rows]);
 
   const lastPage = Math.max(Math.ceil(total / PAGE_SIZE) - 1, 0);
 
@@ -195,6 +230,7 @@ export function UsersPage({
             <tr>
               <th className="px-3 py-2 font-medium">Account</th>
               <th className="px-3 py-2 font-medium">Username</th>
+              <th className="px-3 py-2 font-medium">Platform role</th>
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="px-3 py-2 font-medium">Last signed in</th>
               <th className="px-3 py-2 font-medium">Created</th>
@@ -207,15 +243,15 @@ export function UsersPage({
             {rows?.map((row) => (
               <tr
                 key={row.id}
-                onDoubleClick={() => openEditor(row.id)}
+                onDoubleClick={() => openAccount(row.id)}
                 /*
                  * `select-none` only because the row is double-clickable: the
                  * gesture would otherwise highlight whatever it landed on. The
                  * address is still readable from the detail page, where nothing
                  * suppresses selection.
                  */
-                className={`border-t border-border hover:bg-muted/50 ${mayEdit ? 'cursor-pointer select-none' : ''}`}
-                title={mayEdit ? 'Double-click to edit' : undefined}
+                className="cursor-pointer select-none border-t border-border hover:bg-muted/50"
+                title="Double-click to open"
               >
                 <td className="px-3 py-2">
                   <a href={detailHref(row.id)} className="font-medium text-foreground hover:underline">
@@ -227,6 +263,14 @@ export function UsersPage({
                   <div className="text-xs text-muted-foreground">{row.email}</div>
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{row.username ?? '—'}</td>
+                <td className="px-3 py-2">
+                  {/*
+                    An em dash for somebody with no app-level role, which is the
+                    ordinary case: most accounts hold none and belong to an
+                    organization instead. "None" would read as a role.
+                  */}
+                  {appRoles.get(row.id)?.roleLabel ?? <span className="text-muted-foreground">—</span>}
+                </td>
                 <td className="px-3 py-2">
                   <StatusPill status={row.status} />
                 </td>
@@ -252,7 +296,7 @@ export function UsersPage({
             ))}
             {rows?.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                   {term || status ? 'No accounts match that.' : 'No accounts yet.'}
                 </td>
               </tr>

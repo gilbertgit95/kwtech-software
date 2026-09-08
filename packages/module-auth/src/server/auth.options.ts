@@ -174,6 +174,23 @@ export interface AuthModuleOptions {
     /** The raw token. Put it in a URL; do not log it. */
     token: string;
     expiresAt: Date;
+    /**
+     * WHY the link is being sent, so the app can send two different emails
+     * down one hook.
+     *
+     *   'reset'       somebody asked to reset a password they already have.
+     *   'invitation'  an administrator created the account, and this link is
+     *                 the first time its owner will ever set a password.
+     *
+     * The mechanism is identical — same token, same lifetime, same single use —
+     * and the WORDS are not. "Reset your password" reaches somebody who has
+     * never had one and reads as a message meant for another person, which is
+     * the point at which a new user decides the email is phishing.
+     *
+     * Optional, and absent means 'reset': an app that already implements this
+     * hook keeps working unchanged.
+     */
+    reason?: 'reset' | 'invitation';
   }) => Promise<void>;
 
   /**

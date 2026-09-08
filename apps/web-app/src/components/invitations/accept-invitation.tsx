@@ -69,7 +69,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
  */
 
 interface Preview {
-  organizationName: string;
+  /** Null for a PLATFORM invitation — one that names no organization. */
+  organizationName: string | null;
+  /** What they will hold across the platform. Null for most invitations. */
+  appRoleLabel: string | null;
   email: string;
   roleLabel: string | null;
   hasAccount: boolean;
@@ -137,6 +140,7 @@ export function AcceptInvitation({
       `query InvitationPreview($token: String!) {
          invitationPreview(token: $token) {
            organizationName
+           appRoleLabel
            email
            roleLabel
            hasAccount
@@ -286,6 +290,20 @@ export function AcceptInvitation({
   const role = preview.roleLabel ? ` as ${preview.roleLabel}` : '';
 
   /*
+   * What this invitation is TO.
+   *
+   * An organization when it names one, and the platform itself when it does
+   * not — an offer to hold an app-level role and belong to no tenant, which is
+   * how an administrator adds somebody who is not a customer's employee. The
+   * page says which rather than printing "Join null", and the app-level role is
+   * named because on a platform invitation it is the entire offer.
+   */
+  const joining = preview.organizationName ?? 'the platform';
+  const offer = preview.organizationName
+    ? `You have been invited${role}.`
+    : `You have been invited to the platform${preview.appRoleLabel ? ` as ${preview.appRoleLabel}` : ''}.`;
+
+  /*
    * The form the effect above submits, and the same one the fallback below
    * offers by hand. Rendered once, here, so there is a single description of
    * what signing out for this link means.
@@ -306,7 +324,7 @@ export function AcceptInvitation({
      */
     return (
       <AuthShell
-        title={`Join ${preview.organizationName}`}
+        title={`Join ${joining}`}
         description={`This invitation was sent to ${preview.email}. Signing ${viewerEmail} out so you can continue as ${preview.email}…`}
       >
         {signOutForm(
@@ -338,10 +356,7 @@ export function AcceptInvitation({
      * accepted as {preview.email} or not at all.
      */
     return (
-      <AuthShell
-        title={`Join ${preview.organizationName}`}
-        description={`This invitation was sent to ${preview.email}.`}
-      >
+      <AuthShell title={`Join ${joining}`} description={`This invitation was sent to ${preview.email}.`}>
         <AuthError>{error}</AuthError>
 
         <p className="mb-4 rounded-md bg-[var(--status-warning)] px-3 py-2 text-sm text-[var(--status-warning-foreground)]">
@@ -364,8 +379,8 @@ export function AcceptInvitation({
   if (viewerEmail) {
     return (
       <AuthShell
-        title={`Join ${preview.organizationName}`}
-        description={`You have been invited${role}. You are signed in as ${preview.email}, so this is the last step.`}
+        title={`Join ${joining}`}
+        description={`${offer} You are signed in as ${preview.email}, so this is the last step.`}
       >
         <AuthError>{error}</AuthError>
         <button
@@ -374,7 +389,7 @@ export function AcceptInvitation({
           disabled={pending}
           className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
-          {pending ? 'Joining…' : `Join ${preview.organizationName}`}
+          {pending ? 'Joining…' : `Join ${joining}`}
         </button>
       </AuthShell>
     );
@@ -385,10 +400,7 @@ export function AcceptInvitation({
     // here and lands on the one-button case above.
     const next = encodeURIComponent(here);
     return (
-      <AuthShell
-        title={`Join ${preview.organizationName}`}
-        description={`You have been invited${role}. Sign in as ${preview.email} to accept.`}
-      >
+      <AuthShell title={`Join ${joining}`} description={`${offer} Sign in as ${preview.email} to accept.`}>
         <AuthError>{error}</AuthError>
         <a
           href={`/auth/signin?next=${next}`}
@@ -402,8 +414,8 @@ export function AcceptInvitation({
 
   return (
     <AuthShell
-      title={`Join ${preview.organizationName}`}
-      description={`You have been invited${role}. Choose a password to finish setting up ${preview.email}.`}
+      title={`Join ${joining}`}
+      description={`${offer} Choose a password to finish setting up ${preview.email}.`}
     >
       <form onSubmit={(event) => void signUp(event)} noValidate>
         <AuthError>{error}</AuthError>

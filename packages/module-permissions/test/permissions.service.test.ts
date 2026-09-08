@@ -56,6 +56,11 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
         calls.userRole.push(args);
         return db.userRoles ?? [];
       },
+      // The write path `assignAppRole` uses. No test here exercises it — the
+      // interface is structural, so a stub is what keeps the fake honest about
+      // its shape.
+      deleteMany: async () => ({ count: 0 }),
+      create: async () => ({}),
     },
     permMembership: {
       findFirst: async (args) => {
@@ -130,7 +135,7 @@ const role = (over: Partial<RoleWithFeatures> & Pick<RoleWithFeatures, 'key' | '
  */
 const appRole = (
   over: Partial<UserRoleRow['role']> & Pick<UserRoleRow['role'], 'key' | 'level'>,
-): UserRoleRow['role'] => ({ features: [], limits: [], label: over.key, icon: null, ...over });
+): UserRoleRow['role'] => ({ id: `role-${over.key}`, features: [], limits: [], label: over.key, icon: null, ...over });
 
 const membership = (over: Partial<MembershipRow> = {}): MembershipRow => ({
   id: 'm1',
@@ -177,7 +182,10 @@ describe('loadContext — app level short-circuits', () => {
     // hand would pick an arbitrary one and answer a question nobody asked.
     const { svc, calls } = service({
       userRoles: [
-        { role: appRole({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }) },
+        {
+          userId: 'u1',
+          role: appRole({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }),
+        },
       ],
     });
 
@@ -198,7 +206,10 @@ describe('loadContext — app level short-circuits', () => {
   it('resolves role-sourced limits at app level, where no subscription exists', () => {
     const { svc } = service({
       userRoles: [
-        { role: appRole({ key: 'staff', level: 'app', limits: [{ limitKey: LIMIT.userOrganizations, value: 25 }] }) },
+        {
+          userId: 'u1',
+          role: appRole({ key: 'staff', level: 'app', limits: [{ limitKey: LIMIT.userOrganizations, value: 25 }] }),
+        },
       ],
     });
 
@@ -218,7 +229,10 @@ describe('loadContext — a caller with no membership', () => {
     const { svc } = service({
       membership: null,
       userRoles: [
-        { role: appRole({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }) },
+        {
+          userId: 'u1',
+          role: appRole({ key: 'support', level: 'app', features: [{ featureKey: FEATURE.platformSupportAccess }] }),
+        },
       ],
     });
 
@@ -653,7 +667,7 @@ describe('checkCapacity', () => {
  */
 describe('disabled roles are excluded from every grant path', () => {
   it('filters app-level roles granted to the user outright', async () => {
-    const { svc, calls } = service({ userRoles: [{ role: appRole({ key: 'staff', level: 'app' }) }] });
+    const { svc, calls } = service({ userRoles: [{ userId: 'u1', role: appRole({ key: 'staff', level: 'app' }) }] });
     await svc.loadContext('u1');
 
     expect(calls.userRole[0]).toMatchObject({ where: { userId: 'u1', role: { disabledAt: null } } });

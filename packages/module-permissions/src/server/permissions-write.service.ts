@@ -1056,10 +1056,17 @@ export class PermissionsWriteService {
 
     return {
       organizationId: invitation.organizationId,
-      organizationName: invitation.organization.name,
+      /**
+       * Null for a PLATFORM invitation. The accept page renders the offer
+       * differently rather than inventing a name — "join KWTech" when no
+       * organization was named would be a claim nobody made.
+       */
+      organizationName: invitation.organization?.name ?? null,
       /** The address it was SENT to. The page shows it; it is not a claim about who is reading. */
       email: invitation.email,
       roleLabel: invitation.role?.label ?? null,
+      /** What they will hold across the platform, for a page that should say so. */
+      appRoleLabel: invitation.appRole?.label ?? null,
       expiresAt: invitation.expiresAt,
     };
   }
@@ -1107,9 +1114,47 @@ export class PermissionsWriteService {
         throw new PermissionWriteError('not_found', 'That invitation is not valid', {});
       }
 
+      /*
+       * ── the APP-level role ────────────────────────────────────────────────
+       *
+       * Applied first, and to a user id that has existed for at most a few
+       * milliseconds: the account is created by the app immediately before this
+       * call (see the app's `signUpFromInvitation`). That is the whole mechanism
+       * by which a role can be chosen for somebody who does not exist yet — it
+       * rides on the invitation, addressed to an EMAIL, and lands the moment
+       * there is an id to hang it on.
+       *
+       * REPLACES rather than adds, the same rule every other role write here
+       * follows: a person is one thing at app level. An existing user accepting
+       * a platform invitation therefore has their app role CHANGED, which is
+       * what the inviter asked for when they chose one.
+       */
+      if (invitation.appRoleId) {
+        await tx.permUserRole.deleteMany({ where: { userId: input.userId } });
+        await tx.permUserRole.create({ data: { userId: input.userId, roleId: invitation.appRoleId } });
+      }
+
+      /*
+       * ── the membership, when there is an organization ────────────────────
+       *
+       * A PLATFORM invitation names none, and stops here: the person holds an
+       * app-level role and belongs to no tenant, which `loadContext` is
+       * explicitly built for ("a support engineer holding one has no membership
+       * anywhere and must still get a usable context").
+       */
+      if (!invitation.organizationId) {
+        await tx.permInvitation.update({
+          where: { id: invitation.id },
+          data: { status: 'accepted', acceptedAt: this.now(), acceptedByUserId: input.userId },
+          select: { id: true },
+        });
+        return { organizationId: null, membershipId: null, joined: false };
+      }
+
+      const organizationId = invitation.organizationId;
       const existing = await tx.permMembership.findFirst({
-        where: { userId: input.userId, organizationId: invitation.organizationId },
-        include: { roles: activeRoleGrants, workspaces: membershipWorkspaces(invitation.organizationId) },
+        where: { userId: input.userId, organizationId },
+        include: { roles: activeRoleGrants, workspaces: membershipWorkspaces(organizationId) },
       });
 
       let membershipId = existing?.id;
@@ -1126,7 +1171,7 @@ export class PermissionsWriteService {
          * the second needs a limit lookup this method cannot reach.
          */
         const membership = await tx.permMembership.create({
-          data: { userId: input.userId, organizationId: invitation.organizationId, status: 'active' },
+          data: { userId: input.userId, organizationId, status: 'active' },
           select: { id: true },
         });
         membershipId = membership.id;
@@ -1147,7 +1192,7 @@ export class PermissionsWriteService {
       });
 
       return {
-        organizationId: invitation.organizationId,
+        organizationId,
         membershipId,
         // False when they were already in — the invitation still closes, but
         // nothing about their membership changed.
@@ -1212,6 +1257,97 @@ export class PermissionsWriteService {
       const { count } = await tx.permMembershipRole.deleteMany({ where: { membershipId: membership.id } });
 
       await tx.permMembershipRole.create({ data: { membershipId: membership.id, roleId: input.roleId } });
+      // `replaced` says whether somebody LOST a role in the process, which is a
+      // different sentence for a screen than "granted".
+      return { granted: true, replaced: count > 0 };
+    });
+  }
+
+  /**
+   * SETS a person's APP-LEVEL role, replacing whatever they held.
+   *
+   * ## The write `perm_user_role` never had
+   *
+   * The table was readable and nothing wrote it — the app-level grants in a
+   * live database had been inserted by hand, which PLAN §12 open decision 37
+   * recorded as a gap. Two surfaces need it: changing an account's app role
+   * from the user administration screens, and choosing the one an invitation
+   * will grant when it is accepted.
+   *
+   * ## One role, like every other level
+   *
+   * A person is one thing at app level, so this REPLACES. There is no
+   * `@@unique([userId])` on the table to enforce it — the primary key is
+   * `(userId, roleId)`, which permits a collection — so unlike the organization
+   * rule this one is upheld by the write path rather than by the database.
+   * PLAN §12 decision 32 left "may somebody hold two app roles" open on the
+   * grounds that nothing needed it decided; this decides it, in the only
+   * direction that matches the other two levels, and a schema constraint can
+   * follow when there is a migration to carry it.
+   *
+   * ## The escalation check is the point of this method
+   *
+   * `roles:grant_app` says you may hand out app-level roles. It does not say
+   * which, and without a second rule the key would be the whole ladder: anybody
+   * holding it could grant `super-admin` — to somebody else, or by inviting an
+   * address they own — and hold everything by proxy the next morning.
+   *
+   * So a role may only be granted if every feature it carries is one the
+   * GRANTER already holds. That is the same rule `role-draft.ts` applies when
+   * composing a role, stated here for handing one out, and it makes this method
+   * unable to increase the total power in the system.
+   */
+  async assignAppRole(actor: PermissionContext, input: { userId: string; roleId: string }) {
+    this.assertPermitted(actor, FEATURE.rolesGrantApp);
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const role = await this.requireRole(tx, input.roleId);
+
+      if (role.level !== 'app') {
+        throw new PermissionWriteError('role_level_mismatch', 'That is not an app-level role', {
+          roleId: input.roleId,
+          level: role.level,
+        });
+      }
+      // A disabled role is already refused by `requireRole`, which explains
+      // why: assigning one writes a row that grants nothing and then looks,
+      // in every list, exactly like a grant that works.
+
+      /*
+       * Read from the ROW rather than from the registry: what the role grants
+       * today is what the database says, and a registry lookup would compare
+       * against the checkout instead.
+       */
+      const carried = await tx.permRoleFeature.findMany({
+        where: { roleId: input.roleId },
+        select: { featureKey: true },
+      });
+      const held = new Set<string>(actor.effective);
+      const beyond = carried.map((row) => row.featureKey).filter((key) => !held.has(key));
+      if (beyond.length > 0) {
+        throw new PermissionWriteError('not_permitted', 'That role carries rights you do not hold', {
+          roleId: input.roleId,
+          // Named, because "you may not" without saying which right is a
+          // refusal nobody can act on.
+          features: beyond.sort(),
+        });
+      }
+
+      const already = await tx.permUserRole.findMany({
+        where: { userId: input.userId, role: { disabledAt: null } },
+        include: { role: { include: { features: activeFeatures, limits: true } } },
+      });
+      // Compared by KEY: the port's read projects the role rather than its id,
+      // and a key is unique per scope, so the two questions are the same one.
+      if (already.length === 1 && already[0]?.role.key === role.key) {
+        // Idempotent where it can be: re-granting what somebody already holds
+        // is not an error, and making it one turns every retry into a ticket.
+        return { granted: false, replaced: false };
+      }
+
+      const { count } = await tx.permUserRole.deleteMany({ where: { userId: input.userId } });
+      await tx.permUserRole.create({ data: { userId: input.userId, roleId: input.roleId } });
       // `replaced` says whether somebody LOST a role in the process, which is a
       // different sentence for a screen than "granted".
       return { granted: true, replaced: count > 0 };
@@ -1727,10 +1863,14 @@ const INVITATION_SELECT = {
   organizationId: true,
   email: true,
   roleId: true,
+  appRoleId: true,
   status: true,
   expiresAt: true,
+  // NULLABLE now: a platform invitation names no organization, so every reader
+  // of this select has to cope with the absence rather than assume a name.
   organization: { select: { key: true, name: true } },
   role: { select: { label: true } },
+  appRole: { select: { label: true } },
 } as const;
 
 function hashInvitationToken(token: string): string {

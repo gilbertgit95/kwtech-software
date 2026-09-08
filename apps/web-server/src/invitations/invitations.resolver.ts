@@ -42,8 +42,24 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 @ObjectType('InvitationPreview')
 export class InvitationPreviewType {
-  @Field()
-  organizationName!: string;
+  /**
+   * The organization being joined, or NULL for a PLATFORM invitation.
+   *
+   * Nullable since platform invitations landed: an offer to hold an app-level
+   * role and belong to no tenant has no organization to name, and the page
+   * renders a different sentence rather than inventing one.
+   */
+  @Field(() => String, { nullable: true })
+  organizationName!: string | null;
+
+  /**
+   * What they will hold ACROSS the platform, as opposed to `roleLabel`, which
+   * is what they will hold inside the organization. A platform invitation
+   * carries only this one; an organization invitation may carry either, both or
+   * neither.
+   */
+  @Field(() => String, { nullable: true })
+  appRoleLabel!: string | null;
 
   /**
    * The address the invitation was SENT to.
@@ -84,8 +100,9 @@ export class InvitationSignUpResultType {
   @Field()
   email!: string;
 
-  @Field()
-  organizationName!: string;
+  /** Null when the invitation was to the platform rather than to a tenant. */
+  @Field(() => String, { nullable: true })
+  organizationName!: string | null;
 }
 
 @Injectable()
@@ -118,6 +135,7 @@ export class InvitationsResolver {
 
     return {
       organizationName: invitation.organizationName,
+      appRoleLabel: invitation.appRoleLabel,
       email: invitation.email,
       roleLabel: invitation.roleLabel,
       hasAccount: account !== null,

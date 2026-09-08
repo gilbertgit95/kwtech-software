@@ -221,7 +221,15 @@ export interface OrganizationDetailRow {
 }
 
 export interface UserRoleRow {
+  /**
+   * Present because Prisma returns the row's own scalars, and needed the moment
+   * one read asks about MANY people at once — `listAppRolesForUsers` has to say
+   * which grant belongs to whom.
+   */
+  userId: string;
   role: {
+    /** Needed to name a role in a write; the checks all read `key`. */
+    id: string;
     key: string;
     level: string;
     /** Read for the badge, not for any check. See PermissionContext.appRoles. */
@@ -271,12 +279,33 @@ export interface PermissionsPrismaClient {
     }): Promise<RoleDefinitionRow[]>;
   };
   permUserRole: {
+    /*
+     * ONE signature covering both readers — the person whose context is being
+     * loaded, and a page asking about a screenful of people. `userId` widens to
+     * an `in` list rather than the read growing an overload, which Prisma's
+     * generic delegate cannot satisfy (see the invitation port for the same
+     * lesson, learned twice).
+     */
     findMany(args: {
       // `role: { disabledAt: null }` — a disabled role grants nothing, filtered
       // in the query for the same reason ActiveFeaturesInclude is.
-      where: { userId: string; role: { disabledAt: null } };
+      where: { userId: string | { in: string[] }; role: { disabledAt: null } };
       include: { role: { include: { features: ActiveFeaturesInclude; limits: true } } };
     }): Promise<UserRoleRow[]>;
+    /*
+     * ── the write path this table did not have ──────────────────────────────
+     *
+     * `perm_user_role` was readable and nothing wrote it: the app-level grants
+     * in a live database had been inserted by hand, and PLAN §12 open decision
+     * 37 recorded that as a gap. `assignAppRole` is what closes it, and both
+     * methods below exist for it.
+     *
+     * DELETE THEN CREATE rather than an upsert, because the rule is "a person
+     * is one thing at app level" — the delete is not cleanup for the create,
+     * it is the replacement.
+     */
+    deleteMany(args: { where: { userId: string; roleId?: string } }): Promise<{ count: number }>;
+    create(args: { data: { userId: string; roleId: string } }): Promise<unknown>;
   };
   permMembership: {
     count(args: { where: { organizationId?: string; userId?: string; status: 'active' } }): Promise<number>;
@@ -731,21 +760,28 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         organizationId: true;
         email: true;
         roleId: true;
+        appRoleId: true;
         status: true;
         expiresAt: true;
         organization: { select: { key: true; name: true } };
         role: { select: { label: true } };
+        appRole: { select: { label: true } };
       };
     }): Promise<{
       id: string;
-      organizationId: string;
+      /** NULL for a platform invitation — an offer that names no tenant. */
+      organizationId: string | null;
       email: string;
       roleId: string | null;
+      appRoleId: string | null;
       status: string;
       expiresAt: Date;
-      organization: { key: string; name: string };
+      /** Null with `organizationId`. The two are absent together, always. */
+      organization: { key: string; name: string } | null;
       /** Null when the invitation names no role, which is a normal invitation. */
       role: { label: string } | null;
+      /** Null when it grants no app-level role — every members-screen invitation. */
+      appRole: { label: string } | null;
     } | null>;
     /**
      * `expiresAt` is selected because expiry is DERIVED, not stored: a row that
@@ -754,7 +790,13 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
      * forgotten invitation would block an address forever.
      */
     findMany(args: {
-      where: { organizationId: string; status: 'pending' };
+      /*
+       * `organizationId: null` is the PLATFORM bucket, and it is a different
+       * question from "any organization": a platform invitation and an
+       * invitation to a tenant are separate offers to the same person, and
+       * neither may block the other.
+       */
+      where: { organizationId: string | null; status: 'pending' };
       select: { email: true; status: true; expiresAt: true };
     }): Promise<{ email: string; status: string; expiresAt: Date }[]>;
     create(args: {

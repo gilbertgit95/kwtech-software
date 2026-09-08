@@ -80,6 +80,8 @@ describe('every declared API binding names a guard that exists', () => {
     'Mutation.addMember': required(PermissionsResolver.prototype, 'addMember'),
     'Mutation.removeMember': required(PermissionsResolver.prototype, 'removeMember'),
     'Mutation.assignRole': required(PermissionsResolver.prototype, 'assignRole'),
+    'Mutation.assignAppRole': required(PermissionsResolver.prototype, 'assignAppRole'),
+    'Query.permissionUserAppRoles': required(PermissionsResolver.prototype, 'userAppRoles'),
     'Mutation.revokeRole': required(PermissionsResolver.prototype, 'revokeRole'),
     'Mutation.createWorkspace': required(PermissionsResolver.prototype, 'createWorkspace'),
     'Mutation.updateWorkspace': required(PermissionsResolver.prototype, 'updateWorkspace'),
