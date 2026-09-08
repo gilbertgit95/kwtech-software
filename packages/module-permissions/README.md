@@ -506,10 +506,16 @@ the role cannot be granted to them — it is chosen when the row is written and
 applied when `acceptInvitation` finally has a userId. Exactly what `roleId`
 already did for the organization role, one level up.
 
-**Acceptance REPLACES, at both levels.** An invitation naming an organization
-role replaces the member's; one naming an app role replaces theirs. That is what
-the inviter asked for — and it is why both invite screens refuse an address that
-already exists:
+**Acceptance replaces an ORGANIZATION role and never an app-level one.** An
+invitation naming an organization role replaces the member's — that is what the
+inviter asked for, on a screen showing the member list. An invitation naming an
+app-level role only GRANTS it to somebody holding none: the inviter there is
+looking at an address rather than an account, and the form defaults to the
+least-privileged role, so replacing would have demoted an existing super admin
+the moment they followed the link. Changing an existing person's app role is
+`assignAppRole`, from the Users page.
+
+Both invite screens also refuse an address that already exists:
 
 - the members form refuses an address already in that organization, or already
   holding a live invitation to it
@@ -518,14 +524,19 @@ already exists:
 
 ⚠ Both checks are **advisory**. Resolving an address to a user means reading
 `auth_user`, which this module may not (PLAN §12.12), so the write path cannot
-enforce either — they stop the mistake at the screen where it is made and
-nowhere else.
+enforce either — they stop the mistake at the screen where it is made. The
+consequence that mattered, an app-level demotion, is closed in the write path
+itself rather than left to them.
 
 **`defaultAppRoleKey` fills the hole.** The model is additive, so there is no
 default-on: an account with no app-level role holds nothing at all and cannot
 even edit its own profile. Set the option and `acceptInvitation` grants that
-role when the invitation named none. It never overwrites an existing app-level
-role, so a super admin accepting an organization invitation is not demoted.
+role when the invitation named none.
+
+Both grants — the invitation's and the baseline's — run only for somebody
+holding NO app-level role. The module cannot ask whether an account is new (it
+may not read `auth_user`), but a brand-new one holds nothing by construction, so
+"holds none" is the same set and is enforced with data the module owns.
 
 ### The write screens produce registry source, not rows
 

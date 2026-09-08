@@ -517,6 +517,42 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **An invitation may GIVE an app-level role. It may never
+  change one.**
+
+  Asked for directly, and it closes the demotion hazard at the write path
+  instead of at the screen. Acceptance used to replace whenever the invitation
+  named a role, on the reasoning that replacing is what the inviter asked for.
+  That reasoning holds for `assignAppRole` on the Users page, where the
+  administrator is looking at the account and the role it currently holds. It
+  does not hold for an invitation: the inviter is looking at an ADDRESS, may not
+  know it belongs to anybody, and the platform invite form defaults to the
+  LEAST-privileged role — so an invitation sent to an existing super admin would
+  have demoted them the moment they followed the link, silently, with one click.
+
+  So `acceptInvitation` now grants an app-level role only to somebody holding
+  none, whether the role came from the invitation or from `defaultAppRoleKey`.
+  The organization role is untouched by this and still replaces, which is
+  correct: that decision is made on a screen showing the member list.
+
+  **"Holds none" rather than "the account is new".** The literal rule is that
+  only a user who did not exist yet gets a role from an invitation, and this
+  module cannot evaluate it — it may not read `auth_user`, so it cannot tell
+  whether an id is a second old. It can see what that id HOLDS, and a brand-new
+  account holds nothing by construction, so the two sets coincide. Where they
+  differ — an old account that never had an app role — filling the hole is the
+  same act the baseline performs and the same one that stops somebody landing on
+  a settings page they cannot use.
+
+  The alternative was a flag from the app saying "I just created this", which
+  the module would have to trust. This version is enforced with data the module
+  owns.
+
+  It also upgrades yesterday's advisory: the invite forms refuse an address that
+  already has an account, but that check reads `auth_user` and is the app's. The
+  guarantee is now in the write path, so calling the mutation directly cannot
+  demote anybody either.
+
 - **2026-09-08** — **`graphql-ws` moves behind its own subpath, because an
   optional peer a barrel imports is not optional.**
 

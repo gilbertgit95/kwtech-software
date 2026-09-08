@@ -272,6 +272,13 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
         return { count: before - state.workspaceMemberRoles.length };
       },
     },
+    /*
+     * What a role carries, read by the no-escalation checks in `assignAppRole`
+     * and `inviteUser`. Empty for these fixtures, which is the point: a role
+     * granting nothing is one any granter may hand out, so the tests exercise
+     * the REPLACEMENT rule rather than the escalation rule.
+     */
+    permRoleFeature: { findMany: async () => [] },
     permUserRole: {
       findMany: async () => state.userRoles.map((row) => ({ userId: row.userId, role: row.role })),
       create: async (args: { data: { userId: string; roleId: string } }) => {
@@ -1398,6 +1405,12 @@ describe('a member holds one organization role', () => {
 
 describe('invitations', () => {
   const inviter = () => actor([FEATURE.membersManage]);
+  /*
+   * A PLATFORM inviter: `roles:grant_app` for the app-level role, and the
+   * feature the granted role carries, because `inviteUser` refuses to hand out
+   * more than the granter holds.
+   */
+  const granter = () => actor([FEATURE.rolesGrantApp, FEATURE.membersManage]);
 
   it('sends the token to the host and never returns it', async () => {
     const h = fake();
@@ -1500,6 +1513,44 @@ describe('invitations', () => {
     // Without this they would join, sign in, and find they cannot edit their
     // own name — `account:profile_write` comes from an app-level role.
     expect(h.writes.userRoles).toEqual([{ userId: 'newcomer', roleId: 'baseline' }]);
+  });
+
+  it('never replaces an app role, even when the invitation names one', async () => {
+    /*
+     * The demotion this closes: the platform invite form defaults to the
+     * least-privileged role, and an inviter is looking at an ADDRESS rather
+     * than at an account. Without this, inviting an existing super admin would
+     * have demoted them the moment they followed the link.
+     *
+     * Giving a role is what an invitation may do; changing one is
+     * `assignAppRole`, from a screen showing what they hold today.
+     */
+    const h = withBaseline({
+      roles: [
+        { id: 'baseline', key: 'normal-user', label: 'Normal user', level: 'app', organizationId: null },
+        { id: 'crown', key: 'super-admin', label: 'Super admin', level: 'app', organizationId: null },
+      ],
+      userRoles: [
+        {
+          userId: 'staff',
+          role: {
+            id: 'crown',
+            key: 'super-admin',
+            label: 'Super admin',
+            level: 'app',
+            icon: null,
+            features: [],
+            limits: [],
+          },
+        },
+      ],
+    });
+    await h.svc.inviteUser(granter(), { email: 'a@b.com', roleId: '', appRoleId: 'baseline' });
+    const token = h.writes.sent[0]?.token ?? '';
+
+    await h.svc.acceptInvitation({ token, userId: 'staff' });
+
+    expect(h.writes.userRoles).toHaveLength(0);
   });
 
   it('leaves an existing app role alone rather than demoting to the baseline', async () => {

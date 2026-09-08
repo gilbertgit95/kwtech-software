@@ -1215,23 +1215,53 @@ export class PermissionsWriteService {
       /*
        * ── the APP-level role ────────────────────────────────────────────────
        *
-       * Applied first, and to a user id that has existed for at most a few
+       * Applied first, and usually to a user id that has existed for a few
        * milliseconds: the account is created by the app immediately before this
        * call (see the app's `signUpFromInvitation`). That is the whole mechanism
        * by which a role can be chosen for somebody who does not exist yet — it
        * rides on the invitation, addressed to an EMAIL, and lands the moment
        * there is an id to hang it on.
        *
-       * REPLACES rather than adds, the same rule every other role write here
-       * follows: a person is one thing at app level. An existing user accepting
-       * a platform invitation therefore has their app role CHANGED, which is
-       * what the inviter asked for when they chose one.
+       * ## It NEVER replaces a role somebody already holds
+       *
+       * It used to, whenever the invitation named one, on the reasoning that
+       * replacing is what the inviter asked for. That reasoning is right for a
+       * grant made on the Users page, where the administrator is looking at the
+       * account and its current role. It is wrong here, because the inviter is
+       * looking at an ADDRESS: they may not know it belongs to anybody, and the
+       * platform invite form defaults to the least-privileged role — so an
+       * invitation sent to an existing super admin would have demoted them the
+       * moment they followed the link, silently, with one click.
+       *
+       * The invite screens refuse an address that already has an account, but
+       * that check reads `auth_user` and is therefore the APP's; this module
+       * cannot enforce it (§12.12). This can, so the guarantee stops being
+       * advisory: an invitation may GIVE an app-level role, never change one.
+       *
+       * ## Why "holds none" rather than "the account is new"
+       *
+       * The literal rule is "only a user who did not exist yet gets a role from
+       * an invitation", and this module cannot evaluate it — it may not read
+       * `auth_user`, so it cannot know whether an id is a second old. It can
+       * see what that id HOLDS, and a brand-new account holds nothing by
+       * construction, so the two coincide. Where they differ — an old account
+       * that never had an app role — filling the hole is the same act the
+       * baseline default performs, and the same one that stops somebody landing
+       * on a settings page they cannot use.
+       *
+       * Changing an existing person's app role is `assignAppRole`, from the
+       * Users page, where it takes `roles:grant_app` and a deliberate choice.
        */
-      if (invitation.appRoleId) {
-        await tx.permUserRole.deleteMany({ where: { userId: input.userId } });
-        await tx.permUserRole.create({ data: { userId: input.userId, roleId: invitation.appRoleId } });
-      } else {
-        await this.grantDefaultAppRole(tx, input.userId);
+      const heldAppRoles = await tx.permUserRole.findMany({
+        where: { userId: input.userId, role: { disabledAt: null } },
+        include: { role: { include: { features: activeFeatures, limits: true } } },
+      });
+
+      if (!heldAppRoles.some((row) => row.role.level === 'app')) {
+        // The invitation's choice, or the deployment's baseline — see
+        // `grantDefaultAppRole` for why a default exists at all.
+        const roleId = invitation.appRoleId ?? (await this.defaultAppRoleId(tx));
+        if (roleId) await tx.permUserRole.create({ data: { userId: input.userId, roleId } });
       }
 
       /*
@@ -1792,51 +1822,36 @@ export class PermissionsWriteService {
   }
 
   /**
-   * The baseline app-level role, for somebody accepting an invitation that
-   * named none.
+   * The id of the configured baseline app-level role, or null.
    *
-   * ## Why this exists
+   * ## Why a baseline exists
    *
    * The model is additive, so there is no default-on: an account with no
    * app-level role holds NOTHING — the seeded organization roles carry no
-   * features either — and lands on a settings page whose Save button is
-   * hidden. That happened to a real account created by an organization
-   * invitation, which is what put this here. `defaultAppRoleKey` names the
-   * role; see the option for why it is configuration rather than an argument.
-   *
-   * ## It fills a hole and never overwrites an answer
-   *
-   * Skipped entirely when the person already holds an app-level role, so a
-   * super admin accepting an organization invitation is not quietly demoted to
-   * the baseline. The invitation naming a role is handled by the caller and
-   * wins outright.
+   * features either — and lands on a settings page whose Save button is hidden.
+   * That happened to a real account created by an organization invitation, which
+   * is what put `defaultAppRoleKey` in the options. See the option for why it is
+   * configuration rather than an argument.
    *
    * ## A missing or disabled default is not an error
    *
    * It is a deployment that has not configured one, or has retired the role
-   * since. The acceptance still succeeds — refusing to let somebody join
-   * because a baseline role was renamed would be the worse failure — and they
-   * arrive with no app role, which is exactly the state this is trying to
-   * avoid but is at least the state that existed before.
+   * since. Null comes back and the acceptance still succeeds — refusing to let
+   * somebody join because a baseline role was renamed would be the worse
+   * failure, and they arrive with no app role, which is the state that existed
+   * before the option did.
+   *
+   * The caller decides WHETHER to grant; this only answers what.
    */
-  private async grantDefaultAppRole(tx: PermissionsTransaction, userId: string): Promise<void> {
+  private async defaultAppRoleId(tx: PermissionsTransaction): Promise<string | null> {
     const key = this.options?.defaultAppRoleKey;
-    if (!key) return;
-
-    const existing = await tx.permUserRole.findMany({
-      where: { userId, role: { disabledAt: null } },
-      include: { role: { include: { features: activeFeatures, limits: true } } },
-    });
-    // Any app-level grant at all means they have an answer already.
-    if (existing.some((row) => row.role.level === 'app')) return;
+    if (!key) return null;
 
     const role = await tx.permRole.findFirst({
       where: { key, level: 'app', organizationId: null, disabledAt: null },
       select: { id: true, key: true, level: true, label: true, organizationId: true, isSystem: true, disabledAt: true },
     });
-    if (!role) return;
-
-    await tx.permUserRole.create({ data: { userId, roleId: role.id } });
+    return role?.id ?? null;
   }
 
   private assertPermitted(actor: PermissionContext | undefined, feature: FeatureKey): void {
