@@ -153,8 +153,15 @@ There is no `users:create` either. **This module never creates an account from
 an administrator's form.** One comes into being when somebody accepts an
 invitation and chooses their own password — `inviteUser` in
 `@kwtech/module-permissions`, behind `roles:grant_app`. So an administrator
-never types another person's credential, and the Users list's New button is a
-link to that screen.
+never types another person's credential, and the Users list's "Invite a user"
+button is a link to `/admin/invitations/new`, which that module owns.
+
+That screen refuses an address that already has an account: accepting an
+invitation REPLACES the app-level role it names, so inviting an existing account
+with the default selected would demote them. Somebody who already exists is
+edited, not invited — their platform role is a field on
+`/admin/users/:userId/edit`. Adding them to an organization is that
+organization's own page.
 
 There is deliberately **no `users:delete`**. Every membership, invitation and
 accepted-by record points at the account, and `perm_membership.userId` has no

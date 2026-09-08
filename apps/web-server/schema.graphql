@@ -102,7 +102,7 @@ type Mutation {
   createWorkspace(key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
-  inviteUser(appRoleId: String!, email: String!, organizationId: String, roleId: String): PermissionInvitationResult!
+  inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!

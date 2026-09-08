@@ -516,6 +516,50 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **Inviting somebody who already exists is refused, and the
+  platform invite drops its organization fields.**
+
+  Asked as a question — what happens if we invite an existing user? — and the
+  answer was worse than it looked. Acceptance REPLACES at both levels: an
+  invitation naming an organization role replaces the member's, and one naming
+  an app-level role replaces theirs. So inviting an existing super admin from
+  the platform screen, with its least-privileged default selected, would have
+  demoted them to `normal-user` the moment they followed the link. Same shape as
+  the bug that demoted an owner this morning, one level up, arriving by a
+  different door.
+
+  **The fix is at invite time, not at acceptance.** Replacing is what the
+  inviter asked for; the problem was that the inviter could not see what they
+  were asking. So both screens now refuse rather than warn:
+
+  - the members form refuses an address already in that organization, or already
+    holding a live invitation to it — checked against `people`, the
+    `findUsersByIds` join the roster already renders, so it costs no request
+  - the platform form refuses an address that already has an account, resolved
+    through `findUserByEmail` on a 300ms debounce, and says to edit their role
+    from the Users page instead
+
+  A failed lookup is UNKNOWN rather than "no account": a check that cannot run
+  must not stop somebody inviting.
+
+  ⚠ Both are ADVISORY and will stay that way. Resolving an address to a userId
+  means reading `auth_user`, which `module-permissions` may not (§12.12), so the
+  write path cannot enforce either. The demotion is therefore still reachable by
+  calling the mutation directly, and is documented where the write happens.
+
+  It also corrected a comment that had become false. `InviteSection` said a
+  lookup was unnecessary because inviting somebody already in "wastes an email
+  and nothing else" — true when it was written, untrue once acceptance began
+  replacing the role.
+
+  **The platform invite no longer takes an organization.** It briefly did, with
+  an organization-role picker beside it. Adding somebody to a tenant belongs on
+  that tenant's screen, beside its member list, its roles and its pending
+  invitations; a dropdown on the platform screen was a second way to do one
+  thing, in a place with none of that context. `inviteUser` the mutation lost
+  both arguments; `inviteUser` the write still carries them, because
+  `inviteMember` delegates to it.
+
 - **2026-09-08** — **Every new account gets a baseline app-level role, because
   the model has no default-on.**
 

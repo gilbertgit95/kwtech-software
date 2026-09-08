@@ -447,17 +447,66 @@ function MembersSection({
   const [inviting, setInviting] = useState(false);
 
   /**
+   * Whether the typed address is somebody already in this organization.
+   *
+   * ## Why this check appeared
+   *
+   * It used to say, here, that inviting a person who is already in "wastes an
+   * email and nothing else". That stopped being true: `acceptInvitation`
+   * REPLACES the organization role, so inviting an existing member with a role
+   * selected changes theirs the moment they follow the link — the same shape as
+   * the bug that demoted an owner, arriving by a different door.
+   *
+   * ## Local, and free
+   *
+   * The member list and the addresses behind it are already on this page:
+   * `people` is the `findUsersByIds` join the roster renders. So this costs no
+   * request, which is also why it can run on every keystroke.
+   *
+   * ⚠ ADVISORY. The write path cannot enforce it — resolving an address to a
+   * userId means reading `auth_user`, which this module may not (§12.12) — so
+   * this stops the mistake at the screen where it is made, and nowhere else.
+   */
+  const memberEmails = useMemo(() => {
+    const byUserId = new Map<string, MemberView>(detail.members.map((member) => [member.userId, member]));
+    const entries: [string, MemberView][] = [];
+    for (const [userId, person] of people) {
+      const member = byUserId.get(userId);
+      if (member) entries.push([person.email.trim().toLowerCase(), member]);
+    }
+    return new Map(entries);
+  }, [detail.members, people]);
+
+  /*
+   * Compared the way addresses are stored — see `normaliseInviteEmail`.
+   * Comparing raw strings would miss the one person whose mail client
+   * capitalises, which is precisely the person this is trying to protect.
+   */
+  const alreadyMember = memberEmails.get(email.trim().toLowerCase()) ?? null;
+
+  /** A live invitation to the same address, which the server refuses anyway. */
+  const alreadyInvited = useMemo(
+    () =>
+      detail.invitations.some(
+        (invitation) =>
+          invitation.state === 'pending' && invitation.email.trim().toLowerCase() === email.trim().toLowerCase(),
+      ),
+    [detail.invitations, email],
+  );
+
+  /**
    * One call. The server mints the link and mails it.
    *
-   * No lookup first, deliberately: whether the address has an account changes
-   * nothing here — the invitation is addressed to the MAILBOX either way, and
-   * checking would only produce two paths that must not behave differently.
-   * `acceptInvitation` is idempotent for somebody already a member, so
-   * inviting a person who is already in wastes an email and nothing else.
+   * Whether the address has an ACCOUNT still changes nothing here — the
+   * invitation is addressed to the mailbox either way. Whether it belongs to a
+   * MEMBER does, and is checked above.
    */
   const invite = useCallback(async () => {
     const address = email.trim();
     if (!address) return;
+    // Belt as well as braces: the button is disabled, and a form can still be
+    // submitted with the keyboard.
+    if (alreadyMember || alreadyInvited) return;
 
     setInviting(true);
     setInviteError(null);
@@ -480,7 +529,7 @@ function MembersSection({
     } finally {
       setInviting(false);
     }
-  }, [api, detail.id, email, onRun, roleId]);
+  }, [api, detail.id, email, onRun, roleId, alreadyMember, alreadyInvited]);
 
   return (
     <section>
@@ -540,15 +589,31 @@ function MembersSection({
           <button
             type="button"
             onClick={() => void invite()}
-            disabled={busy || inviting || !email.trim()}
+            disabled={busy || inviting || !email.trim() || alreadyMember !== null || alreadyInvited}
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
           >
             {inviting ? 'Sending…' : 'Invite member'}
           </button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          They do not need an account yet — the link takes them to sign up, and joins them here when they finish.
-        </p>
+        {alreadyMember ? (
+          /*
+           * A REFUSAL, not a warning. Accepting REPLACES the organization role,
+           * so inviting somebody already in — with a role selected — changes
+           * theirs rather than adding them.
+           */
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {email.trim()} is already a member{alreadyMember.roles[0] ? ` (${alreadyMember.roles[0].label})` : ''}.
+            Change their role in the list below instead — inviting them again would replace it.
+          </p>
+        ) : alreadyInvited ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {email.trim()} already has an invitation waiting. Revoke it below to send another.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            They do not need an account yet — the link takes them to sign up, and joins them here when they finish.
+          </p>
+        )}
         {inviteError ? <p className="mt-2 text-sm text-destructive">{inviteError}</p> : null}
       </FeatureGate>
 

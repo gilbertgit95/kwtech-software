@@ -446,9 +446,14 @@ A consuming app does not build these. It lists the module and the routes appear.
 | `/admin/features/new/manual` | `features:create` | define one by hand |
 | `/admin/features/new/import` | `features:import` | many, from a spreadsheet |
 | `/admin/features/:featureId/edit` | `features:update` | change one |
-| `/admin/roles` | `admin:access` | role editor (placeholder) |
-| `/admin/organizations` | `members:manage` | placeholder |
-| `/admin/subscriptions` | `billing:manage` | placeholder |
+| `/admin/roles` | `roles:read` | every role and what it grants |
+| `/admin/roles/new` | `roles:create` | define one |
+| `/admin/roles/:roleId/edit` | `roles:update` | change what one grants |
+| `/admin/organizations` | `organizations:read` | the tenants on the platform |
+| `/admin/organizations/:organizationId` | `members:manage` | one tenant's people, invitations and workspaces |
+| `/admin/plans` | `plans:read` | the catalogue |
+| `/admin/subscriptions` | `subscriptions:read` | who is on what |
+| `/admin/invitations/new` | `roles:grant_app` | invite somebody to the PLATFORM |
 
 The five `features:*` keys are split by RISK, not by convenience:
 
@@ -462,6 +467,50 @@ The five `features:*` keys are split by RISK, not by convenience:
   nobody holds; import does the same at very different scale; update changes what
   an EXISTING key means under everyone already holding it. Keeping update with
   create would make the safe right imply the risky one.
+
+## Invitations — two offers, one row
+
+`PermInvitation` covers both, which is why `organizationId` is nullable and
+`appRoleId` sits beside it. A second table would have duplicated the token, the
+expiry, the revocation, the email and the accept page for a row differing in one
+column.
+
+| offer | written from | key | grants on acceptance |
+|---|---|---|---|
+| **organization** | the tenant's own page | `members:manage` | a membership, and the organization role if one was named |
+| **platform** | `/admin/invitations/new` | `roles:grant_app` | an app-level role, and no membership |
+
+`inviteUser` checks the guards per FIELD rather than per method — `members:manage`
+when an organization is named, `roles:grant_app` when an app role is — so a
+tenant administrator never needs platform rights to invite a colleague. The
+platform mutation deliberately accepts no organization: adding somebody to a
+tenant is that tenant's screen, next to its member list.
+
+**The role rides on the invitation.** The invited person may not exist yet, so
+the role cannot be granted to them — it is chosen when the row is written and
+applied when `acceptInvitation` finally has a userId. Exactly what `roleId`
+already did for the organization role, one level up.
+
+**Acceptance REPLACES, at both levels.** An invitation naming an organization
+role replaces the member's; one naming an app role replaces theirs. That is what
+the inviter asked for — and it is why both invite screens refuse an address that
+already exists:
+
+- the members form refuses an address already in that organization, or already
+  holding a live invitation to it
+- the platform form refuses an address that already has an account, and says to
+  edit their role from the Users page instead
+
+⚠ Both checks are **advisory**. Resolving an address to a user means reading
+`auth_user`, which this module may not (PLAN §12.12), so the write path cannot
+enforce either — they stop the mistake at the screen where it is made and
+nowhere else.
+
+**`defaultAppRoleKey` fills the hole.** The model is additive, so there is no
+default-on: an account with no app-level role holds nothing at all and cannot
+even edit its own profile. Set the option and `acceptInvitation` grants that
+role when the invitation named none. It never overwrites an existing app-level
+role, so a super admin accepting an organization invitation is not demoted.
 
 ### The write screens produce registry source, not rows
 

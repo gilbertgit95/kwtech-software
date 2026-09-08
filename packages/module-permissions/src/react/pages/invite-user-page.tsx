@@ -10,7 +10,7 @@ import {
 import { FEATURE } from '../../feature-keys.js';
 import {
   createPermissionsClient,
-  type OrganizationView,
+  type FoundUser,
   type PermissionsClient,
   type RoleView,
 } from '../permissions-client.js';
@@ -52,12 +52,30 @@ import { AdminPage } from './admin-page.js';
  * not hold. That is what stops "invite an address I own as super-admin" being a
  * way to grant yourself anything.
  *
- * ## The organization is OPTIONAL
+ * ## There is no organization here
  *
- * Somebody can belong to the platform and to no tenant — `loadContext` is
- * explicitly built for it. Choosing one adds a membership and reveals the
- * organization-role picker beside it, which is the members screen's field
- * appearing where it applies.
+ * Somebody invited from this screen belongs to the platform and to no tenant,
+ * which `loadContext` is explicitly built for. Adding them to an organization
+ * is that organization's own screen, next to its member list, its roles and its
+ * pending invitations — a dropdown here would be a second way to do it with
+ * none of that context, and two ways to do one thing is how the two drift.
+ *
+ * ## An address that already has an account is REFUSED
+ *
+ * Not warned about — refused, with the button disabled. Accepting an invitation
+ * REPLACES the app-level role it names, so inviting an existing account and
+ * leaving the default in place would demote them to the least-privileged role
+ * the moment they clicked the link. That is the same shape as the bug that
+ * demoted an owner through an organization invitation, one level up.
+ *
+ * Somebody who already exists is edited, not invited: their platform role is a
+ * field on `/admin/users/:userId/edit`.
+ *
+ * ⚠ ADVISORY, and it has to be. The check reads `auth_user` through the
+ * app-provided `findUserByEmail`, and this module cannot enforce it — the write
+ * path may not read that table at all (§12.12). A caller reaching the mutation
+ * directly is not stopped by this, which is why the demotion is also described
+ * where the write happens.
  */
 export function InviteUserPage({
   client,
@@ -73,23 +91,22 @@ export function InviteUserPage({
   const [draft, setDraft] = useState<InvitationDraft>({ ...EMPTY_INVITATION_DRAFT, organizationId: '', appRoleId: '' });
   const [errors, setErrors] = useState<InvitationDraftErrors>({});
   const [roles, setRoles] = useState<RoleView[] | null>(null);
-  const [organizations, setOrganizations] = useState<OrganizationView[] | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  /*
+   * undefined while unknown — before anything is typed, mid-lookup, or when the
+   * lookup itself failed. Only a definite `FoundUser` blocks: a check that
+   * cannot run must not stop somebody inviting.
+   */
+  const [existing, setExisting] = useState<FoundUser | null | undefined>(undefined);
   const [sent, setSent] = useState<{ email: string; delivered: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    /*
-     * Both, together. An app that has no organizations yet is a normal state —
-     * the picker simply offers none — so a failure to read them must not stop
-     * the roles arriving, which are what the form cannot work without.
-     */
-    Promise.all([api.listRoles(null), api.listOrganizations().catch(() => [])])
-      .then(([roleList, organizationList]) => {
-        if (cancelled) return;
-        setRoles(roleList);
-        setOrganizations(organizationList);
+    api
+      .listRoles(null)
+      .then((roleList) => {
+        if (!cancelled) setRoles(roleList);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setFailure(cause instanceof Error ? cause.message : 'Could not load the roles.');
@@ -98,6 +115,37 @@ export function InviteUserPage({
       cancelled = true;
     };
   }, [api]);
+
+  /*
+   * DEBOUNCED, at the same 300ms the users list uses. One request per pause
+   * rather than one per keystroke, and the answer is discarded if the address
+   * changed while it was in flight — otherwise a slow reply for a half-typed
+   * address lands on top of a fast one for the finished address.
+   */
+  useEffect(() => {
+    const address = draft.email.trim();
+    if (!address.includes('@')) {
+      setExisting(undefined);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .findUserByEmail(address)
+        .then((found) => {
+          if (!cancelled) setExisting(found);
+        })
+        // A failed lookup is UNKNOWN, not "no account". The app may not define
+        // this operation at all — see the note on the client.
+        .catch(() => {
+          if (!cancelled) setExisting(undefined);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [api, draft.email]);
 
   /**
    * What the inviter may actually hand out: app level, enabled, and carrying
@@ -119,11 +167,6 @@ export function InviteUserPage({
     [roles, held],
   );
 
-  const organizationRoles = useMemo(
-    () => (roles ?? []).filter((role) => role.level === 'organization' && !role.disabled),
-    [roles],
-  );
-
   // Preselected once the list is known, and never afterwards: re-running it
   // would fight somebody who deliberately chose a different role.
   useEffect(() => {
@@ -141,20 +184,17 @@ export function InviteUserPage({
     const found = validateInvitationDraft(draft, {
       requireAppRole: true,
       appRoleIds: appRoles.map((role) => role.id),
-      roleIds: organizationRoles.map((role) => role.id),
     });
     setErrors(found);
     if (Object.keys(found).length > 0) return;
+    // Belt as well as braces: the button is disabled, and a form can still be
+    // submitted with the keyboard while a lookup is resolving.
+    if (existing) return;
 
     setSaving(true);
     setFailure(null);
     try {
-      const result = await api.inviteUser({
-        email: draft.email.trim(),
-        appRoleId: draft.appRoleId ?? '',
-        organizationId: draft.organizationId || null,
-        roleId: draft.roleId || null,
-      });
+      const result = await api.inviteUser({ email: draft.email.trim(), appRoleId: draft.appRoleId ?? '' });
       /*
        * `delivered` is reported rather than assumed. The row exists either way
        * — the module writes it before it sends — so a mail outage must not read
@@ -199,6 +239,21 @@ export function InviteUserPage({
         </p>
       ) : null}
 
+      {existing ? (
+        /*
+         * A REFUSAL, not a warning, and it says where to go instead. Accepting
+         * an invitation replaces the app-level role it names, so inviting an
+         * existing account with the default selected would demote them the
+         * moment they clicked the link.
+         */
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+          <strong>{existing.email}</strong> already has an account
+          {existing.displayName ? ` (${existing.displayName})` : ''}. Somebody who already exists is edited rather than
+          invited — change their platform role from the Users page. To add them to an organization, use that
+          organization's own page.
+        </p>
+      ) : null}
+
       <form onSubmit={(event) => void submit(event)} className="rounded-md border border-border p-4" noValidate>
         <Field id="invite-email" label="Email address" error={errors.email}>
           <input
@@ -235,55 +290,10 @@ export function InviteUserPage({
           </select>
         </Field>
 
-        <Field
-          id="invite-organization"
-          label="Organization (optional)"
-          hint="Leave empty to invite them to the platform only. They can be added to one later."
-        >
-          <select
-            id="invite-organization"
-            value={draft.organizationId ?? ''}
-            onChange={(event) => {
-              set('organizationId', event.target.value);
-              // The organization role belongs to the organization that was just
-              // abandoned. Keeping it would send a role from another tenant.
-              if (!event.target.value) set('roleId', '');
-            }}
-            className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-foreground"
-          >
-            <option value="">No organization</option>
-            {(organizations ?? []).map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        {/* Revealed by the choice above, because a role in no organization is a
-            contradiction the validator also refuses. */}
-        {draft.organizationId ? (
-          <Field id="invite-org-role" label="Role in that organization (optional)" error={errors.roleId}>
-            <select
-              id="invite-org-role"
-              value={draft.roleId}
-              onChange={(event) => set('roleId', event.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-foreground"
-            >
-              <option value="">No role</option>
-              {organizationRoles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        ) : null}
-
         <div className="mt-5 flex items-center gap-2">
           <button
             type="submit"
-            disabled={saving || appRoles.length === 0}
+            disabled={saving || appRoles.length === 0 || Boolean(existing)}
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
           >
             {saving ? 'Sending…' : 'Send invitation'}

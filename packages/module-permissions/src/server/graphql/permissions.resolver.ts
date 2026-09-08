@@ -312,21 +312,21 @@ export class PermissionsResolver {
   }
 
   /**
-   * Invites an address to the PLATFORM, optionally into an organization too.
+   * Invites an address to the PLATFORM — an app-level role, and no tenant.
    *
-   * ## Why this is a second mutation and not more arguments on the first
+   * ## Two mutations, because they are two offers
    *
-   * `inviteMember` above requires an organization and takes `members:manage`;
-   * that is the tenant flow and nothing about it changes. This one may name no
-   * organization at all, and its app-level role is the part that needs
-   * `roles:grant_app` — a key a tenant administrator must not need in order to
-   * invite a colleague.
+   * `inviteMember` above invites into an ORGANIZATION and takes
+   * `members:manage`; that is the tenant flow and nothing about it changed.
+   * This one grants a platform role and names no organization at all, which is
+   * why it takes `roles:grant_app` — a key a tenant administrator must not need
+   * in order to invite a colleague.
    *
-   * Both write the same row through the same method. The DECLARED key here is
-   * the app-role one because that is the argument this mutation exists for; the
-   * organization half is checked inside `inviteUser`, against the actor, so an
-   * administrator without `members:manage` is refused before anything is
-   * written rather than after.
+   * It deliberately does NOT accept an organization, even though the write
+   * beneath it can carry one. Adding somebody to a tenant is that tenant's
+   * screen, next to its member list and its own invitations; an "organization"
+   * dropdown on the platform screen would be a second way to do it, in a place
+   * with none of that context.
    */
   @RequireFeature(FEATURE.rolesGrantApp)
   @Mutation(() => PermissionInvitationResultType, { name: 'inviteUser' })
@@ -334,16 +334,9 @@ export class PermissionsResolver {
     @Context() gqlContext: { req?: unknown },
     @Args('email') email: string,
     @Args('appRoleId') appRoleId: string,
-    @Args('organizationId', { type: () => String, nullable: true }) organizationId?: string | null,
-    @Args('roleId', { type: () => String, nullable: true }) roleId?: string | null,
   ): Promise<PermissionInvitationResultType> {
     const actor = await this.requireActor(gqlContext.req);
-    const result = await this.writes.inviteUser(actor, {
-      email,
-      appRoleId,
-      roleId: roleId ?? '',
-      ...(organizationId ? { organizationId } : {}),
-    });
+    const result = await this.writes.inviteUser(actor, { email, appRoleId, roleId: '' });
     return { invitationId: result.invitationId, delivered: result.delivered };
   }
 
