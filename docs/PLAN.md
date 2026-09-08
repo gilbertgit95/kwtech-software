@@ -516,6 +516,39 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **`graphql-ws` moves behind its own subpath, because an
+  optional peer a barrel imports is not optional.**
+
+  Found by asking whether the packages declare peer dependencies. They do,
+  extensively, and every app satisfies exactly the peers for the entrypoints it
+  uses — except one. `graphql-ws` is an optional peer of `module-permissions`,
+  and `plans-page.tsx` imported `PLAN_CHANGED` from the module that opens the
+  socket. A string. That one value put `graphql-ws` on the require graph of the
+  `/react` barrel, which `apps/web-app` imports in three places while declaring
+  no such dependency.
+
+  It worked only by accident of the workspace: the module resolves it from its
+  own `node_modules`, where it sits as a DEVDEPENDENCY. Published to a registry,
+  devDependencies are not installed and the unmet optional peer would fail to
+  resolve — for a feature the consumer may never use.
+
+  **The contract splits from the client.** `react/realtime-contract.ts` holds
+  the option and connection shapes, the ticket path and the subscription
+  documents, and is exported from `/react`;
+  `@kwtech/module-permissions/react/realtime` holds
+  `createRealtimeConnection`, the only code in the package that imports the
+  library. A page can name a document and TYPE a connection it was handed
+  without installing a WebSocket client.
+
+  Verified by walking the built require graph: 48 files reachable from the
+  `/react` barrel, none importing `graphql-ws`; the subpath reaches two more,
+  one of which does.
+
+  Nothing in `apps/web-app` uses realtime at all today — every data request in
+  the app is an HTTP POST to `/api/auth/graphql` — so the app needed no new
+  dependency and the alternative fix, declaring `graphql-ws` there, would have
+  made every consumer carry a socket client to render a roles table.
+
 - **2026-09-08** — **Inviting somebody who already exists is refused, and the
   platform invite drops its organization fields.**
 

@@ -6,7 +6,7 @@ import { LIMIT_REGISTRY } from '../../domain/limits.js';
 import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
 import { createPermissionsClient, type PermissionsClient, type PlanView } from '../permissions-client.js';
-import { PLAN_CHANGED, type RealtimeConnection } from '../permissions-realtime.js';
+import { PLAN_CHANGED, type RealtimeConnection } from '../realtime-contract.js';
 import { AdminPage } from './admin-page.js';
 
 /**

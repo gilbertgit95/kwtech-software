@@ -68,13 +68,19 @@ export {
   type WriteResult,
 } from './permissions-client.js';
 export { PermissionsProvider, type PermissionsProviderProps, PermissionsReactContext } from './permissions-provider.js';
+/*
+ * The realtime CONTRACT only. `createRealtimeConnection` is deliberately absent:
+ * it is the one function that imports `graphql-ws`, an optional peer, and a
+ * barrel that re-exported it would make every consumer resolve a WebSocket
+ * client to render a roles table. It lives at
+ * `@kwtech/module-permissions/react/realtime`.
+ */
 export {
-  createRealtimeConnection,
   DEFAULT_WS_TICKET_PATH,
   PLAN_CHANGED,
   type RealtimeConnection,
   type RealtimeOptions,
-} from './permissions-realtime.js';
+} from './realtime-contract.js';
 export {
   useCanAccessWorkspace,
   useFeatureDecision,

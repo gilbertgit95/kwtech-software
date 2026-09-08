@@ -14,12 +14,27 @@ This is the template for every `module-*` package. See
 |---|---|---|
 | `src/` | `@kwtech/module-permissions` | types, feature registry, decision functions, `composeContext` — **zero dependencies** |
 | `src/server/` | `@kwtech/module-permissions/server` | `PermissionsModule`, `FeatureGuard`, `@RequireFeature`, `PermissionsService`, GraphQL object types + resolver |
-| `src/react/` | `@kwtech/module-permissions/react` | `PermissionsProvider`, `useHasFeature`, `<FeatureGate>` |
+| `src/react/` | `@kwtech/module-permissions/react` | `PermissionsProvider`, `useHasFeature`, `<FeatureGate>`, the admin pages |
+| `src/react/realtime.ts` | `@kwtech/module-permissions/react/realtime` | `createRealtimeConnection` — the ONLY code importing `graphql-ws` |
 | `src/graphql/` | `@kwtech/module-permissions/graphql` | client operation documents |
 | `prisma/` | `@kwtech/module-permissions/prisma` | the module's schema fragment |
 
 Framework packages are **optional peers**, so a server app never installs React
 and a browser bundle never pulls Nest or Prisma.
+
+⚠ An optional peer stops being optional the moment anything reachable from a
+barrel imports it. `graphql-ws` was in exactly that position: `plans-page.tsx`
+imported `PLAN_CHANGED` — a string — from the module that opens the socket, so
+every consumer of `/react` resolved a WebSocket client whether or not they ever
+subscribed. It only worked because this package carries `graphql-ws` as a
+devDependency inside a pnpm workspace; a published consumer would have failed to
+resolve it.
+
+So the realtime CONTRACT (the option and connection shapes, the ticket path, the
+subscription documents) lives in `react/realtime-contract.ts` and is exported
+from `/react`, while `createRealtimeConnection` sits behind its own subpath. A
+page can name a document and type a connection it was handed without installing
+anything.
 
 ## Consuming it — server
 
