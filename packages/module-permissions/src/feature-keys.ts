@@ -391,6 +391,12 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
       { surface: 'ui_route', identifier: '/admin/organizations' },
       { surface: 'graphql_operation', identifier: 'Query.permissionOrganizations' },
       { surface: 'graphql_operation', identifier: 'Query.permissionOrganizationDetail' },
+      /*
+       * The same disclosure from the other direction — which tenants one
+       * PERSON is inside. Bound here rather than to `users:read` because the
+       * fact is about the organizations, not about the account.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.permissionUserOrganizations' },
     ],
   },
   {

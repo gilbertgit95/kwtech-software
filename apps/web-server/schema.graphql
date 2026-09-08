@@ -326,6 +326,7 @@ type Query {
   permissionRoles(organizationId: String): [PermissionRoleDetail!]!
   permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
   permissionUserAppRoles(userIds: [String!]!): [UserAppRole!]!
+  permissionUserOrganizations(userIds: [String!]!): [UserOrganization!]!
   session: SessionInfo
   viewer: Viewer
 }
@@ -378,6 +379,15 @@ type UserAppRole {
   roleId: String!
   roleKey: String!
   roleLabel: String!
+  userId: String!
+}
+
+type UserOrganization {
+  organizationId: String!
+  organizationKey: String!
+  organizationName: String!
+  roleKey: String
+  roleLabel: String
   userId: String!
 }
 

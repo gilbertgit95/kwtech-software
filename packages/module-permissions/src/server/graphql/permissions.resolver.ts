@@ -33,6 +33,7 @@ import {
   SubscriptionDraftInput,
   toPermissionContextType,
   UserAppRoleType,
+  UserOrganizationType,
 } from './permission.types.js';
 
 /**
@@ -165,6 +166,26 @@ export class PermissionsResolver {
   @Query(() => [UserAppRoleType], { name: 'permissionUserAppRoles' })
   async userAppRoles(@Args('userIds', { type: () => [String] }) userIds: string[]): Promise<UserAppRoleType[]> {
     return this.permissions.listAppRolesForUsers(userIds);
+  }
+
+  /**
+   * Which organizations these people belong to, and as what.
+   *
+   * `organizations:read`, not `users:read` or `roles:read`: this discloses
+   * TENANT membership — who is inside which customer — which is the same fact
+   * the organization list and detail screens are guarded on. Somebody who may
+   * administer accounts has not thereby been told which companies each person
+   * works for.
+   *
+   * The ids come from a list the caller could already see, so batching
+   * discloses nothing new about who exists.
+   */
+  @RequireFeature(FEATURE.organizationsRead)
+  @Query(() => [UserOrganizationType], { name: 'permissionUserOrganizations' })
+  async userOrganizations(
+    @Args('userIds', { type: () => [String] }) userIds: string[],
+  ): Promise<UserOrganizationType[]> {
+    return this.permissions.listOrganizationsForUsers(userIds);
   }
 
   @RequireFeature(FEATURE.rolesCreate)

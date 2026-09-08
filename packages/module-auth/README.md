@@ -243,10 +243,13 @@ something the API will refuse. The arrangement `role-draft.ts` uses, for the
 same reason. It has no address or password field: the address is the identifier
 the invitation set, and credentials are changed by sending a reset.
 
-**The app-level role shown on the grid and edited on that form is not this
-module's.** It comes from `permissionUserAppRoles` and `assignAppRole` in
-`module-permissions`, named by convention the way that module's own client names
-the app-provided `findUserByEmail`. The reads fail soft — an app composing this
+**The app-level role and the organizations shown on these screens are not this
+module's.** They come from `permissionUserAppRoles`, `permissionUserOrganizations`
+and `assignAppRole` in `module-permissions`, named by convention the way that
+module's own client names the app-provided `findUserByEmail`. Note the
+organizations read is guarded by `organizations:read` — a different key from the
+one that opens the users screens — so a legitimate reader may see the account
+and not where it belongs. The reads fail soft — an app composing this
 module without a permissions module gets an empty column rather than a broken
 page — and the write does not, because a failed grant reporting success would be
 a lie about somebody's permissions.

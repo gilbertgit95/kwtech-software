@@ -8,6 +8,7 @@ import {
   type AdminUserDetail,
   type AdminUserSession,
   createUsersAdminClient,
+  type UserOrganization,
   type UsersAdminClient,
 } from './users-admin-client.js';
 
@@ -74,6 +75,13 @@ export function UserDetailPage({
    * key of their own again this is the one line that changes.
    */
   const mayReadSessions = useHoldsFeature(AUTH_FEATURE.usersRead);
+  /*
+   * Where this person belongs, from `module-permissions`. Undefined until the
+   * answer arrives; an empty ARRAY is a real answer — a platform-only account,
+   * which is what a platform invitation produces — and must not be drawn as
+   * "still loading" forever.
+   */
+  const [organizations, setOrganizations] = useState<UserOrganization[] | undefined>(undefined);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -93,6 +101,16 @@ export function UserDetailPage({
   }, [api, userId]);
 
   useEffect(load, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.listUserOrganizations([userId]).then((rows) => {
+      if (!cancelled) setOrganizations(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, userId]);
 
   /*
    * Sessions are a SECOND query behind a second key, so the page is useful to
@@ -198,6 +216,8 @@ export function UserDetailPage({
         <Fact label="Username" value={user.username ?? '—'} />
       </dl>
 
+      <OrganizationsSection organizations={organizations} />
+
       {mayReadSessions ? <SessionsSection sessions={sessions} /> : null}
 
       <section className="rounded-md border border-border p-4">
@@ -273,6 +293,66 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="text-foreground">{value}</dd>
     </div>
+  );
+}
+
+/**
+ * Where this person belongs.
+ *
+ * ## Why it is here at all
+ *
+ * The page could say what somebody may do across the PLATFORM and nothing about
+ * which customers they are inside — usually the first question about an
+ * account. The count alone would only prompt "which ones", so this names them
+ * and the role held in each.
+ *
+ * ## Absent, rather than empty, for a reader who may not see it
+ *
+ * The data is guarded by `organizations:read`, a different key from the one
+ * that opens this page, and the client returns an empty list when it is
+ * refused. That makes "no organizations" and "not allowed to know"
+ * indistinguishable here — so the panel says the honest thing for the common
+ * case and does not assert the other.
+ */
+function OrganizationsSection({ organizations }: { organizations: UserOrganization[] | undefined }) {
+  if (organizations === undefined) {
+    return (
+      <section className="rounded-md border border-border p-4">
+        <h2 className="text-sm font-semibold text-foreground">Belongs to</h2>
+        <div className="mt-3 h-12 animate-pulse rounded-md bg-muted" />
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-md border border-border p-4">
+      <h2 className="text-sm font-semibold text-foreground">Belongs to</h2>
+      {organizations.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No organizations. A platform account holds a role and no membership, which is what an invitation from the
+          Users page creates.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2 text-sm">
+          {organizations.map((membership) => (
+            <li
+              key={membership.organizationId}
+              className="flex flex-wrap justify-between gap-2 border-b border-border pb-2 last:border-0"
+            >
+              <a
+                href={`/admin/organizations/${encodeURIComponent(membership.organizationId)}`}
+                className="text-foreground hover:underline"
+              >
+                {membership.organizationName}
+              </a>
+              {/* An em dash for a member holding no role, which is a real
+                  membership rather than a broken one. */}
+              <span className="text-muted-foreground">{membership.roleLabel ?? '—'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

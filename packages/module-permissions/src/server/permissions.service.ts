@@ -92,6 +92,65 @@ export class PermissionsService {
       }));
   }
 
+  /**
+   * Which organizations each of these people belongs to, and as what.
+   *
+   * ## Why it exists
+   *
+   * The user administration screens could say what somebody may do across the
+   * PLATFORM and nothing about where they belong — which is usually the first
+   * question about an account. `listOrganizations` answers the opposite
+   * question (every tenant) and `organizationDetail` answers it one tenant at a
+   * time; neither goes from a person to their memberships.
+   *
+   * ## By ID, active only, capped
+   *
+   * The ids come from a list the caller was already allowed to see, so batching
+   * discloses nothing new — the same argument `listAppRolesForUsers` and the
+   * app's `findUsersByIds` make. Suspended memberships are excluded because the
+   * question is where somebody belongs NOW, and a screen counting a suspended
+   * one would be wrong in the direction that matters.
+   *
+   * Somebody in no organization simply has no rows. That is a normal and
+   * increasingly common state: a platform invitation names no tenant at all.
+   */
+  async listOrganizationsForUsers(userIds: readonly string[]) {
+    const unique = [...new Set(userIds.filter((id) => typeof id === 'string' && id.length > 0))].slice(
+      0,
+      MAX_USER_ROLE_LOOKUP,
+    );
+    if (unique.length === 0) return [];
+
+    const rows = await this.prisma.permMembership.findMany({
+      where: { userId: { in: unique }, status: 'active' },
+      include: {
+        organization: { select: { id: true, key: true, name: true } },
+        roles: { where: { role: { disabledAt: null } }, include: { role: { select: { key: true, label: true } } } },
+      },
+    });
+
+    return (
+      rows
+        .map((row) => ({
+          userId: row.userId,
+          organizationId: row.organization.id,
+          organizationKey: row.organization.key,
+          organizationName: row.organization.name,
+          /*
+           * At most one, enforced by `@@unique([membershipId])` on
+           * PermMembershipRole — a member is one thing in an organization. Read
+           * as a list because that is the shape the relation returns, and
+           * flattened here so a screen does not have to know the constraint.
+           */
+          roleKey: row.roles[0]?.role.key ?? null,
+          roleLabel: row.roles[0]?.role.label ?? null,
+        }))
+        // Stable and readable: a person's organizations in name order, so the
+        // list does not reshuffle between renders.
+        .sort((a, b) => a.organizationName.localeCompare(b.organizationName))
+    );
+  }
+
   async listRoles(organizationId: string | null = null) {
     const rows = await this.prisma.permRole.findMany({
       where: { organizationId },

@@ -64,6 +64,21 @@ export interface UserAppRole {
   roleIcon: string | null;
 }
 
+/**
+ * One organization a person belongs to, as `module-permissions` reports it.
+ *
+ * Shaped here rather than imported, for the reason every type in this file is:
+ * these two modules do not import each other.
+ */
+export interface UserOrganization {
+  userId: string;
+  organizationId: string;
+  organizationKey: string;
+  organizationName: string;
+  roleKey: string | null;
+  roleLabel: string | null;
+}
+
 /** An app-level role this administrator may hand out. */
 export interface AssignableAppRole {
   id: string;
@@ -109,6 +124,15 @@ export interface UsersAdminClient {
 
   /** The app-level role each of these people holds. Absent for those with none. */
   listUserAppRoles(userIds: readonly string[]): Promise<UserAppRole[]>;
+  /**
+   * Which organizations each of these people belongs to, and as what.
+   *
+   * Guarded by `organizations:read` on the far side, which is a DIFFERENT key
+   * from the one that opens the users screens — so this is the caller most
+   * likely to come back empty for a legitimate reader. Empty is a normal
+   * answer either way: a platform invitation names no tenant at all.
+   */
+  listUserOrganizations(userIds: readonly string[]): Promise<UserOrganization[]>;
   /** Every app-level role that is not disabled, for a picker. */
   listAssignableAppRoles(): Promise<AssignableAppRole[]>;
   /** Sets one person's app-level role, replacing whatever they held. */
@@ -219,6 +243,29 @@ export function createUsersAdminClient(auth: AuthClient = createAuthClient()): U
          * Swallowed on purpose — see the note on the interface. No permissions
          * module, or a reader without `roles:read`, means the column has
          * nothing to show; neither is a reason for the accounts list to fail.
+         */
+        return [];
+      }
+    },
+
+    async listUserOrganizations(userIds) {
+      if (userIds.length === 0) return [];
+      try {
+        const data = await auth.graphql<{ permissionUserOrganizations: UserOrganization[] }>(
+          `query UserOrganizations($userIds: [String!]!) {
+             permissionUserOrganizations(userIds: $userIds) {
+               userId organizationId organizationKey organizationName roleKey roleLabel
+             }
+           }`,
+          { userIds: [...userIds] },
+        );
+        return data.permissionUserOrganizations;
+      } catch {
+        /*
+         * Swallowed like the other reads. A reader holding `users:read` but not
+         * `organizations:read` is a legitimate configuration, and the honest
+         * result for them is a screen without that panel rather than an error
+         * about a key they were never meant to hold.
          */
         return [];
       }

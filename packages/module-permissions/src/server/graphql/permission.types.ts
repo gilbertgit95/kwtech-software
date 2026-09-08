@@ -884,3 +884,33 @@ export class UserAppRoleType {
   @Field(() => String, { nullable: true })
   roleIcon!: string | null;
 }
+
+/**
+ * One organization a person belongs to, for a screen that starts from the
+ * PERSON rather than from the tenant.
+ *
+ * Its own type rather than reusing `PermissionOrganization`, because that one
+ * describes an organization and this describes a MEMBERSHIP — the role is the
+ * point, and an organization has no role.
+ */
+@ObjectType('UserOrganization')
+export class UserOrganizationType {
+  @Field()
+  userId!: string;
+
+  @Field()
+  organizationId!: string;
+
+  @Field()
+  organizationKey!: string;
+
+  @Field()
+  organizationName!: string;
+
+  /** Null for a member holding no role, which is a legitimate membership. */
+  @Field(() => String, { nullable: true })
+  roleKey!: string | null;
+
+  @Field(() => String, { nullable: true })
+  roleLabel!: string | null;
+}

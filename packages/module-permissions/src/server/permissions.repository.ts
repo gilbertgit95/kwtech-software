@@ -309,6 +309,30 @@ export interface PermissionsPrismaClient {
   };
   permMembership: {
     count(args: { where: { organizationId?: string; userId?: string; status: 'active' } }): Promise<number>;
+    /**
+     * Where a set of people belong, for the user administration screens.
+     *
+     * By ID and capped by the caller, like every other batch read here: the ids
+     * come from a list the caller was already allowed to see, so this discloses
+     * nothing new about who exists.
+     *
+     * ACTIVE only. A suspended membership is not somewhere a person currently
+     * belongs, and a screen answering "which organizations is this account in"
+     * would be wrong to count one.
+     */
+    findMany(args: {
+      where: { userId: { in: string[] }; status: 'active' };
+      include: {
+        organization: { select: { id: true; key: true; name: true } };
+        roles: { where: { role: { disabledAt: null } }; include: { role: { select: { key: true; label: true } } } };
+      };
+    }): Promise<
+      {
+        userId: string;
+        organization: { id: string; key: string; name: string };
+        roles: { role: { key: string; label: string } }[];
+      }[]
+    >;
     findFirst(args: {
       where: { userId: string; organizationId?: string; status?: 'active' };
       include: {

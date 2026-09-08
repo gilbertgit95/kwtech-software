@@ -63,6 +63,9 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
       create: async () => ({}),
     },
     permMembership: {
+      // The user administration read. No test here exercises it — the interface
+      // is structural, so a stub is what keeps the fake honest about its shape.
+      findMany: async () => [],
       findFirst: async (args) => {
         calls.membership.push(args);
         return db.membership ?? null;

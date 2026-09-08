@@ -120,6 +120,14 @@ export function UsersPage({
    * is empty rather than the page broken if that request is refused.
    */
   const [appRoles, setAppRoles] = useState<Map<string, UserAppRole>>(new Map());
+  /*
+   * How many organizations each person is in, counted from the same batched
+   * read the detail page uses for names. The interesting value in this column
+   * is ZERO — a platform-only account — which is why it is worth a column at
+   * all; the number itself only prompts "which ones", and that is the detail
+   * page's answer.
+   */
+  const [organizationCounts, setOrganizationCounts] = useState<Map<string, number>>(new Map());
 
   /*
    * The search is DEBOUNCED, and the timer is the reason this page does not
@@ -173,8 +181,23 @@ export function UsersPage({
       return;
     }
     let cancelled = false;
-    api.listUserAppRoles(rows.map((row) => row.id)).then((found) => {
-      if (!cancelled) setAppRoles(new Map(found.map((entry) => [entry.userId, entry])));
+    const ids = rows.map((row) => row.id);
+
+    /*
+     * Two reads, together, because they are guarded by DIFFERENT keys —
+     * `roles:read` and `organizations:read` — and a reader may hold one and not
+     * the other. `Promise.all` over two calls that each fail soft means either
+     * column can be empty without taking the other down with it.
+     */
+    void Promise.all([api.listUserAppRoles(ids), api.listUserOrganizations(ids)]).then(([roles, memberships]) => {
+      if (cancelled) return;
+      setAppRoles(new Map(roles.map((entry) => [entry.userId, entry])));
+
+      const counts = new Map<string, number>();
+      for (const membership of memberships) {
+        counts.set(membership.userId, (counts.get(membership.userId) ?? 0) + 1);
+      }
+      setOrganizationCounts(counts);
     });
     return () => {
       cancelled = true;
@@ -239,6 +262,7 @@ export function UsersPage({
               <th className="px-3 py-2 font-medium">Account</th>
               <th className="px-3 py-2 font-medium">Username</th>
               <th className="px-3 py-2 font-medium">Platform role</th>
+              <th className="px-3 py-2 font-medium">Organizations</th>
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="px-3 py-2 font-medium">Last signed in</th>
               <th className="px-3 py-2 font-medium">Created</th>
@@ -280,6 +304,18 @@ export function UsersPage({
                   {appRoles.get(row.id)?.roleLabel ?? <span className="text-muted-foreground">—</span>}
                 </td>
                 <td className="px-3 py-2">
+                  {/*
+                    "Platform only" rather than "0": the zero is the meaningful
+                    value here — an account with a role and no tenant — and a
+                    bare digit reads as missing data rather than as a state.
+                  */}
+                  {organizationCounts.get(row.id) ? (
+                    <span className="text-foreground">{organizationCounts.get(row.id)}</span>
+                  ) : (
+                    <span className="text-muted-foreground">Platform only</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
                   <StatusPill status={row.status} />
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{formatDate(row.lastLoginAt)}</td>
@@ -304,7 +340,7 @@ export function UsersPage({
             ))}
             {rows?.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                   {term || status ? 'No accounts match that.' : 'No accounts yet.'}
                 </td>
               </tr>

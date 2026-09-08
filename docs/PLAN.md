@@ -517,6 +517,32 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **The user screens say where somebody belongs, not only what
+  they may do.**
+
+  The account pages could report the PLATFORM role and nothing about which
+  customers a person is inside — usually the first question about an account.
+  Neither existing read answers it: `listOrganizations` returns every tenant and
+  `organizationDetail` goes tenant-to-members. `listOrganizationsForUsers` goes
+  the other way, batched by id, active memberships only.
+
+  **The names go on the detail page; the grid gets the count.** A count alone
+  only prompts "which ones", and answering that needs the detail page anyway —
+  so the panel names each organization and the role held in it, and the column
+  exists mainly for its ZERO. That zero is drawn as "Platform only" rather than
+  as `0`, because a bare digit reads as missing data where the state is a real
+  and now-common one: a platform invitation names no tenant at all.
+
+  **Guarded by `organizations:read`, not `users:read`.** It discloses tenant
+  membership — who is inside which customer — which is the fact the organization
+  screens are already guarded on. Somebody who may administer accounts has not
+  thereby been told which companies each person works for.
+
+  ⚠ The consequence is that "no organizations" and "not allowed to know" are
+  indistinguishable in the browser, because the client fails soft to an empty
+  list like every other convention-named call. The panel therefore states the
+  common case plainly and does not assert the other.
+
 - **2026-09-08** — **An invitation can be refused, without an account and
   without signing in.**
 
