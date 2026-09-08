@@ -56,7 +56,14 @@ enum PermMembershipStatus {
 enum PermInvitationStatus {
   pending
   accepted
+  /// Withdrawn by the SENDER. Distinct from `declined`, which is the invited
+  /// person saying no — "who nearly let them in" and "who was asked and
+  /// refused" are different facts, and one status for both would lose the
+  /// difference exactly when somebody asks why they never joined.
   revoked
+  /// Refused by the RECIPIENT. A dead end like the two above: inviting again is
+  /// a new invitation, with a new token and a new expiry.
+  declined
 }
 
 enum PermSubscriptionStatus {
@@ -429,6 +436,11 @@ model PermInvitation {
   /// address can be claimed by whoever reads the mailbox.
   acceptedByUserId String?
   revokedAt  DateTime?
+  /// When the recipient refused. Its own column beside `acceptedAt` and
+  /// `revokedAt` rather than a shared "closedAt", because the three answer
+  /// different questions and a screen showing "declined 3 days ago" cannot be
+  /// built from a timestamp that might mean any of them.
+  declinedAt DateTime?
 
   organization PermOrganization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role         PermRole?         @relation(fields: [roleId], references: [id], onDelete: SetNull)

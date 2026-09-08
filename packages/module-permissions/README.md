@@ -501,6 +501,18 @@ tenant administrator never needs platform rights to invite a colleague. The
 platform mutation deliberately accepts no organization: adding somebody to a
 tenant is that tenant's screen, next to its member list.
 
+**The invited person can say no.** `declineInvitation` takes the token and
+nothing else — no session, no account — because requiring somebody to sign up in
+order to refuse an invitation to sign up would be absurd. It writes nothing
+about anybody and only closes the offer, so it concedes nothing the accept path
+had not already: whoever holds the token can consume the invitation either way.
+
+`declined` is its own status rather than another `revoked`. "We changed our
+mind" and "they said no" are different answers to why somebody never joined, and
+one status for both would be quietly wrong about a person. There is no
+un-decline — inviting again is a new invitation, with a new token and a new
+expiry, which is what makes the second asking visible.
+
 **The role rides on the invitation.** The invited person may not exist yet, so
 the role cannot be granted to them — it is chosen when the row is written and
 applied when `acceptInvitation` finally has a userId. Exactly what `roleId`

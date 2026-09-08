@@ -716,10 +716,13 @@ const INVITATION_STATES: Record<string, { label: string; className: string }> = 
     label: 'Joined',
     className: 'bg-[var(--status-success)] text-[var(--status-success-foreground)]',
   },
-  // Both dead ends, drawn the same and worded differently: one was withdrawn,
-  // the other simply ran out, and only the second is worth re-sending.
+  // Three dead ends, drawn the same and worded differently: one was withdrawn,
+  // one was refused by the person invited, and one simply ran out. Only the
+  // last is straightforwardly worth re-sending — and telling them apart is the
+  // whole reason `declined` is its own status rather than another `revoked`.
   expired: { label: 'Expired', className: 'bg-muted text-muted-foreground' },
   revoked: { label: 'Revoked', className: 'bg-muted text-muted-foreground' },
+  declined: { label: 'Declined', className: 'bg-muted text-muted-foreground' },
 };
 
 /** A local date, or an em dash. Never "Invalid Date" in front of somebody. */

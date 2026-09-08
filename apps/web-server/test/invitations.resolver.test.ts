@@ -117,6 +117,14 @@ describe('what this app exposes without a session', () => {
     ['HealthController.check', HealthController.prototype.check],
     ['InvitationsResolver.invitationPreview', InvitationsResolver.prototype.invitationPreview],
     ['InvitationsResolver.signUpFromInvitation', InvitationsResolver.prototype.signUpFromInvitation],
+    /*
+     * Declining. Public for the reason the resolver gives: requiring an account
+     * to REFUSE an invitation would mean creating one in order to say no. It
+     * writes nothing about anybody and only closes the offer, so it concedes
+     * nothing the accept path had not already — whoever holds the token can
+     * consume the invitation either way.
+     */
+    ['InvitationsResolver.declineInvitation', InvitationsResolver.prototype.declineInvitation],
   ] as const;
 
   it.each(ALLOWED)('%s is public on purpose, with a stated reason', (_name, handler) => {

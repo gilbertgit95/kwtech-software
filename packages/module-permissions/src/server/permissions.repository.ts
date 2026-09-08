@@ -824,10 +824,13 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
     update(args: {
       where: { id: string };
       data: {
-        status?: 'accepted' | 'revoked';
+        /** Never back to 'pending': every transition out of it is terminal. */
+        status?: 'accepted' | 'revoked' | 'declined';
         acceptedAt?: Date | null;
         acceptedByUserId?: string | null;
         revokedAt?: Date | null;
+        /** Set when the RECIPIENT refuses, as `revokedAt` is when the sender withdraws. */
+        declinedAt?: Date | null;
       };
       select: { id: true };
     }): Promise<{ id: string }>;

@@ -128,6 +128,8 @@ export function AcceptInvitation({
   const [preview, setPreview] = useState<Preview | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  /** Set once the offer has been refused, which is a terminal screen. */
+  const [declined, setDeclined] = useState(false);
   const switchForm = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -219,6 +221,41 @@ export function AcceptInvitation({
     }
   }, [token]);
 
+  /**
+   * Saying no.
+   *
+   * ## It needs no account, and asks for nothing
+   *
+   * The mutation is `@Public` — requiring somebody to sign up in order to
+   * refuse an invitation to sign up would be absurd — so this works on every
+   * branch of the page, including the one where the reader has no account.
+   *
+   * ## It confirms first
+   *
+   * Declining spends the invitation: there is no un-decline, and a new one has
+   * to be sent. One prompt is the difference between a decision and a mis-click
+   * on a link somebody opened on a phone.
+   */
+  const decline = useCallback(async () => {
+    if (!token) return;
+    if (!window.confirm('Decline this invitation? The link stops working, and a new one has to be sent.')) return;
+
+    setPending(true);
+    setError(null);
+    try {
+      await graphql(`mutation DeclineInvitation($token: String!) { declineInvitation(token: $token) { declined } }`, {
+        token,
+      });
+      // No navigation. The reader may have no account and nowhere to be sent —
+      // the page becomes its own confirmation.
+      setDeclined(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not decline this invitation.');
+    } finally {
+      setPending(false);
+    }
+  }, [token]);
+
   const signUp = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -262,6 +299,48 @@ export function AcceptInvitation({
     },
     [auth, preview, token],
   );
+
+  /**
+   * The way out, offered on every branch that makes an offer.
+   *
+   * Quiet by design — a link rather than a button, below whatever the page is
+   * proposing. Declining is a legitimate answer and should be findable; it is
+   * not the answer the page is for, and a second prominent control beside
+   * "Join" would make the two look like a choice of equals.
+   */
+  const declineLink = (
+    <button
+      type="button"
+      onClick={() => void decline()}
+      disabled={pending}
+      className="mt-4 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline disabled:opacity-60"
+    >
+      No thanks, decline this invitation
+    </button>
+  );
+
+  if (declined) {
+    /*
+     * Terminal, and it says what happened rather than bouncing somewhere. The
+     * reader may have no account and nowhere to be sent — and a page that
+     * silently navigated after a refusal would leave them unsure it registered.
+     */
+    return (
+      <AuthShell
+        title="Invitation declined"
+        description="Nothing was created in your name, and the link no longer works."
+        footer={
+          <a href="/auth/signin" className="underline underline-offset-4 hover:text-foreground">
+            Sign in
+          </a>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          If you change your mind, ask whoever invited you to send another invitation.
+        </p>
+      </AuthShell>
+    );
+  }
 
   if (preview === undefined) {
     return (
@@ -391,6 +470,7 @@ export function AcceptInvitation({
         >
           {pending ? 'Joining…' : `Join ${joining}`}
         </button>
+        {declineLink}
       </AuthShell>
     );
   }
@@ -408,6 +488,11 @@ export function AcceptInvitation({
         >
           Sign in to continue
         </a>
+        {/*
+          Offered WITHOUT signing in. Somebody who does not want to join should
+          not have to authenticate to say so.
+        */}
+        {declineLink}
       </AuthShell>
     );
   }
@@ -435,6 +520,12 @@ export function AcceptInvitation({
         <AuthField label="Confirm password" name="confirm" type="password" autoComplete="new-password" />
         <AuthSubmit pending={pending}>Create account and join</AuthSubmit>
       </form>
+      {/*
+        The branch where this matters most: the reader has no account, and the
+        alternative to declining would be leaving the invitation live until it
+        expires.
+      */}
+      {declineLink}
     </AuthShell>
   );
 }

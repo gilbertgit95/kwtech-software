@@ -94,6 +94,16 @@ export class InvitationPreviewType {
   expiresAt!: string;
 }
 
+@ObjectType('InvitationDeclineResult')
+export class InvitationDeclineResultType {
+  @Field()
+  declined!: boolean;
+
+  /** What was declined, so the page can name it. Null for a platform invitation. */
+  @Field(() => String, { nullable: true })
+  organizationName!: string | null;
+}
+
 @ObjectType('InvitationSignUpResult')
 export class InvitationSignUpResultType {
   /** The address to sign in with. The page never had a chance to choose it. */
@@ -141,6 +151,32 @@ export class InvitationsResolver {
       hasAccount: account !== null,
       expiresAt: invitation.expiresAt.toISOString(),
     };
+  }
+
+  /**
+   * The invited person says no.
+   *
+   * ## Why the resolver is HERE and the write is in the module
+   *
+   * `@Public` is `@kwtech/module-auth`'s decorator and `PermissionsWriteService`
+   * is `@kwtech/module-permissions`' service. Neither module may import the
+   * other, so a mutation that is both unauthenticated and writes an invitation
+   * row can only live in the app — the same reason `invitationPreview` and
+   * `signUpFromInvitation` are already in this file.
+   *
+   * ## Why it needs no session
+   *
+   * `acceptInvitation` requires one because it writes a membership FOR
+   * somebody. Declining writes nothing about anybody, and requiring an account
+   * to refuse an invitation would mean creating one in order to say no.
+   *
+   * Whoever holds the token can already consume the invitation by accepting it;
+   * declining is strictly less, so this concedes nothing new.
+   */
+  @Public('Refusing an invitation must not require the account the invitation offers to create')
+  @Mutation(() => InvitationDeclineResultType, { name: 'declineInvitation' })
+  async declineInvitation(@Args('token') token: string): Promise<InvitationDeclineResultType> {
+    return this.permissions.declineInvitation({ token });
   }
 
   /**

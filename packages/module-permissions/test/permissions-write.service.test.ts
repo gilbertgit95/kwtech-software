@@ -1591,6 +1591,37 @@ describe('invitations', () => {
     expect(h.writes.userRoles).toHaveLength(0);
   });
 
+  it('lets the invited person decline, with no session and no account', async () => {
+    const h = fake();
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+    const token = h.writes.sent[0]?.token ?? '';
+
+    /*
+     * NO actor and no userId. Requiring an account to refuse an invitation
+     * would mean creating one in order to say no.
+     */
+    const result = await h.svc.declineInvitation({ token });
+
+    expect(result.declined).toBe(true);
+    expect(h.state.invitations[0]?.status).toBe('declined');
+    // Nothing is created for anybody: declining closes the offer and no more.
+    expect(h.state.memberships).toHaveLength(0);
+    expect(h.writes.userRoles).toHaveLength(0);
+  });
+
+  it('cannot be accepted after it was declined, and cannot be declined twice', async () => {
+    const h = fake();
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+    const token = h.writes.sent[0]?.token ?? '';
+    await h.svc.declineInvitation({ token });
+
+    // The same one refusal every dead end gives — the difference between them
+    // is what somebody probing tokens wants.
+    expect(await reason(h.svc.acceptInvitation({ token, userId: 'u9' }))).toBe('not_found');
+    expect(await reason(h.svc.declineInvitation({ token }))).toBe('not_found');
+    expect(h.state.memberships).toHaveLength(0);
+  });
+
   it('gives one refusal for an unknown token and a revoked one', async () => {
     const h = fake();
     await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });

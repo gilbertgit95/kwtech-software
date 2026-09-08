@@ -517,6 +517,42 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-08** — **An invitation can be refused, without an account and
+  without signing in.**
+
+  The accept page offered exactly one answer. Somebody who did not want to join
+  could only ignore the link and leave the invitation live until it expired,
+  which also leaves the sender unable to tell "they said no" from "they never
+  looked".
+
+  `declineInvitation` takes the token and nothing else. **`@Public`**, and that
+  is the decision worth stating: requiring an account in order to refuse an
+  invitation to create one would be absurd, and the mutation writes nothing
+  about anybody — it closes the offer. It concedes nothing the accept path had
+  not already conceded, because whoever holds the token can consume the
+  invitation either way.
+
+  The resolver is in the APP for the usual reason: `@Public` is module-auth's
+  decorator and `PermissionsWriteService` is module-permissions', so a handler
+  that is both unauthenticated and writes an invitation row can live nowhere
+  else. It joins `invitationPreview` and `signUpFromInvitation` in that file, and
+  the app's allowlist test — which pins every `@Public` handler this app owns —
+  failed until it was added deliberately, which is what that test is for.
+
+  **`declined` is its own status, not another `revoked`.** One is the sender
+  withdrawing, the other the recipient refusing; they are different answers to
+  why somebody never joined, and a members screen showing one for both would be
+  quietly wrong about a person. `declinedAt` sits beside `acceptedAt` and
+  `revokedAt` for the same reason — a shared "closedAt" cannot say which
+  happened. Enum value plus nullable column, additive migration.
+
+  **The control is quiet on purpose.** A text link under whatever the page is
+  proposing, on every branch that makes an offer — including the one where the
+  reader has no account, which is where it matters most. Declining is a
+  legitimate answer and must be findable; it is not the answer the page is for,
+  and a second prominent button beside Join would present the two as equals. It
+  confirms first, because there is no un-decline.
+
 - **2026-09-08** — **An invitation may GIVE an app-level role. It may never
   change one.**
 

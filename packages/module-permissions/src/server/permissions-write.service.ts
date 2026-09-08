@@ -1078,6 +1078,66 @@ export class PermissionsWriteService {
   }
 
   /**
+   * The invited person says no.
+   *
+   * ## NO ACTOR, and no session either
+   *
+   * `acceptInvitation` requires one because it writes a membership FOR
+   * somebody, so it must know who. Declining writes nothing about anybody — it
+   * closes the offer — and requiring an account to refuse an invitation would
+   * mean creating one in order to say no, which is the opposite of what the
+   * person is telling us.
+   *
+   * ## What the token can already do
+   *
+   * Whoever holds it can consume this invitation by accepting it. Declining is
+   * strictly less: it ends the offer and creates nothing. So this widens
+   * nothing that the accept path had not already conceded, and the invitation
+   * is a single-use secret sent to one mailbox.
+   *
+   * ## Distinct from revoking
+   *
+   * Same shape, opposite direction, and worth two statuses rather than one:
+   * `revoked` is the sender withdrawing, `declined` is the recipient refusing.
+   * "We changed our mind" and "they said no" are different answers to why
+   * somebody never joined, and a screen that showed one for both would be
+   * quietly wrong about a person.
+   *
+   * There is no un-decline. Inviting again is a NEW invitation, with a new
+   * token and a new expiry, which is what makes the second asking visible.
+   */
+  async declineInvitation(input: { token: string }) {
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      const invitation = await tx.permInvitation.findFirst({
+        where: { tokenHash: hashInvitationToken(input.token) },
+        select: INVITATION_SELECT,
+      });
+
+      /*
+       * ONE refusal for every failure, exactly as `acceptInvitation` gives —
+       * unknown token, revoked, already accepted, already declined, expired.
+       * The difference is what somebody probing tokens wants, and the person
+       * holding a stale link has to ask the sender either way.
+       */
+      if (!invitation || !isAcceptable(invitation, this.now())) {
+        throw new PermissionWriteError('not_found', 'That invitation is not valid', {});
+      }
+
+      await tx.permInvitation.update({
+        where: { id: invitation.id },
+        data: { status: 'declined', declinedAt: this.now() },
+        select: { id: true },
+      });
+
+      // The organization is named so the page can say what was declined; there
+      // is nothing else to report, because nothing else changed.
+      return { declined: true as const, organizationName: invitation.organization?.name ?? null };
+    });
+  }
+
+  /**
    * Withdraws an invitation. The row stays.
    *
    * A revoked invitation is the record of somebody having been asked and the

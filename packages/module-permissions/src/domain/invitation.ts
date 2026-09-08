@@ -16,7 +16,7 @@
  * place from the timestamp instead of being a value something has to remember
  * to set.
  */
-export type InvitationState = 'pending' | 'accepted' | 'revoked' | 'expired';
+export type InvitationState = 'pending' | 'accepted' | 'revoked' | 'declined' | 'expired';
 
 /** What the column holds. `expired` is never one of these. */
 export type InvitationStatus = 'pending' | 'accepted' | 'revoked';
@@ -184,6 +184,11 @@ export function invitationState(
 ): InvitationState {
   if (invitation.status === 'accepted') return 'accepted';
   if (invitation.status === 'revoked') return 'revoked';
+  // Refused by the person invited, as opposed to withdrawn by the sender. Both
+  // are dead ends and `isAcceptable` treats them alike; they are two statuses
+  // because "they said no" and "we changed our mind" are different answers to
+  // "why is this person not in the organization".
+  if (invitation.status === 'declined') return 'declined';
 
   const expiresAt = invitation.expiresAt instanceof Date ? invitation.expiresAt : new Date(invitation.expiresAt);
   // An unparseable date is treated as expired, which is the safe direction: a
