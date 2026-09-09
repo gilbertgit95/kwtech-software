@@ -34,48 +34,45 @@ const compose = (over: Partial<ComposeInput> = {}) =>
 describe('composeContext — the subscription filter', () => {
   it('keeps only organization features the plan also includes', () => {
     const ctx = compose({
-      roles: [role({ level: 'organization', features: [FEATURE.membersManage, FEATURE.billingManage] })],
-      plans: [plan([FEATURE.membersManage])],
+      roles: [role({ level: 'organization', features: [FEATURE.membersRead, FEATURE.billingManage] })],
+      plans: [plan([FEATURE.membersRead])],
     });
 
-    expect(ctx.granted).toEqual([FEATURE.billingManage, FEATURE.membersManage].sort());
-    expect(ctx.effective).toEqual([FEATURE.membersManage]);
+    expect(ctx.granted).toEqual([FEATURE.billingManage, FEATURE.membersRead].sort());
+    expect(ctx.effective).toEqual([FEATURE.membersRead]);
   });
 
   it('entitles nothing when there is no active plan — a lapsed organization is not a free one', () => {
     const ctx = compose({
-      roles: [role({ level: 'organization', features: [FEATURE.membersManage] })],
+      roles: [role({ level: 'organization', features: [FEATURE.membersRead] })],
       plans: [],
     });
 
     expect(ctx.entitled).toEqual([]);
     expect(ctx.effective).toEqual([]);
     // The grant is still visible, so a denial can say WHICH step dropped it.
-    expect(ctx.granted).toEqual([FEATURE.membersManage]);
+    expect(ctx.granted).toEqual([FEATURE.membersRead]);
   });
 
   it('applies no filter at all when the app has no subscription model', () => {
     const ctx = compose({
-      roles: [role({ level: 'organization', features: [FEATURE.membersManage] })],
+      roles: [role({ level: 'organization', features: [FEATURE.membersRead] })],
       // Absent, not empty: the three states are distinct on purpose.
     });
 
     expect(ctx.entitled).toBeNull();
-    expect(ctx.effective).toEqual([FEATURE.membersManage]);
+    expect(ctx.effective).toEqual([FEATURE.membersRead]);
   });
 
   it('unions plan features additively — a workspace plan adds to what the organization bought', () => {
     const ctx = compose({
       workspaceId: 'ws1',
-      roles: [role({ level: 'organization', features: [FEATURE.membersManage, FEATURE.workspacesManage] })],
-      plans: [
-        plan([FEATURE.membersManage]),
-        plan([FEATURE.workspacesManage], { planKey: 'ws-addon', workspaceId: 'ws1' }),
-      ],
+      roles: [role({ level: 'organization', features: [FEATURE.membersRead, FEATURE.workspacesRead] })],
+      plans: [plan([FEATURE.membersRead]), plan([FEATURE.workspacesRead], { planKey: 'ws-addon', workspaceId: 'ws1' })],
     });
 
     // Not a precedence rule: the workspace plan does not replace the organization's.
-    expect(ctx.effective).toEqual([FEATURE.membersManage, FEATURE.workspacesManage].sort());
+    expect(ctx.effective).toEqual([FEATURE.membersRead, FEATURE.workspacesRead].sort());
   });
 });
 
@@ -94,7 +91,7 @@ describe('composeContext — app level is an exemption', () => {
     const ctx = compose({
       roles: [
         role({ level: 'app', features: [FEATURE.platformSupportAccess] }),
-        role({ level: 'organization', features: [FEATURE.membersManage] }),
+        role({ level: 'organization', features: [FEATURE.membersRead] }),
       ],
       plans: [],
     });
@@ -106,15 +103,15 @@ describe('composeContext — app level is an exemption', () => {
   it('does not treat a feature held at BOTH levels as filtered', () => {
     const ctx = compose({
       roles: [
-        role({ level: 'app', features: [FEATURE.membersManage] }),
-        role({ level: 'organization', features: [FEATURE.membersManage] }),
+        role({ level: 'app', features: [FEATURE.membersRead] }),
+        role({ level: 'organization', features: [FEATURE.membersRead] }),
       ],
       plans: [],
     });
 
     // Same key from two sources: the app-level grant is the one that decides.
-    expect(ctx.effective).toEqual([FEATURE.membersManage]);
-    expect(ctx.grantedAtAppLevel).toEqual([FEATURE.membersManage]);
+    expect(ctx.effective).toEqual([FEATURE.membersRead]);
+    expect(ctx.grantedAtAppLevel).toEqual([FEATURE.membersRead]);
   });
 });
 
@@ -125,8 +122,8 @@ describe('composeContext — the trigger level decides which roles participate',
       organizationId: null,
       roles: [
         role({ level: 'app', features: [FEATURE.featuresCreate] }),
-        role({ level: 'organization', features: [FEATURE.membersManage] }),
-        role({ level: 'workspace', features: [FEATURE.workspacesShare], workspaceId: 'ws1' }),
+        role({ level: 'organization', features: [FEATURE.membersRead] }),
+        role({ level: 'workspace', features: [FEATURE.workspaceRead], workspaceId: 'ws1' }),
       ],
     });
 
@@ -138,7 +135,7 @@ describe('composeContext — the trigger level decides which roles participate',
   it('excludes workspace roles from an organization-wide question', () => {
     const ctx = compose({
       workspaceId: null,
-      roles: [role({ level: 'workspace', features: [FEATURE.workspacesShare], workspaceId: 'ws1' })],
+      roles: [role({ level: 'workspace', features: [FEATURE.workspaceRead], workspaceId: 'ws1' })],
     });
 
     // A null workspace is not a wildcard. Treating it as one is how a scoped
@@ -150,24 +147,24 @@ describe('composeContext — the trigger level decides which roles participate',
     const ctx = compose({
       workspaceId: 'ws1',
       roles: [
-        role({ level: 'workspace', features: [FEATURE.workspacesShare], workspaceId: 'ws1' }),
+        role({ level: 'workspace', features: [FEATURE.workspaceRead], workspaceId: 'ws1' }),
         role({ level: 'workspace', features: [FEATURE.billingManage], workspaceId: 'ws2', roleKey: 'other-ws' }),
       ],
     });
 
-    expect(ctx.granted).toEqual([FEATURE.workspacesShare]);
+    expect(ctx.granted).toEqual([FEATURE.workspaceRead]);
   });
 
   it('adds organization roles to workspace-level requests', () => {
     const ctx = compose({
       workspaceId: 'ws1',
       roles: [
-        role({ level: 'organization', features: [FEATURE.membersManage] }),
-        role({ level: 'workspace', features: [FEATURE.workspacesShare], workspaceId: 'ws1' }),
+        role({ level: 'organization', features: [FEATURE.membersRead] }),
+        role({ level: 'workspace', features: [FEATURE.workspaceRead], workspaceId: 'ws1' }),
       ],
     });
 
-    expect(ctx.granted).toEqual([FEATURE.membersManage, FEATURE.workspacesShare].sort());
+    expect(ctx.granted).toEqual([FEATURE.membersRead, FEATURE.workspaceRead].sort());
   });
 });
 
@@ -175,19 +172,19 @@ describe('composeContext — additive, never subtractive', () => {
   it('collapses duplicates across roles', () => {
     const ctx = compose({
       roles: [
-        role({ level: 'organization', features: [FEATURE.membersManage] }),
-        role({ level: 'organization', features: [FEATURE.membersManage], roleKey: 'second' }),
+        role({ level: 'organization', features: [FEATURE.membersRead] }),
+        role({ level: 'organization', features: [FEATURE.membersRead], roleKey: 'second' }),
       ],
     });
 
-    expect(ctx.granted).toEqual([FEATURE.membersManage]);
+    expect(ctx.granted).toEqual([FEATURE.membersRead]);
   });
 
   it('has no deny rule: a second role can only ever add', () => {
-    const withOne = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersManage] })] });
+    const withOne = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersRead] })] });
     const withTwo = compose({
       roles: [
-        role({ level: 'organization', features: [FEATURE.membersManage] }),
+        role({ level: 'organization', features: [FEATURE.membersRead] }),
         role({ level: 'organization', features: [FEATURE.rolesUpdate], roleKey: 'second' }),
       ],
     });
@@ -201,7 +198,7 @@ describe('composeContext — accessible workspaces', () => {
     const ctx = compose({
       workspaceId: 'ws1',
       workspaceIds: ['ws9'],
-      roles: [role({ level: 'workspace', features: [FEATURE.workspacesShare], workspaceId: 'ws1' })],
+      roles: [role({ level: 'workspace', features: [FEATURE.workspaceRead], workspaceId: 'ws1' })],
     });
 
     // A role grant implies access: the alternative was a user holding a role in
@@ -223,7 +220,7 @@ describe('composeContext — accessible workspaces', () => {
    */
   it('is NOT widened by any organization role — membership is the only route', () => {
     const ctx = compose({
-      roles: [role({ level: 'organization', features: [FEATURE.membersManage, FEATURE.workspacesManage] })],
+      roles: [role({ level: 'organization', features: [FEATURE.membersRead, FEATURE.workspacesRead] })],
       workspaceIds: ['ws1'],
     });
 
@@ -239,7 +236,7 @@ describe('composeContext — accessible workspaces', () => {
   });
 
   it('is an empty array for a member who has been shared nothing — a normal state', () => {
-    const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersManage] })] });
+    const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersRead] })] });
     expect(ctx.accessibleWorkspaceIds).toEqual([]);
   });
 });
@@ -271,7 +268,7 @@ describe('composeContext — a super admin holding the whole registry', () => {
   });
 
   it('overrides a plan that entitles a single feature', () => {
-    const ctx = compose({ roles: [superAdmin], plans: [plan([FEATURE.membersManage])] });
+    const ctx = compose({ roles: [superAdmin], plans: [plan([FEATURE.membersRead])] });
     expect(ctx.effective).toEqual(allFeatureKeys(FEATURE_REGISTRY));
   });
 
@@ -297,7 +294,7 @@ describe('composeContext — a super admin holding the whole registry', () => {
       plans: [],
     });
 
-    expect(ctx.effective).toContain(FEATURE.workspacesShare);
+    expect(ctx.effective).toContain(FEATURE.workspaceRead);
     // access_all and support_access both set this; either makes every
     // workspace enterable without membership.
     expect(ctx.accessibleWorkspaceIds).toBeNull();
@@ -394,7 +391,7 @@ describe('composeContext — appRoles', () => {
   });
 
   it('is empty for someone holding no app-level role', () => {
-    const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersManage] })] });
+    const ctx = compose({ roles: [role({ level: 'organization', features: [FEATURE.membersRead] })] });
 
     expect(ctx.appRoles).toEqual([]);
   });

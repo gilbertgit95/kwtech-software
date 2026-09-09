@@ -28,8 +28,25 @@ export { FeatureImportPage } from './pages/feature-import-page.js';
 export { FeatureNewPage } from './pages/feature-new-page.js';
 export { FeaturesPage } from './pages/features-page.js';
 export { InviteUserPage } from './pages/invite-user-page.js';
+export { MyOrganizationsPage } from './pages/my-organizations-page.js';
 export { OrganizationDetailPage } from './pages/organization-detail-page.js';
+export { OrganizationHomePage } from './pages/organization-home-page.js';
+export { OrganizationMembersPage } from './pages/organization-members-page.js';
 export { OrganizationNewPage } from './pages/organization-new-page.js';
+export { OrganizationNotices } from './pages/organization-notices.js';
+export {
+  InvitationsSection,
+  MemberRoles,
+  MembersSection,
+  PlanSummary,
+  WorkspacesSection,
+  when,
+} from './pages/organization-sections.js';
+export { OrganizationSettingsPage } from './pages/organization-settings-page.js';
+export { OrganizationSubscriptionPage } from './pages/organization-subscription-page.js';
+export { OrganizationWorkspacePage } from './pages/organization-workspace-page.js';
+export { OrganizationWorkspaceSettingsPage } from './pages/organization-workspace-settings-page.js';
+export { OrganizationWorkspacesPage } from './pages/organization-workspaces-page.js';
 export { OrganizationsPage } from './pages/organizations-page.js';
 export { Person, personLabel } from './pages/person.js';
 export { PlanEditPage } from './pages/plan-edit-page.js';
@@ -45,7 +62,15 @@ export { SubscriptionEditPage } from './pages/subscription-edit-page.js';
 export { SubscriptionForm, type SubscriptionFormProps } from './pages/subscription-form.js';
 export { SubscriptionNewPage } from './pages/subscription-new-page.js';
 export { SubscriptionsPage } from './pages/subscriptions-page.js';
+export { TenantPage } from './pages/tenant-page.js';
+export { type MyOrganizationState, useMyOrganization } from './pages/use-my-organization.js';
 export { WorkspaceDetailPage } from './pages/workspace-detail-page.js';
+export {
+  AddWorkspaceMemberDialog,
+  WorkspaceMemberRole,
+  WorkspaceMembers,
+  WorkspaceSettings,
+} from './pages/workspace-sections.js';
 export {
   createPermissionsClient,
   DEFAULT_GRAPHQL_PATH,
@@ -54,6 +79,8 @@ export {
   type InviteResult,
   type MemberRoleView,
   type MemberView,
+  type MyOrganizationView,
+  type MyWorkspaceView,
   type OrganizationDetailView,
   type OrganizationView,
   type PermissionsClient,
@@ -81,6 +108,21 @@ export {
   type RealtimeConnection,
   type RealtimeOptions,
 } from './realtime-contract.js';
+/*
+ * From `tenant-nav.ts`, which is NOT a client module — deliberately. The app's
+ * server-side navigation builder reads `ORGANIZATION_NAV_GROUP`'s VALUE, and a
+ * constant exported from a `'use client'` file is a client-reference proxy on
+ * the server, not a string. See that file.
+ */
+export {
+  ORGANIZATION_NAV_GROUP,
+  ORGANIZATION_NEW_HREF,
+  ORGANIZATIONS_HREF,
+  organizationHref,
+  organizationSectionHref,
+  WORKSPACE_NAV_GROUP,
+  workspaceHref,
+} from './tenant-nav.js';
 export {
   useCanAccessWorkspace,
   useFeatureDecision,

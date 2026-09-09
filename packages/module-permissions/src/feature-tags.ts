@@ -44,6 +44,18 @@ export const FEATURE_TAG = {
   platform: 'platform',
   /** Signing in and looking after your own account. */
   auth: 'auth',
+  /**
+   * Reached from inside ONE organization: a tenant looking after itself.
+   *
+   * A root, and the counterpart of `admin` rather than an area under it. The
+   * two group the same subject matter — members, workspaces, what the tenant
+   * bought — from opposite sides of the platform boundary, and the level says
+   * which: everything tagged `admin` is app level and reads across tenants,
+   * everything tagged `organization` is organization or workspace level and
+   * reads one. A role editor that nested them together would offer a customer's
+   * owner the platform's keys in the same tree as their own.
+   */
+  organization: 'organization',
 
   // ── areas, used as the SECOND tag ─────────────────────────────────────────
   /** The permission system's roles. */

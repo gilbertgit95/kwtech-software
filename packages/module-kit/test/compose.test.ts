@@ -119,6 +119,92 @@ describe('composeNav', () => {
   });
 });
 
+/**
+ * SCOPED ENTRIES — what makes the drawer switch into an organization.
+ *
+ * `/organizations/:organizationId/members` is not a URL. Listing it with the
+ * placeholder still in it produces a link that 404s; listing it with the
+ * segment removed produces a link to somebody else's page. So an entry whose
+ * parameters cannot all be filled is ABSENT, which is the honest rendering of
+ * "there is no active organization" — and its reappearance when there is one is
+ * the whole mechanism, with nothing having to declare that the drawer switches.
+ */
+describe('composeNav with route parameters', () => {
+  const modules = [
+    web('tenant', [
+      route({ path: '/organizations', title: 'Organizations', nav: { group: 'Org', order: 1 } }),
+      route({
+        path: '/organizations/:organizationId/members',
+        title: 'Members',
+        nav: { group: 'Org', order: 2 },
+      }),
+      route({
+        path: '/organizations/:organizationId/workspaces/:workspaceId',
+        title: 'Workspace',
+        nav: { group: 'Org', order: 3 },
+      }),
+    ]),
+  ];
+
+  it('drops an entry whose parameters have no values', () => {
+    expect(composeNav(modules).map((e) => e.label)).toEqual(['Organizations']);
+  });
+
+  it('lists it, substituted, once the value is there', () => {
+    const nav = composeNav(modules, undefined, { params: { organizationId: 'org1' } });
+    expect(nav.map((e) => e.href)).toEqual(['/organizations', '/organizations/org1/members']);
+  });
+
+  it('still drops an entry whose SECOND parameter has no value', () => {
+    // A partially-filled path is never produced. The workspace entry needs a
+    // workspace, and one organization does not supply it.
+    const nav = composeNav(modules, undefined, { params: { organizationId: 'org1' } });
+    expect(nav.map((e) => e.label)).not.toContain('Workspace');
+  });
+
+  it('fills every parameter when every parameter has a value', () => {
+    const nav = composeNav(modules, undefined, { params: { organizationId: 'org1', workspaceId: 'ws1' } });
+    expect(nav.find((e) => e.label === 'Workspace')?.href).toBe('/organizations/org1/workspaces/ws1');
+  });
+
+  it('treats an EMPTY value as no value', () => {
+    // An empty string collapses the segment and shifts every id after it one
+    // place left — '/organizations//members' is not a smaller URL, it is a
+    // different one.
+    expect(composeNav(modules, undefined, { params: { organizationId: '' } }).map((e) => e.label)).toEqual([
+      'Organizations',
+    ]);
+  });
+
+  it('encodes a value that needs it, so the href round-trips through parseScope', () => {
+    expect(composeNav(modules, undefined, { params: { organizationId: 'a/b' } })[1]?.href).toBe(
+      '/organizations/a%2Fb/members',
+    );
+  });
+
+  it('applies the FEATURE filter before the parameters, so a held key is not required to be dropped', () => {
+    const guarded = [
+      web('tenant', [
+        route({
+          path: '/organizations/:organizationId/members',
+          title: 'Members',
+          feature: 'members:manage',
+          nav: { group: 'Org', order: 1 },
+        }),
+      ]),
+    ];
+    // Not held: absent whether or not a scope is active.
+    expect(composeNav(guarded, [], { params: { organizationId: 'org1' } })).toHaveLength(0);
+    expect(composeNav(guarded, ['members:manage'], { params: { organizationId: 'org1' } })).toHaveLength(1);
+  });
+
+  it('leaves a parameterless route untouched by params it does not use', () => {
+    expect(composeNav(modules, undefined, { params: { somethingElse: 'x' } }).map((e) => e.href)).toEqual([
+      '/organizations',
+    ]);
+  });
+});
+
 describe('composeFeatures', () => {
   const feature = (key: string) => ({ key, module: 'm', label: key, description: key });
 

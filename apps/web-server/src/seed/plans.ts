@@ -52,7 +52,7 @@ import { ALL_FEATURES } from './registry.js';
  * the free tier confusing rather than limited. What free actually lacks is the
  * ability to CHANGE anything — those keys are app-level or absent below.
  */
-const READ_ONLY_ADMIN = [FEATURE.featuresRead, FEATURE.rolesRead];
+const READ_ONLY_ADMIN = [FEATURE.rolesRead];
 
 /**
  * The billing area. In every tier — see the note above.
@@ -61,7 +61,71 @@ const READ_ONLY_ADMIN = [FEATURE.featuresRead, FEATURE.rolesRead];
  * customer needs it to upgrade themselves, which is the one thing no tier may
  * withhold.
  */
-const OWN_BILLING = [FEATURE.plansRead, FEATURE.subscriptionsRead, FEATURE.billingManage];
+const OWN_BILLING = [FEATURE.subscriptionsRead];
+
+/**
+ * The organization's own screens: opening it, and naming it.
+ *
+ * IN EVERY TIER, and this is the clearest case of the rule the group above
+ * states. Being able to open the company you are a member of is not a feature
+ * anybody sells — it is the floor. A plan that withheld `organization:read`
+ * would produce a customer who signs in, sees their organization in the
+ * switcher, and is refused by it, with the denial correctly reading
+ * "not_entitled": their roles grant it and their plan does not. That is a
+ * support ticket about billing for something nobody meant to charge for.
+ *
+ * `organization:manage` is here for the same reason. Renaming your own company
+ * is not an upgrade path; the platform's ability to rename ANY tenant is a
+ * different key entirely (`organizations:manage`, app level), and no plan may
+ * carry that one — an app-level key in a plan entitles nobody, because
+ * app-level grants skip the entitlement filter.
+ *
+ * ⚠ **Adding these did NOT change any plan that already exists.**
+ * `createPlanIfAbsent` creates what is missing and never rewrites what is
+ * there (§12.26), which is deliberate — the catalogue is the operator's. So a
+ * database seeded before 2026-09-09 has a `free` plan without these keys, and
+ * every tenant on it is refused their own organization until an operator adds
+ * them on `/admin/plans`. Verified against the live database, where exactly
+ * that happened.
+ */
+const OWN_ORGANIZATION = [FEATURE.organizationRead, FEATURE.organizationUpdate];
+
+/**
+ * Working together: people, workspaces, and what happens inside one.
+ *
+ * The jump the paid tiers sell, and it is why the free tier withholds exactly
+ * these rather than something cosmetic. Named as a group now that the atomic
+ * split turned three keys into eleven — listing them per tier would be three
+ * copies of one product decision.
+ */
+const SEEING_AROUND = [FEATURE.membersRead, FEATURE.workspacesRead, FEATURE.workspaceRead];
+
+/**
+ * Working together: adding people, organising workspaces, and granting roles
+ * inside one.
+ *
+ * The jump the paid tiers sell. Named as a group now that the atomic split
+ * turned three keys into twelve — listing them per tier would be three copies
+ * of one product decision.
+ *
+ * ⚠ The READS are deliberately NOT here, they are in `SEEING_AROUND` and every
+ * tier has them. Before the split, `members:manage` bundled reading the roster
+ * with changing it, so withholding the bundle from `free` also hid the member
+ * list from a tenant with three seats — invisible while it was one key, and
+ * plainly wrong once they were separate. The free tier's own principle is that
+ * it can SEE how the system works and cannot grow inside it.
+ */
+const TEAMWORK = [
+  FEATURE.membersInvite,
+  FEATURE.membersRemove,
+  FEATURE.membersAssignRole,
+  FEATURE.workspacesCreate,
+  FEATURE.workspacesUpdate,
+  FEATURE.workspacesArchive,
+  FEATURE.workspaceMembersAdd,
+  FEATURE.workspaceMembersRemove,
+  FEATURE.workspaceAssignRole,
+];
 
 /**
  * Free — one workspace, a couple of people, nothing to administer.
@@ -76,7 +140,7 @@ const FREE: PlanDefinition = {
   label: 'Free',
   isPublic: true,
   icon: 'sprout',
-  features: [...READ_ONLY_ADMIN, ...OWN_BILLING],
+  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING],
   limits: {
     [LIMIT.organizationMembers]: 3,
     [LIMIT.organizationWorkspaces]: 1,
@@ -96,13 +160,7 @@ const STARTER: PlanDefinition = {
   label: 'Starter',
   isPublic: true,
   icon: 'rocket',
-  features: [
-    ...READ_ONLY_ADMIN,
-    ...OWN_BILLING,
-    FEATURE.membersManage,
-    FEATURE.workspacesManage,
-    FEATURE.workspacesShare,
-  ],
+  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK],
   limits: {
     [LIMIT.organizationMembers]: 10,
     [LIMIT.organizationWorkspaces]: 3,
@@ -128,13 +186,7 @@ const PRO: PlanDefinition = {
   label: 'Pro',
   isPublic: true,
   icon: 'zap',
-  features: [
-    ...READ_ONLY_ADMIN,
-    ...OWN_BILLING,
-    FEATURE.membersManage,
-    FEATURE.workspacesManage,
-    FEATURE.workspacesShare,
-  ],
+  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK],
   limits: {
     [LIMIT.organizationMembers]: 50,
     [LIMIT.organizationWorkspaces]: 25,

@@ -572,6 +572,13 @@ export class PermissionOrganizationType {
   @Field()
   name!: string;
 
+  /**
+   * What it IS, in the tenant's own words. Null only for a row written before
+   * the column existed and never touched since — every write path supplies one.
+   */
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+
   /** ACTIVE members only — an invited or suspended row cannot act. */
   @Field(() => Int)
   memberCount!: number;
@@ -636,6 +643,13 @@ export class PermissionOrganizationDetailType {
   @Field()
   name!: string;
 
+  /**
+   * What it IS, in the tenant's own words. Null only for a row written before
+   * the column existed and never touched since — every write path supplies one.
+   */
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+
   @Field(() => [PermissionWorkspaceDetailType])
   workspaces!: PermissionWorkspaceDetailType[];
 
@@ -657,6 +671,13 @@ export class PermissionWorkspaceDetailType {
 
   @Field()
   name!: string;
+
+  /**
+   * What it IS, in the tenant's own words. Null only for a row written before
+   * the column existed and never touched since — every write path supplies one.
+   */
+  @Field(() => String, { nullable: true })
+  description!: string | null;
 
   /** Archived workspaces are SHOWN, so the switch does not read as a delete. */
   @Field()
@@ -921,4 +942,112 @@ export class UserOrganizationType {
 
   @Field(() => String, { nullable: true })
   roleLabel!: string | null;
+
+  /** The organization's own description, for the picker that lists them. */
+  @Field(() => String, { nullable: true })
+  organizationDescription!: string | null;
+
+  /**
+   * Icon NAME, null for a role that never chose one, and null for a member
+   * holding no role at all. Drawn by whatever set the app published — this
+   * package never holds a component (see PermRole.icon).
+   *
+   * Here because the organization switcher draws it beside each tenant: the
+   * list answers "where do I belong and as what", and the role is half of that
+   * answer.
+   */
+  @Field(() => String, { nullable: true })
+  roleIcon!: string | null;
+}
+
+/**
+ * One workspace the VIEWER may enter, and what they are in it.
+ *
+ * Its own type rather than reusing `PermissionWorkspace`, for the same reason
+ * `UserOrganization` is not `PermissionOrganization`: that one describes a
+ * WORKSPACE and this describes a MEMBERSHIP of one. The role is the point, and
+ * a workspace has no role — adding these three nullable fields to the plain
+ * type would put "what am I here" on every picker that only wanted a name.
+ */
+@ObjectType('MyWorkspace')
+export class MyWorkspaceSummaryType {
+  @Field()
+  id!: string;
+
+  @Field()
+  key!: string;
+
+  @Field()
+  name!: string;
+
+  /**
+   * What it IS, in the tenant's own words. Null only for a row written before
+   * the column existed and never touched since — every write path supplies one.
+   */
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+
+  /**
+   * The WORKSPACE-level role the viewer holds here, or null.
+   *
+   * Null is a normal and common state, and means two different things that the
+   * selector does not need to tell apart: a member who has been added and given
+   * nothing, and platform support, who may enter every workspace while
+   * belonging to none. Both hold no role HERE, which is what the badge reports.
+   */
+  @Field(() => String, { nullable: true })
+  roleKey!: string | null;
+
+  @Field(() => String, { nullable: true })
+  roleLabel!: string | null;
+
+  /** Icon NAME, drawn by whatever set the app published. See PermRole.icon. */
+  @Field(() => String, { nullable: true })
+  roleIcon!: string | null;
+}
+
+/**
+ * One workspace as its own screen sees it, WITH the organization's member list.
+ *
+ * ## Why the two travel together
+ *
+ * The screen's "add somebody" picker may only offer people already in the
+ * organization — a workspace member is an organization member first — so the
+ * page needs both lists whatever it does. One query means they cannot disagree
+ * about who is in what, which two round trips eventually would.
+ *
+ * ## Why it is not `PermissionOrganizationDetail`
+ *
+ * Because of the SCOPE, which is the whole point of this type existing.
+ * `Query.myWorkspace` declares `@RequireScope('workspace')`, so the guard
+ * checks `canAccessWorkspace` before anything is returned; a query shaped to
+ * answer about the organization would have to be scoped to the organization,
+ * and workspace membership would stop being checked at the one surface it
+ * exists for.
+ *
+ * The organization's name and key ride along because the page has to be able to
+ * say where it is and link back, and a second query for three columns already
+ * in hand would be a round trip for a breadcrumb.
+ */
+@ObjectType('PermissionMyWorkspace')
+export class PermissionMyWorkspaceType {
+  @Field()
+  organizationId!: string;
+
+  @Field()
+  organizationKey!: string;
+
+  @Field()
+  organizationName!: string;
+
+  @Field(() => PermissionWorkspaceDetailType)
+  workspace!: PermissionWorkspaceDetailType;
+
+  /**
+   * Everyone in the ORGANIZATION, not in the workspace — the workspace's own
+   * members are on `workspace.members`. This is the pool the picker draws from,
+   * and the difference between the two lists is exactly who can still be added.
+   */
+  @Field(() => [PermissionMemberType])
+  organizationMembers!: PermissionMemberType[];
 }

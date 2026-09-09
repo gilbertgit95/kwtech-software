@@ -23,8 +23,8 @@ import type { PermissionContext } from '../src/types.js';
 const granted = composeContext({
   subjectId: 'u1',
   organizationId: 'org1',
-  roles: [{ roleKey: 'admin', level: 'organization', workspaceId: null, features: [FEATURE.membersManage] }],
-  plans: [{ planKey: 'pro', workspaceId: null, features: [FEATURE.membersManage] }],
+  roles: [{ roleKey: 'admin', level: 'organization', workspaceId: null, features: [FEATURE.membersRead] }],
+  plans: [{ planKey: 'pro', workspaceId: null, features: [FEATURE.membersRead] }],
 });
 
 /** Granted by a role, absent from the plan. */
@@ -45,11 +45,11 @@ const ungranted = composeContext({
 
 describe('checkFeature', () => {
   it('allows a feature that is both granted and entitled', () => {
-    expect(checkFeature(granted, FEATURE.membersManage)).toEqual({ allowed: true });
+    expect(checkFeature(granted, FEATURE.membersRead)).toEqual({ allowed: true });
   });
 
   it('denies with no_context when there is no context at all — fail closed', () => {
-    expect(checkFeature(undefined, FEATURE.membersManage)).toEqual({ allowed: false, reason: 'no_context' });
+    expect(checkFeature(undefined, FEATURE.membersRead)).toEqual({ allowed: false, reason: 'no_context' });
   });
 
   it('says not_granted when the plan includes it but no role does', () => {
@@ -69,18 +69,18 @@ describe('checkFeature', () => {
 
 describe('hasFeature / hasAllFeatures / hasAnyFeature', () => {
   it('hasFeature is the boolean shorthand', () => {
-    expect(hasFeature(granted, FEATURE.membersManage)).toBe(true);
+    expect(hasFeature(granted, FEATURE.membersRead)).toBe(true);
     expect(hasFeature(granted, FEATURE.billingManage)).toBe(false);
-    expect(hasFeature(undefined, FEATURE.membersManage)).toBe(false);
+    expect(hasFeature(undefined, FEATURE.membersRead)).toBe(false);
   });
 
   it('hasAllFeatures is AND', () => {
-    expect(hasAllFeatures(granted, [FEATURE.membersManage])).toBe(true);
-    expect(hasAllFeatures(granted, [FEATURE.membersManage, FEATURE.billingManage])).toBe(false);
+    expect(hasAllFeatures(granted, [FEATURE.membersRead])).toBe(true);
+    expect(hasAllFeatures(granted, [FEATURE.membersRead, FEATURE.billingManage])).toBe(false);
   });
 
   it('hasAnyFeature is OR', () => {
-    expect(hasAnyFeature(granted, [FEATURE.membersManage, FEATURE.billingManage])).toBe(true);
+    expect(hasAnyFeature(granted, [FEATURE.membersRead, FEATURE.billingManage])).toBe(true);
     expect(hasAnyFeature(granted, [FEATURE.billingManage])).toBe(false);
   });
 
@@ -94,7 +94,7 @@ describe('hasFeature / hasAllFeatures / hasAnyFeature', () => {
 
 describe('denialReason', () => {
   it('reports no_context ahead of everything', () => {
-    expect(denialReason(undefined, [FEATURE.membersManage, FEATURE.billingManage])).toBe('no_context');
+    expect(denialReason(undefined, [FEATURE.membersRead, FEATURE.billingManage])).toBe('no_context');
   });
 
   it('reports not_granted ahead of not_entitled across several keys', () => {
@@ -110,7 +110,7 @@ describe('denialReason', () => {
   });
 
   it('is undefined when nothing was denied', () => {
-    expect(denialReason(granted, [FEATURE.membersManage])).toBeUndefined();
+    expect(denialReason(granted, [FEATURE.membersRead])).toBeUndefined();
   });
 });
 
@@ -165,10 +165,10 @@ describe('explainFeature', () => {
     const noPlans = composeContext({
       subjectId: 'u1',
       organizationId: 'org1',
-      roles: [{ roleKey: 'r', level: 'organization', workspaceId: null, features: [FEATURE.membersManage] }],
+      roles: [{ roleKey: 'r', level: 'organization', workspaceId: null, features: [FEATURE.membersRead] }],
     });
 
-    expect(explainFeature(noPlans, FEATURE.membersManage)).toMatchObject({ allowed: true, inSubscription: null });
+    expect(explainFeature(noPlans, FEATURE.membersRead)).toMatchObject({ allowed: true, inSubscription: null });
   });
 
   it('marks an app-level grant as exempt rather than as a scoped role', () => {
@@ -188,6 +188,6 @@ describe('explainFeature', () => {
   });
 
   it('sets no droppedAt when allowed', () => {
-    expect(explainFeature(granted, FEATURE.membersManage).droppedAt).toBeUndefined();
+    expect(explainFeature(granted, FEATURE.membersRead).droppedAt).toBeUndefined();
   });
 });

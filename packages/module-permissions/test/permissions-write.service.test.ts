@@ -22,7 +22,15 @@ import type { PermissionContext } from '../src/types.js';
  */
 
 interface State {
-  memberships: { id: string; userId: string; organizationId: string }[];
+  /**
+   * `status` is OPTIONAL and absent means 'active'.
+   *
+   * Almost every test here is about something else and would have to opt into a
+   * status it does not care about; defaulting keeps those unchanged while
+   * letting the few that DO care — leaving as a suspended member, and the seat
+   * counts that ignore one — say so.
+   */
+  memberships: { id: string; userId: string; organizationId: string; status?: string }[];
   workspaces: { id: string; organizationId: string; archivedAt: Date | null }[];
   workspaceMembers: { id: string; membershipId: string; workspaceId: string }[];
   membershipRoles: { membershipId: string; roleId: string }[];
@@ -30,7 +38,7 @@ interface State {
   roles: { id: string; key: string; label: string; level: string; organizationId: string | null }[];
   /** App-level grants, so the baseline default has something to check. */
   userRoles: { userId: string; role: Record<string, unknown> }[];
-  organizations: { id: string; key: string; name: string }[];
+  organizations: { id: string; key: string; name: string; description?: string | null }[];
   invitations: {
     id: string;
     organizationId: string;
@@ -72,7 +80,7 @@ const emptyState = (over: Partial<State> = {}): State => ({
    * make every addMember and createWorkspace fail for a reason the test is not
    * about. A test that wants the refusal passes `organizations: []` explicitly.
    */
-  organizations: [{ id: 'org1', key: 'acme', name: 'Acme' }],
+  organizations: [{ id: 'org1', key: 'acme', name: 'Acme', description: null }],
   invitations: [],
   plans: [],
   planFeatures: [],
@@ -99,6 +107,9 @@ interface Writes {
   sent: { email: string; token: string; organization: { id: string; key: string; name: string } | null }[];
   transactions: number;
 }
+
+/** Absent means active — see `State.memberships`. */
+const isActive = (membership: { status?: string }) => (membership.status ?? 'active') === 'active';
 
 function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: string } = {}) {
   const writes: Writes = {
@@ -143,21 +154,30 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
       },
     },
     permMembership: {
-      findFirst: async (args: { where: { userId: string; organizationId?: string } }) => {
+      /*
+       * `status: 'active'` is honoured rather than ignored, which it was until
+       * `leaveOrganization` had to tell an active member from a suspended one.
+       * A fake that dropped the filter would make the seat counts agree with
+       * the code by accident — and the one behaviour that depends on the
+       * difference is exactly the one it would stop testing.
+       */
+      findFirst: async (args: { where: { userId: string; organizationId?: string; status?: 'active' } }) => {
         const row = state.memberships.find(
           (m) =>
             m.userId === args.where.userId &&
-            (!args.where.organizationId || m.organizationId === args.where.organizationId),
+            (!args.where.organizationId || m.organizationId === args.where.organizationId) &&
+            (args.where.status === undefined || isActive(m)),
         );
         return row ? { ...row, roles: [], workspaces: [] } : null;
       },
-      count: async (args: { where: { organizationId?: string; userId?: string } }) =>
+      count: async (args: { where: { organizationId?: string; userId?: string; status?: 'active' } }) =>
         state.memberships.filter(
           (m) =>
             (args.where.organizationId === undefined || m.organizationId === args.where.organizationId) &&
-            (args.where.userId === undefined || m.userId === args.where.userId),
+            (args.where.userId === undefined || m.userId === args.where.userId) &&
+            (args.where.status === undefined || isActive(m)),
         ).length,
-      create: async (args: { data: { userId: string; organizationId: string } }) => {
+      create: async (args: { data: { userId: string; organizationId: string; status: 'active' } }) => {
         writes.memberships.push(args.data);
         const row = { id: id('m'), ...args.data };
         state.memberships.push(row);
@@ -546,7 +566,7 @@ describe('H1 — capacity is enforced where the row is created', () => {
     const { svc, writes } = fake(emptyState({ memberships: [{ id: 'm1', userId: 'u1', organizationId: 'org1' }] }));
 
     const decision = await reason(
-      svc.addMember(actor([FEATURE.membersManage], { [LIMIT.organizationMembers]: 1 }), {
+      svc.addMember(actor([FEATURE.membersInvite], { [LIMIT.organizationMembers]: 1 }), {
         organizationId: 'org1',
         userId: 'u2',
       }),
@@ -561,7 +581,7 @@ describe('H1 — capacity is enforced where the row is created', () => {
   it('allows the member that exactly fills the cap', async () => {
     const { svc } = fake(emptyState({ memberships: [{ id: 'm1', userId: 'u1', organizationId: 'org1' }] }));
     await expect(
-      svc.addMember(actor([FEATURE.membersManage], { [LIMIT.organizationMembers]: 2 }), {
+      svc.addMember(actor([FEATURE.membersInvite], { [LIMIT.organizationMembers]: 2 }), {
         organizationId: 'org1',
         userId: 'u2',
       }),
@@ -577,7 +597,7 @@ describe('H1 — capacity is enforced where the row is created', () => {
         ],
       }),
     );
-    const a = actor([FEATURE.workspacesManage], { [LIMIT.organizationWorkspaces]: 2 });
+    const a = actor([FEATURE.workspacesCreate], { [LIMIT.organizationWorkspaces]: 2 });
 
     // The archived one does not count, so this fits.
     await expect(svc.createWorkspace(a, { organizationId: 'org1', key: 'b', name: 'B' })).resolves.toBeDefined();
@@ -596,7 +616,7 @@ describe('H1 — capacity is enforced where the row is created', () => {
 
     expect(
       await reason(
-        svc.shareWorkspace(actor([FEATURE.workspacesShare], { [LIMIT.workspaceMembers]: 1 }), {
+        svc.shareWorkspace(actor([FEATURE.workspaceMembersAdd], { [LIMIT.workspaceMembers]: 1 }), {
           organizationId: 'org1',
           workspaceId: 'ws1',
           userId: 'u2',
@@ -617,7 +637,7 @@ describe('H1 — capacity is enforced where the row is created', () => {
   it('treats a null cap as unrestricted', async () => {
     const { svc } = fake();
     await expect(
-      svc.addMember(actor([FEATURE.membersManage], { [LIMIT.organizationMembers]: null }), {
+      svc.addMember(actor([FEATURE.membersInvite], { [LIMIT.organizationMembers]: null }), {
         organizationId: 'org1',
         userId: 'u2',
       }),
@@ -650,7 +670,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
 
     expect(
       await reason(
-        svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+        svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
       ),
     ).toBe('role_foreign_to_organization');
     // The read side would have discarded it; this stops the row existing at all.
@@ -660,7 +680,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
   it('accepts a shared preset, which belongs to no organization', async () => {
     const { svc } = withRole('organization', null);
     await expect(
-      svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+      svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
     ).resolves.toEqual({ granted: true, replaced: false });
   });
 
@@ -675,7 +695,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
 
     expect(
       await reason(
-        svc.assignWorkspaceRole(actor([FEATURE.workspacesShare]), {
+        svc.assignWorkspaceRole(actor([FEATURE.workspaceAssignRole]), {
           organizationId: 'org1',
           workspaceId: 'ws1',
           userId: 'u2',
@@ -689,7 +709,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
     const { svc } = withRole('workspace', 'org1');
     expect(
       await reason(
-        svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+        svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
       ),
     ).toBe('role_level_mismatch');
   });
@@ -698,7 +718,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
     const { svc } = withRole('app', null);
     expect(
       await reason(
-        svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+        svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
       ),
     ).toBe('role_level_mismatch');
   });
@@ -706,7 +726,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
   it('validates the stored level rather than casting it', async () => {
     const { svc } = withRole('Organization', 'org1');
     await expect(
-      svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+      svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
     ).rejects.toThrow(/Unknown role level/);
   });
 
@@ -714,7 +734,7 @@ describe('C3 write side — a foreign role is refused, not merely ignored', () =
     const { svc } = fake(emptyState({ memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }] }));
     expect(
       await reason(
-        svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'nope' }),
+        svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'nope' }),
       ),
     ).toBe('not_found');
   });
@@ -727,7 +747,11 @@ describe('tenancy — a write never crosses an organization boundary', () => {
     );
     expect(
       await reason(
-        svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'stranger', roleId: 'r1' }),
+        svc.assignRole(actor([FEATURE.membersAssignRole]), {
+          organizationId: 'org1',
+          userId: 'stranger',
+          roleId: 'r1',
+        }),
       ),
     ).toBe('not_found');
   });
@@ -742,7 +766,7 @@ describe('tenancy — a write never crosses an organization boundary', () => {
 
     expect(
       await reason(
-        svc.shareWorkspace(actor([FEATURE.workspacesShare]), {
+        svc.shareWorkspace(actor([FEATURE.workspaceMembersAdd]), {
           organizationId: 'org1',
           workspaceId: 'wsX',
           userId: 'u2',
@@ -761,7 +785,7 @@ describe('tenancy — a write never crosses an organization boundary', () => {
 
     expect(
       await reason(
-        svc.shareWorkspace(actor([FEATURE.workspacesShare]), {
+        svc.shareWorkspace(actor([FEATURE.workspaceMembersAdd]), {
           organizationId: 'org1',
           workspaceId: 'ws1',
           userId: 'u2',
@@ -774,7 +798,7 @@ describe('tenancy — a write never crosses an organization boundary', () => {
     const { svc } = fake(emptyState({ workspaces: [{ id: 'wsX', organizationId: 'org2', archivedAt: null }] }));
     expect(
       await reason(
-        svc.archiveWorkspace(actor([FEATURE.workspacesManage]), { organizationId: 'org1', workspaceId: 'wsX' }),
+        svc.archiveWorkspace(actor([FEATURE.workspacesArchive]), { organizationId: 'org1', workspaceId: 'wsX' }),
       ),
     ).toBe('not_found');
   });
@@ -802,7 +826,7 @@ describe('a write naming an organization that does not exist', () => {
     ],
   ])('%s refuses with not_found rather than a constraint violation', async (_name, call) => {
     const { svc } = fake();
-    expect(await reason(call(svc, actor([FEATURE.membersManage, FEATURE.workspacesManage])))).toBe('not_found');
+    expect(await reason(call(svc, actor([FEATURE.membersInvite, FEATURE.workspacesCreate])))).toBe('not_found');
   });
 });
 
@@ -827,14 +851,14 @@ describe('idempotence — retrying a write is not an error', () => {
     );
 
     await expect(
-      svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+      svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
     ).resolves.toEqual({ granted: false, replaced: false });
   });
 
   it('re-sharing an already shared workspace reports shared: false', async () => {
     const { svc, writes } = shared();
     await expect(
-      svc.shareWorkspace(actor([FEATURE.workspacesShare]), {
+      svc.shareWorkspace(actor([FEATURE.workspaceMembersAdd]), {
         organizationId: 'org1',
         workspaceId: 'ws1',
         userId: 'u2',
@@ -846,7 +870,7 @@ describe('idempotence — retrying a write is not an error', () => {
   it('revoking a role nobody holds leaves the world as asked', async () => {
     const { svc } = fake(emptyState({ memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }] }));
     await expect(
-      svc.revokeRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
+      svc.revokeRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId: 'r1' }),
     ).resolves.toEqual({ revoked: false });
   });
 
@@ -854,7 +878,7 @@ describe('idempotence — retrying a write is not an error', () => {
     // Unlike a grant, "add this person" carries an intent that has already been
     // satisfied differently — silently succeeding would hide a stale invite.
     const { svc } = fake(emptyState({ memberships: [{ id: 'm2', userId: 'u2', organizationId: 'org1' }] }));
-    expect(await reason(svc.addMember(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2' }))).toBe(
+    expect(await reason(svc.addMember(actor([FEATURE.membersInvite]), { organizationId: 'org1', userId: 'u2' }))).toBe(
       'already_exists',
     );
   });
@@ -873,7 +897,7 @@ describe('workspace roles require workspace membership', () => {
 
     expect(
       await reason(
-        svc.assignWorkspaceRole(actor([FEATURE.workspacesShare]), {
+        svc.assignWorkspaceRole(actor([FEATURE.workspaceAssignRole]), {
           organizationId: 'org1',
           workspaceId: 'ws1',
           userId: 'u2',
@@ -893,7 +917,7 @@ describe('workspace roles require workspace membership', () => {
     );
 
     await expect(
-      svc.assignWorkspaceRole(actor([FEATURE.workspacesShare]), {
+      svc.assignWorkspaceRole(actor([FEATURE.workspaceAssignRole]), {
         organizationId: 'org1',
         workspaceId: 'ws1',
         userId: 'u2',
@@ -966,7 +990,7 @@ describe('the pure rules, without a service around them', () => {
   it('assertRoleDefinable accepts a coherent role', () => {
     expect(() =>
       assertRoleDefinable(
-        { key: 'sharer', label: 'Sharer', level: 'workspace', features: [FEATURE.workspacesShare] },
+        { key: 'sharer', label: 'Sharer', level: 'workspace', features: [FEATURE.workspaceMembersAdd] },
         FEATURE_REGISTRY,
       ),
     ).not.toThrow();
@@ -1307,7 +1331,7 @@ describe('a member holds one organization role', () => {
     );
 
   const grant = (svc: PermissionsWriteService, roleId: string) =>
-    svc.assignRole(actor([FEATURE.membersManage]), { organizationId: 'org1', userId: 'u2', roleId });
+    svc.assignRole(actor([FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'u2', roleId });
 
   it('replaces the previous role rather than adding to it', async () => {
     const { svc, state } = withMember();
@@ -1344,7 +1368,7 @@ describe('a member holds one organization role', () => {
     const { svc, state } = withMember();
     await grant(svc, 'r-admin');
 
-    await svc.revokeRole(actor([FEATURE.membersManage]), {
+    await svc.revokeRole(actor([FEATURE.membersAssignRole]), {
       organizationId: 'org1',
       userId: 'u2',
       roleId: 'r-admin',
@@ -1370,7 +1394,7 @@ describe('a member holds one organization role', () => {
         ],
       }),
     );
-    const act = actor([FEATURE.workspacesShare]);
+    const act = actor([FEATURE.workspaceAssignRole]);
     const input = { organizationId: 'org1', workspaceId: 'ws1', userId: 'u2' };
 
     expect(await svc.assignWorkspaceRole(act, { ...input, roleId: 'r-a' })).toEqual({
@@ -1394,7 +1418,7 @@ describe('a member holds one organization role', () => {
         roles: [{ id: 'r-a', key: 'a', label: 'a', level: 'workspace', organizationId: null }],
       }),
     );
-    const act = actor([FEATURE.workspacesShare]);
+    const act = actor([FEATURE.workspaceAssignRole]);
     const input = { organizationId: 'org1', workspaceId: 'ws1', userId: 'u2', roleId: 'r-a' };
 
     await svc.assignWorkspaceRole(act, input);
@@ -1404,13 +1428,13 @@ describe('a member holds one organization role', () => {
 });
 
 describe('invitations', () => {
-  const inviter = () => actor([FEATURE.membersManage]);
+  const inviter = () => actor([FEATURE.membersInvite]);
   /*
    * A PLATFORM inviter: `roles:grant_app` for the app-level role, and the
    * feature the granted role carries, because `inviteUser` refuses to hand out
    * more than the granter holds.
    */
-  const granter = () => actor([FEATURE.rolesGrantApp, FEATURE.membersManage]);
+  const granter = () => actor([FEATURE.rolesGrantApp, FEATURE.membersInvite]);
 
   it('sends the token to the host and never returns it', async () => {
     const h = fake();
@@ -1714,5 +1738,215 @@ describe('renaming an organization', () => {
     expect(await reason(h.svc.updateOrganization(manager(), { organizationId: 'nope', key: 'a', name: 'A' }))).toBe(
       'not_found',
     );
+  });
+});
+
+/**
+ * ── the tenant's own writes ─────────────────────────────────────────────────
+ *
+ * The `/organizations/*` half of PLAN §12.13: a customer acting on the
+ * organization they are STANDING IN, as opposed to the platform writes above,
+ * which act on any tenant.
+ */
+describe('a tenant renames its OWN organization', () => {
+  const owner = () => actor([FEATURE.organizationUpdate]);
+
+  it('renames, and trims what it is given', async () => {
+    const h = fake();
+    await expect(
+      h.svc.renameMyOrganization(owner(), { organizationId: 'org1', key: ' acme-co ', name: '  Acme Co.  ' }),
+    ).resolves.toEqual({ organizationId: 'org1', renamed: true });
+    expect(h.state.organizations[0]).toMatchObject({ key: 'acme-co', name: 'Acme Co.' });
+  });
+
+  /**
+   * The two keys are one letter apart, and this is what makes the near
+   * collision safe rather than merely documented: neither stands in for the
+   * other, in either direction.
+   *
+   *   organizations:manage  APP  — rename ANY tenant. Support.
+   *   organization:manage   ORG  — rename THIS one. A customer's owner.
+   */
+  it('does not accept the APP-level key in place of its own', async () => {
+    const h = fake();
+    expect(
+      await reason(
+        h.svc.renameMyOrganization(actor([FEATURE.organizationsManage]), {
+          organizationId: 'org1',
+          key: 'x',
+          name: 'X',
+        }),
+      ),
+    ).toBe('not_permitted');
+    expect(h.writes.organizations).toHaveLength(0);
+  });
+
+  it('and the platform mutation does not accept the ORGANIZATION-level one either', async () => {
+    const h = fake();
+    expect(
+      await reason(
+        h.svc.updateOrganization(actor([FEATURE.organizationUpdate]), {
+          organizationId: 'org1',
+          key: 'x',
+          name: 'X',
+        }),
+      ),
+    ).toBe('not_permitted');
+  });
+
+  /**
+   * The check the guard cannot make for a worker, a CLI or a seed script: a
+   * context resolved in one organization must not write to another. On the HTTP
+   * path the guard resolved the actor from this same id, so the two cannot
+   * disagree — everywhere else they can, and the failure would be a
+   * cross-tenant write.
+   */
+  it('refuses an organization other than the one the actor resolved in', async () => {
+    const h = fake(
+      emptyState({
+        organizations: [
+          { id: 'org1', key: 'acme', name: 'Acme' },
+          { id: 'org2', key: 'b', name: 'B' },
+        ],
+      }),
+    );
+    expect(await reason(h.svc.renameMyOrganization(owner(), { organizationId: 'org2', key: 'x', name: 'X' }))).toBe(
+      'not_permitted',
+    );
+    expect(h.writes.organizations).toHaveLength(0);
+  });
+
+  /** An APP-level actor carries no organization, which is what lets staff act anywhere. */
+  it('lets an actor with no organization through — that check asks "somewhere else", not "anywhere"', async () => {
+    const h = fake();
+    const staff: PermissionContext = { ...owner(), organizationId: null, workspaceId: null };
+    await expect(
+      h.svc.renameMyOrganization(staff, { organizationId: 'org1', key: 'acme-co', name: 'Acme Co.' }),
+    ).resolves.toMatchObject({ renamed: true });
+  });
+});
+
+describe('leaving an organization', () => {
+  const twoMembers = () =>
+    emptyState({
+      memberships: [
+        { id: 'm-actor', userId: 'actor', organizationId: 'org1', status: 'active' },
+        { id: 'm-other', userId: 'other', organizationId: 'org1', status: 'active' },
+      ],
+    });
+
+  /**
+   * NO FEATURE IS REQUIRED. Walking out is the other end of the membership that
+   * put you there — a key for it would be one an administrator could withhold
+   * to keep somebody in, and an ordinary member who administers nothing must
+   * still be able to leave.
+   */
+  it('needs no feature at all', async () => {
+    const h = fake(twoMembers());
+    await expect(h.svc.leaveOrganization(actor([]), { organizationId: 'org1' })).resolves.toEqual({ removed: 1 });
+    expect(h.state.memberships.map((m) => m.userId)).toEqual(['other']);
+  });
+
+  /** Takes no userId: the subject is the caller, so there is nobody else to pass. */
+  it('removes the ACTOR, not an id it was handed', async () => {
+    const h = fake(twoMembers());
+    await h.svc.leaveOrganization(actor([]), { organizationId: 'org1' });
+    expect(h.state.memberships.some((m) => m.userId === 'actor')).toBe(false);
+  });
+
+  /**
+   * An organization with nobody in it is unreachable by every tenant screen —
+   * `loadContext` resolves no context there for anyone — so it would sit
+   * counting against nobody's cap with no way back short of platform staff.
+   * The mirror of `createOrganization` making its founder the first member.
+   */
+  it('refuses the LAST member, and rolls the delete back', async () => {
+    const h = fake(
+      emptyState({ memberships: [{ id: 'm-actor', userId: 'actor', organizationId: 'org1', status: 'active' }] }),
+    );
+    expect(await reason(h.svc.leaveOrganization(actor([]), { organizationId: 'org1' }))).toBe('not_permitted');
+    // Still there, and never deleted in the first place: the count is taken and
+    // refused BEFORE the delete rather than rolled back after it, so the rule
+    // holds for a caller that arrives without a transaction too.
+    expect(h.state.memberships).toHaveLength(1);
+  });
+
+  /**
+   * A suspended member occupies no active seat, so their leaving cannot empty
+   * the organization. Without the second count they would be refused about a
+   * seat they do not hold — and leaving is exactly what somebody suspended is
+   * most likely to want to do.
+   */
+  it('lets a SUSPENDED member leave even when one active member remains', async () => {
+    const h = fake(
+      emptyState({
+        memberships: [
+          { id: 'm-actor', userId: 'actor', organizationId: 'org1', status: 'suspended' },
+          { id: 'm-other', userId: 'other', organizationId: 'org1', status: 'active' },
+        ],
+      }),
+    );
+    await expect(h.svc.leaveOrganization(actor([]), { organizationId: 'org1' })).resolves.toEqual({ removed: 1 });
+    expect(h.state.memberships.map((m) => m.userId)).toEqual(['other']);
+  });
+
+  it('says so when the caller is not a member, rather than reporting a silent success', async () => {
+    const h = fake(twoMembers());
+    const stranger: PermissionContext = { ...actor([]), subjectId: 'nobody' };
+    expect(await reason(h.svc.leaveOrganization(stranger, { organizationId: 'org1' }))).toBe('not_found');
+  });
+});
+
+/**
+ * A gap the tenant screens surfaced rather than created.
+ *
+ * §12.33 made workspace membership REQUIRED — no role widens which workspaces
+ * you may enter. `createWorkspace` added no member, so a tenant administrator
+ * could create a workspace and then be refused entry to it, with the only way
+ * in being `workspaces:share`, which is itself a WORKSPACE-level key and so
+ * resolves inside a workspace they may not enter. A tenant could reach a state
+ * it could not leave without platform staff, and nothing said so.
+ */
+describe('creating a workspace puts its creator in it', () => {
+  const creator = () => actor([FEATURE.workspacesCreate]);
+  const member = () =>
+    emptyState({ memberships: [{ id: 'm-actor', userId: 'actor', organizationId: 'org1', status: 'active' }] });
+
+  it('adds the creator as a workspace member, in the same transaction', async () => {
+    const h = fake(member());
+    const result = await h.svc.createWorkspace(creator(), { organizationId: 'org1', key: 'ws', name: 'WS' });
+
+    expect(result.joined).toBe(true);
+    expect(h.state.workspaceMembers).toHaveLength(1);
+    expect(h.state.workspaceMembers[0]).toMatchObject({ membershipId: 'm-actor', workspaceId: result.workspaceId });
+  });
+
+  /**
+   * NO ROLE comes with it, only entry. Being able to open a workspace and being
+   * able to change it are the split the model makes everywhere else, and
+   * creating one should not quietly hand over both.
+   */
+  it('grants no workspace role with the membership', async () => {
+    const h = fake(member());
+    await h.svc.createWorkspace(creator(), { organizationId: 'org1', key: 'ws', name: 'WS' });
+    expect(h.state.workspaceMemberRoles).toHaveLength(0);
+  });
+
+  /**
+   * Platform staff hold no membership in the tenant, so there is no row to hang
+   * a workspace member off. Correct rather than a shortfall: they enter by
+   * `platform:support_access`, the single exemption from membership, and
+   * writing them a membership would make a support visit look like joining the
+   * company.
+   */
+  it('creates no membership for an actor who is not in the organization', async () => {
+    const h = fake();
+    const result = await h.svc.createWorkspace(creator(), { organizationId: 'org1', key: 'ws', name: 'WS' });
+
+    expect(result.joined).toBe(false);
+    expect(h.state.workspaceMembers).toHaveLength(0);
+    // The workspace itself is still created — support creating one on a
+    // customer's behalf is a legitimate act.
+    expect(h.state.workspaces).toHaveLength(1);
   });
 });

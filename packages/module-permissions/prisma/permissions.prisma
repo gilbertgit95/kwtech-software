@@ -83,6 +83,14 @@ model PermOrganization {
   key  String @unique
   name String
 
+  /// What this organization IS, in the tenant's own words.
+  ///
+  /// Nullable, because a description is optional and inventing one for a row
+  /// that has none would be worse than an empty field. Existing rows were
+  /// backfilled from `name` when the column was added, so nothing reads blank
+  /// today — see the migration.
+  description String?
+
   invitations   PermInvitation[]
   memberships   PermMembership[]
   roles         PermRole[]
@@ -101,6 +109,10 @@ model PermWorkspace {
   key            String
   name           String
   archivedAt     DateTime?
+
+  /// What this workspace is for. Nullable and backfilled from `name`, exactly
+  /// like the organization's — see there.
+  description String?
 
   organization PermOrganization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   members       PermWorkspaceMember[]

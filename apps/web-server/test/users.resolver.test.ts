@@ -13,7 +13,7 @@ describe('findUserByEmail', () => {
     // claim cannot be checked from inside the module — the handler lives here.
     // This is the other half of `surface-coverage.test.ts`.
     const guard = Reflect.getMetadata(REQUIRED_FEATURES, UsersResolver.prototype.findUserByEmail);
-    expect(guard).toEqual([FEATURE.membersManage]);
+    expect(guard).toEqual([FEATURE.membersRead]);
   });
 
   const resolver = (found: unknown) => new UsersResolver({ authUser: { findUnique: async () => found } } as never);
@@ -66,7 +66,7 @@ describe('findUserByEmail', () => {
 describe('findUsersByIds', () => {
   it('is guarded by members:manage, like the lookup beside it', () => {
     const guard = Reflect.getMetadata(REQUIRED_FEATURES, UsersResolver.prototype.findUsersByIds);
-    expect(guard).toEqual([FEATURE.membersManage]);
+    expect(guard).toEqual([FEATURE.membersRead]);
   });
 
   const capture = () => {

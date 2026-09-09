@@ -4,6 +4,7 @@ import { filterFeatures } from '../../domain/feature-filter.js';
 import { paginate } from '../../domain/pagination.js';
 import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
 import type { PermissionContext } from '../../types.js';
+import { PERMISSION_CONTEXT_KEY } from '../feature.guard.js';
 import type { PermissionsModuleOptions } from '../permissions.module.js';
 // The VALUE comes from the leaf module; the interface is type-only and erased,
 // so importing it from permissions.module.js closes no cycle at runtime.
@@ -12,19 +13,23 @@ import { PermissionsService } from '../permissions.service.js';
 import { PERMISSIONS_OPTIONS } from '../permissions.tokens.js';
 import { PermissionsWriteService } from '../permissions-write.service.js';
 import { RequireFeature } from '../require-feature.decorator.js';
+import { RequireScope } from '../require-scope.decorator.js';
 import {
   FeatureFilterInput,
+  MyWorkspaceSummaryType,
   PaginationArgs,
   PermissionContextType,
   PermissionFeaturePageType,
   PermissionInvitationResultType,
   PermissionMemberType,
+  PermissionMyWorkspaceType,
   PermissionOrganizationDetailType,
   PermissionOrganizationType,
   PermissionPlanChangedType,
   PermissionPlanDetailType,
   PermissionRoleDetailType,
   PermissionSubscriptionType,
+  PermissionWorkspaceType,
   PermissionWriteResultType,
   PlanClonePreviewType,
   PlanDraftInput,
@@ -273,8 +278,9 @@ export class PermissionsResolver {
    *
    * `organizations:read` is APP level: this reads across tenants, so it is a
    * platform view. A tenant administrator reading their OWN organization is a
-   * different question and needs the active-organization scope that PLAN
-   * §12.13 still defers.
+   * different question, answered by `myOrganization` below — same shape, an
+   * ORGANIZATION-level key, and a scope declared so a customer's own role
+   * resolves against it.
    *
    * Returns members as opaque `userId`s. Resolving those to names is the app's
    * job — this module does not own identity.
@@ -311,6 +317,53 @@ export class PermissionsResolver {
     };
   }
 
+  /*
+   * ── @RequireScope, from here down ────────────────────────────────────────
+   *
+   * Every operation below that names an organization or a workspace declares
+   * the level it acts at. This is the change that made the tenant area
+   * possible, and it is worth reading once rather than thirteen times.
+   *
+   * ## What was wrong
+   *
+   * A resolver has no path. One GraphQL endpoint serves every query, so the
+   * guard's fallback — `parseScope(request.url)` — read `/api/v1/graphql` and
+   * resolved APP level with no organization, whatever the arguments said. The
+   * caller's context was therefore loaded with no tenant in it, and an
+   * ORGANIZATION-LEVEL ROLE GRANTED NOTHING ON ANY OF THESE. Only app-level
+   * roles worked them. Every admin screen's comment recorded this as the thing
+   * PLAN §12.13 deferred; it was not a limitation of the screens but of these
+   * decorators being absent.
+   *
+   * ## What it changes, and what it does not
+   *
+   * Nothing changes for platform staff. An app-level grant unions in unfiltered
+   * whatever the scope (§12.14), so a support engineer still resolves these
+   * inside a tenant they have never belonged to, exactly as before.
+   *
+   * What changes is that a customer's own role now participates: the guard
+   * loads their context IN the organization the arguments name, so the
+   * organization-level keys — `members:manage`, `workspaces:manage` — finally
+   * mean what they have always said.
+   *
+   * ## Why the workspace ones are different again
+   *
+   * `@RequireScope('workspace')` makes the guard ask `canAccessWorkspace`
+   * BEFORE the feature question. That is §12.33 — workspace membership is
+   * required, and no role widens it — enforced rather than merely described.
+   * Nothing resolved a workspace-level request before this, so the check had
+   * never once run in production.
+   *
+   * ⚠ `createWorkspace`, `updateWorkspace` and `archiveWorkspace` take a
+   * workspace id and are ORGANIZATION scope, deliberately: `workspaces:manage`
+   * is the right to manage a tenant's workspaces, and renaming one is not
+   * entering it. The guard reads the workspace argument only where the
+   * declaration says 'workspace' — see `resolveScope`, which had to be taught
+   * that, because it previously inferred the level from whichever ids happened
+   * to be present and then refused these handlers for disagreeing with their
+   * own declaration.
+   */
+
   /**
    * Invites an address to join an organization.
    *
@@ -319,7 +372,8 @@ export class PermissionsResolver {
    * other. The module has no email transport and should not acquire one; the
    * hook is the same arrangement `sendPasswordResetEmail` uses in module-auth.
    */
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersInvite)
+  @RequireScope('organization')
   @Mutation(() => PermissionInvitationResultType, { name: 'inviteMember' })
   async inviteMember(
     @Context() gqlContext: { req?: unknown },
@@ -327,7 +381,7 @@ export class PermissionsResolver {
     @Args('email') email: string,
     @Args('roleId', { type: () => String, nullable: true }) roleId?: string | null,
   ): Promise<PermissionInvitationResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     const result = await this.writes.inviteMember(actor, organizationId, { email, roleId: roleId ?? '' });
     return { invitationId: result.invitationId, delivered: result.delivered };
   }
@@ -362,14 +416,15 @@ export class PermissionsResolver {
   }
 
   /** Withdraws an invitation. The row stays — see `revokeInvitation`. */
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersInvite)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'revokeInvitation' })
   async revokeInvitation(
     @Context() gqlContext: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args('invitationId') invitationId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     await this.writes.revokeInvitation(actor, organizationId, invitationId);
     return { changed: true, id: invitationId, replaced: false };
   }
@@ -413,9 +468,10 @@ export class PermissionsResolver {
     @Context() gqlContext: { req?: unknown },
     @Args('key') key: string,
     @Args('name') name: string,
+    @Args('description', { type: () => String, nullable: true }) description?: string | null,
   ): Promise<PermissionWriteResultType> {
     const actor = await this.requireActor(gqlContext.req);
-    const { organizationId } = await this.writes.createOrganization(actor, { key, name });
+    const { organizationId } = await this.writes.createOrganization(actor, { key, name, description });
     return { changed: true, id: organizationId, replaced: false };
   }
 
@@ -434,32 +490,35 @@ export class PermissionsResolver {
     @Args('organizationId') organizationId: string,
     @Args('key') key: string,
     @Args('name') name: string,
+    @Args('description', { type: () => String, nullable: true }) description?: string | null,
   ): Promise<PermissionWriteResultType> {
     const actor = await this.requireActor(gqlContext.req);
-    await this.writes.updateOrganization(actor, { organizationId, key, name });
+    await this.writes.updateOrganization(actor, { organizationId, key, name, description });
     return { changed: true, id: organizationId, replaced: false };
   }
 
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersInvite)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'addMember' })
   async addMember(
     @Context() gqlContext: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args('userId') userId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     const { membershipId } = await this.writes.addMember(actor, { organizationId, userId });
     return { changed: true, id: membershipId, replaced: false };
   }
 
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersRemove)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'removeMember' })
   async removeMember(
     @Context() gqlContext: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args('userId') userId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     const { removed } = await this.writes.removeMember(actor, { organizationId, userId });
     return { changed: removed > 0, id: null, replaced: false };
   }
@@ -471,7 +530,8 @@ export class PermissionsResolver {
    * `changed: false` rather than failing, because it leaves the world in the
    * state asked for and making it an error turns every retry into a ticket.
    */
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersAssignRole)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'assignRole' })
   async assignRole(
     @Context() gqlContext: { req?: unknown },
@@ -479,7 +539,7 @@ export class PermissionsResolver {
     @Args('userId') userId: string,
     @Args('roleId') roleId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     const { granted, replaced } = await this.writes.assignRole(actor, { organizationId, userId, roleId });
     return { changed: granted, id: roleId, replaced };
   }
@@ -508,7 +568,8 @@ export class PermissionsResolver {
     return { changed: granted, id: roleId, replaced };
   }
 
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersAssignRole)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'revokeRole' })
   async revokeRole(
     @Context() gqlContext: { req?: unknown },
@@ -516,26 +577,29 @@ export class PermissionsResolver {
     @Args('userId') userId: string,
     @Args('roleId') roleId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     const { revoked } = await this.writes.revokeRole(actor, { organizationId, userId, roleId });
     return { changed: revoked, id: roleId, replaced: false };
   }
 
-  @RequireFeature(FEATURE.workspacesManage)
+  @RequireFeature(FEATURE.workspacesCreate)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'createWorkspace' })
   async createWorkspace(
     @Context() gqlContext: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args('key') key: string,
     @Args('name') name: string,
+    @Args('description', { type: () => String, nullable: true }) description?: string | null,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
-    const { workspaceId } = await this.writes.createWorkspace(actor, { organizationId, key, name });
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
+    const { workspaceId } = await this.writes.createWorkspace(actor, { organizationId, key, name, description });
     return { changed: true, id: workspaceId, replaced: false };
   }
 
   /** Renames a workspace, or changes its key. See `updateWorkspace`. */
-  @RequireFeature(FEATURE.workspacesManage)
+  @RequireFeature(FEATURE.workspacesUpdate)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'updateWorkspace' })
   async updateWorkspace(
     @Context() gqlContext: { req?: unknown },
@@ -543,26 +607,29 @@ export class PermissionsResolver {
     @Args('workspaceId') workspaceId: string,
     @Args('key') key: string,
     @Args('name') name: string,
+    @Args('description', { type: () => String, nullable: true }) description?: string | null,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
-    await this.writes.updateWorkspace(actor, { organizationId, workspaceId, key, name });
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
+    await this.writes.updateWorkspace(actor, { organizationId, workspaceId, key, name, description });
     return { changed: true, id: workspaceId, replaced: false };
   }
 
   /** Archives a workspace. It stops resolving; its rows stay. There is no delete. */
-  @RequireFeature(FEATURE.workspacesManage)
+  @RequireFeature(FEATURE.workspacesArchive)
+  @RequireScope('organization')
   @Mutation(() => PermissionWriteResultType, { name: 'archiveWorkspace' })
   async archiveWorkspace(
     @Context() gqlContext: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args('workspaceId') workspaceId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
     await this.writes.archiveWorkspace(actor, { organizationId, workspaceId });
     return { changed: true, id: workspaceId, replaced: false };
   }
 
-  @RequireFeature(FEATURE.workspacesShare)
+  @RequireFeature(FEATURE.workspaceMembersAdd)
+  @RequireScope('workspace')
   @Mutation(() => PermissionWriteResultType, { name: 'shareWorkspace' })
   async shareWorkspace(
     @Context() gqlContext: { req?: unknown },
@@ -570,12 +637,13 @@ export class PermissionsResolver {
     @Args('workspaceId') workspaceId: string,
     @Args('userId') userId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId, workspaceId });
     const result = await this.writes.shareWorkspace(actor, { organizationId, workspaceId, userId });
     return { changed: result.shared, id: result.workspaceMemberId ?? null, replaced: false };
   }
 
-  @RequireFeature(FEATURE.workspacesShare)
+  @RequireFeature(FEATURE.workspaceMembersRemove)
+  @RequireScope('workspace')
   @Mutation(() => PermissionWriteResultType, { name: 'unshareWorkspace' })
   async unshareWorkspace(
     @Context() gqlContext: { req?: unknown },
@@ -583,7 +651,7 @@ export class PermissionsResolver {
     @Args('workspaceId') workspaceId: string,
     @Args('userId') userId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId, workspaceId });
     const { unshared } = await this.writes.unshareWorkspace(actor, { organizationId, workspaceId, userId });
     return { changed: unshared, id: null, replaced: false };
   }
@@ -596,7 +664,8 @@ export class PermissionsResolver {
    * is not in the workspace. The service says so explicitly rather than
    * silently inserting both.
    */
-  @RequireFeature(FEATURE.workspacesShare)
+  @RequireFeature(FEATURE.workspaceAssignRole)
+  @RequireScope('workspace')
   @Mutation(() => PermissionWriteResultType, { name: 'assignWorkspaceRole' })
   async assignWorkspaceRole(
     @Context() gqlContext: { req?: unknown },
@@ -605,7 +674,7 @@ export class PermissionsResolver {
     @Args('userId') userId: string,
     @Args('roleId') roleId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId, workspaceId });
     const { granted, replaced } = await this.writes.assignWorkspaceRole(actor, {
       organizationId,
       workspaceId,
@@ -617,7 +686,8 @@ export class PermissionsResolver {
     return { changed: granted, id: roleId, replaced };
   }
 
-  @RequireFeature(FEATURE.workspacesShare)
+  @RequireFeature(FEATURE.workspaceAssignRole)
+  @RequireScope('workspace')
   @Mutation(() => PermissionWriteResultType, { name: 'revokeWorkspaceRole' })
   async revokeWorkspaceRole(
     @Context() gqlContext: { req?: unknown },
@@ -626,7 +696,7 @@ export class PermissionsResolver {
     @Args('userId') userId: string,
     @Args('roleId') roleId: string,
   ): Promise<PermissionWriteResultType> {
-    const actor = await this.requireActor(gqlContext.req);
+    const actor = await this.requireActor(gqlContext.req, { organizationId, workspaceId });
     const { revoked } = await this.writes.revokeWorkspaceRole(actor, {
       organizationId,
       workspaceId,
@@ -876,8 +946,12 @@ export class PermissionsResolver {
     return this.options.featureRegistry ?? FEATURE_REGISTRY;
   }
 
-  private async requireActor(request: unknown) {
-    const actor = await this.resolveActor(request);
+  private async requireActor(
+    request: unknown,
+    /** Where the write is aimed. See `resolveActor` — omitted means app level. */
+    scope: { organizationId?: string | null | undefined; workspaceId?: string | null | undefined } = {},
+  ) {
+    const actor = await this.resolveActor(request, scope);
     if (!actor) throw new Error('No permission context for this request');
     return actor;
   }
@@ -903,10 +977,320 @@ export class PermissionsResolver {
     return toSubscriptionView(found);
   }
 
+  /**
+   * What the caller may do — optionally AT A SCOPE.
+   *
+   * ## Why the two arguments were added
+   *
+   * A permission context is always per (subject, organization): the same person
+   * legitimately holds different rights in two organizations, so a context with
+   * no organization is not a smaller one, it is an ambiguous one — the type's
+   * own comment says exactly that. This query took no scope, so the shell that
+   * calls it on every render always got the app-level reading, and a member
+   * whose only role is inside a tenant resolved to nothing at all. Their
+   * navigation was empty, and every `<FeatureGate>` on a tenant page was closed,
+   * on pages the API would have served them.
+   *
+   * The ids come from the URL the browser is on — `/organizations/:id/...`,
+   * parsed by this module's own `scope.ts` — which is where PLAN §12.13 lands.
+   * Not from a header (forgettable, and invisible in a bug report), not from a
+   * subdomain (a DNS record per tenant), and NOT from the token: baking the
+   * active tenant into a week-long credential would make switching organization
+   * require a new sign-in. `resolvePrincipal` says so already.
+   *
+   * ## Why passing an id you have no business with is safe
+   *
+   * `loadContext` resolves grants for the (user, organization) pair and returns
+   * NULL when the pair has no standing. So naming somebody else's organization
+   * here returns null — "you hold nothing" — rather than anything about them.
+   * The argument selects a question; it does not assert an answer. That is also
+   * why this query stays unguarded: it discloses only what the caller holds,
+   * and a caller who holds nothing must still be able to learn that.
+   *
+   * An explicit scope on the PRINCIPAL still wins, for a host that resolves the
+   * active tenant some other way — the same precedence `FeatureGuard` uses.
+   */
   @Query(() => PermissionContextType, { name: 'myPermissions', nullable: true })
-  async mine(@Context() gqlContext: { req?: unknown }): Promise<PermissionContextType | null> {
-    const context = await this.resolveActor(gqlContext.req);
+  async mine(
+    @Context() gqlContext: { req?: unknown },
+    @Args('organizationId', { type: () => String, nullable: true }) organizationId?: string | null,
+    @Args('workspaceId', { type: () => String, nullable: true }) workspaceId?: string | null,
+  ): Promise<PermissionContextType | null> {
+    const context = await this.resolveActor(gqlContext.req, { organizationId, workspaceId });
     return context ? toPermissionContextType(context) : null;
+  }
+
+  // ── the tenant's own organization ─────────────────────────────────────────
+  //
+  // The `/organizations/*` area: what a customer sees about the organization
+  // they are standing in, as opposed to the `/admin/*` queries above, which
+  // read across every tenant and answer only to app-level keys.
+  //
+  // Every one of them declares its scope, which is what lets an
+  // organization-level role answer it. None of them can reach a second tenant:
+  // the guard resolves the caller's context in the organization the arguments
+  // name, and a caller with no standing there resolves no context at all.
+
+  /**
+   * The organizations the CALLER belongs to, and what they are in each.
+   *
+   * ## Unguarded, on purpose
+   *
+   * It answers only about the caller — the same class of question as
+   * `myPermissions`, and refused for the same reason a feature key would be
+   * wrong: somebody who holds nothing anywhere must still be able to see the
+   * list of organizations they are in, or they can never reach the one place a
+   * role could be granted to them. A key here would be a key you need before
+   * you can be given any key.
+   *
+   * It takes NO userId, which is the whole difference from
+   * `permissionUserOrganizations` beside it. That one answers about OTHER
+   * people and is guarded on `organizations:read` because it discloses tenant
+   * membership; this one cannot disclose anything the caller does not already
+   * know, because the subject is the caller and the id comes from the session
+   * rather than from an argument.
+   *
+   * Suspended memberships are excluded by `listOrganizationsForUsers`, which is
+   * right here too: an organization you cannot act in should not be offered as
+   * somewhere to go.
+   */
+  @Query(() => [UserOrganizationType], { name: 'myOrganizations' })
+  async myOrganizations(@Context() gqlContext: { req?: unknown }): Promise<UserOrganizationType[]> {
+    /*
+     * Resolved at APP level — no scope passed — which is correct and slightly
+     * subtle. The question is "where do I belong", asked from outside any one
+     * tenant; resolving it inside the organization the reader happens to be
+     * looking at would make the switcher's contents depend on where it was
+     * opened from, and would return nothing at all on a page for a tenant they
+     * hold no role in.
+     */
+    const actor = await this.resolveActor(gqlContext.req);
+    if (!actor) return [];
+    return this.permissions.listOrganizationsForUsers([actor.subjectId]);
+  }
+
+  /**
+   * The workspaces of one organization the CALLER may enter.
+   *
+   * ## Unguarded, like `myOrganizations` and for the same reason
+   *
+   * It answers only about the caller: the list IS their
+   * `accessibleWorkspaceIds`, resolved into names. Nothing here can disclose a
+   * workspace they may not enter, so there is no right to withhold — and the
+   * person this is for may hold nothing at all in the organization beyond a
+   * workspace membership, which is exactly the case a feature key would refuse.
+   *
+   * ⚠ Deliberately NOT `organization:read`. Membership in a workspace does not
+   * imply the right to open the organization's own screens, so requiring that
+   * key would hide a workspace from somebody who is IN it.
+   *
+   * ## Naming an organization you have no standing in returns nothing
+   *
+   * `loadContext` resolves the (user, organization) pair and returns null for a
+   * pair with none, so the answer is an empty list rather than anything about
+   * that tenant. The argument selects a question; it does not assert an answer.
+   *
+   * ## Archived workspaces are excluded — see `listAccessibleWorkspaces`
+   *
+   * They stop resolving, so offering one in a picker promises somewhere nobody
+   * can go.
+   */
+  @Query(() => [MyWorkspaceSummaryType], { name: 'myWorkspaces' })
+  async myWorkspaces(
+    @Context() gqlContext: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+  ): Promise<MyWorkspaceSummaryType[]> {
+    const actor = await this.resolveActor(gqlContext.req, { organizationId });
+    if (!actor) return [];
+    /*
+     * The SUBJECT is taken from the resolved actor, never from an argument —
+     * this answers "what may I enter and what am I in it", and an id in the
+     * request would make it answer that about somebody else.
+     */
+    return this.permissions.listAccessibleWorkspaces(organizationId, actor.subjectId, actor.accessibleWorkspaceIds);
+  }
+
+  /**
+   * ONE organization, as a member of it sees it.
+   *
+   * The tenant twin of `permissionOrganizationDetail`, and the same shape by
+   * design — the data a members screen needs does not change with who is asking.
+   * What changes is which key opens it and at which level, which is the whole
+   * of the difference between a platform view and a tenant one:
+   *
+   *   permissionOrganizationDetail   organizations:read   APP     any tenant
+   *   myOrganization                 organization:read    ORG     this one
+   *
+   * Reusing the type rather than defining a thinner one is deliberate. A
+   * separate "tenant view" type would be a second place to add a field and a
+   * second place to forget one, and the difference between the two audiences is
+   * already carried by the guard rather than by the columns.
+   *
+   * Null for an organization that does not exist. A caller with no standing in
+   * one that does never reaches this line: the guard resolves no context for
+   * them and refuses first, so "does not exist" and "not yours" are not
+   * distinguishable from out here — which is the right way round.
+   */
+  @RequireFeature(FEATURE.organizationRead)
+  @RequireScope('organization')
+  @Query(() => PermissionOrganizationDetailType, { name: 'myOrganization', nullable: true })
+  async myOrganization(
+    @Args('organizationId') organizationId: string,
+  ): Promise<PermissionOrganizationDetailType | null> {
+    return this.organizationDetail(organizationId);
+  }
+
+  /**
+   * ONE workspace of the caller's organization, plus the pool of people who
+   * could be added to it.
+   *
+   * WORKSPACE scope, and this is the first query in the codebase to have it. It
+   * is what makes the guard run `canAccessWorkspace` before answering, so
+   * §12.33 — membership is required to enter a workspace, and no role widens
+   * that — is enforced here rather than only written down. An organization
+   * administrator who is not IN this workspace is refused, which is the model
+   * working, not a bug: `workspaces:manage` lets them rename it from the
+   * organization's own screen without being able to look inside.
+   *
+   * `organization:read` rather than a key of its own — see the binding's note
+   * in feature-keys.ts. Membership answers "may I be here"; a second key would
+   * be a second answer to it.
+   */
+  @RequireFeature(FEATURE.workspaceRead)
+  @RequireScope('workspace')
+  @Query(() => PermissionMyWorkspaceType, { name: 'myWorkspace', nullable: true })
+  async myWorkspace(
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+  ): Promise<PermissionMyWorkspaceType | null> {
+    const found = await this.permissions.listWorkspaceDetail(organizationId, workspaceId);
+    if (!found) return null;
+
+    return {
+      ...found,
+      // ISO at the boundary, like every other timestamp the schema carries —
+      // there is no Date scalar and adding one for a value the client only
+      // renders would be a custom scalar in the public contract for no gain.
+      organizationMembers: found.organizationMembers.map(
+        (member): PermissionMemberType => ({ ...member, joinedAt: member.joinedAt.toISOString() }),
+      ),
+    };
+  }
+
+  /**
+   * The roles a member of this organization can be given.
+   *
+   * ## Why not `permissionRoles`
+   *
+   * That one takes an optional organizationId, reads the SHARED-PRESET scope
+   * when it is omitted, and resolves at app level — so a tenant's own
+   * administrator never participates in it (§12.27). It is the platform's
+   * catalogue screen. This is the picker on a members screen, and it needs to
+   * resolve for somebody whose only role is inside one company.
+   *
+   * ## Narrowed to what a tenant may actually grant
+   *
+   * App-level roles are filtered out. They are in the same null scope as the
+   * organization ones — every role written today is a shared preset — so the
+   * unfiltered list would offer a customer's administrator `super-admin` in the
+   * same dropdown as `member`. `assignRole` would refuse it (no-escalation: a
+   * granter cannot hand out features they do not hold), but offering something
+   * that will be refused is how a screen teaches people to distrust it.
+   *
+   * DISABLED roles are included, like `permissionRoles` — the caller needs to
+   * be able to see the role a member already holds even after it was switched
+   * off, or the row would render as blank. The picker excludes them; that is a
+   * screen decision, and it is made where the screen is.
+   */
+  @RequireFeature(FEATURE.rolesRead)
+  @RequireScope('organization')
+  @Query(() => [PermissionRoleDetailType], { name: 'myOrganizationRoles' })
+  async myOrganizationRoles(
+    @Args('organizationId') _organizationId: string,
+    @Args('level', { type: () => String, nullable: true }) level?: string | null,
+  ): Promise<PermissionRoleDetailType[]> {
+    /*
+     * `null` is the scope every role lives in today, and the argument above is
+     * read by the GUARD rather than by this query — it is what tells the guard
+     * which organization to resolve the caller in. Naming it `_organizationId`
+     * would normally mean "unused"; here it means "used by the decorator", and
+     * that is worth one line of explanation rather than a reader concluding the
+     * query ignores its own tenant.
+     */
+    const roles = await this.permissions.listRoles(null);
+    const allowed = level ? [level] : ['organization', 'workspace'];
+    return roles.filter((role) => allowed.includes(role.level));
+  }
+
+  /**
+   * What this organization is subscribed to.
+   *
+   * A separate operation from `permissionSubscriptions` rather than an argument
+   * on it, because that one's organizationId is OPTIONAL and lists every
+   * subscription on the platform when omitted — it cannot be given a required
+   * scope without breaking the admin list built on that. Here the id is
+   * required, so the scope is always resolvable and the answer is always one
+   * tenant's.
+   *
+   * ⚠ An `active` row entitles regardless of `currentPeriodEnd`, which nothing
+   * compares to the clock (§12.40). A screen rendering this must say so rather
+   * than presenting the renewal date as an expiry — the date is informational
+   * until a billing provider exists to act on it.
+   */
+  @RequireFeature(FEATURE.subscriptionsRead)
+  @RequireScope('organization')
+  @Query(() => [PermissionSubscriptionType], { name: 'myOrganizationSubscriptions' })
+  async myOrganizationSubscriptions(
+    @Args('organizationId') organizationId: string,
+  ): Promise<PermissionSubscriptionType[]> {
+    return (await this.permissions.listSubscriptions(organizationId)).map(toSubscriptionView);
+  }
+
+  /**
+   * Renames the organization the caller is inside.
+   *
+   * The organization-level twin of `updateOrganization`, on the second key PLAN
+   * §12.13's own entry predicted: "rename any tenant" and "rename mine" are
+   * different rights, and one key for both would hand the first to every
+   * customer who could do the second.
+   */
+  @RequireFeature(FEATURE.organizationUpdate)
+  @RequireScope('organization')
+  @Mutation(() => PermissionWriteResultType, { name: 'renameMyOrganization' })
+  async renameMyOrganization(
+    @Context() gqlContext: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('key') key: string,
+    @Args('name') name: string,
+    @Args('description', { type: () => String, nullable: true }) description?: string | null,
+  ): Promise<PermissionWriteResultType> {
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
+    await this.writes.renameMyOrganization(actor, { organizationId, key, name, description });
+    return { changed: true, id: organizationId, replaced: false };
+  }
+
+  /**
+   * The caller leaves an organization.
+   *
+   * Guarded on `organization:read`, not on a key of its own — see the binding
+   * in feature-keys.ts. Walking out is the other end of the membership that put
+   * you there, and a key for it would be one an administrator could withhold to
+   * keep somebody in.
+   *
+   * Takes no userId. The subject is the caller, and an id in the argument would
+   * be an invitation to pass somebody else's — the same reason
+   * `acceptInvitation` takes none.
+   */
+  @RequireFeature(FEATURE.organizationRead)
+  @RequireScope('organization')
+  @Mutation(() => PermissionWriteResultType, { name: 'leaveOrganization' })
+  async leaveOrganization(
+    @Context() gqlContext: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+  ): Promise<PermissionWriteResultType> {
+    const actor = await this.requireActor(gqlContext.req, { organizationId });
+    const { removed } = await this.writes.leaveOrganization(actor, { organizationId });
+    return { changed: removed > 0, id: null, replaced: false };
   }
 
   /**
@@ -918,7 +1302,54 @@ export class PermissionsResolver {
    * the argument this resolver already made for resolving through the guard's
    * own hooks rather than inventing a second route to a subject.
    */
-  private async resolveActor(request: unknown): Promise<PermissionContext | null> {
+  private async resolveActor(
+    request: unknown,
+    /**
+     * Where to resolve the context, for a caller that knows.
+     *
+     * A resolver has no path, so the guard's fallback reads `/api/v1/graphql`
+     * and lands at app level whatever the arguments said. A tenant mutation
+     * therefore has to say where it is acting, or the actor it hands to the
+     * write service carries no organization and every organization-level check
+     * inside that service fails for a customer who holds the right.
+     *
+     * Optional, and app level when omitted — which is what the platform
+     * mutations above want: they may act on any tenant, and a support engineer
+     * resolving in one they do not belong to is the point.
+     */
+    scope: { organizationId?: string | null | undefined; workspaceId?: string | null | undefined } = {},
+  ): Promise<PermissionContext | null> {
+    /*
+     * WHAT THE GUARD ALREADY RESOLVED, when it resolved it at this scope.
+     *
+     * `FeatureGuard` stashes the context it authorised on the request. Reading
+     * it here does two things, and the second is the one that matters:
+     *
+     *   - it saves a second identical grant query on every guarded mutation,
+     *     which is what this did before the scope argument existed and would
+     *     now do at the same scope for the same subject;
+     *   - it makes the actor handed to the write service THE SAME OBJECT the
+     *     guard let through. Resolving twice leaves two chances to disagree,
+     *     and this resolver's own note says the one that drifts is always the
+     *     one without a guard behind it.
+     *
+     * The scope comparison is not optional. The guard caches per (request,
+     * scope) precisely because one GraphQL operation can contain fields at
+     * different scopes, and serving a workspace-scoped answer to an
+     * organization-scoped question is the dangerous direction. A miss simply
+     * falls through and resolves properly below.
+     */
+    const cached = (request as Record<string, unknown> | undefined)?.[PERMISSION_CONTEXT_KEY] as
+      | PermissionContext
+      | undefined;
+    if (
+      cached &&
+      cached.organizationId === (scope.organizationId ?? null) &&
+      cached.workspaceId === (scope.workspaceId ?? null)
+    ) {
+      return cached;
+    }
+
     if (this.options.resolveContext) {
       return (await this.options.resolveContext(request)) ?? null;
     }
@@ -932,18 +1363,33 @@ export class PermissionsResolver {
     if (!principal) return null;
 
     /*
-     * NO SCOPE FROM THE URL, unlike the guard.
+     * STILL NO SCOPE FROM THE URL, and still deliberately.
      *
-     * FeatureGuard reads organization and workspace out of the route it is
+     * `FeatureGuard` reads organization and workspace out of the route it is
      * protecting. There is no route here — one GraphQL endpoint serves every
-     * query — so the only scope available is what the principal itself carries,
-     * which is what `resolvePrincipal` reads off the request. An app that puts
-     * the active organization in a header or a subdomain surfaces it there
-     * (PLAN §12.13); this resolver deliberately does not go looking.
+     * query — so this resolver does not go looking at `request.url`, which
+     * would only ever read `/api/v1/graphql` and resolve app level with a
+     * misleading air of having checked something.
+     *
+     * What HAS changed (PLAN §12.13) is that the caller may now say where it is
+     * acting, through the `scope` argument. That is not the resolver guessing:
+     * the id came from the operation's own arguments, which the guard has
+     * already used to authorise the request at that same level. The two read
+     * one id, so they cannot disagree about which tenant this is.
+     *
+     * PRECEDENCE, highest first, matching the guard's:
+     *
+     *   1. the PRINCIPAL's own scope — a host that resolves the active tenant
+     *      itself (a header, a subdomain) overrules everything;
+     *   2. the operation's scope, above;
+     *   3. app level.
      */
+    const organizationId = principal.organizationId ?? scope.organizationId ?? undefined;
+    const workspaceId = principal.workspaceId ?? scope.workspaceId ?? undefined;
+
     return this.permissions.loadContext(principal.userId, {
-      ...(principal.organizationId !== undefined ? { organizationId: principal.organizationId } : {}),
-      ...(principal.workspaceId !== undefined ? { workspaceId: principal.workspaceId } : {}),
+      ...(organizationId !== undefined ? { organizationId } : {}),
+      ...(workspaceId !== undefined ? { workspaceId } : {}),
     });
   }
 }

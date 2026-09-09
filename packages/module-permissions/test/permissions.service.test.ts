@@ -28,6 +28,15 @@ interface Db {
   userRoles?: UserRoleRow[];
   membership?: MembershipRow | null;
   workspace?: { id: string } | null;
+  /** Live workspaces, for `listAccessibleWorkspaces`. The fake applies the `where` itself. */
+  workspaces?: { id: string; key: string; name: string; organizationId: string }[];
+  /** One person's workspace memberships and the role held in each. */
+  workspaceRoles?: {
+    workspaceId: string;
+    userId: string;
+    organizationId: string;
+    role: { key: string; label: string; icon: string | null } | null;
+  }[];
   workspaceMember?: WorkspaceMemberRow | null;
   subscriptions?: SubscriptionRow[];
   plans?: PlanDefinitionRow[];
@@ -73,11 +82,38 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
       count: async () => db.counts?.membership ?? 0,
     },
     permWorkspace: {
-      findFirst: async (args) => {
-        calls.workspace.push(args);
+      /*
+       * OVERLOADED, like `permSubscription.findMany` above: the resolve-time
+       * lookup asks "does this live workspace belong to this organization" and
+       * gets an id back, while `listWorkspaceDetail` asks for the whole screen.
+       * An object literal cannot declare overloads, so the implementation is
+       * written once and typed against the interface's own member.
+       *
+       * Only the resolve-time half is exercised here — the detail read has no
+       * permission decision in it — but the fake still has to satisfy both, or
+       * it is not the interface the service is compiled against.
+       */
+      findFirst: (async (args: unknown) => {
+        calls.workspace.push(args as Calls['workspace'][number]);
         return db.workspace === undefined ? { id: 'ws1' } : db.workspace;
-      },
+      }) as PermissionsPrismaClient['permWorkspace']['findFirst'],
       count: async () => db.counts?.workspace ?? 0,
+      findMany: async (args) => {
+        calls.workspace.push(args);
+        /*
+         * The `where` is applied HERE rather than the fake returning whatever
+         * it was given. `listAccessibleWorkspaces` decides between "every
+         * workspace" and "these ids" by SHAPING the clause — omitting `id`
+         * entirely for platform support — and a fake that ignored the clause
+         * would pass whichever branch it took, which is the one thing these
+         * tests are for.
+         */
+        return (db.workspaces ?? [])
+          .filter((w) => w.organizationId === args.where.organizationId)
+          .filter((w) => !args.where.id || args.where.id.in.includes(w.id))
+          .map((w) => ({ id: w.id, key: w.key, name: w.name, description: null }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      },
     },
     permWorkspaceMember: {
       findFirst: async (args) => {
@@ -85,6 +121,20 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
         return db.workspaceMember ?? null;
       },
       count: async () => db.counts?.workspaceMember ?? 0,
+      findMany: async (args) => {
+        calls.workspaceMember.push(args);
+        return (db.workspaceRoles ?? [])
+          .filter((row) => args.where.workspaceId.in.includes(row.workspaceId))
+          .filter(
+            (row) =>
+              row.userId === args.where.membership.userId &&
+              row.organizationId === args.where.membership.organizationId,
+          )
+          .map((row) => ({
+            workspaceId: row.workspaceId,
+            roles: row.role ? [{ role: row.role }] : [],
+          }));
+      },
     },
     permSubscription: {
       /*
@@ -296,7 +346,7 @@ describe('C3 — a role defined by one organization never grants in another', ()
               key: 'ours',
               level: 'organization',
               organizationId: 'org1',
-              features: [{ featureKey: FEATURE.membersManage }],
+              features: [{ featureKey: FEATURE.membersRead }],
             }),
           },
         ],
@@ -304,7 +354,7 @@ describe('C3 — a role defined by one organization never grants in another', ()
     });
 
     return svc.loadContext('u1', { organizationId: 'org1' }).then((ctx) => {
-      expect(ctx?.granted).toEqual([FEATURE.membersManage]);
+      expect(ctx?.granted).toEqual([FEATURE.membersRead]);
     });
   });
 
@@ -341,7 +391,7 @@ describe('C3 — a role defined by one organization never grants in another', ()
               key: 'foreign',
               level: 'workspace',
               organizationId: 'org2',
-              features: [{ featureKey: FEATURE.workspacesShare }],
+              features: [{ featureKey: FEATURE.workspaceRead }],
             }),
           },
         ],
@@ -398,7 +448,7 @@ describe('loadContext — subscriptions', () => {
     const { svc } = service({
       membership: membership({
         roles: [
-          { role: role({ key: 'admin', level: 'organization', features: [{ featureKey: FEATURE.membersManage }] }) },
+          { role: role({ key: 'admin', level: 'organization', features: [{ featureKey: FEATURE.membersRead }] }) },
         ],
       }),
       subscriptions: [],
@@ -407,7 +457,7 @@ describe('loadContext — subscriptions', () => {
     return svc.loadContext('u1', { organizationId: 'org1' }).then((ctx) => {
       expect(ctx?.entitled).toEqual([]);
       expect(ctx?.effective).toEqual([]);
-      expect(ctx?.granted).toEqual([FEATURE.membersManage]);
+      expect(ctx?.granted).toEqual([FEATURE.membersRead]);
     });
   });
 
@@ -417,7 +467,7 @@ describe('loadContext — subscriptions', () => {
     // on the first guarded request that reached a subscription.
     const { svc, calls } = service({
       membership: membership(),
-      subscriptions: [plan([FEATURE.membersManage], [{ limitKey: LIMIT.organizationMembers, value: 50 }])],
+      subscriptions: [plan([FEATURE.membersRead], [{ limitKey: LIMIT.organizationMembers, value: 50 }])],
     });
 
     return svc.loadContext('u1', { organizationId: 'org1' }).then((ctx) => {
@@ -458,7 +508,7 @@ describe('the admin read paths', () => {
           isPublic: false,
           icon: 'gem',
           archivedAt: new Date(),
-          features: [{ featureKey: FEATURE.membersManage }],
+          features: [{ featureKey: FEATURE.membersRead }],
           limits: [{ limitKey: LIMIT.organizationMembers, value: 50 }],
         },
       ],
@@ -489,6 +539,7 @@ describe('the admin read paths', () => {
           id: 'org1',
           key: 'acme',
           name: 'Acme',
+          description: null,
           memberships: [],
           workspaces: [{ id: 'ws1', key: 'lab', name: 'Lab', archivedAt: null }],
         },
@@ -520,8 +571,9 @@ describe('the admin read paths', () => {
           id: 'org1',
           key: 'acme',
           name: 'Acme',
+          description: null,
           memberships: [],
-          workspaces: [{ id: 'ws1', key: 'lab', name: 'Lab', archivedAt: new Date() }],
+          workspaces: [{ id: 'ws1', key: 'lab', name: 'Lab', description: null, archivedAt: new Date() }],
         },
       ],
     };
@@ -538,7 +590,7 @@ describe('the admin read paths', () => {
   it('reads an organization-wide subscription as one with no workspace', () => {
     const { svc } = service({
       subscriptions: [plan([])],
-      organizations: [{ id: 'org1', key: 'acme', name: 'Acme', memberships: [], workspaces: [] }],
+      organizations: [{ id: 'org1', key: 'acme', name: 'Acme', description: null, memberships: [], workspaces: [] }],
     });
 
     return svc.listSubscriptions().then((rows) => {
@@ -596,12 +648,12 @@ describe('loadContext — accessible workspaces', () => {
             role: role({
               key: 'admin',
               level: 'organization',
-              features: [{ featureKey: FEATURE.membersManage }, { featureKey: FEATURE.workspacesManage }],
+              features: [{ featureKey: FEATURE.membersRead }, { featureKey: FEATURE.workspacesRead }],
             }),
           },
         ],
       }),
-      subscriptions: [plan([FEATURE.membersManage, FEATURE.workspacesManage])],
+      subscriptions: [plan([FEATURE.membersRead, FEATURE.workspacesRead])],
     });
 
     return svc
@@ -726,5 +778,146 @@ describe('disabled roles are excluded from every grant path', () => {
       expect(roles).toHaveLength(1);
       expect(roles[0]?.disabled).toBe(true);
     });
+  });
+});
+
+/**
+ * The workspaces a picker may offer.
+ *
+ * Shaped by §12.33 rather than by the screen: membership is REQUIRED to enter a
+ * workspace and no role widens it, so "which workspaces does this organization
+ * have" is the wrong question — a selector answering it would list rows the
+ * guard refuses on arrival.
+ */
+describe('listAccessibleWorkspaces', () => {
+  const db = (): Db => ({
+    workspaces: [
+      { id: 'ws2', key: 'beta', name: 'Beta', organizationId: 'org1' },
+      { id: 'ws1', key: 'alpha', name: 'Alpha', organizationId: 'org1' },
+      { id: 'wsX', key: 'other', name: 'Other tenant', organizationId: 'org2' },
+    ],
+  });
+
+  it('returns the named ids, by name', async () => {
+    const { svc } = service(db());
+    expect(await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1', 'ws2'])).toEqual([
+      { id: 'ws1', key: 'alpha', name: 'Alpha', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+      { id: 'ws2', key: 'beta', name: 'Beta', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+    ]);
+  });
+
+  /**
+   * `null` means EVERY workspace, and platform support is the only thing that
+   * produces it. Treating it as "some" would lock a support engineer out of the
+   * selector in every tenant, which is the one place they need it.
+   */
+  it('returns every live workspace for a null id list — platform support', async () => {
+    const { svc, calls } = service(db());
+    const found = await svc.listAccessibleWorkspaces('org1', 'u1', null);
+
+    expect(found.map((w) => w.id)).toEqual(['ws1', 'ws2']);
+    // The `id` clause is OMITTED rather than passed as a wildcard: there is no
+    // list of ids to pass, and an empty `in` would match nothing.
+    expect((calls.workspace[0] as { where: Record<string, unknown> }).where.id).toBeUndefined();
+  });
+
+  /**
+   * An EMPTY array is the opposite of null and must not be confused with it: it
+   * is a member who has been shared nothing yet, which is a normal state. It
+   * asks the database nothing at all, because there is nothing to ask.
+   */
+  it('returns nothing for an empty id list, without querying', async () => {
+    const { svc, calls } = service(db());
+    expect(await svc.listAccessibleWorkspaces('org1', 'u1', [])).toEqual([]);
+    expect(calls.workspace).toHaveLength(0);
+  });
+
+  /** The organization is in the `where`, so another tenant's workspace cannot appear. */
+  it('never returns a workspace of another organization, even when its id is listed', async () => {
+    const { svc } = service(db());
+    expect(await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1', 'wsX'])).toEqual([
+      { id: 'ws1', key: 'alpha', name: 'Alpha', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+    ]);
+  });
+
+  /**
+   * Archived workspaces stop resolving, so offering one promises somewhere
+   * nobody can go. The filter is in the query — asserted on the clause, since
+   * the fake has no archived rows to exclude.
+   */
+  it('asks only for live workspaces', async () => {
+    const { svc, calls } = service(db());
+    await svc.listAccessibleWorkspaces('org1', 'u1', null);
+    expect((calls.workspace[0] as { where: Record<string, unknown> }).where.archivedAt).toBeNull();
+  });
+});
+
+/**
+ * The viewer's WORKSPACE-level role beside each workspace, for the selector's
+ * badge. It hangs off `PermWorkspaceMember`, so it cannot be read from the
+ * organization side at all.
+ */
+describe('listAccessibleWorkspaces — the role held in each', () => {
+  const admin = { key: 'workspace-admin', label: 'Workspace admin', icon: 'workspace' };
+  const db = (): Db => ({
+    workspaces: [
+      { id: 'ws1', key: 'alpha', name: 'Alpha', organizationId: 'org1' },
+      { id: 'ws2', key: 'beta', name: 'Beta', organizationId: 'org1' },
+    ],
+    workspaceRoles: [
+      { workspaceId: 'ws1', userId: 'u1', organizationId: 'org1', role: admin },
+      // In ws2 and holding nothing — a normal state, and the one that must not
+      // borrow the role from ws1.
+      { workspaceId: 'ws2', userId: 'u1', organizationId: 'org1', role: null },
+    ],
+  });
+
+  it('names the role where there is one and nulls it where there is not', async () => {
+    const { svc } = service(db());
+    expect(await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1', 'ws2'])).toEqual([
+      {
+        id: 'ws1',
+        key: 'alpha',
+        name: 'Alpha',
+        description: null,
+        roleKey: 'workspace-admin',
+        roleLabel: 'Workspace admin',
+        roleIcon: 'workspace',
+      },
+      { id: 'ws2', key: 'beta', name: 'Beta', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+    ]);
+  });
+
+  /** Somebody else's role is not this viewer's badge. */
+  it('reads only the CALLER’s membership', async () => {
+    const { svc } = service(db());
+    const found = await svc.listAccessibleWorkspaces('org1', 'someone-else', ['ws1']);
+    expect(found[0]?.roleLabel).toBeNull();
+  });
+
+  /**
+   * Platform support may enter every workspace while belonging to none, so the
+   * membership read finds nothing and every row comes back roleless. That is
+   * the honest answer — they are visiting.
+   */
+  it('gives platform support no role anywhere', async () => {
+    const { svc } = service({ ...db(), workspaceRoles: [] });
+    const found = await svc.listAccessibleWorkspaces('org1', 'support', null);
+    expect(found).toHaveLength(2);
+    expect(found.every((w) => w.roleLabel === null)).toBe(true);
+  });
+
+  /**
+   * ⚠ Scoped by organization as well as user. §12.34 still permits a
+   * cross-tenant workspace-membership row, so the READ refuses one rather than
+   * trusting it — the same defence `findFirst` one table over already makes.
+   */
+  it('never borrows a role from the same person in ANOTHER organization', async () => {
+    const { svc } = service({
+      ...db(),
+      workspaceRoles: [{ workspaceId: 'ws1', userId: 'u1', organizationId: 'org2', role: admin }],
+    });
+    const found = await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1']);
+    expect(found[0]?.roleLabel).toBeNull();
   });
 });

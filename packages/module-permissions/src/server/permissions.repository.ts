@@ -142,6 +142,14 @@ export interface OrganizationRow {
   id: string;
   key: string;
   name: string;
+  description: string | null;
+  /*
+   * NO `description` here, deliberately. This list is the subscription form's
+   * workspace picker and the query selects four columns by name — adding one to
+   * the row type without adding it to that `select` is what broke
+   * `satisfies-modules.ts`, which is exactly the drift that file exists to
+   * catch. A picker needs a name; the detail read carries the description.
+   */
   workspaces: { id: string; key: string; name: string; archivedAt: Date | null }[];
   /**
    * Ids only — enough to COUNT, and deliberately not enough to identify anyone.
@@ -193,10 +201,12 @@ export interface OrganizationDetailRow {
   id: string;
   key: string;
   name: string;
+  description: string | null;
   workspaces: {
     id: string;
     key: string;
     name: string;
+    description: string | null;
     archivedAt: Date | null;
     /**
      * Who is in it, and what they hold THERE.
@@ -325,14 +335,19 @@ export interface PermissionsPrismaClient {
     findMany(args: {
       where: { userId: { in: string[] }; status: 'active' };
       include: {
-        organization: { select: { id: true; key: true; name: true } };
-        roles: { where: { role: { disabledAt: null } }; include: { role: { select: { key: true; label: true } } } };
+        organization: { select: { id: true; key: true; name: true; description: true } };
+        roles: {
+          where: { role: { disabledAt: null } };
+          // `icon` alongside the label: the organization switcher draws the
+          // viewer's role beside each tenant it lists.
+          include: { role: { select: { key: true; label: true; icon: true } } };
+        };
       };
     }): Promise<
       {
         userId: string;
-        organization: { id: string; key: string; name: string };
-        roles: { role: { key: string; label: string } }[];
+        organization: { id: string; key: string; name: string; description: string | null };
+        roles: { role: { key: string; label: string; icon: string | null } }[];
       }[]
     >;
     findFirst(args: {
@@ -382,6 +397,44 @@ export interface PermissionsPrismaClient {
       };
     }): Promise<WorkspaceMemberRow | null>;
     count(args: { where: { workspaceId: string } }): Promise<number>;
+    /**
+     * ONE PERSON'S workspace memberships across a set of workspaces, with the
+     * role held in each.
+     *
+     * For the drawer's workspace selector, which names the viewer's role beside
+     * each workspace the way the organization switcher names theirs. That role
+     * is WORKSPACE level and hangs off this row rather than off the
+     * organization membership — the schema making "a workspace role for
+     * somebody not in the workspace" impossible to express — so it cannot be
+     * read from the organization side at all.
+     *
+     * A separate read joined in memory rather than an `include` on
+     * `permWorkspace.findMany`: that would have to reach members → roles and
+     * filter the members down to this one person, which is a shape the
+     * structural interface can express only by growing a clause every caller
+     * then has to satisfy. Two small reads keyed on the same ids is the cheaper
+     * seam, and neither is a new OVERLOAD.
+     *
+     * Disabled roles are excluded here, unlike the management screens: a
+     * disabled role grants nothing, so naming one beside a workspace would
+     * report authority its holder does not have.
+     *
+     * Only `key`, `label` and `icon` — this is a badge, and `features` would be
+     * a join for something nothing on the path reads.
+     */
+    findMany(args: {
+      where: {
+        workspaceId: { in: string[] };
+        membership: { userId: string; organizationId: string };
+      };
+      select: {
+        workspaceId: true;
+        roles: {
+          where: { role: { disabledAt: null } };
+          select: { role: { select: { key: true; label: true; icon: true } } };
+        };
+      };
+    }): Promise<{ workspaceId: string; roles: { role: { key: string; label: string; icon: string | null } }[] }[]>;
   };
   permPlan: {
     /**
@@ -504,6 +557,25 @@ export interface PermissionsPrismaClient {
     }): Promise<OrganizationRow[]>;
   };
   permWorkspace: {
+    /*
+     * ⚠ ONE SIGNATURE PER METHOD HERE, NOT OVERLOADS.
+     *
+     * A second `findFirst` overload was written for the tenant workspace screen
+     * and had to be removed: a generated Prisma delegate is
+     * `findFirst<T extends Args>(args?: SelectSubset<T, Args>)`, and TypeScript
+     * cannot match a generic like that against an overload SET — it infers `T`
+     * as `any`, `SelectSubset` degrades to Prisma's "Please either choose
+     * `select` or `omit`" error type, and the real client stops satisfying this
+     * interface. `apps/web-server/src/prisma/satisfies-modules.ts` is what
+     * catches it, which is exactly the job that file exists for.
+     *
+     * Where one delegate genuinely has to answer two questions, do what
+     * `permSubscription.findMany` does: ONE signature with optional properties
+     * in the `where`. Where the shapes are too different for that — as the
+     * workspace detail read was — build the answer from a query that already
+     * exists, which is what `listWorkspaceDetail` does with
+     * `listOrganizationDetail`.
+     */
     /**
      * Both conditions matter. organizationId proves the workspace in the URL
      * belongs to the organization in the URL — nothing else checks that a path
@@ -515,6 +587,28 @@ export interface PermissionsPrismaClient {
       select: { id: true };
     }): Promise<{ id: string } | null>;
     count(args: { where: { organizationId: string; archivedAt: null } }): Promise<number>;
+    /**
+     * The LIVE workspaces of one organization, optionally narrowed to a set.
+     *
+     * For the drawer's workspace selector, which offers only the workspaces the
+     * caller may actually enter: `id: { in: [...] }` carries
+     * `accessibleWorkspaceIds`, and the whole clause is omitted for platform
+     * support, whose `accessibleWorkspaceIds` is `null` meaning every one.
+     *
+     * `archivedAt: null` is not optional here. An archived workspace stops
+     * resolving, so offering one in a picker promises something `loadContext`
+     * refuses on the very next request — the same reason the subscription
+     * form's organization list filters them.
+     *
+     * A NEW METHOD rather than an overload of `findFirst`: see the note at the
+     * top of this delegate. A generated Prisma client cannot satisfy an
+     * overload set, and adding a differently-named method costs nothing.
+     */
+    findMany(args: {
+      where: { organizationId: string; archivedAt: null; id?: { in: string[] } };
+      select: { id: true; key: true; name: true; description: true };
+      orderBy: { name: 'asc' };
+    }): Promise<{ id: string; key: string; name: string; description: string | null }[]>;
   };
 }
 
@@ -548,7 +642,10 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
   $transaction<T>(fn: (tx: PermissionsTransaction) => Promise<T>): Promise<T>;
 
   permOrganization: PermissionsPrismaClient['permOrganization'] & {
-    create(args: { data: { key: string; name: string }; select: { id: true } }): Promise<{ id: string }>;
+    create(args: {
+      data: { key: string; name: string; description: string | null };
+      select: { id: true };
+    }): Promise<{ id: string }>;
     /**
      * Name and key alongside the id: the existence check that guards every
      * insert carrying an `organizationId` also feeds the invitation email,
@@ -563,7 +660,10 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
      * of zero the caller can turn into a sentence, instead of Prisma throwing
      * for a stale link.
      */
-    updateMany(args: { where: { id: string }; data: { key: string; name: string } }): Promise<{ count: number }>;
+    updateMany(args: {
+      where: { id: string };
+      data: { key: string; name: string; description: string | null };
+    }): Promise<{ count: number }>;
   };
 
   permMembership: PermissionsPrismaClient['permMembership'] & {
@@ -576,7 +676,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
 
   permWorkspace: PermissionsPrismaClient['permWorkspace'] & {
     create(args: {
-      data: { organizationId: string; key: string; name: string };
+      data: { organizationId: string; key: string; name: string; description: string | null };
       select: { id: true };
     }): Promise<{ id: string }>;
     /**
@@ -593,7 +693,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
      */
     updateMany(args: {
       where: { id: string; organizationId: string };
-      data: { archivedAt?: Date | null; key?: string; name?: string };
+      data: { archivedAt?: Date | null; key?: string; name?: string; description?: string | null };
     }): Promise<{ count: number }>;
   };
 

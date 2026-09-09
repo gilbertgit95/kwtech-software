@@ -46,14 +46,28 @@ export function AdminPage({
    * The key that gates the page BODY.
    *
    * The same key is on the route descriptor, where it gates the nav entry and
-   * the middleware. One declaration, three enforcement points — which is what
-   * stops a link outliving the permission behind it.
+   * the catch-all's own check. One declaration, three enforcement points —
+   * which is what stops a link outliving the permission behind it.
    *
    * None of the three is the real control: every request carries the bearer
    * token and is authorised at the API. This is what a person sees, not what
    * they can reach.
+   *
+   * ## OPTIONAL, meaning "a session is enough"
+   *
+   * §12.23 settled that a surface gets a key only when it needs
+   * AUTHORISATION rather than merely a session, and removed three `account:*`
+   * keys on exactly that ground. `/organizations/new` is the same case:
+   * `createOrganization` is deliberately unguarded by any feature — there is no
+   * organization yet to grant the right — and bounded by the
+   * `user:organizations` LIMIT instead, so any signed-in person may reach it.
+   *
+   * ⚠ This is NOT the same as passing an empty `allOf` to `<FeatureGate>`,
+   * which refuses: a gate declaring no keys is a mistake, because it looks
+   * guarded in review while guarding nothing. Here the absence is the
+   * declaration, and the gate is skipped rather than fed nothing.
    */
-  feature: FeatureKey;
+  feature?: FeatureKey | undefined;
   /**
    * Where this page came from, for a sub page that should offer a way back.
    *
@@ -71,6 +85,33 @@ export function AdminPage({
   backTo?: { href: string; label: string } | undefined;
   children: ReactNode;
 }) {
+  const body = (
+    /*
+      `h-full` on the fill variant is what reaches back up to AppShell's
+      `h-dvh` <main>. Without a definite height there, this resolves to
+      nothing and the grid below collapses — the usual way a data screen
+      renders as an invisible strip.
+
+      No max-width on it, deliberately: "as wide as the window allows" is the
+      point, and the shell's own padding plus the drawer already bound it.
+    */
+    <div className={layout === 'fill' ? 'flex h-full w-full flex-col' : 'mx-auto w-full max-w-4xl'}>
+      {backTo ? <BackLink {...backTo} /> : null}
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+      {/*
+        `min-h-0` again: the body is a flex child, and the default
+        `min-height: auto` would let it grow to its content and push the
+        scrollbar back out to the page.
+      */}
+      <div className={layout === 'fill' ? 'mt-6 min-h-0 flex-1' : 'mt-8'}>{children}</div>
+    </div>
+  );
+
+  // No key: a session is enough, and there is nothing for the gate to ask. See
+  // the prop.
+  if (!feature) return body;
+
   return (
     <FeatureGate
       allOf={[feature]}
@@ -82,26 +123,7 @@ export function AdminPage({
       */
       renderDenied={(reason) => <AdminDenied title={title} reason={reason} backTo={backTo} />}
     >
-      {/*
-        `h-full` on the fill variant is what reaches back up to AppShell's
-        `h-dvh` <main>. Without a definite height there, this resolves to
-        nothing and the grid below collapses — the usual way a data screen
-        renders as an invisible strip.
-
-        No max-width on it, deliberately: "as wide as the window allows" is the
-        point, and the shell's own padding plus the drawer already bound it.
-      */}
-      <div className={layout === 'fill' ? 'flex h-full w-full flex-col' : 'mx-auto w-full max-w-4xl'}>
-        {backTo ? <BackLink {...backTo} /> : null}
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-        {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-        {/*
-          `min-h-0` again: the body is a flex child, and the default
-          `min-height: auto` would let it grow to its content and push the
-          scrollbar back out to the page.
-        */}
-        <div className={layout === 'fill' ? 'mt-6 min-h-0 flex-1' : 'mt-8'}>{children}</div>
-      </div>
+      {body}
     </FeatureGate>
   );
 }

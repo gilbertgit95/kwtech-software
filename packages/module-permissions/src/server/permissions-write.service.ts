@@ -92,6 +92,25 @@ import { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
  *                 nothing is deleted, so recovering is a status change rather
  *                 than a re-subscription.
  */
+/**
+ * The description a new organization or workspace starts with.
+ *
+ * ⚠ It DUPLICATES the name when nobody supplied one, and that is deliberate
+ * rather than useful: the field is meant to arrive with a value in it so a
+ * tenant sees something to replace instead of an empty box they have to notice.
+ * It carries no information the name does not, which is exactly why the
+ * settings screens exist — and why this is the only place that decides it, so
+ * the four write paths cannot disagree about what "initial" means.
+ *
+ * A supplied description is trimmed, and a blank one is treated as absent
+ * rather than stored: "   " and "" would both render as an empty field while
+ * being, to every query, a value somebody chose.
+ */
+function initialDescription(supplied: string | null | undefined, name: string): string {
+  const trimmed = supplied?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : name;
+}
+
 @Injectable()
 export class PermissionsWriteService {
   constructor(
@@ -152,14 +171,17 @@ export class PermissionsWriteService {
    * founder is not in it is unreachable by anyone, and would sit there counting
    * against nobody's cap.
    */
-  async createOrganization(actor: PermissionContext, input: { key: string; name: string }) {
+  async createOrganization(
+    actor: PermissionContext,
+    input: { key: string; name: string; description?: string | null | undefined },
+  ) {
     const db = this.client();
 
     return db.$transaction(async (tx) => {
       await this.assertCapacity(tx, actor, LIMIT.userOrganizations, {});
 
       const organization = await tx.permOrganization.create({
-        data: { key: input.key, name: input.name },
+        data: { key: input.key, name: input.name, description: initialDescription(input.description, input.name) },
         select: { id: true },
       });
       const membership = await tx.permMembership.create({
@@ -199,7 +221,10 @@ export class PermissionsWriteService {
    * fields would make "leave the key alone" and "set the key to empty" the same
    * request shape, and the screen sends what it is showing anyway.
    */
-  async updateOrganization(actor: PermissionContext, input: { organizationId: string; key: string; name: string }) {
+  async updateOrganization(
+    actor: PermissionContext,
+    input: { organizationId: string; key: string; name: string; description?: string | null | undefined },
+  ) {
     this.assertPermitted(actor, FEATURE.organizationsManage);
     const db = this.client();
 
@@ -221,13 +246,185 @@ export class PermissionsWriteService {
      */
     const { count } = await db.permOrganization.updateMany({
       where: { id: input.organizationId },
-      data: { key, name },
+      data: { key, name, description: initialDescription(input.description, name) },
     });
     if (count === 0) {
       throw new PermissionWriteError('not_found', 'No such organization', { organizationId: input.organizationId });
     }
 
     return { organizationId: input.organizationId, renamed: true };
+  }
+
+  // ── the tenant's own organization ─────────────────────────────────────────
+  //
+  // The two writes a customer makes about the organization they are STANDING
+  // IN, as opposed to the platform writes above which act on any tenant. Both
+  // take the actor's own resolved scope as the boundary rather than trusting
+  // the id in the argument — see `assertActingInsideOwnScope`.
+
+  /**
+   * Renames the organization the caller is inside.
+   *
+   * ## Why this is not `updateOrganization` with a different key
+   *
+   * It could have been — one method, two acceptable features, `anyOf`. That
+   * would have collapsed the distinction the two keys exist to make. The
+   * platform method may rename ANY tenant and is reached by a support engineer
+   * whose context is app level and names no organization; this one may rename
+   * exactly the one its actor resolved in, and the check below is only
+   * meaningful because the actor's context is organization-scoped. A single
+   * method would have to decide at runtime which of those two régimes it is in,
+   * from the same inputs, which is how a tenant check ends up skipped for the
+   * case that looks like the other one.
+   *
+   * The validation and the reason for `updateMany` are the platform method's,
+   * unchanged: both fields required and trimmed so "leave the key alone" and
+   * "clear the key" are not the same request, and a missing row coming back as
+   * `count: 0` rather than as a 500 on a stale link.
+   */
+  async renameMyOrganization(
+    actor: PermissionContext,
+    input: { organizationId: string; key: string; name: string; description?: string | null | undefined },
+  ) {
+    this.assertPermitted(actor, FEATURE.organizationUpdate);
+    this.assertActingInsideOwnScope(actor, input.organizationId);
+    const db = this.client();
+
+    const key = input.key.trim();
+    const name = input.name.trim();
+    if (!key || !name) {
+      throw new PermissionWriteError('draft_invalid', 'An organization needs a key and a name', {
+        organizationId: input.organizationId,
+      });
+    }
+
+    const { count } = await db.permOrganization.updateMany({
+      where: { id: input.organizationId },
+      data: { key, name, description: initialDescription(input.description, name) },
+    });
+    if (count === 0) {
+      throw new PermissionWriteError('not_found', 'No such organization', { organizationId: input.organizationId });
+    }
+
+    return { organizationId: input.organizationId, renamed: true };
+  }
+
+  /**
+   * The caller removes THEMSELVES from an organization.
+   *
+   * ## Why it is not `removeMember` with your own id
+   *
+   * `removeMember` requires `members:manage`, and the whole point of leaving is
+   * that somebody who administers nothing can still walk out. Requiring the
+   * right to remove OTHERS in order to remove yourself would mean an ordinary
+   * member could only be released by an administrator, which makes leaving a
+   * favour rather than a decision.
+   *
+   * It takes no userId at all, for the same reason `acceptInvitation` takes
+   * none: the subject is the caller, and an id in the argument would be an
+   * invitation to pass somebody else's.
+   *
+   * ## The last member is refused
+   *
+   * An organization with nobody in it is unreachable by every tenant screen —
+   * `loadContext` resolves no context there for anyone — so it would sit
+   * counting against nobody's cap with no way back in short of platform staff.
+   * That is the mirror of `createOrganization` making its founder the first
+   * member, and the refusal is a sentence rather than a silent success because
+   * the person is trying to leave and needs to know they have not.
+   *
+   * A SUSPENDED member is exempt from that check: they occupy no active seat,
+   * so their leaving cannot empty the organization — and leaving is exactly
+   * what somebody suspended is most likely to want to do.
+   *
+   * ⚠ It does NOT refuse the last person holding `organization:manage`. Leaving
+   * an organization administered by nobody is a real and recoverable state
+   * (platform staff can grant a role), while a check that counted
+   * administrators would have to load every member's roles on a path taken by
+   * somebody who is on their way out. Worth revisiting if it bites; recorded
+   * rather than discovered.
+   *
+   * Role grants and workspace memberships go with the membership by cascade,
+   * the same as `removeMember`.
+   */
+  async leaveOrganization(actor: PermissionContext, input: { organizationId: string }) {
+    this.assertActingInsideOwnScope(actor, input.organizationId);
+    const db = this.client();
+
+    return db.$transaction(async (tx) => {
+      /*
+       * COUNTED AND REFUSED BEFORE THE DELETE, not rolled back after it.
+       *
+       * Deleting first and throwing on the count is a transaction relying on
+       * its own rollback to undo a write it should never have made — correct
+       * against Postgres, and a rule that exists only at the moment it is
+       * violated. Checking first makes the refusal a decision rather than a
+       * repair, and it then holds for any caller, including one that arrives
+       * without a transaction at all.
+       *
+       * Both counts run on the transaction handle, so nobody can leave between
+       * them and the delete.
+       */
+      const activeMembers = await tx.permMembership.count({
+        where: { organizationId: input.organizationId, status: 'active' },
+      });
+      /*
+       * Whether the CALLER is one of those active members.
+       *
+       * Without it a SUSPENDED member could not leave an organization with one
+       * active person in it: the count would read 1 and the refusal would fire,
+       * about a seat they do not occupy. Leaving is exactly what somebody
+       * suspended is most likely to want to do.
+       */
+      const actorIsActive = await tx.permMembership.count({
+        where: { organizationId: input.organizationId, userId: actor.subjectId, status: 'active' },
+      });
+
+      if (actorIsActive > 0 && activeMembers <= 1) {
+        throw new PermissionWriteError(
+          'not_permitted',
+          'You are the last member of this organization. Add somebody else first, or ask support to close it.',
+          { organizationId: input.organizationId },
+        );
+      }
+
+      const { count } = await tx.permMembership.deleteMany({
+        where: { userId: actor.subjectId, organizationId: input.organizationId },
+      });
+      if (count === 0) {
+        throw new PermissionWriteError('not_found', 'You are not a member of this organization', {
+          organizationId: input.organizationId,
+        });
+      }
+
+      return { removed: count };
+    });
+  }
+
+  /**
+   * Refuses a write aimed at an organization other than the actor's own.
+   *
+   * ## Why this exists when the guard already checked
+   *
+   * `FeatureGuard` resolves the actor's context from the SAME id these
+   * mutations carry, so on the HTTP path the two cannot disagree and this looks
+   * redundant. It is not, for the reason every write in this service re-checks
+   * the feature it was already guarded on: a worker, a CLI and a seed script
+   * reach these methods with an actor loaded some other way and no guard in
+   * front of them. There, a context resolved in organization A and an argument
+   * naming organization B is a plausible mistake, and the failure would be a
+   * cross-tenant write.
+   *
+   * An APP-LEVEL actor passes: its context carries no organization, which is
+   * exactly what makes platform staff able to act anywhere. This check answers
+   * "are you somewhere else", not "are you anywhere".
+   */
+  private assertActingInsideOwnScope(actor: PermissionContext, organizationId: string): void {
+    if (actor.organizationId !== null && actor.organizationId !== organizationId) {
+      throw new PermissionWriteError('not_permitted', 'That organization is not the one you are acting in', {
+        organizationId,
+      });
+    }
   }
 
   // ── role definitions ──────────────────────────────────────────────────────
@@ -803,7 +1000,7 @@ export class PermissionsWriteService {
    * app is the only party that knows where to look.
    */
   async addMember(actor: PermissionContext, input: { organizationId: string; userId: string }) {
-    this.assertPermitted(actor, FEATURE.membersManage);
+    this.assertPermitted(actor, FEATURE.membersInvite);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -840,7 +1037,7 @@ export class PermissionsWriteService {
    * grants or the reverse.
    */
   async removeMember(actor: PermissionContext, input: { organizationId: string; userId: string }) {
-    this.assertPermitted(actor, FEATURE.membersManage);
+    this.assertPermitted(actor, FEATURE.membersRemove);
     const db = this.client();
 
     const { count } = await db.permMembership.deleteMany({
@@ -916,7 +1113,7 @@ export class PermissionsWriteService {
     const organizationId = draft.organizationId?.trim() || null;
     const appRoleId = draft.appRoleId?.trim() || null;
 
-    if (organizationId) this.assertPermitted(actor, FEATURE.membersManage);
+    if (organizationId) this.assertPermitted(actor, FEATURE.membersInvite);
     if (appRoleId) this.assertPermitted(actor, FEATURE.rolesGrantApp);
     if (!organizationId && !appRoleId) {
       throw new PermissionWriteError('draft_invalid', 'An invitation must offer an organization or a role', {});
@@ -1148,7 +1345,7 @@ export class PermissionsWriteService {
    * token and a new expiry, which is what makes the second asking visible.
    */
   async revokeInvitation(actor: PermissionContext, organizationId: string, invitationId: string) {
-    this.assertPermitted(actor, FEATURE.membersManage);
+    this.assertPermitted(actor, FEATURE.membersInvite);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1421,7 +1618,7 @@ export class PermissionsWriteService {
    * not the same as it not being there.
    */
   async assignRole(actor: PermissionContext, input: { organizationId: string; userId: string; roleId: string }) {
-    this.assertPermitted(actor, FEATURE.membersManage);
+    this.assertPermitted(actor, FEATURE.membersAssignRole);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1545,7 +1742,7 @@ export class PermissionsWriteService {
   }
 
   async revokeRole(actor: PermissionContext, input: { organizationId: string; userId: string; roleId: string }) {
-    this.assertPermitted(actor, FEATURE.membersManage);
+    this.assertPermitted(actor, FEATURE.membersAssignRole);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1560,8 +1757,11 @@ export class PermissionsWriteService {
 
   // ── workspaces ────────────────────────────────────────────────────────────
 
-  async createWorkspace(actor: PermissionContext, input: { organizationId: string; key: string; name: string }) {
-    this.assertPermitted(actor, FEATURE.workspacesManage);
+  async createWorkspace(
+    actor: PermissionContext,
+    input: { organizationId: string; key: string; name: string; description?: string | null | undefined },
+  ) {
+    this.assertPermitted(actor, FEATURE.workspacesCreate);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1569,10 +1769,68 @@ export class PermissionsWriteService {
       await this.assertCapacity(tx, actor, LIMIT.organizationWorkspaces, { organizationId: input.organizationId });
 
       const workspace = await tx.permWorkspace.create({
-        data: { organizationId: input.organizationId, key: input.key, name: input.name },
+        data: {
+          organizationId: input.organizationId,
+          key: input.key,
+          name: input.name,
+          description: initialDescription(input.description, input.name),
+        },
         select: { id: true },
       });
-      return { workspaceId: workspace.id };
+
+      /*
+       * THE CREATOR IS PUT IN IT — and this was a real gap, surfaced the moment
+       * the tenant screens made `workspaces:manage` reachable by a customer.
+       *
+       * §12.33 made workspace membership REQUIRED: no role widens which
+       * workspaces you may enter. `createWorkspace` added no member, so a tenant
+       * administrator could create a workspace and then be refused entry to it,
+       * with the only way in being `workspaces:share` — which is itself a
+       * WORKSPACE-level key, so it resolves inside a workspace they may not
+       * enter. A tenant could reach a state it could not leave without platform
+       * staff, and nothing said so.
+       *
+       * This is the same argument `createOrganization` already makes one level
+       * up, where the founder becomes the first member because an organization
+       * whose creator is not in it is unreachable by anyone.
+       *
+       * NO ROLE is granted with the membership, only entry. `workspaces:share`
+       * and anything else is a separate grant — being able to open a workspace
+       * and being able to change it are the split the model makes everywhere
+       * else, and creating one should not quietly hand over both.
+       *
+       * PLATFORM STAFF CREATE NOTHING HERE. A support engineer holds no
+       * membership in the tenant, so there is no row to hang a workspace member
+       * off — `findFirst` returns nothing and the workspace is created without
+       * one. That is correct rather than a shortfall: they enter by
+       * `platform:support_access`, which is the single exemption from
+       * membership, and writing them a membership would make a support visit
+       * look like joining the company.
+       */
+      /*
+       * The same read `shareWorkspace` uses, through the same helper — except
+       * that a MISSING membership is not an error here. `requireMembership`
+       * throws, which is right when somebody is being added to a workspace and
+       * wrong when the creator is platform staff who legitimately belong to no
+       * tenant, so the query is inlined and the null handled.
+       *
+       * It loads roles and workspace links this throws away. That is the
+       * interface's one shape for this read, and adding a narrower `select`
+       * overload is what the note on `permWorkspace` in the repository forbids:
+       * a generated Prisma delegate cannot satisfy an overload set.
+       */
+      const membership = await tx.permMembership.findFirst({
+        where: { userId: actor.subjectId, organizationId: input.organizationId, status: 'active' },
+        include: { roles: activeRoleGrants, workspaces: membershipWorkspaces(input.organizationId) },
+      });
+      if (membership) {
+        await tx.permWorkspaceMember.create({
+          data: { membershipId: membership.id, workspaceId: workspace.id },
+          select: { id: true },
+        });
+      }
+
+      return { workspaceId: workspace.id, joined: Boolean(membership) };
     });
   }
 
@@ -1595,9 +1853,15 @@ export class PermissionsWriteService {
    */
   async updateWorkspace(
     actor: PermissionContext,
-    input: { organizationId: string; workspaceId: string; key: string; name: string },
+    input: {
+      organizationId: string;
+      workspaceId: string;
+      key: string;
+      name: string;
+      description?: string | null | undefined;
+    },
   ) {
-    this.assertPermitted(actor, FEATURE.workspacesManage);
+    this.assertPermitted(actor, FEATURE.workspacesUpdate);
     const db = this.client();
 
     const key = input.key.trim();
@@ -1610,7 +1874,7 @@ export class PermissionsWriteService {
 
     const { count } = await db.permWorkspace.updateMany({
       where: { id: input.workspaceId, organizationId: input.organizationId },
-      data: { key, name },
+      data: { key, name, description: initialDescription(input.description, name) },
     });
     if (count === 0) {
       throw new PermissionWriteError('not_found', 'No such workspace in this organization', {
@@ -1630,7 +1894,7 @@ export class PermissionsWriteService {
    * another's workspace.
    */
   async archiveWorkspace(actor: PermissionContext, input: { organizationId: string; workspaceId: string }) {
-    this.assertPermitted(actor, FEATURE.workspacesManage);
+    this.assertPermitted(actor, FEATURE.workspacesArchive);
     const db = this.client();
 
     const { count } = await db.permWorkspace.updateMany({
@@ -1652,7 +1916,7 @@ export class PermissionsWriteService {
     actor: PermissionContext,
     input: { organizationId: string; workspaceId: string; userId: string },
   ) {
-    this.assertPermitted(actor, FEATURE.workspacesShare);
+    this.assertPermitted(actor, FEATURE.workspaceMembersAdd);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1679,7 +1943,7 @@ export class PermissionsWriteService {
     actor: PermissionContext,
     input: { organizationId: string; workspaceId: string; userId: string },
   ) {
-    this.assertPermitted(actor, FEATURE.workspacesShare);
+    this.assertPermitted(actor, FEATURE.workspaceMembersRemove);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1714,7 +1978,7 @@ export class PermissionsWriteService {
     actor: PermissionContext,
     input: { organizationId: string; workspaceId: string; userId: string; roleId: string },
   ) {
-    this.assertPermitted(actor, FEATURE.workspacesShare);
+    this.assertPermitted(actor, FEATURE.workspaceAssignRole);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1756,7 +2020,7 @@ export class PermissionsWriteService {
     actor: PermissionContext,
     input: { organizationId: string; workspaceId: string; userId: string; roleId: string },
   ) {
-    this.assertPermitted(actor, FEATURE.workspacesShare);
+    this.assertPermitted(actor, FEATURE.workspaceAssignRole);
     const db = this.client();
 
     return db.$transaction(async (tx) => {

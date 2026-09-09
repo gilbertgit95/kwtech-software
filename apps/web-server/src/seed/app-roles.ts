@@ -1,5 +1,5 @@
 import { AUTH_FEATURE } from '@kwtech/module-auth';
-import { LIMIT } from '@kwtech/module-permissions';
+import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
 import { ALL_FEATURES } from './registry.js';
 
@@ -133,47 +133,137 @@ const NORMAL_USER: SystemRoleDefinition = {
  * describes what its holder can do.
  */
 
-/** Runs one organization: its people, its roles, its plan, its workspaces. */
+/*
+ * ── THE TENANT PRESETS ARE NO LONGER EMPTY ──────────────────────────────────
+ *
+ * They were, deliberately, and each said so: "EMPTY until the registry has
+ * features that are genuinely about running an organization." That was the
+ * right call at the time — every key in the registry was a right over the ADMIN
+ * APP, and handing those to a customer's preset would have decided, in a seed
+ * file, what an organization administrator may do months before anything
+ * enforced it.
+ *
+ * The `/organizations/*` area is what changed (PLAN §12.13). There is now a
+ * vocabulary that is genuinely about running ONE organization —
+ * `organization:read` and `organization:manage` — and every surface that reads
+ * it resolves at organization or workspace level. Leaving these empty now would
+ * mean the tenant screens exist and no customer can open any of them: only
+ * `super-admin` would reach them, through the app-level union that exists for
+ * support.
+ *
+ * ## Why granting `roles:read` and `subscriptions:read` here is safe
+ *
+ * Both also gate `/admin/roles` and `/admin/subscriptions`, which are platform
+ * screens. Granting them to an ORGANIZATION-level preset does not open those:
+ * `/admin/*` resolves at APP level, and an organization role does not
+ * participate at app scope at all. The level is the boundary, and that is why
+ * these keys can be shared between a platform screen and a tenant one without a
+ * second key per audience.
+ *
+ * ## What deliberately stays out of all of them
+ *
+ *   roles:manage_app   app level — `assertRoleDefinable` refuses it outright,
+ *                      and that refusal is the point: minting an app-level role
+ *                      would carry a tenant's rights across every tenant.
+ *   billing:manage     organization level, so it COULD go here. It does not,
+ *                      because there is no tenant-facing write surface for it:
+ *                      subscriptions are changed on `/admin/subscriptions`, and
+ *                      billing is unbuilt (§12.40). A key granting a right with
+ *                      nowhere to exercise it is the decorative coverage the
+ *                      registry audit exists to prevent. Revisit when a
+ *                      provider is chosen.
+ *   features:read      the platform's feature registry. An organization-level
+ *                      key by accident of where it is checked, not a thing a
+ *                      customer has any business reading.
+ */
+
+/**
+ * Runs one organization: its people, its workspaces, and what it is on.
+ *
+ * Everything the OWNER holds except renaming the organization. That is the one
+ * split worth having between the two: an administrator who manages people and
+ * workspaces every day should not also be able to change what the company is
+ * called and what appears in its URLs, which every member and every link sees.
+ */
 const ORGANIZATION_ADMIN: SystemRoleDefinition = {
   key: 'organization-admin',
   label: 'Organization admin',
   level: 'organization',
   icon: 'shield',
   /*
-   * EMPTY until the registry has features that are genuinely about running an
-   * organization.
+   * ⚠ NO `OWN_ACCOUNT` HERE, unlike the app-level roles above.
    *
-   * It briefly carried `admin:access`, `members:manage`, `billing:manage` and
-   * the rest. Those are rights over the ADMIN APP, which is not the same thing
-   * as running a tenant — handing them to a preset now would decide, by
-   * accident and in a seed file, what an organization administrator is allowed
-   * to do, months before anything enforces it.
+   * The three `account:*` keys are APP level — looking after your own account
+   * is not something an organization grants — so an organization-level role may
+   * not carry them, and `assertRoleDefinable` refuses outright rather than
+   * silently dropping them. That refusal is worth having: a preset that
+   * quietly ignored three keys would read as granting them.
    *
-   * The role exists so the SHAPE is real: three levels, each with an admin and
-   * a member, granted through the right table. What it grants is a separate
-   * decision, and an empty list is the honest placeholder for one not yet made.
-   *
-   * When it is filled: `roles:manage_app` must stay OUT. That key exists so an
-   * organization administrator can compose roles inside their own tenant and
-   * cannot mint an APP-level role, which would apply across every tenant and
-   * skip the subscription filter.
+   * Nobody loses anything by their absence. They are held through the
+   * APP-level role every account has, which is where a fact about the person
+   * rather than about one company belongs.
    */
-  features: [],
+  features: [
+    FEATURE.organizationRead,
+
+    // People: everything except changing what the organization is CALLED, which
+    // is the owner's alone.
+    FEATURE.membersRead,
+    FEATURE.membersInvite,
+    FEATURE.membersRemove,
+    FEATURE.membersAssignRole,
+    // Needed by the members screen's role picker as well as by the roles list:
+    // `myOrganizationRoles` is guarded on it.
+    FEATURE.rolesRead,
+
+    // Workspaces, all four: creating, renaming and archiving are what running a
+    // tenant's workspaces means.
+    FEATURE.workspacesRead,
+    FEATURE.workspacesCreate,
+    FEATURE.workspacesUpdate,
+    FEATURE.workspacesArchive,
+
+    /*
+     * WORKSPACE level, carried by an ORGANIZATION role — levels reach downward.
+     * They apply inside the workspaces this holder BELONGS to and nowhere else,
+     * because membership is what admits them (§12.33). An administrator who is
+     * in no workspace can still create and rename them from the organization's
+     * own screen, and can do nothing inside one.
+     */
+    FEATURE.workspaceRead,
+    FEATURE.workspaceMembersAdd,
+    FEATURE.workspaceMembersRemove,
+    FEATURE.workspaceAssignRole,
+
+    FEATURE.subscriptionsRead,
+  ],
   limits: {},
 };
 
-/** Signed in, and nothing more. The organization-level counterpart of normal-user. */
+/**
+ * Signed in, a member, and nothing more — the organization-level counterpart of
+ * `normal-user`.
+ *
+ * It holds `organization:read` and that is not a contradiction of what
+ * `normal-user` is for. Being a member of a company and being unable to open
+ * that company's page at all is not a restricted user, it is a broken one: they
+ * would sign in, see their organization in the switcher, and be refused by it.
+ * What they cannot do is everything else — no members screen, no workspaces
+ * screen, no subscription — which is what makes this the control case it was
+ * always meant to be.
+ */
 const ORGANIZATION_USER: SystemRoleDefinition = {
   key: 'organization-user',
   label: 'Organization user',
   level: 'organization',
   icon: 'users',
   /*
-   * EMPTY, like every preset here. It carried `admin:access`, which is the
-   * right to open the admin dashboard — a staff concern, not something an
-   * ordinary member of a customer organization should hold by default.
+   * `organization:read` and the two READS beside it — enough to open the
+   * company, see who is in it and see its workspaces, and to change none of it.
+   * That is what an ordinary member is: present, and able to find their way
+   * around. No `account:*`, which are app level — see ORGANIZATION_ADMIN.
    */
-  features: [],
+  features: [FEATURE.organizationRead, FEATURE.membersRead, FEATURE.workspacesRead, FEATURE.workspaceRead],
   limits: {},
 };
 
@@ -192,7 +282,31 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
   label: 'Workspace admin',
   level: 'workspace',
   icon: 'workspace',
-  features: [],
+  /*
+   * `workspaces:share` and nothing else, which is the whole vocabulary a
+   * workspace has: it is the only WORKSPACE-level key in the registry, because
+   * every other question — creating a workspace, renaming one, who is in the
+   * organization — is one the organization answers, not one a single workspace
+   * answers about itself.
+   *
+   * It is what lets somebody add a colleague to THIS workspace and grant them a
+   * role there, from `/organizations/:id/workspaces/:wsId`. That page resolves
+   * at workspace level, so this grant applies in the workspace the holder is
+   * standing in and in no other — the first thing in this codebase for which
+   * that is actually true, since nothing resolved a workspace-level request
+   * before the tenant screens.
+   *
+   * It carries no `organization:read`, deliberately. A workspace role that
+   * opened the ORGANIZATION would be a workspace deciding something about its
+   * parent. In practice its holders also hold an organization role, and that is
+   * where the right to open the company comes from.
+   */
+  features: [
+    FEATURE.workspaceRead,
+    FEATURE.workspaceMembersAdd,
+    FEATURE.workspaceMembersRemove,
+    FEATURE.workspaceAssignRole,
+  ],
   limits: {},
 };
 
@@ -203,11 +317,16 @@ const WORKSPACE_USER: SystemRoleDefinition = {
   level: 'workspace',
   icon: 'user',
   /*
-   * EMPTY, like normal-user and for the same reason: membership of a workspace
-   * is structural — it comes from PermWorkspaceMember — and this role exists to
-   * say "in it, with no rights of their own" rather than to grant anything.
+   * `workspace:read` and nothing else. It was empty, and that was right while
+   * opening a workspace took no key — membership is structural, from
+   * PermWorkspaceMember, and this role existed to say "in it, with no rights of
+   * their own".
+   *
+   * The atomic split gave opening one its own key, so an empty role would now
+   * mean a member who is in a workspace and cannot open it. Read is what "in
+   * it, with no rights of their own" has to carry.
    */
-  features: [],
+  features: [FEATURE.workspaceRead],
   limits: {},
 };
 
@@ -246,7 +365,17 @@ const ORGANIZATION_OWNER: SystemRoleDefinition = {
   label: 'Organization owner',
   level: 'organization',
   icon: 'organization',
-  features: [],
+  /*
+   * The admin's list plus `organization:manage` — the right to rename the
+   * company and change the key in its URLs.
+   *
+   * That is the ORGANIZATION-level key, one letter from the app-level
+   * `organizations:manage` that lets support rename ANY tenant. The two are
+   * separate on purpose and neither stands in for the other; an organization
+   * role could not carry the app-level one even if this file asked it to,
+   * because a role may only collect features at its own level.
+   */
+  features: [...ORGANIZATION_ADMIN.features, FEATURE.organizationUpdate],
   limits: {},
 };
 

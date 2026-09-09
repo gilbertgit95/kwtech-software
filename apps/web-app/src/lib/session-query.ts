@@ -28,6 +28,13 @@ import { cache } from 'react';
  * concurrent requests never see each other's session, which for this data is the
  * only acceptable behaviour.
  *
+ * ⚠ `cache()` keys on the ARGUMENTS. Now that this takes a scope, two callers
+ * in one render share a response only if they pass the same one — and calling
+ * it with no argument where the shell passed a scope would silently make a
+ * second request AND resolve at app level, which is the reading that grants a
+ * tenant-only member nothing. Both callers in this app derive the scope from
+ * the same `parseScope(pathname)`, which is what keeps them in step.
+ *
  * ## Three outcomes, not two
  *
  * "Nobody is signed in" and "I could not ask" are different facts, and this
@@ -51,10 +58,11 @@ import { cache } from 'react';
  */
 
 const SESSION_QUERY = `
-  query Session {
+  query Session($organizationId: String, $workspaceId: String) {
     viewer { id email username displayName }
     session { expiresAt }
-    myPermissions {
+    myOrganizations { organizationId organizationKey organizationName roleKey roleLabel roleIcon }
+    myPermissions(organizationId: $organizationId, workspaceId: $workspaceId) {
       subjectId
       organizationId
       workspaceId
@@ -72,9 +80,256 @@ const SESSION_QUERY = `
   }
 `;
 
+/** A workspace the viewer may enter, and what they are IN it. */
+export interface ViewerWorkspace {
+  id: string;
+  key: string;
+  name: string;
+  /**
+   * The viewer's WORKSPACE-level role here, or null.
+   *
+   * Null covers two states the selector does not need to tell apart: a member
+   * given nothing yet, and platform support, who may enter every workspace
+   * while belonging to none. Both hold no role HERE, which is what the badge
+   * reports.
+   */
+  roleKey: string | null;
+  roleLabel: string | null;
+  /** Icon NAME, resolved to a component by the app's own set. */
+  roleIcon: string | null;
+}
+
+/** What the drawer needs about the SELECTED organization. */
+export interface NavContext {
+  /** Grants at APP level — filters `/admin/*` and this app's own pages. */
+  appGranted: readonly string[];
+  /** Grants INSIDE the selected organization — filters the tenant section. */
+  organizationGranted: readonly string[];
+  /**
+   * Grants at the selected WORKSPACE — filters the workspace section.
+   *
+   * A third reading rather than reusing the organization's, because an
+   * organization-scoped context carries no workspace-level grants at all: those
+   * hang off a workspace membership, and at organization scope there is no
+   * workspace. `workspaces:share` is the only such key today and the workspace
+   * section's one route does not need it — but the next page added there will,
+   * and filtering it with the organization's grants would hide it from exactly
+   * the people who hold it.
+   *
+   * Empty when no workspace is selected.
+   */
+  workspaceGranted: readonly string[];
+  /**
+   * The workspaces of that organization the viewer may ENTER, not every one it
+   * has. Membership is required and no role widens it (§12.33), so a picker
+   * listing the rest would offer rows the guard refuses on arrival.
+   */
+  workspaces: ViewerWorkspace[];
+}
+
+/** Nothing selected, nothing to offer. Fails closed, like every other null here. */
+const EMPTY_NAV: NavContext = { appGranted: [], organizationGranted: [], workspaceGranted: [], workspaces: [] };
+
+/**
+ * Everything the DRAWER needs about the selected organization, in one request.
+ *
+ * ## Why the drawer asks separately from the page
+ *
+ * Two different questions are answered on the same render, and one context gets
+ * one of them wrong:
+ *
+ *   "May this person open THIS page?"  → the URL's scope. Anything else and
+ *      `/admin/roles` would start accepting an ORGANIZATION-level `roles:read`,
+ *      because the context would have been resolved inside a tenant. That is
+ *      the app-level boundary quietly disappearing.
+ *
+ *   "What should the drawer offer?"    → BOTH scopes at once. The tenant
+ *      section is filtered by grants inside the selected organization; the rest
+ *      of the drawer is filtered at app level. `roles:read` and
+ *      `subscriptions:read` are organization-level keys that ALSO gate
+ *      `/admin/roles` and `/admin/subscriptions`, so filtering everything with
+ *      one organization-scoped context offers a tenant admin the platform's
+ *      roles screen — and the page then refuses them.
+ *
+ * ## One request, two scopes, via ALIASES
+ *
+ * `myPermissions` is asked twice in one operation under different aliases, so
+ * both readings arrive together. They resolve independently — the guard's
+ * per-request context cache is keyed on scope precisely so a workspace-scoped
+ * answer is never served to an organization-scoped field in the same operation.
+ *
+ * ⚠ The result must NOT be given to `<PermissionsProvider>`. Every
+ * `<FeatureGate>` in the page below reads that, and a gate evaluating against a
+ * tenant while the page is an admin screen would show controls the API refuses.
+ * The provider keeps the page's own context; this feeds `buildNav` and stops.
+ *
+ * Called only when an organization is selected, and fails closed to empty.
+ */
+export const getNavContext = cache(async (organizationId: string, workspaceId: string | null): Promise<NavContext> => {
+  const token = await getSessionToken();
+  if (!token) return EMPTY_NAV;
+
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+  try {
+    const response = await fetch(`${apiUrl}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        query: `query NavContext($organizationId: String!, $workspaceId: String) {
+          app: myPermissions { granted }
+          organization: myPermissions(organizationId: $organizationId) { granted }
+          workspace: myPermissions(organizationId: $organizationId, workspaceId: $workspaceId) { granted }
+          workspaces: myWorkspaces(organizationId: $organizationId) { id key name roleKey roleLabel roleIcon }
+        }`,
+        /*
+         * The workspace id is the RAW remembered value, passed before it has
+         * been validated — validating it needs the `workspaces` list this same
+         * request returns, so asking first would be circular.
+         *
+         * Safe for the reason `myPermissions(organizationId:)` is: `loadContext`
+         * resolves the (user, organization, workspace) triple and returns null
+         * for one the caller has no standing in, so a stale or forged id yields
+         * an empty grant list rather than anything about that workspace. The id
+         * is checked against `workspaces` afterwards anyway, and a miss means
+         * the section is not rendered at all.
+         */
+        variables: { organizationId, workspaceId },
+      }),
+      cache: 'no-store',
+    });
+    if (!response.ok) return EMPTY_NAV;
+
+    const body = (await response.json()) as {
+      data?: {
+        app: { granted: string[] } | null;
+        organization: { granted: string[] } | null;
+        workspace: { granted: string[] } | null;
+        workspaces: ViewerWorkspace[] | null;
+      };
+    };
+
+    return {
+      appGranted: body.data?.app?.granted ?? [],
+      organizationGranted: body.data?.organization?.granted ?? [],
+      workspaceGranted: body.data?.workspace?.granted ?? [],
+      workspaces: body.data?.workspaces ?? [],
+    };
+  } catch {
+    return EMPTY_NAV;
+  }
+});
+
+/**
+ * The identity of ONE organization — id, key, name — and nothing else.
+ *
+ * ## Why it exists at all
+ *
+ * The drawer's switcher names the selected organization by finding it in the
+ * viewer's OWN list, which is right for everybody who is a member of it. It is
+ * wrong for the one case that matters here: platform staff drilling into a
+ * customer from `/admin/organizations`. The URL names that tenant, the drawer's
+ * Organization section renders (their app-level grants resolve there), and the
+ * switcher above it fell back to the product name — so the header said one
+ * thing and the page said another.
+ *
+ * ## Called only when the organization is NOT one of the viewer's own
+ *
+ * Which is the rare path. `myOrganization` is the tenant DETAIL query and loads
+ * members, workspaces and invitations to answer with three columns, so running
+ * it on every render for everybody would be a real cost for no gain — the name
+ * is already in hand for a member.
+ *
+ * A dedicated lightweight query would be the tidier answer and is deliberately
+ * NOT what this does: the module reaches Postgres through a hand-written
+ * structural interface where a second `permOrganization.findFirst` shape means
+ * declaring an OVERLOAD, which a generated Prisma client cannot satisfy. See
+ * the note on `permWorkspace` in permissions.repository.ts — the same wall that
+ * sent `listWorkspaceDetail` through `listOrganizationDetail`.
+ *
+ * Null when the caller has no standing there, which is the honest answer: the
+ * switcher then falls back to the product name, and the page refuses them too.
+ */
+export const getOrganizationIdentity = cache(
+  async (organizationId: string): Promise<{ id: string; key: string; name: string } | null> => {
+    const token = await getSessionToken();
+    if (!token) return null;
+
+    const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+    try {
+      const response = await fetch(`${apiUrl}/graphql`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          query: `query OrganizationIdentity($organizationId: String!) {
+            myOrganization(organizationId: $organizationId) { id key name }
+          }`,
+          variables: { organizationId },
+        }),
+        cache: 'no-store',
+      });
+      if (!response.ok) return null;
+
+      const body = (await response.json()) as {
+        data?: { myOrganization: { id: string; key: string; name: string } | null };
+      };
+      return body.data?.myOrganization ?? null;
+    } catch {
+      return null;
+    }
+  },
+);
+
+/**
+ * Where to resolve the viewer's rights — read from the URL by `parseScope`.
+ *
+ * ## Why the session query gained a scope (PLAN §12.13)
+ *
+ * A permission context is always per (subject, organization): the same person
+ * legitimately holds different rights in two organizations, so a context with
+ * no organization is not a smaller one but an ambiguous one. This query used to
+ * take none, so every render got the APP-LEVEL reading — and a member whose
+ * only role is inside a tenant resolved to nothing at all. Their drawer was
+ * empty and every `<FeatureGate>` on a tenant page was closed, on pages the API
+ * would have served them.
+ *
+ * The ids come from the URL, which is the convention `scope.ts` parses and the
+ * one the API's guard reads from a resolver's arguments. Not from a header
+ * (forgettable, invisible in a bug report), not from a subdomain (a DNS record
+ * per tenant), and not from the token — baking the active tenant into a
+ * week-long credential would make switching organization need a new sign-in.
+ *
+ * Passing an organization the viewer has no standing in is SAFE: `loadContext`
+ * resolves the (user, organization) pair and returns null for a pair with none,
+ * so the answer is "you hold nothing" rather than anything about that tenant.
+ */
+export interface SessionScope {
+  organizationId?: string | null;
+  workspaceId?: string | null;
+}
+
+/** One organization the viewer belongs to, for the drawer's switcher. */
+export interface ViewerOrganization {
+  organizationId: string;
+  organizationKey: string;
+  organizationName: string;
+  roleKey: string | null;
+  roleLabel: string | null;
+  roleIcon: string | null;
+}
+
 export interface SessionSnapshot {
   viewer: Viewer | null;
   permissions: PermissionContext | null;
+  /**
+   * Where the viewer belongs. Empty for somebody who is in no organization,
+   * which is a normal state — a platform invitation names no tenant at all.
+   *
+   * Asked for in the SAME operation as the viewer and the permissions, for the
+   * reason those two were merged: the drawer needs it on every render, and a
+   * second round trip per navigation for a list that changes when somebody
+   * joins a company is a round trip for nothing.
+   */
+  organizations: ViewerOrganization[];
   /**
    * Whether the API answered at all.
    *
@@ -97,10 +352,22 @@ export interface SessionSnapshot {
 }
 
 /** Signed out, having asked and been told so. */
-const SIGNED_OUT: SessionSnapshot = { viewer: null, permissions: null, expiresAt: null, reachable: true };
+const SIGNED_OUT: SessionSnapshot = {
+  viewer: null,
+  permissions: null,
+  organizations: [],
+  expiresAt: null,
+  reachable: true,
+};
 
 /** Could not ask. Renders the shell with a status bar rather than a redirect. */
-const UNREACHABLE: SessionSnapshot = { viewer: null, permissions: null, expiresAt: null, reachable: false };
+const UNREACHABLE: SessionSnapshot = {
+  viewer: null,
+  permissions: null,
+  organizations: [],
+  expiresAt: null,
+  reachable: false,
+};
 
 /**
  * Null on every failure — no cookie, expired token, API down, malformed body —
@@ -118,7 +385,7 @@ const UNREACHABLE: SessionSnapshot = { viewer: null, permissions: null, expiresA
  * and the shell renders a signed-in user with no privileged navigation — which
  * is the safe direction.
  */
-export const getSessionSnapshot = cache(async (): Promise<SessionSnapshot> => {
+export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promise<SessionSnapshot> => {
   const token = await getSessionToken();
   // No cookie is a complete answer, arrived at without asking anyone. Reporting
   // it as unreachable would put "cannot reach the server" on the sign-in page
@@ -131,7 +398,10 @@ export const getSessionSnapshot = cache(async (): Promise<SessionSnapshot> => {
     const response = await fetch(`${apiUrl}/graphql`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ query: SESSION_QUERY }),
+      body: JSON.stringify({
+        query: SESSION_QUERY,
+        variables: { organizationId: scope.organizationId ?? null, workspaceId: scope.workspaceId ?? null },
+      }),
       // Never cached: one viewer must not be served another's identity or grants
       // from a shared cache.
       cache: 'no-store',
@@ -147,6 +417,7 @@ export const getSessionSnapshot = cache(async (): Promise<SessionSnapshot> => {
       data?: {
         viewer: Viewer | null;
         myPermissions: PermissionContext | null;
+        myOrganizations: ViewerOrganization[] | null;
         session: { expiresAt: number } | null;
       };
     };
@@ -155,6 +426,7 @@ export const getSessionSnapshot = cache(async (): Promise<SessionSnapshot> => {
     return {
       viewer: body.data?.viewer ?? null,
       permissions: body.data?.myPermissions ?? null,
+      organizations: body.data?.myOrganizations ?? [],
       expiresAt: expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
       reachable: true,
     };

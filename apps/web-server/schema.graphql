@@ -100,18 +100,20 @@ type Mutation {
   assignAppRole(roleId: String!, userId: String!): PermissionWriteResult!
   assignRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
-  createOrganization(key: String!, name: String!): PermissionWriteResult!
+  createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
   createPlan(input: PlanDraftInput!): PermissionPlanDetail!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
   createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
-  createWorkspace(key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   declineInvitation(token: String!): InvitationDeclineResult!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
+  leaveOrganization(organizationId: String!): PermissionWriteResult!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
@@ -120,12 +122,22 @@ type Mutation {
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
-  updateOrganization(key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
   updateProfile(input: UpdateProfileInput!): Viewer!
   updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
   updateSubscription(currentPeriodEnd: String!, status: String!, subscriptionId: String!): PermissionSubscription!
-  updateWorkspace(key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
+  updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
+}
+
+type MyWorkspace {
+  description: String
+  id: String!
+  key: String!
+  name: String!
+  roleIcon: String
+  roleKey: String
+  roleLabel: String
 }
 
 type PermissionContext {
@@ -193,7 +205,16 @@ type PermissionMemberRole {
   level: String!
 }
 
+type PermissionMyWorkspace {
+  organizationId: String!
+  organizationKey: String!
+  organizationMembers: [PermissionMember!]!
+  organizationName: String!
+  workspace: PermissionWorkspaceDetail!
+}
+
 type PermissionOrganization {
+  description: String
   id: String!
   key: String!
   memberCount: Int!
@@ -203,6 +224,7 @@ type PermissionOrganization {
 }
 
 type PermissionOrganizationDetail {
+  description: String
   id: String!
   invitations: [PermissionInvitation!]!
   key: String!
@@ -271,6 +293,7 @@ type PermissionWorkspace {
 
 type PermissionWorkspaceDetail {
   archived: Boolean!
+  description: String
   id: String!
   key: String!
   memberCount: Int!
@@ -319,7 +342,13 @@ type Query {
   findUsersByIds(ids: [String!]!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview
   mfaFactors: [MfaFactor!]!
-  myPermissions: PermissionContext
+  myOrganization(organizationId: String!): PermissionOrganizationDetail
+  myOrganizationRoles(level: String, organizationId: String!): [PermissionRoleDetail!]!
+  myOrganizationSubscriptions(organizationId: String!): [PermissionSubscription!]!
+  myOrganizations: [UserOrganization!]!
+  myPermissions(organizationId: String, workspaceId: String): PermissionContext
+  myWorkspace(organizationId: String!, workspaceId: String!): PermissionMyWorkspace
+  myWorkspaces(organizationId: String!): [MyWorkspace!]!
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
   permissionOrganizationDetail(organizationId: String!): PermissionOrganizationDetail
   permissionOrganizations: [PermissionOrganization!]!
@@ -384,9 +413,11 @@ type UserAppRole {
 }
 
 type UserOrganization {
+  organizationDescription: String
   organizationId: String!
   organizationKey: String!
   organizationName: String!
+  roleIcon: String
   roleKey: String
   roleLabel: String
   userId: String!

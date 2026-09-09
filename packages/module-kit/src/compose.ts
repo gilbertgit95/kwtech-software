@@ -35,25 +35,90 @@ export function composeRoutes(modules: readonly WebModuleDescriptor[]): ModuleRo
   return routes;
 }
 
+export interface ComposeNavOptions {
+  /**
+   * Values for the `:params` in a route's path — `{ organizationId: 'org_1' }`.
+   *
+   * A route whose path has no dynamic segments ignores this entirely and is
+   * listed as it always was. A route that HAS them is listed only when every
+   * one of them can be filled, and its href is the substituted path.
+   *
+   * ## Why a route drops out rather than degrading
+   *
+   * `/organizations/:organizationId/members` is not a URL. Listing it with the
+   * placeholder still in it produces a link that 404s, and listing it with the
+   * segment removed produces a link to somebody else's page — both are worse
+   * than the entry not being there. "No active organization" is a real state,
+   * and the honest rendering of a nav entry that needs one is its absence.
+   *
+   * ## Why this and not a second descriptor field
+   *
+   * A route already declares its dynamic segments, in its path. Asking a module
+   * to ALSO declare "this entry needs an organization" would be the same fact
+   * written twice, and the failure of forgetting the second one is a broken
+   * link in a drawer rather than an error anywhere.
+   */
+  params?: Readonly<Record<string, string | undefined>>;
+}
+
 /**
- * Navigation, derived from the same route list the middleware protects — which
- * is what stops a menu linking somewhere the guard will refuse.
+ * Substitutes `:param` segments, or returns undefined when one has no value.
+ *
+ * Undefined rather than a partial path: a caller that got half a URL would have
+ * to check for a colon in it, and the one that forgot would ship the link.
+ */
+function fillPath(path: string, params: Readonly<Record<string, string | undefined>>): string | undefined {
+  if (!path.includes(':')) return path;
+
+  const filled: string[] = [];
+  for (const segment of path.split('/')) {
+    if (!segment.startsWith(':')) {
+      filled.push(segment);
+      continue;
+    }
+    const value = params[segment.slice(1)];
+    // An empty string is as unusable as a missing one: it collapses the segment
+    // and shifts every id after it one place left.
+    if (!value) return undefined;
+    filled.push(encodeURIComponent(value));
+  }
+  return filled.join('/');
+}
+
+/**
+ * Navigation, derived from the same route list the renderer protects — which is
+ * what stops a menu linking somewhere the guard will refuse.
  *
  * Pass `heldFeatures` to filter; omit it to get the unfiltered menu (the role
- * editor wants that).
+ * editor wants that). Pass `options.params` to resolve routes with dynamic
+ * segments — see `ComposeNavOptions`.
  */
-export function composeNav(modules: readonly WebModuleDescriptor[], heldFeatures?: readonly string[]): NavEntry[] {
+export function composeNav(
+  modules: readonly WebModuleDescriptor[],
+  heldFeatures?: readonly string[],
+  options: ComposeNavOptions = {},
+): NavEntry[] {
   const entries: NavEntry[] = [];
+  const params = options.params ?? {};
 
   for (const route of composeRoutes(modules)) {
     if (!route.nav) continue;
     if (heldFeatures && route.feature && !heldFeatures.includes(route.feature)) continue;
 
+    /*
+     * The FEATURE filter runs first and the params second, and the order is
+     * not arbitrary: an entry the reader may not hold should be absent whether
+     * or not a scope happens to be active, so the cheaper and more important
+     * check is the one that cannot be skipped.
+     */
+    const href = fillPath(route.path, params);
+    if (href === undefined) continue;
+
     entries.push({
       group: route.nav.group,
       order: route.nav.order ?? 0,
       label: route.title,
-      href: route.path,
+      href,
       ...(route.nav.icon !== undefined ? { icon: route.nav.icon } : {}),
       ...(route.feature !== undefined ? { feature: route.feature } : {}),
     });

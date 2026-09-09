@@ -71,6 +71,46 @@ export function requestFromContext(context: unknown): unknown {
 }
 
 /**
+ * Pulls a RESOLVER'S ARGUMENTS out of an execution context.
+ *
+ * Handed to `PermissionsModule` as `getArgs`, and it is the other half of the
+ * seam above: `getRequest` says WHO is calling, this says WHERE they are
+ * calling about.
+ *
+ * ## Why it has to exist, and why nothing worked without it
+ *
+ * A resolver has no path. One GraphQL endpoint serves every operation, so
+ * `FeatureGuard`'s fallback — `parseScope(request.url)` — reads
+ * `/api/v1/graphql` and resolves APP level with no organization, whatever the
+ * arguments say. `@RequireScope` exists precisely so a resolver can declare its
+ * level and name the arguments carrying the ids; the guard reads them through
+ * THIS hook.
+ *
+ * It was never wired, which is why the decorator had been written, tested, and
+ * used on nothing. The consequence was not a missing feature but a silent one:
+ * every organization-level key resolved against a context with no organization
+ * in it, so an ORGANIZATION-LEVEL ROLE GRANTED NOTHING — and the refusal read
+ * as an ordinary "requires members:manage" at somebody who held
+ * `members:manage`. See PLAN.md §12.13.
+ *
+ * ## Why the app supplies it rather than the module
+ *
+ * `GqlExecutionContext` is `@nestjs/graphql`, an OPTIONAL peer of the
+ * permissions module — a REST-only consumer must not have to install a GraphQL
+ * library to answer questions about REST. The same argument `getRequest` makes,
+ * and the reason the guard reads the transport structurally everywhere else.
+ *
+ * Returns `undefined` off the GraphQL path, so the guard falls through to
+ * parsing the URL — which is the right answer for a REST handler, whose ids are
+ * already in it.
+ */
+export function argsFromContext(context: unknown): Record<string, unknown> | undefined {
+  const ctx = context as ExecutionContext;
+  if (ctx.getType<'graphql'>() !== 'graphql') return undefined;
+  return GqlExecutionContext.create(ctx).getArgs() as Record<string, unknown>;
+}
+
+/**
  * @param tokens the app's TokenService, for the WebSocket handshake.
  *
  * Passed in rather than imported so this stays a pure function of its inputs

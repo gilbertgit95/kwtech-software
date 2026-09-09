@@ -5,6 +5,7 @@ import {
   navGroupRank,
   type WebModuleDescriptor,
 } from '@kwtech/module-kit';
+import { ORGANIZATION_NAV_GROUP, WORKSPACE_NAV_GROUP } from '@kwtech/module-permissions/react';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -93,8 +94,86 @@ export const ACCOUNT_GROUP = 'Account';
  * link a user straight to a page that turns them away, which is the exact
  * mismatch one shared key is supposed to prevent.
  */
-export function buildNav(heldFeatures: readonly string[] | undefined): NavGroup[] {
-  const entries = [...APP_NAV, ...composeNav(WEB_MODULES, heldFeatures ?? [])].filter(
+export interface NavScopes {
+  /** Grants AT APP LEVEL — filters `/admin/*` and this app's own pages. */
+  app: readonly string[] | undefined;
+  /** Grants IN THE SELECTED ORGANIZATION, or undefined when none is selected. */
+  organization?: readonly string[] | undefined;
+  /** Grants AT THE SELECTED WORKSPACE, or undefined when none is selected. */
+  workspace?: readonly string[] | undefined;
+  /**
+   * Values for the `:params` in a route's path — `organizationId` and
+   * `workspaceId` today.
+   *
+   * `composeNav` DROPS an entry whose parameters it cannot fill, which is what
+   * makes the drawer drill into an organization and back out again without
+   * anything having to declare that it switches: every `/organizations/:id/...`
+   * entry simply has no href to be listed under until there is an active
+   * organization, and then it has one.
+   *
+   * A partially-filled path is never produced — a link with `:organizationId`
+   * still in it 404s, and one with the segment removed points at somebody
+   * else's page.
+   *
+   * A plain param BAG rather than named fields, so a module contributing a
+   * route with some other dynamic segment needs no change here.
+   */
+  params?: Readonly<Record<string, string | undefined>>;
+}
+
+/**
+ * @param scopes one grant set per LEVEL, because the drawer spans three of them.
+ *
+ * An options object rather than four positional arguments: three of them are
+ * `readonly string[] | undefined` and adjacent, which is the shape where a
+ * transposed pair typechecks perfectly and filters the wrong section.
+ */
+export function buildNav(scopes: NavScopes): NavGroup[] {
+  const { app: appFeatures, organization: organizationFeatures, workspace: workspaceFeatures, params = {} } = scopes;
+  /*
+   * ── EVERY ENTRY IS FILTERED AT THE LEVEL OF THE ROUTE IT POINTS AT ────────
+   *
+   * Three passes, and each grant set is genuinely wrong for the others' entries.
+   *
+   * `roles:read` and `subscriptions:read` are ORGANIZATION-level keys that also
+   * gate `/admin/roles` and `/admin/subscriptions` — platform screens that
+   * resolve at APP level, where an organization-level grant does not
+   * participate. Filter the whole drawer with one organization-scoped context
+   * and an organization admin is offered the platform's roles screen and
+   * refused by it on arrival. That is precisely the mismatch one shared feature
+   * key exists to prevent, and it was demonstrated before this split: the
+   * drawer listed Administration while the page it linked to rendered a denial.
+   *
+   * The workspace pass exists for the opposite failure. A WORKSPACE-level key
+   * hangs off a workspace membership, so an organization-scoped context does
+   * not carry it — filtering that section with the organization's grants would
+   * hide a page from exactly the people who hold the right to it.
+   *
+   * The split is by GROUP rather than by inspecting paths, because the group is
+   * already the first-class marker for which area an entry belongs to — and
+   * module-permissions' own suite asserts that every entry in each carries the
+   * parameters that section needs, so the two cannot drift apart silently.
+   */
+  const scoped = new Set<string>([ORGANIZATION_NAV_GROUP, WORKSPACE_NAV_GROUP]);
+
+  const appEntries = composeNav(WEB_MODULES, appFeatures ?? []).filter((entry) => !scoped.has(entry.group));
+
+  /*
+   * Each skipped entirely when nothing is selected at that level — `composeNav`
+   * would drop the entries for want of a parameter anyway, so this only avoids
+   * the work.
+   */
+  const organizationEntries = organizationFeatures
+    ? composeNav(WEB_MODULES, organizationFeatures, { params }).filter(
+        (entry) => entry.group === ORGANIZATION_NAV_GROUP,
+      )
+    : [];
+
+  const workspaceEntries = workspaceFeatures
+    ? composeNav(WEB_MODULES, workspaceFeatures, { params }).filter((entry) => entry.group === WORKSPACE_NAV_GROUP)
+    : [];
+
+  const entries = [...APP_NAV, ...appEntries, ...organizationEntries, ...workspaceEntries].filter(
     // Rendered by the account menu instead — see ACCOUNT_GROUP. Filtered here
     // rather than at the source so a module still declares one kind of thing.
     (entry) => entry.group !== ACCOUNT_GROUP,

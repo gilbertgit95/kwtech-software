@@ -22,7 +22,7 @@ export interface ScopeSpec {
  * arguments carrying the ids:
  *
  *   @RequireScope('workspace')
- *   @RequireFeature(FEATURE.workspacesShare)
+ *   @RequireFeature(FEATURE.workspaceMembersAdd)
  *   @Mutation(() => Workspace)
  *   shareWorkspace(@Args('organizationId') orgId: string, @Args('workspaceId') wsId: string) {}
  *

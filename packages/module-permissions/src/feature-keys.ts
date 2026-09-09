@@ -48,7 +48,8 @@ export const FEATURE = {
    * it is a platform view rather than something an organization grants about
    * itself. A tenant administrator reading their OWN organization is a
    * different question, answered by their membership plus the scope of the
-   * request — see PLAN §12.13, still open.
+   * request — which is `organization:read` below, added when PLAN §12.13
+   * closed on 2026-09-09.
    *
    * Split from `members:manage` for the reason `roles:read` is split from
    * `roles:create`: seeing which tenants exist and changing who is in one are
@@ -68,21 +69,212 @@ export const FEATURE = {
    * and to rename one almost never, and one key for both would hand every
    * support engineer the ability to rename a customer.
    *
-   * ⚠ When PLAN §12.13 lands the active-organization scope, this is a
-   * candidate to be joined by an organization-level twin so a tenant's own
-   * owner can rename their own organization. That is a second key, not a
-   * re-levelling of this one: "rename any tenant" and "rename mine" are
-   * different rights, and collapsing them would silently give a customer the
-   * first.
+   * That twin now exists: `organization:manage`, added when PLAN §12.13
+   * closed on 2026-09-09, so a tenant's own owner can rename their own
+   * organization. A SECOND key, not a re-levelling of this one — "rename any
+   * tenant" and "rename mine" are different rights, and collapsing them would
+   * silently have given a customer the first.
    */
   organizationsManage: 'organizations:manage',
 
-  /** Invite, remove and re-role people in the organization. */
-  membersManage: 'members:manage',
-  /** Create, rename and archive workspaces. */
-  workspacesManage: 'workspaces:manage',
-  /** Share a workspace with another member. */
-  workspacesShare: 'workspaces:share',
+  // ── organization level: a tenant looking after ITSELF ────────────────────
+  //
+  // ⚠ THE SINGULAR IS THE TENANT'S, THE PLURAL IS THE PLATFORM'S.
+  //
+  //   organizations:read    APP    — see EVERY tenant. Support, billing ops.
+  //   organization:read     ORG    — see THIS one. A customer's own people.
+  //
+  // Two keys one letter apart is a hazard, and it is worth the hazard: the
+  // alternative is one key that means "any tenant" to a support engineer and
+  // "mine" to a customer, which cannot be granted separately and therefore
+  // cannot be refused separately. PLAN §12.13's own entry predicted this pair
+  // and predicted the second key rather than a re-levelling of the first.
+  //
+  // The mistake to watch for is granting the PLURAL in an organization-level
+  // role. It cannot happen: a role may only collect features at its own level,
+  // so `organizations:read` is unofferable to an organization role and the
+  // draft validator refuses it. That check is what makes the near-collision
+  // safe rather than merely documented.
+
+  /**
+   * See this organization — its overview, its people, its workspaces.
+   *
+   * ORGANIZATION level, which is the whole content of the key: it answers
+   * "may this person look at the tenant they are standing in", and the tenant
+   * they are standing in comes from the URL (`/organizations/:organizationId`),
+   * parsed by scope.ts. There is no id in the grant, so it cannot leak sideways
+   * — holding it says nothing about any organization but the one being asked
+   * about.
+   *
+   * ## Why membership alone is not enough
+   *
+   * It would have been the smaller change, and §12.23 argues for it: a surface
+   * gets a key only when it needs AUTHORISATION rather than merely a session.
+   * But enforcement here is OPT-IN — a resolver with no key is a resolver the
+   * guard never runs — so "members only" would have to be re-implemented inside
+   * every tenant query, and the first one to forget would be readable by anyone
+   * signed in. A key makes the guard the single enforcement point, which is the
+   * arrangement every other surface in this module already has.
+   *
+   * The practical consequence, worth stating: being ADDED to an organization
+   * does not by itself let somebody open it. They need a role carrying this
+   * key. The seeded tenant roles carry it; a role that does not is a member who
+   * can be granted something inside the tenant without being shown the tenant,
+   * which is a real configuration and not an accident to design out.
+   */
+  organizationRead: 'organization:read',
+
+  /**
+   * Rename THIS organization — its display name, and the key in its URL.
+   *
+   * The organization-level twin `organizations:manage` predicted. A customer's
+   * owner renaming their own company is not the same right as a support
+   * engineer renaming any customer, and the split is what lets a platform grant
+   * the second to nobody outside itself.
+   *
+   * Split from `organization:read` for exactly the reason the app-level pair is
+   * split: people read a tenant constantly and rename one almost never, so one
+   * key for both would hand every member who can see the organization the
+   * ability to rename it.
+   */
+  organizationUpdate: 'organization:update',
+
+  /*
+   * ── the tenant's people, split by RISK ──────────────────────────────────
+   *
+   * These four were one key, `members:manage`, carrying nine bindings: reading
+   * the roster, inviting, revoking an invitation, removing somebody, and
+   * changing what they may do. One key meant an organization could not have
+   * anybody who administers people without also letting them re-role — which is
+   * the escalation-adjacent half — or anybody who can see the roster without
+   * being able to empty it.
+   *
+   * Split for the reason `roles:manage` and `features:author` were split before
+   * them: read, add, remove and re-role are different risks, and a role should
+   * describe exactly what its holder can do.
+   *
+   * None implies another. No inheritance anywhere in this registry.
+   */
+
+  /**
+   * See who is in the organization, and who has been invited.
+   *
+   * The read half, and the one a role can hold alone: somebody who coordinates
+   * people needs the roster far more often than they need to change it. It also
+   * gates the two user lookups the app owns — resolving a membership's `userId`
+   * to a name is what makes a roster legible, and nothing else needs it.
+   */
+  membersRead: 'members:read',
+
+  /**
+   * Invite an address to join, and withdraw an invitation not yet used.
+   *
+   * Sending and revoking are ONE key on purpose. Revoking is undoing your own
+   * act, reaches only an invitation nobody has accepted, and a role able to
+   * invite but not to take it back would make a typo permanent until somebody
+   * senior was found.
+   *
+   * ⚠ It also gates `addMember`, which takes a userId rather than an address.
+   * The outcome is the same act — a person is now in this organization — and
+   * the only difference is whether they already had an account. Giving the
+   * direct path its own key would let a role add people while being unable to
+   * invite them, which is a distinction nobody wants and an easy one to grant
+   * by accident.
+   */
+  membersInvite: 'members:invite',
+
+  /**
+   * Remove somebody from the organization.
+   *
+   * Its own key because it is the destructive one: their role grants and
+   * workspace memberships go with them by cascade. "May invite, may not remove"
+   * is the ordinary shape of a coordinator role, and it is only expressible
+   * because this is separate.
+   */
+  membersRemove: 'members:remove',
+
+  /**
+   * Grant or revoke an ORGANIZATION-level role on a member.
+   *
+   * The escalation-adjacent one, and the reason the split was worth doing: it
+   * changes what another person may do, where every other members key changes
+   * only who is present. `assignRole` still refuses a role carrying features
+   * the granter does not hold, so this cannot mint somebody more powerful than
+   * yourself — but holding it at all is a different order of trust from
+   * inviting a colleague.
+   *
+   * Grant and revoke are one key: a member holds at most one organization role,
+   * so `assignRole` REPLACES, and revoking is the same act with no replacement.
+   */
+  membersAssignRole: 'members:assign_role',
+
+  /*
+   * ── the tenant's workspaces, split the same way ─────────────────────────
+   *
+   * `workspaces:manage` described itself as "Create, rename and archive" — three
+   * different risks in one key, one of which stops a workspace resolving for
+   * everybody inside it.
+   *
+   * All four are ORGANIZATION level, and that is not an oversight: which
+   * workspaces a tenant has is a decision the organization makes, not one a
+   * workspace makes about itself. §12.33 is the same idea from the other side —
+   * managing a workspace does not require being IN it, because renaming one is
+   * not entering it.
+   */
+
+  /** See the organization's workspaces, live and archived. */
+  workspacesRead: 'workspaces:read',
+  /** Create one. Bounded by the plan's `organization:workspaces` cap. */
+  workspacesCreate: 'workspaces:create',
+  /** Rename one, or change its key or description. */
+  workspacesUpdate: 'workspaces:update',
+  /**
+   * Archive one.
+   *
+   * Its own key, and the sharpest split here: an archived workspace stops
+   * resolving, so nobody can act inside it and no grant made in it applies.
+   * There is no delete, which makes this the most destructive act the tenant
+   * area has — and the one most obviously not implied by being able to rename.
+   */
+  workspacesArchive: 'workspaces:archive',
+
+  /*
+   * ── inside ONE workspace ────────────────────────────────────────────────
+   *
+   * ⚠ SINGULAR `workspace:`, where the four above are plural `workspaces:`, and
+   * the difference is the LEVEL: the plural ones are the organization's view of
+   * its workspaces, these are what somebody may do in the one they are standing
+   * in. The same convention as `organization:read` beside `organizations:read`.
+   *
+   * That is two pairs a letter apart, which is a hazard worth naming — and a
+   * safe one, because a role may only collect features its own level reaches.
+   * A workspace role is offered none of the plural keys at all, and the draft
+   * validator refuses one that names them.
+   *
+   * These were `workspaces:share`, which bundled adding a member, removing one
+   * and granting a role in the workspace.
+   */
+
+  /**
+   * Open a workspace and see who is in it.
+   *
+   * WORKSPACE level, so an organization role carries it downward and it applies
+   * in every workspace its holder BELONGS to — never in one they do not, which
+   * membership alone decides (§12.33).
+   */
+  workspaceRead: 'workspace:read',
+  /** Add somebody already in the organization to this workspace. */
+  workspaceMembersAdd: 'workspace:members_add',
+  /** Remove somebody from this workspace. They stay in the organization. */
+  workspaceMembersRemove: 'workspace:members_remove',
+  /**
+   * Grant or revoke a WORKSPACE-level role here.
+   *
+   * One key for both, like its organization-level twin and for the same reason:
+   * a workspace member holds at most one role, so granting replaces and
+   * revoking is the same act with nothing to replace it with.
+   */
+  workspaceAssignRole: 'workspace:assign_role',
   /*
    * ── roles ───────────────────────────────────────────────────────────────
    *
@@ -107,10 +299,16 @@ export const FEATURE = {
    * `features:read` makes — and a tenant admin needs it to assign roles.
    *
    * ⚠ This is provisional, and the condition for reversing it is precise: when
-   * role writes are scoped to the actor's organization (PLAN §12.13 — the
-   * resolver has no active organization on the request, which is exactly why
-   * `role-draft.ts` cannot offer an organization picker), these three become
-   * genuinely tenant-local and belong back at organization level.
+   * role writes are scoped to the actor's organization (PLAN §12.27), these
+   * three become genuinely tenant-local and belong back at organization level.
+   *
+   * The blocker for that is GONE as of 2026-09-09: the active organization is
+   * now on the request (§12.13), so `role-draft.ts` could offer an organization
+   * picker. It was deliberately not done in the same change — re-levelling
+   * three write keys and re-scoping `listRoles` alters what every existing role
+   * means, and that does not belong in the commit that revealed it was
+   * possible. `myOrganizationRoles` narrows the tenant PICKER meanwhile, which
+   * is presentation and not the re-scoping §12.27 asks for.
    */
   /** See the roles that exist and what each one grants. */
   rolesRead: 'roles:read',
@@ -288,7 +486,20 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     key: FEATURE.featuresRead,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.features],
-    level: 'organization',
+    /*
+     * ⚠ APP LEVEL, moved from organization level.
+     *
+     * Everything bound to it — `/admin/features`, `Query.permissionFeatures`,
+     * `GET /permissions/features` — resolves at APP level, so an
+     * organization-level grant reached none of it. It was sold by every plan
+     * and usable through none.
+     *
+     * The old reason for organization level was that "someone building roles
+     * has to see what a role can contain". That holds, and it is satisfied
+     * here: every roles WRITE key is app level too, so anybody editing a role
+     * is app level and holds this alongside.
+     */
+    level: 'app',
     label: 'View the feature registry',
     description: 'See every right a role can grant, and where each one is enforced.',
     /*
@@ -411,67 +622,231 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.updateOrganization' }],
   },
   {
-    key: FEATURE.membersManage,
+    key: FEATURE.organizationRead,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.members],
+    // The `organization` root, not `admin`: this is the tenant's own area. See
+    // the tag's own comment for why the two roots stay apart.
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.members],
+    // ORGANIZATION, not app — the one letter of difference from
+    // `organizations:read` above. See the key.
     level: 'organization',
-    label: 'Manage members',
-    description: 'Invite, remove and re-role people in the organization.',
-    isPrivileged: true,
+    label: 'Open this organization',
+    description: 'See this organization’s overview, its people and its workspaces.',
+    /*
+     * NOT privileged. `organizations:read` is, because reading across every
+     * tenant is a platform right; this is the ordinary thing a member of one
+     * company does, and marking it privileged would put a warning on the key
+     * every customer role has to carry.
+     */
     bindings: [
-      { surface: 'ui_route', identifier: '/admin/organizations/:organizationId' },
-      { surface: 'graphql_operation', identifier: 'Mutation.addMember' },
-      { surface: 'graphql_operation', identifier: 'Mutation.removeMember' },
-      { surface: 'graphql_operation', identifier: 'Mutation.assignRole' },
-      { surface: 'graphql_operation', identifier: 'Mutation.revokeRole' },
       /*
-       * The user lookup that turns an email into the id `addMember` needs.
-       * It lives in the APP, not in either module: it queries `auth_user` and
-       * is guarded by a permissions key, and neither module may import the
-       * other. The binding is declared here because this is where the key is
-       * declared — see apps/web-server/src/users/.
+       * No `ui_route` entries here: `deriveRouteBindings` reads them off the
+       * module's route descriptors, and repeating them would be a second place
+       * to forget. The audit dedupes, so the derived ones are the record.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.myOrganization' },
+      /*
+       * `Query.myWorkspace` is NOT here any more: it moved to `workspace:read`
+       * when the bundles were split. The scope still does the work membership
+       * is for — that query declares `@RequireScope('workspace')`, so
+       * `canAccessWorkspace` is checked before any feature question — but
+       * opening a workspace is now its own key, held at workspace level, which
+       * is what lets a workspace role carry it without carrying the tenant.
+       */
+      /*
+       * Leaving is bound to the key that lets you SEE the organization, not to
+       * one of its own. Walking out is not a right a tenant grants — it is the
+       * other end of the membership that put you there — so a key for it would
+       * be a key an administrator could withhold to keep somebody in. The
+       * write path still refuses the last member: an organization with nobody
+       * in it is unreachable by anyone, which is the same argument
+       * `createOrganization` makes for adding its founder.
+       */
+      { surface: 'graphql_operation', identifier: 'Mutation.leaveOrganization' },
+    ],
+  },
+  {
+    key: FEATURE.organizationUpdate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization],
+    level: 'organization',
+    label: 'Update this organization',
+    description: 'Change this organization’s name, its key, or its description.',
+    /*
+     * Privileged, where `organization:read` beside it is not. Renaming changes
+     * what every member and every link sees, and the key lands in the URL — so
+     * it is the one tenant-level key that deserves a second look in the role
+     * editor.
+     */
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.renameMyOrganization' }],
+  },
+  /*
+   * ── the tenant's people ──────────────────────────────────────────────────
+   *
+   * Four keys where there was one. `members:manage` carried nine bindings and
+   * could not express "may invite, may not remove" or "may see the roster, may
+   * change nothing" — both ordinary shapes for a real role.
+   *
+   * Every one is ORGANIZATION level, so an organization role holds them, a plan
+   * may sell them, and a workspace role is offered none of them.
+   */
+  {
+    key: FEATURE.membersRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.members],
+    level: 'organization',
+    label: 'Read members',
+    description: 'See who is in the organization, and who has been invited.',
+    bindings: [
+      /*
+       * The two user lookups the APP owns. They query `auth_user`, which
+       * `@kwtech/module-auth` owns, guarded by a key this module owns — so
+       * neither module can host them and the app does. Bound to READ because
+       * resolving a membership's id to a name is what makes a roster legible,
+       * and nothing about it changes anybody. See apps/web-server/src/users/.
        */
       { surface: 'graphql_operation', identifier: 'Query.findUserByEmail' },
-      // Its batch twin: the members grid holds ids and needs names. Same key,
-      // same reason, same place — see apps/web-server/src/users/.
       { surface: 'graphql_operation', identifier: 'Query.findUsersByIds' },
+    ],
+  },
+  {
+    key: FEATURE.membersInvite,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.members],
+    level: 'organization',
+    label: 'Invite members',
+    description: 'Invite an address to join, add somebody who already has an account, and withdraw an invitation.',
+    bindings: [
       { surface: 'graphql_operation', identifier: 'Mutation.inviteMember' },
       { surface: 'graphql_operation', identifier: 'Mutation.revokeInvitation' },
+      // Same act, different door: `addMember` takes a userId where
+      // `inviteMember` takes an address. See the key.
+      { surface: 'graphql_operation', identifier: 'Mutation.addMember' },
       /*
-       * `Mutation.acceptInvitation` is deliberately NOT bound to this key, and
-       * is deliberately unguarded. The person accepting holds nothing in the
-       * organization — that is the point of an invitation — so requiring
-       * `members:manage` of them would mean only administrators could accept.
-       * The TOKEN is the authorisation, and a signed-in session is still
-       * required so the membership is created for the caller rather than for
-       * an id somebody supplied.
+       * `Mutation.acceptInvitation` is deliberately NOT bound here, and is
+       * deliberately unguarded. The person accepting holds nothing in the
+       * organization — that is the point of an invitation — so requiring a key
+       * of them would mean only administrators could accept. The TOKEN is the
+       * authorisation.
        */
     ],
   },
   {
-    key: FEATURE.workspacesManage,
+    key: FEATURE.membersRemove,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.workspaces],
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.members],
     level: 'organization',
-    label: 'Manage workspaces',
-    description: 'Create, rename and archive workspaces.',
-    bindings: [
-      { surface: 'graphql_operation', identifier: 'Mutation.createWorkspace' },
-      { surface: 'graphql_operation', identifier: 'Mutation.updateWorkspace' },
-      { surface: 'graphql_operation', identifier: 'Mutation.archiveWorkspace' },
-      { surface: 'ui_route', identifier: '/admin/organizations/:organizationId/workspaces/:workspaceId' },
-    ],
+    label: 'Remove members',
+    description: 'Remove somebody from the organization. Their roles and workspace memberships go with them.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.removeMember' }],
   },
   {
-    key: FEATURE.workspacesShare,
+    key: FEATURE.membersAssignRole,
     module: 'permissions',
-    tags: [FEATURE_TAG.admin, FEATURE_TAG.workspaces],
-    level: 'workspace',
-    label: 'Share workspaces',
-    description: 'Give another member access to a workspace.',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.members, FEATURE_TAG.roles],
+    level: 'organization',
+    label: 'Assign member roles',
+    description: 'Grant or revoke an organization-level role on a member.',
+    // The escalation-adjacent one: it changes what another PERSON may do, where
+    // every other members key changes only who is present.
+    isPrivileged: true,
     bindings: [
-      { surface: 'graphql_operation', identifier: 'Mutation.shareWorkspace' },
-      { surface: 'graphql_operation', identifier: 'Mutation.unshareWorkspace' },
+      { surface: 'graphql_operation', identifier: 'Mutation.assignRole' },
+      { surface: 'graphql_operation', identifier: 'Mutation.revokeRole' },
+    ],
+  },
+
+  /*
+   * ── the tenant's workspaces ──────────────────────────────────────────────
+   *
+   * All ORGANIZATION level: which workspaces a tenant has is a decision the
+   * organization makes, not one a workspace makes about itself. Managing one
+   * does not require being IN it — renaming a workspace is not entering it,
+   * which is the other side of §12.33.
+   */
+  {
+    key: FEATURE.workspacesRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'organization',
+    label: 'Read workspaces',
+    description: 'See the organization’s workspaces, live and archived.',
+    bindings: [],
+  },
+  {
+    key: FEATURE.workspacesCreate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'organization',
+    label: 'Create workspaces',
+    description: 'Create a workspace. Bounded by the plan’s workspace cap.',
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.createWorkspace' }],
+  },
+  {
+    key: FEATURE.workspacesUpdate,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'organization',
+    label: 'Update workspaces',
+    description: 'Rename a workspace, or change its key or description.',
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.updateWorkspace' }],
+  },
+  {
+    key: FEATURE.workspacesArchive,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'organization',
+    label: 'Archive workspaces',
+    description: 'Archive a workspace. It stops resolving and nobody can act inside it. There is no delete.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.archiveWorkspace' }],
+  },
+
+  /*
+   * ── inside ONE workspace ─────────────────────────────────────────────────
+   *
+   * WORKSPACE level, so an organization role carries them downward and a
+   * workspace role carries them alone. They apply only in the workspaces their
+   * holder BELONGS to, which membership decides and no role widens (§12.33).
+   */
+  {
+    key: FEATURE.workspaceRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'workspace',
+    label: 'Open a workspace',
+    description: 'Open a workspace you are a member of, and see who else is in it.',
+    bindings: [{ surface: 'graphql_operation', identifier: 'Query.myWorkspace' }],
+  },
+  {
+    key: FEATURE.workspaceMembersAdd,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'workspace',
+    label: 'Add workspace members',
+    description: 'Give somebody already in the organization access to this workspace.',
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.shareWorkspace' }],
+  },
+  {
+    key: FEATURE.workspaceMembersRemove,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces],
+    level: 'workspace',
+    label: 'Remove workspace members',
+    description: 'Remove somebody from this workspace. They stay in the organization.',
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.unshareWorkspace' }],
+  },
+  {
+    key: FEATURE.workspaceAssignRole,
+    module: 'permissions',
+    tags: [FEATURE_TAG.organization, FEATURE_TAG.workspaces, FEATURE_TAG.roles],
+    level: 'workspace',
+    label: 'Assign workspace roles',
+    description: 'Grant or revoke a workspace-level role here.',
+    isPrivileged: true,
+    bindings: [
       { surface: 'graphql_operation', identifier: 'Mutation.assignWorkspaceRole' },
       { surface: 'graphql_operation', identifier: 'Mutation.revokeWorkspaceRole' },
     ],
@@ -492,6 +867,17 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
        * answers "why can they do that", and it is not the right to change it.
        */
       { surface: 'graphql_operation', identifier: 'Query.permissionUserAppRoles' },
+      /*
+       * The same right, asked from inside ONE organization: which roles may I
+       * hand out to a member here. A separate operation from
+       * `Query.permissionRoles` rather than an argument on it, because that one
+       * answers with `organizationId: null` — the shared-preset scope, which is
+       * the platform's whole catalogue — and it resolves at app level, so an
+       * organization-level role never participates in it (§12.27). This one
+       * declares `@RequireScope('organization')` and narrows to the levels a
+       * tenant may actually grant.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.myOrganizationRoles' },
     ],
   },
   {
@@ -575,7 +961,17 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     key: FEATURE.plansRead,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
-    level: 'organization',
+    /*
+     * ⚠ APP LEVEL, moved from organization level, for the same reason as
+     * `features:read`: `/admin/plans`, `Query.permissionPlans` and
+     * `Subscription.planChanged` all resolve at app level.
+     *
+     * What a TENANT needs is not this — it is `subscriptions:read`, which
+     * answers "what am I on" and keeps its organization level because
+     * `Query.myOrganizationSubscriptions` and the tenant subscription page are
+     * scoped surfaces a customer genuinely reaches.
+     */
+    level: 'app',
     label: 'Read plans',
     description: 'See the plans that exist and what each one entitles.',
     bindings: [
@@ -644,13 +1040,38 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     bindings: [
       { surface: 'ui_route', identifier: '/admin/subscriptions' },
       { surface: 'graphql_operation', identifier: 'Query.permissionSubscriptions' },
+      /*
+       * The tenant's own copy of the question. `Query.permissionSubscriptions`
+       * takes an OPTIONAL organizationId and lists every subscription on the
+       * platform when it is omitted, so it cannot be scoped without breaking
+       * the admin list that relies on that. This one requires the id, declares
+       * `@RequireScope('organization')`, and therefore lets an
+       * organization-level role answer it for its own tenant and nobody else's.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.myOrganizationSubscriptions' },
     ],
   },
   {
     key: FEATURE.billingManage,
     module: 'permissions',
     tags: [FEATURE_TAG.admin, FEATURE_TAG.billing],
-    level: 'organization',
+    /*
+     * ⚠ APP LEVEL, and it moved here from organization level.
+     *
+     * It is a WRITE — start, change or end a subscription — and every other
+     * write of that kind (`roles:*`, `features:*`, `plans:*`) is app level.
+     * More concretely: none of the three mutations it guards declares a scope,
+     * so all three resolve at APP level, and an organization-level grant of it
+     * participated in nothing. It was sold by every plan tier and could be
+     * exercised by nobody holding it through one.
+     *
+     * Being app level now, no plan may carry it — `canPlanEntitle` refuses —
+     * which is the honest state: changing what a customer is entitled to is a
+     * platform act until a billing provider and a tenant-facing surface exist
+     * (§12.40). The plan seed's claim that "a customer needs it to upgrade
+     * themselves" described an intent the code did not have.
+     */
+    level: 'app',
     label: 'Manage billing',
     description: 'Start, change or end an organization or workspace subscription.',
     isPrivileged: true,

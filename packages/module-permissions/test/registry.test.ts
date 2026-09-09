@@ -51,7 +51,7 @@ describe('FEATURE_REGISTRY', () => {
   });
 
   it('agrees with isRegisteredFeature', () => {
-    expect(isRegisteredFeature(FEATURE.membersManage)).toBe(true);
+    expect(isRegisteredFeature(FEATURE.membersRead)).toBe(true);
     expect(isRegisteredFeature('nothing:here')).toBe(false);
   });
 });
@@ -164,14 +164,14 @@ describe('allFeatureKeys', () => {
     expect(allFeatureKeys(FEATURE_REGISTRY)).toHaveLength(FEATURE_REGISTRY.length);
     expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.billingManage);
     expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.featuresCreate);
-    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.workspacesShare);
+    expect(allFeatureKeys(FEATURE_REGISTRY)).toContain(FEATURE.workspaceRead);
   });
 });
 
 describe('featuresForLevel', () => {
   it('offers a role only what its level may grant', () => {
     const workspace = featuresForLevel(FEATURE_REGISTRY, 'workspace');
-    expect(workspace.map((s) => s.key)).toContain(FEATURE.workspacesShare);
+    expect(workspace.map((s) => s.key)).toContain(FEATURE.workspaceRead);
     expect(workspace.map((s) => s.key)).not.toContain(FEATURE.billingManage);
   });
 
@@ -304,16 +304,22 @@ describe('auditRegistry', () => {
        * is a condition inside the write path rather than an endpoint.
        */
       /*
-       * Two. `workspaces:access_all` was REMOVED from the registry when
-       * workspace membership became required — it widened access, which is the
-       * thing that no longer happens, and it was the one feature that bypassed
-       * plan entitlement.
+       * Three, and the newcomer is a different KIND of unbound from the other
+       * two — worth keeping straight, because the audit cannot tell them apart.
        *
-       * The two that remain are read in `composeContext` and in the write path
-       * rather than guarding a surface, which is why they have no binding and
-       * are not lies.
+       * `platform:support_access` and `roles:manage_app` guard no surface at
+       * all: one is read in `composeContext`, the other is a condition inside
+       * the write path. They will never have a binding, and that is not a lie.
+       *
+       * `workspaces:read` DOES guard a surface —
+       * `/organizations/:organizationId/workspaces` — but a UI route is not
+       * declared in the registry: `deriveRouteBindings` reads route bindings off
+       * the module's descriptors, and this call passes no routes. So it appears
+       * here while being perfectly well enforced. Repeating the route by hand to
+       * silence the audit is exactly the second place to forget that
+       * `deriveRouteBindings` exists to remove.
        */
-      [FEATURE.platformSupportAccess, FEATURE.rolesManageApp].sort(),
+      [FEATURE.platformSupportAccess, FEATURE.rolesManageApp, FEATURE.workspacesRead].sort(),
     );
   });
 });
@@ -331,7 +337,7 @@ describe('assertRegistered', () => {
   });
 
   it('accepts registered keys', () => {
-    expect(() => assertRegistered(FEATURE_REGISTRY, [FEATURE.membersManage, FEATURE.billingManage])).not.toThrow();
+    expect(() => assertRegistered(FEATURE_REGISTRY, [FEATURE.membersRead, FEATURE.billingManage])).not.toThrow();
   });
 
   it('accepts an empty list', () => {

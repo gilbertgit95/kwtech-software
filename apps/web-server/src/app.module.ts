@@ -11,7 +11,7 @@ import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
 import { env } from './config/env.js';
-import { GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
+import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
@@ -174,6 +174,18 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
      * field and refuse everyone. One guard, two transports, one seam.
      */
     getRequest: requestFromContext,
+    /*
+     * The other half of the seam, and the line the whole `/organizations/*`
+     * area rests on (PLAN §12.13).
+     *
+     * `getRequest` says who is calling; this says WHERE. A resolver has no
+     * path, so without it the guard falls back to parsing `/api/v1/graphql`
+     * and resolves app level with no organization — and every
+     * ORGANIZATION-LEVEL key then grants nothing, for everyone, silently.
+     * `@RequireScope` had been written and tested and could not work until
+     * this existed.
+     */
+    getArgs: argsFromContext,
     prismaProvider: permissionsPrismaProvider,
     prismaWriteProvider: permissionsWritePrismaProvider,
 

@@ -7,7 +7,9 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import type { NavGroup } from '@/components/layout/nav';
 import { iconFor } from '@/components/layout/nav-icons';
+import { OrganizationSwitcher, type SwitcherOrganization } from '@/components/layout/organization-switcher';
 import { writeSidebarCookie } from '@/components/layout/sidebar-state';
+import { type SwitcherWorkspace, WorkspaceSwitcher } from '@/components/layout/workspace-switcher';
 
 interface SidebarProps {
   /**
@@ -27,19 +29,37 @@ interface SidebarProps {
    * the product would need a rebuild rather than a restart.
    */
   brand: { name: string; tagline: string | null };
-}
-
-/**
- * The two-letter mark, derived rather than configured.
- *
- * Initials of the first two words when there are two ("Acme Corp" → AC),
- * otherwise the first two letters ("KWTech" → KW). A third variable for this
- * would be a third thing to update at a rename, to save one lookup.
- */
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const letters = words.length > 1 ? `${words[0]?.[0] ?? ''}${words[1]?.[0] ?? ''}` : (words[0]?.slice(0, 2) ?? '');
-  return letters.toUpperCase();
+  /**
+   * The viewer's organizations, for the switcher that replaced the brand row.
+   *
+   * Passed in rather than fetched: the shell already asks for them on every
+   * render, and fetching in here would flash an empty menu on first paint.
+   */
+  organizations: readonly SwitcherOrganization[];
+  /**
+   * The selected organization when it is not one of the viewer's own — see the
+   * switcher. Null for everybody who is a member of the one they are in.
+   */
+  activeOrganizationFallback: SwitcherOrganization | null;
+  /**
+   * The SELECTED organization's workspaces that the viewer may ENTER — not
+   * every workspace it has. Empty when no organization is selected, which is
+   * what leaves the workspace selector disabled.
+   */
+  workspaces: readonly SwitcherWorkspace[];
+  /** The selected workspace, or null. Null again the moment the organization changes. */
+  activeWorkspaceId: string | null;
+  /**
+   * Which one the current URL is inside, or null.
+   *
+   * Read on the SERVER by `parseScope`, not derived from `usePathname()` here.
+   * The convention that decides this is the same one the API's guard reads, and
+   * a second implementation of it in a client component is exactly the fork
+   * `scope.ts` exists to prevent — a drawer that disagreed with the guard about
+   * which tenant a URL names would highlight one organization while the page
+   * showed another's data.
+   */
+  activeOrganizationId: string | null;
 }
 
 function isActive(pathname: string, href: string): boolean {
@@ -48,7 +68,16 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Sidebar({ groups, defaultCollapsed, brand }: SidebarProps) {
+export function Sidebar({
+  groups,
+  defaultCollapsed,
+  brand,
+  organizations,
+  activeOrganizationId,
+  activeOrganizationFallback,
+  workspaces,
+  activeWorkspaceId,
+}: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
@@ -112,30 +141,37 @@ export function Sidebar({ groups, defaultCollapsed, brand }: SidebarProps) {
         <span className="sr-only">{collapsed ? 'Expand navigation' : 'Collapse navigation'}</span>
       </button>
 
-      <div className={cn('flex items-center gap-2.5 pb-4', collapsed ? 'justify-center px-0' : 'px-2')}>
-        <span
-          aria-hidden
-          className={cn(
-            'grid size-7 shrink-0 place-items-center rounded-lg',
-            'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
-            'text-xs font-bold leading-none tracking-tight',
-          )}
-        >
-          {initials(brand.name)}
-        </span>
-        <div
-          className={cn(
-            'min-w-0 overflow-hidden transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-            collapsed ? 'max-w-0 opacity-0' : 'max-w-40 opacity-100',
-          )}
-        >
-          <p className="truncate text-sm font-semibold leading-tight">{brand.name}</p>
-          {/* Omitted rather than replaced by a placeholder: a product without a
-              tagline should show one line, not an empty second one. */}
-          {brand.tagline ? (
-            <p className="truncate text-xs leading-tight text-muted-foreground">{brand.tagline}</p>
-          ) : null}
-        </div>
+      {/*
+        THE SWITCHER SITS WHERE THE BRAND USED TO.
+        
+        The product name is the one thing on this screen that never changes, so
+        it was spending the drawer's most valuable strip saying nothing — while
+        the fact that DOES change under you, and that every scoped link below
+        depends on, had nowhere to be shown. With no organization active the
+        switcher draws the brand exactly as this block did, so nothing is lost
+        in the state where there is nothing else to say.
+      */}
+      {/*
+        The two selectors are ONE block, and the workspace one is nested inside
+        it rather than being a sibling of the nav groups below. A workspace only
+        means something within an organization — the same key can exist in two
+        tenants and they are different places — so the markup says so before any
+        label has to.
+      */}
+      <div className="flex flex-col gap-0.5 pb-4">
+        <OrganizationSwitcher
+          organizations={organizations}
+          activeId={activeOrganizationId}
+          activeFallback={activeOrganizationFallback}
+          brand={brand}
+          collapsed={collapsed}
+        />
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          activeId={activeWorkspaceId}
+          organizationId={activeOrganizationId}
+          collapsed={collapsed}
+        />
       </div>
 
       <div id="main-nav" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
@@ -150,6 +186,17 @@ export function Sidebar({ groups, defaultCollapsed, brand }: SidebarProps) {
             {collapsed ? (
               <span aria-hidden className="mx-auto my-1 h-px w-6 bg-border" />
             ) : (
+              /*
+               * The group's own name, which for the tenant section is the
+               * static word "Organization" rather than the company's.
+               *
+               * It briefly drew the organization's NAME here. That was worse:
+               * the switcher sits directly above this and already says which
+               * organization you are in, so the name appeared twice in the
+               * space of two rows and the second one carried nothing the first
+               * had not. A static word beside a live name reads as a label for
+               * it, which is what a section heading is for.
+               */
               <p className="px-2.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 {group.group}
               </p>

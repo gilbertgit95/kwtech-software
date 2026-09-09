@@ -16,14 +16,14 @@ const base = { registry: FEATURE_REGISTRY, actorFeatures: ALL, actorMayWriteAppR
 
 describe('validateRoleDraft', () => {
   it('accepts a well-formed organization role', () => {
-    expect(validateRoleDraft(draft({ features: [FEATURE.featuresRead] }), base)).toEqual({});
+    expect(validateRoleDraft(draft({ features: [FEATURE.membersRead] }), base)).toEqual({});
   });
 
   it('refuses a key that is not kebab-case', () => {
     // Deliberately NOT the feature-key pattern: a role is a name, a feature is
     // a verb on a noun, and letting a role be called `billing:manage` makes the
     // two indistinguishable in the log line where they appear side by side.
-    expect(validateRoleDraft(draft({ key: 'billing:manage' }), base).key).toMatch(/lower-case words/);
+    expect(validateRoleDraft(draft({ key: 'subscriptions:read' }), base).key).toMatch(/lower-case words/);
   });
 
   it('refuses a duplicate key in the same scope, which the DATABASE cannot', () => {
@@ -82,7 +82,7 @@ describe('validateRoleDraft', () => {
     // The exemption assertRoleFeatureLevels already makes: an app role hangs off
     // no membership, so there is no lesser right to escalate FROM.
     const errors = validateRoleDraft(
-      draft({ level: 'app', features: [FEATURE.featuresRead, FEATURE.featuresCreate] }),
+      draft({ level: 'app', features: [FEATURE.membersRead, FEATURE.featuresCreate] }),
       base,
     );
     expect(errors.features).toBeUndefined();
@@ -95,16 +95,16 @@ describe('validateRoleDraft', () => {
      * key in the system — compose a role granting everything, assign it to
      * yourself, and the model has been walked around rather than broken.
      */
-    const errors = validateRoleDraft(draft({ features: [FEATURE.billingManage] }), {
+    const errors = validateRoleDraft(draft({ features: [FEATURE.subscriptionsRead] }), {
       ...base,
-      actorFeatures: [FEATURE.featuresRead],
+      actorFeatures: [FEATURE.membersRead],
     });
-    expect(errors.features).toContain('you do not hold: billing:manage');
+    expect(errors.features).toContain('you do not hold: subscriptions:read');
   });
 
   it('skips the escalation check when no actor is supplied, for the seeder', () => {
     // A seed script is the machine; there is no actor to be limited by.
-    const errors = validateRoleDraft(draft({ features: [FEATURE.billingManage] }), {
+    const errors = validateRoleDraft(draft({ features: [FEATURE.subscriptionsRead] }), {
       registry: FEATURE_REGISTRY,
     });
     expect(errors.features).toBeUndefined();
@@ -115,18 +115,18 @@ describe('cloneFeatures', () => {
   const opts = { registry: FEATURE_REGISTRY, actorFeatures: ALL };
 
   it('replace discards what was there', () => {
-    const result = cloneFeatures([FEATURE.featuresRead], [FEATURE.billingManage], 'replace', 'organization', opts);
-    expect(result.features).toEqual([FEATURE.billingManage]);
+    const result = cloneFeatures([FEATURE.membersRead], [FEATURE.subscriptionsRead], 'replace', 'organization', opts);
+    expect(result.features).toEqual([FEATURE.subscriptionsRead]);
   });
 
   it('add keeps what was there and unions the rest', () => {
-    const result = cloneFeatures([FEATURE.featuresRead], [FEATURE.billingManage], 'add', 'organization', opts);
-    expect(result.features).toEqual([FEATURE.featuresRead, FEATURE.billingManage].sort());
-    expect(result.added).toEqual([FEATURE.billingManage]);
+    const result = cloneFeatures([FEATURE.membersRead], [FEATURE.subscriptionsRead], 'add', 'organization', opts);
+    expect(result.features).toEqual([FEATURE.membersRead, FEATURE.subscriptionsRead].sort());
+    expect(result.added).toEqual([FEATURE.subscriptionsRead]);
   });
 
   it('reports what was already there as NOT added', () => {
-    const result = cloneFeatures([FEATURE.featuresRead], [FEATURE.featuresRead], 'add', 'organization', opts);
+    const result = cloneFeatures([FEATURE.membersRead], [FEATURE.membersRead], 'add', 'organization', opts);
     expect(result.added).toEqual([]);
   });
 
@@ -143,12 +143,12 @@ describe('cloneFeatures', () => {
   });
 
   it('drops features the ACTOR does not hold — a clone cannot outrun the escalation rule', () => {
-    const result = cloneFeatures([], [FEATURE.billingManage], 'replace', 'organization', {
+    const result = cloneFeatures([], [FEATURE.subscriptionsRead], 'replace', 'organization', {
       registry: FEATURE_REGISTRY,
-      actorFeatures: [FEATURE.featuresRead],
+      actorFeatures: [FEATURE.membersRead],
     });
     expect(result.features).toEqual([]);
-    expect(result.skipped).toEqual([{ key: FEATURE.billingManage, reason: 'not_held' }]);
+    expect(result.skipped).toEqual([{ key: FEATURE.subscriptionsRead, reason: 'not_held' }]);
   });
 
   it('drops an unregistered key rather than carrying it across', () => {
@@ -158,13 +158,13 @@ describe('cloneFeatures', () => {
 
   it('de-duplicates and sorts, so the form does not reorder between renders', () => {
     const result = cloneFeatures(
-      [FEATURE.billingManage],
-      [FEATURE.featuresRead, FEATURE.featuresRead],
+      [FEATURE.subscriptionsRead],
+      [FEATURE.membersRead, FEATURE.membersRead],
       'add',
       'organization',
       opts,
     );
-    expect(result.features).toEqual([FEATURE.featuresRead, FEATURE.billingManage].sort());
+    expect(result.features).toEqual([FEATURE.membersRead, FEATURE.subscriptionsRead].sort());
   });
 });
 

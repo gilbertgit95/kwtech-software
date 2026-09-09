@@ -124,8 +124,14 @@ export class PermissionsService {
     const rows = await this.prisma.permMembership.findMany({
       where: { userId: { in: unique }, status: 'active' },
       include: {
-        organization: { select: { id: true, key: true, name: true } },
-        roles: { where: { role: { disabledAt: null } }, include: { role: { select: { key: true, label: true } } } },
+        organization: { select: { id: true, key: true, name: true, description: true } },
+        roles: {
+          where: { role: { disabledAt: null } },
+          // `icon` alongside the label: the organization switcher draws the
+          // viewer's role beside each tenant, and a second query to fetch one
+          // name per row would be a round trip for a glyph.
+          include: { role: { select: { key: true, label: true, icon: true } } },
+        },
       },
     });
 
@@ -136,6 +142,7 @@ export class PermissionsService {
           organizationId: row.organization.id,
           organizationKey: row.organization.key,
           organizationName: row.organization.name,
+          organizationDescription: row.organization.description,
           /*
            * At most one, enforced by `@@unique([membershipId])` on
            * PermMembershipRole — a member is one thing in an organization. Read
@@ -144,6 +151,7 @@ export class PermissionsService {
            */
           roleKey: row.roles[0]?.role.key ?? null,
           roleLabel: row.roles[0]?.role.label ?? null,
+          roleIcon: row.roles[0]?.role.icon ?? null,
         }))
         // Stable and readable: a person's organizations in name order, so the
         // list does not reshuffle between renders.
@@ -310,6 +318,7 @@ export class PermissionsService {
       id: row.id,
       key: row.key,
       name: row.name,
+      description: row.description,
       // ACTIVE members only. An invited or suspended row is a person who cannot
       // act, and counting them would make a seat cap look breached when it is
       // not — `assertCapacity` counts the same way.
@@ -395,6 +404,7 @@ export class PermissionsService {
       id: row.id,
       key: row.key,
       name: row.name,
+      description: row.description,
       invitations: row.invitations
         .map((invitation) => ({
           id: invitation.id,
@@ -426,6 +436,7 @@ export class PermissionsService {
           id: workspace.id,
           key: workspace.key,
           name: workspace.name,
+          description: workspace.description,
           archived: workspace.archivedAt !== null,
           memberCount: workspace.members.length,
           members: workspace.members
@@ -477,6 +488,157 @@ export class PermissionsService {
         // job once it has joined them — this layer has no name to sort on.
         .sort((a, b) => a.userId.localeCompare(b.userId)),
     };
+  }
+
+  /**
+   * ONE workspace, plus the organization's member list, for the tenant screen.
+   *
+   * ## Why the members come along
+   *
+   * The screen's "add somebody" picker may only offer people who are already in
+   * the ORGANIZATION — a workspace member is always an organization member
+   * first — so the page needs both lists whatever it does. Fetching them
+   * together means they cannot disagree about who is in what, which two round
+   * trips eventually would.
+   *
+   * ## Built on `listOrganizationDetail`, and that is a deliberate second choice
+   *
+   * A dedicated workspace query was written first and reverted. The module
+   * reaches the database through a hand-written structural interface, and
+   * adding a second `permWorkspace.findFirst` shape means declaring an OVERLOAD
+   * — which a generated Prisma delegate cannot satisfy, because TypeScript
+   * cannot match its `findFirst<T extends Args>` generic against an overload
+   * set. See the note on `permWorkspace` in permissions.repository.ts; the
+   * app's `satisfies-modules.ts` is what caught it.
+   *
+   * So this over-fetches: it loads the organization's invitations and every
+   * workspace's members to return one workspace and the member list. That is
+   * the same trade the ADMIN workspace screen already makes, for the same
+   * reason, and it costs one query rather than one query plus an interface that
+   * the real client no longer fits.
+   *
+   * ## The SCOPE is not weakened by that
+   *
+   * Worth being explicit, because reading an organization-wide row to answer a
+   * workspace-level question looks like a hole and is not. Whether the caller
+   * may be here at all is decided by `FeatureGuard` before this runs:
+   * `Query.myWorkspace` declares `@RequireScope('workspace')`, so
+   * `canAccessWorkspace` is checked against the resolved context first. This
+   * function is data access, and what it RETURNS is one workspace plus the pool
+   * its picker may draw from — never the other workspaces it read past.
+   *
+   * Null when the workspace does not exist in this organization. The
+   * organizationId is the row's own, so a workspace id from another tenant
+   * finds nothing rather than returning somebody else's data.
+   */
+  async listWorkspaceDetail(organizationId: string, workspaceId: string) {
+    const organization = await this.listOrganizationDetail(organizationId);
+    if (!organization) return null;
+
+    const workspace = organization.workspaces.find((candidate) => candidate.id === workspaceId);
+    if (!workspace) return null;
+
+    return {
+      organizationId: organization.id,
+      organizationKey: organization.key,
+      organizationName: organization.name,
+      workspace,
+      organizationMembers: organization.members,
+    };
+  }
+
+  /**
+   * The workspaces of one organization that a caller may actually ENTER.
+   *
+   * For the drawer's workspace selector, and shaped by the model rather than by
+   * the screen: §12.33 makes workspace membership REQUIRED and says no role
+   * widens it, so "which workspaces are in this organization" is the wrong
+   * question — a picker answering it would offer rows the guard refuses on
+   * arrival, which is the mismatch a shared key exists to prevent.
+   *
+   * @param accessibleWorkspaceIds straight from `PermissionContext`. An ARRAY is
+   * the ids they were added to, and an empty one is a normal state — a member
+   * who has been shared nothing yet. `null` means EVERY workspace and platform
+   * support is the only thing that produces it, so the filter is dropped rather
+   * than applied to nothing. Treating null as "some" locks support out;
+   * treating empty as "all" opens everything.
+   *
+   * Archived workspaces are excluded, unlike the management lists: those must
+   * show one so the switch does not read as a delete, while this one must not
+   * offer somewhere nobody can go.
+   */
+  async listAccessibleWorkspaces(
+    organizationId: string,
+    userId: string,
+    accessibleWorkspaceIds: readonly string[] | null,
+  ) {
+    // No ids and not the wildcard: they are in nothing here, so there is
+    // nothing to ask the database.
+    if (accessibleWorkspaceIds !== null && accessibleWorkspaceIds.length === 0) return [];
+
+    const workspaces = await this.prisma.permWorkspace.findMany({
+      where: {
+        organizationId,
+        archivedAt: null,
+        ...(accessibleWorkspaceIds === null ? {} : { id: { in: [...accessibleWorkspaceIds] } }),
+      },
+      select: { id: true, key: true, name: true, description: true },
+      // By name, so a picker does not reshuffle between renders — the order the
+      // database returns is whatever the plan happened to produce.
+      orderBy: { name: 'asc' },
+    });
+    if (workspaces.length === 0) return [];
+
+    /*
+     * The caller's WORKSPACE-level role in each, read separately and joined
+     * here.
+     *
+     * It hangs off `PermWorkspaceMember` rather than off the organization
+     * membership — the schema making "a workspace role for somebody not in the
+     * workspace" impossible to express — so it cannot be read from the
+     * organization side, and the workspace row does not carry it either.
+     *
+     * PLATFORM SUPPORT HOLDS NONE. Their `accessibleWorkspaceIds` is null
+     * because they may enter every workspace without belonging to any, so this
+     * read simply finds no rows and every workspace comes back with a null
+     * role. That is the honest answer: they are visiting, exactly as the
+     * organization switcher says when they are in a tenant they are not a
+     * member of.
+     */
+    const memberships = await this.prisma.permWorkspaceMember.findMany({
+      where: {
+        workspaceId: { in: workspaces.map((workspace) => workspace.id) },
+        // Scoped by BOTH, so a membership of the same person in ANOTHER
+        // organization cannot supply a role here — the cross-tenant row §12.34
+        // still permits is refused by the read rather than trusted.
+        membership: { userId, organizationId },
+      },
+      select: {
+        workspaceId: true,
+        roles: {
+          where: { role: { disabledAt: null } },
+          select: { role: { select: { key: true, label: true, icon: true } } },
+        },
+      },
+    });
+
+    /*
+     * At most one role each, enforced by `@@unique([workspaceMemberId])` — a
+     * member is one thing in a workspace. Read as a list because that is the
+     * shape the relation returns, and flattened here so a picker does not have
+     * to know the constraint.
+     */
+    const roleByWorkspace = new Map(memberships.map((row) => [row.workspaceId, row.roles[0]?.role ?? null]));
+
+    return workspaces.map((workspace) => {
+      const role = roleByWorkspace.get(workspace.id) ?? null;
+      return {
+        ...workspace,
+        roleKey: role?.key ?? null,
+        roleLabel: role?.label ?? null,
+        roleIcon: role?.icon ?? null,
+      };
+    });
   }
 
   async loadContext(

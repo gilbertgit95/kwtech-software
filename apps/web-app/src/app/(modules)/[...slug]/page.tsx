@@ -4,7 +4,7 @@ import { FeatureDenied } from '@kwtech/module-permissions/react';
 import { notFound } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { BareShell } from '@/components/layout/bare-shell';
-import { getSessionSnapshot } from '@/lib/session-query';
+import { getSessionSnapshot, type SessionScope } from '@/lib/session-query';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -46,6 +46,45 @@ export default async function ModuleRoutePage({
   const { route, params: routeParams } = match;
 
   /*
+   * WHERE this request is, as opposed to who is making it — PLAN §12.13.
+   *
+   * `/organizations/:orgId/...` resolves at ORGANIZATION level and
+   * `/organizations/:orgId/workspaces/:wsId/...` at WORKSPACE level; everything
+   * else, including all of `/admin/*`, is app level with no ids. That is the
+   * convention `scope.ts` defines, the Nest guard reads, and `scopePath` builds
+   * links in.
+   *
+   * ## Read from the MATCHED ROUTE, not by parsing the string again
+   *
+   * The route paths are written in that convention and `matchRouteWithParams`
+   * has just captured their `:segments`, so the ids come from the same source
+   * either way — this reads them through the router instead of through a second
+   * pass over the URL.
+   *
+   * That is not merely tidier; it is more correct on one path. `parseScope`
+   * knows nothing about which routes exist, so it reads `/organizations/new` as
+   * an organization whose id is "new" — the literal sits exactly where an id
+   * goes. It fails CLOSED (nobody is a member of "new", so the context resolves
+   * to null), but the consequence was a create page whose drawer had quietly
+   * lost every keyed entry. The router already knows that path matched a
+   * LITERAL route, because it scores literal segments above dynamic ones.
+   *
+   * The two are pinned together by a test — for every dynamic tenant route, the
+   * scope derived here equals `parseScope`'s — so this cannot drift into a
+   * second, different reading of the convention.
+   *
+   * It is threaded into BOTH `getSessionSnapshot` calls in this render, the
+   * shell's and `routeDenial`'s. They are `cache()`d on their arguments, so
+   * passing different scopes would be two round trips AND two different
+   * answers, the second of which is the app-level reading that grants a
+   * tenant-only member nothing.
+   */
+  const scope: SessionScope = {
+    organizationId: routeParams.organizationId ?? null,
+    workspaceId: routeParams.workspaceId ?? null,
+  };
+
+  /*
    * THE ROUTE'S OWN FEATURE KEY, CHECKED BEFORE THE COMPONENT IS CALLED.
    *
    * `ModuleRoute.feature` used to claim it was read by the navigation filter
@@ -64,10 +103,10 @@ export default async function ModuleRoutePage({
    * Still not the security boundary. Every request is authorised again at the
    * API, which is the only check someone calling it directly cannot skip.
    */
-  const denied = await routeDenial(route.feature);
+  const denied = await routeDenial(route.feature, scope);
   if (denied) {
     return (
-      <AppShell title={route.title}>
+      <AppShell title={route.title} scope={scope}>
         {/*
           The module's own denial screen, not a copy of it. Both are reached by
           the same person for the same reason, and a wording change to one used
@@ -90,7 +129,13 @@ export default async function ModuleRoutePage({
   // guessed from the path here. 'app' is the default because a module route is
   // normally a page of the application; the auth routes opt out because they
   // exist for someone who has no session to put in a header.
-  return route.chrome === 'bare' ? <BareShell>{page}</BareShell> : <AppShell title={route.title}>{page}</AppShell>;
+  return route.chrome === 'bare' ? (
+    <BareShell>{page}</BareShell>
+  ) : (
+    <AppShell title={route.title} scope={scope}>
+      {page}
+    </AppShell>
+  );
 }
 
 /**
@@ -111,10 +156,20 @@ export default async function ModuleRoutePage({
  * `getSessionSnapshot` is wrapped in React's `cache()`, so this call and
  * AppShell's are ONE request per render, not two.
  */
-async function routeDenial(feature: string | undefined) {
+async function routeDenial(feature: string | undefined, scope: SessionScope) {
   if (!feature) return undefined;
 
-  const { viewer, permissions, reachable } = await getSessionSnapshot();
+  /*
+   * THE SAME SCOPE THE SHELL USES, and it is load-bearing rather than tidy.
+   *
+   * `organization:read` and `members:manage` are ORGANIZATION-level keys: they
+   * are held inside a tenant, and they resolve only when the context is loaded
+   * there. Asking at app level — which is what this did before the scope
+   * existed — resolves a context with no organization in it, so a customer's
+   * own administrator holds none of them and every tenant route refuses them
+   * with "your roles do not include this", on pages the API would serve.
+   */
+  const { viewer, permissions, reachable } = await getSessionSnapshot(scope);
   if (!reachable || !viewer) return undefined;
 
   // Fails closed: a null context means "holds nothing", never "skip the check".

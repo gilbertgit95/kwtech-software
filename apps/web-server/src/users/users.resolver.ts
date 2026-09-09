@@ -91,7 +91,7 @@ export class UsersResolver {
    * a row pointing nowhere. Returning fewer rows than were asked for is the
    * honest answer, and the caller falls back to showing the id.
    */
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersRead)
   @Query(() => [FoundUserType], { name: 'findUsersByIds' })
   async findUsersByIds(@Args('ids', { type: () => [String] }) ids: string[]): Promise<FoundUserType[]> {
     /*
@@ -113,7 +113,7 @@ export class UsersResolver {
    * Null when there is no account, which is a normal answer rather than an
    * error — the caller is a form checking an address somebody typed.
    */
-  @RequireFeature(FEATURE.membersManage)
+  @RequireFeature(FEATURE.membersRead)
   @Query(() => FoundUserType, { name: 'findUserByEmail', nullable: true })
   async findUserByEmail(@Args('email') email: string): Promise<FoundUserType | null> {
     /*

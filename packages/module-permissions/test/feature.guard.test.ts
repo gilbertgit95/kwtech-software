@@ -20,7 +20,7 @@ const ctx = (over: Partial<PermissionContext> = {}): PermissionContext => ({
   ...composeContext({
     subjectId: 'u1',
     organizationId: 'org1',
-    roles: [{ roleKey: 'admin', level: 'organization', workspaceId: null, features: [FEATURE.membersManage] }],
+    roles: [{ roleKey: 'admin', level: 'organization', workspaceId: null, features: [FEATURE.membersRead] }],
   }),
   ...over,
 });
@@ -70,7 +70,7 @@ describe('M2 — 401 and 403 are different answers to different questions', () =
     // A frontend reads 401 as "sign in" and 403 as "stop asking"; conflating
     // them sends signed-out users to a dead end.
     const g = guard({ resolvePrincipal: () => undefined });
-    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }))).rejects.toBeInstanceOf(
+    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
@@ -80,7 +80,7 @@ describe('M2 — 401 and 403 are different answers to different questions', () =
       principal,
       jest.fn(async () => null),
     );
-    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }))).rejects.toMatchObject({
+    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }))).rejects.toMatchObject({
       response: { reason: 'no_context' },
     });
   });
@@ -89,7 +89,7 @@ describe('M2 — 401 and 403 are different answers to different questions', () =
     // The module cannot invent where the caller comes from, and silently
     // allowing or denying would both be wrong.
     const g = guard({});
-    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }))).rejects.toThrow(
+    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }))).rejects.toThrow(
       /requires resolvePrincipal or resolveContext/,
     );
   });
@@ -107,7 +107,7 @@ describe('C1 — workspace access is enforced before any feature question', () =
     );
 
     await expect(
-      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }, workspaceRequest)),
+      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }, workspaceRequest)),
     ).rejects.toMatchObject({ response: { reason: 'no_workspace_access' } });
   });
 
@@ -117,7 +117,7 @@ describe('C1 — workspace access is enforced before any feature question', () =
       jest.fn(async () => ctx({ accessibleWorkspaceIds: ['ws999'] })),
     );
     await expect(
-      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }, workspaceRequest)),
+      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }, workspaceRequest)),
     ).resolves.toBe(true);
   });
 
@@ -149,7 +149,7 @@ describe('C1 — workspace access is enforced before any feature question', () =
     );
 
     await expect(
-      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }, workspaceRequest)),
+      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }, workspaceRequest)),
     ).rejects.toMatchObject({ response: { reason: 'no_workspace_access' } });
   });
 
@@ -159,9 +159,7 @@ describe('C1 — workspace access is enforced before any feature question', () =
       jest.fn(async () => ctx({ accessibleWorkspaceIds: [] })),
     );
     await expect(
-      g.canActivate(
-        execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }, { url: '/organizations/org1/members' }),
-      ),
+      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }, { url: '/organizations/org1/members' })),
     ).resolves.toBe(true);
   });
 });
@@ -169,13 +167,13 @@ describe('C1 — workspace access is enforced before any feature question', () =
 describe('feature checks and denial reasons', () => {
   it('allows when every required key is held', async () => {
     const g = guard(principal);
-    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }))).resolves.toBe(true);
+    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }))).resolves.toBe(true);
   });
 
   it('denies in ALL mode when one key is missing', async () => {
     const g = guard(principal);
     await expect(
-      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage, FEATURE.billingManage] })),
+      g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead, FEATURE.billingManage] })),
     ).rejects.toMatchObject({ response: { message: expect.stringContaining('all of') } });
   });
 
@@ -184,7 +182,7 @@ describe('feature checks and denial reasons', () => {
     await expect(
       g.canActivate(
         execution({
-          [REQUIRED_FEATURES]: [FEATURE.membersManage, FEATURE.billingManage],
+          [REQUIRED_FEATURES]: [FEATURE.membersRead, FEATURE.billingManage],
           [REQUIRED_FEATURES_MODE]: 'any',
         }),
       ),
@@ -220,7 +218,7 @@ describe('@RequireScope guards the convention itself', () => {
     await expect(
       g.canActivate(
         execution(
-          { [REQUIRED_FEATURES]: [FEATURE.membersManage], [REQUIRED_SCOPE]: { level: 'workspace' } },
+          { [REQUIRED_FEATURES]: [FEATURE.membersRead], [REQUIRED_SCOPE]: { level: 'workspace' } },
           { url: '/organizations/org1/members' },
         ),
       ),
@@ -232,7 +230,7 @@ describe('@RequireScope guards the convention itself', () => {
     await expect(
       g.canActivate(
         execution(
-          { [REQUIRED_FEATURES]: [FEATURE.membersManage], [REQUIRED_SCOPE]: { level: 'organization' } },
+          { [REQUIRED_FEATURES]: [FEATURE.membersRead], [REQUIRED_SCOPE]: { level: 'organization' } },
           { url: '/organizations/org1/members' },
         ),
       ),
@@ -245,10 +243,81 @@ describe('@RequireScope guards the convention itself', () => {
 
     await expect(
       g.canActivate(
-        execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage], [REQUIRED_SCOPE]: { level: 'workspace' } }),
+        execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead], [REQUIRED_SCOPE]: { level: 'workspace' } }),
       ),
     ).resolves.toBe(true);
     expect(loadContext).toHaveBeenCalledWith('u1', { organizationId: 'orgX', workspaceId: 'wsX' });
+  });
+
+  /**
+   * THE DECLARED LEVEL DECIDES WHICH IDS ARE READ, not which ids happen to be
+   * present in the arguments.
+   *
+   * `updateWorkspace` takes a workspaceId and is an ORGANIZATION-level
+   * operation: `workspaces:manage` is the right to rename a tenant's
+   * workspaces, and renaming one is not entering it — §12.33 requires
+   * membership to ENTER a workspace, which these do not do.
+   *
+   * Before this, `resolveScope` read the workspace argument regardless, so the
+   * request resolved one level deeper than the handler declared and the
+   * consistency check immediately refused it. The result was a 403 on a
+   * correctly configured mutation, carrying a message about scope that named
+   * nothing the caller had done.
+   */
+  it('ignores a workspace argument on a handler that declares ORGANIZATION scope', async () => {
+    const loadContext = jest.fn(async () =>
+      ctx({ effective: [FEATURE.workspacesRead], granted: [FEATURE.workspacesRead] }),
+    );
+    const g = guard({ ...principal, getArgs: () => ({ organizationId: 'orgX', workspaceId: 'wsX' }) }, loadContext);
+
+    await expect(
+      g.canActivate(
+        execution({ [REQUIRED_FEATURES]: [FEATURE.workspacesRead], [REQUIRED_SCOPE]: { level: 'organization' } }),
+      ),
+    ).resolves.toBe(true);
+    // Resolved IN the organization and not in the workspace — so a customer's
+    // organization-level role participates, and `canAccessWorkspace` is not
+    // asked about a workspace this operation never enters.
+    expect(loadContext).toHaveBeenCalledWith('u1', { organizationId: 'orgX', workspaceId: null });
+  });
+
+  /**
+   * The other direction still fails, and must: a handler that declares
+   * 'workspace' and is called without one has been mounted a level from where
+   * it thinks it is, which resolves a perfectly valid-looking context for the
+   * wrong scope.
+   */
+  it('still refuses a workspace declaration with no workspace argument', async () => {
+    const g = guard({ ...principal, getArgs: () => ({ organizationId: 'orgX' }) });
+
+    await expect(
+      g.canActivate(
+        execution({ [REQUIRED_FEATURES]: [FEATURE.workspaceRead], [REQUIRED_SCOPE]: { level: 'workspace' } }),
+      ),
+    ).rejects.toThrow(/declares workspace scope but the request resolved as organization/);
+  });
+
+  /**
+   * The payoff of declaring workspace scope at all: the guard asks whether the
+   * caller may BE there before it asks what they may DO there.
+   *
+   * §12.33 — workspace membership is REQUIRED and no role widens it — had never
+   * once run against a real caller, because nothing in the codebase resolved a
+   * workspace-level request until the tenant screens did.
+   */
+  it('refuses a workspace the caller is not a member of, before the feature question', async () => {
+    const g = guard(
+      { ...principal, getArgs: () => ({ organizationId: 'orgX', workspaceId: 'wsX' }) },
+      jest.fn(async () => ctx({ accessibleWorkspaceIds: ['wsOther'] })),
+    );
+
+    await expect(
+      g.canActivate(
+        execution({ [REQUIRED_FEATURES]: [FEATURE.workspaceRead], [REQUIRED_SCOPE]: { level: 'workspace' } }),
+      ),
+      // 'no_workspace_access', not 'not_granted': "you are not in this
+      // workspace" and "you lack this right here" need different answers.
+    ).rejects.toMatchObject({ response: { reason: 'no_workspace_access' } });
   });
 });
 
@@ -257,7 +326,7 @@ describe('the per-request cache is keyed on SCOPE, not just the request', () => 
     const loadContext = jest.fn(async () => ctx());
     const g = guard(principal, loadContext);
     const request = { url: '/organizations/org1/members' };
-    const meta = { [REQUIRED_FEATURES]: [FEATURE.membersManage] };
+    const meta = { [REQUIRED_FEATURES]: [FEATURE.membersRead] };
 
     await g.canActivate(execution(meta, request));
     await g.canActivate(execution(meta, request));
@@ -273,7 +342,7 @@ describe('the per-request cache is keyed on SCOPE, not just the request', () => 
     const loadContext = jest.fn(async () => ctx({ accessibleWorkspaceIds: null }));
     const g = guard(principal, loadContext);
     const request = { url: '/organizations/org1/members' };
-    const meta = { [REQUIRED_FEATURES]: [FEATURE.membersManage] };
+    const meta = { [REQUIRED_FEATURES]: [FEATURE.membersRead] };
 
     await g.canActivate(execution(meta, request));
     request.url = '/organizations/org1/workspaces/ws1/data';
@@ -289,7 +358,7 @@ describe('fail closed', () => {
       principal,
       jest.fn(async () => ctx({ effective: [] })),
     );
-    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersManage] }))).rejects.toBeInstanceOf(
+    await expect(g.canActivate(execution({ [REQUIRED_FEATURES]: [FEATURE.membersRead] }))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });

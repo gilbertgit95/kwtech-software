@@ -3,6 +3,7 @@ import { FEATURE, FEATURE_REGISTRY } from '../src/feature-keys.js';
 import { PermissionsResolver } from '../src/server/graphql/permissions.resolver.js';
 import { PermissionsController } from '../src/server/permissions.controller.js';
 import { REQUIRED_FEATURES } from '../src/server/require-feature.decorator.js';
+import { REQUIRED_SCOPE, type ScopeSpec } from '../src/server/require-scope.decorator.js';
 
 /**
  * The registry's BINDINGS are claims about where a key is enforced. Nothing
@@ -47,6 +48,32 @@ describe('declared API surfaces are actually guarded', () => {
 
   it('myPermissions stays unguarded', () => {
     expect(required(PermissionsResolver.prototype, 'mine')).toBeUndefined();
+  });
+
+  /**
+   * Unguarded for the same reason, and the reason is worth stating: a key here
+   * would be a key you need before you can be given any key. Somebody holding
+   * nothing anywhere must still be able to see which organizations they are in,
+   * or they can never reach the one place a role could be granted to them.
+   *
+   * It discloses nothing either way — the subject is the caller, taken from the
+   * session rather than from an argument.
+   */
+  it('myOrganizations stays unguarded', () => {
+    expect(required(PermissionsResolver.prototype, 'myOrganizations')).toBeUndefined();
+  });
+
+  /**
+   * Also unguarded, and the reason is sharper than for `myOrganizations`: the
+   * list IS the caller's own `accessibleWorkspaceIds` resolved into names, so
+   * it cannot disclose a workspace they may not enter.
+   *
+   * ⚠ It must NOT take `organization:read`. Being a member of a workspace does
+   * not imply the right to open the organization's screens, so that key would
+   * hide a workspace from somebody who is in it.
+   */
+  it('myWorkspaces stays unguarded', () => {
+    expect(required(PermissionsResolver.prototype, 'myWorkspaces')).toBeUndefined();
   });
 
   it('GET /permissions/me stays unguarded', () => {
@@ -97,11 +124,18 @@ describe('every declared API binding names a guard that exists', () => {
      * app's own suite asserts the guard; this entry records that the binding is
      * deliberate rather than unverified.
      */
-    'Query.findUserByEmail': [FEATURE.membersManage],
-    'Query.findUsersByIds': [FEATURE.membersManage],
+    'Query.findUserByEmail': [FEATURE.membersRead],
+    'Query.findUsersByIds': [FEATURE.membersRead],
     'Mutation.inviteMember': required(PermissionsResolver.prototype, 'inviteMember'),
     'Mutation.inviteUser': required(PermissionsResolver.prototype, 'inviteUser'),
     'Mutation.revokeInvitation': required(PermissionsResolver.prototype, 'revokeInvitation'),
+    // ── the tenant's own organization ────────────────────────────────────────
+    'Query.myOrganization': required(PermissionsResolver.prototype, 'myOrganization'),
+    'Query.myWorkspace': required(PermissionsResolver.prototype, 'myWorkspace'),
+    'Query.myOrganizationRoles': required(PermissionsResolver.prototype, 'myOrganizationRoles'),
+    'Query.myOrganizationSubscriptions': required(PermissionsResolver.prototype, 'myOrganizationSubscriptions'),
+    'Mutation.renameMyOrganization': required(PermissionsResolver.prototype, 'renameMyOrganization'),
+    'Mutation.leaveOrganization': required(PermissionsResolver.prototype, 'leaveOrganization'),
   };
 
   const apiBindings = FEATURE_REGISTRY.flatMap((spec) =>
@@ -128,5 +162,96 @@ describe('every declared API binding names a guard that exists', () => {
     // suite cannot see — add it above rather than letting it pass silently.
     expect(guard).toBeDefined();
     expect(guard).toContain(key);
+  });
+});
+
+/**
+ * A resolver has NO PATH. One GraphQL endpoint serves every operation, so the
+ * guard's fallback reads `/api/v1/graphql` and resolves APP level with no
+ * organization — whatever the arguments say. An operation that acts inside a
+ * tenant and does not declare its scope therefore loads the caller's context
+ * with no tenant in it, and every ORGANIZATION-LEVEL key silently grants
+ * nothing: only app-level roles work it.
+ *
+ * That failure is invisible from the outside. The request is refused with a
+ * perfectly ordinary "requires members:manage" for somebody who holds
+ * `members:manage`, which reads as a permissions bug in the role rather than a
+ * missing decorator on the resolver. It is exactly what PLAN §12.13 deferred,
+ * and these tests are what stop the next tenant-level operation reintroducing
+ * it.
+ */
+const scopeOf = (method: string): ScopeSpec | undefined => {
+  const handler = (PermissionsResolver.prototype as unknown as Record<string, unknown>)[method];
+  if (typeof handler !== 'function') throw new Error(`No handler '${method}' on PermissionsResolver`);
+  return Reflect.getMetadata(REQUIRED_SCOPE, handler);
+};
+
+describe('operations that act inside a tenant declare the level they act at', () => {
+  const ORGANIZATION = [
+    'inviteMember',
+    'revokeInvitation',
+    'addMember',
+    'removeMember',
+    'assignRole',
+    'revokeRole',
+    /*
+     * These three take a workspaceId and are ORGANIZATION scope, deliberately.
+     * `workspaces:manage` is the right to manage a tenant's workspaces, and
+     * renaming or archiving one is not entering it — §12.33 requires membership
+     * to ENTER a workspace, which these do not do.
+     */
+    'createWorkspace',
+    'updateWorkspace',
+    'archiveWorkspace',
+    'myOrganization',
+    'myOrganizationRoles',
+    'myOrganizationSubscriptions',
+    'renameMyOrganization',
+    'leaveOrganization',
+  ];
+
+  /**
+   * WORKSPACE scope does more than resolve grants in the right place: it makes
+   * the guard ask `canAccessWorkspace` BEFORE the feature question, which is
+   * §12.33 enforced rather than described. Nothing in this codebase resolved a
+   * workspace-level request until these declarations existed.
+   */
+  const WORKSPACE = ['shareWorkspace', 'unshareWorkspace', 'assignWorkspaceRole', 'revokeWorkspaceRole', 'myWorkspace'];
+
+  it.each(ORGANIZATION)('%s declares organization scope', (method) => {
+    expect(scopeOf(method)?.level).toBe('organization');
+  });
+
+  it.each(WORKSPACE)('%s declares workspace scope', (method) => {
+    expect(scopeOf(method)?.level).toBe('workspace');
+  });
+
+  /**
+   * The platform reads stay UNDECLARED, and that is not an oversight.
+   *
+   * `permissionOrganizations`, `permissionSubscriptions` and
+   * `permissionOrganizationDetail` answer across tenants for app-level keys. A
+   * declared scope would resolve the caller inside one organization, and
+   * `permissionSubscriptions` in particular takes an OPTIONAL organizationId —
+   * declaring a level it cannot always reach would refuse the admin list for
+   * disagreeing with its own declaration.
+   */
+  /*
+   * `myWorkspaces` is here too. It takes an organizationId and still declares
+   * no scope, which looks inconsistent and is not: `@RequireScope` exists to
+   * tell the GUARD where to resolve, and no guard runs on an unguarded query.
+   * It resolves its own actor at that organization instead — see the resolver.
+   */
+  it.each([
+    'organizations',
+    'subscriptions',
+    'organizationDetail',
+    'roles',
+    'features',
+    'mine',
+    'myOrganizations',
+    'myWorkspaces',
+  ])('%s declares no scope, because it does not act inside one tenant', (method) => {
+    expect(scopeOf(method)).toBeUndefined();
   });
 });

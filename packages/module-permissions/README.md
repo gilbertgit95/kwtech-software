@@ -469,9 +469,83 @@ person to a `userId` — that reads `auth_user`, which belongs to
 `@kwtech/module-auth`, and these two modules never import each other. See
 `apps/web-server/src/seed/README.md` for how one app composes it.
 
-## The admin screens this module ships
+## The screens this module ships
 
 A consuming app does not build these. It lists the module and the routes appear.
+
+There are TWO areas, and the difference is not cosmetic. `/organizations/*` is
+the tenant's own — it resolves at organization or workspace level, so a
+customer's own role answers for it. `/admin/*` is the platform's back office —
+it resolves at app level, so only an app-level role reaches it, whatever a
+customer holds. The same facts, two audiences, two levels.
+
+### `/organizations/*` — a tenant's own
+
+| route | key | what it is |
+|---|---|---|
+| `/organizations` | *(none)* | the organizations you belong to |
+| `/organizations/new` | *(none)* | create one, bounded by the `user:organizations` limit |
+| `/organizations/:organizationId` | `organization:read` | the overview: counts, your role, the way in to each area |
+| `/organizations/:organizationId/members` | `members:manage` | who is here, their roles, and who has been invited |
+| `/organizations/:organizationId/workspaces` | `workspaces:manage` | the workspaces, and creating one — *unlisted; reached from the overview* |
+| `/organizations/:organizationId/workspaces/:workspaceId` | `organization:read` | one workspace: what it is and who is in it — **workspace level**, so membership is checked first |
+| `/organizations/:organizationId/workspaces/:workspaceId/settings` | `organization:read` | its name, key and description, and archiving it |
+| `/organizations/:organizationId/subscription` | `subscriptions:read` | the plan, what it entitles, and what your roles cannot use |
+| `/organizations/:organizationId/settings` | `organization:read` | the name and key (`organization:manage` to change), and leaving |
+
+**The drawer gains a section per LEVEL that is selected**:
+`ORGANIZATION_NAV_GROUP` while a tenant is, `WORKSPACE_NAV_GROUP` while a
+workspace is. Both are exported so an app can place or reorder them. Every route
+in the first carries `:organizationId` and every route in the second carries
+BOTH ids — `composeNav` drops an entry whose parameters it cannot fill, so a
+route added to either behaves correctly just by having them in its path.
+
+Entering a workspace is the SELECTOR's job, so the workspaces list is unlisted:
+that screen creates, renames and archives workspaces, which is administering the
+organization rather than working in one.
+
+Two unguarded queries feed a shell's switchers: **`myOrganizations`** (where you
+belong, and as what) and **`myWorkspaces(organizationId)`** (the workspaces of
+one organization you may ENTER — your own `accessibleWorkspaceIds` resolved into
+names, live ones only). Neither can disclose anything the caller does not
+already have, which is why neither takes a key. ⚠ `myWorkspaces` must not take
+`organization:read`: being a member of a workspace does not imply the right to
+open the organization's screens, and that key would hide a workspace from
+somebody who is in it.
+
+⚠ **Filter each section with grants resolved at ITS OWN level.** `roles:read`
+and `subscriptions:read` are organization-level keys that ALSO gate
+`/admin/roles` and `/admin/subscriptions` — platform screens resolving at app
+level, where an organization grant does not participate, so one context for the
+whole drawer offers a tenant admin the platform's roles screen and the page then
+refuses them. The workspace section needs the opposite care: a workspace-level
+key hangs off a workspace membership and is absent from an organization-scoped
+context entirely, so filtering it with the organization's grants hides a page
+from the people who hold it.
+
+`/organizations` itself is **unlisted**. Switching organization is the
+switcher's job — it sits at the top of the drawer and offers "All organizations"
+and "New organization" — so a drawer entry beside it would be a second control
+for one act.
+
+⚠ `ORGANIZATION_NAV_GROUP` and the href helpers live in `react/tenant-nav.ts`,
+which is deliberately **not** a `'use client'` module: the shell reads their
+values on the server, and a constant exported from a client module is a
+client-reference proxy there, not a string.
+
+The two unkeyed routes are unkeyed deliberately: `organization:read` is an
+ORGANIZATION-level key, held inside a tenant, and somebody who belongs nowhere
+holds nothing anywhere. A key on either would be a key you need before you can
+be given any key.
+
+⚠ **`organization:read` is not `organizations:read`.** One letter, and the whole
+difference between a customer and the platform: the singular is organization
+level and means "this one", the plural is app level and means "any tenant". The
+same for `organization:manage` beside `organizations:manage`. They cannot be
+confused in a role, because a role may only collect features at its own level —
+`assertRoleDefinable` refuses the app-level pair inside an organization role.
+
+### `/admin/*` — the platform's back office
 
 | route | key | what it is |
 |---|---|---|
@@ -766,9 +840,23 @@ names the arguments carrying the ids:
 shareWorkspace(@Args('organizationId') orgId: string, @Args('workspaceId') wsId: string) {}
 ```
 
-Wire `getArgs: (ctx) => GqlExecutionContext.create(ctx).getArgs()` once, and the
-guard reads them — keeping the `@nestjs/graphql` import in the app that already
-depends on it.
+⚠ **Wire `getArgs: (ctx) => GqlExecutionContext.create(ctx).getArgs()` once**,
+or `@RequireScope` does nothing on a resolver. This is the hook the decorator
+reads its ids through, and without it the guard falls back to parsing
+`/api/v1/graphql` — app level, no organization — so a declaration fails the
+consistency check with *"Handler declares organization scope but the request
+resolved as app"*.
+
+The reason it is the app's to wire rather than the module's: `GqlExecutionContext`
+is `@nestjs/graphql`, an optional peer here, and a REST-only consumer must not
+install a GraphQL library to answer questions about REST.
+
+**Forgetting it is the worst kind of silent.** Every organization-level key then
+resolves against a context with no organization in it, so an organization-level
+role grants NOTHING, anywhere — and the refusal reads as an ordinary "requires
+members:manage" at somebody who holds `members:manage`. That is exactly what
+happened in this repo: the decorator was written, tested, and used on nothing
+for weeks, because the hook behind it was never wired. See PLAN.md §12.13.
 
 `@RequireScope` is worth adding to REST handlers too. The guard then checks the
 declared level against the parsed one and refuses on a mismatch, which catches a

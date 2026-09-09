@@ -19,9 +19,10 @@ import { AdminPage } from './admin-page.js';
  * Gated on `organizations:read`, which is APP level: this lists every
  * organization, so it answers a question only platform staff have. A tenant
  * administrator reading their OWN organization is a different screen and needs
- * the active-organization scope that PLAN §12.13 still defers — until then, an
- * organization-level role sees nothing here, because `/admin/*` resolves at app
- * level and their role never participates.
+ * `/organizations/:organizationId`, which resolves at ORGANIZATION level and
+ * takes `organization:read`. An organization-level role still sees nothing
+ * HERE, and that is permanent rather than pending: `/admin/*` resolves at app
+ * level, so a customer's role never participates in it.
  *
  * That is worth knowing before this screen is shown to a customer: it is built
  * for the people who run the platform.

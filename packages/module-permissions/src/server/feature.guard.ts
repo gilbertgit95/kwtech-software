@@ -169,7 +169,28 @@ export class FeatureGuard implements CanActivate {
     if (declared && this.options.getArgs) {
       const args = this.options.getArgs(context) ?? {};
       const organizationId = (args[declared.organizationIdArg ?? 'organizationId'] as string | undefined) ?? null;
-      const workspaceId = (args[declared.workspaceIdArg ?? 'workspaceId'] as string | undefined) ?? null;
+      /*
+       * THE DECLARED LEVEL DECIDES WHICH IDS ARE READ, not which ids happen to
+       * be present.
+       *
+       * `updateWorkspace` takes a workspaceId and is an ORGANIZATION-level
+       * operation: `workspaces:manage` is the right to rename the workspaces of
+       * a tenant, and it deliberately does not require being IN the workspace
+       * (§12.33 requires membership to ENTER one, which renaming is not).
+       * Reading the id anyway resolved the request one level deeper than
+       * declared, and the consistency check immediately below then refused the
+       * handler for disagreeing with itself — a 403 on a correctly configured
+       * mutation, with a message about scope that named nothing the caller did.
+       *
+       * So the workspace id is read only where the handler says it operates in
+       * a workspace. A handler that declares 'workspace' and is called without
+       * one still resolves as 'organization' and is still refused by that
+       * check, which is the direction that check is for.
+       */
+      const workspaceId =
+        declared.level === 'workspace'
+          ? ((args[declared.workspaceIdArg ?? 'workspaceId'] as string | undefined) ?? null)
+          : null;
       if (organizationId || workspaceId) {
         return {
           level: workspaceId ? 'workspace' : 'organization',

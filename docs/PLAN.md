@@ -16,7 +16,7 @@ Reference repo: **`../masterdb-mgt-tool`** — the newest of the Sensorbee repos
 the template for toolchain, conventions and versions here. `../coseller-mono` is
 consulted only where masterdb has not built something yet (notably GraphQL, §6).
 
-Last updated: 2026-09-07
+Last updated: 2026-09-09
 
 ---
 
@@ -484,7 +484,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 10 | Job platform for `worker`; CI + remote cache | Phase 7+ | coseller uses Inngest |
 | 11 | Next route strategy: catch-all vs generated stubs (§9) | Phase 4 | start catch-all; the module is identical either way |
 | 12 | ~~Does `module-permissions` own user identity?~~ **Closed: no** | — | Identity lives in **`@kwtech/module-auth`**. `perm_*` still holds `userId` as a bare string with no FK to `auth_user`; the two meet only in the app's `resolvePrincipal` |
-| 13 | Where the active organization and workspace come from on a request | Phase 2 | header, subdomain or session — `resolvePrincipal` reads it; the module does not guess |
+| 13 | ~~Where the active organization and workspace come from on a request~~ **Closed** | — | **The URL, 2026-09-09.** `/organizations/:orgId/*` is organization level and `/organizations/:orgId/workspaces/:wsId/*` workspace level — the convention `scope.ts` has defined since it was written and which nothing used. Rejected: a header (forgettable, invisible in a bug report), a subdomain (a DNS record per tenant), and the token (baking the active tenant into a week-long credential makes switching organization need a new sign-in). Thirteen resolvers now declare `@RequireScope`, `myPermissions` takes an optional scope, and the web catch-all derives one from the matched route. Until this landed, an ORGANIZATION-LEVEL ROLE GRANTED NOTHING ANYWHERE — see the decision log |
 | 14 | ~~Confirm app-level roles should bypass plan entitlement~~ **Closed: yes** | — | Confirmed 2026-08-30 while seeding `super-admin`. Staff must be able to help a lapsed organization, so this is the one path that ignores billing state. Verified end to end: a super admin resolves all 9 features inside an organization he is not a member of and which has no subscription at all |
 | 15 | Should surfaces declare themselves **public**, rather than being public by omission? | Phase 6 | enforcement is opt-in, so an endpoint that should be guarded looks identical to one deliberately open. A `@Public('reason')` marker plus a coverage report would close it, at the cost of annotating every surface |
 | 16 | ~~Does `PermWorkspaceMember` earn its place?~~ **Closed** | — | yes: workspaces have members, and workspace roles hang off that membership |
@@ -497,7 +497,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 24 | ~~Are subscription writes billing-owned, and out of the module?~~ **Closed: reversed** | — | **Reversed 2026-09-06.** They were kept out on the grounds that a billing provider owns `perm_subscription` and the idempotency questions were unanswered; the plan and subscription screens needed them, and the questions are now answered rather than deferred (see the decision log). A provider integrating later must RECONCILE against these rows — read, then supersede what disagrees — rather than assume it is the only writer |
 | 25 | Where does a billing provider's webhook write, and who wins a conflict? | before a payment provider is connected | `PermissionsWriteService` now owns the write path and keys idempotency on the live (organization, workspace, plan) row. A provider that writes the same table needs either a `source` column and a precedence rule, or a reconciliation job that treats the provider as authoritative and supersedes admin rows. Precedence is the part teams get wrong, so decide it before the first webhook, not after |
 | 26 | ~~Should plans be SEEDED, like app roles are?~~ **Closed: yes, on request** | — | **Reversed 2026-09-07.** They were left unseeded on the grounds that which products a platform sells is an operator decision. They are now seeded as a STARTING catalogue — `free`, `starter`, `pro`, `enterprise` — with `createPlanIfAbsent`, which creates what is missing and never rewrites what is there. Phase 'seed', not 'sync': the operator decision is preserved by the seed getting out of the way, not by there being no seed. Original entry: | app roles are seeded because the SHAPE is fixed and the definitions are product decisions living app-side. Plans are the same shape of thing, and deliberately not seeded today: which products a platform sells is an operator decision, and a seeded `free` plan would be this repo deciding it. The screens create them instead. Revisit if a fresh environment needs a plan before anyone can subscribe anybody |
-| 27 | Scope role writes to the actor's organization, and put `roles:create/update/disable` back at organization level | with §12.13 | `createRole` writes `organizationId: null` — a SHARED PRESET every tenant sees — and `listRoles` reads that same null scope, so a role write is a platform operation. The three write keys were raised to APP level on 2026-09-07 to say so. Reversing it needs the active organization on the request (§12.13), which is exactly why `role-draft.ts` cannot offer an organization picker today. Do both together or neither |
+| 27 | Scope role writes to the actor's organization, and put `roles:create/update/disable` back at organization level | **unblocked 2026-09-09** — §12.13 closed | `createRole` writes `organizationId: null` — a SHARED PRESET every tenant sees — and `listRoles` reads that same null scope, so a role write is a platform operation. The three write keys were raised to APP level on 2026-09-07 to say so. Reversing it needs the active organization on the request (§12.13), which is exactly why `role-draft.ts` cannot offer an organization picker today. Do both together or neither. **⚠ The blocker is gone: §12.13 closed on 2026-09-09 and the active organization is now on the request, so `role-draft.ts` COULD offer an organization picker.** Nothing was changed here with it, deliberately — re-levelling three write keys and re-scoping `listRoles` is a change to what every existing role means, and it does not belong in the same commit as the screens that revealed it was possible. What the tenant area does today is narrow the PICKER (`myOrganizationRoles` filters app-level roles out), which is a presentation fix and not the re-scoping this decision asks for |
 | 28 | Redis-backed pub/sub, before `web-server` scales past one replica | before a second replica | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7) |
 | 29 | Rate-limiting subscription volume on an open socket | when realtime carries real traffic | `CredentialThrottlerGuard` skips WebSocket operations — it writes rate-limit headers onto a response a socket does not have, and per-request IP limiting is not the question a socket asks. Bounded today only by the handshake needing a live-session ticket and the connection closing at token expiry. Belongs in `graphql-ws`' `onSubscribe`, which can see the connection |
 | 30 | ~~A per-workspace member screen, for WORKSPACE-level role grants~~ **Closed** | — | **2026-09-07.** Each workspace on the organization detail screen expands to its members and their workspace roles, and an Add-member dialog picks from organization members not already in it, with an optional workspace role beside it. `assignWorkspaceRole` and `revokeWorkspaceRole` now have a UI. Original entry: | `assignWorkspaceRole` and `revokeWorkspaceRole` are exposed and guarded and reachable only through the API. The organization detail screen already toggles workspace MEMBERSHIP per member; adding a second role picker to that same row is how a screen becomes unreadable, so the grants belong on a workspace's own screen |
@@ -517,6 +517,427 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-09** — **The tenant vocabulary is ATOMIC, and three keys narrowed to
+  app level.**
+
+  `/organizations/*` shipped on the coarse keys that already existed.
+  `members:manage` carried NINE bindings — reading the roster, inviting,
+  revoking, removing and re-roling — so an organization could not have anybody
+  who invites without also letting them remove, or anybody who reads the roster
+  without letting them empty it. Both are ordinary roles. Split by RISK, the
+  argument `roles:manage` and `features:author` already made.
+
+  | was | now |
+  |---|---|
+  | `members:manage` | `members:read` · `members:invite` · `members:remove` · `members:assign_role` |
+  | `workspaces:manage` | `workspaces:read` · `workspaces:create` · `workspaces:update` · `workspaces:archive` |
+  | `workspaces:share` | `workspace:read` · `workspace:members_add` · `workspace:members_remove` · `workspace:assign_role` |
+  | `organization:manage` | `organization:update` |
+
+  **Singular is inside one, plural is the tenant's list of them.**
+  `workspace:read` is workspace level — the one you are standing in;
+  `workspaces:read` is organization level — the list. The same convention as
+  `organization:read` beside `organizations:read`, which now makes two pairs a
+  letter apart. Safe because a role may only collect features its own level
+  reaches: a workspace role is offered none of the plural keys and the draft
+  validator refuses one that names them.
+
+  **⚠ THREE KEYS MOVED TO APP LEVEL**, which narrows them to app-level roles and
+  removes them from every plan:
+
+  - `billing:manage` — a WRITE, and every other write of its kind is app level.
+    None of its three mutations declares a scope, so all three resolve at app
+    level and an organization grant participated in nothing. It was sold by
+    every tier and exercisable through none.
+  - `features:read`, `plans:read` — everything bound to them (`/admin/*`, the
+    unscoped queries) resolves at app level too.
+
+  That closes the "sold but unreachable" finding: the catalogue check now
+  reports zero. `roles:read` and `subscriptions:read` stay at organization
+  level, because `myOrganizationRoles` and `myOrganizationSubscriptions` are
+  genuine tenant surfaces.
+
+  **The rule that decides a level, stated once:** a key sits at the LOWEST level
+  at which it has a surface. A right a tenant may exercise is declared where the
+  tenant is; a right only staff may exercise is app level, and then no plan can
+  carry it and no tenant role can hold it.
+
+  **`free` gained the reads.** Withholding `members:manage` from it used to hide
+  the member list, because reading was bundled with changing — invisible while
+  it was one key and plainly wrong once they were separate. A tier with three
+  seats must be able to see who is in them.
+
+  **`workspace-user` stopped being empty.** It granted nothing because opening a
+  workspace took no key; now that `workspace:read` exists, an empty role would
+  mean somebody who is IN a workspace and cannot open it.
+
+  Migration: the four retired keys are DEPRECATED rather than deleted —
+  `syncFeatureRegistry` marks any row absent from the registry, and
+  `loadContext` already refuses a deprecated key, so a role still holding one
+  simply stops granting it, reversibly. The seeded presets are `isSystem` and
+  `db:sync` REPLACES what they grant. ⚠ Live PLANS are not rewritten by
+  `createPlanIfAbsent` (§12.26), so they had to be pushed through
+  `updatePlan` — which is the operator path, and the one a fresh environment
+  will not need.
+
+  Verified against the live database: 95 plan and tenant-role rows, none
+  carrying an app-level key and none carrying a deprecated one; the four
+  presets re-seeded to 16/15/4/4 keys; and a super-admin resolving all 37.
+
+- **2026-09-09** — **`/organizations/*` — the tenant-facing area, and the
+  active-organization scope it needed. Closes §12.13.**
+
+  Every screen a customer has of their OWN organization: a picker, an overview,
+  members and invitations, workspaces, one workspace, the subscription, and
+  settings. Plus an organization SWITCHER at the top of the drawer, which
+  replaced the brand mark.
+
+  **The active organization comes from the URL, and from nothing else.**
+  `/organizations/:orgId/...` is organization level and
+  `/organizations/:orgId/workspaces/:wsId/...` is workspace level — the
+  convention `scope.ts` has defined since it was written, and which nothing
+  used. Not a header (forgettable, and invisible in a bug report), not a
+  subdomain (a DNS record per tenant), and NOT the token: baking the active
+  tenant into a week-long credential makes switching organization require a new
+  sign-in, which `resolve-principal.ts` already said.
+
+  **What was actually broken, and it was not the screens.** `@RequireScope`
+  existed, was tested, and was on no resolver. A GraphQL resolver has no path,
+  so the guard fell back to `parseScope('/api/v1/graphql')` — app level, no
+  organization, whatever the arguments said. So an ORGANIZATION-LEVEL ROLE
+  GRANTED NOTHING ANYWHERE: `members:manage`, `workspaces:manage` and
+  `subscriptions:read` had never once resolved for a customer, and the refusal
+  read as an ordinary "requires members:manage" at somebody holding
+  `members:manage`. Thirteen operations now declare their scope. Nothing
+  changes for platform staff — an app-level grant unions in unfiltered
+  whatever the scope (§12.14).
+
+  **`myPermissions` gained an optional scope, for the same reason.** A context
+  is always per (subject, organization) — the type says so — and the shell asked
+  for one with no organization on every render, so a member whose only role is
+  inside a tenant resolved to nothing: empty drawer, every `<FeatureGate>`
+  closed, on pages the API would have served. Passing an organization you have
+  no standing in is safe: `loadContext` returns null for a pair with none, so
+  the answer is "you hold nothing", never anything about that tenant.
+
+  **`resolveScope` had to learn that the DECLARED level decides which ids are
+  read.** It inferred the level from whichever ids were present, so
+  `updateWorkspace` — organization level, takes a workspaceId — resolved one
+  level deeper than it declared and the consistency check refused it for
+  disagreeing with itself. `workspaces:manage` is the right to manage a tenant's
+  workspaces; renaming one is not entering it.
+
+  **Two new keys, one letter apart, and that is deliberate.**
+  `organization:read` and `organization:manage` are ORGANIZATION level, beside
+  the APP-level `organizations:read` and `organizations:manage`. §12.13's own
+  entry predicted the pair: "rename any tenant" and "rename mine" are different
+  rights, and one key for both hands the first to every customer. The near
+  collision is safe because a role may only collect features at its own level,
+  so the plural is unofferable to an organization role — `assertRoleDefinable`
+  refuses it, which is a check rather than a comment.
+
+  Membership alone was considered and rejected as the gate. It is the smaller
+  change and §12.23 argues for it — a key only where AUTHORISATION is needed —
+  but enforcement here is opt-in, so "members only" would have to be
+  re-implemented in every tenant query and the first one to forget would be
+  readable by anyone signed in.
+
+  **The first WORKSPACE-level surface in the codebase.** `Query.myWorkspace`
+  declares `@RequireScope('workspace')`, so the guard runs `canAccessWorkspace`
+  before any feature question — §12.33 ("membership is required, no role widens
+  it") enforced rather than described. It had never run against a real caller.
+  The visible consequence, which will look like a bug the first time: an
+  organization administrator who is not IN a workspace is refused it, and
+  renames it from the workspaces list instead.
+
+  **A gap this surfaced rather than created: `createWorkspace` added no
+  member.** Under required membership, a tenant administrator could create a
+  workspace and be refused entry to their own, with the only way in being
+  `workspaces:share` — itself a workspace-level key, so it resolves inside a
+  workspace they may not enter. A tenant could reach a state it could not leave
+  without platform staff. The creator is now added in the same transaction,
+  with NO role — the same argument `createOrganization` makes for its founder,
+  one level down. Platform staff join nothing: they hold no membership to hang
+  it off, and enter by `platform:support_access`.
+
+  **`leaveOrganization` is unguarded by any feature.** Walking out is the other
+  end of the membership that put you there; a key for it would be one an
+  administrator could withhold to keep somebody in. It takes no userId, like
+  `acceptInvitation`. The LAST active member is refused — an organization with
+  nobody in it is unreachable by anyone — checked BEFORE the delete rather than
+  rolled back after it, so the rule does not depend on a transaction. A
+  suspended member is exempt: they occupy no active seat, and leaving is
+  exactly what somebody suspended wants.
+
+  **The tenant presets are no longer empty.** `organization-owner`,
+  `organization-admin`, `organization-user` and `workspace-admin` had carried
+  nothing, each saying "EMPTY until the registry has features that are
+  genuinely about running an organization". That condition is now met, and
+  leaving them empty would have meant the screens existed and only
+  `super-admin` could open them. `billing:manage` stays out — it is
+  organization level and could go in, but there is no tenant-facing write
+  surface for it and billing is unbuilt (§12.40), so it would be decorative
+  coverage. The `account:*` keys are app level and were refused outright by
+  `assertRoleDefinable` when first added, which is the model working.
+
+  **The drawer gains an `Organization` section while one is SELECTED.** Its
+  five entries — Overview, Members, Workspaces, Subscription, Settings —
+  drill into whichever organization the switcher is on.
+
+  The heading is the static word, not the tenant's name. It drew the name
+  briefly and that was worse: the switcher sits directly above it and already
+  says which organization you are in, so the name appeared twice within two rows
+  and the second carried nothing the first had not. `NavGroup` grew a `label`
+  beside its `group` for that substitution and lost it again with it — an
+  abstraction kept for a case nobody has is worse than none.
+
+  **The selection PERSISTS, so it is a cookie.** It used to come from the URL
+  alone, so the section vanished the moment somebody opened the dashboard and
+  came back changed; a switcher whose effect disappears when you navigate is a
+  filter, not a switcher. `kwtech_active_organization` follows the sidebar
+  width's precedent exactly — a cookie rather than localStorage because the
+  shell is a Server Component, so a whole block of navigation is in the first
+  paint instead of appearing a beat late on every page.
+
+  **⚠ Naming the selection is not the same as resolving it.** The id followed
+  the URL from the start; the switcher LABELLED it by finding it in the viewer's
+  own organizations, which is right for a member and wrong for the one case that
+  matters — platform staff drilling into a customer from `/admin/organizations`.
+  There the Organization section rendered (their app-level grants resolve in any
+  tenant) while the switcher above it fell back to the product name: the header
+  contradicting the content. It now fetches that tenant's identity on that path
+  only, and says "Not a member — viewing" rather than implying a membership. The
+  detail query is reused rather than a lightweight one added, because a second
+  `permOrganization.findFirst` shape means an overload the generated Prisma
+  client cannot satisfy — the same wall `listWorkspaceDetail` hit.
+
+  **Sign-out clears both selections; a refresh and a browser restart keep
+  them.** They name a CUSTOMER, so leaving one behind on a shared machine after
+  somebody signed out is residue nobody expects — unlike the sidebar width and
+  the theme, which are facts about how a person likes their browser and survive.
+  `signout-all` clears them too: somebody using it to secure a shared machine is
+  the last person who should come back to a drawer still opened on their
+  company. A session RENEWAL does not, which is the distinction that matters —
+  renewing is not ending.
+
+  The deletion lives in the APP's auth route, which stopped being a one-line
+  re-export for it. `module-auth` clears what it owns and must not know that
+  another module has a notion of a selected organization; `module-permissions`
+  has no route and no opinion about when a session ends. Composing them is the
+  app's job, the same as `resolvePrincipal` and `AppShell` already do.
+
+  Order of resolution: **the URL wins** (you are looking at that tenant's page,
+  so the drawer beside it must be that tenant's — including for platform staff
+  inside a customer they do not belong to), then the cookie, and only if it
+  names an organization the viewer is actually in. ⚠ **The cookie is not
+  authorisation** and nothing treats it as such: a forged value is refused
+  against the session's own organization list, and everything it reaches is
+  authorised again server-side at its own scope.
+
+  **One request serves the whole drawer.** `getNavContext` asks `myPermissions`
+  three times under aliases — app level, the selected organization, the selected
+  workspace — plus `myWorkspaces`, so every filter level and the selector's
+  contents arrive together. Nothing extra is fetched when no organization is
+  selected.
+
+  The workspace id goes in RAW, before validation: validating it needs the
+  `workspaces` list the same request returns, so asking first would be circular.
+  That is safe for the reason the organization id is — `loadContext` returns
+  null for a triple the caller has no standing in — and the id is checked
+  against the list afterwards anyway.
+
+  **⚠ THREE grant sets, because the drawer spans three levels**, and each is
+  wrong for the others' entries. This was a real
+  regression, caught by running it: filtering the whole drawer with the selected
+  organization's context offered `/admin/roles` to an organization admin — whose
+  `roles:read` is an ORGANIZATION-level key that also gates that app-level
+  screen — and the page then rendered a denial. The drawer listed a link its own
+  page refused, which is exactly the mismatch one shared feature key exists to
+  prevent. Entries are now filtered at the level of the route they point at:
+  app-level grants for `/admin/*` and the app's own pages, the selected
+  organization's for the tenant section, the workspace's for the workspace
+  section.
+
+  The third exists for the OPPOSITE failure to the first: a workspace-level key
+  hangs off a workspace membership, so an organization-scoped context does not
+  carry it at all — filtering that section with the organization's grants would
+  hide a page from exactly the people who hold the right to it. Nothing needs it
+  today (the one route there takes `organization:read`), and the next page added
+  beside it will.
+
+  The organization-scoped grants are also kept OUT of `<PermissionsProvider>`.
+  Every `<FeatureGate>` in the page reads that, and a gate evaluating against a
+  tenant while the page is an admin screen would show controls the API refuses.
+  The provider keeps the page's own context; the nav grants feed `buildNav` and
+  stop there.
+
+  **A workspace has an Overview and a Settings**, mirroring the organization.
+  It was one page called "Overview" that held a rename form, the member list and
+  an archive control — not an overview, and the label said something the page
+  did not do. The editing moved; the member list stayed on the Overview, because
+  members are not settings and "who is in this workspace" is the first thing
+  somebody opening one wants. A workspace has too few people to earn a third
+  page, so it earns the first one instead.
+
+  Settings takes `organization:read` with `workspaces:manage` on the controls
+  inside, so a bookmark followed without it shows what the workspace is called
+  rather than a denial — the shape the organization's Settings already has. The
+  Overview only offers the link to somebody holding the key.
+
+  **Organizations and workspaces have a `description`.** Nullable, because
+  inventing one for a row that has none is worse than an empty field, and
+  backfilled from `name` in the migration so nothing reads blank on a screen
+  that suddenly has the field. ⚠ It carries no information the name does not —
+  that is what "initial" means here: a placeholder occupying the field, not
+  something anybody wrote. Every create and update path defaults a blank one to
+  the name through ONE function, so the four writes cannot disagree.
+
+  ⚠ **It was briefly invisible on the overviews, and that was a mistake worth
+  recording.** They showed the description as the page SUBTITLE, falling back to
+  the key when it equalled the name — which is every row, because the backfill
+  copies the name. So the field could not be seen on the one page somebody would
+  look for it, and a value you cannot see is a value you cannot tell is a
+  placeholder. Both overviews now give it a labelled block of its own, always
+  rendered, saying so when it is still the name. The compact picker at
+  `/organizations` keeps the fallback: a list row repeating its own title reads
+  as a rendering fault, and the key is the more useful second line there.
+
+  **The drawer has THREE scoped sections, one per level.** `Organization` while
+  a tenant is selected, `Workspace` while a workspace is, `Administration` for
+  platform staff. Neither tenant section lists the other's contents — each holds
+  the pages scoped to that level, which is the split the URL already makes.
+
+  The workspaces LIST is not a drawer entry. Entering a workspace is the
+  selector's job; that screen is where workspaces are created, renamed and
+  archived — administering the organization rather than working in one — so it
+  is reached from the organization's overview instead. A drawer entry beside the
+  selector would be a second route to the same place, and the two would drift.
+
+  **Both selectors name the viewer's ROLE, icon first.** The organization one
+  showed the label as plain text and the workspace one showed only a name, so
+  "what am I in this place" was answered at one level and not the other. They
+  read the same way now, which is what makes the pair legible as one control.
+
+  The workspace role could not be read from the organization side at all: it
+  hangs off `PermWorkspaceMember`, the schema making "a workspace role for
+  somebody not in the workspace" impossible to express. `myWorkspaces` returns
+  it, from a second small read joined by id rather than an `include` reaching
+  workspace → members → roles and filtering to one person — a shape the
+  structural client can only express by growing a clause every caller then has
+  to satisfy. ⚠ That read is scoped by organization AND user, so the
+  cross-tenant workspace-membership row §12.34 still permits cannot supply a
+  badge; a test covers it.
+
+  Platform support holds no role anywhere, so every row comes back roleless and
+  the selectors fall back to the key — the honest answer for somebody visiting.
+
+  **A WORKSPACE SELECTOR sits under the organization one**, indented with an
+  elbow rule and drawn lighter, because a workspace only means something within
+  an organization — the same key can exist in two tenants and they are different
+  places. Two pickers at equal weight would invite exactly the wrong reading:
+  two independent choices.
+
+  It is a real `<button disabled>` with no organization selected, not a menu
+  onto an empty list — the second is the shape that makes people click twice and
+  then file a bug — and its tooltip says what to do rather than what went wrong.
+
+  **It lists what the viewer may ENTER, not what the organization has.**
+  `myWorkspaces(organizationId)` resolves their own `accessibleWorkspaceIds`
+  into names, so §12.33 decides the contents: membership is required and no role
+  widens it, and a picker offering the rest would list rows the guard refuses on
+  arrival. Unguarded by any feature, like `myOrganizations` — the list cannot
+  disclose a workspace they may not enter, and ⚠ requiring `organization:read`
+  would have hidden a workspace from somebody who is IN it but holds nothing at
+  organization level. Archived workspaces are excluded: they stop resolving, so
+  offering one promises somewhere nobody can go.
+
+  **Changing organization unselects the workspace by ARITHMETIC.** Nothing
+  clears the cookie. It is validated against the SELECTED organization's
+  accessible workspaces, so one remembered from another tenant is simply not in
+  the list — which also covers the cases a cleanup step would have missed: a
+  workspace the viewer was removed from, and one since archived.
+
+  **There is no `/organizations` drawer entry.** Switching organization is the
+  switcher's job, and it already offers "All organizations" and "New
+  organization"; a drawer entry beside it would be a second control for one act.
+  The route still exists and is still reachable — it simply declares no `nav`.
+
+  **The section appears by ARITHMETIC, not by a mode.** `composeNav` fills
+  `:params` and DROPS an entry whose parameters it cannot fill — a link with
+  `:organizationId` still in it 404s, one with the segment removed points at
+  somebody else's page. So a route added to that section later behaves correctly
+  just by having the parameter in its path.
+
+  **The catch-all reads its scope from the MATCHED ROUTE, not by parsing the
+  path again.** More correct on one path: `parseScope` knows nothing about which
+  routes exist, so it reads `/organizations/new` as an organization whose id is
+  "new". It fails closed, but the consequence was a create page whose drawer had
+  quietly lost every keyed entry. A test pins the two readings together for
+  every dynamic tenant route.
+
+  **The switcher replaced the brand.** The product name is the one thing on the
+  drawer that never changes, so it was spending the most valuable strip saying
+  nothing, while the fact that every scoped link below now depends on had
+  nowhere to be shown. With no active organization it draws the brand exactly as
+  before, so nothing is lost in the state where there is nothing else to say.
+
+  **Four sections were EXTRACTED rather than copied** — the members table,
+  invitations, the role picker, the workspaces grid, and the workspace screen's
+  four — into `organization-sections.tsx` and `workspace-sections.tsx`. A
+  members list is a members list whoever is reading it; what differs is the key
+  that opens the page and the level it resolves at, both settled before any of
+  it renders. The same call this repo already made for `Person`, at four times
+  the size.
+
+  **Three things only running it against the live database found**, each
+  invisible to the type checker and to every test:
+
+  1. **`getArgs` was never wired in `app.module.ts`.** `@RequireScope` reads a
+     resolver's arguments through that hook, so with it absent the decorator
+     resolved nothing and every declaration failed the consistency check with
+     "Handler declares organization scope but the request resolved as app". It
+     is why the decorator had been written, tested, and used on nothing.
+  2. **No plan entitled the new keys, so nobody could open their own
+     organization.** `organization:read` is organization level, so it goes
+     through the subscription filter; the seeded tiers predate it. Both keys are
+     now in every tier — opening the company you belong to is the floor, not a
+     paid feature. ⚠ `createPlanIfAbsent` never rewrites an existing plan
+     (§12.26), so a database seeded before today needs an operator to add them
+     on `/admin/plans`; that was done here through the real write path.
+  3. **`OrganizationNewPage` took a `detailHref` FUNCTION.** A route adapter
+     renders on the server and that page is `'use client'`, so pointing it at
+     `/organizations` 500'd with "Functions cannot be passed directly to Client
+     Components". The admin route passed nothing and took the defaults, which
+     hid it. It takes one `basePath` string now.
+  4. **The same boundary, from the other side: a CONSTANT in a client module.**
+     `ORGANIZATION_NAV_GROUP` began in `tenant-page.tsx`, which is
+     `'use client'`, and the app's server-side nav builder compares it —
+     *"Cannot access ORGANIZATION_NAV_GROUP.localeCompare on the server. You
+     cannot dot into a client module from a server component."* A constant is
+     not exempt because it is "just a string": what crosses the boundary is the
+     MODULE, not the value. The whole tenant URL and nav vocabulary moved to
+     `react/tenant-nav.ts`, which has no `'use client'` and imports no React; a
+     test asserts both, because that failure typechecks, lints and passes every
+     other test.
+
+  Verified end to end against the live database, as four different callers: an
+  organization-user resolves `organization:read` when scoped to their tenant and
+  NOT at app level; an org-admin who is not a workspace member is refused
+  `myWorkspace` with `no_workspace_access`, which is §12.33 enforced for the
+  first time; a cross-tenant organization id returns a refusal rather than data;
+  and the drawer shows six tenant entries to an owner, three to a plain member,
+  and none at all on `/`.
+
+  ⚠ **One thing recorded rather than fixed:** the module reaches Postgres
+  through a hand-written structural interface, and a generated Prisma delegate
+  cannot satisfy an OVERLOAD set — TypeScript infers `T` as `any` and
+  `SelectSubset` degrades to Prisma's own error type. A dedicated workspace
+  query was written, broke `satisfies-modules.ts`, and was reverted;
+  `listWorkspaceDetail` builds on `listOrganizationDetail` instead and
+  over-fetches, which is the trade the admin workspace screen already makes.
+  Where one delegate must answer two questions, do what
+  `permSubscription.findMany` does: one signature, optional properties.
 
 - **2026-09-08** — **The user screens say where somebody belongs, not only what
   they may do.**
