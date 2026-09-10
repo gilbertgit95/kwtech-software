@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { FEATURE, FEATURE_REGISTRY } from '../src/feature-keys.js';
 import { PermissionsResolver } from '../src/server/graphql/permissions.resolver.js';
 import { PermissionsController } from '../src/server/permissions.controller.js';
@@ -61,6 +63,44 @@ describe('declared API surfaces are actually guarded', () => {
    */
   it('myOrganizations stays unguarded', () => {
     expect(required(PermissionsResolver.prototype, 'myOrganizations')).toBeUndefined();
+  });
+
+  /**
+   * ⚠ AND IT NOW CARRIES THE PLAN, which is why the test above matters more
+   * than it did.
+   *
+   * The organization switcher draws each tenant's plan beside the role held
+   * there, and `UserOrganization.planKey/planLabel/planIcon` is how it arrives —
+   * on this query, which cannot refuse. That is a deliberate reading of the
+   * boundary rather than a leak: `subscriptions:read` protects the commercial
+   * RECORD — status, renewal dates, ended rows, per-workspace subscriptions,
+   * and any of it for a tenant you are not in — while `myPermissions` already
+   * publishes `entitled` to every member ungated, and the entitlements ARE what
+   * the plan grants. A name for something whose effects are already disclosed
+   * withholds nothing.
+   *
+   * The scope of the disclosure is what keeps that true: only the caller's own
+   * organizations, only the live organization-wide plan, and only its identity.
+   * `permissions.service` asserts each of those. If a commercial field is ever
+   * added to this type, it does NOT belong here — it belongs behind the key.
+   */
+  it('the plan on UserOrganization is identity only, never the commercial record', () => {
+    /*
+     * Read from the SOURCE rather than from an instance. The fields are
+     * declared with `!` and no initialiser, so a constructed object has no own
+     * properties to enumerate — `Object.keys` on one answers `[]` and the
+     * assertion would pass by saying nothing.
+     */
+    const source = readFileSync(join(__dirname, '../src/server/graphql/permission.types.ts'), 'utf8');
+    const body = source.slice(source.indexOf('export class UserOrganizationType'));
+    const declaration = body.slice(0, body.indexOf('\n}'));
+
+    expect([...declaration.matchAll(/^\s{2}(\w+)!/gm)].map((match) => match[1])).toEqual(
+      expect.arrayContaining(['planKey', 'planLabel', 'planIcon']),
+    );
+    for (const commercial of ['status', 'currentPeriodEnd', 'endedAt', 'workspaceId', 'subscriptionId']) {
+      expect(declaration).not.toMatch(new RegExp(`^\\s{2}${commercial}!`, 'm'));
+    }
   });
 
   /**
@@ -136,6 +176,9 @@ describe('every declared API binding names a guard that exists', () => {
     'Query.myOrganizationSubscriptions': required(PermissionsResolver.prototype, 'myOrganizationSubscriptions'),
     'Mutation.renameMyOrganization': required(PermissionsResolver.prototype, 'renameMyOrganization'),
     'Mutation.leaveOrganization': required(PermissionsResolver.prototype, 'leaveOrganization'),
+    // ── the platform's defaults ──────────────────────────────────────────────
+    'Query.permissionDefaults': required(PermissionsResolver.prototype, 'permissionDefaults'),
+    'Mutation.setPermissionDefault': required(PermissionsResolver.prototype, 'setPermissionDefault'),
   };
 
   const apiBindings = FEATURE_REGISTRY.flatMap((spec) =>

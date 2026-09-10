@@ -70,6 +70,16 @@ export const FEATURE_TAG = {
   billing: 'billing',
   /** Helping a customer: support access, impersonation. */
   support: 'support',
+  /**
+   * What the platform does when nobody said what to do — the defaults every
+   * account, organization and workspace is created with.
+   *
+   * Its own area rather than sitting under `roles` or `billing`, because the
+   * screen crosses both: one of these points at a role, another at a plan, and
+   * a role editor that filed them under either would hide half of them from
+   * whoever went looking.
+   */
+  defaults: 'defaults',
 } as const;
 
 export type FeatureTag = (typeof FEATURE_TAG)[keyof typeof FEATURE_TAG];

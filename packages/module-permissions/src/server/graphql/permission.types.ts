@@ -915,6 +915,83 @@ export class UserAppRoleType {
 }
 
 /**
+ * ── ONE PLATFORM DEFAULT ──────────────────────────────────────────────────
+ *
+ * What the application does when nobody said what to do. The type carries three
+ * different kinds of fact and keeps them apart on purpose:
+ *
+ *   the CATALOGUE   `key`, `kind`, `moment`, `label`, `description`,
+ *                   `whenUnset` — facts about the code, the same on every
+ *                   deployment, from `defaults.ts`;
+ *   the SETTING     `value`, `updatedAt`, `updatedByUserId` — what this
+ *                   deployment chose, from the table;
+ *   the RESOLUTION  `targetLabel`, `targetIcon`, `targetUnavailable` — what
+ *                   that value points at today.
+ *
+ * Flattening them into "the answer" would lose the distinction the screen most
+ * needs: unset, set-and-working, and set-but-pointing-at-something-deleted are
+ * three different situations with three different fixes.
+ */
+@ObjectType('PermissionDefault')
+export class PermissionDefaultType {
+  @Field()
+  key!: string;
+
+  /** `app_role`, `plan`, `days`… — what KIND of thing the value points at. See defaults.ts. */
+  @Field()
+  kind!: string;
+
+  /** Which process this is the default for. The screen groups by it. */
+  @Field()
+  moment!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  description!: string;
+
+  /** What happens when it is NOT set, said in a sentence rather than implied. */
+  @Field()
+  whenUnset!: string;
+
+  /** A role ID, a plan KEY, a status, or a number of days. Null when unset. */
+  @Field(() => String, { nullable: true })
+  value!: string | null;
+
+  @Field(() => String, { nullable: true })
+  updatedAt!: string | null;
+
+  /**
+   * Who last changed it — a bare id, never joined to an account.
+   *
+   * `perm_*` has no foreign key into the auth module's tables (§12.12), so this
+   * survives the account being deleted and a screen that wants a name resolves
+   * it the way every other user id in this module is resolved: separately, and
+   * failing soft.
+   */
+  @Field(() => String, { nullable: true })
+  updatedByUserId!: string | null;
+
+  /** The target's name today. Null means the value no longer resolves to anything. */
+  @Field(() => String, { nullable: true })
+  targetLabel!: string | null;
+
+  @Field(() => String, { nullable: true })
+  targetIcon!: string | null;
+
+  /**
+   * The target exists but cannot be applied — a disabled role, an archived plan.
+   *
+   * Distinct from a null `targetLabel`, which is "gone entirely". Both mean the
+   * default does nothing right now; only this one names something somebody can
+   * go and bring back.
+   */
+  @Field()
+  targetUnavailable!: boolean;
+}
+
+/**
  * One organization a person belongs to, for a screen that starts from the
  * PERSON rather than from the tenant.
  *
@@ -958,6 +1035,34 @@ export class UserOrganizationType {
    */
   @Field(() => String, { nullable: true })
   roleIcon!: string | null;
+
+  /**
+   * ── the plan this organization is on ───────────────────────────────────────
+   *
+   * The other half of "what is this place": the role says what the reader may
+   * do, the plan says what the organization may do at all. The switcher draws
+   * both on every row, so the list answers the question for the tenants
+   * somebody is choosing BETWEEN rather than only for the one already open.
+   *
+   * ⚠ Not behind `subscriptions:read`, and the reasoning is in
+   * `listOrganizationsForUsers`: that key protects the commercial record —
+   * status, renewal dates, ended rows, per-workspace subscriptions, other
+   * tenants — while `myPermissions` already publishes `entitled` to every
+   * member ungated, and the entitlements ARE what the plan grants. A name for
+   * something whose effects are already disclosed withholds nothing.
+   *
+   * Null means the organization is on NO plan, which is where every one starts.
+   * It does not mean "not allowed to see" — nothing here can refuse.
+   */
+  @Field(() => String, { nullable: true })
+  planKey!: string | null;
+
+  @Field(() => String, { nullable: true })
+  planLabel!: string | null;
+
+  /** Icon NAME, null for a plan that never chose one. See PermPlan.icon. */
+  @Field(() => String, { nullable: true })
+  planIcon!: string | null;
 }
 
 /**

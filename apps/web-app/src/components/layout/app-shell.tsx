@@ -1,4 +1,5 @@
 import { SessionKeeper } from '@kwtech/module-auth/react';
+import { FEATURE } from '@kwtech/module-permissions';
 import { PermissionsProvider } from '@kwtech/module-permissions/react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -19,7 +20,13 @@ import { isCollapsedValue, SIDEBAR_COOKIE } from '@/components/layout/sidebar-st
 import { ConnectivityMonitor } from '@/components/status/connectivity-monitor';
 import { StatusBarHost } from '@/components/status/status-bar-host';
 import { appBrand } from '@/config/env';
-import { getNavContext, getOrganizationIdentity, getSessionSnapshot, type SessionScope } from '@/lib/session-query';
+import {
+  getNavContext,
+  getOrganizationIdentity,
+  getOrganizationPlan,
+  getSessionSnapshot,
+  type SessionScope,
+} from '@/lib/session-query';
 
 /**
  * The signed-in shell: side drawer, main header, page body.
@@ -161,8 +168,22 @@ export async function AppShell({
   const activeOrganizationIsOwn = organizations.some(
     (organization) => organization.organizationId === activeOrganizationId,
   );
-  const visitingOrganization =
-    activeOrganizationId && !activeOrganizationIsOwn ? await getOrganizationIdentity(activeOrganizationId) : null;
+  const [visitingOrganization, visitingPlan] =
+    activeOrganizationId && !activeOrganizationIsOwn
+      ? /*
+         * Both on the SAME rare path, and awaited together.
+         *
+         * The plan comes with `myOrganizations` for everybody who is a MEMBER
+         * of the tenant, so this second read exists only for staff standing in
+         * a customer they do not belong to — the same people `getOrganizationIdentity`
+         * exists for. ⚠ It is a request of its own rather than a field on the
+         * drawer's query because `myOrganizationSubscriptions` is non-null in
+         * the schema and guarded by `subscriptions:read`: a refusal would null
+         * the field, and a null on a non-null field propagates to `data`, which
+         * would have emptied the whole drawer instead of hiding one icon.
+         */
+        await Promise.all([getOrganizationIdentity(activeOrganizationId), getOrganizationPlan(activeOrganizationId)])
+      : [null, null];
 
   /*
    * The selected workspace, validated against the workspaces of the SELECTED
@@ -323,8 +344,36 @@ export async function AppShell({
               name: organization.organizationName,
               roleLabel: organization.roleLabel,
               roleIcon: organization.roleIcon,
+              /*
+               * The plan of EACH organization, not only the selected one — the
+               * menu is where somebody chooses between tenants, and "which of
+               * these is on Enterprise" was a question the list could not
+               * answer. It arrives with `myOrganizations`, so the rows cost no
+               * extra request.
+               */
+              planLabel: organization.planLabel,
+              planKey: organization.planKey,
+              planIcon: organization.planIcon,
             }))}
             activeOrganizationId={activeOrganizationId}
+            /*
+             * What the plan's hover card says beyond its name.
+             *
+             * `entitled` comes from the ORGANIZATION-scoped reading, because
+             * that is the only one that answers "what did THIS tenant buy" —
+             * the app-level context carries no entitlement for a customer at
+             * all. ⚠ Null is carried through rather than defaulted: it means
+             * the deployment has no entitlement model, which the card must not
+             * report as "includes 0".
+             */
+            organizationPlanDetail={
+              activeOrganizationId
+                ? {
+                    entitlements: nav?.organizationEntitled?.length ?? null,
+                    canReadSubscription: organizationGrants?.includes(FEATURE.subscriptionsRead) ?? false,
+                  }
+                : null
+            }
             /*
              * Only ever set for a tenant the viewer is not a member of. The
              * switcher uses it to LABEL the selection and says plainly that
@@ -341,6 +390,16 @@ export async function AppShell({
                     // is what the switcher says instead.
                     roleLabel: null,
                     roleIcon: null,
+                    /*
+                     * The plan still shows, when they may read it. This is the
+                     * one place null genuinely means two things — the tenant is
+                     * on no plan, or `subscriptions:read` refused — and the
+                     * switcher deliberately draws nothing either way rather
+                     * than asserting "No plan" at somebody who was refused.
+                     */
+                    planLabel: visitingPlan?.planLabel ?? null,
+                    planKey: visitingPlan?.planKey ?? null,
+                    planIcon: visitingPlan?.planIcon ?? null,
                   }
                 : null
             }
@@ -352,6 +411,22 @@ export async function AppShell({
              */
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
+            /*
+             * Whether the selector offers "New workspace".
+             *
+             * Read from the ORGANIZATION-scoped grants, which is the reading
+             * the create page itself resolves at — `workspaces:create` is an
+             * organization-level key, because which workspaces a tenant has is
+             * the tenant's decision and not a workspace's about itself. The
+             * app-level reading carries no such key, so filtering on `appGrants`
+             * here would hide the item from everybody who holds it.
+             *
+             * `?? false` for the same reason the nav filter fails closed: an
+             * unresolved context means "holds nothing", never "assume the
+             * usual". Undefined is also the no-organization case, where the
+             * selector is disabled and the menu cannot open anyway.
+             */
+            canCreateWorkspace={organizationGrants?.includes(FEATURE.workspacesCreate) ?? false}
           />
           {/*
           `min-h-0` alongside `flex-1`: a flex item's default `min-height: auto`

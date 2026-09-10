@@ -477,6 +477,28 @@ export const FEATURE = {
    * half, and it is the only key that changes what a tenant is entitled to.
    */
   billingManage: 'billing:manage',
+
+  /*
+   * ── the platform's DEFAULTS ─────────────────────────────────────────────
+   *
+   * What every new account, organization and workspace is created with. Two
+   * keys, split read from write for the reason every pair here is: seeing what
+   * the platform does by default is a support question, changing it is a policy
+   * decision that applies to everybody from then on.
+   *
+   * ⚠ `defaults:manage` IS THE ESCALATION DECISION, and that is why it is
+   * privileged. `assignRole` refuses a role carrying features the granter does
+   * not hold, so nobody can mint somebody more powerful than themselves — but a
+   * DEFAULT is granted by the platform rather than by a person, so there is
+   * nobody to check it against. Whoever holds this decides, once, what every
+   * founder from then on will hold. It is the same order of trust as
+   * `roles:grant_app`, and closer to it than to `plans:update`.
+   */
+
+  /** See the platform's defaults and what each one is set to. */
+  defaultsRead: 'defaults:read',
+  /** Change them. See above — this decides what every new account and organization gets. */
+  defaultsManage: 'defaults:manage',
 } as const;
 
 export type KnownFeatureKey = (typeof FEATURE)[keyof typeof FEATURE];
@@ -1082,6 +1104,43 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
       { surface: 'graphql_operation', identifier: 'Mutation.updateSubscription' },
       { surface: 'graphql_operation', identifier: 'Mutation.endSubscription' },
     ],
+  },
+
+  /*
+   * ── the platform's defaults ──────────────────────────────────────────────
+   *
+   * One screen, two keys. Both APP level and neither sellable: `canPlanEntitle`
+   * refuses an app-level key, which is right — what the platform does by
+   * default is not something a customer buys.
+   */
+  {
+    key: FEATURE.defaultsRead,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.defaults],
+    level: 'app',
+    label: 'Read defaults',
+    description: 'See what every new account, organization and workspace is created with.',
+    bindings: [
+      { surface: 'ui_route', identifier: '/admin/defaults' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionDefaults' },
+    ],
+  },
+  {
+    key: FEATURE.defaultsManage,
+    module: 'permissions',
+    tags: [FEATURE_TAG.admin, FEATURE_TAG.defaults],
+    level: 'app',
+    label: 'Manage defaults',
+    /*
+     * ⚠ The description says what it actually hands over, not what it is
+     * called. Somebody assembling a role from a list of labels should be able
+     * to see from this line that they are granting the right to decide what
+     * every future founder holds — see the key's own note.
+     */
+    description:
+      'Change them. Whoever holds this decides what role every new account and every organization’s founder is granted from then on, without the no-escalation check that guards granting a role by hand.',
+    isPrivileged: true,
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.setPermissionDefault' }],
   },
 ] as const;
 

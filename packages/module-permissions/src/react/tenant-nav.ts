@@ -102,3 +102,27 @@ export function organizationSectionHref(organizationId: string, section: string)
 export function workspaceHref(organizationId: string, workspaceId: string): string {
   return scopePath({ organizationId, workspaceId });
 }
+
+/**
+ * `/organizations/:organizationId/workspaces/new` — create a workspace IN a tenant.
+ *
+ * ⚠ Built by `scopePath` like every other link here, and the reason matters
+ * more on this one than on most: a workspace is not a top-level thing. There is
+ * no `/workspaces/new` to point at, because "new workspace" is meaningless
+ * without saying whose — the same key exists in two tenants and they are
+ * different places, and the organization id is what the server's guard reads
+ * the LEVEL from. So the create screen sits inside the organization's path, and
+ * the switcher that offers it can only offer it while one is selected.
+ *
+ * It is the second literal that collides with the convention, after
+ * `/organizations/new`: `parseScope` knows nothing about which routes exist, so
+ * it reads the trailing `new` as a workspace ID and calls this workspace level.
+ * The ROUTER does not — it scores literal segments above dynamic ones, matches
+ * the literal route, and captures no `:workspaceId` — and the app's catch-all
+ * derives its scope from those captured params rather than from a second pass
+ * over the string. So the page renders at ORGANIZATION level, which is where
+ * `workspaces:create` lives. Both readings are pinned by `tenant-routes.test`.
+ */
+export function workspaceNewHref(organizationId: string): string {
+  return scopePath({ organizationId }, 'workspaces/new');
+}

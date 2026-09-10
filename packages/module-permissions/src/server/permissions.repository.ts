@@ -88,6 +88,20 @@ export interface WorkspaceMemberRow {
  * `key`, `label` and `archivedAt` here costs no extra query — they were always
  * in the payload.
  */
+/**
+ * One platform default, as stored.
+ *
+ * `value` is weakly typed on purpose — it holds a role ID for three of the four
+ * keys and a plan KEY for the fourth, and which it is comes from the catalogue
+ * rather than from the row. See the Prisma model.
+ */
+export interface DefaultRow {
+  key: string;
+  value: string | null;
+  updatedAt: Date;
+  updatedByUserId: string | null;
+}
+
 export interface SubscriptionRow {
   id: string;
   organizationId: string;
@@ -470,7 +484,18 @@ export interface PermissionsPrismaClient {
      */
     findMany(args: {
       where: {
-        organizationId?: string;
+        /*
+         * One organization, or a SET of them.
+         *
+         * The set is what the organization switcher needs: it draws the plan
+         * beside every tenant the viewer belongs to, and asking per row would
+         * be one query per organization on a list that is already in hand. A
+         * filter object rather than a second signature — `findMany` cannot be
+         * overloaded here (see `SubscriptionRow`), and Prisma's own `where`
+         * accepts `string | StringFilter`, so widening this one property stays
+         * inside the single shape a generated client can satisfy.
+         */
+        organizationId?: string | { in: string[] };
         // The literal, not `string`. PermSubscriptionStatus is an enum in the
         // schema (H4), so a `string` here is wider than the column and stops a
         // generated Prisma client satisfying this interface at all.
@@ -493,6 +518,19 @@ export interface PermissionsPrismaClient {
       include: { plan: { include: { features: ActiveFeaturesInclude; limits: true } } };
       orderBy?: { id: 'asc' };
     }): Promise<SubscriptionRow[]>;
+  };
+  /**
+   * ── THE PLATFORM'S DEFAULTS ───────────────────────────────────────────────
+   *
+   * Four rows at most, read whenever a default is consulted — which is on
+   * account creation, organization creation and workspace creation, not on
+   * every request. `findMany` with no `where`: the table is a handful of rows
+   * by construction, so filtering it costs more to express than to skip, and
+   * the READER — `listDefaults` — has to see every row anyway in order to drop
+   * the ones the catalogue no longer declares.
+   */
+  permDefault: {
+    findMany(args: { orderBy: { key: 'asc' } }): Promise<DefaultRow[]>;
   };
   permOrganization: {
     /**
@@ -666,6 +704,29 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
     }): Promise<{ count: number }>;
   };
 
+  /**
+   * Setting a default, as an UPSERT.
+   *
+   * The row may not exist — every default starts unset and the migration seeds
+   * nothing — so a plain `update` would fail the first time each one is
+   * touched, and a create-then-update dance would be a race between two
+   * administrators on the same screen. One statement, and the primary key does
+   * the deciding.
+   *
+   * There is no delete. Clearing a default writes `value: null`, which keeps
+   * the row and therefore keeps `updatedByUserId` — "nobody ever set this" and
+   * "somebody deliberately turned it off" are different facts, and a deleted
+   * row cannot tell them apart.
+   */
+  permDefault: PermissionsPrismaClient['permDefault'] & {
+    upsert(args: {
+      where: { key: string };
+      create: { key: string; value: string | null; updatedByUserId: string | null };
+      update: { value: string | null; updatedByUserId: string | null };
+      select: { key: true };
+    }): Promise<{ key: string }>;
+  };
+
   permMembership: PermissionsPrismaClient['permMembership'] & {
     create(args: {
       data: { userId: string; organizationId: string; status: 'active' };
@@ -713,11 +774,25 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
   permRole: PermissionsPrismaClient['permRole'] & {
     findFirst(args: {
       /*
-       * By id everywhere except the baseline lookup, which has only a KEY —
-       * the app names its seeded default by key, because an id is generated and
-       * differs between databases.
+       * Three shapes, and the third is the one that needs explaining.
+       *
+       * By ID everywhere ordinary. By KEY for the module option's baseline
+       * lookup, because the app names its seeded default by key — an id is
+       * generated and differs between databases.
+       *
+       * By id AND level for a PLATFORM DEFAULT: the id came off a stored
+       * setting somebody chose weeks ago, so the read has to prove it still
+       * points at a live, GLOBAL role at the level the default's kind requires.
+       * A tenant-defined role reaching the founder slot would try to grant every
+       * new organization a role belonging to another company; an
+       * organization-level role in the app slot would be granted and then
+       * filtered out by the resolution order, which is worse than refusing
+       * because nothing would explain it.
        */
-      where: { id: string } | { key: string; level: 'app'; organizationId: null; disabledAt: null };
+      where:
+        | { id: string }
+        | { key: string; level: 'app'; organizationId: null; disabledAt: null }
+        | { id: string; level: 'app' | 'organization' | 'workspace'; organizationId: null; disabledAt: null };
       select: {
         id: true;
         key: true;

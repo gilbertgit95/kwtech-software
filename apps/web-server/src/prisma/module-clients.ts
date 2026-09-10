@@ -75,6 +75,9 @@ export const permissionsWritePrismaProvider: Provider = {
       permOrganization: prisma.permOrganization,
       permUserRole: prisma.permUserRole,
       permMembership: prisma.permMembership,
+      // The platform's defaults. Written from one admin screen and read by the
+      // three creation paths that consult them.
+      permDefault: prisma.permDefault,
       permWorkspace: prisma.permWorkspace,
       permWorkspaceMember: prisma.permWorkspaceMember,
       /*

@@ -38,6 +38,28 @@ export interface RoleView {
   features: string[];
 }
 
+/**
+ * One platform default, as the admin screen reads it.
+ *
+ * Three kinds of fact, kept apart — the catalogue's, the setting's, and what
+ * that setting resolves to today. See `PermissionDefaultType`, which explains
+ * why they are not flattened into one answer.
+ */
+export interface DefaultView {
+  key: string;
+  kind: string;
+  moment: string;
+  label: string;
+  description: string;
+  whenUnset: string;
+  value: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+  targetLabel: string | null;
+  targetIcon: string | null;
+  targetUnavailable: boolean;
+}
+
 export interface RoleInput {
   key: string;
   label: string;
@@ -313,6 +335,17 @@ export interface PermissionsClient {
     level: string;
     mode: CloneMode;
   }): Promise<ClonePreview>;
+
+  /**
+   * Every default this build declares, set or not — the catalogue drives the
+   * list, so a fresh deployment shows all of them unset rather than nothing.
+   */
+  listDefaults(): Promise<DefaultView[]>;
+  /**
+   * Change one. `value: null` clears it, which is a real configuration rather
+   * than a delete — see the mutation.
+   */
+  setDefault(key: string, value: string | null): Promise<WriteResult>;
 
   /** Every plan the platform defines, archived ones included. */
   listPlans(): Promise<PlanView[]>;
@@ -603,6 +636,29 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
         { planKey, input },
       );
       return data.updatePlan;
+    },
+
+    async listDefaults() {
+      const data = await graphql<{ permissionDefaults: DefaultView[] }>(
+        `query PermissionDefaults {
+           permissionDefaults {
+             key kind moment label description whenUnset
+             value updatedAt updatedByUserId
+             targetLabel targetIcon targetUnavailable
+           }
+         }`,
+      );
+      return data.permissionDefaults;
+    },
+
+    async setDefault(key, value) {
+      const data = await graphql<{ setPermissionDefault: WriteResult }>(
+        `mutation SetPermissionDefault($key: String!, $value: String) {
+           setPermissionDefault(key: $key, value: $value) { ${WRITE_RESULT} }
+         }`,
+        { key, value },
+      );
+      return data.setPermissionDefault;
     },
 
     async setPlanArchived(planKey, archived) {

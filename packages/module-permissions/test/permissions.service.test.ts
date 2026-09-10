@@ -1,3 +1,4 @@
+import { APP_DEFAULT, APP_DEFAULT_REGISTRY } from '../src/defaults.js';
 import { LIMIT } from '../src/domain/limits.js';
 import { FEATURE } from '../src/feature-keys.js';
 import type {
@@ -39,6 +40,14 @@ interface Db {
   }[];
   workspaceMember?: WorkspaceMemberRow | null;
   subscriptions?: SubscriptionRow[];
+  /** Rows in `perm_default`, including any the catalogue does not declare. */
+  defaults?: { key: string; value: string | null }[];
+  /** Rows for `listOrganizationsForUsers` — where a set of people belong. */
+  memberships?: {
+    userId: string;
+    organization: { id: string; key: string; name: string; description: string | null };
+    roles: { role: { key: string; label: string; icon: string | null } }[];
+  }[];
   plans?: PlanDefinitionRow[];
   organizations?: OrganizationRow[];
   organizationDetail?: OrganizationDetailRow | null;
@@ -72,9 +81,15 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
       create: async () => ({}),
     },
     permMembership: {
-      // The user administration read. No test here exercises it — the interface
-      // is structural, so a stub is what keeps the fake honest about its shape.
-      findMany: async () => [],
+      /*
+       * The clause is APPLIED, not ignored. `listOrganizationsForUsers` caps
+       * and de-duplicates the ids before asking, and a fake that returned
+       * everything regardless would pass whether or not it did.
+       */
+      findMany: async (args) => {
+        calls.membership.push(args);
+        return (db.memberships ?? []).filter((row) => args.where.userId.in.includes(row.userId));
+      },
       findFirst: async (args) => {
         calls.membership.push(args);
         return db.membership ?? null;
@@ -150,12 +165,36 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
        */
       findMany: async (args) => {
         calls.subscription.push(args);
-        return db.subscriptions ?? [];
+        const rows = db.subscriptions ?? [];
+        /*
+         * The SET form — `organizationId: { in: [...] }` — is the plan lookup
+         * behind the organization switcher, and its clause IS the behaviour
+         * under test: organization-wide, active, live plan, not ended. So the
+         * fake applies it, where for the single-organization entitlement query
+         * it goes on returning what it was given and lets those tests state
+         * their own rows.
+         */
+        const filter = args.where.organizationId;
+        if (typeof filter !== 'object') return rows;
+        return rows
+          .filter((row) => filter.in.includes(row.organizationId))
+          .filter((row) => (args.where.status ? row.status === args.where.status : true))
+          .filter((row) => (args.where.plan ? row.plan.archivedAt === null : true))
+          .filter((row) => (args.where.endedAt === null ? row.endedAt === null : true))
+          .filter((row) => (args.where.OR ? row.workspaceId === null : true));
       },
     },
     // The admin read paths. No permission decision consults either, but the
     // interface is structural, so a stub is what keeps the fake honest.
     permPlan: { findMany: async () => db.plans ?? [] },
+    permDefault: {
+      findMany: async () =>
+        (db.defaults ?? []).map((row) => ({
+          ...row,
+          updatedAt: new Date('2026-01-01T00:00:00Z'),
+          updatedByUserId: 'u9',
+        })),
+    },
     permOrganization: {
       findMany: async () => db.organizations ?? [],
       /*
@@ -919,5 +958,237 @@ describe('listAccessibleWorkspaces — the role held in each', () => {
     });
     const found = await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1']);
     expect(found[0]?.roleLabel).toBeNull();
+  });
+});
+
+/**
+ * WHERE SOMEBODY BELONGS, AND WHAT EACH OF THOSE PLACES IS ON.
+ *
+ * The organization switcher draws both on every row: the ROLE says what the
+ * reader may do there, the PLAN says what the organization may do at all. The
+ * plan half arrives with the list rather than being asked for per row, because
+ * a request per organization would put the drawer's cost on the number of
+ * companies somebody has joined.
+ *
+ * ⚠ It rides on an UNGATED query, which is a deliberate reading of the
+ * boundary: `subscriptions:read` protects the commercial record — status,
+ * renewal dates, ended rows, per-workspace subscriptions, other tenants — while
+ * `myPermissions` already publishes `entitled` to every member ungated, and the
+ * entitlements ARE what the plan grants. `surface-coverage` asserts the query
+ * stays unguarded; these assert it only ever says the organization-wide, live
+ * plan of a tenant the caller is actually in.
+ */
+describe('listOrganizationsForUsers', () => {
+  const membershipRow = (organizationId: string, name: string) => ({
+    userId: 'u1',
+    organization: { id: organizationId, key: organizationId, name, description: null },
+    roles: [{ role: { key: 'admin', label: 'Administrator', icon: 'crown' } }],
+  });
+
+  it('names the organization-wide plan beside each organization', async () => {
+    const { svc } = service({
+      memberships: [membershipRow('org1', 'Acme')],
+      subscriptions: [plan([], [], { organizationId: 'org1' })],
+    });
+
+    const found = await svc.listOrganizationsForUsers(['u1']);
+    expect(found).toMatchObject([{ organizationId: 'org1', planKey: 'pro', planLabel: 'Pro', planIcon: null }]);
+  });
+
+  it('carries the plan ICON, which is what the switcher actually draws', async () => {
+    const { svc } = service({
+      memberships: [membershipRow('org1', 'Acme')],
+      subscriptions: [plan([], [], { organizationId: 'org1', plan: { icon: 'crown' } })],
+    });
+
+    const found = await svc.listOrganizationsForUsers(['u1']);
+    expect(found[0]?.planIcon).toBe('crown');
+  });
+
+  /**
+   * NULL IS "ON NO PLAN", and it is where every organization starts. The row is
+   * still returned — somewhere you belong does not stop being somewhere you
+   * belong because nobody has bought anything for it yet.
+   */
+  it('leaves the plan null for an organization on none, and still lists it', async () => {
+    const { svc } = service({ memberships: [membershipRow('org1', 'Acme')], subscriptions: [] });
+
+    const found = await svc.listOrganizationsForUsers(['u1']);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ planKey: null, planLabel: null, planIcon: null });
+  });
+
+  /**
+   * ⚠ A WORKSPACE'S OWN SUBSCRIPTION IS NOT THE TENANT'S PLAN. It entitles that
+   * workspace alone, so reading one as the organization's would put an icon in
+   * the switcher claiming a plan the organization is not on — and the four
+   * clauses that prevent it are the same four the entitlement path passes.
+   */
+  it('ignores a workspace-scoped subscription', async () => {
+    const { svc } = service({
+      memberships: [membershipRow('org1', 'Acme')],
+      subscriptions: [plan([], [], { organizationId: 'org1', workspaceId: 'ws1' })],
+    });
+
+    const found = await svc.listOrganizationsForUsers(['u1']);
+    expect(found[0]?.planLabel).toBeNull();
+  });
+
+  it('ignores an archived plan and an ended subscription', async () => {
+    const archived = service({
+      memberships: [membershipRow('org1', 'Acme')],
+      subscriptions: [plan([], [], { organizationId: 'org1', plan: { archivedAt: new Date() } })],
+    });
+    const ended = service({
+      memberships: [membershipRow('org1', 'Acme')],
+      subscriptions: [plan([], [], { organizationId: 'org1', endedAt: new Date() })],
+    });
+
+    expect((await archived.svc.listOrganizationsForUsers(['u1']))[0]?.planLabel).toBeNull();
+    expect((await ended.svc.listOrganizationsForUsers(['u1']))[0]?.planLabel).toBeNull();
+  });
+
+  it('ignores a subscription that is not active', async () => {
+    const { svc } = service({
+      memberships: [membershipRow('org1', 'Acme')],
+      subscriptions: [plan([], [], { organizationId: 'org1', status: 'canceled' })],
+    });
+
+    const found = await svc.listOrganizationsForUsers(['u1']);
+    expect(found[0]?.planLabel).toBeNull();
+  });
+
+  /**
+   * ONE query for the whole list. The switcher renders on every navigation, so
+   * a read per organization would scale the drawer's cost with the number of
+   * companies somebody has joined — the thing the set clause exists to avoid.
+   */
+  it('asks for every organization at once, not one query per row', async () => {
+    const { svc, calls } = service({
+      memberships: [membershipRow('org1', 'Acme'), membershipRow('org2', 'Globex')],
+      subscriptions: [plan([], [], { organizationId: 'org2', plan: { label: 'Enterprise' } })],
+    });
+
+    const found = await svc.listOrganizationsForUsers(['u1']);
+    expect(calls.subscription).toHaveLength(1);
+    expect(calls.subscription[0]).toMatchObject({ where: { organizationId: { in: ['org1', 'org2'] } } });
+    // Name order, so the list does not reshuffle between renders.
+    expect(found.map((row) => row.organizationName)).toEqual(['Acme', 'Globex']);
+    expect(found.map((row) => row.planLabel)).toEqual([null, 'Enterprise']);
+  });
+
+  /** Nobody in anything: no organizations, and no subscription query at all. */
+  it('asks nothing about plans when the person belongs nowhere', async () => {
+    const { svc, calls } = service({ memberships: [] });
+
+    expect(await svc.listOrganizationsForUsers(['u1'])).toEqual([]);
+    expect(calls.subscription).toHaveLength(0);
+  });
+});
+
+/**
+ * THE PLATFORM'S DEFAULTS ARE DRIVEN BY THE CATALOGUE, NOT BY THE TABLE.
+ *
+ * `APP_DEFAULT_REGISTRY` decides what exists; `perm_default` decides only what
+ * each one is set to. Two properties follow, and both matter more than they
+ * look:
+ *
+ *   - a default nobody has ever set still appears, unset. A screen listing rows
+ *     would be empty on a fresh deployment, which is exactly when somebody most
+ *     needs to see what they could configure;
+ *   - a row the catalogue does not declare is DROPPED, so a typo inserted by
+ *     hand cannot become policy and a key retired in a later build stops
+ *     applying the moment the code stops declaring it.
+ */
+describe('listDefaults', () => {
+  const globalRole = (over: Partial<{ id: string; key: string; label: string; level: string }> = {}) => ({
+    id: 'role-1',
+    key: 'org-owner',
+    label: 'Organization owner',
+    level: 'organization',
+    organizationId: null,
+    icon: 'crown',
+    isSystem: true,
+    disabledAt: null,
+    features: [],
+    ...over,
+  });
+
+  it('lists every default the catalogue declares, even with an empty table', async () => {
+    const { svc } = service({ defaults: [] });
+    const found = await svc.listDefaults();
+
+    expect(found.map((row) => row.key).sort()).toEqual(APP_DEFAULT_REGISTRY.map((spec) => spec.key).sort());
+    expect(found.every((row) => row.value === null)).toBe(true);
+    // The sentence that explains what unset MEANS travels with the row — a
+    // screen showing "Not set" and nothing else would describe four very
+    // different situations with one word.
+    expect(found.every((row) => row.whenUnset.length > 0)).toBe(true);
+  });
+
+  it('resolves a set default to the thing it points at', async () => {
+    const { svc } = service({
+      defaults: [{ key: APP_DEFAULT.organizationFounderRole, value: 'role-1' }],
+      roles: [globalRole()],
+    });
+
+    const row = (await svc.listDefaults()).find((entry) => entry.key === APP_DEFAULT.organizationFounderRole);
+    expect(row).toMatchObject({ value: 'role-1', targetLabel: 'Organization owner', targetUnavailable: false });
+  });
+
+  /**
+   * ⚠ A row whose key this build does not declare is dropped rather than shown
+   * as an unknown default. It is not a fifth thing the platform does — it is a
+   * row nothing reads.
+   */
+  it('ignores a row the catalogue does not declare', async () => {
+    const { svc } = service({ defaults: [{ key: 'organization.made_up', value: 'role-1' }], roles: [globalRole()] });
+
+    const found = await svc.listDefaults();
+    expect(found.some((row) => row.key === 'organization.made_up')).toBe(false);
+  });
+
+  /**
+   * A ROLE CAN BE DELETED LONG AFTER SOMEBODY CHOSE IT HERE. The default is a
+   * pointer, not an owner, so the value survives and stops resolving — which is
+   * what lets the screen say "this points at something that is gone" instead of
+   * reporting no default at all and sending somebody to set one that is set.
+   */
+  it('keeps the raw value when the target no longer exists', async () => {
+    const { svc } = service({ defaults: [{ key: APP_DEFAULT.organizationFounderRole, value: 'gone' }], roles: [] });
+
+    const row = (await svc.listDefaults()).find((entry) => entry.key === APP_DEFAULT.organizationFounderRole);
+    expect(row).toMatchObject({ value: 'gone', targetLabel: null });
+  });
+
+  /**
+   * ⚠ THE LEVEL IS CHECKED ON THE WAY OUT TOO. An organization-level role in
+   * the app-level slot would be granted and then filtered out by the resolution
+   * order, producing an account that holds nothing for a reason no screen could
+   * explain — so it reads as unresolved rather than as a working default.
+   */
+  it('refuses to resolve a role at the wrong level', async () => {
+    const { svc } = service({
+      defaults: [{ key: APP_DEFAULT.accountRole, value: 'role-1' }],
+      roles: [globalRole({ level: 'organization' })],
+    });
+
+    const row = (await svc.listDefaults()).find((entry) => entry.key === APP_DEFAULT.accountRole);
+    expect(row?.targetLabel).toBeNull();
+  });
+
+  /**
+   * A DISABLED role is not the same as a deleted one: it still has a name, and
+   * somebody can go and re-enable it. Both mean the default does nothing right
+   * now, and only one of them names something to fix.
+   */
+  it('reports a disabled target as unavailable rather than as missing', async () => {
+    const { svc } = service({
+      defaults: [{ key: APP_DEFAULT.organizationFounderRole, value: 'role-1' }],
+      roles: [globalRole({ disabledAt: new Date() } as never)],
+    });
+
+    const row = (await svc.listDefaults()).find((entry) => entry.key === APP_DEFAULT.organizationFounderRole);
+    expect(row).toMatchObject({ targetLabel: 'Organization owner', targetUnavailable: true });
   });
 });

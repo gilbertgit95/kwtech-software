@@ -661,6 +661,174 @@ Decisions 1, 2, 3 and 5 gate the next step.
   one level down. Platform staff join nothing: they hold no membership to hang
   it off, and enter by `platform:support_access`.
 
+  **A ROLE ICON DRAWS THE PERSON, NOT THE PLACE** — and two seeded roles were
+  breaking it, which showed up the moment the switchers started drawing role
+  badges beside other things.
+
+  `normal-user` was a `sprout`, which is also the FREE PLAN's icon, and the
+  organization switcher puts a viewer's role and their organization's plan on
+  one line separated by a middot: a normal user on the free plan rendered the
+  same glyph twice. Worse than looking like a rendering fault, it invited the
+  reading that a role and a plan are the same kind of thing — the distinction
+  §9's twins rule spends real effort keeping. The growth metaphor stays with the
+  free plan, where a tier legitimately has a bottom; the role became `id-card`,
+  because a role holding nothing is an identity with no powers attached, not a
+  tier.
+
+  `workspace-admin` was the `workspace` glyph, which names the drawer's
+  Workspace NAV GROUP — and the workspace selector draws this role's badge a few
+  pixels above it, so one drawing meant "the place you are in" and "what you are
+  in it" at once. It became `user-cog`, pairing with `user` for the workspace
+  member: the same person, one of them able to change things.
+
+  The rule was being followed everywhere else without having been written down —
+  `user`, `users`, a crown — and these were the two exceptions. Icons are
+  overwritten on every `db:sync` (`registry-sync` treats the definition as the
+  whole truth about the role), so changing the seed is the whole change.
+
+  ## `/admin/defaults` — what the platform does when nobody said what to do
+
+  **One screen for a question that was being answered in four places.** The
+  permission model is ADDITIVE, so there is no default-on, and four creation
+  paths each ended with somebody holding nothing: an organization's founder was
+  a member of it with no role, a workspace's creator could enter and do nothing,
+  a new organization was on no plan and therefore entitled to nothing, and a new
+  account held nothing at all. Each had been patched where it hurt — a module
+  option here, a sentence on a screen there. This is the same question asked
+  once.
+
+  **A CATALOGUE in code, values in a table** — the same split `PermFeature`
+  makes with the feature registry. What a default MEANS (what it applies to,
+  what kind of thing it points at, what happens while it is unset) belongs in a
+  review diff; what it is SET to is an operational decision somebody makes at
+  3am. Adding a default is therefore a code change, never an inserted row.
+  ⚠ A row whose key the catalogue does not declare is IGNORED, so a typo cannot
+  become policy and a key retired in a later build stops applying the moment the
+  code stops declaring it.
+
+  ⚠ **`defaults:manage` IS THE ESCALATION DECISION, and no check can substitute
+  for it.** `assignRole` refuses a role carrying features the granter does not
+  hold, so nobody can mint somebody more powerful than themselves. Nothing
+  equivalent can run for a default: the founder's role is granted by the
+  PLATFORM, with no actor to compare against. Whoever holds this key decides,
+  once, what every founder from then on will hold. It is `isPrivileged`, the
+  screen says so above the first control, and the feature's own description says
+  what it hands over rather than what it is called.
+
+  **A default must never become a gate.** Every consumption is silent on
+  failure — unset, a role since deleted or disabled, a plan since archived — and
+  the account, organization or workspace is still created. Refusing to create a
+  company because a default was renamed would be far worse than the state that
+  existed before the feature, which is exactly what null falls back to. An
+  archived plan is SKIPPED rather than refused on the way in, because an
+  archived plan entitles nothing and a subscription to one would be a row that
+  looks live and grants nothing.
+
+  **It never overwrites a choice.** The organization member default applies only
+  to somebody actually JOINING, never to an existing member — an invitation
+  naming no role is not a request to change anything, and the inviter is looking
+  at an address rather than at an account. That is the same lesson the app-role
+  half of `acceptInvitation` had already learned the hard way.
+
+  **Two constraints on what may be chosen**, both enforced on the write and
+  mirrored in the picker so the screen cannot offer what the server refuses:
+  `organizationId: null` (GLOBAL role definitions only — a tenant's own role as
+  the founder default would try to grant every new organization a role belonging
+  to another company), and the LEVEL implied by the slot (a role's level is
+  immutable, and the wrong one would be granted and then filtered out by the
+  resolution order, producing an account that holds nothing for a reason no
+  screen could explain).
+
+  **`defaultAppRoleKey` became the FALLBACK, not the answer.** The module option
+  is consulted only when the stored default does not resolve, and it is kept
+  rather than removed so a deployment that never opens the screen behaves
+  exactly as it did — every default starts unset and the migration seeds
+  nothing, so on the day this shipped nothing changed anywhere. Clearing on the
+  screen hands the question back to the option rather than turning the baseline
+  off: a null row and no row are the same answer, "nobody has decided".
+
+  **Nine defaults across six moments**, grouped by the moment because somebody
+  arrives asking "what happens when a workspace is created", not "which of these
+  point at a role": the app role for a new account; the founder's role, the
+  plan, that subscription's status and its first period for a new organization;
+  the role for somebody joining an organization; how long an invitation stays
+  valid; the creator's role and the member's role for a workspace. ⚠ The period length is INFORMATIONAL — an `active` row entitles
+  regardless of `currentPeriodEnd` (§12.40) — so it records an intention for a
+  billing provider and expires nothing on its own, which the screen says where
+  somebody would otherwise read "first period length" as a trial that ends by
+  itself. It is seeded all the same; see the seeder for why a recorded intention
+  beats a null.
+
+  The invitation lifetime arrived after the first eight and is what the
+  catalogue shape was for: it needed no schema change, no mutation and no screen
+  work — one registry entry and one call site.
+
+  **A `permissions:defaults` SEEDER decides the ones nobody has**, so a fresh
+  environment is not born with all of them blank — a working state, and a bad
+  first impression: a founder who cannot administer the company they just
+  created, on an organization entitled to nothing. It is 'sync' rather than
+  'seed' because a deployment that never runs the fixtures still needs a sane
+  answer to "what does a new account hold".
+
+  ⚠ **It writes only a row that is ABSENT, never one whose value is null**, and
+  that distinction is the whole reason `setDefault` clears by writing null
+  rather than deleting. No row means nobody has decided, and the seeder decides;
+  a null value means somebody deliberately turned it off from the screen, with
+  `updatedByUserId` recording who — refilling that would overrule an operator
+  with a hardcoded opinion on the next deploy. It is also what makes the seeder
+  idempotent: a second run finds every row present and writes nothing.
+
+  Its choices are the least-privileged ones that still make the process WORK,
+  because a seeded default is an escalation decision nobody made deliberately.
+  The founder is the exception and barely one — `organization-owner`, because
+  they created the company, they are its only member, and the alternative is an
+  organization nobody can administer. The plan is DERIVED (smallest public live
+  one) rather than named, since the catalogue is a product decision the seeder
+  does not own, and a role the presets do not include is skipped with a log line
+  rather than failing a deploy.
+
+  ⚠ The one seeded value whose meaning depends on something that does not exist
+  is the FIRST PERIOD, at thirty days. Nothing compares a subscription to the
+  clock (§12.40), so it writes a renewal date the guard ignores. It is seeded
+  anyway, because the alternative is worse in the other direction: every
+  subscription the platform creates would carry no period at all, and the day a
+  billing provider is wired in it inherits a backlog of rows with nothing to
+  bill from — no cycle start, no cycle length. A recorded intention is something
+  to reconcile; a null is a gap somebody has to reconstruct.
+
+  ⚠ **Invitation expiry is DERIVED**, not written into a status: `isAcceptable`
+  compares the row's date to the clock on every read. So the lifetime written at
+  send time is what that comparison uses for the life of the row, and shortening
+  the default retires invitations already sent as well as future ones. That is
+  the honest behaviour for a security window — the alternative would mean a
+  shortened window not applying to the invitations somebody shortened it because
+  of — and the screen says so. A value that cannot be read falls back to the
+  built-in seven days rather than to zero, which is the one failure a fail-soft
+  default must not have: every invitation would arrive already expired.
+
+  **There is deliberately NO default plan for a workspace**, and the reason is
+  that one would change nothing. A WORKSPACE INHERITS ITS ORGANIZATION'S PLAN
+  already: the entitlement query reads
+  `OR: [{ workspaceId: null }, { workspaceId }]`, so the organization-wide row
+  applies to workspace-level requests without anything being set. A default
+  subscribing every new workspace to a plan of its own would write a redundant
+  row that entitles what the workspace was entitled to anyway — and a second
+  place for entitlement to come from is a second place for it to disagree.
+
+  Workspace-scoped subscriptions remain in the model, because selling one
+  workspace something the rest of the organization does not have is a real thing
+  to want. It is a deliberate act on the Subscriptions screen, not a default.
+
+  The platform invite form needed no change. It already leaves the app role
+  blank, and blank now means "use the configured default" — the form was right
+  before the default existed and is right after it.
+
+  **The page takes `defaults:read` and gates only its INPUTS on manage.**
+  Working out why a customer's founder holds nothing is a support question, and
+  a route keyed on the write would hide the answer from everybody who may not
+  change it. Without the write key the value still shows as text — a disabled
+  select makes a reader wonder what they are missing.
+
   **`leaveOrganization` is unguarded by any feature.** Walking out is the other
   end of the membership that put you there; a key for it would be one an
   administrator could withhold to keep somebody in. It takes no userId, like
@@ -814,6 +982,22 @@ Decisions 1, 2, 3 and 5 gate the next step.
   is reached from the organization's overview instead. A drawer entry beside the
   selector would be a second route to the same place, and the two would drift.
 
+  **A workspace with no role says "No role", not its key.** The key was the
+  fallback and it answered a question nobody asked: a workspace named "Design"
+  keyed `design` produced a row reading "Design" over "design", which looks like
+  a rendering fault — and it left the ROLE invisible in the state where it is
+  most worth saying. That state is the COMMON one: `createWorkspace` puts its
+  creator in the workspace and grants no role, and `addWorkspaceMember` does the
+  same, so somebody in three workspaces ordinarily holds a role in none of them
+  until an administrator assigns one. Membership is what entry rests on (§12.33);
+  a role is what you may DO there, and the two are separate on purpose.
+
+  It is the wording `/organizations` already uses one level up for the same
+  state. ⚠ Deliberately not "Member": platform support reaches every workspace
+  while belonging to none, and their rows come back roleless too — "No role" is
+  true for both, "Member" would be a claim about standing the selector cannot
+  check.
+
   **Both selectors name the viewer's ROLE, icon first.** The organization one
   showed the label as plain text and the workspace one showed only a name, so
   "what am I in this place" was answered at one level and not the other. They
@@ -852,6 +1036,41 @@ Decisions 1, 2, 3 and 5 gate the next step.
   organization level. Archived workspaces are excluded: they stop resolving, so
   offering one promises somewhere nobody can go.
 
+  **The workspace selector offers "New workspace"**, mirroring the organization
+  switcher's "New organization" and going to
+  `/organizations/:organizationId/workspaces/new`. There is no app-level
+  `/workspaces/new` and cannot be: a workspace is created INSIDE an
+  organization, so the create screen lives on the tenant path where the guard
+  reads the level from. It matters most in the empty state — an organization
+  whose workspaces the viewer is in none of shows a menu with nothing in it, and
+  a picker offering no way forward is where somebody stops.
+
+  ⚠ It is GATED on `workspaces:create` where the organization one is ungated,
+  and the asymmetry is the model's: creating an organization is bounded by the
+  `user:organizations` LIMIT because there is no organization yet to grant the
+  right, while creating a workspace is a right a tenant grants. The shell reads
+  it from the ORGANIZATION-scoped half of the viewer's grants — the app-level
+  reading carries no organization-level key, so filtering on that would hide the
+  item from everybody who holds it.
+
+  The screen does NOT replace the inline row on the workspaces grid. That one is
+  for somebody already administering the list, who would be slowed by a page
+  turn for two fields; this is for somebody in the selector, who is not on that
+  screen and may not know it exists. They share the one write and no markup, and
+  the description field — which does not fit on an inline row — is what the page
+  adds.
+
+  ⚠ `/organizations/:organizationId/workspaces/new` is the SECOND literal that
+  collides with the scope convention, and it lands one level deeper than
+  `/organizations/new`: `parseScope` reads the trailing `new` as a workspace id
+  and calls it workspace level. That reading would be actively wrong rather than
+  merely closed — the page is gated on `workspaces:create`, an
+  ORGANIZATION-level key no workspace-level context can carry, so it would
+  refuse everybody with a message about their roles. The router saves it, the
+  catch-all reads the captured params, and the test that pins the two readings
+  now exempts create screens explicitly and asserts which routes the exemption
+  covers.
+
   **Changing organization unselects the workspace by ARITHMETIC.** Nothing
   clears the cookie. It is validated against the SELECTED organization's
   accessible workspaces, so one remembered from another tenant is simply not in
@@ -875,6 +1094,103 @@ Decisions 1, 2, 3 and 5 gate the next step.
   "new". It fails closed, but the consequence was a create page whose drawer had
   quietly lost every keyed entry. A test pins the two readings together for
   every dynamic tenant route.
+
+  **The mark draws the PLAN, not the initials.** The square at the head of the
+  drawer used to hold two letters derived from the name printed immediately
+  beside it — saying a second time what the label already said. It now holds the
+  plan's icon and names the plan on hover, because that is a fact about the
+  organization which appears nowhere else in the chrome and is the one that
+  changes what the product will let you do.
+
+  ⚠ The trade is real: COLLAPSED, that square is all that is left of the row, so
+  two organizations on the same plan look identical there. The button keeps
+  naming the tenant in that state and the card names the plan, so both facts are
+  one hover apart. Falling back to the initials while collapsed is a one-line
+  change if the at-a-glance answer turns out to matter more.
+
+  **The hover is a CARD, not a `title`.** A native tooltip could say one line,
+  could not draw the plan's icon, and — collapsed, where the square IS the
+  button — won over the button's own tooltip and took the tenant's name off the
+  screen. The card carries the plan's icon and label, its KEY (the handle that
+  never changes, so "we are on the wrong plan" is answerable), how much the plan
+  includes, and the organization it applies to.
+
+  Hand-built rather than a component: `web-ui` ships no tooltip, and a Radix one
+  would need a portal nested inside a dropdown TRIGGER, where the two fight over
+  the same pointer events and the menu starts opening on hover. It is an
+  absolutely positioned span revealed by `group-hover` on the mark and by
+  `group-focus-visible` on the trigger, so it is reachable without a pointer,
+  and `pointer-events-none` so it can never intercept the click that opens the
+  menu. ⚠ Everything in it is PHRASING content — it renders inside a `<button>`,
+  where a `<div>` or an `<a>` is invalid and gets hoisted out by the browser,
+  which then looks like a CSS bug. That is also why the subscription line is a
+  sentence rather than a link.
+
+  **"How much it includes" has THREE states**, and the third is not a smaller
+  second: a number, `0` for an organization on no plan — entitled to nothing,
+  where every organization starts — and `null` for a deployment with no
+  entitlement model at all, which entitles everything. Reporting that last one
+  as "includes 0" would be flatly wrong, so the null is carried from
+  `myPermissions` all the way to the card rather than defaulted on the way. One
+  helper produces the sentence for both the card and the trigger's `sr-only`
+  text, so the spoken and drawn versions cannot drift.
+
+  The count comes from `entitled` on the ORGANIZATION-scoped reading, added to
+  the drawer's existing query — the app-level context carries no entitlement for
+  a customer at all. It needs no key for the same reason the plan's name does
+  not: `myPermissions` answers only about the caller, and this is the fact the
+  guard already acts on for every request they make. The line offering the
+  Subscription screen appears only with `subscriptions:read`, because pointing
+  everybody at a door half of them are refused is worse than not mentioning it.
+
+  Null draws the initials and claims NOTHING. For a MEMBER it means one thing —
+  "on no plan", where every organization starts — because the query it rides on
+  cannot refuse. For staff VISITING a customer it also covers "may not read
+  subscriptions", and the switcher does not tell the two apart: saying "No plan"
+  at somebody who was merely refused would be a confident wrong answer, the same
+  call the overview's em dash makes. A plan that chose no icon falls back too,
+  because `iconFor` answers a generic circle for an unknown name and a circle
+  there would decorate an absence. The plan is also said in the trigger's
+  `sr-only` text, since the mark is `aria-hidden` and a `title` on a hidden
+  element is announced by nobody.
+
+  **EVERY ROW NAMES ITS ROLE AND ITS PLAN**, not just the selected one. The menu
+  is where somebody chooses BETWEEN tenants, and "which of these is on
+  Enterprise" was a question the list could not answer while the plan lived only
+  on the trigger. One meta line per row — role, then plan, separated by a middot
+  — so a row stays two lines tall whatever it has to say. The role falls back to
+  the organization's KEY, matching the trigger and the workspace selector; the
+  plan simply drops out when there is none, because "No plan" beside a role
+  would read as a warning about a state that is normal for a new organization.
+
+  ⚠ **The plan rides on `myOrganizations`, which is UNGATED** — a deliberate
+  reading of the boundary, recorded here because it is the kind of decision that
+  looks like a leak to whoever finds it next. `subscriptions:read` protects the
+  commercial RECORD: status, renewal dates, ended rows, per-workspace
+  subscriptions, and any of it for a tenant you are not in. The plan's key,
+  label and icon are not that — `myPermissions` already publishes `entitled` to
+  every member ungated, and the entitlements ARE what the plan grants, so
+  withholding the plan's NAME while publishing its effects would protect nothing
+  and would leave the switcher unable to say what a member is already told.
+  `UserOrganization` therefore carries plan IDENTITY only; a commercial field
+  added to that type belongs behind the key instead, and a test says so.
+
+  It is ONE query for the whole list — `organizationId: { in: [...] }` on the
+  subscription read, which is why `permSubscription.findMany`'s single signature
+  gained a filter object rather than a second overload. Organization-wide,
+  active, live plan, not ended: the same four clauses the entitlement path
+  passes, so an icon in the drawer cannot disagree with what the reader is
+  actually entitled to. A workspace's own subscription entitles that workspace,
+  never the tenant.
+
+  The one caller that still pays a second request is platform staff standing in
+  a customer they are not a member of — the same rare path `getOrganizationIdentity`
+  already exists for, and awaited alongside it. ⚠ That read is separate rather
+  than a field on the drawer's query because `myOrganizationSubscriptions` is
+  `[PermissionSubscription!]!` and guarded: a refusal nulls the field, and a
+  null on a non-null field propagates to `data`, so "cannot read the plan" would
+  have become "the whole drawer is empty" for exactly the people least able to
+  explain why.
 
   **The switcher replaced the brand.** The product name is the one thing on the
   drawer that never changes, so it was spending the most valuable strip saying

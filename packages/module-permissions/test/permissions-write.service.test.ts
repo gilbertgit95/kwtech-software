@@ -1,3 +1,4 @@
+import { APP_DEFAULT } from '../src/defaults.js';
 import { composeContext } from '../src/domain/grants.js';
 import { LIMIT } from '../src/domain/limits.js';
 import {
@@ -62,6 +63,15 @@ interface State {
     status: string;
     endedAt: Date | null;
   }[];
+  /**
+   * The platform's defaults, as stored.
+   *
+   * Empty in `emptyState`, which is the state every existing test here was
+   * written against: unset defaults grant nothing, so every creation path
+   * behaves exactly as it did before the table existed. A test that wants a
+   * default applied says so.
+   */
+  defaults: { key: string; value: string | null }[];
 }
 
 const emptyState = (over: Partial<State> = {}): State => ({
@@ -86,6 +96,7 @@ const emptyState = (over: Partial<State> = {}): State => ({
   planFeatures: [],
   planLimits: [],
   subscriptions: [],
+  defaults: [],
   ...over,
 });
 
@@ -102,6 +113,7 @@ interface Writes {
   planFeatures: unknown[];
   planLimits: unknown[];
   subscriptions: unknown[];
+  defaults: { key: string; value: string | null }[];
   invitations: unknown[];
   /** Every invitation email the fake host was asked to send. */
   sent: { email: string; token: string; organization: { id: string; key: string; name: string } | null }[];
@@ -125,6 +137,7 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
     planLimits: [],
     subscriptions: [],
     invitations: [],
+    defaults: [],
     sent: [],
     transactions: 0,
   };
@@ -241,8 +254,26 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
     permRole: {
       // By id everywhere, and by KEY for the baseline lookup — the app names
       // its seeded default by key, because an id differs between databases.
-      findFirst: async (args: { where: { id: string } | { key: string } }) =>
-        state.roles.find((r) => ('id' in args.where ? r.id === args.where.id : r.key === args.where.key)) ?? null,
+      /*
+       * The LEVEL and `organizationId` clauses are applied, not ignored.
+       *
+       * They arrived with the platform defaults, where they are the whole
+       * safety: a tenant-defined role as the founder default would try to grant
+       * every new organization a role belonging to another company, and a role
+       * at the wrong level would be granted and then filtered out by the
+       * resolution order. A fake that matched on id alone would pass whichever
+       * of those the service failed to check.
+       */
+      findFirst: async (args: {
+        where: { id?: string; key?: string; level?: string; organizationId?: null; disabledAt?: null };
+      }) =>
+        state.roles.find(
+          (r) =>
+            (args.where.id === undefined || r.id === args.where.id) &&
+            (args.where.key === undefined || r.key === args.where.key) &&
+            (args.where.level === undefined || r.level === args.where.level) &&
+            (args.where.organizationId === undefined || r.organizationId === null),
+        ) ?? null,
     },
     permMembershipRole: {
       findFirst: async (args: { where: { membershipId: string; roleId: string } }) =>
@@ -383,6 +414,13 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
         if (found) found.value = args.create.value;
         else state.planLimits.push({ ...args.create });
         return {};
+      },
+    },
+    permDefault: {
+      findMany: async () => state.defaults.map((row) => ({ ...row, updatedAt: new Date(), updatedByUserId: null })),
+      upsert: async (args: { where: { key: string }; create: { key: string; value: string | null } }) => {
+        writes.defaults.push({ key: args.where.key, value: args.create.value });
+        return { key: args.where.key };
       },
     },
     permSubscription: {
@@ -1948,5 +1986,336 @@ describe('creating a workspace puts its creator in it', () => {
     // The workspace itself is still created — support creating one on a
     // customer's behalf is a legitimate act.
     expect(h.state.workspaces).toHaveLength(1);
+  });
+});
+
+/**
+ * ── THE PLATFORM'S DEFAULTS, APPLIED ────────────────────────────────────────
+ *
+ * Four creation paths that used to end with somebody holding nothing now
+ * consult the defaults. The properties worth pinning are not "the role is
+ * granted" — that is one line — but the three that decide whether this feature
+ * is safe:
+ *
+ *   IT NEVER GATES.       Unset, deleted, disabled, archived: every failure is
+ *                         silent and the thing is still created. A convenience
+ *                         that can fail a sign-up is worse than no convenience.
+ *   IT NEVER OVERWRITES.  A default fills a hole; it does not replace a choice
+ *                         somebody made, and it does not touch an existing
+ *                         member.
+ *   IT RESPECTS LEVEL.    A role's level is immutable and the wrong one would
+ *                         be granted and then filtered out by the resolution
+ *                         order, which is a state no screen could explain.
+ */
+describe('the platform defaults', () => {
+  const orgRole = { id: 'r-org', key: 'owner', label: 'Owner', level: 'organization', organizationId: null };
+  const wsRole = { id: 'r-ws', key: 'ws-admin', label: 'Workspace admin', level: 'workspace', organizationId: null };
+  const appRole = { id: 'r-app', key: 'normal-user', label: 'Normal user', level: 'app', organizationId: null };
+
+  describe('setDefault', () => {
+    it('refuses a key this build does not declare', async () => {
+      const { svc } = fake();
+      expect(await reason(svc.setDefault(actor([FEATURE.defaultsManage]), { key: 'made.up', value: null }))).toBe(
+        'not_found',
+      );
+    });
+
+    it('refuses without defaults:manage', async () => {
+      const { svc } = fake(emptyState({ roles: [orgRole] }));
+      expect(
+        await reason(svc.setDefault(actor([]), { key: APP_DEFAULT.organizationFounderRole, value: 'r-org' })),
+      ).toBe('not_permitted');
+    });
+
+    /**
+     * ⚠ THE LEVEL CHECK, from the write side. The screen filters its picker the
+     * same way, so this is the second of two readings rather than the only one
+     * — but it is the one an API caller cannot skip.
+     */
+    it('refuses a role at the wrong level for the slot', async () => {
+      const { svc } = fake(emptyState({ roles: [orgRole] }));
+      expect(
+        await reason(svc.setDefault(actor([FEATURE.defaultsManage]), { key: APP_DEFAULT.accountRole, value: 'r-org' })),
+      ).toBe('not_found');
+    });
+
+    it('refuses a value whose shape is wrong for its kind', async () => {
+      const { svc } = fake();
+      const a = actor([FEATURE.defaultsManage]);
+      expect(await reason(svc.setDefault(a, { key: APP_DEFAULT.organizationPlanPeriodDays, value: '0' }))).toBe(
+        'draft_invalid',
+      );
+      expect(await reason(svc.setDefault(a, { key: APP_DEFAULT.organizationPlanStatus, value: 'Active' }))).toBe(
+        'draft_invalid',
+      );
+    });
+
+    /**
+     * Clearing writes NULL rather than deleting the row: "nobody ever set this"
+     * and "somebody deliberately turned it off" are different facts, and only
+     * the second has an author worth recording.
+     */
+    it('clears by writing null, and treats an empty string the same way', async () => {
+      const { svc, writes } = fake(emptyState({ roles: [orgRole] }));
+      const a = actor([FEATURE.defaultsManage]);
+
+      await svc.setDefault(a, { key: APP_DEFAULT.organizationFounderRole, value: '' });
+      expect(writes.defaults).toEqual([{ key: APP_DEFAULT.organizationFounderRole, value: null }]);
+    });
+  });
+
+  describe('createOrganization', () => {
+    const founder = () => actor([], { [LIMIT.userOrganizations]: null });
+
+    it('grants the founder the default organization role', async () => {
+      const { svc, state } = fake(
+        emptyState({ roles: [orgRole], defaults: [{ key: APP_DEFAULT.organizationFounderRole, value: 'r-org' }] }),
+      );
+
+      const { membershipId } = await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+      expect(state.membershipRoles).toEqual([{ membershipId, roleId: 'r-org' }]);
+    });
+
+    /**
+     * ⚠ WITHOUT THE ACTOR HOLDING THE ROLE'S OWN FEATURES, and that is the
+     * design rather than a hole. `assignRole` refuses a role carrying features
+     * the granter does not hold; a founder holds `user:organizations` and
+     * nothing else, so routing this through that check would mean the default
+     * never applied to the one person it exists for. The authorisation happened
+     * once, on `defaults:manage`.
+     */
+    it('does so even though the founder could not grant that role by hand', async () => {
+      const { svc, state } = fake(
+        emptyState({ roles: [orgRole], defaults: [{ key: APP_DEFAULT.organizationFounderRole, value: 'r-org' }] }),
+      );
+
+      await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+      expect(state.membershipRoles).toHaveLength(1);
+    });
+
+    it('still creates the organization when the default points at a role that is gone', async () => {
+      const { svc, state } = fake(
+        emptyState({ roles: [], defaults: [{ key: APP_DEFAULT.organizationFounderRole, value: 'deleted' }] }),
+      );
+
+      const { organizationId } = await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+      expect(organizationId).toBeTruthy();
+      expect(state.membershipRoles).toEqual([]);
+    });
+
+    it('starts the default plan, organization-wide and active', async () => {
+      const { svc, writes } = fake(
+        emptyState({
+          plans: [{ key: 'pro', label: 'Pro', isPublic: true, icon: null, archivedAt: null }],
+          defaults: [{ key: APP_DEFAULT.organizationPlan, value: 'pro' }],
+        }),
+      );
+
+      await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+      expect(writes.subscriptions).toHaveLength(1);
+      expect(writes.subscriptions[0]).toMatchObject({ planKey: 'pro', workspaceId: null, status: 'active' });
+    });
+
+    /**
+     * ⚠ An ARCHIVED plan is SKIPPED, not refused. `setDefault` refuses to set
+     * one, but a plan can be archived long after it became the default — and an
+     * archived plan entitles nothing, so subscribing to it would create a row
+     * that looks live and grants nothing. No row is the clearer answer.
+     */
+    it('skips an archived default plan rather than subscribing to it', async () => {
+      const { svc, writes } = fake(
+        emptyState({
+          plans: [{ key: 'old', label: 'Old', isPublic: true, icon: null, archivedAt: new Date() }],
+          defaults: [{ key: APP_DEFAULT.organizationPlan, value: 'old' }],
+        }),
+      );
+
+      await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+      expect(writes.subscriptions).toEqual([]);
+    });
+
+    it('writes no subscription at all when no plan default is set', async () => {
+      const { svc, writes } = fake(emptyState({ plans: [] }));
+      await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+      expect(writes.subscriptions).toEqual([]);
+    });
+  });
+
+  describe('createWorkspace', () => {
+    const creator = () => actor([FEATURE.workspacesCreate]);
+
+    it('grants the creator the default workspace role', async () => {
+      const { svc, state } = fake(
+        emptyState({
+          memberships: [{ id: 'm1', userId: 'actor', organizationId: 'org1' }],
+          roles: [wsRole],
+          defaults: [{ key: APP_DEFAULT.workspaceCreatorRole, value: 'r-ws' }],
+        }),
+      );
+
+      await svc.createWorkspace(creator(), { organizationId: 'org1', key: 'ws', name: 'WS' });
+      expect(state.workspaceMemberRoles).toHaveLength(1);
+      expect(state.workspaceMemberRoles[0]?.roleId).toBe('r-ws');
+    });
+
+    /**
+     * ⚠ PLATFORM STAFF JOIN NOTHING, so there is no workspace member row to
+     * hang a role off. That is correct rather than a shortfall: they enter by
+     * `platform:support_access`, the single exemption from membership, and
+     * writing them a role would make a support visit look like joining.
+     */
+    it('grants nothing to a creator who is not a member of the tenant', async () => {
+      const { svc, state } = fake(
+        emptyState({
+          memberships: [],
+          roles: [wsRole],
+          defaults: [{ key: APP_DEFAULT.workspaceCreatorRole, value: 'r-ws' }],
+        }),
+      );
+
+      const result = await svc.createWorkspace(creator(), { organizationId: 'org1', key: 'ws', name: 'WS' });
+      expect(result.joined).toBe(false);
+      expect(state.workspaceMemberRoles).toEqual([]);
+    });
+  });
+
+  /**
+   * ⚠ THE DATABASE SETTING LAYERS OVER THE MODULE OPTION, and the order is the
+   * whole migration story.
+   *
+   * `defaultAppRoleKey` was the first answer to "what does a new account hold"
+   * and is now the FALLBACK. It is kept rather than removed so a deployment
+   * that never opens the Defaults screen goes on behaving exactly as it did —
+   * every default starts unset and the migration seeds nothing, so on the day
+   * this shipped, nothing changed anywhere.
+   */
+  describe('the account role default', () => {
+    const invitation = (h: ReturnType<typeof fake>) =>
+      h.svc.inviteMember(actor([FEATURE.membersInvite]), 'org1', { email: 'a@b.com', roleId: '' });
+
+    it('falls back to the module option when nothing is set', async () => {
+      const h = fake(emptyState({ roles: [appRole] }), { defaultAppRoleKey: 'normal-user' });
+      await invitation(h);
+      await h.svc.acceptInvitation({ token: h.writes.sent[0]?.token ?? '', userId: 'newcomer' });
+
+      expect(h.writes.userRoles).toEqual([{ userId: 'newcomer', roleId: 'r-app' }]);
+    });
+
+    it('prefers the stored default over the module option', async () => {
+      const chosen = { id: 'r-app2', key: 'staff', label: 'Staff', level: 'app', organizationId: null };
+      const h = fake(
+        emptyState({ roles: [appRole, chosen], defaults: [{ key: APP_DEFAULT.accountRole, value: 'r-app2' }] }),
+        { defaultAppRoleKey: 'normal-user' },
+      );
+      await invitation(h);
+      await h.svc.acceptInvitation({ token: h.writes.sent[0]?.token ?? '', userId: 'newcomer' });
+
+      expect(h.writes.userRoles).toEqual([{ userId: 'newcomer', roleId: 'r-app2' }]);
+    });
+
+    /**
+     * Clearing on the screen hands the question BACK to the option rather than
+     * turning the baseline off. A row with a null value and no row are the same
+     * answer here — "nobody has decided" — and the deployment's own
+     * configuration is what decided before anybody could.
+     */
+    it('returns to the module option when the stored default is cleared', async () => {
+      const h = fake(emptyState({ roles: [appRole], defaults: [{ key: APP_DEFAULT.accountRole, value: null }] }), {
+        defaultAppRoleKey: 'normal-user',
+      });
+      await invitation(h);
+      await h.svc.acceptInvitation({ token: h.writes.sent[0]?.token ?? '', userId: 'newcomer' });
+
+      expect(h.writes.userRoles).toEqual([{ userId: 'newcomer', roleId: 'r-app' }]);
+    });
+  });
+
+  describe('addMember', () => {
+    it('grants the default member role to somebody joining', async () => {
+      const { svc, state } = fake(
+        emptyState({ roles: [orgRole], defaults: [{ key: APP_DEFAULT.organizationMemberRole, value: 'r-org' }] }),
+      );
+
+      const { membershipId } = await svc.addMember(actor([FEATURE.membersInvite]), {
+        organizationId: 'org1',
+        userId: 'u2',
+      });
+      expect(state.membershipRoles).toEqual([{ membershipId, roleId: 'r-org' }]);
+    });
+  });
+
+  describe('acceptInvitation', () => {
+    /**
+     * ⚠ THE DEFAULT NEVER OVERWRITES AN EXISTING MEMBER'S ROLE. An invitation
+     * naming no role is not a request to change anything, and the inviter is
+     * looking at an ADDRESS rather than at an account — the same lesson the
+     * app-role half of this method already learned the hard way.
+     */
+    it('leaves an existing member’s role alone', async () => {
+      const h = fake(
+        emptyState({
+          memberships: [{ id: 'm1', userId: 'u2', organizationId: 'org1' }],
+          membershipRoles: [{ membershipId: 'm1', roleId: 'r-other' }],
+          roles: [orgRole],
+          defaults: [{ key: APP_DEFAULT.organizationMemberRole, value: 'r-org' }],
+        }),
+      );
+      await h.svc.inviteMember(actor([FEATURE.membersInvite]), 'org1', { email: 'a@b.com', roleId: '' });
+      const token = h.writes.sent[0]?.token ?? '';
+
+      await h.svc.acceptInvitation({ token, userId: 'u2' });
+      expect(h.state.membershipRoles).toEqual([{ membershipId: 'm1', roleId: 'r-other' }]);
+    });
+
+    /** But somebody genuinely JOINING gets it — the hole the default fills. */
+    it('grants it to somebody actually joining', async () => {
+      const h = fake(
+        emptyState({ roles: [orgRole], defaults: [{ key: APP_DEFAULT.organizationMemberRole, value: 'r-org' }] }),
+      );
+      await h.svc.inviteMember(actor([FEATURE.membersInvite]), 'org1', { email: 'a@b.com', roleId: '' });
+      const token = h.writes.sent[0]?.token ?? '';
+
+      await h.svc.acceptInvitation({ token, userId: 'newcomer' });
+      expect(h.state.membershipRoles.map((row) => row.roleId)).toEqual(['r-org']);
+    });
+  });
+});
+
+/**
+ * The one default that points at neither a role nor a plan.
+ *
+ * Added after the first eight, and the reason the catalogue exists as a
+ * catalogue: it needed no schema change, no mutation and no screen work — one
+ * entry in `APP_DEFAULT_REGISTRY` and one call site.
+ */
+describe('the invitation lifetime default', () => {
+  const inviter = () => actor([FEATURE.membersInvite]);
+
+  /**
+   * ⚠ EXPIRY IS DERIVED on every read — `isAcceptable` compares the column to
+   * the clock rather than trusting a status — so the figure written here is
+   * what that comparison uses for the life of the row.
+   */
+  it('writes the configured invitation lifetime onto the row', async () => {
+    const h = fake(emptyState({ defaults: [{ key: APP_DEFAULT.invitationExpiryDays, value: '2' }] }));
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+
+    const expiresAt = h.state.invitations[0]?.expiresAt.getTime() ?? 0;
+    const twoDays = Date.now() + 2 * 24 * 60 * 60 * 1000;
+    // A minute of slack: the service reads its own clock, not the test's.
+    expect(Math.abs(expiresAt - twoDays)).toBeLessThan(60_000);
+  });
+
+  /**
+   * A lifetime that cannot be read must NOT become zero — every invitation sent
+   * from that moment would arrive already expired, which is the one failure a
+   * fail-soft default must not have.
+   */
+  it('falls back to seven days when the value is unusable', async () => {
+    const h = fake(emptyState({ defaults: [{ key: APP_DEFAULT.invitationExpiryDays, value: 'soon' }] }));
+    await h.svc.inviteMember(inviter(), 'org1', { email: 'a@b.com', roleId: '' });
+
+    const expiresAt = h.state.invitations[0]?.expiresAt.getTime() ?? 0;
+    expect(Math.abs(expiresAt - (Date.now() + 7 * 24 * 60 * 60 * 1000))).toBeLessThan(60_000);
   });
 });

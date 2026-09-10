@@ -1,6 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { hasFeature } from '../check.js';
+import {
+  APP_DEFAULT,
+  type AppDefaultKey,
+  appDefaultRoleLevel,
+  appDefaultSpec,
+  isValidAppDefaultValue,
+} from '../defaults.js';
 import type { CloneMode } from '../domain/feature-merge.js';
 import {
   INVITATION_TTL_MS,
@@ -111,6 +118,34 @@ function initialDescription(supplied: string | null | undefined, name: string): 
   return trimmed && trimmed.length > 0 ? trimmed : name;
 }
 
+/**
+ * The renewal date a defaulted subscription starts with, or null.
+ *
+ * ⚠ INFORMATIONAL. Nothing in this codebase compares `currentPeriodEnd` to the
+ * clock — an `active` row entitles regardless of it (§12.40) — so this records
+ * an intention for a billing provider to act on and expires nothing on its own.
+ * The Defaults screen says so where somebody would otherwise read "first period
+ * length" as a trial that ends by itself.
+ *
+ * Days rather than a date, because a date would be the same date for every
+ * organization created from then on, which is not a period — it is a deadline
+ * somebody set once and forgot.
+ *
+ * Anything unparseable comes back null, which is the no-renewal-date state.
+ * `isValidAppDefaultValue` already refuses those on the way in; this is the
+ * second reading, for a row that predates a validation change or was written
+ * straight to the table.
+ */
+function defaultPeriodEnd(days: string | null, now: Date): Date | null {
+  if (!days) return null;
+  const count = Number(days);
+  if (!Number.isInteger(count) || count < 1) return null;
+
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() + count);
+  return end;
+}
+
 @Injectable()
 export class PermissionsWriteService {
   constructor(
@@ -189,7 +224,87 @@ export class PermissionsWriteService {
         select: { id: true },
       });
 
+      /*
+       * ── THE PLATFORM'S DEFAULTS, applied ──────────────────────────────────
+       *
+       * The founder becomes a member above — that has always happened, because
+       * an organization whose founder is not in it is unreachable. What is new
+       * is that they can be given a ROLE in it, and the organization can start
+       * on a PLAN, without anybody having the right to do either by hand.
+       *
+       * ⚠ NEITHER RUNS THE ACTOR'S CHECKS, and that is the whole design rather
+       * than an omission. `assignRole` refuses a role carrying features the
+       * granter does not hold; `startSubscription` asserts `billing:manage`. A
+       * founder holds neither — they hold `user:organizations` and nothing else
+       * — so routing the defaults through those methods would mean they never
+       * applied to the one person they exist for. The authorisation happened
+       * once, when somebody with `defaults:manage` chose them.
+       *
+       * ⚠ EVERY STEP IS OPTIONAL AND FAILS SILENT. A default that is unset, or
+       * points at a role since deleted or a plan since archived, produces
+       * nothing and the organization is still created. A convenience must never
+       * become a gate: refusing to create a company because a default was
+       * renamed would be far worse than the state that existed before this
+       * feature, which is exactly what null falls back to.
+       */
+      const founderRoleId = await this.defaultRoleId(tx, APP_DEFAULT.organizationFounderRole);
+      if (founderRoleId) {
+        await tx.permMembershipRole.create({ data: { membershipId: membership.id, roleId: founderRoleId } });
+      }
+
+      await this.startDefaultSubscription(tx, organization.id);
+
       return { organizationId: organization.id, membershipId: membership.id };
+    });
+  }
+
+  /**
+   * The subscription a new organization starts on, from the defaults.
+   *
+   * Three settings, read together because they describe one row: which plan,
+   * what status it starts in, and how long its first period runs. The plan is
+   * the only one that decides whether anything happens at all — with no default
+   * plan there is no row, and the other two describe nothing.
+   *
+   * ⚠ An ARCHIVED plan is skipped rather than refused. `setDefault` refuses to
+   * SET an archived plan, but a plan can be archived long after it became the
+   * default, and at that point the honest reading is the one entitlement
+   * already makes: an archived plan entitles nothing, so subscribing a new
+   * organization to it would create a row that looks live and grants nothing.
+   * No row is the clearer answer, and the Defaults screen shows the default as
+   * unusable so somebody can fix it.
+   */
+  private async startDefaultSubscription(tx: PermissionsTransaction, organizationId: string): Promise<void> {
+    const planKey = await this.storedDefault(tx, APP_DEFAULT.organizationPlan);
+    if (!planKey) return;
+
+    const plan = await tx.permPlan.findFirst({
+      where: { key: planKey },
+      select: { key: true, label: true, isPublic: true, icon: true, archivedAt: true },
+    });
+    if (!plan || plan.archivedAt) return;
+
+    const status = await this.storedDefault(tx, APP_DEFAULT.organizationPlanStatus);
+    const periodDays = await this.storedDefault(tx, APP_DEFAULT.organizationPlanPeriodDays);
+
+    await tx.permSubscription.create({
+      data: {
+        organizationId,
+        // ORGANIZATION-WIDE. A workspace-scoped row entitles that workspace
+        // alone, and a brand-new organization has no workspaces to scope to.
+        workspaceId: null,
+        planKey: plan.key,
+        /*
+         * `active` when nothing said otherwise, because it is the only status
+         * that entitles anything — a default plan that entitled nothing would
+         * be an elaborate way of changing nothing. Validated rather than cast:
+         * a row holding an unknown status passes every check here and then
+         * entitles nothing, with no error to explain it.
+         */
+        status: toSubscriptionStatus(status ?? 'active'),
+        currentPeriodEnd: defaultPeriodEnd(periodDays, this.now()),
+      },
+      select: { id: true },
     });
   }
 
@@ -1025,6 +1140,24 @@ export class PermissionsWriteService {
         data: { userId: input.userId, organizationId: input.organizationId, status: 'active' },
         select: { id: true },
       });
+
+      /*
+       * The platform's default role for somebody joining, when nobody named
+       * one. This method takes no `roleId` — adding a member and giving them a
+       * role are separate acts on separate keys — so before the defaults there
+       * was no way for a new member to arrive holding anything.
+       *
+       * ⚠ It does NOT run `assignRole`'s no-escalation check, so an
+       * administrator who holds `members:invite` and not the default role's own
+       * features still causes it to be granted. That is the intended reading:
+       * the grant is the PLATFORM's policy, decided by whoever holds
+       * `defaults:manage`, not this actor's choice — they never named a role.
+       */
+      const memberRoleId = await this.defaultRoleId(tx, APP_DEFAULT.organizationMemberRole);
+      if (memberRoleId) {
+        await tx.permMembershipRole.create({ data: { membershipId: membership.id, roleId: memberRoleId } });
+      }
+
       return { membershipId: membership.id };
     });
   }
@@ -1212,7 +1345,19 @@ export class PermissionsWriteService {
        * which is the row again.
        */
       const token = randomBytes(32).toString('hex');
-      const expiresAt = new Date(this.now().getTime() + INVITATION_TTL_MS);
+      /*
+       * The configured lifetime, or the built-in seven days.
+       *
+       * ⚠ Expiry is DERIVED on every read — `isAcceptable` compares this column
+       * to the clock rather than trusting a status — so the figure written here
+       * is what that comparison uses for the life of the row. Shortening the
+       * default therefore retires invitations already sent, not only future
+       * ones. That is the honest behaviour for a security window and is said on
+       * the Defaults screen, because the alternative (baking the old lifetime
+       * into sent rows) would mean a shortened window not applying to the
+       * invitations somebody shortened it because of.
+       */
+      const expiresAt = new Date(this.now().getTime() + (await this.invitationTtlMs(tx)));
       const invitation = await tx.permInvitation.create({
         data: {
           organizationId,
@@ -1570,6 +1715,29 @@ export class PermissionsWriteService {
         // therefore has their role CHANGED, which is what the inviter asked for.
         await tx.permMembershipRole.deleteMany({ where: { membershipId } });
         await tx.permMembershipRole.create({ data: { membershipId, roleId: invitation.roleId } });
+      } else if (!existing) {
+        /*
+         * ── the platform's default, for an invitation that named no role ────
+         *
+         * ⚠ ONLY FOR SOMEBODY ACTUALLY JOINING — `!existing`. An invitation
+         * that names no role is not a request to change anything, so applying a
+         * default to an EXISTING member would silently overwrite the role they
+         * already hold, which is the exact failure the app-role half above
+         * spent a paragraph learning not to repeat: the inviter is looking at
+         * an address, not at an account, and may not know it belongs to
+         * somebody who is already here with a role.
+         *
+         * No delete either, for the same reason. A brand-new membership holds
+         * nothing, so there is nothing to replace.
+         *
+         * Unset, or pointing at a role since deleted, grants nothing and the
+         * invitation still completes. A default must never be able to fail an
+         * acceptance — see `createOrganization`.
+         */
+        const memberRoleId = await this.defaultRoleId(tx, APP_DEFAULT.organizationMemberRole);
+        if (memberRoleId) {
+          await tx.permMembershipRole.create({ data: { membershipId, roleId: memberRoleId } });
+        }
       }
 
       await tx.permInvitation.update({
@@ -1824,10 +1992,33 @@ export class PermissionsWriteService {
         include: { roles: activeRoleGrants, workspaces: membershipWorkspaces(input.organizationId) },
       });
       if (membership) {
-        await tx.permWorkspaceMember.create({
+        const member = await tx.permWorkspaceMember.create({
           data: { membershipId: membership.id, workspaceId: workspace.id },
           select: { id: true },
         });
+
+        /*
+         * The creator's ROLE, from the platform's defaults — the other half of
+         * the sentence the comment above ends with. "NO ROLE is granted with
+         * the membership" was true and was the gap: somebody creates a
+         * workspace, can enter it, and can do nothing in it.
+         *
+         * Unset, or pointing at a role since deleted or disabled, grants
+         * nothing and the workspace is still created. See `createOrganization`
+         * for why every default fails silent.
+         *
+         * ⚠ Only where there IS a membership. Platform staff creating a
+         * workspace on a customer's behalf join nothing — they hold no
+         * membership to hang a workspace member off — so there is no row here
+         * to attach a role to, which is correct: they visit by
+         * `platform:support_access` rather than by holding anything.
+         */
+        const creatorRoleId = await this.defaultRoleId(tx, APP_DEFAULT.workspaceCreatorRole);
+        if (creatorRoleId) {
+          await tx.permWorkspaceMemberRole.create({
+            data: { workspaceMemberId: member.id, roleId: creatorRoleId },
+          });
+        }
       }
 
       return { workspaceId: workspace.id, joined: Boolean(membership) };
@@ -1935,6 +2126,23 @@ export class PermissionsWriteService {
         data: { membershipId: membership.id, workspaceId: input.workspaceId },
         select: { id: true },
       });
+
+      /*
+       * The platform's default role for somebody added to a workspace.
+       *
+       * This method names no role — adding somebody and giving them a role are
+       * separate acts on separate keys (`workspace:members_add` and
+       * `workspace:assign_role`) — so before the defaults a new workspace
+       * member always arrived holding nothing.
+       *
+       * Only on a genuine add: `existing` returned above, so there is no case
+       * here where a role could be overwritten.
+       */
+      const memberRoleId = await this.defaultRoleId(tx, APP_DEFAULT.workspaceMemberRole);
+      if (memberRoleId) {
+        await tx.permWorkspaceMemberRole.create({ data: { workspaceMemberId: member.id, roleId: memberRoleId } });
+      }
+
       return { shared: true, workspaceMemberId: member.id };
     });
   }
@@ -2146,6 +2354,171 @@ export class PermissionsWriteService {
   }
 
   /**
+   * ── SETTING A PLATFORM DEFAULT ────────────────────────────────────────────
+   *
+   * One mutation for all of them, because they differ only in what they point
+   * at — and what each one points at is declared in the catalogue, which both
+   * this and the screen read. A mutation per default would be eight endpoints
+   * that must agree about validation.
+   *
+   * ## ⚠ This is the escalation decision, and it is deliberately unguarded by
+   * the no-escalation rule
+   *
+   * `assignRole` refuses a role carrying features the granter does not hold, so
+   * nobody can mint somebody more powerful than themselves. Nothing equivalent
+   * can run here: the founder of an organization is granted their role by the
+   * PLATFORM at 3am with no actor to compare against. So the whole of the trust
+   * sits on `defaults:manage` — one person, once, deciding what every founder
+   * from then on will hold — which is why that key is `isPrivileged` and why
+   * this method does not pretend to a second check it cannot perform.
+   *
+   * ## What it DOES check
+   *
+   * That the key is one this build declares, that the value is a sane shape for
+   * its kind, and that the thing it points at exists, is usable and is at the
+   * right LEVEL. The level check is the one worth naming: an organization-level
+   * role in the app-level slot would be granted and then filtered out by the
+   * resolution order, producing accounts that hold nothing for a reason no
+   * screen could explain.
+   *
+   * ## Clearing writes NULL rather than deleting
+   *
+   * "Nobody ever set this" and "somebody deliberately turned it off" are
+   * different facts, and a deleted row cannot tell them apart. The row survives
+   * so `updatedByUserId` still records who decided.
+   */
+  async setDefault(actor: PermissionContext, input: { key: string; value: string | null }) {
+    this.assertPermitted(actor, FEATURE.defaultsManage);
+    const db = this.client();
+
+    const spec = appDefaultSpec(input.key);
+    if (!spec) {
+      throw new PermissionWriteError('not_found', 'That is not a default this build has', { key: input.key });
+    }
+
+    /*
+     * Trimmed to null, so a form that submits an empty select and a caller that
+     * sends null mean the same thing. Without this, `value: ''` would be stored
+     * as a set default pointing at nothing.
+     */
+    const value = input.value?.trim() ? input.value.trim() : null;
+    if (!isValidAppDefaultValue(spec.kind, value)) {
+      throw new PermissionWriteError('draft_invalid', 'That is not a usable value for this default', {
+        key: spec.key,
+        kind: spec.kind,
+      });
+    }
+
+    return db.$transaction(async (tx) => {
+      if (value !== null) await this.assertDefaultTarget(tx, spec.kind, value);
+
+      await tx.permDefault.upsert({
+        where: { key: spec.key },
+        create: { key: spec.key, value, updatedByUserId: actor.subjectId },
+        update: { value, updatedByUserId: actor.subjectId },
+        select: { key: true },
+      });
+
+      return { changed: true, id: spec.key, replaced: false };
+    });
+  }
+
+  /**
+   * The target exists, is usable, and is the right KIND of thing.
+   *
+   * ⚠ `organizationId: null` on the role lookup — GLOBAL role definitions only.
+   * A tenant may define its own roles, and one of those as the founder default
+   * would mean every organization created from then on trying to grant a role
+   * belonging to somebody else's company. `listDefaults` filters its picker the
+   * same way, so the screen cannot offer what this refuses.
+   */
+  private async assertDefaultTarget(tx: PermissionsTransaction, kind: string, value: string): Promise<void> {
+    const level = appDefaultRoleLevel(kind as never);
+
+    if (level) {
+      const role = await tx.permRole.findFirst({
+        where: { id: value, level, organizationId: null, disabledAt: null },
+        select: {
+          id: true,
+          key: true,
+          level: true,
+          label: true,
+          organizationId: true,
+          isSystem: true,
+          disabledAt: true,
+        },
+      });
+      if (!role) {
+        throw new PermissionWriteError('not_found', `No live ${level}-level role with that id`, { roleId: value });
+      }
+      return;
+    }
+
+    if (kind === 'plan') {
+      const plan = await this.requirePlan(tx, value);
+      if (plan.archivedAt) {
+        throw new PermissionWriteError('draft_invalid', 'That plan is archived and cannot be a default', {
+          planKey: plan.key,
+        });
+      }
+    }
+    // `subscription_status` and `days` point at nothing in the database — their
+    // shape check in `isValidAppDefaultValue` is the whole validation.
+  }
+
+  /**
+   * The raw stored value of one default, or null.
+   *
+   * Reads through the TRANSACTION rather than the client, so a default consulted
+   * inside `createOrganization` sees the same snapshot as the rows being
+   * written beside it.
+   */
+  private async storedDefault(tx: PermissionsTransaction, key: AppDefaultKey): Promise<string | null> {
+    const rows = await tx.permDefault.findMany({ orderBy: { key: 'asc' } });
+    return rows.find((row) => row.key === key)?.value ?? null;
+  }
+
+  /**
+   * A role-kinded default, resolved to an id that is safe to grant right now.
+   *
+   * ⚠ EVERY failure here is silent and returns null: no default set, a role
+   * since deleted, a role since disabled, a role whose level no longer matches.
+   * That is the same call `defaultAppRoleId` already made and for the same
+   * reason — refusing to let somebody create an organization because a default
+   * role was renamed would be a far worse failure than creating one whose
+   * founder holds nothing, which is exactly the behaviour that existed before
+   * this feature. A default is a convenience; it must never become a gate.
+   */
+  private async defaultRoleId(tx: PermissionsTransaction, key: AppDefaultKey): Promise<string | null> {
+    const spec = appDefaultSpec(key);
+    const level = spec ? appDefaultRoleLevel(spec.kind) : null;
+    if (!level) return null;
+
+    const value = await this.storedDefault(tx, key);
+    if (!value) return null;
+
+    const role = await tx.permRole.findFirst({
+      where: { id: value, level, organizationId: null, disabledAt: null },
+      select: { id: true, key: true, level: true, label: true, organizationId: true, isSystem: true, disabledAt: true },
+    });
+    return role?.id ?? null;
+  }
+
+  /**
+   * How long an invitation is good for, in milliseconds.
+   *
+   * The default when one is set and parses, the built-in seven days otherwise —
+   * the same fail-soft reading every other default gets, and here it matters
+   * more than most: a lifetime that could not be read must not become zero, or
+   * every invitation sent from that moment would arrive already expired.
+   */
+  private async invitationTtlMs(tx: PermissionsTransaction): Promise<number> {
+    const days = Number(await this.storedDefault(tx, APP_DEFAULT.invitationExpiryDays));
+    if (!Number.isInteger(days) || days < 1) return INVITATION_TTL_MS;
+    return days * 24 * 60 * 60 * 1000;
+  }
+
+  /**
    * The id of the configured baseline app-level role, or null.
    *
    * ## Why a baseline exists
@@ -2168,6 +2541,30 @@ export class PermissionsWriteService {
    * The caller decides WHETHER to grant; this only answers what.
    */
   private async defaultAppRoleId(tx: PermissionsTransaction): Promise<string | null> {
+    /*
+     * ── THE DATABASE FIRST, THE MODULE OPTION SECOND ──────────────────────
+     *
+     * `defaultAppRoleKey` was the first answer to this question and is now the
+     * FALLBACK, not the answer. The order matters and is not arbitrary:
+     *
+     *   - the option is set at deploy time in `app.module.ts`, so changing it
+     *     is a release. The whole point of the Defaults screen is that this is
+     *     an operational decision somebody makes at 3am;
+     *   - it is kept rather than removed because a deployment that has never
+     *     opened the screen must go on behaving exactly as it did. Every
+     *     default starts unset and the migration seeds nothing, so on the day
+     *     this shipped nothing changed anywhere.
+     *
+     * ⚠ Once somebody sets the default on the screen, the option stops being
+     * consulted for as long as the setting resolves — including when they set
+     * it to a DIFFERENT role. Clearing it on the screen hands the question back
+     * to the option rather than turning the baseline off, because a row with a
+     * null value and no row are the same answer here: "nobody has decided", and
+     * the deployment's own configuration is what decided before anybody could.
+     */
+    const chosen = await this.defaultRoleId(tx, APP_DEFAULT.accountRole);
+    if (chosen) return chosen;
+
     const key = this.options?.defaultAppRoleKey;
     if (!key) return null;
 

@@ -1,5 +1,6 @@
 import type { Seeder } from '../types.js';
 import { appRolesSeeder } from './app-roles.js';
+import { defaultsSeeder } from './defaults.js';
 import { demoUserSeeder } from './demo-user.js';
 import { firstUserSeeder } from './first-user.js';
 import { permissionsRegistrySeeder } from './permissions-registry.js';
@@ -41,6 +42,11 @@ export const SEEDERS: readonly Seeder[] = [
   // ── sync: reference data, every deploy ──────────────────────────────────
   permissionsRegistrySeeder,
   appRolesSeeder,
+  /*
+   * After the roles: it points defaults AT them, by key, and a role the seeder
+   * above has not created yet is one it would skip.
+   */
+  defaultsSeeder,
 
   // ── seed: once per environment, on request ──────────────────────────────
   /*

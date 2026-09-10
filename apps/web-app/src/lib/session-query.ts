@@ -61,7 +61,17 @@ const SESSION_QUERY = `
   query Session($organizationId: String, $workspaceId: String) {
     viewer { id email username displayName }
     session { expiresAt }
-    myOrganizations { organizationId organizationKey organizationName roleKey roleLabel roleIcon }
+    myOrganizations {
+      organizationId
+      organizationKey
+      organizationName
+      roleKey
+      roleLabel
+      roleIcon
+      planKey
+      planLabel
+      planIcon
+    }
     myPermissions(organizationId: $organizationId, workspaceId: $workspaceId) {
       subjectId
       organizationId
@@ -106,6 +116,21 @@ export interface NavContext {
   /** Grants INSIDE the selected organization — filters the tenant section. */
   organizationGranted: readonly string[];
   /**
+   * What the selected organization's PLAN includes — the feature keys it bought.
+   *
+   * Read for the switcher's plan card, which says how much the plan carries
+   * rather than only naming it. It rides on `myPermissions`, which is ungated
+   * and answers only about the caller, so this needs no key: it is the same
+   * fact the guard already acts on for every request this person makes.
+   *
+   * ⚠ `null` is NOT "none". It means the deployment has no entitlement model at
+   * all — an app without subscriptions entitles everything rather than making a
+   * special case of itself at every call site — and a card reading "0
+   * capabilities" there would be flatly wrong. An organization on no plan
+   * produces an empty ARRAY, which is the "entitled to nothing yet" state.
+   */
+  organizationEntitled: readonly string[] | null;
+  /**
    * Grants at the selected WORKSPACE — filters the workspace section.
    *
    * A third reading rather than reusing the organization's, because an
@@ -128,7 +153,13 @@ export interface NavContext {
 }
 
 /** Nothing selected, nothing to offer. Fails closed, like every other null here. */
-const EMPTY_NAV: NavContext = { appGranted: [], organizationGranted: [], workspaceGranted: [], workspaces: [] };
+const EMPTY_NAV: NavContext = {
+  appGranted: [],
+  organizationGranted: [],
+  organizationEntitled: null,
+  workspaceGranted: [],
+  workspaces: [],
+};
 
 /**
  * Everything the DRAWER needs about the selected organization, in one request.
@@ -177,7 +208,7 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
       body: JSON.stringify({
         query: `query NavContext($organizationId: String!, $workspaceId: String) {
           app: myPermissions { granted }
-          organization: myPermissions(organizationId: $organizationId) { granted }
+          organization: myPermissions(organizationId: $organizationId) { granted entitled }
           workspace: myPermissions(organizationId: $organizationId, workspaceId: $workspaceId) { granted }
           workspaces: myWorkspaces(organizationId: $organizationId) { id key name roleKey roleLabel roleIcon }
         }`,
@@ -202,7 +233,7 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
     const body = (await response.json()) as {
       data?: {
         app: { granted: string[] } | null;
-        organization: { granted: string[] } | null;
+        organization: { granted: string[]; entitled: string[] | null } | null;
         workspace: { granted: string[] } | null;
         workspaces: ViewerWorkspace[] | null;
       };
@@ -211,6 +242,12 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
     return {
       appGranted: body.data?.app?.granted ?? [],
       organizationGranted: body.data?.organization?.granted ?? [],
+      /*
+       * `?? null` and NOT `?? []`: the two mean opposite things here — see
+       * `organizationEntitled`. An unresolved context is the no-model reading,
+       * which claims nothing, rather than "this plan includes nothing".
+       */
+      organizationEntitled: body.data?.organization?.entitled ?? null,
       workspaceGranted: body.data?.workspace?.granted ?? [],
       workspaces: body.data?.workspaces ?? [],
     };
@@ -279,6 +316,98 @@ export const getOrganizationIdentity = cache(
   },
 );
 
+/** The plan the SELECTED organization is on, for the switcher's mark. */
+export interface OrganizationPlan {
+  planKey: string;
+  planLabel: string;
+  /** Icon NAME, resolved to a component by the app's own set. Null for a plan that chose none. */
+  planIcon: string | null;
+}
+
+/**
+ * The organization-wide plan, in a request of its OWN — and the separate
+ * request is the whole point rather than an oversight.
+ *
+ * ## Why it is not a field on the NavContext query
+ *
+ * It was going to be, until the schema said otherwise:
+ *
+ *     myOrganizationSubscriptions(organizationId: String!): [PermissionSubscription!]!
+ *
+ * Non-null, and guarded by `subscriptions:read` — a DIFFERENT key from any that
+ * opens the drawer. A member who may be in the organization and may not see
+ * what it bought is an ordinary configuration, and for them the guard throws;
+ * GraphQL then nulls the field, and a null on a non-null field PROPAGATES to
+ * its parent. The parent is `data`. So adding this to that query would have
+ * turned "cannot read the plan" into "the entire drawer is empty", for exactly
+ * the people who are least likely to be able to explain why.
+ *
+ * Here the blast radius is one fetch and the answer is null. The shell runs it
+ * CONCURRENTLY with `getNavContext`, so it costs no wall time.
+ *
+ * ## Null means two different things, and the caller must not merge them
+ *
+ * "No plan" (an organization starts on none, and that is a normal state) and
+ * "you may not see the plan" both arrive as null. The switcher therefore says
+ * nothing rather than saying "No plan" at somebody who was refused — a
+ * confident wrong answer is worse than a quiet one, which is the same call the
+ * organization overview's em dash makes.
+ *
+ * ## Organization-wide, not per workspace
+ *
+ * A subscription with a `workspaceId` entitles that workspace alone; the
+ * switcher's mark is about the tenant. `status === 'active'` and not archived,
+ * matching `organizationWidePlan` on the overview — two readings of "the plan"
+ * that disagreed would be visible as an icon contradicting the page under it.
+ *
+ * ⚠ An `active` row entitles regardless of `currentPeriodEnd` (§12.40), so
+ * nothing here compares it to the clock.
+ */
+export const getOrganizationPlan = cache(async (organizationId: string): Promise<OrganizationPlan | null> => {
+  const token = await getSessionToken();
+  if (!token) return null;
+
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+  try {
+    const response = await fetch(`${apiUrl}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        query: `query OrganizationPlan($organizationId: String!) {
+          myOrganizationSubscriptions(organizationId: $organizationId) {
+            planKey planLabel planIcon planArchived status workspaceId
+          }
+        }`,
+        variables: { organizationId },
+      }),
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+
+    const body = (await response.json()) as {
+      data?: {
+        myOrganizationSubscriptions:
+          | {
+              planKey: string;
+              planLabel: string;
+              planIcon: string | null;
+              planArchived: boolean;
+              status: string;
+              workspaceId: string | null;
+            }[]
+          | null;
+      };
+    };
+
+    const plan = body.data?.myOrganizationSubscriptions?.find(
+      (row) => row.workspaceId === null && row.status === 'active' && !row.planArchived,
+    );
+    return plan ? { planKey: plan.planKey, planLabel: plan.planLabel, planIcon: plan.planIcon } : null;
+  } catch {
+    return null;
+  }
+});
+
 /**
  * Where to resolve the viewer's rights — read from the URL by `parseScope`.
  *
@@ -315,6 +444,19 @@ export interface ViewerOrganization {
   roleKey: string | null;
   roleLabel: string | null;
   roleIcon: string | null;
+  /**
+   * The plan THAT organization is on, arriving with the list rather than being
+   * asked for per row.
+   *
+   * Null means "on no plan", where every organization starts — not "may not
+   * see". `myOrganizations` is ungated and cannot refuse; the plan's identity
+   * rides on it because `myPermissions` already publishes the `entitled` list
+   * the plan produces. See the resolver's own note.
+   */
+  planKey: string | null;
+  planLabel: string | null;
+  /** Icon NAME, resolved to a component by the app's own set. */
+  planIcon: string | null;
 }
 
 export interface SessionSnapshot {

@@ -42,6 +42,13 @@ interface SidebarProps {
    */
   activeOrganizationFallback: SwitcherOrganization | null;
   /**
+   * What the plan's hover card shows beyond its name and icon — how much the
+   * plan carries, and whether this reader may open the subscription screen.
+   *
+   * About the SELECTED organization only, which is the one the mark draws.
+   */
+  organizationPlanDetail: { entitlements: number | null; canReadSubscription: boolean } | null;
+  /**
    * The SELECTED organization's workspaces that the viewer may ENTER — not
    * every workspace it has. Empty when no organization is selected, which is
    * what leaves the workspace selector disabled.
@@ -49,6 +56,14 @@ interface SidebarProps {
   workspaces: readonly SwitcherWorkspace[];
   /** The selected workspace, or null. Null again the moment the organization changes. */
   activeWorkspaceId: string | null;
+  /**
+   * Whether the viewer may create a workspace IN the selected organization —
+   * `workspaces:create`, read from the organization-scoped half of their
+   * grants. It is what puts "New workspace" in the workspace selector, and
+   * leaving it out is what keeps the menu honest for a member who may enter
+   * workspaces and not make them.
+   */
+  canCreateWorkspace: boolean;
   /**
    * Which one the current URL is inside, or null.
    *
@@ -75,8 +90,10 @@ export function Sidebar({
   organizations,
   activeOrganizationId,
   activeOrganizationFallback,
+  organizationPlanDetail,
   workspaces,
   activeWorkspaceId,
+  canCreateWorkspace,
 }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -163,6 +180,7 @@ export function Sidebar({
           organizations={organizations}
           activeId={activeOrganizationId}
           activeFallback={activeOrganizationFallback}
+          planDetail={organizationPlanDetail}
           brand={brand}
           collapsed={collapsed}
         />
@@ -170,6 +188,7 @@ export function Sidebar({
           workspaces={workspaces}
           activeId={activeWorkspaceId}
           organizationId={activeOrganizationId}
+          canCreate={canCreateWorkspace}
           collapsed={collapsed}
         />
       </div>

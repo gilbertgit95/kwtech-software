@@ -89,17 +89,29 @@ const NORMAL_USER: SystemRoleDefinition = {
   label: 'Normal user',
   level: 'app',
   /*
-   * A sprout, where a flower was suggested — the same gentle register, but it
-   * MEANS something the flower does not. This role's defining property is that
-   * it holds nothing: it is the ground floor, the shape every account starts
-   * in. A sprout reads as "starter" and puts it at the bottom of an obvious
-   * scale beside a crown; a flower is decoration, and a reader would have to be
-   * TOLD what it stood for.
+   * ⚠ AN ID CARD, and it was a SPROUT — changed because the sprout was already
+   * the `free` plan's icon, and the two are drawn side by side.
    *
-   * It is one word to change here if you prefer the flower — the icon carries
-   * no authority, so nothing but the drawing moves.
+   * The organization switcher puts a viewer's ROLE and their organization's
+   * PLAN on one line, separated by a middot. A normal user on the free plan
+   * therefore rendered the same glyph twice — 🌱 · 🌱 — which reads as a
+   * rendering fault rather than as two facts, and the second it does register
+   * as two facts it invites the wrong reading: that the role and the plan are
+   * the same kind of thing. They are not. A role is given to a PERSON; a plan
+   * is bought by an ORGANIZATION (see the twins rule in docs/PLAN.md §9), and
+   * an icon shared between them undoes a distinction the model spends real
+   * effort keeping.
+   *
+   * The sprout's argument was that this role is the ground floor, the shape
+   * every account starts in — "starter", at the bottom of a scale beside a
+   * crown. That reading was good and it is what the FREE PLAN now keeps, where
+   * a growth metaphor belongs: a plan is a tier and tiers have a bottom. A role
+   * that holds nothing is not a tier; it is an identity with no powers attached
+   * to it, which is what an id card draws. It also sits in the same
+   * person-shaped family as `user` and `user-cog` below, so the role icons read
+   * as one set.
    */
-  icon: 'sprout',
+  icon: 'id-card',
   /*
    * EMPTY, and it must stay empty: adding anything — even `admin:access` "just
    * to see the dashboard" — would make every denial this role exists to
@@ -281,7 +293,25 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
   key: 'workspace-admin',
   label: 'Workspace admin',
   level: 'workspace',
-  icon: 'workspace',
+  /*
+   * ⚠ A PERSON WITH A COG, and it was the WORKSPACE glyph — changed because
+   * that glyph already names the workspace NAV GROUP, and the two appear
+   * together.
+   *
+   * The drawer heads its Workspace section with that icon and the workspace
+   * selector draws this role's badge a few pixels above it, so one drawing
+   * meant "the place you are in" and "what you are in it" at the same time. A
+   * reader cannot tell which, and the failure is quiet: nothing looks broken,
+   * the icon simply stops carrying information.
+   *
+   * A ROLE ICON SHOULD DRAW THE PERSON, NOT THE PLACE. That is the rule the
+   * rest of this file follows without having said so — `user` for the workspace
+   * member, `users` for the organization admin, a crown for the super admin —
+   * and this was the one exception. `user-cog` puts it back in the family and
+   * pairs it with `user` below: the same person, one of them able to change
+   * things.
+   */
+  icon: 'user-cog',
   /*
    * `workspaces:share` and nothing else, which is the whole vocabulary a
    * workspace has: it is the only WORKSPACE-level key in the registry, because

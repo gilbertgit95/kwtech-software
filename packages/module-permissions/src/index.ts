@@ -11,6 +11,7 @@
  */
 
 export * from './check.js';
+export * from './defaults.js';
 export * from './domain/index.js';
 export * from './feature-keys.js';
 export * from './feature-tags.js';

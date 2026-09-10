@@ -117,6 +117,7 @@ type Mutation {
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
@@ -150,6 +151,21 @@ type PermissionContext {
   organizationId: String
   subjectId: String!
   workspaceId: String
+}
+
+type PermissionDefault {
+  description: String!
+  key: String!
+  kind: String!
+  label: String!
+  moment: String!
+  targetIcon: String
+  targetLabel: String
+  targetUnavailable: Boolean!
+  updatedAt: String
+  updatedByUserId: String
+  value: String
+  whenUnset: String!
 }
 
 type PermissionFeature {
@@ -349,6 +365,7 @@ type Query {
   myPermissions(organizationId: String, workspaceId: String): PermissionContext
   myWorkspace(organizationId: String!, workspaceId: String!): PermissionMyWorkspace
   myWorkspaces(organizationId: String!): [MyWorkspace!]!
+  permissionDefaults: [PermissionDefault!]!
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
   permissionOrganizationDetail(organizationId: String!): PermissionOrganizationDetail
   permissionOrganizations: [PermissionOrganization!]!
@@ -417,6 +434,9 @@ type UserOrganization {
   organizationId: String!
   organizationKey: String!
   organizationName: String!
+  planIcon: String
+  planKey: String
+  planLabel: String
   roleIcon: String
   roleKey: String
   roleLabel: String

@@ -19,6 +19,7 @@ import {
   MyWorkspaceSummaryType,
   PaginationArgs,
   PermissionContextType,
+  PermissionDefaultType,
   PermissionFeaturePageType,
   PermissionInvitationResultType,
   PermissionMemberType,
@@ -1030,6 +1031,61 @@ export class PermissionsResolver {
   // organization-level role answer it. None of them can reach a second tenant:
   // the guard resolves the caller's context in the organization the arguments
   // name, and a caller with no standing there resolves no context at all.
+
+  /**
+   * ── THE PLATFORM'S DEFAULTS ───────────────────────────────────────────────
+   *
+   * Every default this build declares, set or not, with what each one points at
+   * resolved to a name. Driven by the CATALOGUE rather than by the table, so a
+   * fresh deployment sees the full list unset rather than an empty page — which
+   * is exactly when somebody most needs to see what they could configure.
+   *
+   * `defaults:read` rather than nothing: it discloses the platform's
+   * configuration, which is a support question and not a fact about the caller.
+   * App level, because that is what it is about — no tenant has its own
+   * defaults, and an organization-level grant of this would participate in
+   * nothing.
+   *
+   * NO SCOPE. `@RequireScope` would make the guard resolve inside whatever
+   * organization the reader happened to have open, and there is no tenant
+   * reading of this question.
+   */
+  @RequireFeature(FEATURE.defaultsRead)
+  @Query(() => [PermissionDefaultType], { name: 'permissionDefaults' })
+  async permissionDefaults(): Promise<PermissionDefaultType[]> {
+    const defaults = await this.permissions.listDefaults();
+    return defaults.map((row) => ({
+      ...row,
+      // ISO, like every other date this resolver hands out: a Date crossing
+      // GraphQL as a custom scalar is a dependency the module does not need,
+      // and the screens format from a string anyway.
+      updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
+    }));
+  }
+
+  /**
+   * Changes one.
+   *
+   * ⚠ `defaults:manage` IS THE ESCALATION DECISION — see the key. `assignRole`
+   * refuses a role carrying features the granter does not hold, and nothing
+   * equivalent can run here, because the role a default grants is granted by
+   * the PLATFORM to somebody creating an organization at 3am, with no actor to
+   * compare against. Whoever holds this key decides, once, what every founder
+   * from then on will hold.
+   *
+   * `value: null` clears it. That is a real configuration and not a delete: the
+   * row survives so `updatedByUserId` still records who turned it off.
+   */
+  @RequireFeature(FEATURE.defaultsManage)
+  @Mutation(() => PermissionWriteResultType, { name: 'setPermissionDefault' })
+  async setPermissionDefault(
+    @Context() gqlContext: { req?: unknown },
+    @Args('key') key: string,
+    @Args('value', { type: () => String, nullable: true }) value?: string | null,
+  ): Promise<PermissionWriteResultType> {
+    const actor = await this.requireActor(gqlContext.req);
+    return this.writes.setDefault(actor, { key, value: value ?? null });
+  }
 
   /**
    * The organizations the CALLER belongs to, and what they are in each.

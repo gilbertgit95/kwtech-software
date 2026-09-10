@@ -22,6 +22,7 @@ export { denialMessage, FeatureDenied, type FeatureDeniedProps } from './feature
 export { FeatureGate, type FeatureGateProps } from './feature-gate.js';
 export { permissionsWebModule } from './module.js';
 export { AdminPage, AdminPlaceholder } from './pages/admin-page.js';
+export { DefaultsPage } from './pages/defaults-page.js';
 export { FeatureEditPage } from './pages/feature-edit-page.js';
 export { FeatureForm } from './pages/feature-form.js';
 export { FeatureImportPage } from './pages/feature-import-page.js';
@@ -65,6 +66,7 @@ export { SubscriptionsPage } from './pages/subscriptions-page.js';
 export { TenantPage } from './pages/tenant-page.js';
 export { type MyOrganizationState, useMyOrganization } from './pages/use-my-organization.js';
 export { WorkspaceDetailPage } from './pages/workspace-detail-page.js';
+export { WorkspaceNewPage } from './pages/workspace-new-page.js';
 export {
   AddWorkspaceMemberDialog,
   WorkspaceMemberRole,
@@ -122,6 +124,7 @@ export {
   organizationSectionHref,
   WORKSPACE_NAV_GROUP,
   workspaceHref,
+  workspaceNewHref,
 } from './tenant-nav.js';
 export {
   useCanAccessWorkspace,

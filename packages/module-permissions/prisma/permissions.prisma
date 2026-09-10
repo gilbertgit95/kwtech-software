@@ -600,3 +600,48 @@ model PermSubscription {
   @@index([workspaceId, status])
   @@map("perm_subscription")
 }
+
+/// ── THE PLATFORM'S DEFAULTS ───────────────────────────────────────────────
+///
+/// What the application does when nobody said what to do: the role a new
+/// account gets, the role an organization's founder gets, the plan a new
+/// organization starts on, the role a workspace's creator gets.
+///
+/// A key/value table, and NOT a column each. The values point at four different
+/// things — an app role, an organization role, a plan, a workspace role — and a
+/// typed column per default would mean a migration every time the platform
+/// gained one. What each key MEANS lives in `defaults.ts`, the same split
+/// `PermFeature` makes with the feature registry: the catalogue is code, the
+/// setting is a row.
+///
+/// ⚠ A row whose key the catalogue does not declare is IGNORED, not honoured.
+/// So a typo inserted by hand cannot become policy, and a key retired from a
+/// later build stops applying the moment it is removed from the catalogue
+/// rather than at whatever point somebody remembers to delete the row.
+model PermDefault {
+  /// The catalogue key — `organization.founder_role` and friends. See defaults.ts.
+  key String @id
+
+  /// What it points at: a role ID, or a plan KEY. Never both, and which one is
+  /// decided by the catalogue entry's `kind` rather than by anything here.
+  ///
+  /// A weakly typed column, deliberately: a foreign key to PermRole would make
+  /// this table unable to hold a plan, and two nullable FK columns would make
+  /// "which one is set" a state the reader has to work out. The server resolves
+  /// and VALIDATES the value on every write against the kind the catalogue
+  /// declares, and a value that no longer resolves — a role since deleted —
+  /// reads as unset rather than throwing. See `listDefaults`.
+  ///
+  /// NULL is a set-to-nothing row, which is not the same as no row: both mean
+  /// "no default", and keeping the row is what lets `updatedBy` record who
+  /// turned it off.
+  value String?
+
+  updatedAt       DateTime @updatedAt
+  /// Who last changed it. A plain id and no relation — `perm_*` never has a
+  /// foreign key into the auth module's tables (§12.12), so an account can be
+  /// deleted and this still says which id made the decision.
+  updatedByUserId String?
+
+  @@map("perm_default")
+}

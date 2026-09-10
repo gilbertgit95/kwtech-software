@@ -58,12 +58,195 @@ export interface SwitcherOrganization {
    * circle beside "Not a member" would be decorating an absence.
    */
   roleIcon: string | null;
+  /**
+   * The plan THAT organization is on — drawn on its row, not only on the
+   * selected one.
+   *
+   * The role says what the reader may do; the plan says what the organization
+   * may do at all. Both belong on every row, because the menu is where somebody
+   * is choosing BETWEEN tenants and "which of these is on Enterprise" is a
+   * question the list could not answer while the plan lived only on the trigger.
+   *
+   * It costs nothing to carry: `myOrganizations` returns it with the list, in
+   * the request the shell already makes.
+   *
+   * Null means the organization is on NO PLAN — where every one starts, and a
+   * real thing to see in this list. Unlike the tenant screens, this cannot be
+   * the "not allowed to look" state: the query is ungated and cannot refuse.
+   */
+  planLabel: string | null;
+  /**
+   * The plan's stable handle, shown in the hover card under the label.
+   *
+   * Worth carrying alongside the label because it is the one that never
+   * changes: a label is renamed at will, so "we are on the wrong plan" is only
+   * answerable against the key.
+   */
+  planKey: string | null;
+  /** Icon NAME for the plan. Null draws no icon — see `roleIcon`. */
+  planIcon: string | null;
+}
+
+/**
+ * The meta line under an organization's name: the ROLE held there, then the
+ * PLAN it is on.
+ *
+ * One line rather than two, separated by a middot, so a row stays two lines
+ * tall whatever it has to say — a menu whose rows change height as you read
+ * down it is harder to scan than one that repeats a shape.
+ *
+ * The role falls back to the KEY, matching the trigger above and the workspace
+ * selector: a member holding no role still belongs somewhere, and the key is
+ * the useful thing to say about the tenant instead. The plan simply drops out
+ * when there is none, because "No plan" beside a role would read as a warning
+ * about a state that is perfectly normal for a new organization.
+ */
+function OrganizationMeta({ organization }: { organization: SwitcherOrganization }) {
+  const RoleIcon = organization.roleLabel && organization.roleIcon ? iconFor(organization.roleIcon) : null;
+  const PlanIcon = organization.planLabel && organization.planIcon ? iconFor(organization.planIcon) : null;
+
+  return (
+    <span className="flex items-center gap-1 text-xs leading-tight text-muted-foreground">
+      {/* `aria-hidden`: the label beside each icon already names it. */}
+      {RoleIcon ? <RoleIcon aria-hidden className="size-3 shrink-0" /> : null}
+      <span className="truncate">{organization.roleLabel ?? organization.key}</span>
+      {organization.planLabel ? (
+        <>
+          <span aria-hidden className="shrink-0 opacity-50">
+            ·
+          </span>
+          {PlanIcon ? <PlanIcon aria-hidden className="size-3 shrink-0" /> : null}
+          <span className="truncate">{organization.planLabel}</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The hover box on the plan mark — what the square would say if it had room.
+ *
+ * ## Why a hand-built box and not a tooltip component
+ *
+ * `web-ui` ships no tooltip, and the two obvious ways to get one are both worse
+ * here. A Radix tooltip would need a portal nested inside a dropdown TRIGGER,
+ * which is where focus handling goes wrong — the trigger and the tooltip fight
+ * over the same pointer events and the menu starts opening on hover. A native
+ * `title` is what this replaced: one line, no markup, no control over when it
+ * appears, and it cannot show the icon that is the whole point of the mark.
+ *
+ * So: an absolutely positioned span, shown by `group-hover`. It costs no
+ * JavaScript, it cannot steal the click that opens the menu, and it disappears
+ * the moment the pointer leaves.
+ *
+ * ## Everything in it is phrasing content, and that is not stylistic
+ *
+ * This renders INSIDE the trigger `<button>`, whose content model is phrasing
+ * content. A `<div>` or an `<a>` there is invalid HTML — browsers recover by
+ * hoisting it out of the button, which breaks the layout in a way that looks
+ * like a CSS bug. Hence spans with `block`, and hence the subscription line
+ * being a SENTENCE rather than a link: a link inside a button is both invalid
+ * and unclickable under `pointer-events-none`.
+ *
+ * `aria-hidden` and `pointer-events-none` together: it is a visual convenience,
+ * the facts in it are repeated in the trigger's `sr-only` text, and nothing in
+ * it should ever intercept a click meant for the menu.
+ */
+/**
+ * How much the plan carries, as a sentence — used by the card and by the
+ * trigger's spoken label, so the two cannot drift into saying different things.
+ *
+ * ⚠ THREE states, and the third is not a smaller version of the second:
+ *
+ *   a number  the capabilities this plan includes;
+ *   0         an organization on no plan is entitled to NOTHING, which is a
+ *             real state every organization starts in;
+ *   null      the deployment has no entitlement model at all, so everything is
+ *             entitled — "0 capabilities" there would be flatly wrong, which is
+ *             why the null is carried this far rather than flattened on the way.
+ */
+function entitlementSentence(entitlements: number | null): string | null {
+  if (entitlements === null) return null;
+  if (entitlements === 0) return ' Entitled to nothing yet.';
+  return ` Includes ${entitlements} ${entitlements === 1 ? 'capability' : 'capabilities'}.`;
+}
+
+function PlanCard({
+  organizationName,
+  planLabel,
+  planKey,
+  planIcon,
+  entitlements,
+  canReadSubscription,
+}: {
+  organizationName: string;
+  planLabel: string;
+  planKey: string | null;
+  planIcon: string | null;
+  entitlements: number | null;
+  canReadSubscription: boolean;
+}) {
+  const Icon = planIcon ? iconFor(planIcon) : null;
+
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'pointer-events-none absolute left-0 top-full z-50 mt-2 w-60 rounded-lg p-3',
+        'border border-border bg-popover text-popover-foreground shadow-md',
+        // Hidden by default and revealed by the MARK's hover, or by the
+        // trigger's keyboard focus — so it is reachable without a pointer.
+        'invisible opacity-0 transition-opacity duration-150',
+        'group-hover/mark:visible group-hover/mark:opacity-100',
+        'group-focus-visible/trigger:visible group-focus-visible/trigger:opacity-100',
+      )}
+    >
+      <span className="block text-[0.6875rem] uppercase tracking-wide text-muted-foreground">Plan</span>
+
+      <span className="mt-1 flex items-center gap-2">
+        {Icon ? <Icon className="size-4 shrink-0 text-primary" /> : null}
+        <span className="truncate text-sm font-semibold">{planLabel}</span>
+      </span>
+
+      {/*
+        The KEY, in mono. It is the stable handle the API and every support
+        conversation use, and unlike the label it never changes — so somebody
+        reporting "we are on the wrong plan" can quote something unambiguous.
+      */}
+      {planKey ? (
+        <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">{planKey}</span>
+      ) : null}
+
+      {/* WHAT THE PLAN CARRIES — the part a name alone cannot say. See `entitlementSentence`. */}
+      <span className="mt-2 block border-t border-border pt-2 text-xs text-muted-foreground">
+        {entitlementSentence(entitlements)?.trim() ??
+          'Everything is entitled — this deployment has no entitlement model.'}
+      </span>
+
+      {/*
+        Only for somebody who may actually open it. `subscriptions:read` is a
+        different key from the one that opened this page, so pointing everybody
+        at a screen half of them are refused would be sending people to a door
+        that does not open.
+      */}
+      {canReadSubscription ? (
+        <span className="mt-1 block text-xs text-muted-foreground">
+          See <span className="text-foreground">Subscription</span> for the dates and the full list.
+        </span>
+      ) : null}
+
+      <span className="mt-2 block truncate border-t border-border pt-2 text-[0.6875rem] text-muted-foreground">
+        {organizationName}
+      </span>
+    </span>
+  );
 }
 
 export function OrganizationSwitcher({
   organizations,
   activeId,
   activeFallback,
+  planDetail,
   brand,
   collapsed,
 }: {
@@ -90,6 +273,48 @@ export function OrganizationSwitcher({
    * Null for everybody else, because for them the organization IS in the list.
    */
   activeFallback?: SwitcherOrganization | null;
+  /**
+   * The extra facts the plan CARD shows, beyond the name and icon it takes from
+   * the selected organization's own row.
+   *
+   * Separate from `SwitcherOrganization` because it is about the SELECTED
+   * organization only: `entitled` is resolved per organization by the server,
+   * so carrying it on every row would mean a permission context per tenant in
+   * the drawer's query for a card that can only ever show one of them.
+   */
+  planDetail?: {
+    /**
+     * How many capabilities the plan includes.
+     *
+     * ⚠ `null` is NOT zero. It means the deployment has no entitlement model,
+     * so everything is entitled; an organization on no plan gives 0. The card
+     * says something different for each.
+     */
+    entitlements: number | null;
+    /** Whether the viewer holds `subscriptions:read` here — the card offers the screen only then. */
+    canReadSubscription: boolean;
+  } | null;
+  /**
+   * ── THE MARK DRAWS THE PLAN ────────────────────────────────────────────────
+   *
+   * Taken from the selected organization's own row (or from `activeFallback`
+   * for a tenant somebody is only visiting), so the square and the menu can
+   * never name two different plans.
+   *
+   * The initials were derived from the name printed immediately beside them, so
+   * the square was saying a second time what the label already said. The plan
+   * is a fact that appears nowhere else in the chrome, and it is the one that
+   * changes what the product will let you do.
+   *
+   * ⚠ The trade is real: COLLAPSED, this square is all that is left of the row,
+   * so two organizations on the same plan look identical there. The mark's
+   * `title` composes both facts in that state. Falling back to `initials` when
+   * `collapsed` is a one-line change if that turns out to matter more.
+   *
+   * No plan, or a plan with no icon, falls back to the initials and offers no
+   * tooltip — `iconFor` answers a generic circle for an unknown name, and a
+   * circle there would decorate an absence rather than name a plan.
+   */
   brand: { name: string; tagline: string | null };
   collapsed: boolean;
 }) {
@@ -126,6 +351,39 @@ export function OrganizationSwitcher({
    */
   const RoleIcon = !visiting && active?.roleLabel && active.roleIcon ? iconFor(active.roleIcon) : null;
 
+  /*
+   * The MARK's icon — the plan's, when there is a plan that chose one.
+   *
+   * Null falls the square back to the initials, which is the honest answer for
+   * all three of the states that produce it: no organization selected (the
+   * brand's own mark, exactly as before), no plan, and a plan the viewer may
+   * not read. See the `plan` prop.
+   */
+  const PlanIcon = active?.planIcon ? iconFor(active.planIcon) : null;
+  /*
+   * The plan, for the SR text. The visual answer is `PlanCard` below.
+   *
+   * The mark used to carry a native `title` saying this, and it had to compose
+   * the organization's name into it when collapsed — the square IS the button
+   * in that state, so its own tooltip won over the button's. The card is not a
+   * `title`, so that fight is gone: the button keeps naming the tenant when
+   * collapsed and the card names the plan.
+   *
+   * `Plan: Pro` rather than `Pro plan`: the label is whatever an administrator
+   * typed, and a plan somebody named "Pro plan" would otherwise read back as
+   * "Pro plan plan".
+   */
+  const planTitle = active?.planLabel ? `Plan: ${active.planLabel}` : null;
+  /*
+   * The card, in one sentence. `entitlements` is only spoken when it is a
+   * NUMBER — null there means the deployment has no entitlement model, which is
+   * a fact about the installation rather than about this organization and would
+   * be noise in a switcher's label.
+   */
+  const spokenLabel = planTitle
+    ? `Switch organization. ${planTitle}.${entitlementSentence(planDetail?.entitlements ?? null) ?? ''}`
+    : 'Switch organization';
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -133,21 +391,59 @@ export function OrganizationSwitcher({
           type="button"
           title={collapsed ? title : undefined}
           className={cn(
-            'flex w-full items-center gap-2.5 rounded-lg pb-0 transition-colors',
+            'group/trigger flex w-full items-center gap-2.5 rounded-lg pb-0 transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             'hover:bg-accent/60',
             collapsed ? 'justify-center px-0 py-1.5' : 'px-2 py-1.5',
           )}
         >
-          <span
-            aria-hidden
-            className={cn(
-              'grid size-7 shrink-0 place-items-center rounded-lg',
-              'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
-              'text-xs font-bold leading-none tracking-tight',
-            )}
-          >
-            {initials(title)}
+          {/*
+            THE MARK, and it now draws the PLAN rather than the initials.
+
+            The square itself is unchanged — same size, same gradient, same
+            corner — because it is the drawer's anchor point and moving it would
+            be a different change. Only what is inside it swapped: initials
+            derived from the name printed beside them, for the one fact about
+            this organization that appears nowhere else in the chrome.
+
+            `title` rather than a tooltip component: every other hover string in
+            this drawer is a native `title`, and a tooltip here would be the
+            only one — and would need a portal inside a dropdown trigger, which
+            is where focus handling goes wrong.
+          */}
+          {/*
+            `relative` so the card positions against the MARK rather than the
+            button — which keeps it in the same place whether the drawer is
+            expanded or collapsed to 4rem. `group/mark` is what reveals it; the
+            button carries `group/trigger` so keyboard focus reveals it too.
+          */}
+          <span className="group/mark relative shrink-0">
+            <span
+              aria-hidden
+              className={cn(
+                'grid size-7 place-items-center rounded-lg',
+                'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
+                'text-xs font-bold leading-none tracking-tight',
+              )}
+            >
+              {PlanIcon ? <PlanIcon className="size-4" /> : initials(title)}
+            </span>
+            {/*
+              Only where there is a plan to describe. With none — no
+              organization selected, none bought, or a tenant somebody is
+              visiting without `subscriptions:read` — the mark is the initials
+              and a card explaining an absence would be worse than no card.
+            */}
+            {active?.planLabel ? (
+              <PlanCard
+                organizationName={active.name}
+                planLabel={active.planLabel}
+                planKey={active.planKey}
+                planIcon={active.planIcon}
+                entitlements={planDetail?.entitlements ?? null}
+                canReadSubscription={planDetail?.canReadSubscription ?? false}
+              />
+            ) : null}
           </span>
           {/*
             Collapsed to zero width rather than removed, the same treatment the
@@ -175,7 +471,18 @@ export function OrganizationSwitcher({
             ) : null}
           </span>
           {collapsed ? null : <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
-          <span className="sr-only">Switch organization</span>
+          {/*
+            The plan said HERE as well, because the mark that draws it is
+            `aria-hidden` and a `title` on a hidden element is announced by
+            nobody. Without this the change would have moved a fact out of the
+            reach of anyone not using a pointer.
+          */}
+          {/*
+            The card's facts, spoken. It is `aria-hidden` — a hover box is a
+            pointer affordance — so without this the plan would reach only
+            people using one.
+          */}
+          <span className="sr-only">{spokenLabel}</span>
         </button>
       </DropdownMenuTrigger>
 
@@ -220,15 +527,12 @@ export function OrganizationSwitcher({
               <Link href={`/organizations/${encodeURIComponent(organization.id)}`}>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{organization.name}</span>
-                  {organization.roleLabel ? (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {(() => {
-                        const Icon = organization.roleIcon ? iconFor(organization.roleIcon) : null;
-                        return Icon ? <Icon aria-hidden className="size-3 shrink-0" /> : null;
-                      })()}
-                      <span className="truncate">{organization.roleLabel}</span>
-                    </span>
-                  ) : null}
+                  {/*
+                    What the reader is HERE and what this tenant is ON — the two
+                    facts that distinguish one row from another once the names
+                    have been read.
+                  */}
+                  <OrganizationMeta organization={organization} />
                 </span>
                 {organization.id === activeId ? (
                   <span aria-hidden className="ml-2 text-xs text-muted-foreground">

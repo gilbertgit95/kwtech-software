@@ -1,5 +1,6 @@
 import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { FEATURE, FEATURE_REGISTRY } from '../feature-keys.js';
+import { DefaultsPage } from './pages/defaults-page.js';
 import { FeatureEditPage } from './pages/feature-edit-page.js';
 import { FeatureImportPage } from './pages/feature-import-page.js';
 import { FeatureNewPage } from './pages/feature-new-page.js';
@@ -26,6 +27,7 @@ import { SubscriptionEditPage } from './pages/subscription-edit-page.js';
 import { SubscriptionNewPage } from './pages/subscription-new-page.js';
 import { SubscriptionsPage } from './pages/subscriptions-page.js';
 import { WorkspaceDetailPage } from './pages/workspace-detail-page.js';
+import { WorkspaceNewPage } from './pages/workspace-new-page.js';
 import { ORGANIZATION_NAV_GROUP, ORGANIZATIONS_HREF, WORKSPACE_NAV_GROUP } from './tenant-nav.js';
 
 /**
@@ -57,6 +59,10 @@ import { ORGANIZATION_NAV_GROUP, ORGANIZATIONS_HREF, WORKSPACE_NAV_GROUP } from 
  * testable, outside a router: an app that wants to pass its own client or its
  * own icon set imports the page directly.
  */
+function DefaultsRoute(_props: ModuleRouteProps) {
+  return <DefaultsPage />;
+}
+
 function RolesRoute(_props: ModuleRouteProps) {
   return <RolesPage />;
 }
@@ -160,6 +166,10 @@ function OrganizationMembersRoute({ params }: ModuleRouteProps) {
 
 function OrganizationWorkspacesRoute({ params }: ModuleRouteProps) {
   return <OrganizationWorkspacesPage organizationId={params?.organizationId} />;
+}
+
+function OrganizationWorkspaceNewRoute({ params }: ModuleRouteProps) {
+  return <WorkspaceNewPage organizationId={params?.organizationId} />;
 }
 
 function OrganizationWorkspaceRoute({ params }: ModuleRouteProps) {
@@ -352,6 +362,35 @@ export const permissionsWebModule: WebModuleDescriptor = {
        * the organization's overview, which is where somebody is when they want
        * it.
        */
+    },
+    {
+      /*
+       * UNLISTED, and reached from the WORKSPACE SELECTOR — its "New workspace"
+       * item, the mirror of the organization switcher's "New organization".
+       * The workspaces grid keeps its own inline row: that one is for somebody
+       * already administering the list, this is for somebody who is not on that
+       * screen and may not know it exists.
+       *
+       * ⚠ Declared BEFORE `/organizations/:organizationId/workspaces/:workspaceId`
+       * for reading order only — `matchRouteWithParams` scores literal segments
+       * above dynamic ones, so it would win either way, and module-kit's tests
+       * assert that. What the match decides here is the LEVEL: the literal
+       * captures no `:workspaceId`, so the app's catch-all resolves this at
+       * ORGANIZATION level, which is where `workspaces:create` lives. Left to
+       * `parseScope` alone the trailing `new` would read as a workspace id —
+       * the same collision `/organizations/new` has, pinned by the same test.
+       */
+      path: '/organizations/:organizationId/workspaces/new',
+      component: OrganizationWorkspaceNewRoute,
+      title: 'New workspace',
+      /*
+       * KEYED, unlike `/organizations/new`. That one is unkeyed because there
+       * is no organization yet to grant the right to create one; here there
+       * is, and `workspaces:create` is the organization-level key the mutation
+       * itself is guarded by. Somebody without it never sees the selector's
+       * item and is refused by the page if they type the URL.
+       */
+      feature: FEATURE.workspacesCreate,
     },
     {
       /*
@@ -589,6 +628,27 @@ export const permissionsWebModule: WebModuleDescriptor = {
       // `inviteUser`, so an administrator without `members:manage` can still
       // invite to the platform.
       feature: FEATURE.rolesGrantApp,
+    },
+    {
+      /*
+       * WHAT THE PLATFORM DOES BY DEFAULT — the policy behind three creation
+       * paths, in one place.
+       *
+       * Listed LAST in the Administration group (order 90). It is the screen
+       * somebody visits least often and the one whose settings apply most
+       * widely, and putting it above Roles would offer a policy screen to
+       * somebody who has not yet met the roles it points at.
+       *
+       * `defaults:read`, not `defaults:manage`: working out why a customer's
+       * founder holds nothing is a support question, and the page gates only
+       * its INPUTS on the write key. A route keyed on manage would hide the
+       * answer from everybody who may not change it.
+       */
+      path: '/admin/defaults',
+      component: DefaultsRoute,
+      title: 'Defaults',
+      feature: FEATURE.defaultsRead,
+      nav: { group: 'Administration', order: 90, icon: 'settings' },
     },
     {
       path: '/admin/plans',

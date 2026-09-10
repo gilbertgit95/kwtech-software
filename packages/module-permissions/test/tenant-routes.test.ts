@@ -11,6 +11,7 @@ import {
   organizationSectionHref,
   WORKSPACE_NAV_GROUP,
   workspaceHref,
+  workspaceNewHref,
 } from '../src/react/tenant-nav.js';
 import { isScopeConsistent, parseScope, scopePath } from '../src/scope.js';
 
@@ -121,6 +122,44 @@ describe('the /organizations area', () => {
   });
 
   /**
+   * ⚠ THE SECOND LITERAL WITH THE SAME COLLISION, and it lands one level
+   * deeper: `/organizations/:orgId/workspaces/new` puts `new` exactly where a
+   * workspace id goes, so `parseScope` calls it WORKSPACE level.
+   *
+   * That reading would be actively wrong here, not merely closed. The page is
+   * gated on `workspaces:create`, an ORGANIZATION-level key — no
+   * workspace-level context can carry one, so a render resolved at workspace
+   * level would refuse everybody with a message about their roles rather than
+   * about the route. The router saves it for the same reason as above, and the
+   * app's catch-all reads its scope from the captured params.
+   */
+  it('parseScope alone reads a trailing /workspaces/new as a workspace id', () => {
+    expect(parseScope('/organizations/org1/workspaces/new')).toMatchObject({
+      level: 'workspace',
+      organizationId: 'org1',
+      workspaceId: 'new',
+    });
+  });
+
+  it('but the ROUTER matches the literal and leaves it at organization level', () => {
+    const match = matchRouteWithParams(routes, '/organizations/org1/workspaces/new');
+    expect(match?.route.path).toBe('/organizations/:organizationId/workspaces/new');
+    expect(match?.params.organizationId).toBe('org1');
+    expect(match?.params.workspaceId).toBeUndefined();
+  });
+
+  /**
+   * And the key it is gated on must be the one that reading grants. This is the
+   * pairing the test above exists to protect, said as the property rather than
+   * as the mechanism.
+   */
+  it('the workspace create screen is gated on an organization-level key', () => {
+    const route = routes.find((entry) => entry.path === '/organizations/:organizationId/workspaces/new');
+    expect(route?.feature).toBe(FEATURE_REGISTRY.find((spec) => spec.key === 'workspaces:create')?.key);
+    expect(levelOf(route?.feature as string)).toBe('organization');
+  });
+
+  /**
    * THE TWO READINGS ARE PINNED TOGETHER.
    *
    * The app derives its scope from the router's captured params; the Nest guard
@@ -129,10 +168,21 @@ describe('the /organizations area', () => {
    * resolve a caller's rights in different places — which is precisely the fork
    * `scope.ts` exists to prevent, arriving through a different door.
    *
-   * The literals are exempt and are the reason this test exists: `/organizations`
-   * and `/organizations/new` carry no key, so no guard reads them.
+   * A route whose LAST segment is a literal sitting in an id position is
+   * exempt, and is the reason this test exists at all: `/organizations/new` and
+   * `/organizations/:organizationId/workspaces/new` are create SCREENS, not
+   * scoped resources, and the router is what says so. The guard never reads
+   * either — no mutation is addressed at those paths — so the two readings have
+   * nothing to agree about.
    */
-  it.each(tenantRoutes.filter((route) => route.path.includes(':')).map((route) => route.path))(
+  const dynamicTenantRoutes = tenantRoutes.filter((route) => route.path.includes(':') && !route.path.endsWith('/new'));
+
+  it('exempts only the create screens, so the exemption cannot quietly widen', () => {
+    const exempt = tenantRoutes.filter((route) => route.path.includes(':') && route.path.endsWith('/new'));
+    expect(exempt.map((route) => route.path)).toEqual(['/organizations/:organizationId/workspaces/new']);
+  });
+
+  it.each(dynamicTenantRoutes.map((route) => route.path))(
     '%s: the router and parseScope agree about the ids',
     (path) => {
       const url = path.replace(':organizationId', 'org1').replace(':workspaceId', 'ws1');
@@ -250,6 +300,29 @@ describe('the tenant href builders round-trip through parseScope', () => {
     const href = workspaceHref('org/1', 'ws 1');
     expect(href).toBe(`/organizations/${encodeURIComponent('org/1')}/workspaces/${encodeURIComponent('ws 1')}`);
     expect(parseScope(href)).toMatchObject({ organizationId: 'org/1', workspaceId: 'ws 1' });
+  });
+
+  /**
+   * `workspaceNewHref` is the one builder whose output does NOT round-trip: it
+   * ends in a literal where an id goes, so `parseScope` reads it as a workspace
+   * called "new". Asserted rather than avoided — the collision is real, the
+   * router is what resolves it, and a silent change to either side should break
+   * something here.
+   *
+   * What must hold is that the ORGANIZATION half still parses out, because that
+   * is the id the create page writes with.
+   */
+  it('workspaceNewHref builds inside the organization, and does not round-trip', () => {
+    expect(workspaceNewHref('org1')).toBe('/organizations/org1/workspaces/new');
+    expect(parseScope(workspaceNewHref('org1'))).toMatchObject({
+      level: 'workspace',
+      organizationId: 'org1',
+      workspaceId: 'new',
+    });
+  });
+
+  it('and it encodes an organization id that needs it', () => {
+    expect(workspaceNewHref('org/1')).toBe(`/organizations/${encodeURIComponent('org/1')}/workspaces/new`);
   });
 
   it('the two literals are app level, so neither is mistaken for a tenant', () => {

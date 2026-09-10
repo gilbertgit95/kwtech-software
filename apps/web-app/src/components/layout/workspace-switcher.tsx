@@ -6,9 +6,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
-import { ChevronsUpDown, Layers } from 'lucide-react';
+import { ChevronsUpDown, Layers, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { iconFor } from '@/components/layout/nav-icons';
 
@@ -56,29 +57,56 @@ export interface SwitcherWorkspace {
    * the organization switcher draws theirs — so "what am I in this place" reads
    * the same way at both levels.
    *
-   * Null is normal and covers two states this control does not need to tell
-   * apart: a member given nothing yet, and platform support, who may enter
-   * every workspace while belonging to none. The key is shown instead, which is
-   * what the organization switcher does for a member with no role.
+   * Null is normal — the COMMON case, in fact — and covers two states this
+   * control does not need to tell apart: a member given nothing yet, which is
+   * everybody until an administrator assigns one, and platform support, who may
+   * enter every workspace while belonging to none. Both hold no role HERE, and
+   * the line says exactly that rather than falling back to the workspace's key.
    */
   roleLabel: string | null;
   /** Icon NAME for that role. Null draws nothing — see the organization switcher. */
   roleIcon: string | null;
 }
 
-/** The role line under a workspace's name: its icon, then its label. */
+/**
+ * The role line under a workspace's name: its icon, then its label.
+ *
+ * ## "No role" is the answer when there is none, NOT the workspace's key
+ *
+ * The key was the fallback, and it was answering a question nobody asked. A
+ * workspace named "Design" keyed `design` produced a row reading "Design" over
+ * "design", which looks like a rendering fault; worse, it left the ROLE — the
+ * thing this line exists for — invisible in the state where it is most worth
+ * saying, and that state is the common one.
+ *
+ * It is common because membership and role are separate in this model:
+ * `createWorkspace` puts its creator in the workspace and grants them NO role,
+ * and `addWorkspaceMember` does the same. So somebody in three workspaces
+ * ordinarily holds no workspace role in any of them until an administrator
+ * assigns one — they can enter, and §12.33 is what entry rests on.
+ *
+ * `No role` is the wording `/organizations` already uses for the same state one
+ * level up, where its own comment calls a member with no role "a real and
+ * unremarkable state". Muted, so it reads as an absence rather than as the name
+ * of a role somebody was given.
+ *
+ * ⚠ It is deliberately not "Member": platform support reaches every workspace
+ * while belonging to none, and their rows come back roleless too. "No role" is
+ * true for both of them; "Member" would be a claim about standing that this
+ * control cannot check.
+ *
+ * Either way the line renders, which keeps a row two lines tall whatever it has
+ * to say — a menu that changes height as you read down it is harder to scan.
+ */
 function WorkspaceRole({ workspace }: { workspace: SwitcherWorkspace }) {
   const Icon = workspace.roleLabel && workspace.roleIcon ? iconFor(workspace.roleIcon) : null;
   return (
     <span className="flex items-center gap-1 text-xs leading-tight text-muted-foreground">
       {/* `aria-hidden`: the label beside it already names the role. */}
       {Icon ? <Icon aria-hidden className="size-3 shrink-0" /> : null}
-      {/*
-        The KEY when there is no role — the same fallback the organization
-        switcher uses, and it keeps the row two lines tall either way so the
-        drawer does not resize as you move between workspaces.
-      */}
-      <span className="truncate">{workspace.roleLabel ?? workspace.key}</span>
+      <span className={cn('truncate', workspace.roleLabel ? undefined : 'italic opacity-70')}>
+        {workspace.roleLabel ?? 'No role'}
+      </span>
     </span>
   );
 }
@@ -87,6 +115,7 @@ export function WorkspaceSwitcher({
   workspaces,
   activeId,
   organizationId,
+  canCreate,
   collapsed,
 }: {
   /** The selected organization's workspaces that the viewer may enter. Empty when none is selected. */
@@ -101,6 +130,24 @@ export function WorkspaceSwitcher({
   activeId: string | null;
   /** Null when no organization is selected — which is what disables this. */
   organizationId: string | null;
+  /**
+   * Whether the viewer holds `workspaces:create` IN the selected organization.
+   *
+   * GATED, unlike the organization switcher's "New organization" — and the
+   * asymmetry is the model's, not an inconsistency. Creating an organization is
+   * bounded by the `user:organizations` limit rather than by a feature, because
+   * there is no organization yet to grant the right; creating a workspace is a
+   * right a tenant grants, and `workspaces:create` is the organization-level
+   * key the mutation is guarded by. Offering the item to somebody without it
+   * would put a row in a menu that the server refuses on submit — the mismatch
+   * between what is offered and what is permitted that one shared feature key
+   * exists to prevent, which is the same reason the list above shows only the
+   * workspaces they may actually enter.
+   *
+   * Resolved by the shell from the ORGANIZATION-scoped reading of their grants,
+   * so it changes with the selection rather than with the page's own scope.
+   */
+  canCreate: boolean;
   collapsed: boolean;
 }) {
   const active = workspaces.find((workspace) => workspace.id === activeId) ?? null;
@@ -216,6 +263,39 @@ export function WorkspaceSwitcher({
               </DropdownMenuItem>
             ))
           )}
+
+          {/*
+            THE WAY OUT OF THE EMPTY STATE, and the mirror of the organization
+            switcher's "New organization".
+
+            It matters most in exactly the case above: an organization whose
+            workspaces the viewer is in none of shows a menu with nothing in it,
+            and a picker that offers no way forward is where somebody stops. The
+            sentence there says who can add them to an EXISTING workspace; this
+            says they may make one.
+
+            Separated from the list rather than appended to it, because it is
+            not a place you can switch to — the rows above navigate INTO a
+            workspace, this one goes to a form.
+          */}
+          {canCreate ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                {/*
+                  Scoped to the SELECTED organization, and it has to be: a
+                  workspace is created inside one, so there is no app-level
+                  `/workspaces/new` to point at. `organizationId` is non-null
+                  here — the trigger is disabled without one, so this menu
+                  cannot open — and the `?? ''` is only what satisfies the type.
+                */}
+                <Link href={`/organizations/${encodeURIComponent(organizationId ?? '')}/workspaces/new`}>
+                  <Plus aria-hidden className="size-3.5" />
+                  New workspace
+                </Link>
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

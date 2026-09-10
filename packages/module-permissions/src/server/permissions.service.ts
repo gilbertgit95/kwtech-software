@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { APP_DEFAULT_REGISTRY, type AppDefaultSpec, appDefaultRoleLevel } from '../defaults.js';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
 import { checkLimit, LIMIT, LIMIT_REGISTRY, type LimitDecision, type LimitKey } from '../domain/limits.js';
@@ -21,6 +22,40 @@ import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.
  * that finally hurts is never the one anybody tested.
  */
 const MAX_USER_ROLE_LOOKUP = 200;
+
+/**
+ * One platform default, as a screen needs it: what it MEANS from the catalogue,
+ * what it is SET to from the table, and what that value resolves to today.
+ *
+ * The three sources are kept as separate fields rather than flattened into
+ * "the answer", because the screen has to distinguish states that a single
+ * resolved value cannot: unset, set-and-resolving, and set-but-pointing-at
+ * something that has since been deleted, disabled or archived.
+ */
+export interface ResolvedDefault {
+  key: string;
+  kind: AppDefaultSpec['kind'];
+  moment: AppDefaultSpec['moment'];
+  label: string;
+  description: string;
+  whenUnset: string;
+  /** The stored value — a role ID, or a plan KEY. Null when no default is set. */
+  value: string | null;
+  updatedAt: Date | null;
+  updatedByUserId: string | null;
+  /** The target's name today, or null when the value no longer resolves. */
+  targetLabel: string | null;
+  targetIcon: string | null;
+  /**
+   * The target exists but cannot currently be applied — a disabled role, an
+   * archived plan.
+   *
+   * Distinct from a null `targetLabel`, which is "gone entirely". Both mean the
+   * default does nothing right now; only this one names something the reader
+   * can go and un-archive.
+   */
+  targetUnavailable: boolean;
+}
 
 @Injectable()
 export class PermissionsService {
@@ -135,6 +170,70 @@ export class PermissionsService {
       },
     });
 
+    /*
+     * ── THE PLAN EACH ORGANIZATION IS ON ─────────────────────────────────────
+     *
+     * One query for the whole list, not one per row: the switcher draws the
+     * plan beside every tenant the viewer belongs to, and a request per
+     * organization would put the drawer's cost on the number of companies
+     * somebody has joined.
+     *
+     * ⚠ UNGATED, like the list it rides on, and that is a deliberate reading of
+     * the boundary rather than an oversight. `subscriptions:read` protects the
+     * commercial RECORD — status, renewal dates, ended rows, per-workspace
+     * subscriptions, and any of it for a tenant you are not in. The plan's key,
+     * label and icon are not that: `myPermissions` already hands every member
+     * the `entitled` list for an organization they belong to, ungated, and that
+     * list IS what the plan grants. Withholding the plan's NAME while
+     * publishing its effects would protect nothing and would leave the switcher
+     * unable to say what a member is already being told.
+     *
+     * Only ever the caller's own organizations here, because that is what the
+     * memberships above resolved to.
+     *
+     * Organization-wide and live: `workspaceId: null` (a workspace's own
+     * subscription entitles that workspace, not the tenant), `status: 'active'`,
+     * a plan that is not archived, and no `endedAt` — the same four the
+     * entitlement path passes, so the icon in the drawer cannot disagree with
+     * what the reader is actually entitled to.
+     */
+    const organizationIds = [...new Set(rows.map((row) => row.organization.id))];
+    const subscriptions =
+      organizationIds.length === 0
+        ? []
+        : await this.prisma.permSubscription.findMany({
+            where: {
+              organizationId: { in: organizationIds },
+              status: 'active',
+              plan: { archivedAt: null },
+              endedAt: null,
+              OR: [{ workspaceId: null }],
+            },
+            include: {
+              plan: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } },
+            },
+            orderBy: { id: 'asc' },
+          });
+
+    /*
+     * FIRST wins, and `orderBy: { id: 'asc' }` is what makes "first" stable.
+     * An organization should hold one live organization-wide subscription —
+     * `startSubscription` refuses a duplicate rather than no-opping — so a
+     * second row here is a data fault, and picking deterministically means the
+     * drawer at least says the same thing on every render while somebody works
+     * out what happened.
+     */
+    const plans = new Map<string, { key: string; label: string; icon: string | null }>();
+    for (const subscription of subscriptions) {
+      if (!plans.has(subscription.organizationId)) {
+        plans.set(subscription.organizationId, {
+          key: subscription.plan.key,
+          label: subscription.plan.label,
+          icon: subscription.plan.icon,
+        });
+      }
+    }
+
     return (
       rows
         .map((row) => ({
@@ -143,6 +242,15 @@ export class PermissionsService {
           organizationKey: row.organization.key,
           organizationName: row.organization.name,
           organizationDescription: row.organization.description,
+          /*
+           * Null is ONE state here and means "on no plan" — where every
+           * organization starts, and a normal thing to be. It is not the
+           * "cannot see it" state the tenant screens have to distinguish,
+           * because this read is not behind a key that can refuse.
+           */
+          planKey: plans.get(row.organization.id)?.key ?? null,
+          planLabel: plans.get(row.organization.id)?.label ?? null,
+          planIcon: plans.get(row.organization.id)?.icon ?? null,
           /*
            * At most one, enforced by `@@unique([membershipId])` on
            * PermMembershipRole — a member is one thing in an organization. Read
@@ -545,6 +653,105 @@ export class PermissionsService {
       workspace,
       organizationMembers: organization.members,
     };
+  }
+
+  /**
+   * ── THE PLATFORM'S DEFAULTS, resolved ────────────────────────────────────
+   *
+   * Every default the CATALOGUE declares, whether or not a row exists for it,
+   * with the thing each one points at resolved to a name.
+   *
+   * ## Driven by the catalogue, not by the table
+   *
+   * The registry is walked and the rows are looked up, rather than the rows
+   * being listed and described. Two consequences, both wanted:
+   *
+   *   - a default nobody has ever set still appears, unset, with its
+   *     description and its `whenUnset` sentence. A screen listing only rows
+   *     would show an empty page on a fresh deployment — which is exactly when
+   *     somebody most needs to see what they could configure;
+   *   - ⚠ a row whose key the catalogue does not declare is DROPPED. A typo
+   *     inserted by hand cannot become policy, and a key retired in a later
+   *     build stops applying the moment the code stops declaring it, rather
+   *     than whenever somebody remembers to delete the row.
+   *
+   * ## A value that no longer resolves reads as UNSET
+   *
+   * A role can be deleted or disabled and a plan archived, long after somebody
+   * chose it here — nothing stops either, and nothing should: a default is a
+   * pointer, not an owner. So the target is looked up and a miss comes back as
+   * `resolved: null` with the raw value still shown, which is what lets the
+   * screen say "this points at something that is gone" instead of either
+   * throwing or quietly reporting no default at all.
+   *
+   * The WRITE paths make the same reading for the same reason — see
+   * `defaultRoleId` — so a stale default degrades to the behaviour that existed
+   * before anybody set one, rather than failing a sign-up.
+   */
+  async listDefaults(): Promise<ResolvedDefault[]> {
+    const rows = await this.prisma.permDefault.findMany({ orderBy: { key: 'asc' } });
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+
+    /*
+     * Both target tables ONCE, rather than a lookup per default. There are four
+     * defaults pointing into two tables, so the alternative is four queries to
+     * describe a screen showing four lines.
+     *
+     * ⚠ `organizationId: null` — GLOBAL role definitions only, and this is the
+     * constraint that is easiest to miss. A tenant may define its own roles,
+     * and one of those as the founder default would mean every organization
+     * created from then on trying to grant a role belonging to somebody else's
+     * company. The same filter runs on the WRITE, so the picker and the
+     * validator cannot disagree.
+     */
+    const [roles, plans] = await Promise.all([this.listRoles(null), this.listPlans()]);
+
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    const planByKey = new Map(plans.map((plan) => [plan.key, plan]));
+
+    return APP_DEFAULT_REGISTRY.map((spec) => {
+      const row = byKey.get(spec.key) ?? null;
+      const value = row?.value ?? null;
+      const level = appDefaultRoleLevel(spec.kind);
+
+      /*
+       * The target, or null when it no longer resolves.
+       *
+       * A role can be deleted or disabled and a plan archived long after
+       * somebody chose it here — nothing stops either, and nothing should: a
+       * default is a pointer, not an owner. So a miss comes back as a null
+       * target with the raw `value` still shown, which is what lets the screen
+       * say "this points at something that is gone" rather than either throwing
+       * or quietly reporting no default at all.
+       *
+       * A role whose LEVEL no longer matches is treated the same way. It cannot
+       * happen by editing — a role's level is immutable — but it can happen by
+       * deleting a role and creating another with the same id shape, and the
+       * check costs one comparison.
+       */
+      const role = level && value ? (roleById.get(value) ?? null) : null;
+      const plan = spec.kind === 'plan' && value ? (planByKey.get(value) ?? null) : null;
+
+      const target =
+        role && role.level === level
+          ? { targetLabel: role.label, targetIcon: role.icon, targetUnavailable: role.disabled }
+          : plan
+            ? { targetLabel: plan.label, targetIcon: plan.icon, targetUnavailable: plan.archived }
+            : { targetLabel: null, targetIcon: null, targetUnavailable: false };
+
+      return {
+        key: spec.key,
+        kind: spec.kind,
+        moment: spec.moment,
+        label: spec.label,
+        description: spec.description,
+        whenUnset: spec.whenUnset,
+        value,
+        updatedAt: row?.updatedAt ?? null,
+        updatedByUserId: row?.updatedByUserId ?? null,
+        ...target,
+      };
+    });
   }
 
   /**
