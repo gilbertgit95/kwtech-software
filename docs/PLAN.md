@@ -16,7 +16,7 @@ Reference repo: **`../masterdb-mgt-tool`** — the newest of the Sensorbee repos
 the template for toolchain, conventions and versions here. `../coseller-mono` is
 consulted only where masterdb has not built something yet (notably GraphQL, §6).
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 ---
 
@@ -33,8 +33,10 @@ Last updated: 2026-09-09
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
 | `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
 
-**Planned, not built yet:** `packages/db` (Prisma — see the note below),
-`apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
+**Planned, not built yet:** `packages/module-chat` (designed 2026-09-10 — see
+the decision log; the first module that is not platform), `packages/db` (Prisma
+— see the note below), `apps/admin`, `apps/worker`, `apps/cli`,
+`packages/mobile-ui`.
 
 ⚠️ **A Prisma home is missing from that list and Phase 1 blocks on it.**
 `web-server` cannot reach Postgres without somewhere for the schema and
@@ -498,8 +500,8 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 25 | Where does a billing provider's webhook write, and who wins a conflict? | before a payment provider is connected | `PermissionsWriteService` now owns the write path and keys idempotency on the live (organization, workspace, plan) row. A provider that writes the same table needs either a `source` column and a precedence rule, or a reconciliation job that treats the provider as authoritative and supersedes admin rows. Precedence is the part teams get wrong, so decide it before the first webhook, not after |
 | 26 | ~~Should plans be SEEDED, like app roles are?~~ **Closed: yes, on request** | — | **Reversed 2026-09-07.** They were left unseeded on the grounds that which products a platform sells is an operator decision. They are now seeded as a STARTING catalogue — `free`, `starter`, `pro`, `enterprise` — with `createPlanIfAbsent`, which creates what is missing and never rewrites what is there. Phase 'seed', not 'sync': the operator decision is preserved by the seed getting out of the way, not by there being no seed. Original entry: | app roles are seeded because the SHAPE is fixed and the definitions are product decisions living app-side. Plans are the same shape of thing, and deliberately not seeded today: which products a platform sells is an operator decision, and a seeded `free` plan would be this repo deciding it. The screens create them instead. Revisit if a fresh environment needs a plan before anyone can subscribe anybody |
 | 27 | Scope role writes to the actor's organization, and put `roles:create/update/disable` back at organization level | **unblocked 2026-09-09** — §12.13 closed | `createRole` writes `organizationId: null` — a SHARED PRESET every tenant sees — and `listRoles` reads that same null scope, so a role write is a platform operation. The three write keys were raised to APP level on 2026-09-07 to say so. Reversing it needs the active organization on the request (§12.13), which is exactly why `role-draft.ts` cannot offer an organization picker today. Do both together or neither. **⚠ The blocker is gone: §12.13 closed on 2026-09-09 and the active organization is now on the request, so `role-draft.ts` COULD offer an organization picker.** Nothing was changed here with it, deliberately — re-levelling three write keys and re-scoping `listRoles` is a change to what every existing role means, and it does not belong in the same commit as the screens that revealed it was possible. What the tenant area does today is narrow the PICKER (`myOrganizationRoles` filters app-level roles out), which is a presentation fix and not the re-scoping this decision asks for |
-| 28 | Redis-backed pub/sub, before `web-server` scales past one replica | before a second replica | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7) |
-| 29 | Rate-limiting subscription volume on an open socket | when realtime carries real traffic | `CredentialThrottlerGuard` skips WebSocket operations — it writes rate-limit headers onto a response a socket does not have, and per-request IP limiting is not the question a socket asks. Bounded today only by the handshake needing a live-session ticket and the connection closing at token expiry. Belongs in `graphql-ws`' `onSubscribe`, which can see the connection |
+| 28 | Redis-backed pub/sub, before `web-server` scales past one replica | before a second replica | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7). **⚠ HARDENED 2026-09-10 — the trigger is now PRESENCE, not the second replica.** Pub/sub across replicas fails silently; presence across replicas fails LOUDLY and constantly, because replica A cannot see sockets held by replica B and half the users show as offline forever. So: Redis before presence ships, or single-replica recorded as a deliberate choice. **`module-chat` is also the feature that makes the pub/sub half unsurvivable** — a plan key arriving late is a stale badge, a message that never arrives is a broken product |
+| 29 | Rate-limiting subscription volume on an open socket | when realtime carries real traffic | `CredentialThrottlerGuard` skips WebSocket operations — it writes rate-limit headers onto a response a socket does not have, and per-request IP limiting is not the question a socket asks. Bounded today only by the handshake needing a live-session ticket and the connection closing at token expiry. Belongs in `graphql-ws`' `onSubscribe`, which can see the connection. **Narrowed 2026-09-10:** `module-chat` puts MUTATIONS on HTTP and only subscriptions on WS, so a send passes `ThrottlerGuard` and message-rate limiting comes for free. What is left is how many topics one socket may hold |
 | 30 | ~~A per-workspace member screen, for WORKSPACE-level role grants~~ **Closed** | — | **2026-09-07.** Each workspace on the organization detail screen expands to its members and their workspace roles, and an Add-member dialog picks from organization members not already in it, with an optional workspace role beside it. `assignWorkspaceRole` and `revokeWorkspaceRole` now have a UI. Original entry: | `assignWorkspaceRole` and `revokeWorkspaceRole` are exposed and guarded and reachable only through the API. The organization detail screen already toggles workspace MEMBERSHIP per member; adding a second role picker to that same row is how a screen becomes unreadable, so the grants belong on a workspace's own screen |
 | 31 | ~~An invite flow for an address with no account~~ **Closed** | — | **2026-09-07.** `PermInvitation` + `inviteMember`/`revokeInvitation`/`acceptInvitation`, a seven-day single-use token stored as a SHA-256 hash, an app-supplied `sendInvitationEmail` hook, and `/invitations/accept` — which creates the account when there is none. `PermMembershipStatus.invited` is still unwritten and now never will be: an invitation is addressed to an EMAIL, and a membership carries a userId there may not be one of. See the decision log |
 | 34 | A composite foreign key tying a workspace membership to ONE organization | with §12.19 (raw-SQL schema extras) | `PermWorkspaceMember` references a MEMBERSHIP and a WORKSPACE independently, so nothing in the schema stops a membership in org A being linked to a workspace in org B. A cross-tenant row was inserted against a live database and surfaced in `accessibleWorkspaceIds`. The read path now filters it (C3's defence, one table over) and the write path always checked it — but the row is still writable. Closing it needs `organizationId` denormalised onto the row plus compound uniques on both parents, which is the same raw-SQL-extras question as §12.19 |
@@ -509,14 +511,547 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 36 | Sign-up exists only through an invitation | when self-service registration is a product decision | `AuthService.createAccount` is a METHOD with no route: the only thing that calls it is `signUpFromInvitation`, which supplies the address from the invitation rather than from the form. There is no public registration page and adding one is a product decision with a spam problem attached — not something to arrive at by leaving an endpoint exposed. Note what an open endpoint would also be: `createAccount` says plainly that an address is taken, which is an enumeration oracle anywhere but behind a token |
 | 37 | ~~An app-level role can be GRANTED to nobody: `perm_user_role` has no write path~~ **Closed** | — | **2026-09-08.** `assignAppRole` behind a new `roles:grant_app` key, plus `inviteUser`, which carries the chosen role on the invitation and applies it at acceptance. Both refuse a role carrying features the granter does not hold, so neither can be used to mint somebody more powerful than yourself. Original entry: | `assignRole` writes `perm_membership_role` and takes an `organizationId`; nothing writes `perm_user_role` at all, so the two app-level grants in the live database were inserted by hand. `roles:manage_app` guards WRITING an app-level role, not granting one — a different act, and currently an unguarded impossibility rather than a hole. The user detail screen is the first surface that wants it, and the key is permissions-side (`roles:*`), not `users:*`: it grants a role, it does not change an account |
 | 38 | Deleting an account orphans its permission rows | if an erasure path is ever built | `perm_membership.userId` has no FK to `auth_user` by design (§12.12), so `DELETE FROM auth_user` leaves memberships and role grants pointing at nobody — verified by hand three times on 2026-09-08 removing test accounts, each needing an explicit membership and `perm_user_role` delete first. `findUsersByIds` and `listAppRolesForUsers` both tolerate the orphan by returning fewer rows than asked for. **No longer urgent: `users:delete` was removed the same day and the product has no delete at all** — an account is suspended, which keeps every row and is reversible. This stays open because the hazard returns the moment somebody builds an erasure path for a legal request, and because deleting by hand in a console hits it today. The composed delete belongs in the APP, the only layer allowed to touch both modules' tables |
-| 39 | Nothing in `apps/web-app` opens the realtime socket | when a module is built on it | The API half is complete and running — `graphql-ws` subscriptions on the same URL as HTTP, a ticket verified at `onConnect`, `planChanged` published, `NEXT_PUBLIC_WS_URL` set in both env files — and the app never calls `createRealtimeConnection`, so `PlansPage` receives no `realtime` prop and nothing listens. **Decided 2026-09-08: leave it.** `module-auth` and `module-permissions` stay on HTTP; realtime arrives as its OWN module, which is what the seam was built for — `onConnect` shapes the socket into the same `{ req }` an HTTP request produces, so `FeatureGuard` and `resolvePrincipal` are transport-blind and a new module's subscriptions are guarded like its queries. When it lands: the APP owns the one connection and passes it in (a `createRealtimeConnection` per module means a socket per module per tab), the `graphql-ws` import sits behind a subpath, the ticket path is an option rather than a hardcoded reference to module-auth's URL, and the subscription gets its own `graphql_subscription` binding. §12.28 and §12.29 become live the day it does |
+| 39 | Nothing in `apps/web-app` opens the realtime socket | when a module is built on it | The API half is complete and running — `graphql-ws` subscriptions on the same URL as HTTP, a ticket verified at `onConnect`, `planChanged` published, `NEXT_PUBLIC_WS_URL` set in both env files — and the app never calls `createRealtimeConnection`, so `PlansPage` receives no `realtime` prop and nothing listens. **Decided 2026-09-08: leave it.** `module-auth` and `module-permissions` stay on HTTP; realtime arrives as its OWN module, which is what the seam was built for — `onConnect` shapes the socket into the same `{ req }` an HTTP request produces, so `FeatureGuard` and `resolvePrincipal` are transport-blind and a new module's subscriptions are guarded like its queries. When it lands: the APP owns the one connection and passes it in (a `createRealtimeConnection` per module means a socket per module per tab), the `graphql-ws` import sits behind a subpath, the ticket path is an option rather than a hardcoded reference to module-auth's URL, and the subscription gets its own `graphql_subscription` binding. §12.28 and §12.29 become live the day it does. **⚠ That day is scheduled: `module-chat` (2026-09-10) is the own-module realtime was waiting for.** It also adds a requirement the plan half of this entry did not state — events must be filtered PER PUBLISH, re-checking participation, because a subscription is authorised once at subscribe and `planChanged` fans out to every subscriber unfiltered |
 | 40 | Billing is unbuilt: nothing charges, and `currentPeriodEnd` is informational | when a payment provider is chosen | **Not to be built before the provider is.** Stripe, Paddle and manual invoicing imply genuinely different tables — Paddle is a merchant of record and handles tax, Stripe is not and does not — and guessing that shape is how a schema ends up fighting the integration. What IS decidable now, and was, on 2026-09-08: billing gets its OWN module, referencing `organizationId` and `planKey` as bare values with no foreign key, exactly as `perm_membership.userId` references an account. Roughly `BillingCustomer` (organization ↔ provider customer), `BillingPrice` (planKey → amount, currency, interval), `BillingInvoice`/`BillingPayment`. **Price does NOT go on `PermPlan`:** a plan is a bundle of entitlements and its price is commercial — currency, regional pricing, per-seat vs flat, promotions — so merging them makes every price change a permissions migration, puts "what Pro entitles" and "what Pro costs" in one row two teams edit, and makes a grandfathered customer paying last year's price for today's entitlements inexpressible. **No FK into `perm_subscription` either:** §12.24 already settled that a provider RECONCILES against those rows rather than owning them, so the seam is a webhook landing in the APP, which reads its billing rows and calls `PermissionsWriteService.updateSubscription` — the composition `resolve-principal` and the invitation resolvers already use. ⚠ Until it exists, a lapsed subscription KEEPS ENTITLING: `currentPeriodEnd` is written and rendered and never compared to `now`, because `status` decides entitlement so a clock cannot revoke a tenant with no row saying why. Nothing writes that status on a lapse — there is no scheduler in `web-server` — so the renewal date on the organization screens promises an enforcement that does not exist, and saying so on those screens is a cheap fix available before the module is |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
+
+| 41 | Can chat ever be sold in a plan? | before chat is priced | `module-chat` is APP level (§12.13 gives it that free: `/chat/*` is not `/organizations/*`), and a plan may only sell organization- and workspace-level features — an app key in a plan entitles nobody. So "group chat is a Pro feature" is unexpressible today, and the ROLE-sourced cap is the only commercial lever. Accepted on 2026-09-10 as the price of chat being person-to-person rather than tenant-scoped: two users with no organization in common must be able to reach each other, which is the whole point. Reversing it later re-levels every `chat:*` key and every role holding one |
+| 42 | Does anyone get to read a conversation they are not in? | before a compliance or abuse report arrives | Shipping with NO such key: `platform:support_access` is the single exemption in the permission model and must not quietly become "read everyone's private messages". `chat:moderate` deletes a message in a conversation the actor is a PARTICIPANT of, which is a different act. The pressure will come from abuse reports and legal holds, and the honest answer when it does is a separate, `isPrivileged`, audited key — not widening support access, and not an unlogged database console |
+| 43 | Message retention, edit history and attachments | after `/chat` ships | v1 stores `body` text with `editedAt`/`deletedAt` tombstones and no prior-version table, so an edit destroys what was said and a delete is soft with no purge. Fine while chat is internal; none of it survives a retention policy or a deletion request. Attachments were part of this entry and are now §12.45, which is a bigger question than retention |
+
+| 44 | What `dnd` suppresses beyond the local tone | when a notification system exists | Availability ships as a coloured dot, and a dot that lies is worse than no dot. The one thing it CAN do today it does: `dnd` mutes the receive tone locally. Everything else people assume it means — no email, no push, no badge — needs a notification system, and this repo has none. ⚠ The availability picker must SAY so, in the picker, the way `/admin/defaults` says what it hands over. When notifications arrive, `dnd` is the first consumer and the question becomes whether it suppresses delivery or only presentation |
+| 45 | Attachments: the blob store, and the signed URL that is a bearer token | before files are promised to anyone | v1 is text and emoji, and the schema is shaped so files need NO migration: `body` is nullable (an image-only message with `body: ''` is a lie), `ChatMessage.kind` already exists for system messages, and there are deliberately no `fileUrl`/`fileName` COLUMNS — attachments will be a child table, because the columns are the shortcut that breaks on the second file. ⚠ **No `ChatAttachment` table is created.** An empty table is a claim to have thought it through, and this repo already carries `PermMembershipStatus.invited` as the scar. What actually gates files is not schema: there is no blob store anywhere in the monorepo, so it needs storage, a size cap, a virus-scan decision, and a per-plan storage limit that lands back on the `LimitContribution` work. ⚠ And it CHANGES THE PRIVACY MODEL: a signed URL is a BEARER TOKEN — anyone holding the link reads the file, with no `canAccessConversation` on it. Decide that before the first upload, not after |
+| 46 | Typing pings ride HTTP, not the socket | if they show up in metrics | A typing signal is the highest-frequency write in the product: one per user per conversation every few seconds. It goes over HTTP with every other mutation, which is the §12.29 bargain — `ThrottlerGuard` bounds it for free, where a socket-borne ping is cheaper and completely unthrottled. A deliberate trade of bytes for a limit that already exists. Reverse it if typing traffic ever registers, and take §12.29 seriously in the same change |
+
+| 47 | Read receipts — "seen by" | before the thread UI is final | `lastReadMessageId` already exists for the unread badge, so who has read past message X is nearly FREE to expose, which is exactly why it needs a decision rather than a default. It is a privacy change, not a feature toggle: it tells a sender when a specific person read a specific line, and in a workplace tool that is a management surface. If it ships it must respect `invisible` — somebody appearing offline who silently marks read has been leaked by the side door §12 already closed for typing |
+| 48 | Message search | when a conversation outgrows one screen | Nothing finds anything today. Postgres full-text or `pg_trgm`, scoped by `canAccessConversation` — search is the easiest place to accidentally return a message from a conversation the searcher is not in, because the natural query starts from the message table rather than from participation. Start from participation |
+| 49 | Abuse has no path, which is §12.42's cost | when the first report arrives | `chat:moderate` acts only inside a conversation the actor PARTICIPATES in, and §12.42 deliberately ships no read-any-conversation key. Consistent, and it means a platform-wide abuse report can be received and acted on by nobody. The blocking added in v1 is the USER's remedy; the PLATFORM has none. The honest fill is a report flow that escalates a specific conversation with the reporter's consent — narrow, audited, and not a general read key |
+| 50 | Web Push, and what `dnd` gates once it exists | after `/chat` is used in anger | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-10** — **`module-chat` reviewed before it exists: ten holes, and the
+  packaging rule that the module must be adoptable in one file.**
+
+  ## The holes
+
+  Found by reading the design adversarially rather than by building it. Each is
+  cheap now and expensive once there are messages in a table.
+
+  1. ⚠ **NOBODY COULD REFUSE CONTACT.** Chat is app level and the directory
+     takes an email, so anyone who knows your address could open a DM, and
+     declining only let them re-invite. A harassment vector with no remedy —
+     and `chat:moderate` does not help, because §12.42 deliberately makes
+     moderation require participation. **`ChatBlock(blockerId, blockedId)` is
+     v1**, it blocks new conversations and messages, and a decline BOUNDS
+     re-invitation rather than resetting it. ⚠ A blocked sender gets the SAME
+     answer as an unknown address — one message, one status, the same timing —
+     or the block becomes a notification that you have been blocked.
+  2. ⚠ **Message bodies are rendered into other people's browsers**, which is a
+     far larger surface than the availability text already ruled out. **Plain
+     text, escaped on render, NO markdown and NO auto-linking.** Auto-linking is
+     a phishing vector the moment display text and href may differ. Markdown
+     later is additive; removing it is not.
+  3. ⚠ **A retried send double-posts.** Optimistic insert plus a flaky network
+     plus retry equals duplicates. One column fixes it: **`clientMessageId`,
+     unique per conversation**, generated client-side as the idempotency key. It
+     lands in step 3 — retrofitting means a backfill.
+  4. **Who may remove whom was undefined**, and it touched the cap: a member
+     removing the creator would free the creator's quota and orphan the group.
+     Removal needs `chat:remove_participant` AND active participation, and **the
+     creator cannot be removed by anybody else**.
+  5. ⚠ **`directKey` is computed SERVER-SIDE, always.** A client-supplied one
+     forges a DM between two other people. And **self-DM** was undefined —
+     allowed deliberately as a notes-to-self thread, rather than left to produce
+     a one-participant "direct" by accident.
+  6. **A `left` or `removed` participant resolves NOTHING** — no messages, no
+     presence, no typing. Silence on this is how history leaks.
+  7. ⚠ **`createdAt` is DATABASE-generated.** App-set timestamps plus clock skew
+     between replicas reorder messages under keyset pagination, and the symptom
+     appears for SOME readers only, which is the worst kind to debug.
+  8. **Caps, with numbers**: a body cap (~4000 code points, counted as code
+     points per the emoji rule) and a MAXIMUM page size on message queries.
+     Postgres `text` is unbounded and an unbounded page size is a request for a
+     hundred thousand rows.
+  9. **A moderated delete records who and when** on the tombstone. It is the
+     sharpest instance of the review's open M7, and it costs two columns rather
+     than an audit subsystem.
+  10. **Edit rules**: author only, and ⚠ **an edit never touches `createdAt`**,
+      or a message jumps position mid-conversation under keyset ordering.
+
+  **Added to v1 because each is a column now and a migration later**:
+  `lastMessageAt` on the conversation (or the list does a `max()` per row —
+  the panel's slowest query), `replyToMessageId` nullable, `mutedUntil` on the
+  participant (per-conversation mute is what people want more than global DND),
+  group rename and icon (`title` existed and nothing edited it; `IconPicker` is
+  already in `web-ui`), failed-send retry state, drafts in `localStorage`, and a
+  `surface-coverage` test at parity with module-permissions.
+
+  **Does `chat:read` earn a key?** §12.23 removed `account:*` on the rule that a
+  surface gets a key only when it needs AUTHORISATION, not merely a session, and
+  somebody will apply that here. **Yes, it earns one**: chat is genuinely
+  deniable — a contractor account that may not message staff is a real
+  configuration — where a settings page you would be locked out of is not. Said
+  out loud because the precedent points the other way.
+
+  ## The packaging rule
+
+  **THE MODULE IS THE PRODUCT; THE APP IS A FILE.** The point of `module-chat`
+  is to be dropped into another app, so the measure is how much the host has to
+  write. The target is what module-auth already reached — "two lines per
+  surface, defaults from a published env contract" — and the reference is
+  `packages/module-chat/docs/USAGE.md`, written BEFORE the module rather than
+  after, because a seam nobody can describe in a page is a seam that is wrong.
+
+  ⚠ **Zero app code is not the goal and is not achievable.** The seams exist
+  precisely BECAUSE modules may not import each other, and that prohibition is
+  what makes chat portable at all. The goal is that every seam is a NAMED PORT
+  with a documented default, and that the host's total comes to one file.
+
+  What chat cannot own, and therefore takes as options:
+
+  - **`ChatPrismaClient`** — structural, host-injected, never a connection the
+    module opens. Established by permissions.
+  - **`resolveActorId`** — principal → `userId`. §9 rule 6, established.
+  - **`UserDirectory`** — ⚠ THE ONE GENUINELY NEW PORT.
+    `{ findByEmail(email), describe(ids) }` returning `{ id, displayName }`.
+    Chat needs to look somebody up to invite them and to render a name, and
+    both read `auth_user`, which belongs to another module. Ten lines in the
+    host — and an app on a different IdP implements the same interface, which
+    is exactly the portability being bought.
+  - **`LimitChecker`** — the module-kit port. ⚠ Its default is a NULL OBJECT
+    meaning "no limit", so **`module-chat` runs in an app with no permissions
+    module at all**: unguarded but functional. That is the real test of
+    reusability, and it is a design goal rather than an accident.
+  - **`ChatPubSub`** — structural, as `PermissionsPubSub` already is.
+  - **`sendChatNotification`** — an optional hook, shaped like permissions'
+    `sendInvitationEmail`, unused until §12.50.
+
+  Everything else is DATA the host composes and does not write:
+  `chatServerModule()` and `chatWebModule()` descriptors, the `/chat` routes
+  through the §12.11 catch-all, the drawer entry through `composeNav`, and the
+  header widget through the module-kit slot. Route handlers are one-line
+  re-exports from `@kwtech/module-chat/next`, the way the auth proxy became one.
+
+  **Extension — features and roles.** `CHAT_FEATURE_REGISTRY` is exported as
+  `FeatureContribution[]`, exactly as `AUTH_FEATURE_REGISTRY` is, and the host
+  composes it in `seed/registry.ts` and may APPEND its own keys there. ⚠ There
+  is deliberately no second path — no `additionalFeatures` on `forRoot` — because
+  two places to declare a right is two places to disagree, and the composition
+  point already exists. The module also EXPORTS role presets ("Chat user",
+  "Chat moderator") as data for the host's role seeder to use or ignore; it
+  never seeds them itself, the `createPlanIfAbsent` lesson about an operator
+  decision being preserved by the seed getting out of the way.
+
+  ⚠ **Extending the DOMAIN is the harder half and is not solved by a hatch.** A
+  `metadata Json?` on conversation and message is one column that buys a host
+  somewhere to put "support ticket id" without a migration — offered on the
+  understanding that it is a dumping ground, unqueryable and untyped, and that
+  anything the module itself needs to read must become a real column. Prisma
+  enums are not extensible, so a host wanting a third conversation KIND is
+  asking for a module change, not a hatch.
+
+  ## Seeding — the module exports DATA, the app owns the RUNNER
+
+  **`module-chat` ships no seeder**, for the same reason it opens no database
+  connection: a host may seed by a mechanism this repo has never seen. It
+  exports arrays; `apps/web-server/src/seed/` decides what to do with them.
+
+  ⚠ **And chat's features need NO NEW SEEDER FILE.** The existing
+  `permissions-registry` seeder is generic — it seeds whatever the composed
+  registry holds — so adopting chat is `CHAT_FEATURE_REGISTRY` spread into
+  `seed/registry.ts`, one import and one line. That is the packaging target
+  holding up under its first test, and it is the reason features compose in the
+  app rather than being read from one module.
+
+  Three things get seeded, none of them new machinery:
+
+  - **The `chat:*` feature rows**, through the registry above. This is also what
+    runs `auditRegistry()` and `assertRegistered()` over them, so a chat key
+    that binds nothing is reported as "Not enforced anywhere" for free.
+  - **The cap.** `chat:group_chats` at 20 goes on app-level roles in
+    `app-roles.ts`, beside the `user:organizations` values already there — until
+    step 2 lands the role-editor limits, after which it is operational rather
+    than a deploy.
+  - **Role presets**, optionally: "Chat user", "Chat moderator", exported as
+    data and CREATED IF ABSENT, never rewritten. The `createPlanIfAbsent`
+    rule — which products a platform offers is an operator decision, preserved
+    by the seed getting out of the way rather than by there being no seed.
+
+  ⚠ Two traps that do NOT apply here, noted because both have bitten this repo:
+  a new key being invisible until a plan entitles it is an ORGANIZATION-level
+  problem, and every `chat:*` key is app level, so no plan is involved. And
+  `syncFeatureRegistry` deprecating rows absent from the registry (§12.22) is
+  correct behaviour here rather than a hazard: an app that drops `module-chat`
+  wants its chat keys deprecated.
+
+  **No platform default is added.** `/admin/defaults` exists because four
+  creation paths each ended with somebody holding nothing; chat has no such path
+  — a conversation is opt-in per conversation, and a new account needs no chat
+  state at all. Adding a default with no failure behind it is how a catalogue
+  becomes noise.
+
+  ## Switching it off — three different acts, deliberately not one
+
+  - **NOT INSTALLED.** The host never composes `chatServerModule()` or
+    `chatWebModule()`. Nothing to build, nothing to check, and it is the real
+    answer for an app that does not want chat. This is what the packaging above
+    buys.
+  - **DISABLED.** Installed, switched off without a deploy-time removal:
+    `forRoot({ enabled: false })` **returns a module that registers nothing** —
+    no resolvers, no REST, no subscriptions, no routes, no nav entry, no header
+    slot. ⚠ ONE place, on purpose. A flag consulted independently by each
+    surface is a flag somebody forgets in one of them, and a "disabled" chat
+    that still answers a GraphQL query is worse than no switch at all. The
+    module exports the reader for that flag so the server and web descriptors
+    cannot disagree about what "on" means.
+  - **DELETED.** Not a thing. Disabling keeps every row; re-enabling restores
+    the product exactly. ⚠ And a temporary disable KEEPS `CHAT_FEATURE_REGISTRY`
+    composed in `seed/registry.ts` — dropping it makes `syncFeatureRegistry`
+    deprecate the `chat:*` rows, and a deprecated feature does not grant (H2), so
+    every role would silently lose its chat rights and get them back only on
+    re-registration. Uninstalling SHOULD deprecate them. Disabling must not.
+
+  ## Who sees it: one key, filtered in three places, enforced in a fourth
+
+  A user whose app-level role lacks `chat:read` sees no icon, no drawer entry
+  and no route — the drawer through `composeNav(WEB_MODULES, granted)`, the
+  header widget through the same grant filter on the module-kit slot, and the
+  pages through `ModuleRoute.feature`, which the catch-all already resolves and
+  answers with `FeatureDenied`. All three are decided SERVER-SIDE, in the shell
+  composition, so there is no flash of an icon that then vanishes. All three
+  fail closed when grants cannot be resolved, matching the `?? false` the nav
+  filter already uses.
+
+  ⚠ **AND HIDING IS NOT ENFORCING.** This is C1's lesson and it is worth
+  restating because a hidden icon feels like a control: every resolver still
+  declares its key, so `/chat` typed into the address bar is refused, the
+  GraphQL endpoint is refused, and the socket topic is never opened. The
+  navigation filter is an ergonomic — it stops people finding doors they cannot
+  open. It is never the lock.
+
+- **2026-09-10** — **`module-chat`, the second design turn: the header slot,
+  presence, leaving, and everything that is ephemeral.**
+
+  **THE ICON IS A HEADER SLOT, NOT A LINE IN `header.tsx`.** Chat hangs off the
+  main header, left of `UserMenu` — the right-hand cluster is things about YOU,
+  the left is about this page, and a notification bell later joins the same
+  cluster. ⚠ But the drawer is `composeNav(WEB_MODULES, granted)`: navigation is
+  COMPOSED, never wired. An icon hardcoded into `header.tsx` would be unfiltered
+  by `chat:read`, absent from the descriptor, and would teach the app shell what
+  chat is — the coupling `module-kit` exists to prevent, duplicated by the
+  second module that wants one. So `WebModuleDescriptor` gains a header-slot
+  contribution, composed and grant-filtered exactly like nav entries. Route
+  descriptors already carry a `ComponentType`, so a slot carrying one is not a
+  new kind of thing. ⚠ It contributes a COMPONENT REFERENCE, never a function
+  prop — the adapter renders on the server, and that is the `ModuleRoute` 500
+  again. ⚠ And the widget must be a CLIENT component that subscribes, because
+  the unread badge has to be right before anybody opens the panel.
+
+  **ANCHORED PANEL, NOT DRAGGABLE.** Messenger's chat heads work because
+  Facebook is a place you sit in while scrolling something else; this is a tool
+  people arrive at to do a task. Draggable costs pointer capture, viewport
+  clamping, per-viewer persisted position, z-index against every existing
+  dropdown, and a resize handler for a restored position that lands off-screen —
+  then a second full-screen implementation, because at 400px "bottom right" is
+  the whole screen. ⚠ And it collides with something load-bearing:
+  `app-shell.tsx` says of the status bar, "A flex ITEM after the scrolling main,
+  not a fixed overlay… a fixed strip would hide content." A floating
+  bottom-right panel is exactly that overlay, and what it would cover is
+  `ConnectivityMonitor` — the one component that says the API is down. So: an
+  anchored popover, fixed size, list ↔ thread inside it, and an "Open in Chat"
+  link out. One panel, never several. `/chat` is NOT optional either way — the
+  panel is a shortcut to the same data, and building it first makes it the only
+  home, permanently cramped.
+
+  **PRESENCE AND AVAILABILITY ARE TWO FEATURES**, and merging them is the
+  standard way this goes wrong. Presence is OBSERVED — derived from the socket,
+  ephemeral, must not survive a restart. Availability is DECLARED — chosen by
+  the user, durable until changed. Different sources, different lifetimes,
+  different stores.
+
+  ⚠ **NOT CALLED `status`.** That word is taken four times already —
+  `AuthUser.status`, `PermMembershipStatus`, `PermSubscriptionStatus`, and
+  `ChatParticipant.status` — and a fifth meaning is a bug report nobody can
+  read. It is **availability**.
+
+  **Presence never goes in Postgres.** A row reading `online` after the process
+  dies is a lie that persists, and it would be a write per socket event. Memory
+  on one replica, Redis on more than one — which is what hardens §12.28: pub/sub
+  across replicas fails silently, presence across replicas fails LOUDLY, with
+  half of everybody permanently offline. Three traps, all of which every
+  hand-rolled presence system hits:
+
+  1. **A REFCOUNT, not a boolean.** Tabs and devices are several sockets per
+     person; closing one must not go offline. Publish on TRANSITION only, or
+     five tabs emit five "online" events.
+  2. **The socket closes every fifteen minutes BY DESIGN.**
+     `closeWhenAuthorizationExpires` drops it at `AUTH_ACCESS_TOKEN_TTL` and the
+     client reconnects. Immediate-offline means every user in the system
+     flickers offline every quarter hour, visibly, forever. Needs a grace period
+     before offline is published.
+  3. **Ungraceful disconnects never fire.** A closed lid delivers no close
+     event, so presence expires on a TTL with a heartbeat rather than trusting a
+     goodbye. ⚠ `graphql.options.ts` wires `onConnect` and NO `onDisconnect`
+     today — that is new surface regardless.
+
+  **Availability is an ENUM** — `available | busy | dnd | away | invisible` —
+  not free text. Free text is user-generated content rendered into other
+  people's browsers: escaping, a length cap and moderation, for something nobody
+  asked for. Additive later. ⚠ **Auto-clear ("clears in an hour") is DERIVED,
+  never written**: store `clearAt` and treat `clearAt < now` as unset ON READ.
+  There is no scheduler in `web-server` (§12.40), so a written `expired` has
+  nothing to write it — the lesson invitation expiry already learned with
+  `isAcceptable`.
+
+  ⚠ **PRESENCE IS A SURVEILLANCE SURFACE AND AN ENUMERATION ORACLE.** The
+  directory is exact-email-only precisely to avoid the second; a
+  `userPresence(userId)` answering for anybody undoes it and adds the first —
+  when a named person works, readable by anyone. So presence resolves ONLY for
+  people you share an active conversation with. `canAccessConversation`, third
+  time. And `invisible` must exist or presence is mandatory surveillance of your
+  own staff — suppressed at the PUBLISH boundary, never filtered client-side,
+  and it suppresses TYPING too or it leaks through the side door.
+
+  **Fan-out is bounded per publish**, not per subscriber: one `presenceChanged`
+  topic filtered against the recipient's conversation partners. Naive presence
+  is O(n²). Same mechanism as messages, no new machinery.
+
+  **LEAVING — and the correction it forced.** `left` on the participant row, no
+  feature key (withholding the exit is a lockout dressed as a permission, the
+  `account:*` lesson). Your messages STAY: a departure is not a deletion, or
+  leaving becomes a way to erase shared history for everybody else. The last
+  active participant leaving ARCHIVES the group rather than deleting it, and
+  coming back is by invitation — `left → invited → active`, which the row
+  already expresses.
+
+  ⚠ **A DIRECT CHAT CANNOT BE LEFT.** If it could, `directKey`'s unique index
+  becomes a trap: message somebody, leave, message them again, and `startDirect`
+  finds a row you are `left` in. So `left` is groups-only, and a DM gets a
+  per-participant `hiddenAt` that the next message clears. One verb in the UI,
+  two mechanics, and the index stays sound.
+
+  ⚠ **This is what corrected the cap** to "created AND still active in" — see
+  the entry above. Ownership transfer was the alternative and is worse: it hands
+  a slot to somebody who never asked for it.
+
+  **EMOJI NEED NO SCHEMA** — they are Unicode text. ⚠ But never cap or slice a
+  message by `.length`: `'👨‍👩‍👧‍👦'.length` is 11, and a naive `slice()` halves a
+  surrogate pair and emits invalid UTF-16 that breaks JSON far from the cause.
+  Cap by CODE POINTS, never truncate mid-grapheme. The picker is the only real
+  cost — most npm emoji pickers ship 200KB–1MB of data, which is a lot hanging
+  off a nav-bar panel, so: the native OS picker plus a recents row. ⚠ REACTIONS
+  are a different feature (emoji attached TO a message, its own table), not v1,
+  and must not be conflated with emoji IN one.
+
+  **TYPING is the highest-frequency write in the product**, and it expires
+  rather than stopping. The client throttles to one ping every few seconds while
+  typing continues; the server sets a TTL key of a few seconds; the indicator
+  clears by EXPIRY. ⚠ Never rely on a "stopped typing" event — the tab closes
+  mid-word and the indicator sticks forever. Ephemeral, so the same store as
+  presence and never Postgres, and bounded naturally: it is per-conversation, to
+  participants only. Transport is §12.46.
+
+  **THE TONE, AND WHY IT IS THE ONLY THING `dnd` CAN HONESTLY DO.** ⚠ Browsers
+  block autoplay until the page has been interacted with, so a tone on the first
+  message after a fresh load silently fails and `play()` rejects — unlock on the
+  first user gesture and handle the rejection rather than letting it throw. It
+  must not play for YOUR OWN message, and not when that conversation is open and
+  the window focused, or it beeps at you while you read.
+
+  **Chat settings — on/off and a CHOICE of tone — live in `localStorage`, per
+  device.** The precedent is already set: the theme preference is stored exactly
+  there, for exactly this reason. Someone muting chat at a shared desk means on
+  that machine, not on their phone. No schema, no migration, no sync. ⚠ **The
+  preview button is not a nicety — it is the unlock**: previewing a tone in
+  settings IS the user gesture that makes later playback work. Three to five
+  short self-hosted files, mp3 (Safari does not take ogg), mono, tiny; no volume
+  slider, because the OS has one. And `dnd` mutes the tone — §12.44 — which is
+  the whole of what `dnd` can truthfully claim until a notification system
+  exists.
+
+  **UNREAD.** `lastReadMessageId` on `ChatParticipant`, monotonic with the
+  keyset ordering `(createdAt, id)`. Counted as messages after it, excluding
+  your own and excluding `kind: system` — a join notice is not addressed to
+  anybody. ⚠ ONE GROUPED QUERY, never a COUNT per conversation per render, which
+  is how the panel becomes the slowest thing in the app; the nav badge is the
+  sum. Marked read when the thread is open AND the window focused — not on mount
+  alone, or a background tab silently clears them. ⚠ The badge must be right
+  BEFORE the panel is opened, which is what makes the header slot a subscribing
+  client component rather than a static icon. Mentions ("unread" vs "mentions
+  you") are not v1.
+
+  **File preparation is three schema decisions and no code** — `body` nullable,
+  `ChatMessage.kind` (`user | system`, `authorId` nullable, earning its place in
+  v1 for "X left"), and NO `fileUrl`/`fileName` columns. §12.45 has the rest,
+  including the signed URL that is a bearer token.
+
+- **2026-09-10** — **`module-chat`, planned: the first module that is not
+  platform, and the four things it breaks on the way in.**
+
+  User-to-user and group messaging over `graphql-ws`. **A DIRECT CHAT IS A GROUP
+  WITH TWO PARTICIPANTS** — one table, one state machine, one set of keys. A
+  separate `ChatDirect` shape would duplicate every one of them to express a
+  participant count, and the first feature to want "add somebody to this DM"
+  would have to migrate between them.
+
+  **App level, and it is free.** §12.13 settled that the level comes from the
+  URL, so `/chat/*` is app level with no `@RequireScope` and no `getArgs` — the
+  trap that made every organization-level key grant nothing for weeks cannot
+  fire here, because it only fires below app level. ⚠ The COST is §12.41: an app
+  key in a plan entitles nobody, so chat can never be a paid tier while it is
+  app level. Accepted deliberately — chat is person-to-person, and two people
+  with no organization in common must be able to reach each other. The cap is
+  the commercial lever instead.
+
+  **INVITATION IS TO AN EXISTING USER, so there is no token.** `PermInvitation`
+  carries a SHA-256 hash, a seven-day expiry and an account-creating accept path
+  because an organization invite is addressed to an EMAIL that may have no
+  account behind it (§12.31). A chat invite is addressed to a USER who
+  definitionally exists — you had to find them to invite them — so the entire
+  state machine is a `status` column on `ChatParticipant`:
+  `invited → active | declined`, plus `left` and `removed`. Declining KEEPS the
+  row so a re-invite flips it back rather than inserting a second one.
+
+  ⚠ **But "find them to invite them" is a user-enumeration oracle**, over
+  `auth_user`, which is the exact surface §12.36 refused to expose on sign-up.
+  So the lookup is EXACT-EMAIL-MATCH ONLY, behind its own `chat:directory` key,
+  rate-limited: you must already know the address, and there is no way to
+  harvest a list. Prefix search was rejected — it is a far better type-ahead and
+  it is a full staff directory for anyone holding the key. Scoping search to
+  shared organizations was rejected harder: it contradicts chat being app level.
+  The lookup reads module-auth's table, so it composes APP-SIDE on the seam
+  `apps/web-server/src/users/` already occupies. `module-chat` never learns what
+  an account is; `userId` is a bare string with no FK, the third module to hold
+  one that way.
+
+  **THE CAP HAS NO PATH TODAY, AND SKIPPING IT FAILS SILENTLY.** Three findings,
+  all verified against the code before any of this was designed:
+
+  1. `LIMIT_REGISTRY` is a hardcoded const in `module-permissions/src/domain/
+     limits.ts`. `FeatureContribution` lives in module-kit and composes in
+     `seed/registry.ts`; limits have **no equivalent**. So chat cannot declare
+     `chat:group_chats` without permissions importing chat, which §9 forbids.
+  2. Skipping it is not an error anywhere. `resolveLimits` only emits keys the
+     registry declares, and `checkLimit` fails **OPEN** on an undeclared one —
+     "a limit nobody declared is not a limit". A `chat:group_chats` that never
+     reached the registry is a cap of infinity that logs nothing.
+  3. `assertCapacity` cannot count chat rows. It counts `permMembership` /
+     `permWorkspace` inside the permissions transaction, and modules may sit in
+     different databases by design. Chat must call the PURE
+     `checkLimit(limits, key, current)` with a count it takes itself.
+
+  So module-kit gains a `LimitContribution` (the declaration) and a structural
+  `LimitChecker` port (the question), and the app binds the port to the
+  permissions service — the same shape as `PermissionsPrismaClient` being
+  host-injected and `resolvePrincipal` composing app-side.
+
+  ⚠ **And the role editor cannot set limits at all.** `role-draft.ts` and
+  `role-form.tsx` have no limits field, and `createRole`/`updateRole` never
+  write `PermRoleLimit` — only plans do, via `replacePlanLimits`. So
+  `user:organizations` is set by `upsertAppRole` in the seed and NOWHERE ELSE,
+  and "the cap comes from the app-level role" would have meant "the cap comes
+  from a deploy". The role editor grows a limits section BEFORE chat starts. It
+  is the `/admin/defaults` argument again: what a limit MEANS belongs in a
+  review diff, what it is SET to is an operational decision somebody makes at
+  3am.
+
+  **The cap counts LIVE CHATS YOU CREATED AND ARE STILL IN** — non-archived
+  conversations where `createdById` is you AND your own participant row is
+  `active`. Default 20. Archiving frees a slot, so the cap is something you can
+  clear rather than a wall; and being invited to a chat costs you nothing,
+  because a cap other people can spend on your behalf is a griefing tool, not a
+  limit. Counting every chat ever created was rejected for the first reason,
+  counting all participation for the second.
+
+  ⚠ **The "and are still in" half was added later the same day, when leaving was
+  designed** — see the entry below. Without it, create-twenty-and-leave-them-all
+  is unlimited chats. It also means `createdById` never has to move: ownership
+  transfer was the alternative and it is strictly worse, because it hands a slot
+  to somebody who never asked for it.
+
+  **`directKey` needs no raw SQL — the null works FOR us here.** A direct
+  conversation carries a sorted `lowUserId:highUserId` string and a group
+  carries null, under a plain Prisma `directKey String? @unique`. §12.19 is the
+  case where Postgres treating NULLs as DISTINCT breaks the constraint, because
+  there the null rows were the ones that had to be unique; here the null rows
+  are groups, which must be free to repeat. So chat is NOT a second caller for
+  §12.19, and two simultaneous "message Bob" clicks cannot produce two threads.
+
+  **⚠ WHAT CHAT BREAKS IN THE REALTIME LAYER.** `planChanged` returns a bare
+  `asyncIterableIterator` on a global topic: **every subscriber receives every
+  event.** Harmless for a plan key that says nothing secret; a message leak for
+  chat. And `ws-context.ts` is explicit that a subscription is authorised ONCE
+  at subscribe and then streams, bounded only by the socket closing at
+  `AUTH_ACCESS_TOKEN_TTL` — so somebody REMOVED from a group would keep
+  receiving it for up to fifteen minutes. Both mean the same thing: **events are
+  filtered per PUBLISH, re-checking participation each time**, never once at
+  subscribe.
+
+  That makes three deferred decisions live at once. §12.39 — the APP owns the
+  ONE socket and passes it in, because a `createRealtimeConnection` per module
+  is a socket per module per tab. §12.28 — in-memory `PubSub` means a message
+  published on replica A never reaches a socket held by replica B, SILENTLY, and
+  chat is the feature where that stops being survivable. §12.29 — narrowed by
+  putting **mutations on HTTP and subscriptions on WS**: a send then passes
+  `ThrottlerGuard`, which skips WebSocket operations, so message-rate limiting
+  arrives for free and the open question shrinks to how many topics one socket
+  may hold.
+
+  **PARTICIPATION IS NOT PERMISSION**, and this is C1 one table over. All three
+  critical findings in PERMISSIONS-REVIEW shared one shape: the guard answered
+  "may this user do X" without asking "is X somewhere this user may be".
+  `chat:send` says you may use chat; it says nothing about conversation 42. So
+  `canAccessConversation` is enforced ON THE SERVER — every read, every send,
+  every published event. ⚠ C1's exact failure was a helper that existed, was
+  exported, was used by the React layer, and was never called server-side. It
+  gets tests before it gets a screen.
+
+  **Keys**, atomic and split by risk, per the vocabulary decision of 2026-09-09:
+  `chat:read`, `chat:start` (where the cap is counted), `chat:invite`,
+  `chat:remove_participant`, `chat:send`, `chat:moderate` (`isPrivileged` —
+  deleting somebody else's message in a conversation you are IN), and
+  `chat:directory`. Leaving a conversation yourself gets no key: withholding it
+  would be a lockout dressed as a permission, the rule module-auth's `account:*`
+  removal already established. No read-any-conversation key at all — §12.42.
+
+  **Build order — seven commits, and the first two touch no chat code:**
+  1. `module-kit`: `LimitContribution` + the `LimitChecker` port.
+  2. `module-permissions`: role-editor limits — draft, form, write path.
+  3. `module-chat`: schema + pure domain. The state machine,
+     `canAccessConversation`, the `checkLimit` call. Tested with no database.
+  4. Server: repository, read/write services on separate clients, GraphQL,
+     participation enforced on every path.
+  5. Realtime: per-publish filter, the app-owned connection (§12.39), a
+     `graphql_subscription` binding.
+  6. `module-kit`: the header slot, plus the chat widget that fills it — a
+     subscribing client component, because the unread badge must be right before
+     anybody opens the panel.
+  7. Web: `/chat`, the list, the thread, the composer, the invite dialog, the
+     requests inbox, and the anchored panel over the same data.
+  8. The ephemeral tier: presence as a refcount with a grace period,
+     availability as an enum with a derived `clearAt`, typing on a TTL. Needs
+     `onDisconnect`, which `graphql.options.ts` does not wire today.
+  9. Tone, chat settings in `localStorage`, and the grouped unread query.
+  10. Redis (§12.28) — which by then gates PRESENCE, not merely a second
+     replica — or single-replica recorded as a deliberate choice.
+
+  ⚠ Steps 8 and 9 are last for a reason: every one of them is a nicety over a
+  conversation that has to work first, and each is cheap to add and expensive to
+  retrofit UNDER something already shipped. The schema they need —
+  `lastReadMessageId`, `kind`, nullable `body` — lands in step 3 with everything
+  else.
+
+  Steps 1 and 2 are their own commits for the reason §12.27 was left out of the
+  commit that revealed it was possible: a change to what every role can express
+  does not belong in the feature that wanted it.
+
+  ⚠ Messages page by KEYSET on `(createdAt, id)`, not the `limit`/`offset` every
+  grid in this repo uses. Offset paging over an append-heavy list re-shows rows
+  every time somebody posts while you are scrolling.
 
 - **2026-09-09** — **The tenant vocabulary is ATOMIC, and three keys narrowed to
   app level.**
