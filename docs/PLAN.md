@@ -32,7 +32,7 @@ Last updated: 2026-09-11
 | `packages/web-ui` | `@kwtech/web-ui` | React + Tailwind 4 + AG Grid Community | — |
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
 | `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
-| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain, the server half, realtime, and the header widget as of 2026-09-11. Both apps depend on it; `/chat` itself is still a stub (§9) | — |
+| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain, the server half, realtime, and `/chat` end to end as of 2026-09-11. Both apps depend on it. Presence, typing and notifications are steps 8-10 (§9) | — |
 
 **Planned, not built yet:** `packages/db` (Prisma — see the note below),
 `apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
@@ -527,12 +527,101 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 49 | Abuse has no path, which is §12.42's cost | when the first report arrives | `chat:moderate` acts only inside a conversation the actor PARTICIPATES in, and §12.42 deliberately ships no read-any-conversation key. Consistent, and it means a platform-wide abuse report can be received and acted on by nobody. The blocking added in v1 is the USER's remedy; the PLATFORM has none. The honest fill is a report flow that escalates a specific conversation with the reporter's consent — narrow, audited, and not a general read key |
 | 50 | Web Push, and what `dnd` gates once it exists | ⚠ with `/chat` v1 | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience. **⚠ IN SCOPE 2026-09-11:** the operator's requirement is that people are TOLD on time, and a tone in an open tab satisfies that only for somebody already looking. Either this comes forward, or `sendChatNotification` is wired at v1 to something that reaches a closed tab — email being the cheapest. Shipping neither does not meet the requirement |
 | 51 | Does an INVITED person see the first message before they accept? | before the requests inbox ships (step 7) | `canAccessConversation` is ACTIVE ONLY (2026-09-11), so an invitation shows who sent it and nothing else. ⚠ That makes accept-or-decline close to a coin flip, and every product that has solved this shows the first message — which is the honest argument for changing it. The argument against is the one the helper exists to make: rendering somebody's message content to a NON-PARTICIPANT is what C1 was. A middle exists — the first `kind: user` message only, never the thread — and it is a PRIVACY decision rather than a UI one, so it is not being made by default. ⚠ Whatever is chosen, it must not leak differently for a blocked sender than an unknown one |
-| 52 | Where the chat PANEL opens from, now that there is no header icon | before step 7's panel is built | The anchored popover was anchored to the icon in the main header, and that icon was removed on 2026-09-11 because the drawer already leads to `/chat` — a second door to one place. Three honest answers: `/chat` is the only home and the panel is dropped, which is the smallest and loses the read-without-leaving-the-page property the panel existed for; the panel re-anchors to the drawer entry, which is a popover hanging off a navigation list and is unusual for a reason; or it opens from somewhere new that has to be designed. ⚠ Not guessed at — the panel is most of step 7's UI, and building it against the wrong anchor is the expensive mistake |
+| 52 | ~~Where the chat PANEL opens from~~ **CLOSED 2026-09-11: there is no panel** | — | **✅ CLOSED.** `/chat` is the only home. The panel was a shortcut to this data hanging off a header icon that no longer exists, and building a shortcut before the place it shortcuts to is how the shortcut becomes the only home — permanently cramped. It can return the day something exists to anchor it to, against a page that already works. Original entry: | The anchored popover was anchored to the icon in the main header, and that icon was removed on 2026-09-11 because the drawer already leads to `/chat` — a second door to one place. Three honest answers: `/chat` is the only home and the panel is dropped, which is the smallest and loses the read-without-leaving-the-page property the panel existed for; the panel re-anchors to the drawer entry, which is a popover hanging off a navigation list and is unusual for a reason; or it opens from somewhere new that has to be designed. ⚠ Not guessed at — the panel is most of step 7's UI, and building it against the wrong anchor is the expensive mistake |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **STEP 7: `/chat` works end to end — the list, the thread,
+  the composer, the invitations and the requests.**
+
+  **⚠ NO ANCHORED PANEL, and §12.52 is closed rather than deferred.** It was a
+  shortcut hanging off a header icon that no longer exists, and building a
+  shortcut before the place it shortcuts to is how the shortcut becomes the only
+  home: permanently cramped, with no room for a conversation anybody actually
+  reads. It can return the day something exists to anchor it to, against a page
+  that already works.
+
+  **THE RULES ARE PURE AND THE COMPONENTS ARE WIRING.** `view/message-view.ts`
+  and `view/conversation-view.ts` hold every decision this screen makes, as
+  functions over literals with no React in them — so 27 of the tests here argue
+  with an object rather than a rendered tree. They live in `react/` rather than
+  `domain/` because they are view rules and a Nest server has no use for them;
+  what they are not is buried in a component.
+
+  **⚠ THE HARD PART IS `applyMessage`, and it is four cases.** Three streams land
+  in one thread — the page the reader scrolled, the socket's live events, and
+  the reader's own optimistic sends — and every ordering mistake between them is
+  a message in the wrong place, twice, or never:
+
+  1. ⚠ It REPLACES the sender's own pending copy, matched on `clientMessageId`.
+     Appending shows the message twice and ONLY to the person who sent it —
+     which is the version of this bug that reaches production, because it never
+     happens to anybody testing with one browser.
+  2. ⚠ It REPLACES an existing id rather than appending. Catch-up on
+     reconnection deliberately overlaps what the thread already holds, and an
+     edit or a delete arrives as the same id with different contents.
+  3. It INSERTS IN ORDER, because a replayed gap arrives oldest-first after the
+     reader already has newer live messages.
+  4. A delete is a REPLACEMENT, never a removal: the tombstone is a position,
+     and dropping the row shifts everything under somebody who is reading.
+
+  **⚠ AN ARRIVING MESSAGE IS APPLIED, NOT RE-FETCHED**, which is what the
+  server's decision to carry a body on the wire was for. The conversation LIST
+  is re-read on every event instead — unread counts, ordering and participation
+  are the server's arithmetic, and recomputing them client-side would be a
+  second implementation of rules that already exist. Coalesced at 250ms, so a
+  busy conversation is not one query per message.
+
+  **Decisions made while building it**
+
+  1. ⚠ **Requests are their OWN section, not rows sorted in.** An invitation is a
+     question addressed to you and you cannot read a word of it until you answer
+     — a row sorted in among threads would behave differently from every row
+     around it, and clicking it would say there is nothing there. Sorted OLDEST
+     first, the opposite of the list beside it: a queue is worked from the top,
+     and newest-first sinks the invitation somebody has ignored longest.
+  2. ⚠ **The composer counts CODE POINTS**, from the domain's own
+     `MAX_BODY_CODE_POINTS`. `.length` counts UTF-16 units, so a 4000-unit cap
+     halves a message of 2000 emoji — and the counter appears only near the cap,
+     because a character count on an empty box is furniture.
+  3. ⚠ **Enter sends, Shift+Enter breaks — and `isComposing` is checked.** While
+     an IME is open, Enter COMMITS a candidate word; sending there cuts a
+     Japanese or Chinese sentence off mid-word, every time.
+  4. **One pane for both kinds of conversation**, decided by how many people are
+     in it rather than by a toggle: one is a direct chat, two or more is a group
+     and needs a name. The same distinction the schema makes.
+  5. **A PANE, not a modal.** Finding somebody is a small search that can miss
+     and be retried, and at phone width a modal over a 400px screen IS the
+     screen.
+  6. **The scroll-to-bottom is keyed on the NEWEST MESSAGE ID**, not on every
+     render, so loading older history does not yank the reader back down from
+     the thread they just scrolled up through.
+  7. **`myUserId` was added to `ChatConversation`.** Every message carries an
+     `authorId` and nothing said which of them was yours. ⚠ Not a separate
+     `chatViewer` query: that would be a new operation needing its own binding,
+     and a round trip for one string every list already implies.
+
+  **⚠ THE CHECK THAT MAKES THIS TRUSTWORTHY WITHOUT A BROWSER:
+  `apps/web-server/test/module-operations.test.ts`.** A GraphQL document is the
+  one part of a typed client that nothing typechecks — the compiler sees a
+  template literal, the schema is emitted from decorators in another package,
+  and between them a renamed field is a refusal at runtime found by whoever
+  opens that screen first. So every document chat sends now lives in
+  `src/operations.ts`, framework-free and exported from the package root, and
+  the APP validates all thirteen against its own emitted `schema.graphql` with
+  `graphql`'s own validator. Proven to have teeth: a one-character typo in
+  `myUserId` fails three cases with "Cannot query field". Adding the next module
+  is one line in that file.
+
+  **Verified:** 178 tests in `module-chat` and 102 in `web-server`,
+  `turbo run typecheck lint test build` green across 28 tasks, the schema
+  re-emitted with `myUserId`, and `/chat` answering 307 to the sign-in page like
+  every other composed route. ⚠ THE SCREEN HAS NOT BEEN SEEN: rendering it needs
+  a signed-in session, so what is asserted is every rule it draws by, every
+  document it sends, and the route that reaches it.
 
 - **2026-09-11** — **REVERSED: no chat icon in the top nav. The unread count
   moves onto the drawer entry.**
@@ -1756,8 +1845,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
      the page. ⚠ Built first as a HEADER SLOT and reversed the same day: chat is
      in the drawer, and the top nav would have been a second door to one place.
      That leaves §12.52 open — the panel had nothing else to anchor to.
-  7. Web: `/chat`, the list, the thread, the composer, the invite dialog, the
-     requests inbox, and the anchored panel over the same data.
+  7. ✅ **DONE 2026-09-11.** Web: `/chat`, the list, the thread, the composer,
+     the invite flow and the requests inbox. ⚠ NO ANCHORED PANEL — §12.52 is
+     closed the way the header icon's removal pointed: `/chat` is the only home,
+     and a panel can return the day something exists to anchor it to.
   8. The ephemeral tier: presence as a refcount with a grace period,
      availability as an enum with a derived `clearAt`, typing on a TTL. Needs
      `onDisconnect`, which `graphql.options.ts` does not wire today.

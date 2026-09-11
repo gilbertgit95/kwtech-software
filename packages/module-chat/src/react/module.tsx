@@ -27,6 +27,14 @@ import { ChatPage } from './pages/chat-page.js';
 export const CHAT_HREF = '/chat';
 
 function ChatRoute() {
+  /*
+   * ⚠ RENDERED, never called — the reason this file is `.tsx`. `ChatPage` is a
+   * client component, so across that boundary Next replaces it with a
+   * client-reference proxy that can only be rendered; calling it throws.
+   *
+   * No props: the page builds its own client, and an app that wants to supply
+   * one imports `ChatPage` directly rather than going through the route.
+   */
   return <ChatPage />;
 }
 

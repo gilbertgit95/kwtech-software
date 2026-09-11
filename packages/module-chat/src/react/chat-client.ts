@@ -1,5 +1,7 @@
 'use client';
 
+import { CHAT_OPERATIONS } from '../operations.js';
+
 /**
  * How chat's screens reach the API.
  *
@@ -34,6 +36,34 @@ export interface ChatParticipantView {
   status: string;
 }
 
+/** One message, as the thread reads it. Mirrors `ChatMessageType`. */
+export interface ChatMessageView {
+  id: string;
+  conversationId: string;
+  /** 'user' | 'system'. A system message has no author and is drawn as a note. */
+  kind: string;
+  authorId: string | null;
+  /** ⚠ NULL for a deleted message, always — the server never serves the body. */
+  body: string | null;
+  clientMessageId?: string | null;
+  replyToMessageId: string | null;
+  createdAt: string;
+  editedAt: string | null;
+  deleted: boolean;
+}
+
+export interface ChatMessagePageView {
+  items: ChatMessageView[];
+  /** Ask for the next, OLDER page with this. Null at the beginning of history. */
+  nextCursor: string | null;
+}
+
+/** Somebody found by exact email. A miss and a block are the same answer. */
+export interface ChatDirectoryMatchView {
+  userId: string;
+  displayName: string;
+}
+
 /** One conversation in the viewer's list. Mirrors `ChatConversationType`. */
 export interface ChatConversationView {
   id: string;
@@ -45,26 +75,40 @@ export interface ChatConversationView {
   lastMessageAt: string | null;
   /** The VIEWER's own standing: 'active' or 'invited'. */
   myStatus: string;
+  /** Who is asking. The thread cannot tell your messages from anyone else's without it. */
+  myUserId: string;
   unread: number;
   participants: ChatParticipantView[];
 }
 
 export interface ChatClient {
   listConversations(): Promise<ChatConversationView[]>;
+  /**
+   * A page of messages, NEWEST FIRST, by keyset.
+   *
+   * ⚠ `cursor` walks BACKWARDS through history — it is the oldest message the
+   * caller already holds, and the page returned is the one before it. Offset
+   * paging over an append-heavy list re-shows rows every time somebody posts
+   * while you are scrolling.
+   */
+  listMessages(conversationId: string, cursor?: string | null): Promise<ChatMessagePageView>;
+  send(input: {
+    conversationId: string;
+    body: string;
+    clientMessageId: string;
+    replyToMessageId?: string | null;
+  }): Promise<ChatMessageView>;
+  editMessage(messageId: string, body: string): Promise<ChatMessageView>;
+  deleteMessage(messageId: string): Promise<ChatMessageView>;
+  markRead(conversationId: string, messageId: string): Promise<void>;
+  /** ⚠ EXACT EMAIL ONLY, and null covers both "no such account" and "blocked". */
+  lookUp(email: string): Promise<ChatDirectoryMatchView | null>;
+  startDirect(userId: string): Promise<ChatConversationView>;
+  startGroup(title: string, userIds: readonly string[]): Promise<ChatConversationView>;
+  invite(conversationId: string, userId: string): Promise<void>;
+  respondToInvitation(conversationId: string, accept: boolean): Promise<void>;
+  leave(conversationId: string): Promise<void>;
 }
-
-const CONVERSATION_FIELDS = `
-  id
-  title
-  icon
-  isDirect
-  createdById
-  archived
-  lastMessageAt
-  myStatus
-  unread
-  participants { userId displayName status }
-`;
 
 export function createChatClient(options: { graphqlPath?: string } = {}): ChatClient {
   const path = options.graphqlPath ?? DEFAULT_GRAPHQL_PATH;
@@ -105,10 +149,84 @@ export function createChatClient(options: { graphqlPath?: string } = {}): ChatCl
        * already computed per conversation — one grouped pass on the server, not
        * a count per row per render. See `ChatService.listConversations`.
        */
-      const data = await graphql<{ chatConversations: ChatConversationView[] }>(
-        `query ChatConversations { chatConversations { ${CONVERSATION_FIELDS} } }`,
-      );
+      const data = await graphql<{ chatConversations: ChatConversationView[] }>(CHAT_OPERATIONS.chatConversations);
       return data.chatConversations;
+    },
+
+    async listMessages(conversationId, cursor) {
+      const data = await graphql<{ chatMessages: ChatMessagePageView }>(CHAT_OPERATIONS.chatMessages, {
+        conversationId,
+        cursor: cursor ?? null,
+      });
+      return data.chatMessages;
+    },
+
+    async send(input) {
+      const data = await graphql<{ sendChatMessage: ChatMessageView }>(CHAT_OPERATIONS.sendChatMessage, {
+        ...input,
+        replyToMessageId: input.replyToMessageId ?? null,
+      });
+      /*
+       * ⚠ The clientMessageId is put BACK on the answer, because the server
+       * does not return it: the thread reconciles its optimistic copy by that
+       * id, and without it the confirmed message would be appended beside the
+       * pending one instead of replacing it.
+       */
+      return { ...data.sendChatMessage, clientMessageId: input.clientMessageId };
+    },
+
+    async editMessage(messageId, body) {
+      const data = await graphql<{ editChatMessage: ChatMessageView }>(CHAT_OPERATIONS.editChatMessage, {
+        messageId,
+        body,
+      });
+      return data.editChatMessage;
+    },
+
+    async deleteMessage(messageId) {
+      const data = await graphql<{ deleteChatMessage: ChatMessageView }>(CHAT_OPERATIONS.deleteChatMessage, {
+        messageId,
+      });
+      return data.deleteChatMessage;
+    },
+
+    async markRead(conversationId, messageId) {
+      await graphql(CHAT_OPERATIONS.markChatRead, { conversationId, messageId });
+    },
+
+    async lookUp(email) {
+      const data = await graphql<{ chatDirectoryLookup: ChatDirectoryMatchView | null }>(
+        CHAT_OPERATIONS.chatDirectoryLookup,
+        { email },
+      );
+      return data.chatDirectoryLookup;
+    },
+
+    async startDirect(userId) {
+      const data = await graphql<{ startDirectChat: ChatConversationView }>(CHAT_OPERATIONS.startDirectChat, {
+        userId,
+      });
+      return data.startDirectChat;
+    },
+
+    async startGroup(title, userIds) {
+      const data = await graphql<{ startGroupChat: ChatConversationView }>(CHAT_OPERATIONS.startGroupChat, {
+        title,
+        userIds: [...userIds],
+      });
+      return data.startGroupChat;
+    },
+
+    async invite(conversationId, userId) {
+      await graphql(CHAT_OPERATIONS.inviteToChat, { conversationId, userId });
+    },
+
+    async respondToInvitation(conversationId, accept) {
+      await graphql(CHAT_OPERATIONS.respondToChatInvitation, { conversationId, accept });
+    },
+
+    async leave(conversationId) {
+      await graphql(CHAT_OPERATIONS.leaveChat, { conversationId });
     },
   };
 }

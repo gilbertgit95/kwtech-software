@@ -17,4 +17,5 @@ export * from './domain/messages.js';
 export * from './domain/participation.js';
 export * from './enabled.js';
 export * from './feature-keys.js';
+export * from './operations.js';
 export * from './types.js';

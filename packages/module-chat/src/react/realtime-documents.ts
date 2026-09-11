@@ -1,5 +1,7 @@
 'use client';
 
+import { CHAT_OPERATIONS } from '../operations.js';
+
 /**
  * The document chat subscribes to.
  *
@@ -16,6 +18,12 @@
 /**
  * ONE subscription for everything that happens to this person.
  *
+ * ⚠ RE-EXPORTED, not written again. It lives with every other document this
+ * module sends in `../operations.js`, where the host can hand it to `graphql`'s
+ * own validator against the schema it serves — a document is the one part of a
+ * typed client that nothing typechecks, and two copies of one would be two
+ * chances to be wrong.
+ *
  * ⚠ `since` IS WHAT STOPS RECONNECTION LOSING MAIL. The socket closes when its
  * authorization expires, by design, and the server's pub/sub has no replay — so
  * a message published in the gap is gone rather than late unless the client says
@@ -28,24 +36,7 @@
  * reconnection — an invitation, a removal, a rename and an archive have no rows
  * to replay, and one "re-read your list" covers all four.
  */
-export const CHAT_EVENTS = `subscription ChatEvents($since: String) {
-  chatEvents(since: $since) {
-    kind
-    conversationId
-    change
-    message {
-      id
-      conversationId
-      kind
-      authorId
-      body
-      replyToMessageId
-      createdAt
-      editedAt
-      deleted
-    }
-  }
-}`;
+export const CHAT_EVENTS = CHAT_OPERATIONS.chatEvents;
 
 /** One event as it arrives on the socket. Mirrors `ChatEventType`. */
 export interface ChatEventView {

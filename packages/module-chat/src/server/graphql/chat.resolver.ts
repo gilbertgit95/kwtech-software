@@ -448,6 +448,10 @@ function renderConversation(summary: ConversationSummary, people: ReadonlyMap<st
     archived: conversation.archivedAt !== null,
     lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
     myStatus: me.status,
+    // From the viewer's OWN participant row, which `conversationFor` already
+    // narrowed — never from an argument, which would let a caller ask "as"
+    // somebody else.
+    myUserId: me.userId,
     unread,
     participants: participants.map((row) => renderParticipant(row, people)),
   };

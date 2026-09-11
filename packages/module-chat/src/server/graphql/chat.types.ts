@@ -90,6 +90,22 @@ export class ChatConversationType {
   @Field()
   myStatus!: string;
 
+  /**
+   * WHO IS ASKING, which the thread cannot draw itself without.
+   *
+   * ⚠ Every message carries an `authorId` and nothing says which of them is
+   * yours — so without this a client cannot align its own messages, or know
+   * which it may edit. It is the same kind of fact as `myStatus` beside it: not
+   * a property of the conversation, but of the viewer's standing in it.
+   *
+   * ⚠ NOT A SEPARATE `chatViewer` QUERY. That would be a new operation needing
+   * its own binding, and a round trip for one string every list already
+   * implies. It repeats across rows, which is the price of not adding a surface
+   * to guard.
+   */
+  @Field()
+  myUserId!: string;
+
   @Field(() => Int)
   unread!: number;
 

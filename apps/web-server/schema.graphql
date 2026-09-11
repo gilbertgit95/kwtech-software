@@ -53,6 +53,7 @@ type ChatConversation {
   isDirect: Boolean!
   lastMessageAt: String
   myStatus: String!
+  myUserId: String!
   participants: [ChatParticipant!]!
   title: String
   unread: Int!

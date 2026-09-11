@@ -19,6 +19,35 @@ export {
   DEFAULT_GRAPHQL_PATH,
 } from './chat-client.js';
 export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.js';
+export { ConversationList } from './components/conversation-list.js';
+export { MessageComposer } from './components/message-composer.js';
+export { MessageThread } from './components/message-thread.js';
+export { NewConversation } from './components/new-conversation.js';
+export { PersonFinder } from './components/person-finder.js';
 export { CHAT_HREF, type ChatWebModuleOptions, chatWebModule } from './module.js';
 export { ChatPage } from './pages/chat-page.js';
 export { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';
+export { type ChatState, type UseChatOptions, useChat } from './use-chat.js';
+/*
+ * The view RULES, which are pure and have no React in them. Exported because
+ * they are the answer to "what is this conversation called" and "where does
+ * this message go", and an app building its own chat screen needs the same
+ * answers this one uses rather than a second opinion.
+ */
+export {
+  conversationTitle,
+  countWaiting,
+  otherParticipants,
+  type SplitConversations,
+  splitConversations,
+} from './view/conversation-view.js';
+export {
+  applyMessage,
+  compareMessages,
+  dropPending,
+  isPending,
+  optimisticMessage,
+  type PendingMessage,
+  readMarkFor,
+  type ThreadMessage,
+} from './view/message-view.js';

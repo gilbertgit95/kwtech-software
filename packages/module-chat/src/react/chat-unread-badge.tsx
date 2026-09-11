@@ -5,6 +5,7 @@ import { cn } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type ChatClient, createChatClient } from './chat-client.js';
 import { CHAT_EVENTS } from './realtime-documents.js';
+import { countWaiting } from './view/conversation-view.js';
 
 /**
  * How much is waiting for you, drawn beside Chat in the side drawer.
@@ -74,23 +75,20 @@ export function ChatUnreadBadge({ client, className }: ChatUnreadBadgeProps) {
       .listConversations()
       .then((conversations) => {
         if (cancelled) return;
-        setWaiting({
-          /*
-           * ⚠ ACTIVE conversations only. An invited person cannot read the
-           * messages, so counting them would promise a number the thread will
-           * not show — and the server reports `unread: 0` for them anyway.
-           */
-          unread: conversations
-            .filter((conversation) => conversation.myStatus === 'active' && !conversation.archived)
-            .reduce((total, conversation) => total + conversation.unread, 0),
-          /*
-           * An invitation is a thing waiting for you, so it belongs in the same
-           * number rather than in a second badge on one row — two indicators on
-           * one entry is how people learn to ignore both. The label spells the
-           * two apart for anybody who cannot see the difference.
-           */
-          requests: conversations.filter((conversation) => conversation.myStatus === 'invited').length,
-        });
+        /*
+         * ⚠ THE SAME RULE THE LIST SPLITS BY, not a second one written here.
+         * `countWaiting` is what decides that an invited conversation's unread
+         * count does not count — an invited person cannot read the messages, so
+         * it would promise a number the thread will not show — and that an
+         * archived one is not waiting for anybody. A badge with its own copy of
+         * that arithmetic is a badge that eventually disagrees with the screen
+         * it sits beside.
+         *
+         * An invitation still lands in the same NUMBER as an unread message,
+         * because both are things waiting for you and two indicators on one row
+         * is how people learn to ignore both. The label spells them apart.
+         */
+        setWaiting(countWaiting(conversations));
       })
       .catch(() => {
         /*
