@@ -284,6 +284,78 @@ export class PermissionRoleDetailType {
 
   @Field(() => [String])
   features!: string[];
+
+  /**
+   * The caps this role GRANTS, as pairs — the same shape, and the same reason,
+   * as a plan's: this schema has no untyped-object scalar, and adding one to
+   * carry two integers would put an unvalidated blob in the public contract.
+   *
+   * Empty for every role that is not app level. `resolveLimits` reads caps from
+   * app-level roles alone, so the editor hides the fields there rather than
+   * offering controls that would save and change nothing.
+   */
+  @Field(() => [PermissionRoleLimitType])
+  limits!: PermissionRoleLimitType[];
+}
+
+/**
+ * One declared cap, as the editor needs to render it.
+ *
+ * ⚠ Served from the COMPOSED registry, never this package's own — the same rule
+ * `permissionFeatures` follows, and the same failure if it is broken: a cap
+ * contributed by another module would be invisible in the role editor while the
+ * write path happily accepted it, so the one screen that exists to set the
+ * number could not see the number to set.
+ */
+@ObjectType('PermissionLimitSpec')
+export class PermissionLimitSpecType {
+  @Field()
+  key!: string;
+
+  /** Which module declared it, for grouping. 'permissions' for this module's own. */
+  @Field(() => String, { nullable: true })
+  module!: string | null;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  description!: string;
+
+  /** 'plan' — bought through a subscription. 'role' — granted by an app-level role. */
+  @Field()
+  source!: string;
+
+  /** 'user' | 'organization' | 'workspace'. */
+  @Field()
+  countedOver!: string;
+
+  @Field()
+  required!: boolean;
+
+  /** The cap when nothing assigns one. Null means genuinely unrestricted. */
+  @Field(() => Int, { nullable: true })
+  defaultValue!: number | null;
+}
+
+@ObjectType('PermissionRoleLimit')
+export class PermissionRoleLimitType {
+  /** A declared limit key: 'user:organizations', and 'chat:group_chats' to come. */
+  @Field()
+  limitKey!: string;
+
+  @Field(() => Int)
+  value!: number;
+}
+
+@InputType('RoleLimitInput')
+export class RoleLimitInput {
+  @Field()
+  limitKey!: string;
+
+  /** A STRING, for the reason `PlanLimitInput.value` gives. */
+  @Field()
+  value!: string;
 }
 
 /**
@@ -312,6 +384,18 @@ export class RoleDraftInput {
 
   @Field(() => [String])
   features!: string[];
+
+  /**
+   * Caps this role grants. Nullable so a client that predates them still
+   * validates — an omitted list is an empty draft.
+   *
+   * ⚠ An app-level role sent WITHOUT this field has its caps cleared, and that
+   * is deliberate: the write path replaces rather than merges, so "not sent"
+   * and "sent empty" have to mean the same thing. The alternative is an editor
+   * that can set a cap and never remove one.
+   */
+  @Field(() => [RoleLimitInput], { nullable: true })
+  limits?: RoleLimitInput[];
 }
 
 /** One feature a clone could not bring across, and why. */

@@ -286,6 +286,13 @@ export interface RoleDefinitionRow {
   isSystem: boolean;
   disabledAt: Date | null;
   features: { featureKey: string }[];
+  /**
+   * The caps this role GRANTS — `perm_role_limit`, and only meaningful on an
+   * app-level role (`resolveLimits` filters to those). Read here so the editor
+   * can show a number it is about to overwrite; without it an edit would
+   * silently reset every cap to blank.
+   */
+  limits: { limitKey: string; value: number }[];
 }
 
 export interface PermissionsPrismaClient {
@@ -300,7 +307,10 @@ export interface PermissionsPrismaClient {
      */
     findMany(args: {
       where: { organizationId: string | null };
-      include: { features: { select: { featureKey: true } } };
+      include: {
+        features: { select: { featureKey: true } };
+        limits: { select: { limitKey: true; value: true } };
+      };
       orderBy: { key: 'asc' };
     }): Promise<RoleDefinitionRow[]>;
   };
@@ -830,6 +840,22 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
       data: { label?: string; icon?: string | null; disabledAt?: Date | null };
       select: { id: true };
     }): Promise<{ id: string }>;
+  };
+
+  /**
+   * The caps an app-level role GRANTS.
+   *
+   * Written by the role editor since 2026-09-11; before that only the seeder
+   * touched this table, which meant every cap in the system was a deploy. See
+   * PLAN §12.27.
+   */
+  permRoleLimit: {
+    deleteMany(args: { where: { roleId: string; limitKey?: { notIn: string[] } } }): Promise<{ count: number }>;
+    upsert(args: {
+      where: { roleId_limitKey: { roleId: string; limitKey: string } };
+      create: { roleId: string; limitKey: string; value: number };
+      update: { value: number };
+    }): Promise<unknown>;
   };
 
   permRoleFeature: {

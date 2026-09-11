@@ -525,15 +525,21 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
     label: 'View the feature registry',
     description: 'See every right a role can grant, and where each one is enforced.',
     /*
-     * FOUR surfaces, and all four are really enforced — the two API ones were
+     * FIVE surfaces, and all five are really enforced — the two API ones were
      * added when the guards were. The GraphQL query used to be unguarded, so
      * the page was hidden from anyone without this key while the data behind it
      * was not; a binding that names a surface nothing checks is the same lie in
      * the other direction.
+     *
+     * `Query.permissionLimits` joined them on 2026-09-11. It serves the same
+     * kind of thing — the declared vocabulary, not anybody's grants — and the
+     * role editor calls both before it can render, so a separate key would deny
+     * half of one form.
      */
     bindings: [
       { surface: 'rest_endpoint', identifier: 'GET /permissions/features' },
       { surface: 'graphql_operation', identifier: 'Query.permissionFeatures' },
+      { surface: 'graphql_operation', identifier: 'Query.permissionLimits' },
       { surface: 'ui_route', identifier: '/admin/features' },
       { surface: 'ui_component', identifier: 'FeaturesPage' },
     ],

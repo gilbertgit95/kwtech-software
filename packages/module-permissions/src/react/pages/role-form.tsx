@@ -2,10 +2,11 @@
 
 import { ConfirmDialog, IconPicker, TreeSelect, type TreeSelectNode, useIconSet } from '@kwtech/web-ui/react';
 import { useId, useMemo, useState } from 'react';
-import { type RoleDraft, type RoleDraftErrors, validateRoleDraft } from '../../domain/role-draft.js';
+import { LIMIT_REGISTRY, type LimitSpec } from '../../domain/limits.js';
+import { type RoleDraft, type RoleDraftErrors, roleLimitFields, validateRoleDraft } from '../../domain/role-draft.js';
 import { canRoleGrant } from '../../domain/roles.js';
 import { ROLE_LEVELS, type RoleLevel } from '../../types.js';
-import type { FeatureView, PermissionsClient, RoleView } from '../permissions-client.js';
+import type { FeatureView, LimitView, PermissionsClient, RoleView } from '../permissions-client.js';
 import { usePermissions } from '../use-permissions.js';
 
 /** Features nobody filed under a tag. Sorted last, never hidden. */
@@ -71,6 +72,18 @@ export interface RoleFormProps {
    */
   features: readonly FeatureView[];
   /**
+   * Every declared cap, fetched from the API — the limits twin of `features`,
+   * and a prop for exactly the same reason.
+   *
+   * Falls back to this package's own registry when a caller has not fetched it,
+   * which keeps an existing embedder working. ⚠ That fallback shows only this
+   * module's caps: a host mounting a module that contributes one, and not
+   * passing this, gets an editor with no field for it — the cap is then
+   * settable only by a deploy, which is the state this whole change exists to
+   * end.
+   */
+  limits?: readonly LimitView[];
+  /**
    * Show everything, change nothing.
    *
    * For a role the write path will refuse — a system role, replaced by
@@ -95,6 +108,7 @@ export function RoleForm({
   role,
   allRoles,
   features,
+  limits,
   onSaved,
   cancelHref,
   iconOptions,
@@ -111,6 +125,12 @@ export function RoleForm({
     level: role?.level ?? 'organization',
     icon: role?.icon ?? '',
     features: role?.features ?? [],
+    /*
+     * The role's stored caps as the strings the inputs edit. Seeded from the
+     * ROLE, never from defaults: the write path REPLACES, so a form that opened
+     * blank would clear every cap on the first save of an unrelated field.
+     */
+    limits: roleLimitFields(Object.fromEntries((role?.limits ?? []).map((limit) => [limit.limitKey, limit.value]))),
   });
   const [errors, setErrors] = useState<RoleDraftErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -136,6 +156,40 @@ export function RoleForm({
    */
   const held = useMemo(() => new Set(context?.effective ?? []), [context]);
   const level = draft.level as RoleLevel;
+
+  /**
+   * The caps an APP-LEVEL role may grant.
+   *
+   * Role-sourced only: a plan-sourced cap is bought through a subscription, and
+   * `resolveLimits` reads those from plans alone — offering one here would be a
+   * field that saves a number nothing ever consults.
+   *
+   * ⚠ And nothing at all below app level, because `resolveLimits` filters
+   * `roles.filter((r) => r.level === 'app')`. Hidden rather than disabled: a
+   * greyed-out box invites "why can I not set this", and the honest answer is
+   * that the concept does not exist at that level.
+   */
+  const capsOffered = useMemo<readonly LimitSpec[]>(
+    () =>
+      (limits ?? LIMIT_REGISTRY)
+        .filter((spec) => spec.source === 'role')
+        // Normalised to ONE shape here rather than at each use, so the validator
+        // and the fields below cannot read a fetched cap differently from a
+        // compiled one. `module` is omitted rather than set undefined —
+        // exactOptionalPropertyTypes treats those as different.
+        .map((spec) => ({
+          key: spec.key,
+          label: spec.label,
+          description: spec.description,
+          source: 'role' as const,
+          countedOver: spec.countedOver as LimitSpec['countedOver'],
+          required: spec.required,
+          defaultValue: spec.defaultValue,
+          ...(spec.module ? { module: spec.module } : {}),
+        })),
+    [limits],
+  );
+  const showCaps = level === 'app' && capsOffered.length > 0;
 
   /**
    * What this role may carry: registered, at a level it may grant, and held by
@@ -263,6 +317,10 @@ export function RoleForm({
       // The same list the server validates against, so the form cannot refuse
       // something the API would accept, or offer something it would not.
       registry: features.map((feature) => ({ ...feature, level: feature.level as RoleLevel })),
+      // The same composed list the server validates against, for the reason the
+      // feature registry is passed: a cap this form does not know about would be
+      // reported as "not declared by any module" on a draft the API accepts.
+      limits: capsOffered,
       actorFeatures: context?.effective ?? [],
       ...(editing ? { originalKey: role.key } : {}),
     });
@@ -278,6 +336,19 @@ export function RoleForm({
         level: draft.level,
         icon: draft.icon.trim() || null,
         features: [...draft.features],
+        /*
+         * Only what this role may actually carry, and only what was typed.
+         *
+         * Blanks are dropped rather than sent as empty strings — a blank means
+         * "this role says nothing about this cap", which is not the same as
+         * zero. And nothing is sent at all below app level, so a role that was
+         * demoted cannot keep caps nothing would read.
+         */
+        limits: showCaps
+          ? capsOffered
+              .map((spec) => ({ limitKey: spec.key, value: (draft.limits[spec.key] ?? '').trim() }))
+              .filter((limit) => limit.value !== '')
+          : [],
       };
       onSaved(editing ? await client.updateRole(role.id, input) : await client.createRole(input));
       setSaved(true);
@@ -442,6 +513,57 @@ export function RoleForm({
           ) : null}
         </section>
       )}
+
+      {editing && showCaps ? (
+        <section className="rounded-lg border border-border p-4">
+          <div className="mb-3">
+            <h2 className="text-sm font-medium">Limits</h2>
+            <p className="text-xs text-muted-foreground">
+              How many, as opposed to what. Checked when something is added, never when something is read — so somebody
+              at their limit is told to ask for more rather than that access is denied.
+            </p>
+          </div>
+
+          {errors.limits ? <p className="mb-2 text-sm text-destructive">{errors.limits}</p> : null}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {capsOffered.map((spec) => (
+              <Field
+                key={spec.key}
+                label={spec.label}
+                /*
+                 * Says what BLANK means, because the answer is neither zero nor
+                 * unlimited: the cap resolves as the highest number any of the
+                 * holder's app-level roles sets, and the registry floor applies
+                 * when none of them sets one. Somebody expecting "no cap" from an
+                 * empty box would find out at the first refusal.
+                 */
+                hint={`${spec.description} Blank means this role does not set it — the highest of the holder's other roles applies, or the default of ${spec.defaultValue ?? 'none'}.`}
+              >
+                {(id) => (
+                  <input
+                    id={id}
+                    type="number"
+                    // Zero is allowed and meaningful: "this role grants none of
+                    // it". See validateRoleLimits.
+                    min={0}
+                    step={1}
+                    disabled={readOnly}
+                    value={draft.limits[spec.key] ?? ''}
+                    onChange={(event) =>
+                      edit((current) => ({
+                        ...current,
+                        limits: { ...current.limits, [spec.key]: event.target.value },
+                      }))
+                    }
+                    className={inputClass(false)}
+                  />
+                )}
+              </Field>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {failure ? (
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">

@@ -5,6 +5,7 @@ import { FEATURE } from '../../feature-keys.js';
 import {
   createPermissionsClient,
   type FeatureView,
+  type LimitView,
   type PermissionsClient,
   type RoleView,
 } from '../permissions-client.js';
@@ -38,6 +39,13 @@ export function RoleNewPage({
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
   const [roles, setRoles] = useState<RoleView[] | null>(null);
   const [features, setFeatures] = useState<FeatureView[] | null>(null);
+  /*
+   * The declared caps, fetched for the same reason the features are: this
+   * package's compiled `LIMIT_REGISTRY` holds only its own, so a cap another
+   * module contributes would have no field in the editor — settable by a deploy
+   * and by nothing else.
+   */
+  const [limits, setLimits] = useState<LimitView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,11 +56,12 @@ export function RoleNewPage({
      * the API rather than this package's own registry — otherwise another
      * module's keys are invisible and a clone silently drops them.
      */
-    Promise.all([api.listRoles(), api.listFeatures()])
-      .then(([roleList, featureList]) => {
+    Promise.all([api.listRoles(), api.listFeatures(), api.listLimits()])
+      .then(([roleList, featureList, limitList]) => {
         if (cancelled) return;
         setRoles(roleList);
         setFeatures(featureList);
+        setLimits(limitList);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load existing roles.');
@@ -83,13 +92,14 @@ export function RoleNewPage({
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
-      ) : roles === null || features === null ? (
+      ) : roles === null || features === null || limits === null ? (
         <div className="h-64 animate-pulse rounded-md bg-muted" />
       ) : (
         <RoleForm
           client={api}
           allRoles={roles}
           features={features}
+          limits={limits}
           onSaved={onSaved}
           cancelHref={listHref}
           {...(iconOptions ? { iconOptions } : {})}

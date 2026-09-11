@@ -809,6 +809,7 @@ describe('disabled roles are excluded from every grant path', () => {
           isSystem: false,
           disabledAt: new Date(),
           features: [{ featureKey: 'admin:access' }],
+          limits: [],
         },
       ],
     });
@@ -1111,6 +1112,7 @@ describe('listDefaults', () => {
     isSystem: true,
     disabledAt: null,
     features: [],
+    limits: [],
     ...over,
   });
 

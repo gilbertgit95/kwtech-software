@@ -533,6 +533,77 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-11** — **STEP 2 IS BUILT: a cap is now an OPERATOR decision instead
+  of a deploy. Role-editor limits, end to end.**
+
+  `perm_role_limit` had exactly one writer — `seed/app-roles.ts` — so every
+  role-sourced cap in the system was set by shipping code. The table, the
+  resolution and the checks all existed; the only missing piece was a person
+  being able to type a number.
+
+  **The whole vertical, and one new query.** `RoleDraft` gains
+  `limits: Record<string, string>` (strings, for the reason `PlanDraft` uses
+  them: `<input type="number">` yields `''` mid-edit, and a draft holding `NaN`
+  saves and caps somebody at nothing). `validateRoleLimits` shares one rule set
+  with the write path. `roleLimitValues`/`roleLimitFields` convert both ways.
+  `replaceRoleLimits` writes them, delete-then-upsert like plans.
+  `PermissionRoleDetail.limits` and `RoleDraftInput.limits` carry them over
+  GraphQL as PAIRS, never a map — this schema has no untyped-object scalar.
+
+  ⚠ And a new query, `permissionLimits`, because the editor could not otherwise
+  see a cap it is supposed to set. The role form reads the registry as a PROP
+  fetched from the API, exactly as it already reads features — the compiled
+  `LIMIT_REGISTRY` in this package holds only this module's own, so
+  `chat:group_chats` would have had no field. Guarded by `features:read` rather
+  than a key of its own: it is the same kind of thing the feature catalogue is,
+  and both editors already call `permissionFeatures` before they can render, so
+  a second key would deny half a form whose other half had just loaded.
+
+  **Four decisions that are not obvious**
+
+  1. ⚠ **CAPS ONLY ON APP-LEVEL ROLES, refused rather than dropped.**
+     `resolveLimits` reads `roles.filter((r) => r.level === 'app')`, so a number
+     on an organization-level role is discarded before anything reads it — it
+     would save, redisplay, and enforce nothing. The validator refuses it, the
+     form HIDES the fields rather than disabling them (a greyed box invites "why
+     can I not set this", and the honest answer is that the concept does not
+     exist at that level), and `roleLimitValues` returns nothing below app level
+     whatever the draft holds. Three doors on one room, because the failure is
+     silent.
+  2. **A blank is not a zero.** Blank means "this role says nothing about this
+     cap" and contributes nothing to the max; a typed `0` means "this role
+     grants none of it" — a contractor role that may use chat and create no
+     group conversations, which is the configuration §12 named when it argued
+     `chat:read` earns a key at all. Both are legitimate, so they are stored
+     differently. ⚠ Zero is allowed here even though `LimitSpec.defaultValue`
+     never uses it: that floor is about what an UNCONFIGURED person gets, where
+     zero would stop an organization's founder being its first member. This is
+     an operator naming a role.
+  3. ⚠ **`EMPTY_ROLE_DRAFT.limits` is `{}`, NOT prefilled** — the opposite of
+     `EMPTY_PLAN_DRAFT`, and the two cases look identical. A plan's required
+     caps must be set or the plan is invalid. A role's caps resolve as the MAX
+     across the roles somebody holds, so a prefilled default would make every
+     new role silently RAISE its holders' allowance.
+  4. **`updateRole` writes against the EXISTING level, never the draft's.** The
+     level is locked on edit and validation already ran against the stored one;
+     trusting the draft would let a form claiming 'app' write caps onto an
+     organization-level role, where nothing would read them.
+
+  **Two seams the host had to close**, both found by the compiler rather than by
+  running anything: `apps/web-server` hands the module its Prisma delegates
+  explicitly, so `permRoleLimit` had to be added to `module-clients.ts` — the
+  structural client doing exactly its job — and `ALL_LIMITS` is now passed as
+  `limitRegistry` beside `ALL_FEATURES`.
+
+  Seventeen tests: ten on the domain rules, seven driving `createRole` and
+  `updateRole` through the fake. The sharpest is that an emptied box CLEARS the
+  cap — an update that wrote only what it was sent would leave the old number in
+  force while the form showed a blank.
+
+  Verified by booting: the server starts against Postgres and re-emits
+  `schema.graphql` with the new types. No migration — `PermRoleLimit` has been
+  in the schema since the first one; it simply had no writer.
+
 - **2026-09-11** — **STEP 1 OF `module-chat` IS BUILT, and it touches no chat
   code: `LimitContribution` + the `LimitChecker` port, and the enforcement
   plumbing behind them.**
@@ -1207,7 +1278,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
      `LimitChecker` port — plus the enforcing half in `module-permissions`
      (`limitRegistry`, `checkDeclaredLimit`, `checkLimitForActor`,
      `PermissionsLimitChecker`), which the premise turned out to require.
-  2. `module-permissions`: role-editor limits — draft, form, write path.
+  2. ✅ **DONE 2026-09-11.** `module-permissions`: role-editor limits — draft,
+     form, write path, plus the `permissionLimits` query the form needs to see a
+     contributed cap at all.
   3. `module-chat`: schema + pure domain. The state machine,
      `canAccessConversation`, the `checkLimit` call. Tested with no database.
   4. Server: repository, read/write services on separate clients, GraphQL,

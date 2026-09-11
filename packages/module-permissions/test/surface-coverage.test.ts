@@ -125,6 +125,7 @@ describe('every declared API binding names a guard that exists', () => {
   /** The API surfaces this suite knows how to verify, and the guard behind each. */
   const GUARDED: Record<string, string[] | undefined> = {
     'Query.permissionFeatures': required(PermissionsResolver.prototype, 'features'),
+    'Query.permissionLimits': required(PermissionsResolver.prototype, 'limits'),
     'GET /permissions/features': required(PermissionsController.prototype, 'features'),
     'Query.permissionRoles': required(PermissionsResolver.prototype, 'roles'),
     'Mutation.createRole': required(PermissionsResolver.prototype, 'createRole'),

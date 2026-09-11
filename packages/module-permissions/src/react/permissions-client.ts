@@ -36,6 +36,11 @@ export interface RoleView {
   isSystem: boolean;
   disabled: boolean;
   features: string[];
+  /**
+   * The caps this role grants. Empty for every role that is not app level —
+   * `resolveLimits` reads caps from app-level roles alone.
+   */
+  limits: { limitKey: string; value: number }[];
 }
 
 /**
@@ -66,6 +71,28 @@ export interface RoleInput {
   level: string;
   icon: string | null;
   features: string[];
+  /** Values are STRINGS, matching `RoleDraft.limits`: the domain validator owns what a number is. */
+  limits: { limitKey: string; value: string }[];
+}
+
+/**
+ * One declared cap, as the role and plan editors need it.
+ *
+ * Fetched rather than read from this package's compiled `LIMIT_REGISTRY`, for
+ * the reason `FeatureView` is: a cap contributed by another module is invisible
+ * to the registry compiled in here, so the editor would offer no field for the
+ * one number the write path is waiting for.
+ */
+export interface LimitView {
+  key: string;
+  module: string | null;
+  label: string;
+  description: string;
+  /** 'plan' — bought through a subscription. 'role' — granted by an app-level role. */
+  source: string;
+  countedOver: string;
+  required: boolean;
+  defaultValue: number | null;
 }
 
 /**
@@ -325,6 +352,8 @@ export interface WriteResult {
 export interface PermissionsClient {
   /** Every grantable feature, from every module the app composed. */
   listFeatures(): Promise<FeatureView[]>;
+  /** Every declared cap, from every module the app composed. */
+  listLimits(): Promise<LimitView[]>;
   listRoles(organizationId?: string | null): Promise<RoleView[]>;
   createRole(input: RoleInput): Promise<RoleView>;
   updateRole(roleId: string, input: RoleInput): Promise<RoleView>;
@@ -513,7 +542,8 @@ export interface PermissionsClient {
   endSubscription(subscriptionId: string): Promise<SubscriptionView>;
 }
 
-const ROLE_FIELDS = 'id key label level organizationId icon isSystem disabled features';
+const ROLE_FIELDS = 'id key label level organizationId icon isSystem disabled features limits { limitKey value }';
+const LIMIT_FIELDS = 'key module label description source countedOver required defaultValue';
 const PLAN_FIELDS = 'key label isPublic icon archived features limits { limitKey value }';
 const SUBSCRIPTION_FIELDS = `id organizationId organizationName workspaceId workspaceName
   planKey planLabel planIcon planArchived status currentPeriodEnd endedAt`;
@@ -569,6 +599,13 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
          }`,
       );
       return data.permissionFeatures.items;
+    },
+
+    async listLimits() {
+      const data = await graphql<{ permissionLimits: LimitView[] }>(
+        `query PermissionLimits { permissionLimits { ${LIMIT_FIELDS} } }`,
+      );
+      return data.permissionLimits;
     },
 
     async listRoles(organizationId = null) {

@@ -1,6 +1,15 @@
-import { cloneFeatures, EMPTY_ROLE_DRAFT, type RoleDraft, validateRoleDraft } from '../src/domain/role-draft.js';
+import { LIMIT_REGISTRY, type LimitSpec } from '../src/domain/limits.js';
+import {
+  cloneFeatures,
+  EMPTY_ROLE_DRAFT,
+  type RoleDraft,
+  roleLimitFields,
+  roleLimitValues,
+  validateRoleDraft,
+} from '../src/domain/role-draft.js';
 import { canRoleGrant } from '../src/domain/roles.js';
 import { FEATURE, FEATURE_REGISTRY } from '../src/feature-keys.js';
+import type { FeatureSpec } from '../src/types.js';
 
 const draft = (over: Partial<RoleDraft> = {}): RoleDraft => ({
   ...EMPTY_ROLE_DRAFT,
@@ -231,5 +240,93 @@ describe('level reach, through the validator and the clone', () => {
     });
     expect(result.features).toEqual([workspaceLevelKey]);
     expect(result.skipped).toEqual([{ key: appLevelKey, reason: 'wrong_level' }]);
+  });
+});
+
+/**
+ * Caps on a role — the half that was missing until 2026-09-11, when the only
+ * way to set one was a deploy.
+ *
+ * Every case here is a number that would be STORED and never read. That is the
+ * failure mode the whole path has: nothing errors, the editor redisplays what
+ * was typed, and the cap is infinite.
+ */
+describe('role limits', () => {
+  const registry: readonly FeatureSpec[] = [];
+  const chatGroups: LimitSpec = {
+    key: 'chat:group_chats',
+    module: 'chat',
+    label: 'Group chats',
+    description: 'How many group conversations this user may create.',
+    source: 'role',
+    countedOver: 'user',
+    required: false,
+    defaultValue: 20,
+  };
+  const limits = [...LIMIT_REGISTRY, chatGroups];
+  const draft = (over: Partial<RoleDraft> = {}): RoleDraft => ({
+    ...EMPTY_ROLE_DRAFT,
+    key: 'chat-power-user',
+    label: 'Chat power user',
+    level: 'app',
+    ...over,
+  });
+
+  it('accepts a role-sourced cap on an app-level role', () => {
+    const errors = validateRoleDraft(draft({ limits: { 'chat:group_chats': '50' } }), { registry, limits });
+    expect(errors.limits).toBeUndefined();
+  });
+
+  it('accepts zero — "this role grants none of it" is a real configuration', () => {
+    const errors = validateRoleDraft(draft({ limits: { 'chat:group_chats': '0' } }), { registry, limits });
+    expect(errors.limits).toBeUndefined();
+    expect(roleLimitValues({ 'chat:group_chats': '0' }, 'app', limits)).toEqual({ 'chat:group_chats': 0 });
+  });
+
+  it('⚠ refuses a cap on any role below app level, where nothing would read it', () => {
+    const errors = validateRoleDraft(draft({ level: 'organization', limits: { 'chat:group_chats': '50' } }), {
+      registry,
+      limits,
+    });
+    expect(errors.limits).toMatch(/only app-level roles carry caps/);
+  });
+
+  it('refuses a cap nobody declared, rather than storing an infinite one', () => {
+    const errors = validateRoleDraft(draft({ limits: { 'chat:made_up': '5' } }), { registry, limits });
+    expect(errors.limits).toMatch(/not declared by any module/);
+  });
+
+  it('refuses a PLAN-sourced cap, which a role cannot grant', () => {
+    const errors = validateRoleDraft(draft({ limits: { 'organization:members': '5' } }), { registry, limits });
+    expect(errors.limits).toMatch(/sold by a plan/);
+  });
+
+  it('refuses what is not a whole number of zero or more', () => {
+    for (const value of ['-1', '1.5', 'abc']) {
+      const errors = validateRoleDraft(draft({ limits: { 'chat:group_chats': value } }), { registry, limits });
+      expect(errors.limits).toMatch(/whole number/);
+    }
+  });
+
+  it('treats a blank as unset rather than as zero', () => {
+    const errors = validateRoleDraft(draft({ limits: { 'chat:group_chats': '  ' } }), { registry, limits });
+    expect(errors.limits).toBeUndefined();
+    expect(roleLimitValues({ 'chat:group_chats': '  ' }, 'app', limits)).toEqual({});
+  });
+
+  it('⚠ writes NOTHING for a role that is not app level, whatever the draft holds', () => {
+    // The second door on the same room: a caller that skipped validation stores
+    // no rows rather than rows that never apply.
+    expect(roleLimitValues({ 'chat:group_chats': '50' }, 'organization', limits)).toEqual({});
+  });
+
+  it('starts a new role with no caps at all', () => {
+    // Prefilling would make every new role silently raise its holders' caps,
+    // because they resolve as the MAX across the roles somebody holds.
+    expect(EMPTY_ROLE_DRAFT.limits).toEqual({});
+  });
+
+  it('round-trips stored numbers through the form’s strings', () => {
+    expect(roleLimitFields({ 'chat:group_chats': 50 })).toEqual({ 'chat:group_chats': '50' });
   });
 });

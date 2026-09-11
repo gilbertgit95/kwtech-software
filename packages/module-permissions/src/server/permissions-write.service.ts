@@ -16,9 +16,9 @@ import {
   normaliseInviteEmail,
   validateInvitationDraft,
 } from '../domain/invitation.js';
-import { assertPlanLimits, LIMIT, type LimitKey } from '../domain/limits.js';
+import { assertPlanLimits, LIMIT, LIMIT_REGISTRY, type LimitKey, type LimitSpec } from '../domain/limits.js';
 import { clonePlanFeatures, type PlanDraft, planLimitValues, validatePlanDraft } from '../domain/plan-draft.js';
-import { cloneFeatures, type RoleDraft, validateRoleDraft } from '../domain/role-draft.js';
+import { cloneFeatures, type RoleDraft, roleLimitValues, validateRoleDraft } from '../domain/role-draft.js';
 import {
   type SubscriptionDraft,
   subscriptionPeriodEnd,
@@ -190,6 +190,18 @@ export class PermissionsWriteService {
    */
   private get registry(): readonly FeatureSpec[] {
     return this.options?.featureRegistry ?? FEATURE_REGISTRY;
+  }
+
+  /**
+   * Every cap declared across every module — the limits half of `registry`.
+   *
+   * ⚠ Read here as well as in `PermissionsService`, and for a sharper reason:
+   * the role editor writes numbers against these keys, so a registry the write
+   * path does not know about turns a typed cap into a saved row that resolves
+   * to nothing. Validation refuses an undeclared key rather than storing it.
+   */
+  private get limitRegistry(): readonly LimitSpec[] {
+    return this.options?.limitRegistry ?? LIMIT_REGISTRY;
   }
 
   // ── organizations ─────────────────────────────────────────────────────────
@@ -573,6 +585,7 @@ export class PermissionsWriteService {
         existingKeys: await this.keysInScope(tx, null),
         actorFeatures: actor.effective,
         actorMayWriteAppRoles: hasFeature(actor, FEATURE.rolesManageApp),
+        limits: this.limitRegistry,
       });
       assertNoDraftErrors(errors);
 
@@ -591,6 +604,7 @@ export class PermissionsWriteService {
         select: { id: true },
       });
       await this.replaceRoleFeatures(tx, role.id, draft.features);
+      await this.replaceRoleLimits(tx, role.id, roleLimitValues(draft.limits, draft.level, this.limitRegistry));
 
       return { roleId: role.id };
     });
@@ -619,6 +633,7 @@ export class PermissionsWriteService {
           registry: this.registry,
           actorFeatures: actor.effective,
           actorMayWriteAppRoles: hasFeature(actor, FEATURE.rolesManageApp),
+          limits: this.limitRegistry,
         },
       );
       assertNoDraftErrors(errors);
@@ -629,6 +644,13 @@ export class PermissionsWriteService {
         select: { id: true },
       });
       await this.replaceRoleFeatures(tx, roleId, draft.features);
+      /*
+       * The EXISTING level, never the draft's — `updateRole` does not move a
+       * role between levels, and validation above was run against the existing
+       * one. Passing the draft's would let a form claiming 'app' write caps onto
+       * an organization-level role, where nothing would ever read them.
+       */
+      await this.replaceRoleLimits(tx, roleId, roleLimitValues(draft.limits, existing.level, this.limitRegistry));
 
       return { roleId };
     });
@@ -708,7 +730,10 @@ export class PermissionsWriteService {
   private async keysInScope(tx: PermissionsTransaction, organizationId: string | null): Promise<string[]> {
     const rows = await tx.permRole.findMany({
       where: { organizationId },
-      include: { features: { select: { featureKey: true } } },
+      include: {
+        features: { select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
       orderBy: { key: 'asc' },
     });
     return rows.map((row) => row.key);
@@ -749,6 +774,31 @@ export class PermissionsWriteService {
    * whole truth about the role, so a key removed in the form is actually
    * revoked instead of lingering because nothing deleted it.
    */
+  /**
+   * The role's caps, made to match the draft exactly.
+   *
+   * Delete-then-upsert, like `replacePlanLimits`: a cap CLEARED in the editor
+   * has to disappear from the table, and an update that only wrote the values
+   * present would leave the old number in force while the form showed a blank.
+   * The delete is scoped by `notIn`, so a cap that is staying keeps its row and
+   * its history rather than being dropped and recreated on every save.
+   */
+  private async replaceRoleLimits(
+    tx: PermissionsTransaction,
+    roleId: string,
+    limits: Readonly<Record<string, number>>,
+  ) {
+    const keys = Object.keys(limits);
+    await tx.permRoleLimit.deleteMany({ where: { roleId, limitKey: { notIn: keys } } });
+    for (const [limitKey, value] of Object.entries(limits)) {
+      await tx.permRoleLimit.upsert({
+        where: { roleId_limitKey: { roleId, limitKey } },
+        create: { roleId, limitKey, value },
+        update: { value },
+      });
+    }
+  }
+
   private async replaceRoleFeatures(tx: PermissionsTransaction, roleId: string, features: readonly FeatureKey[]) {
     const keep = [...new Set(features)];
     await tx.permRoleFeature.deleteMany({ where: { roleId, featureKey: { notIn: keep } } });

@@ -204,6 +204,17 @@ type PermissionInvitationResult {
   invitationId: String!
 }
 
+type PermissionLimitSpec {
+  countedOver: String!
+  defaultValue: Int
+  description: String!
+  key: String!
+  label: String!
+  module: String
+  required: Boolean!
+  source: String!
+}
+
 type PermissionMember {
   joinedAt: String!
   membershipId: String!
@@ -283,7 +294,13 @@ type PermissionRoleDetail {
   key: String!
   label: String!
   level: String!
+  limits: [PermissionRoleLimit!]!
   organizationId: String
+}
+
+type PermissionRoleLimit {
+  limitKey: String!
+  value: Int!
 }
 
 type PermissionSubscription {
@@ -367,6 +384,7 @@ type Query {
   myWorkspaces(organizationId: String!): [MyWorkspace!]!
   permissionDefaults: [PermissionDefault!]!
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
+  permissionLimits: [PermissionLimitSpec!]!
   permissionOrganizationDetail(organizationId: String!): PermissionOrganizationDetail
   permissionOrganizations: [PermissionOrganization!]!
   permissionPlans: [PermissionPlanDetail!]!
@@ -395,6 +413,12 @@ input RoleDraftInput {
   key: String!
   label: String!
   level: String!
+  limits: [RoleLimitInput!]
+}
+
+input RoleLimitInput {
+  limitKey: String!
+  value: String!
 }
 
 type SessionInfo {

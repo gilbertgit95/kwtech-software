@@ -7,6 +7,7 @@ import { FeatureGate } from '../feature-gate.js';
 import {
   createPermissionsClient,
   type FeatureView,
+  type LimitView,
   type PermissionsClient,
   type RoleView,
 } from '../permissions-client.js';
@@ -35,6 +36,13 @@ export function RoleEditPage({
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
   const [roles, setRoles] = useState<RoleView[] | null>(null);
   const [features, setFeatures] = useState<FeatureView[] | null>(null);
+  /*
+   * The declared caps, fetched for the same reason the features are: this
+   * package's compiled `LIMIT_REGISTRY` holds only its own, so a cap another
+   * module contributes would have no field in the editor — settable by a deploy
+   * and by nothing else.
+   */
+  const [limits, setLimits] = useState<LimitView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,11 +55,12 @@ export function RoleEditPage({
      * the API rather than this package's own registry — otherwise another
      * module's keys are invisible and a clone silently drops them.
      */
-    Promise.all([api.listRoles(), api.listFeatures()])
-      .then(([roleList, featureList]) => {
+    Promise.all([api.listRoles(), api.listFeatures(), api.listLimits()])
+      .then(([roleList, featureList, limitList]) => {
         if (cancelled) return;
         setRoles(roleList);
         setFeatures(featureList);
+        setLimits(limitList);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load the role.');
@@ -104,7 +113,7 @@ export function RoleEditPage({
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
-      ) : roles === null || features === null ? (
+      ) : roles === null || features === null || limits === null ? (
         <div className="h-64 animate-pulse rounded-md bg-muted" />
       ) : !role ? (
         <AdminPlaceholder>No role with that id. It may have been removed.</AdminPlaceholder>
@@ -132,6 +141,7 @@ export function RoleEditPage({
             role={role}
             allRoles={roles}
             features={features}
+            limits={limits}
             readOnly
             onSaved={onSaved}
             cancelHref={listHref}
@@ -170,6 +180,7 @@ export function RoleEditPage({
             role={role}
             allRoles={roles}
             features={features}
+            limits={limits}
             onSaved={onSaved}
             cancelHref={listHref}
             {...(iconOptions ? { iconOptions } : {})}

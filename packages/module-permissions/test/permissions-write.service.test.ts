@@ -36,7 +36,15 @@ interface State {
   workspaceMembers: { id: string; membershipId: string; workspaceId: string }[];
   membershipRoles: { membershipId: string; roleId: string }[];
   workspaceMemberRoles: { workspaceMemberId: string; roleId: string }[];
-  roles: { id: string; key: string; label: string; level: string; organizationId: string | null }[];
+  roles: {
+    id: string;
+    key: string;
+    label: string;
+    level: string;
+    organizationId: string | null;
+    isSystem?: boolean;
+    disabledAt?: Date | null;
+  }[];
   /** App-level grants, so the baseline default has something to check. */
   userRoles: { userId: string; role: Record<string, unknown> }[];
   organizations: { id: string; key: string; name: string; description?: string | null }[];
@@ -53,6 +61,8 @@ interface State {
   plans: { key: string; label: string; isPublic: boolean; icon: string | null; archivedAt: Date | null }[];
   planFeatures: { planKey: string; featureKey: string }[];
   planLimits: { planKey: string; limitKey: string; value: number }[];
+  /** `perm_role_limit` — the caps an app-level role grants. */
+  roleLimits: { roleId: string; limitKey: string; value: number }[];
   /** Makes the fake host's mailer throw, for the delivery-failure case. */
   mailFails?: boolean;
   subscriptions: {
@@ -95,6 +105,7 @@ const emptyState = (over: Partial<State> = {}): State => ({
   plans: [],
   planFeatures: [],
   planLimits: [],
+  roleLimits: [],
   subscriptions: [],
   defaults: [],
   ...over,
@@ -112,6 +123,8 @@ interface Writes {
   plans: unknown[];
   planFeatures: unknown[];
   planLimits: unknown[];
+  roles: unknown[];
+  roleLimits: { roleId: string; limitKey: string; value: number }[];
   subscriptions: unknown[];
   defaults: { key: string; value: string | null }[];
   invitations: unknown[];
@@ -135,6 +148,8 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
     plans: [],
     planFeatures: [],
     planLimits: [],
+    roles: [],
+    roleLimits: [],
     subscriptions: [],
     invitations: [],
     defaults: [],
@@ -274,6 +289,46 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
             (args.where.level === undefined || r.level === args.where.level) &&
             (args.where.organizationId === undefined || r.organizationId === null),
         ) ?? null,
+      /** Only `key` is read from this — `keysInScope`, for the duplicate check. */
+      findMany: async (args: { where: { organizationId: string | null } }) =>
+        state.roles
+          .filter((r) => r.organizationId === args.where.organizationId)
+          .map((r) => ({ ...r, features: [], limits: [] })),
+      create: async (args: {
+        data: { key: string; label: string; level: string; organizationId: string | null; icon: string | null };
+      }) => {
+        const id = `role-${state.roles.length + 1}`;
+        state.roles.push({ id, ...args.data, isSystem: false, disabledAt: null } as never);
+        writes.roles.push({ id, ...args.data });
+        return { id };
+      },
+      update: async (args: { where: { id: string }; data: { label?: string; icon?: string | null } }) => {
+        const found = state.roles.find((r) => r.id === args.where.id);
+        if (found && args.data.label !== undefined) found.label = args.data.label;
+        return { id: args.where.id };
+      },
+    },
+    /*
+     * The caps a role grants — written by the role editor since 2026-09-11.
+     * Delete-then-upsert, exactly like `permPlanLimit`, because a cap CLEARED
+     * in the form has to leave the table.
+     */
+    permRoleLimit: {
+      deleteMany: async (args: { where: { roleId: string; limitKey?: { notIn: string[] } } }) => {
+        const before = state.roleLimits.length;
+        const keep = args.where.limitKey?.notIn ?? [];
+        state.roleLimits = state.roleLimits.filter((l) => l.roleId !== args.where.roleId || keep.includes(l.limitKey));
+        return { count: before - state.roleLimits.length };
+      },
+      upsert: async (args: { create: { roleId: string; limitKey: string; value: number } }) => {
+        writes.roleLimits.push(args.create);
+        const found = state.roleLimits.find(
+          (l) => l.roleId === args.create.roleId && l.limitKey === args.create.limitKey,
+        );
+        if (found) found.value = args.create.value;
+        else state.roleLimits.push({ ...args.create });
+        return args.create;
+      },
     },
     permMembershipRole: {
       findFirst: async (args: { where: { membershipId: string; roleId: string } }) =>
@@ -329,7 +384,11 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
      * granting nothing is one any granter may hand out, so the tests exercise
      * the REPLACEMENT rule rather than the escalation rule.
      */
-    permRoleFeature: { findMany: async () => [] },
+    permRoleFeature: {
+      findMany: async () => [],
+      deleteMany: async () => ({ count: 0 }),
+      createMany: async (args: { data: { roleId: string; featureKey: string }[] }) => ({ count: args.data.length }),
+    },
     permUserRole: {
       findMany: async () => state.userRoles.map((row) => ({ userId: row.userId, role: row.role })),
       create: async (args: { data: { userId: string; roleId: string } }) => {
@@ -2317,5 +2376,96 @@ describe('the invitation lifetime default', () => {
 
     const expiresAt = h.state.invitations[0]?.expiresAt.getTime() ?? 0;
     expect(Math.abs(expiresAt - (Date.now() + 7 * 24 * 60 * 60 * 1000))).toBeLessThan(60_000);
+  });
+});
+
+/**
+ * Caps written by the role editor, which before 2026-09-11 only a deploy could
+ * set.
+ *
+ * The write path is thin — `roleLimitValues` then `replaceRoleLimits` — and
+ * every test here is about the part that is not thin: what happens to caps a
+ * form did NOT send, and which level the write trusts.
+ */
+describe('role limits, through createRole and updateRole', () => {
+  /** Stands in for a contributed cap, as `module-chat` will declare it. */
+  const CHAT_GROUPS = {
+    key: 'chat:group_chats',
+    module: 'chat',
+    label: 'Group chats',
+    description: 'How many group conversations this user may create.',
+    source: 'role' as const,
+    countedOver: 'user' as const,
+    required: false,
+    defaultValue: 20,
+  };
+
+  const author = () => actor([FEATURE.rolesCreate, FEATURE.rolesUpdate, FEATURE.rolesManageApp]);
+
+  const harness = () => fake(emptyState(), { limitRegistry: [CHAT_GROUPS], featureRegistry: [] } as never);
+
+  const roleDraft = (over: Record<string, unknown> = {}) =>
+    ({
+      key: 'chat-power-user',
+      label: 'Chat power user',
+      level: 'app',
+      icon: '',
+      features: [],
+      limits: {},
+      ...over,
+    }) as never;
+
+  it('writes the caps a new app-level role sets', async () => {
+    const h = harness();
+    await h.svc.createRole(author(), roleDraft({ limits: { 'chat:group_chats': '50' } }));
+
+    expect(h.state.roleLimits).toEqual([{ roleId: 'role-1', limitKey: 'chat:group_chats', value: 50 }]);
+  });
+
+  it('stores a typed zero, which is not the same as a blank', async () => {
+    const h = harness();
+    await h.svc.createRole(author(), roleDraft({ limits: { 'chat:group_chats': '0' } }));
+
+    expect(h.state.roleLimits).toEqual([{ roleId: 'role-1', limitKey: 'chat:group_chats', value: 0 }]);
+  });
+
+  it('writes nothing for a blank', async () => {
+    const h = harness();
+    await h.svc.createRole(author(), roleDraft({ limits: { 'chat:group_chats': '' } }));
+
+    expect(h.state.roleLimits).toEqual([]);
+  });
+
+  it('⚠ CLEARS a cap the editor emptied, rather than leaving the old number in force', async () => {
+    const h = harness();
+    await h.svc.createRole(author(), roleDraft({ limits: { 'chat:group_chats': '50' } }));
+    await h.svc.updateRole(author(), 'role-1', roleDraft({ limits: {} }));
+
+    // The failure this guards: an update that only wrote what it was sent would
+    // leave 50 in the table while the form showed an empty box.
+    expect(h.state.roleLimits).toEqual([]);
+  });
+
+  it('replaces a changed cap in place', async () => {
+    const h = harness();
+    await h.svc.createRole(author(), roleDraft({ limits: { 'chat:group_chats': '50' } }));
+    await h.svc.updateRole(author(), 'role-1', roleDraft({ limits: { 'chat:group_chats': '5' } }));
+
+    expect(h.state.roleLimits).toEqual([{ roleId: 'role-1', limitKey: 'chat:group_chats', value: 5 }]);
+  });
+
+  it('⚠ refuses a cap on a role below app level', async () => {
+    const h = harness();
+    // Nothing would ever read it: resolveLimits filters to app-level roles.
+    await expect(
+      h.svc.createRole(author(), roleDraft({ level: 'organization', limits: { 'chat:group_chats': '50' } })),
+    ).rejects.toThrow(/only app-level roles carry caps/);
+  });
+
+  it('refuses a cap no composed registry declares', async () => {
+    const h = harness();
+    await expect(h.svc.createRole(author(), roleDraft({ limits: { 'chat:made_up': '5' } }))).rejects.toThrow(
+      /not declared by any module/,
+    );
   });
 });

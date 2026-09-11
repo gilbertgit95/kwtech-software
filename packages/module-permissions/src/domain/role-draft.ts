@@ -1,6 +1,7 @@
 import type { FeatureKey, FeatureSpec, RoleLevel } from '../types.js';
 import { ROLE_LEVELS } from '../types.js';
 import { type CloneMode, type CloneResult, mergeFeatures } from './feature-merge.js';
+import { LIMIT_REGISTRY, type LimitSpec } from './limits.js';
 import { canRoleGrant } from './roles.js';
 
 /**
@@ -23,6 +24,22 @@ export interface RoleDraft {
   /** Icon NAME for the badge. Empty means none. See PermRole.icon. */
   icon: string;
   features: readonly FeatureKey[];
+  /**
+   * The caps this role GRANTS, key → string.
+   *
+   * Strings for the same reason `PlanDraft.limits` uses them: the values come
+   * from `<input type="number">`, which yields `''` mid-edit and `'abc'` on a
+   * browser that does not filter. A draft holding `NaN` validates cleanly,
+   * saves, and caps somebody at nothing.
+   *
+   * ⚠ ONLY APP-LEVEL ROLES MAY CARRY THEM, and that is not a style rule:
+   * `resolveLimits` reads `roles.filter((role) => role.level === 'app')`, so a
+   * number on an organization-level role is dropped before anything reads it.
+   * The row would save, the editor would redisplay it, and it would cap
+   * nothing — which is why `validateRoleLimits` refuses it rather than letting
+   * the write path quietly drop it.
+   */
+  limits: Readonly<Record<string, string>>;
 }
 
 /*
@@ -50,6 +67,19 @@ export const EMPTY_ROLE_DRAFT: RoleDraft = {
   level: 'organization',
   icon: '',
   features: [],
+  /**
+   * ⚠ EMPTY, and deliberately NOT prefilled the way `EMPTY_PLAN_DRAFT` is.
+   *
+   * The two cases look alike and are opposites. A plan's required caps must be
+   * set or the plan is invalid, so prefilling saves the author from a form that
+   * cannot be submitted. A role's caps are ADDITIVE BY MAX across the roles
+   * somebody holds, and a blank means "this role says nothing about it" —
+   * which is what nearly every role should say. Prefilling would make every new
+   * role silently grant a cap its author never chose, and because the
+   * resolution is a max, that cap would then RAISE the allowance of everyone
+   * holding it.
+   */
+  limits: {},
 };
 
 /**
@@ -81,6 +111,13 @@ export interface ValidateRoleOptions {
   actorFeatures?: readonly FeatureKey[];
   /** Whether the actor may write an APP-level role at all. See `roles:manage_app`. */
   actorMayWriteAppRoles?: boolean;
+  /**
+   * Every cap declared across every module, for checking the ones this role
+   * sets. Defaults to this module's own — correct for a test, and wrong for an
+   * app that mounts a module contributing caps, which is why the write path
+   * passes the composed registry.
+   */
+  limits?: readonly LimitSpec[];
 }
 
 /**
@@ -134,7 +171,116 @@ export function validateRoleDraft(draft: RoleDraft, options: ValidateRoleOptions
   const featureError = validateRoleFeatures(draft.features, level, options);
   if (featureError) errors.features = featureError;
 
+  const limitError = validateRoleLimits(draft.limits, level, options.limits ?? LIMIT_REGISTRY);
+  if (limitError) errors.limits = limitError;
+
   return errors;
+}
+
+/**
+ * Every cap this role sets: role-sourced, declared, whole, and only on an
+ * app-level role.
+ *
+ * ## Why a blank is not zero
+ *
+ * An empty box means "this role says nothing about this cap" and contributes
+ * nothing to the max. A typed `0` means "this role grants none of it" — a
+ * contractor role that may use chat and create no group conversations is a real
+ * configuration, and it is the one the plan named when it argued `chat:read`
+ * earns a key at all. Both are legitimate and they are different, so the
+ * validator distinguishes them and the write path stores only what was typed.
+ *
+ * ⚠ Zero is allowed here even though `LimitSpec.defaultValue` never uses it.
+ * That floor is about what an UNCONFIGURED person gets, where zero would stop
+ * an organization's founder being its first member. This is an operator
+ * deliberately setting a cap on a named role, which is a different act — and it
+ * cannot lock anybody out by itself, because caps resolve as the MAX across the
+ * roles somebody holds and the registry default applies when no role sets one.
+ */
+function validateRoleLimits(
+  limits: Readonly<Record<string, string>>,
+  level: RoleLevel,
+  registry: readonly LimitSpec[],
+): string | undefined {
+  const bySource = new Map(registry.map((spec) => [spec.key, spec.source]));
+  const set = Object.entries(limits).filter(([, raw]) => (raw ?? '').trim() !== '');
+  if (set.length === 0) return undefined;
+
+  /*
+   * The whole reason this check exists. `resolveLimits` filters to app-level
+   * roles, so a cap on any other level is dropped before a check reads it —
+   * saved, redisplayed, and enforcing nothing.
+   */
+  if (level !== 'app') {
+    return `only app-level roles carry caps, and this role is ${level}-level: ${set
+      .map(([key]) => key)
+      .sort()
+      .join(', ')}`;
+  }
+
+  const unknown: string[] = [];
+  const wrongSource: string[] = [];
+  const invalid: string[] = [];
+
+  for (const [key, raw] of set) {
+    const source = bySource.get(key);
+    if (!source) {
+      // An undeclared cap resolves to "no limit" — see LimitContribution.
+      unknown.push(key);
+      continue;
+    }
+    /*
+     * A plan-sourced cap on a role is the mirror of the level mistake:
+     * `resolveLimits` reads plan-sourced keys from SUBSCRIPTIONS only, so the
+     * number would be stored and never consulted.
+     */
+    if (source !== 'role') wrongSource.push(key);
+
+    const value = Number(raw.trim());
+    if (!Number.isInteger(value) || value < 0) invalid.push(key);
+  }
+
+  const problems: string[] = [];
+  if (unknown.length > 0) problems.push(`not declared by any module: ${unknown.sort().join(', ')}`);
+  if (wrongSource.length > 0) problems.push(`sold by a plan, not granted by a role: ${wrongSource.sort().join(', ')}`);
+  if (invalid.length > 0) problems.push(`must be a whole number of 0 or more: ${invalid.sort().join(', ')}`);
+  return problems.length > 0 ? problems.join('; ') : undefined;
+}
+
+/**
+ * The draft's caps as the numbers a `perm_role_limit` row stores.
+ *
+ * Only ever called on a draft that has validated: blanks are dropped and
+ * anything unparseable is skipped, because a bad value reaching here would be a
+ * bug rather than user input, and writing `NaN` into a cap is the worst
+ * available way to react to one.
+ *
+ * ⚠ Returns NOTHING for a role that is not app level, whatever the draft holds.
+ * The validator refuses that combination, and this is the second door on the
+ * same room: a caller that skipped validation writes no rows instead of writing
+ * rows that never apply.
+ */
+export function roleLimitValues(
+  limits: Readonly<Record<string, string>>,
+  level: string,
+  registry: readonly LimitSpec[] = LIMIT_REGISTRY,
+): Record<string, number> {
+  if (level !== 'app') return {};
+
+  const values: Record<string, number> = {};
+  for (const spec of registry) {
+    if (spec.source !== 'role') continue;
+    const raw = (limits[spec.key] ?? '').trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (Number.isInteger(value) && value >= 0) values[spec.key] = value;
+  }
+  return values;
+}
+
+/** The stored numbers as the strings a form edits. The inverse of the above. */
+export function roleLimitFields(limits: Readonly<Record<string, number>>): Record<string, string> {
+  return Object.fromEntries(Object.entries(limits).map(([key, value]) => [key, String(value)]));
 }
 
 function validateRoleFeatures(

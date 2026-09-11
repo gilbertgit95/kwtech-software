@@ -1,6 +1,7 @@
 import { Inject, Optional } from '@nestjs/common';
 import { Args, Context, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { filterFeatures } from '../../domain/feature-filter.js';
+import { LIMIT_REGISTRY } from '../../domain/limits.js';
 import { paginate } from '../../domain/pagination.js';
 import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
 import type { PermissionContext } from '../../types.js';
@@ -22,6 +23,7 @@ import {
   PermissionDefaultType,
   PermissionFeaturePageType,
   PermissionInvitationResultType,
+  PermissionLimitSpecType,
   PermissionMemberType,
   PermissionMyWorkspaceType,
   PermissionOrganizationDetailType,
@@ -86,6 +88,30 @@ export class PermissionsResolver {
    * the largest page the UI offers, so nothing can ask the API for more than a
    * person could have asked for through the interface.
    */
+  /**
+   * Every cap any mounted module declares.
+   *
+   * Guarded by `features:read` rather than a key of its own: this is the same
+   * kind of thing the feature catalogue is — the vocabulary, not anybody's
+   * grants — and both editors that need it already call `permissionFeatures`
+   * before they can render at all. A second key would deny the limits half of a
+   * form whose other half had just loaded.
+   */
+  @RequireFeature(FEATURE.featuresRead)
+  @Query(() => [PermissionLimitSpecType], { name: 'permissionLimits' })
+  limits(): PermissionLimitSpecType[] {
+    return this.limitRegistry.map((spec) => ({
+      key: spec.key,
+      module: spec.module ?? null,
+      label: spec.label,
+      description: spec.description,
+      source: spec.source,
+      countedOver: spec.countedOver,
+      required: spec.required,
+      defaultValue: spec.defaultValue,
+    }));
+  }
+
   @RequireFeature(FEATURE.featuresRead)
   @Query(() => PermissionFeaturePageType, { name: 'permissionFeatures' })
   features(
@@ -943,6 +969,10 @@ export class PermissionsResolver {
    * "there is no you".
    */
   /** Every registered feature, from wherever declared. See `featureRegistry`. */
+  private get limitRegistry() {
+    return this.options.limitRegistry ?? LIMIT_REGISTRY;
+  }
+
   private get registry() {
     return this.options.featureRegistry ?? FEATURE_REGISTRY;
   }
@@ -1541,5 +1571,8 @@ function toDraft(input: RoleDraftInput) {
     level: input.level,
     icon: input.icon ?? '',
     features: input.features,
+    // Pairs back to the map the domain edits. An absent list is an empty draft
+    // — see RoleDraftInput.limits for why that is the same as clearing.
+    limits: Object.fromEntries((input.limits ?? []).map((limit) => [limit.limitKey, limit.value])),
   };
 }

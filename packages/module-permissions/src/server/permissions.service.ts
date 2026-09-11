@@ -316,7 +316,10 @@ export class PermissionsService {
   async listRoles(organizationId: string | null = null) {
     const rows = await this.prisma.permRole.findMany({
       where: { organizationId },
-      include: { features: { select: { featureKey: true } } },
+      include: {
+        features: { select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
       orderBy: { key: 'asc' },
     });
 
@@ -330,6 +333,15 @@ export class PermissionsService {
       isSystem: row.isSystem,
       disabled: row.disabledAt !== null,
       features: row.features.map((feature) => feature.featureKey).sort(),
+      /*
+       * Sorted by key so the editor's fields keep their order between saves.
+       * Carried as pairs rather than a map for the reason the GraphQL type
+       * gives: this schema has no untyped-object scalar, and a list of pairs is
+       * longer to read and impossible to get wrong.
+       */
+      limits: row.limits
+        .map((limit) => ({ limitKey: limit.limitKey, value: limit.value }))
+        .sort((a, b) => a.limitKey.localeCompare(b.limitKey)),
     }));
   }
 
