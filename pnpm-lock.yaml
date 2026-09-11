@@ -83,6 +83,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      graphql-ws:
+        specifier: ^6.2.1
+        version: 6.2.1(graphql@17.0.2)(ws@8.21.3)
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.2.8)
@@ -367,6 +370,9 @@ importers:
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
+      graphql-ws:
+        specifier: ^6.0.0
+        version: 6.2.1(graphql@17.0.2)(ws@8.21.3)
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@24.10.1)(supports-color@8.1.1)
@@ -413,9 +419,6 @@ importers:
       graphql:
         specifier: 'catalog:'
         version: 17.0.2
-      graphql-ws:
-        specifier: ^6.2.1
-        version: 6.2.1(graphql@17.0.2)(ws@8.21.3)
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@24.10.1)(supports-color@8.1.1)

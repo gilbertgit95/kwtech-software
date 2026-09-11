@@ -98,18 +98,21 @@ export {
 } from './permissions-client.js';
 export { PermissionsProvider, type PermissionsProviderProps, PermissionsReactContext } from './permissions-provider.js';
 /*
- * The realtime CONTRACT only. `createRealtimeConnection` is deliberately absent:
- * it is the one function that imports `graphql-ws`, an optional peer, and a
- * barrel that re-exported it would make every consumer resolve a WebSocket
- * client to render a roles table. It lives at
- * `@kwtech/module-permissions/react/realtime`.
+ * The subscription DOCUMENT, plus the connection shapes re-exported from
+ * `@kwtech/module-kit` so a page can name a prop without a second import.
+ *
+ * ⚠ `createRealtimeConnection` is not here and is no longer in this package at
+ * all. It imports `graphql-ws` — an optional peer — and a barrel that
+ * re-exported it would make every consumer resolve a WebSocket client to render
+ * a roles table. It lives at `@kwtech/module-kit/realtime`, where the APP calls
+ * it once for the whole tab (PLAN §12.39).
  */
 export {
   DEFAULT_WS_TICKET_PATH,
   PLAN_CHANGED,
   type RealtimeConnection,
   type RealtimeOptions,
-} from './realtime-contract.js';
+} from './realtime-documents.js';
 /*
  * From `tenant-nav.ts`, which is NOT a client module — deliberately. The app's
  * server-side navigation builder reads `ORGANIZATION_NAV_GROUP`'s VALUE, and a

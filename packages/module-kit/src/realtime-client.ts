@@ -1,21 +1,39 @@
 'use client';
 
 import { type Client, createClient } from 'graphql-ws';
-import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions } from './realtime-contract.js';
+import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions } from './realtime.js';
 
 /**
- * The module's realtime half: one WebSocket, opened with a short-lived ticket.
+ * The app's realtime half: ONE WebSocket, opened with a short-lived ticket.
  *
  * ## The ONLY file in this package that imports `graphql-ws`
  *
  * Which is what makes that peer genuinely optional. Reached through
- * `@kwtech/module-permissions/react/realtime` — a subpath, like `/server` and
- * `/next` — so importing the `/react` barrel resolves nothing here. The shapes,
- * the ticket path and the subscription documents live in
- * `realtime-contract.ts`, where a page can use them without installing a
+ * `@kwtech/module-kit/realtime` — a subpath, like `/react` — so importing
+ * either barrel resolves nothing here. The shapes and the ticket path live in
+ * `realtime.ts`, where a module can name a connection without installing a
  * WebSocket client.
  *
- * See that file for why a ticket, and why the app supplies the URL.
+ * ## Why a ticket, and why the app supplies the URL
+ *
+ * The session is an httpOnly cookie the page cannot read, and cannot be sent to
+ * another origin, so the browser asks the app's own proxy for a sixty-second
+ * ticket and puts that in `connectionParams`. Two things therefore come from
+ * the app rather than from any package:
+ *
+ *   wsUrl       the API's socket origin. No package can know it, and the app
+ *               publishes it as NEXT_PUBLIC_WS_URL because a browser genuinely
+ *               has to know where to connect — unlike the HTTP path, which is
+ *               proxied precisely so the origin stays private.
+ *   ticketPath  the mint endpoint, which belongs to `@kwtech/module-auth`.
+ *               Hardcoding it would be this package naming a module's URL, so
+ *               the default is a default rather than an assumption.
+ *
+ * ⚠ THIS IS CALLED ONCE PER TAB, by the application. A module calling it for
+ * itself would open a second socket, with a second ticket and a second
+ * reconnect — nothing would fail, and the cost would multiply by the number of
+ * modules. `RealtimeProvider` is where the one connection is put so every
+ * module can reach it.
  */
 
 /**

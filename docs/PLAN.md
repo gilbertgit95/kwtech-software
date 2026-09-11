@@ -510,7 +510,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 36 | Sign-up exists only through an invitation | when self-service registration is a product decision | `AuthService.createAccount` is a METHOD with no route: the only thing that calls it is `signUpFromInvitation`, which supplies the address from the invitation rather than from the form. There is no public registration page and adding one is a product decision with a spam problem attached — not something to arrive at by leaving an endpoint exposed. Note what an open endpoint would also be: `createAccount` says plainly that an address is taken, which is an enumeration oracle anywhere but behind a token |
 | 37 | ~~An app-level role can be GRANTED to nobody: `perm_user_role` has no write path~~ **Closed** | — | **2026-09-08.** `assignAppRole` behind a new `roles:grant_app` key, plus `inviteUser`, which carries the chosen role on the invitation and applies it at acceptance. Both refuse a role carrying features the granter does not hold, so neither can be used to mint somebody more powerful than yourself. Original entry: | `assignRole` writes `perm_membership_role` and takes an `organizationId`; nothing writes `perm_user_role` at all, so the two app-level grants in the live database were inserted by hand. `roles:manage_app` guards WRITING an app-level role, not granting one — a different act, and currently an unguarded impossibility rather than a hole. The user detail screen is the first surface that wants it, and the key is permissions-side (`roles:*`), not `users:*`: it grants a role, it does not change an account |
 | 38 | Deleting an account orphans its permission rows | if an erasure path is ever built | `perm_membership.userId` has no FK to `auth_user` by design (§12.12), so `DELETE FROM auth_user` leaves memberships and role grants pointing at nobody — verified by hand three times on 2026-09-08 removing test accounts, each needing an explicit membership and `perm_user_role` delete first. `findUsersByIds` and `listAppRolesForUsers` both tolerate the orphan by returning fewer rows than asked for. **No longer urgent: `users:delete` was removed the same day and the product has no delete at all** — an account is suspended, which keeps every row and is reversible. This stays open because the hazard returns the moment somebody builds an erasure path for a legal request, and because deleting by hand in a console hits it today. The composed delete belongs in the APP, the only layer allowed to touch both modules' tables |
-| 39 | Nothing in `apps/web-app` opens the realtime socket | when a module is built on it | The API half is complete and running — `graphql-ws` subscriptions on the same URL as HTTP, a ticket verified at `onConnect`, `planChanged` published, `NEXT_PUBLIC_WS_URL` set in both env files — and the app never calls `createRealtimeConnection`, so `PlansPage` receives no `realtime` prop and nothing listens. **Decided 2026-09-08: leave it.** `module-auth` and `module-permissions` stay on HTTP; realtime arrives as its OWN module, which is what the seam was built for — `onConnect` shapes the socket into the same `{ req }` an HTTP request produces, so `FeatureGuard` and `resolvePrincipal` are transport-blind and a new module's subscriptions are guarded like its queries. When it lands: the APP owns the one connection and passes it in (a `createRealtimeConnection` per module means a socket per module per tab), the `graphql-ws` import sits behind a subpath, the ticket path is an option rather than a hardcoded reference to module-auth's URL, and the subscription gets its own `graphql_subscription` binding. §12.28 and §12.29 become live the day it does. **⚠ That day is scheduled: `module-chat` (2026-09-10) is the own-module realtime was waiting for.** It also adds a requirement the plan half of this entry did not state — events must be filtered PER PUBLISH, re-checking participation, because a subscription is authorised once at subscribe and `planChanged` fans out to every subscriber unfiltered |
+| 39 | ~~Nothing in `apps/web-app` opens the realtime socket~~ **CLOSED 2026-09-11** | — | The API half is complete and running — `graphql-ws` subscriptions on the same URL as HTTP, a ticket verified at `onConnect`, `planChanged` published, `NEXT_PUBLIC_WS_URL` set in both env files — and the app never calls `createRealtimeConnection`, so `PlansPage` receives no `realtime` prop and nothing listens. **Decided 2026-09-08: leave it.** `module-auth` and `module-permissions` stay on HTTP; realtime arrives as its OWN module, which is what the seam was built for — `onConnect` shapes the socket into the same `{ req }` an HTTP request produces, so `FeatureGuard` and `resolvePrincipal` are transport-blind and a new module's subscriptions are guarded like its queries. When it lands: the APP owns the one connection and passes it in (a `createRealtimeConnection` per module means a socket per module per tab), the `graphql-ws` import sits behind a subpath, the ticket path is an option rather than a hardcoded reference to module-auth's URL, and the subscription gets its own `graphql_subscription` binding. §12.28 and §12.29 become live the day it does. **⚠ That day is scheduled: `module-chat` (2026-09-10) is the own-module realtime was waiting for.** It also adds a requirement the plan half of this entry did not state — events must be filtered PER PUBLISH, re-checking participation, because a subscription is authorised once at subscribe and `planChanged` fans out to every subscriber unfiltered | **✅ CLOSED 2026-09-11.** The app opens exactly one connection, in `providers.tsx`, and hands it to every module through `RealtimeProvider` / `useRealtime()` in `@kwtech/module-kit/react`. The contract and `createRealtimeConnection` moved OUT of `module-permissions` into `module-kit` — a socket is a resource of the application, and with two subscribing modules the old arrangement would have given a tab one socket per module, each with its own ticket and reconnect, failing in no visible way and costing N times what it should. `PlansPage` now receives live `planChanged` events through that connection, so the half of this entry that was built and unused is running. What is NOT done is the rest of the list: a `graphql_subscription` binding exists for both modules now, and the ticket path was already an option.
 | 40 | Billing is unbuilt: nothing charges, and `currentPeriodEnd` is informational | when a payment provider is chosen | **Not to be built before the provider is.** Stripe, Paddle and manual invoicing imply genuinely different tables — Paddle is a merchant of record and handles tax, Stripe is not and does not — and guessing that shape is how a schema ends up fighting the integration. What IS decidable now, and was, on 2026-09-08: billing gets its OWN module, referencing `organizationId` and `planKey` as bare values with no foreign key, exactly as `perm_membership.userId` references an account. Roughly `BillingCustomer` (organization ↔ provider customer), `BillingPrice` (planKey → amount, currency, interval), `BillingInvoice`/`BillingPayment`. **Price does NOT go on `PermPlan`:** a plan is a bundle of entitlements and its price is commercial — currency, regional pricing, per-seat vs flat, promotions — so merging them makes every price change a permissions migration, puts "what Pro entitles" and "what Pro costs" in one row two teams edit, and makes a grandfathered customer paying last year's price for today's entitlements inexpressible. **No FK into `perm_subscription` either:** §12.24 already settled that a provider RECONCILES against those rows rather than owning them, so the seam is a webhook landing in the APP, which reads its billing rows and calls `PermissionsWriteService.updateSubscription` — the composition `resolve-principal` and the invitation resolvers already use. ⚠ Until it exists, a lapsed subscription KEEPS ENTITLING: `currentPeriodEnd` is written and rendered and never compared to `now`, because `status` decides entitlement so a clock cannot revoke a tenant with no row saying why. Nothing writes that status on a lapse — there is no scheduler in `web-server` — so the renewal date on the organization screens promises an enforcement that does not exist, and saying so on those screens is a cheap fix available before the module is |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
@@ -532,6 +532,69 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **STEP 5, the client half: ONE socket per tab, and it belongs
+  to the application.**
+
+  §12.39 is closed. `apps/web-app/src/app/providers.tsx` calls
+  `createRealtimeConnection` once and is the only place in the repo that calls
+  it at all; every module reaches the connection through `useRealtime()`.
+
+  **⚠ THE CONTRACT MOVED OUT OF `module-permissions` INTO `module-kit`, and the
+  move is the decision.** It was correct where it was while exactly one module
+  subscribed to anything. `module-chat` made it wrong in a way that would never
+  have surfaced as an error: each module would reach for its own
+  `createRealtimeConnection`, and a tab would hold a socket per module — each
+  with its own ticket, its own reconnect and its own share of the server's
+  connection budget. Nothing fails. It simply costs N times what it should and
+  gets worse with every module. A socket is a resource of the APPLICATION, so it
+  now lives where an app composes things and no module has to import another to
+  name one (§9).
+
+  So: `RealtimeConnection` / `RealtimeOptions` / `DEFAULT_WS_TICKET_PATH` at
+  `@kwtech/module-kit`, `createRealtimeConnection` behind
+  `@kwtech/module-kit/realtime`, `RealtimeProvider` and `useRealtime()` in
+  `@kwtech/module-kit/react`. `module-permissions` keeps only its DOCUMENT —
+  `PLAN_CHANGED` is a string, and the file it lives in is now named for what it
+  holds. `@kwtech/module-permissions/react/realtime` is GONE rather than left as
+  a re-export: a module re-exporting another package's socket factory would let
+  an app believe permissions owns the connection, which is the belief that put
+  it there in the first place.
+
+  **A CONTEXT, not a prop, and that is forced rather than chosen.** The module
+  pages are rendered by the app's catch-all route, which is a SERVER component:
+  it can pass `params` and `searchParams` and nothing else, because a live
+  WebSocket is not serialisable. Pages keep their explicit `realtime` prop —
+  clearer, and what a test supplies — and fall back to the context. The two
+  cannot disagree, because whoever passes the prop passes the app's own
+  connection.
+
+  **⚠ THE FACTORY IS CALLED IN AN EFFECT, never during render**, because a
+  client component still renders on the server and constructing a socket client
+  there is at best wasted and at worst a reference to a `WebSocket` that does
+  not exist. So `useRealtime()` answers null until mount — which every consumer
+  already handles, since it is also the answer in an app that wires no socket.
+  And the APP closes the connection, never a module: a module closing it on its
+  own unmount would take every other module's subscription down with it.
+
+  **The app passes a FACTORY rather than a connection**, so the `graphql-ws`
+  import stays in the app's own file. `RealtimeProvider` lives in the `/react`
+  barrel every module page reaches, and importing the client there would make a
+  WebSocket a hard dependency of naming a provider — the mistake this repo has
+  already made once, when a page imported a subscription document (a string) and
+  pulled the whole client in with it.
+
+  **What this makes live, today:** `PlansPage` has accepted a `realtime` prop
+  since it was written and never received one. It now re-reads on `planChanged`
+  through the app's connection, which closes the concurrent-edit gap on that
+  screen — two administrators no longer see different truths until one reloads.
+
+  **Verified:** `turbo run typecheck lint test` green across 26 tasks, the Next
+  app builds, and the socket itself was handshaked — a `connection_init` with a
+  forged ticket is closed with **4403**, the documented do-not-retry code, which
+  exercises `onConnect` → `authenticateConnection` → `verifyWsTicket` end to
+  end. ⚠ A SUBSCRIPTION CARRYING A REAL EVENT IS STILL UNVERIFIED: that needs a
+  signed-in session to mint a genuine ticket.
 
 - **2026-09-11** — **STEP 5, the server half: chat streams, and the stream does
   not lose mail.**
@@ -1534,12 +1597,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
   4. ✅ **DONE 2026-09-11.** Server: repository, read/write services on
      separate clients, GraphQL, participation enforced on every path — plus the
      app adopting the package, which is what created the tables.
-  5. ⚠ **THE SERVER HALF DONE 2026-09-11.** Realtime: per-publish filter, a
-     `graphql_subscription` binding, and CATCH-UP ON EVERY (RE)SUBSCRIBE — the
+  5. ✅ **DONE 2026-09-11**, in two commits. Realtime: per-publish filter, a
+     `graphql_subscription` binding, CATCH-UP ON EVERY (RE)SUBSCRIBE — the
      socket closes when its authorization expires by design and the pub/sub has
-     no replay, so a message published in the gap is lost without it. What
-     remains is the APP-OWNED CONNECTION (§12.39): one socket per tab, owned by
-     the app and handed to the modules, rather than one per module.
+     no replay, so a message published in the gap is lost without it — and the
+     APP-OWNED CONNECTION (§12.39), one socket per tab rather than one per
+     module.
   6. `module-kit`: the header slot, plus the chat widget that fills it — a
      subscribing client component, because the unread badge must be right before
      anybody opens the panel.

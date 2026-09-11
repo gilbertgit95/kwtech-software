@@ -1,12 +1,13 @@
 'use client';
 
+import { useRealtime } from '@kwtech/module-kit/react';
 import { DataGrid, type DataGridColumn, useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LIMIT_REGISTRY } from '../../domain/limits.js';
 import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
 import { createPermissionsClient, type PermissionsClient, type PlanView } from '../permissions-client.js';
-import { PLAN_CHANGED, type RealtimeConnection } from '../realtime-contract.js';
+import { PLAN_CHANGED, type RealtimeConnection } from '../realtime-documents.js';
 import { AdminPage } from './admin-page.js';
 
 /**
@@ -101,6 +102,12 @@ export function PlansPage({
    * HTTP and every action works. That is deliberate: a WebSocket is an
    * enhancement, and a screen that needed one would be a screen that breaks
    * behind a proxy that blocks upgrades.
+   *
+   * ⚠ Falls back to the APP's connection when no prop is given, which is how
+   * this page is actually reached: the catch-all route that renders it is a
+   * server component and cannot hand over a live socket. The prop stays because
+   * it is what a test supplies, and the two cannot disagree — whoever passes it
+   * passes the app's own connection.
    */
   realtime?: RealtimeConnection;
   newHref?: string;
@@ -113,6 +120,10 @@ export function PlansPage({
    * rather than disappearing — see the cell renderer.
    */
   const iconSet = useIconSet();
+  // Read unconditionally: a hook cannot be called behind a `??`, and the
+  // provider answers null in an app that wired no socket.
+  const appRealtime = useRealtime();
+  const connection = realtime ?? appRealtime;
   const iconsByName = useMemo(() => new Map((iconSet ?? []).map((option) => [option.name, option.Icon])), [iconSet]);
   const [plans, setPlans] = useState<PlanRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,9 +162,9 @@ export function PlansPage({
    * administrators no longer see different truths until one of them reloads.
    */
   useEffect(() => {
-    if (!realtime) return;
-    return realtime.subscribe(PLAN_CHANGED, () => load());
-  }, [realtime, load]);
+    if (!connection) return;
+    return connection.subscribe(PLAN_CHANGED, () => load());
+  }, [connection, load]);
 
   const columns = useMemo<DataGridColumn<PlanRow>[]>(
     () => [
