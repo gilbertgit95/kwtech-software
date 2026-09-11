@@ -116,6 +116,22 @@ export const CHAT_OPERATIONS = {
     leaveChat(conversationId: $conversationId)
   }`,
 
+  chatPresence: `query ChatPresence($userIds: [String!]!) {
+    chatPresence(userIds: $userIds) { userId online availability }
+  }`,
+
+  chatMyAvailability: `query ChatMyAvailability {
+    chatMyAvailability { availability clearAt }
+  }`,
+
+  setChatAvailability: `mutation SetChatAvailability($availability: String!, $forMinutes: Int) {
+    setChatAvailability(availability: $availability, forMinutes: $forMinutes) { availability clearAt }
+  }`,
+
+  sendChatTyping: `mutation SendChatTyping($conversationId: String!) {
+    sendChatTyping(conversationId: $conversationId)
+  }`,
+
   /**
    * ⚠ THE SUBSCRIPTION, and `since` is what stops a reconnection losing mail.
    *
@@ -129,6 +145,9 @@ export const CHAT_OPERATIONS = {
       conversationId
       change
       message { ${MESSAGE_FIELDS} }
+      userId
+      online
+      availability
     }
   }`,
 } as const;

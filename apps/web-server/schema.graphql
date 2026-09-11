@@ -65,10 +65,13 @@ type ChatDirectoryMatch {
 }
 
 type ChatEvent {
+  availability: String
   change: String
   conversationId: String
   kind: String!
   message: ChatMessage
+  online: Boolean
+  userId: String
 }
 
 type ChatMessage {
@@ -88,9 +91,20 @@ type ChatMessagePage {
   nextCursor: String
 }
 
+type ChatMyAvailability {
+  availability: String!
+  clearAt: String
+}
+
 type ChatParticipant {
   displayName: String!
   status: String!
+  userId: String!
+}
+
+type ChatPresence {
+  availability: String
+  online: Boolean!
   userId: String!
 }
 
@@ -176,7 +190,9 @@ type Mutation {
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
+  sendChatTyping(conversationId: String!): Boolean!
   setChatArchived(archived: Boolean!, conversationId: String!): Boolean!
+  setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
@@ -438,6 +454,8 @@ type Query {
   chatConversations: [ChatConversation!]!
   chatDirectoryLookup(email: String!): ChatDirectoryMatch
   chatMessages(conversationId: String!, cursor: String, limit: Int): ChatMessagePage!
+  chatMyAvailability: ChatMyAvailability!
+  chatPresence(userIds: [String!]!): [ChatPresence!]!
   findUserByEmail(email: String!): FoundUser
   findUsersByIds(ids: [String!]!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview

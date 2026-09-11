@@ -1,5 +1,6 @@
 import type { LimitChecker } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { clearAtFrom, isAvailability } from '../domain/availability.js';
 import { isContactBlocked } from '../domain/blocking.js';
 import { directKeyFor } from '../domain/conversations.js';
 import { canEditMessage, editPatch, prepareBody, refuseDelete } from '../domain/messages.js';
@@ -13,7 +14,14 @@ import { CHAT_LIMIT } from '../feature-keys.js';
 import { ChatWriteError } from './chat.errors.js';
 import { ChatEventPublisher } from './chat.events.js';
 import { CHAT_DEFAULT_LIMIT_CHECKER } from './chat.options.js';
-import type { ChatTransaction, ChatWriteClient, ConversationRow, MessageRow } from './chat.repository.js';
+import { ChatPresenceService } from './chat.presence.service.js';
+import type {
+  AvailabilityRow,
+  ChatTransaction,
+  ChatWriteClient,
+  ConversationRow,
+  MessageRow,
+} from './chat.repository.js';
 import { CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
 
 /**
@@ -55,6 +63,12 @@ export class ChatWriteService {
      * that constructs one would be choosing an engine.
      */
     @Optional() private readonly events?: ChatEventPublisher,
+    /**
+     * Absent means availability is saved and nobody is told, which is the shape
+     * a worker gets. The ephemeral half of this feature has no meaning without
+     * a socket.
+     */
+    @Optional() private readonly presence?: ChatPresenceService,
   ) {}
 
   private get checker(): LimitChecker {
@@ -489,6 +503,43 @@ export class ChatWriteService {
         data: { lastReadMessageId: messageId },
       });
     });
+  }
+
+  /**
+   * What somebody says about themselves.
+   *
+   * ⚠ THEIR OWN ROW AND NOBODY ELSE'S. There is no `userId` argument here and
+   * there must never be one: availability is a declaration, and a declaration
+   * somebody else can make on your behalf is not one.
+   *
+   * ⚠ `minutes` BECOMES A MOMENT, and the moment is compared on read. Storing a
+   * duration would start it counting from an `updatedAt` somebody eventually
+   * forgets to read; storing "expired" would need a scheduler this server does
+   * not have (§12.40).
+   */
+  async setAvailability(actorId: string, availability: string, minutes?: number | null): Promise<AvailabilityRow> {
+    // The GraphQL field is a String — the enum lives in the database and in the
+    // domain, not in the transport — so anything can arrive here.
+    if (!isAvailability(availability)) {
+      throw new ChatWriteError('invalid', 'That is not an availability', { availability });
+    }
+
+    const clearAt = clearAtFrom(minutes, new Date());
+    /*
+     * ⚠ UPSERT, because a person has one answer or none. There is no "create
+     * your availability" moment, and a create racing with itself across two
+     * tabs would surface a unique-constraint error on a preference change.
+     */
+    const row = await this.prisma.chatAvailability.upsert({
+      where: { userId: actorId },
+      create: { userId: actorId, availability, clearAt },
+      update: { availability, clearAt },
+    });
+
+    // After the write, like every other publish here — and it is the presence
+    // service that decides who may be told.
+    await this.presence?.availabilityChanged(actorId);
+    return row;
   }
 
   /** Block somebody. Existing conversations stay; new contact stops. */

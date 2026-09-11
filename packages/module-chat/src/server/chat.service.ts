@@ -1,8 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { effectiveAvailability } from '../domain/availability.js';
 import { isContactBlocked } from '../domain/blocking.js';
 import { countsAsUnread, MAX_CATCH_UP, pageSize } from '../domain/messages.js';
 import { canAccessConversation, isLiveParticipant } from '../domain/participation.js';
-import type { BlockView } from '../types.js';
+import type { Availability, BlockView } from '../types.js';
 import { ChatWriteError } from './chat.errors.js';
 import type { ChatPrismaClient, ConversationRow, MessageRow, ParticipantRow } from './chat.repository.js';
 import { CHAT_PRISMA, CHAT_USER_DIRECTORY } from './chat.tokens.js';
@@ -207,6 +208,27 @@ export class ChatService {
           : {}),
       },
     });
+  }
+
+  /**
+   * The viewer's OWN declared availability, with an expired timer read as unset.
+   *
+   * ⚠ Returns the effective value AND the raw `clearAt`, because this is the
+   * one caller entitled to both: the person themselves, whose picker has to
+   * show what they chose and when it runs out. Everybody else goes through
+   * `publishedPresence`, which never names `invisible` at all.
+   */
+  async availabilityOf(actorId: string): Promise<{ availability: Availability; clearAt: Date | null }> {
+    const row = await this.prisma.chatAvailability.findUnique({ where: { userId: actorId } });
+    const now = new Date();
+    const availability = effectiveAvailability(row, now);
+    return {
+      availability,
+      // Cleared in the answer as well as in the value: a picker showing "until
+      // 09:00" beside "available" would be describing a timer that has already
+      // fired.
+      clearAt: availability === row?.availability ? (row?.clearAt ?? null) : null,
+    };
   }
 
   /** Everyone this person has blocked, and everyone who has blocked them. */

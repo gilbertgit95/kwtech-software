@@ -57,6 +57,19 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
      * and on a server render there is no WebSocket to open at all.
      */
     lazy: true,
+    /*
+     * ⚠ PING ON A TIMER WHILE IDLE, which is what makes a server-side presence
+     * TTL possible at all.
+     *
+     * An ungraceful disconnect — a closed laptop lid, a dropped network —
+     * delivers no close event, so a server that trusted a goodbye would show
+     * that person as present until their token expired. A client that keeps
+     * saying it is there lets the server expire one that stops.
+     *
+     * It is also what keeps a socket alive through a proxy that drops idle
+     * connections, which is the more common reason to set it.
+     */
+    keepAlive: 20_000,
     connectionParams: async () => {
       const response = await fetch(ticketPath, {
         method: 'POST',

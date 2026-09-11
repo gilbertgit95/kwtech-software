@@ -1,5 +1,11 @@
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
-import { CHAT_LIMIT_CHECKER, CHAT_PUBSUB, CHAT_USER_DIRECTORY, chatServerModule } from '@kwtech/module-chat/server';
+import {
+  CHAT_LIMIT_CHECKER,
+  CHAT_PUBSUB,
+  CHAT_USER_DIRECTORY,
+  ChatPresenceService,
+  chatServerModule,
+} from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
 import {
   FeatureGuard,
@@ -69,6 +75,68 @@ const authFailures = new Logger('AuthFailure');
  * agree about who is calling. Everything mechanical — the DynamicModule, the
  * route prefix, the feature contributions — comes off the descriptor.
  */
+/**
+ * Chat's descriptor, HOISTED out of `SERVER_MODULES`.
+ *
+ * Only because the GraphQL options need the SAME dynamic module object to
+ * resolve `ChatPresenceService` — see the `imports` there. Every other module
+ * is constructed inline, and this would be too if a socket's lifecycle were not
+ * a fact one module cares about.
+ *
+ * THE FIRST MODULE THAT IS NOT PLATFORM, and the shortest entry here — which is
+ * the point of the packaging rule it was designed to. Five ports and a seam,
+ * all of them things only this app can answer.
+ */
+const CHAT_SERVER_MODULE: ServerModuleDescriptor = chatServerModule({
+  prismaProvider: chatPrismaProvider,
+  prismaWriteProvider: chatWritePrismaProvider,
+
+  /*
+   * The directory: an email to a person, and ids to names. Both read
+   * `auth_user`, which belongs to another module — see ./chat/user-directory.ts
+   * for why the app is the only layer that can host it.
+   */
+  userDirectoryProvider: {
+    provide: CHAT_USER_DIRECTORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService) => new ChatUserDirectory(prisma),
+  },
+
+  /*
+   * ⚠ THE CAP, and binding it is what makes it exist. Omit this line and chat
+   * still works — the null object allows everything — which is the design goal
+   * and also the hazard: a host that MEANT to enforce the cap and forgot would
+   * get silence. It is one explicit line rather than a default for exactly
+   * that reason.
+   *
+   * `useExisting`, not a new instance: the adapter is a provider of the
+   * permissions module, which is global, so this is the same object the rest
+   * of the app resolves.
+   */
+  limitCheckerProvider: { provide: CHAT_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+  /*
+   * ⚠ THE SAME ENGINE `module-permissions` PUBLISHES INTO, and that is the
+   * whole reason `realtimePubSub()` exists rather than a `new PubSub()` at
+   * each binding. Two engines in one process do not see each other's
+   * publishes, and the failure is silent — a subscriber waiting forever with
+   * no error anywhere.
+   *
+   * It is also where single-replica is ENFORCED rather than assumed
+   * (PLAN §12.28), which matters more for chat than for anything before it: a
+   * plan badge arriving late is a stale screen, a message that never arrives
+   * is mail that was lost while the sender watched it send.
+   */
+  pubsubProvider: { provide: CHAT_PUBSUB, useValue: realtimePubSub() },
+
+  /*
+   * Principal → userId. The same seam `resolvePrincipal` is, narrowed: chat
+   * needs only the id, and handing it the whole principal would let it grow an
+   * opinion about what a session is.
+   */
+  resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+});
+
 const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   /*
    * Three things, and every one of them is genuinely this app's:
@@ -219,60 +287,7 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
     resolvePrincipal,
   }),
 
-  /*
-   * THE FIRST MODULE THAT IS NOT PLATFORM, and the shortest entry here — which
-   * is the point of the packaging rule it was designed to. Four ports and a
-   * seam, all of them things only this app can answer.
-   */
-  chatServerModule({
-    prismaProvider: chatPrismaProvider,
-    prismaWriteProvider: chatWritePrismaProvider,
-
-    /*
-     * The directory: an email to a person, and ids to names. Both read
-     * `auth_user`, which belongs to another module — see ./chat/user-directory.ts
-     * for why the app is the only layer that can host it.
-     */
-    userDirectoryProvider: {
-      provide: CHAT_USER_DIRECTORY,
-      inject: [PrismaService],
-      useFactory: (prisma: PrismaService) => new ChatUserDirectory(prisma),
-    },
-
-    /*
-     * ⚠ THE CAP, and binding it is what makes it exist. Omit this line and chat
-     * still works — the null object allows everything — which is the design goal
-     * and also the hazard: a host that MEANT to enforce the cap and forgot would
-     * get silence. It is one explicit line rather than a default for exactly
-     * that reason.
-     *
-     * `useExisting`, not a new instance: the adapter is a provider of the
-     * permissions module, which is global, so this is the same object the rest
-     * of the app resolves.
-     */
-    limitCheckerProvider: { provide: CHAT_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
-
-    /*
-     * ⚠ THE SAME ENGINE `module-permissions` PUBLISHES INTO, and that is the
-     * whole reason `realtimePubSub()` exists rather than a `new PubSub()` at
-     * each binding. Two engines in one process do not see each other's
-     * publishes, and the failure is silent — a subscriber waiting forever with
-     * no error anywhere.
-     *
-     * It is also where single-replica is ENFORCED rather than assumed
-     * (PLAN §12.28), which matters more for chat than for anything before it: a
-     * plan badge arriving late is a stale screen, a message that never arrives
-     * is mail that was lost while the sender watched it send.
-     */
-    pubsubProvider: { provide: CHAT_PUBSUB, useValue: realtimePubSub() },
-
-    /*
-     * Principal → userId. The same seam `resolvePrincipal` is, narrowed: chat
-     * needs only the id, and handing it the whole principal would let it grow an
-     * opinion about what a session is.
-     */
-    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
-  }),
+  CHAT_SERVER_MODULE,
 ];
 
 /**
@@ -334,8 +349,44 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
     GraphQLModule.forRootAsync<ApolloDriverConfig>({
       // Asserted BEFORE the factory runs, so it cannot come from inside it.
       driver: GRAPHQL_DRIVER,
-      inject: [TokenService],
-      useFactory: (tokens: TokenService) => graphqlOptions(tokens),
+      /*
+       * ⚠ `imports` IS REQUIRED HERE AND IS EASY TO MISS.
+       *
+       * `forRootAsync` resolves its `inject` tokens against the DYNAMIC
+       * MODULE'S OWN injector, not against this one — so a provider exported by
+       * a module that AppModule imports is still invisible to it. `TokenService`
+       * happens to resolve because the auth module is global; chat is not, and
+       * the failure is at boot with "make sure the argument is available in the
+       * GraphQLModule module", which names the symptom rather than the cause.
+       *
+       * The SAME dynamic module object `SERVER_MODULES` holds — Nest dedupes by
+       * reference, so this imports that instance rather than constructing a
+       * second one. A second `chatServerModule()` call here would give the
+       * socket a presence store nothing else could read, and nothing would
+       * report it.
+       */
+      imports: [CHAT_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number]],
+      inject: [TokenService, ChatPresenceService],
+      /*
+       * ⚠ THE SEAM THAT KEEPS `graphql.options.ts` FREE OF MODULE NAMES.
+       *
+       * A socket opening and closing is a fact about the transport; what it
+       * MEANS — somebody arrived, somebody left — belongs to a module. So the
+       * options file takes callbacks and this file, which already knows which
+       * modules it composed, supplies them. The same arrangement as
+       * `resolvePrincipal` and the user directory.
+       *
+       * ⚠ And they are fire-and-forget on purpose: a handshake must not fail
+       * because a presence store was slow, and `disconnected` is deliberately
+       * synchronous — it records the moment and lets the sweep decide, because
+       * the grace period is the whole point.
+       */
+      useFactory: (tokens: TokenService, presence: ChatPresenceService) =>
+        graphqlOptions(tokens, {
+          opened: (userId, socketId) => void presence.connected(userId, socketId),
+          closed: (userId, socketId) => presence.disconnected(userId, socketId),
+          alive: (userId, socketId) => presence.heartbeat(userId, socketId),
+        }),
     }),
 
     /*

@@ -179,6 +179,61 @@ export class ChatEventType {
    */
   @Field(() => ChatMessageType, { nullable: true })
   message!: ChatMessageType | null;
+
+  /**
+   * Who this is about — a 'presence' or 'typing' event names a person rather
+   * than a message.
+   */
+  @Field(() => String, { nullable: true })
+  userId!: string | null;
+
+  /** 'presence' only. Null elsewhere rather than false, which would read as "offline". */
+  @Field(() => Boolean, { nullable: true })
+  online!: boolean | null;
+
+  /** 'presence' only, and never 'invisible' — see `ChatPresence`. */
+  @Field(() => String, { nullable: true })
+  availability!: string | null;
+}
+
+/**
+ * One person's presence, as somebody entitled to it is told.
+ *
+ * ⚠ ALREADY THROUGH `publishedPresence` before this exists: an invisible person
+ * is `{ online: false, availability: null }`, indistinguishable from one who is
+ * genuinely away. A client that received "online, but do not show it" would
+ * have been told, in a payload anybody can read.
+ */
+@ObjectType('ChatPresence')
+export class ChatPresenceType {
+  @Field()
+  userId!: string;
+
+  @Field()
+  online!: boolean;
+
+  /**
+   * 'available' | 'busy' | 'dnd' | 'away'.
+   *
+   * ⚠ NULL when there is nothing to say, never 'available' as a stand-in for
+   * "we are not telling you" — which a client would draw as a green dot. And
+   * never 'invisible': that value describes a setting, and publishing it would
+   * announce the very thing it exists to hide.
+   */
+  @Field(() => String, { nullable: true })
+  availability!: string | null;
+}
+
+/** The viewer's OWN setting, which is the only one anybody may read in full. */
+@ObjectType('ChatMyAvailability')
+export class ChatMyAvailabilityType {
+  /** ⚠ Includes 'invisible', because this is you asking about yourself. */
+  @Field()
+  availability!: string;
+
+  /** When it stops meaning anything, derived on read. Null if it does not. */
+  @Field(() => String, { nullable: true })
+  clearAt!: string | null;
 }
 
 @ObjectType('ChatDirectoryMatch')

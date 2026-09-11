@@ -42,6 +42,23 @@ export const CHAT_EVENT = {
    * and it needs no second authorization path.
    */
   conversation: 'chat.conversation',
+  /**
+   * Somebody came or went, or changed what they say about themselves.
+   *
+   * ⚠ ONE TOPIC FOR EVERYBODY'S PRESENCE, filtered per publish against the
+   * recipient's own conversation partners. A topic per watched person is how
+   * naive presence becomes O(n²) — this is the same mechanism messages use and
+   * needs no new machinery.
+   */
+  presence: 'chat.presence',
+  /**
+   * Somebody is writing.
+   *
+   * The highest-frequency event in the product, so it is throttled at the
+   * source and expires on the client rather than being stopped — a tab closing
+   * mid-word never sends a "stopped typing".
+   */
+  typing: 'chat.typing',
 } as const;
 
 export type ChatEventTrigger = (typeof CHAT_EVENT)[keyof typeof CHAT_EVENT];
@@ -88,6 +105,22 @@ export interface ChatMessageEvent extends ChatAudience {
 export interface ChatConversationEvent extends ChatAudience {
   conversationId: string;
   change: ConversationChange;
+}
+
+/**
+ * ⚠ ALREADY PASSED THROUGH `publishedPresence` when it is built, so an
+ * invisible person is indistinguishable from an offline one BEFORE the payload
+ * exists. A client that received "online, but do not show it" has been told.
+ */
+export interface ChatPresenceEvent extends ChatAudience {
+  userId: string;
+  online: boolean;
+  availability: string | null;
+}
+
+export interface ChatTypingEvent extends ChatAudience {
+  conversationId: string;
+  userId: string;
 }
 
 /**

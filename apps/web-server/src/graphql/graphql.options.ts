@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { TokenService } from '@kwtech/module-auth/server';
+import { PRINCIPAL_KEY, type TokenService } from '@kwtech/module-auth/server';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import type { ExecutionContext } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
@@ -9,6 +9,7 @@ import {
   closeWhenAuthorizationExpires,
   connectionContext,
   rememberConnection,
+  rememberedConnection,
 } from './ws-context.js';
 
 /**
@@ -111,13 +112,72 @@ export function argsFromContext(context: unknown): Record<string, unknown> | und
 }
 
 /**
+ * What the app wants to know about a socket's life.
+ *
+ * ⚠ CALLBACKS, SO THIS FILE STILL NAMES NO MODULE. Presence is chat's, and the
+ * comment at the top of this file is a promise: adding the tenth module must
+ * not mean editing the GraphQL configuration. `AppModule` supplies these,
+ * because it is the layer that already knows which modules it composed.
+ *
+ * Every one is fire-and-forget: a socket's lifecycle must not depend on what a
+ * listener does with it, and a handshake that failed because a presence store
+ * was slow would be an outage caused by a feature nobody would call essential.
+ */
+export interface SocketLifecycle {
+  /** Authenticated and acknowledged. `socketId` distinguishes one tab from another. */
+  opened?: (userId: string, socketId: string) => void;
+  /** Gone — cleanly, or because the connection dropped. */
+  closed?: (userId: string, socketId: string) => void;
+  /**
+   * Still there.
+   *
+   * ⚠ THE HEARTBEAT, and the reason presence can expire rather than trusting a
+   * goodbye that a closed laptop lid never sends. `graphql-ws` clients ping on
+   * their own timer when the connection is idle; this is that ping arriving.
+   */
+  alive?: (userId: string, socketId: string) => void;
+}
+
+/**
  * @param tokens the app's TokenService, for the WebSocket handshake.
+ * @param lifecycle what to tell about sockets opening and closing, if anything.
  *
  * Passed in rather than imported so this stays a pure function of its inputs
  * and the module wires it — `AppModule` uses `useFactory` with `inject`, which
  * is also what lets a test hand it a stub verifier.
  */
-export function graphqlOptions(tokens: Pick<TokenService, 'verifyWsTicket'>): ApolloDriverConfig {
+/**
+ * The `onPing` hook, which Nest's own config type does not declare.
+ *
+ * ⚠ A CAST, AND A NARROW ONE, because the alternative is worse in both
+ * directions. `graphql-ws` supports `onPing` — Nest simply types a SUBSET of
+ * `ServerOptions` in `GraphQLWsSubscriptionsConfig`, and passes whatever it is
+ * given straight to `useServer`. Casting the whole subscriptions block would
+ * hide any real mistake in it; this hides one property whose absence from the
+ * type is a gap in the type rather than in the library.
+ *
+ * ## Why it is worth a cast at all
+ *
+ * Without it, presence has no heartbeat, and the TTL would expire a socket that
+ * is simply IDLE — showing somebody offline while they are connected and
+ * looking at the screen. The fallback is not catastrophic, because
+ * `closeWhenAuthorizationExpires` force-closes every socket when its token runs
+ * out and that DOES fire `onDisconnect`, so the worst staleness is one access
+ * token's lifetime. A minute and a half is a better answer than fifteen.
+ */
+function heartbeat(lifecycle: SocketLifecycle): Record<string, unknown> {
+  return {
+    onPing: (ctx: { extra?: unknown }) => {
+      const connection = rememberedConnection(ctx.extra);
+      if (connection) lifecycle.alive?.(connection.req[PRINCIPAL_KEY].userId, connection.socketId);
+    },
+  };
+}
+
+export function graphqlOptions(
+  tokens: Pick<TokenService, 'verifyWsTicket'>,
+  lifecycle: SocketLifecycle = {},
+): ApolloDriverConfig {
   return {
     driver: ApolloDriver,
     path: `/api/v1/${GRAPHQL_PATH}`,
@@ -226,9 +286,36 @@ export function graphqlOptions(tokens: Pick<TokenService, 'verifyWsTicket'>): Ap
           const socket = (ctx.extra as { socket?: { close(code: number, reason: string): void } } | undefined)?.socket;
           if (socket) closeWhenAuthorizationExpires(socket, connection.expiresAt);
 
+          /*
+           * ⚠ TOLD LAST, after everything that can refuse has refused. A
+           * presence event for a socket that is then closed would announce
+           * somebody who never arrived.
+           */
+          lifecycle.opened?.(connection.req[PRINCIPAL_KEY].userId, connection.socketId);
+
           // `true`, not the connection. See above.
           return true;
         },
+
+        /**
+         * The other end of a socket's life.
+         *
+         * ⚠ `onDisconnect` rather than `onClose`: it fires only for a
+         * connection that was ACKNOWLEDGED, which is exactly the set
+         * `onConnect` counted. `onClose` also fires for a handshake that was
+         * refused, and telling presence about a socket it never heard of would
+         * decrement a count that was never incremented.
+         *
+         * The principal is read back off `extra` because this hook is given
+         * nothing else — who was on this socket is a question only the
+         * handshake's own record can answer.
+         */
+        onDisconnect: (ctx: { extra?: unknown }) => {
+          const connection = rememberedConnection(ctx.extra);
+          if (connection) lifecycle.closed?.(connection.req[PRINCIPAL_KEY].userId, connection.socketId);
+        },
+
+        ...heartbeat(lifecycle),
       },
     },
 

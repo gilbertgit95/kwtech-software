@@ -4,11 +4,14 @@ import { CONTACT_REFUSED_MESSAGE } from '../../domain/blocking.js';
 import { withCatchUp } from '../chat.catch-up.js';
 import { ChatWriteError } from '../chat.errors.js';
 import type { ChatModuleOptions } from '../chat.options.js';
+import { ChatPresenceService } from '../chat.presence.service.js';
 import {
   CHAT_EVENT,
   type ChatConversationEvent,
   type ChatMessageEvent,
+  type ChatPresenceEvent,
   type ChatPubSub,
+  type ChatTypingEvent,
   deliverTo,
   NULL_CHAT_PUBSUB,
 } from '../chat.pubsub.js';
@@ -24,7 +27,9 @@ import {
   ChatEventType,
   ChatMessagePageType,
   ChatMessageType,
+  ChatMyAvailabilityType,
   ChatParticipantType,
+  ChatPresenceType,
 } from './chat.types.js';
 
 /**
@@ -63,6 +68,12 @@ export class ChatResolver {
      * working product over HTTP, which is the point of the port being optional.
      */
     @Optional() @Inject(CHAT_PUBSUB) private readonly pubsub?: ChatPubSub,
+    /**
+     * Absent means the ephemeral tier is not mounted: presence answers empty
+     * and typing goes nowhere, while every conversation still works. That is
+     * the right shape for a host with no socket.
+     */
+    @Optional() private readonly presence?: ChatPresenceService,
   ) {}
 
   // ── queries ───────────────────────────────────────────────────────────────
@@ -135,6 +146,37 @@ export class ChatResolver {
     if (!found) return null;
     if (await this.chat.contactBlocked(actorId, found.id)) return null;
     return { userId: found.id, displayName: found.displayName };
+  }
+
+  /**
+   * Who among these people is here.
+   *
+   * ⚠ THE SERVICE FILTERS TO THE VIEWER'S OWN PARTNERS — ids that are not
+   * silently drop out rather than being refused, which tells a prober nothing.
+   * A presence query that answered for any id would be the enumeration oracle
+   * the directory is exact-email-only to avoid, plus surveillance of a named
+   * person by anybody who can guess an id.
+   */
+  @Query(() => [ChatPresenceType], { name: 'chatPresence' })
+  async presenceOf(
+    @Context() gql: { req?: unknown },
+    @Args('userIds', { type: () => [String] }) userIds: string[],
+  ): Promise<ChatPresenceType[]> {
+    const actorId = this.actor(gql.req);
+    if (!this.presence) return [];
+
+    const found = await this.presence.presenceFor(actorId, userIds);
+    return [...found].map(([userId, view]) => ({ userId, online: view.online, availability: view.availability }));
+  }
+
+  /** The viewer's own setting — the only one anybody may read in full. */
+  @Query(() => ChatMyAvailabilityType, { name: 'chatMyAvailability' })
+  async myAvailability(@Context() gql: { req?: unknown }): Promise<ChatMyAvailabilityType> {
+    const row = await this.chat.availabilityOf(this.actor(gql.req));
+    return {
+      availability: row.availability,
+      clearAt: row.clearAt?.toISOString() ?? null,
+    };
   }
 
   // ── mutations ─────────────────────────────────────────────────────────────
@@ -293,6 +335,45 @@ export class ChatResolver {
    * Blocking needs NO KEY either, for the same reason leaving does not: it is
    * the user's own remedy, and §12.42 leaves the platform without one.
    */
+  /**
+   * Say what you are doing. ⚠ ABOUT YOURSELF ONLY — there is no `userId`
+   * argument and there must never be one.
+   */
+  @Mutation(() => ChatMyAvailabilityType, { name: 'setChatAvailability' })
+  async setAvailability(
+    @Context() gql: { req?: unknown },
+    @Args('availability') availability: string,
+    @Args('forMinutes', { type: () => Int, nullable: true }) forMinutes?: number | null,
+  ): Promise<ChatMyAvailabilityType> {
+    const row = await this.writes.setAvailability(this.actor(gql.req), availability, forMinutes ?? null);
+    return { availability: row.availability, clearAt: row.clearAt?.toISOString() ?? null };
+  }
+
+  /**
+   * "I am writing."
+   *
+   * ⚠ OVER HTTP, NOT THE SOCKET. It is the highest-frequency write in the
+   * product — one per person per conversation every few seconds — and putting
+   * it on the socket would need rate limiting of its own, which §12.29 leaves
+   * open. As a mutation it passes `ThrottlerGuard` like everything else.
+   *
+   * ⚠ PARTICIPATION IS RE-ASKED, because a typing ping is a write into somebody
+   * else's conversation: without this, anybody holding `chat:send` could make an
+   * indicator appear in a thread they are not in.
+   */
+  @Mutation(() => Boolean, { name: 'sendChatTyping' })
+  async sendTyping(
+    @Context() gql: { req?: unknown },
+    @Args('conversationId') conversationId: string,
+  ): Promise<boolean> {
+    const actorId = this.actor(gql.req);
+    // Throws `not_found` for a conversation they may not be in — the same
+    // answer a stranger gets for one that does not exist.
+    await this.chat.conversationFor(actorId, conversationId);
+    await this.presence?.noteTyping(conversationId, actorId);
+    return true;
+  }
+
   @Mutation(() => Boolean, { name: 'setChatBlocked' })
   async setBlocked(
     @Context() gql: { req?: unknown },
@@ -347,12 +428,14 @@ export class ChatResolver {
     const actorId = this.actor(gql.req);
     const cursor = decodeCursor(since);
 
-    const live = (this.pubsub ?? NULL_CHAT_PUBSUB).asyncIterableIterator<ChatMessageEvent | ChatConversationEvent>([
+    const live = (this.pubsub ?? NULL_CHAT_PUBSUB).asyncIterableIterator<ChatEvent>([
       CHAT_EVENT.message,
       CHAT_EVENT.conversation,
+      CHAT_EVENT.presence,
+      CHAT_EVENT.typing,
     ]);
 
-    return withCatchUp<ChatMessageEvent | ChatConversationEvent, ChatEventType>({
+    return withCatchUp<ChatEvent, ChatEventType>({
       live,
       catchUp: () => this.catchUp(actorId, cursor),
       // ⚠ THE PER-PUBLISH FILTER. One published event, every subscriber's own
@@ -383,7 +466,7 @@ export class ChatResolver {
     actorId: string,
     cursor: { createdAt: Date; id: string } | undefined,
   ): Promise<readonly ChatEventType[]> {
-    const sync: ChatEventType = { kind: 'sync', conversationId: null, change: null, message: null };
+    const sync: ChatEventType = { ...EMPTY_EVENT, kind: 'sync' };
     if (!cursor) return [sync];
 
     const { messages } = await this.chat.missedSince(actorId, cursor);
@@ -391,6 +474,7 @@ export class ChatResolver {
       sync,
       ...messages.map(
         (message): ChatEventType => ({
+          ...EMPTY_EVENT,
           kind: 'message',
           conversationId: message.conversationId,
           /*
@@ -471,16 +555,46 @@ function renderParticipant(row: ParticipantRow, people: ReadonlyMap<string, stri
  * A published event as one viewer sees it — the audience dropped, which is the
  * only reason it is safe to carry one.
  */
-function renderEvent(event: ChatMessageEvent | ChatConversationEvent): ChatEventType {
+/** Every shape the one topic set carries. */
+type ChatEvent = ChatMessageEvent | ChatConversationEvent | ChatPresenceEvent | ChatTypingEvent;
+
+const EMPTY_EVENT = {
+  conversationId: null,
+  change: null,
+  message: null,
+  userId: null,
+  online: null,
+  availability: null,
+} as const;
+
+function renderEvent(event: ChatEvent): ChatEventType {
   if ('message' in event) {
     return {
+      ...EMPTY_EVENT,
       kind: 'message',
       conversationId: event.message.conversationId,
       change: event.change,
       message: renderMessage(event.message),
     };
   }
-  return { kind: 'conversation', conversationId: event.conversationId, change: event.change, message: null };
+  if ('online' in event) {
+    /*
+     * ⚠ Carried AS PUBLISHED. The invisible rule was applied when the payload
+     * was built, so there is nothing to hide here and nothing that could be
+     * forgotten — see `publishedPresence`.
+     */
+    return {
+      ...EMPTY_EVENT,
+      kind: 'presence',
+      userId: event.userId,
+      online: event.online,
+      availability: event.availability,
+    };
+  }
+  if ('userId' in event) {
+    return { ...EMPTY_EVENT, kind: 'typing', conversationId: event.conversationId, userId: event.userId };
+  }
+  return { ...EMPTY_EVENT, kind: 'conversation', conversationId: event.conversationId, change: event.change };
 }
 
 function renderMessage(row: MessageRow): ChatMessageType {

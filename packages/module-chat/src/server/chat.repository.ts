@@ -1,4 +1,4 @@
-import type { MessageKind, ParticipantStatus } from '../types.js';
+import type { Availability, MessageKind, ParticipantStatus } from '../types.js';
 
 /**
  * The slice of a Prisma client this module uses — declared STRUCTURALLY, never
@@ -55,6 +55,16 @@ export interface BlockRow {
   blockerId: string;
   blockedId: string;
   createdAt: Date;
+}
+
+/**
+ * What somebody declared about themselves. ⚠ `clearAt` is compared on READ —
+ * see `effectiveAvailability`; nothing ever writes an expired value back.
+ */
+export interface AvailabilityRow {
+  userId: string;
+  availability: Availability;
+  clearAt: Date | null;
 }
 
 /**
@@ -161,6 +171,10 @@ export interface ChatPrismaClient {
   chatBlock: {
     findMany(args: { where: { OR: ({ blockerId: string } | { blockedId: string })[] } }): Promise<BlockRow[]>;
   };
+  chatAvailability: {
+    findUnique(args: { where: { userId: string } }): Promise<AvailabilityRow | null>;
+    findMany(args: { where: { userId: { in: string[] } } }): Promise<AvailabilityRow[]>;
+  };
 }
 
 /**
@@ -219,6 +233,21 @@ export interface ChatWriteClient extends ChatPrismaClient {
   chatBlock: ChatPrismaClient['chatBlock'] & {
     create(args: { data: { blockerId: string; blockedId: string } }): Promise<BlockRow>;
     deleteMany(args: { where: { blockerId: string; blockedId: string } }): Promise<{ count: number }>;
+  };
+  chatAvailability: ChatPrismaClient['chatAvailability'] & {
+    /**
+     * ⚠ UPSERT, because a person has one answer or none.
+     *
+     * There is no "create your availability" moment — the first time somebody
+     * touches the setting is also the first time a row exists, and a create
+     * that raced with itself across two tabs would be a unique-constraint error
+     * on a preference change.
+     */
+    upsert(args: {
+      where: { userId: string };
+      create: { userId: string; availability: Availability; clearAt: Date | null };
+      update: { availability: Availability; clearAt: Date | null };
+    }): Promise<AvailabilityRow>;
   };
 }
 

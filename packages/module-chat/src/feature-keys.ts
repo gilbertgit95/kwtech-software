@@ -114,6 +114,18 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
        * publish.
        */
       { surface: 'graphql_subscription', identifier: 'Subscription.chatEvents' },
+      /*
+       * ⚠ PRESENCE READS UNDER `chat:read`, not a key of its own.
+       *
+       * Who is here is only ever answered about people you already share a
+       * conversation with — the service filters to that, and it is the same
+       * question `chat:read` already lets you ask by opening the thread. A
+       * separate key would suggest presence can be granted without chat, which
+       * it cannot: there would be nobody it could resolve for.
+       */
+      { surface: 'graphql_operation', identifier: 'Query.chatPresence' },
+      { surface: 'graphql_operation', identifier: 'Query.chatMyAvailability' },
+      { surface: 'graphql_operation', identifier: 'Mutation.setChatAvailability' },
     ],
   },
   {
@@ -159,6 +171,13 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       { surface: 'graphql_operation', identifier: 'Mutation.sendChatMessage' },
       { surface: 'graphql_operation', identifier: 'Mutation.editChatMessage' },
       { surface: 'graphql_operation', identifier: 'Mutation.deleteChatMessage' },
+      /*
+       * ⚠ TYPING IS A WRITE, and it binds with the other writes. A ping puts an
+       * indicator on somebody else's screen, so the person doing it must be
+       * allowed to say something at all — and the resolver re-asks participation
+       * on top, because the key says nothing about conversation 42.
+       */
+      { surface: 'graphql_operation', identifier: 'Mutation.sendChatTyping' },
     ],
   },
   {

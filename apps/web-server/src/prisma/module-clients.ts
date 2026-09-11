@@ -141,6 +141,12 @@ export const chatWritePrismaProvider: Provider = {
        * this table is the only one users maintain directly.
        */
       chatBlock: prisma.chatBlock,
+      /*
+       * ⚠ Written by the person it describes and by nobody else. Availability
+       * is DECLARED — the durable half of a feature whose other half never
+       * touches a database at all.
+       */
+      chatAvailability: prisma.chatAvailability,
     }),
 };
 

@@ -1,4 +1,5 @@
 import type {
+  AvailabilityRow,
   BlockRow,
   ChatWriteClient,
   ConversationRow,
@@ -23,10 +24,11 @@ export interface FakeState {
   participants: ParticipantRow[];
   messages: MessageRow[];
   blocks: BlockRow[];
+  availability: AvailabilityRow[];
 }
 
 export function emptyState(): FakeState {
-  return { conversations: [], participants: [], messages: [], blocks: [] };
+  return { conversations: [], participants: [], messages: [], blocks: [], availability: [] };
 }
 
 export function fakeClient(state: FakeState = emptyState()) {
@@ -263,6 +265,29 @@ export function fakeClient(state: FakeState = emptyState()) {
         const row = state.messages.find((one) => one.id === args.where.id);
         if (!row) throw new Error('no message');
         Object.assign(row, args.data);
+        return row;
+      },
+    },
+
+    chatAvailability: {
+      async findUnique(args: { where: { userId: string } }) {
+        return state.availability.find((row) => row.userId === args.where.userId) ?? null;
+      },
+      async findMany(args: { where: { userId: { in: string[] } } }) {
+        return state.availability.filter((row) => args.where.userId.in.includes(row.userId));
+      },
+      async upsert(args: {
+        where: { userId: string };
+        create: AvailabilityRow;
+        update: Omit<AvailabilityRow, 'userId'>;
+      }) {
+        const existing = state.availability.find((row) => row.userId === args.where.userId);
+        if (existing) {
+          Object.assign(existing, args.update);
+          return existing;
+        }
+        const row = { ...args.create };
+        state.availability.push(row);
         return row;
       },
     },

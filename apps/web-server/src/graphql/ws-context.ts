@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Principal } from '@kwtech/module-auth';
 import type { TokenService } from '@kwtech/module-auth/server';
 import { PRINCIPAL_KEY } from '@kwtech/module-auth/server';
@@ -52,6 +53,16 @@ export interface WsRequestLike {
 export interface WsConnectionContext {
   req: WsRequestLike;
   /**
+   * THIS SOCKET, as distinct from this person.
+   *
+   * ⚠ Presence is a refcount over sockets — one person is several tabs and a
+   * phone, and closing one must not take them offline — so connecting and
+   * disconnecting have to name WHICH socket. Minted here because this is where
+   * a connection becomes a thing at all, and carried on `extra` so the close
+   * handler can find the same value the open handler used.
+   */
+  socketId: string;
+  /**
    * Epoch seconds, inherited from the access token the ticket was minted from.
    * The socket is closed on it — see `closeWhenAuthorizationExpires`.
    */
@@ -100,8 +111,19 @@ export function rememberConnection(extra: unknown, connection: WsConnectionConte
  * fault rather than a refusal.
  */
 export function connectionContext(extra: unknown): { req?: WsRequestLike } {
-  const connection = (extra as Record<symbol, unknown> | undefined)?.[CONNECTION] as WsConnectionContext | undefined;
+  const connection = rememberedConnection(extra);
   return connection ? { req: connection.req } : {};
+}
+
+/**
+ * The connection stashed at the handshake, for the hooks that run after it.
+ *
+ * ⚠ Presence needs BOTH ends of a socket's life and only the first has a
+ * principal to hand: `onDisconnect` is given the same `extra` and nothing else,
+ * so who was on this socket is a question only this can answer.
+ */
+export function rememberedConnection(extra: unknown): WsConnectionContext | undefined {
+  return (extra as Record<symbol, unknown> | undefined)?.[CONNECTION] as WsConnectionContext | undefined;
 }
 
 /**
@@ -154,7 +176,7 @@ export function authenticateConnection(
   const principal = tokens.verifyWsTicket(ticket);
   if (!principal) return null;
 
-  return { req: { [PRINCIPAL_KEY]: principal }, expiresAt: principal.expiresAt };
+  return { req: { [PRINCIPAL_KEY]: principal }, expiresAt: principal.expiresAt, socketId: randomUUID() };
 }
 
 /**

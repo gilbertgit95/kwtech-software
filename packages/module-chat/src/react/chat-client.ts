@@ -58,6 +58,25 @@ export interface ChatMessagePageView {
   nextCursor: string | null;
 }
 
+/**
+ * One person's presence, as somebody entitled to it is told.
+ *
+ * ⚠ `availability` is never 'invisible' and is null whenever there is nothing
+ * to say: the publish boundary already decided, and a hidden person is
+ * indistinguishable here from one who is genuinely away.
+ */
+export interface ChatPresenceView {
+  userId: string;
+  online: boolean;
+  availability: string | null;
+}
+
+/** The viewer's OWN setting — the only one that may name `invisible`. */
+export interface ChatMyAvailabilityView {
+  availability: string;
+  clearAt: string | null;
+}
+
 /** Somebody found by exact email. A miss and a block are the same answer. */
 export interface ChatDirectoryMatchView {
   userId: string;
@@ -106,6 +125,12 @@ export interface ChatClient {
   startDirect(userId: string): Promise<ChatConversationView>;
   startGroup(title: string, userIds: readonly string[]): Promise<ChatConversationView>;
   invite(conversationId: string, userId: string): Promise<void>;
+  /** ⚠ Answers only about people the viewer shares an active conversation with. */
+  presenceOf(userIds: readonly string[]): Promise<ChatPresenceView[]>;
+  myAvailability(): Promise<ChatMyAvailabilityView>;
+  setAvailability(availability: string, forMinutes?: number | null): Promise<ChatMyAvailabilityView>;
+  /** "I am writing." Throttled server-side; the indicator expires rather than stopping. */
+  sendTyping(conversationId: string): Promise<void>;
   respondToInvitation(conversationId: string, accept: boolean): Promise<void>;
   leave(conversationId: string): Promise<void>;
 }
@@ -223,6 +248,31 @@ export function createChatClient(options: { graphqlPath?: string } = {}): ChatCl
 
     async respondToInvitation(conversationId, accept) {
       await graphql(CHAT_OPERATIONS.respondToChatInvitation, { conversationId, accept });
+    },
+
+    async presenceOf(userIds) {
+      if (userIds.length === 0) return [];
+      const data = await graphql<{ chatPresence: ChatPresenceView[] }>(CHAT_OPERATIONS.chatPresence, {
+        userIds: [...userIds],
+      });
+      return data.chatPresence;
+    },
+
+    async myAvailability() {
+      const data = await graphql<{ chatMyAvailability: ChatMyAvailabilityView }>(CHAT_OPERATIONS.chatMyAvailability);
+      return data.chatMyAvailability;
+    },
+
+    async setAvailability(availability, forMinutes) {
+      const data = await graphql<{ setChatAvailability: ChatMyAvailabilityView }>(CHAT_OPERATIONS.setChatAvailability, {
+        availability,
+        forMinutes: forMinutes ?? null,
+      });
+      return data.setChatAvailability;
+    },
+
+    async sendTyping(conversationId) {
+      await graphql(CHAT_OPERATIONS.sendChatTyping, { conversationId });
     },
 
     async leave(conversationId) {

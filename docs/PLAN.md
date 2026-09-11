@@ -534,6 +534,92 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-11** — **STEP 8, the server: a socket's life now means something,
+  and `graphql.options.ts` still names no module.**
+
+  **⚠ THE SEAM IS CALLBACKS, NOT AN IMPORT.** `graphql.options.ts` opens with a
+  promise — "nothing in this file names a module" — and presence is chat's. So
+  it grew a `SocketLifecycle` of three optional hooks, and `app.module.ts`
+  supplies them, because it is the layer that already knows what it composed.
+  The same arrangement as `resolvePrincipal` and the user directory.
+
+  **⚠ `onDisconnect`, NOT `onClose`.** It fires only for a connection that was
+  ACKNOWLEDGED, which is exactly the set `onConnect` counted. `onClose` also
+  fires for a refused handshake, and telling presence about a socket it never
+  heard of would decrement a count nothing incremented.
+
+  **⚠ A SOCKET NEEDED AN IDENTITY.** Presence is a refcount over sockets, so
+  connect and disconnect have to name WHICH one — `WsConnectionContext` mints a
+  `socketId` at the handshake and carries it on `extra`, which is also the only
+  place the close hook can learn who was on it. The hook is handed `extra` and
+  nothing else.
+
+  **⚠ TWO THINGS THE BOOT FOUND, and both would have shipped silently**
+
+  1. **`forRootAsync` resolves `inject` against the DYNAMIC MODULE'S OWN
+     injector**, not the module registering it. `TokenService` resolved only
+     because the auth module is global; `ChatPresenceService` failed at boot
+     with "make sure the argument is available in the GraphQLModule module",
+     which names the symptom. The fix is an explicit `imports` — and it must be
+     the SAME dynamic module object `SERVER_MODULES` holds, so chat's descriptor
+     is hoisted out of that array. A second `chatServerModule()` call there
+     would have given the socket a presence store nothing else could read, and
+     nothing would have reported it.
+  2. **The structural client check caught the missing delegate.** Adding
+     `chatAvailability` to the module's repository interface failed
+     `module-clients.ts` to compile until the app bound it — which is exactly
+     what `satisfies-modules.ts` and the `withTransaction` shape exist to do.
+
+  **⚠ A CAST, DECLARED RATHER THAN HIDDEN.** Nest's `GraphQLWsSubscriptionsConfig`
+  types a SUBSET of `graphql-ws`' `ServerOptions` and omits `onPing`, though it
+  passes everything through to `useServer`. Without the heartbeat the presence
+  TTL would expire a socket that is merely IDLE — showing somebody offline while
+  they are connected and looking at the screen. So one property is cast, in a
+  named function that says why, rather than the whole subscriptions block where
+  it would hide a real mistake. The client pings on a 20s `keepAlive`, which is
+  also what keeps a socket through a proxy that drops idle connections.
+
+  The fallback if that ever breaks is bounded and worth stating:
+  `closeWhenAuthorizationExpires` force-closes every socket when its token runs
+  out and that DOES fire `onDisconnect`, so the worst staleness is one access
+  token's lifetime. A minute and a half is a better answer than fifteen.
+
+  **⚠ PRESENCE RESOLVES ONLY BETWEEN PEOPLE WHO SHARE AN ACTIVE CONVERSATION**,
+  and the service filters — never the caller. A `chatPresence(userIds)` that
+  answered for any id would undo what the directory is exact-email-only to
+  avoid, and add surveillance of a named person by anybody who can guess an id.
+  Ids that are not partners drop out SILENTLY rather than being refused, which
+  tells a prober nothing either way.
+
+  ⚠ **ACTIVE ON BOTH SIDES.** An invitation is not a relationship: somebody
+  invited and not yet answered must not learn when the person who invited them
+  is at their desk, which would turn an unanswered invitation into a tracking
+  device.
+
+  **Two more decisions**
+
+  1. **Typing is a MUTATION, over HTTP.** It is the highest-frequency write in
+     the product, and on the socket it would need rate limiting of its own —
+     §12.29's open half. As a mutation it passes `ThrottlerGuard` like
+     everything else. ⚠ And participation is re-asked in the resolver, because
+     otherwise anybody holding `chat:send` could make an indicator appear in a
+     thread they are not in.
+  2. **Presence reads bind to `chat:read`, not a key of their own.** Who is here
+     is only ever answered about people you already share a conversation with,
+     which is the same question `chat:read` lets you ask by opening the thread. A
+     separate key would suggest presence can be granted without chat, and there
+     would be nobody it could resolve for.
+
+  **The sweep interval is a FRACTION OF THE GRACE**, not a round number: offline
+  is decided by time passing, so a tick longer than the grace would make the
+  grace meaningless.
+
+  **Verified:** the migration applied, the server boots with presence wired, the
+  schema emitted `ChatPresence`, `ChatMyAvailability` and the four new
+  operations, and all 17 client documents validate against it — the operations
+  test now covers presence and typing too. ⚠ NOT verified end to end: two
+  browsers watching each other needs two signed-in sessions.
+
 - **2026-09-11** — **STEP 8, the rules first: the ephemeral tier, argued with
   before anything drives it.**
 
@@ -1927,10 +2013,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
   8. The ephemeral tier: presence as a refcount with a grace period,
      availability as an enum with a derived `clearAt`, typing on a TTL. Needs
      `onDisconnect`, which `graphql.options.ts` does not wire today.
-     ⚠ **THE RULES ARE DONE 2026-09-11** — the two registries, the availability
-     schema and the publish-boundary decisions, all pure and tested. What
-     remains is the server that drives them: the `onDisconnect` seam, the
-     audience query, the GraphQL surface and the migration.
+     ⚠ **THE RULES AND THE SERVER ARE DONE 2026-09-11** — the two registries,
+     the availability table and migration, the `onDisconnect`/`onPing` seam, the
+     partner audience and the GraphQL surface. What remains is the UI: the dot,
+     the picker and the indicator.
   9. Tone, chat settings in `localStorage`, and the grouped unread query.
   10. Redis (§12.28) — which by then gates PRESENCE, not merely a second
      replica — or single-replica recorded as a deliberate choice.

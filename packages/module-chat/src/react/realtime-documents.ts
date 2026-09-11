@@ -40,9 +40,16 @@ export const CHAT_EVENTS = CHAT_OPERATIONS.chatEvents;
 
 /** One event as it arrives on the socket. Mirrors `ChatEventType`. */
 export interface ChatEventView {
+  /** 'sync' | 'message' | 'conversation' | 'presence' | 'typing'. */
   kind: string;
   conversationId: string | null;
   change: string | null;
+  /** Who a 'presence' or 'typing' event is about. */
+  userId: string | null;
+  /** 'presence' only. ⚠ Null elsewhere rather than false, which would read as offline. */
+  online: boolean | null;
+  /** 'presence' only, and never 'invisible' — the publish boundary removed it. */
+  availability: string | null;
   message: {
     id: string;
     conversationId: string;

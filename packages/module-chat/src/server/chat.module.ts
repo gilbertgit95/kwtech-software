@@ -2,6 +2,7 @@ import { type DynamicModule, Module, type Provider } from '@nestjs/common';
 import { chatIsEnabled } from '../enabled.js';
 import { ChatEventPublisher } from './chat.events.js';
 import type { ChatModuleOptions } from './chat.options.js';
+import { ChatPresenceService } from './chat.presence.service.js';
 import { ChatService } from './chat.service.js';
 import {
   CHAT_LIMIT_CHECKER,
@@ -45,6 +46,13 @@ export class ChatModule {
       ChatService,
       ChatWriteService,
       ChatEventPublisher,
+      /*
+       * ⚠ Provided even with no pub/sub bound: it holds the registries, and
+       * `chatPresence` answering "nobody is here" is a better shape than the
+       * resolver having to know whether the tier exists. Its sweep timer is
+       * unref'd, so a host with no sockets pays a wakeup and nothing else.
+       */
+      ChatPresenceService,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider as Provider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider as Provider);
@@ -72,7 +80,7 @@ export class ChatModule {
       module: ChatModule,
       imports: (options.imports ?? []) as NonNullable<DynamicModule['imports']>,
       providers,
-      exports: [ChatService, ChatWriteService, ChatEventPublisher, CHAT_OPTIONS],
+      exports: [ChatService, ChatWriteService, ChatEventPublisher, ChatPresenceService, CHAT_OPTIONS],
     };
   }
 }

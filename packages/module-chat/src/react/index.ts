@@ -14,7 +14,9 @@
 export {
   type ChatClient,
   type ChatConversationView,
+  type ChatMyAvailabilityView,
   type ChatParticipantView,
+  type ChatPresenceView,
   createChatClient,
   DEFAULT_GRAPHQL_PATH,
 } from './chat-client.js';
