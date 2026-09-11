@@ -363,3 +363,72 @@ describe('fail closed', () => {
     );
   });
 });
+
+describe('bindings from ANOTHER module', () => {
+  /**
+   * ⚠ The index was a static built from this module's own registry, so a key
+   * composed by the app — `module-chat`'s, say — was written to the database,
+   * offered by the role editor, and enforced NOWHERE. The registry said
+   * otherwise, which is the drift bindings exist to close.
+   */
+  const contributed = [
+    {
+      key: 'chat:send',
+      module: 'chat',
+      level: 'app' as const,
+      label: 'Send messages',
+      description: 'Post into a conversation you are in.',
+      bindings: [{ surface: 'graphql_operation' as const, identifier: 'Mutation.sendChatMessage' }],
+    },
+  ];
+
+  /** A resolver call, as Nest hands it to a guard: (root, args, context, info). */
+  const operation = (parent: string, field: string): ExecutionContext => {
+    const handler = () => undefined;
+    return {
+      getHandler: () => handler,
+      getClass: () => class ChatResolver {},
+      getType: () => 'graphql',
+      getArgs: () => [
+        undefined,
+        {},
+        { req: { url: '/api/v1/graphql' } },
+        { fieldName: field, parentType: { name: parent } },
+      ],
+      switchToHttp: () => ({ getRequest: () => ({ url: '/api/v1/graphql' }) }),
+    } as unknown as ExecutionContext;
+  };
+
+  const holding = (features: string[]) =>
+    jest.fn(async () =>
+      ctx({
+        ...composeContext({
+          subjectId: 'u1',
+          organizationId: null,
+          roles: [{ roleKey: 'chatter', level: 'app', workspaceId: null, features }],
+        }),
+      }),
+    );
+
+  it('guards an operation a composed registry binds', async () => {
+    const g = guard({ ...principal, featureRegistry: contributed }, holding([]));
+
+    // Refused the way every other denial here is — a 403 naming the key, not a
+    // bare false, so the client is told what it is missing.
+    await expect(g.canActivate(operation('Mutation', 'sendChatMessage'))).rejects.toThrow(/chat:send/);
+  });
+
+  it('admits the holder of that key', async () => {
+    const g = guard({ ...principal, featureRegistry: contributed }, holding(['chat:send']));
+
+    await expect(g.canActivate(operation('Mutation', 'sendChatMessage'))).resolves.toBe(true);
+  });
+
+  it('leaves an operation nobody bound alone', async () => {
+    const loadContext = jest.fn();
+    const g = guard({ ...principal, featureRegistry: contributed }, loadContext);
+
+    await expect(g.canActivate(operation('Query', 'somethingPublic'))).resolves.toBe(true);
+    expect(loadContext).not.toHaveBeenCalled();
+  });
+});

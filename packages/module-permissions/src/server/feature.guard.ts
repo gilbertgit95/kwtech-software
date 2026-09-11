@@ -68,15 +68,30 @@ export class FeatureGuard implements CanActivate {
     private readonly permissions: PermissionsService,
   ) {}
 
-  /** Built once per process: the registry is a compile-time constant. */
-  private static readonly bindings: BindingIndex = buildBindingIndex(FEATURE_REGISTRY);
+  /**
+   * Built once, from the COMPOSED registry.
+   *
+   * ⚠ It was a static built from `FEATURE_REGISTRY` — this module's own — which
+   * quietly meant "only permissions may enforce by binding". Another module's
+   * key could name `graphql_operation: 'Mutation.sendChatMessage'`, the app
+   * could compose it into `featureRegistry`, the seeder would write the row,
+   * the role editor would offer it — and the operation would be UNGUARDED, with
+   * the registry saying otherwise. That is the exact drift bindings exist to
+   * close, reappearing one module over.
+   *
+   * Lazy rather than eager because the options arrive by injection, and per
+   * instance because the guard is a singleton: one build, whatever the registry
+   * size.
+   */
+  private bindingIndex?: BindingIndex;
 
   private boundFeatures(context: ExecutionContext): readonly FeatureKey[] | undefined {
     // Off by default? No — a declared binding that does not enforce is the bug
     // this closes. `enforceBindings: false` exists for an app that guards its
     // own surfaces some other way and wants the registry purely descriptive.
     if (this.options.enforceBindings === false) return undefined;
-    return boundFeaturesFor(context, FeatureGuard.bindings, this.options.apiPrefix, this.options.getRequest);
+    this.bindingIndex ??= buildBindingIndex(this.options.featureRegistry ?? FEATURE_REGISTRY);
+    return boundFeaturesFor(context, this.bindingIndex, this.options.apiPrefix, this.options.getRequest);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
