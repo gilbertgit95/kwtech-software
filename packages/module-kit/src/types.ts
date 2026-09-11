@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import type { LimitContribution } from './limits.js';
 
 /**
  * The contract a module-* package fills in and an app composes.
@@ -134,6 +135,14 @@ export interface ServerModuleDescriptor {
   /** Mounts the module's controllers under a prefix, via the app's RouterModule. */
   routePrefix?: string;
   features?: readonly FeatureContribution[];
+  /**
+   * Caps this module declares. Separate from `features` because they answer
+   * different questions at different moments — a feature is checked when
+   * somebody READS or acts, a limit when somebody writes one more row — and
+   * merging them makes a full organization indistinguishable from an
+   * unauthorised one.
+   */
+  limits?: readonly LimitContribution[];
 }
 
 /**
@@ -170,6 +179,8 @@ export interface WebModuleDescriptor {
   /** Mounted around the app tree — a module's own React context, if it needs one. */
   Provider?: ComponentType<{ children: React.ReactNode }>;
   features?: readonly FeatureContribution[];
+  /** Caps this module declares — see `ServerModuleDescriptor.limits`. */
+  limits?: readonly LimitContribution[];
 }
 
 export interface NavEntry {

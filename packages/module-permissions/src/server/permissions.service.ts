@@ -1,10 +1,21 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { APP_DEFAULT_REGISTRY, type AppDefaultSpec, appDefaultRoleLevel } from '../defaults.js';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
-import { checkLimit, LIMIT, LIMIT_REGISTRY, type LimitDecision, type LimitKey } from '../domain/limits.js';
+import {
+  checkLimit,
+  LIMIT,
+  LIMIT_REGISTRY,
+  type LimitDecision,
+  type LimitKey,
+  type LimitMap,
+  type LimitSpec,
+  resolveLimits,
+} from '../domain/limits.js';
 import { type PermissionContext, toRoleLevel } from '../types.js';
+import type { PermissionsModuleOptions } from './permissions.module.js';
 import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.repository.js';
+import { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
 
 /**
  * Loads a caller's grants and their organization's entitlements, and hands back
@@ -22,6 +33,20 @@ import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.
  * that finally hurts is never the one anybody tested.
  */
 const MAX_USER_ROLE_LOOKUP = 200;
+
+/**
+ * The caps this service can COUNT, as opposed to the caps it knows about.
+ *
+ * Listed from `LIMIT` rather than inferred, so adding a fifth `perm_*` cap means
+ * coming here and writing the count — instead of the new key falling through the
+ * chain in `checkCapacity` to zero and passing forever.
+ */
+const COUNTABLE_HERE: ReadonlySet<string> = new Set<string>([
+  LIMIT.userOrganizations,
+  LIMIT.organizationMembers,
+  LIMIT.organizationWorkspaces,
+  LIMIT.workspaceMembers,
+]);
 
 /**
  * One platform default, as a screen needs it: what it MEANS from the catalogue,
@@ -59,7 +84,28 @@ export interface ResolvedDefault {
 
 @Injectable()
 export class PermissionsService {
-  constructor(@Inject(PERMISSIONS_PRISMA) private readonly prisma: PermissionsPrismaClient) {}
+  constructor(
+    @Inject(PERMISSIONS_PRISMA) private readonly prisma: PermissionsPrismaClient,
+    /**
+     * Optional, and its absence means "this module's own caps only" rather than
+     * a misconfiguration — the same arrangement `PermissionsWriteService` makes
+     * for `featureRegistry`. A test constructing the service directly, or an app
+     * mounting nothing else, needs no registry at all.
+     */
+    @Optional() @Inject(PERMISSIONS_OPTIONS) private readonly options?: PermissionsModuleOptions,
+  ) {}
+
+  /**
+   * Every cap in force across every mounted module.
+   *
+   * ⚠ Read at EVERY point a context is composed or a key is validated, never
+   * captured once: an app that composes the registry and a service that defaults
+   * to its own four would disagree about whether `chat:group_chats` exists, and
+   * the disagreement resolves as "unlimited" — the expensive direction.
+   */
+  private limitRegistry(): readonly LimitSpec[] {
+    return this.options?.limitRegistry ?? LIMIT_REGISTRY;
+  }
 
   /**
    * @param scope.organizationId the active organization. Omitting it makes this
@@ -890,7 +936,12 @@ export class PermissionsService {
     // hand would pick an arbitrary one, and answer a question nobody asked.
     if (!scope.organizationId) {
       if (appRoleGrants.length === 0) return null;
-      return composeContext({ subjectId: userId, organizationId: null, roles: appRoleGrants });
+      return composeContext({
+        subjectId: userId,
+        organizationId: null,
+        roles: appRoleGrants,
+        limitRegistry: this.limitRegistry(),
+      });
     }
 
     const membership = await this.prisma.permMembership.findFirst({
@@ -926,6 +977,7 @@ export class PermissionsService {
         // Their access does not depend on this customer's plan, so no
         // subscription is loaded and none is applied.
         plans: undefined,
+        limitRegistry: this.limitRegistry(),
       });
     }
 
@@ -1028,6 +1080,7 @@ export class PermissionsService {
       workspaceIds: membership.workspaces.map((link) => link.workspaceId),
       roles,
       plans,
+      limitRegistry: this.limitRegistry(),
     });
   }
 
@@ -1049,8 +1102,33 @@ export class PermissionsService {
 
     // An unregistered key would resolve to no cap and quietly allow everything,
     // so a typo fails loudly instead.
-    if (!LIMIT_REGISTRY.some((spec) => spec.key === key)) {
-      throw new Error(`Unknown limit '${key}'. Add it to LIMIT_REGISTRY before checking it.`);
+    if (!this.limitRegistry().some((spec) => spec.key === key)) {
+      throw new Error(
+        `Unknown limit '${key}'. Declare it — LIMIT_REGISTRY here, or a LimitContribution from a module.`,
+      );
+    }
+
+    /*
+     * ⚠ THIS METHOD COUNTS ITS OWN TABLES AND NOTHING ELSE.
+     *
+     * The chain below is exhaustive over `perm_*`, and a key from another
+     * module — `chat:group_chats`, counted over rows in `chat_conversation` —
+     * falls through it to `current = 0`, which is "none yet" and therefore
+     * ALWAYS ALLOWED. A registered cap that never denies is worse than an
+     * unregistered one, because the number shows in the role editor and looks
+     * enforced.
+     *
+     * Teaching this to count another module's rows would put those tables
+     * inside this module (PLAN §9), so the answer runs the other way: the owning
+     * module counts and calls `checkDeclaredLimit`. Refused here rather than
+     * quietly allowed.
+     */
+    if (!COUNTABLE_HERE.has(key)) {
+      throw new Error(
+        `Limit '${key}' is declared by another module and cannot be counted here. ` +
+          'Count the rows in the module that owns them and call checkDeclaredLimit(ctx, key, current) — ' +
+          'or inject the LimitChecker port, which does exactly that.',
+      );
     }
 
     let current = 0;
@@ -1065,5 +1143,66 @@ export class PermissionsService {
     }
 
     return checkLimit(ctx.limits, key, current);
+  }
+
+  /**
+   * The same decision, for a cap over rows this module does not own.
+   *
+   * The caller counts; this resolves the number in force and decides. That split
+   * is not a convenience — it is what lets a module declare a cap without this
+   * module ever learning what it counts, which is the only shape of contributed
+   * limits that does not close the dependency cycle §9 forbids.
+   *
+   * ⚠ Count inside the same transaction as the insert wherever the cap matters.
+   * A count read before the write is advisory: two simultaneous creates both see
+   * the same `current`, and both pass.
+   */
+  async checkLimitForActor(input: {
+    actorId: string;
+    key: LimitKey;
+    current: number;
+    organizationId?: string | undefined;
+    workspaceId?: string | undefined;
+  }): Promise<LimitDecision> {
+    const ctx = await this.loadContext(input.actorId, {
+      organizationId: input.organizationId,
+      workspaceId: input.workspaceId,
+    });
+
+    /*
+     * ⚠ NO CONTEXT MEANS THE FLOOR, NEVER "NO LIMIT".
+     *
+     * `loadContext` answers null for somebody holding no app-level role and no
+     * membership — a brand-new account is exactly that. Reading null as
+     * unrestricted would make the completely ungranted user the only one with
+     * an infinite allowance, which is both absurd and the direction that costs
+     * money. `resolveLimits` with no roles returns each declared cap at its
+     * `defaultValue`, which is what an unconfigured person is entitled to.
+     */
+    const limits = ctx ? ctx.limits : resolveLimits({ roles: [] }, this.limitRegistry());
+    return this.decideDeclaredLimit(limits, input.key, input.current);
+  }
+
+  checkDeclaredLimit(ctx: PermissionContext, key: LimitKey, current: number): LimitDecision {
+    return this.decideDeclaredLimit(ctx.limits, key, current);
+  }
+
+  /**
+   * The shared half: refuse an undeclared key, then decide.
+   *
+   * The refusal is the point. `checkLimit` answers ALLOWED for a key no registry
+   * declares — correct in isolation, because a limit nobody declared is not a
+   * limit — and that is precisely the wrong answer for a module that believes it
+   * declared one and misspelled it, or whose contribution never reached
+   * `limitRegistry`. Silently infinite is the failure this whole path exists to
+   * prevent, so it is refused at every entrance.
+   */
+  private decideDeclaredLimit(limits: LimitMap, key: LimitKey, current: number): LimitDecision {
+    if (!this.limitRegistry().some((spec) => spec.key === key)) {
+      throw new Error(
+        `Unknown limit '${key}'. A cap nobody declared resolves to "no limit", so this refuses rather than allows.`,
+      );
+    }
+    return checkLimit(limits, key, current);
   }
 }

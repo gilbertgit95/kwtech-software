@@ -1,9 +1,11 @@
 import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { LimitSpec } from '../domain/limits.js';
 import type { RequestScope } from '../scope.js';
 import type { FeatureSpec, PermissionContext } from '../types.js';
 import { FeatureGuard } from './feature.guard.js';
 import { PermissionsResolver } from './graphql/permissions.resolver.js';
+import { PermissionsLimitChecker } from './limit-checker.js';
 import { PermissionsController } from './permissions.controller.js';
 import { PERMISSIONS_PRISMA_WRITE } from './permissions.repository.js';
 import { PermissionsService } from './permissions.service.js';
@@ -137,6 +139,20 @@ export interface PermissionsModuleOptions {
   featureRegistry?: readonly FeatureSpec[];
 
   /**
+   * EVERY module's caps, composed by the app — the limits half of
+   * `featureRegistry`, and required for the same reason.
+   *
+   * Defaults to this module's own four. ⚠ Leaving it at that default while
+   * another module declares a cap is not a partial configuration, it is a
+   * SILENT one: `resolveLimits` walks this list to build the map, so a
+   * `perm_role_limit` row for an undeclared key is dropped before any check
+   * reads it, `checkLimit` answers "no limit", and the number an operator typed
+   * into the role editor enforces nothing. Compose it beside `featureRegistry`
+   * — `composeLimits(SERVER_MODULES)` — and the two stay in step.
+   */
+  limitRegistry?: readonly LimitSpec[];
+
+  /**
    * How an invitation link REACHES the person invited.
    *
    * The module mints the token, stores only its hash, and hands the raw value
@@ -261,6 +277,12 @@ export class PermissionsModule {
       PermissionsService,
       PermissionsWriteService,
       FeatureGuard,
+      /*
+       * The module-kit `LimitChecker` adapter. Provided unconditionally and
+       * cheap — it holds no state and opens nothing — so an app binding another
+       * module's limit port to it writes one line and imports nothing extra.
+       */
+      PermissionsLimitChecker,
     ];
     if (options.pubsubProvider) providers.push(options.pubsubProvider);
     if (options.prismaProvider) providers.push(options.prismaProvider);
@@ -275,7 +297,13 @@ export class PermissionsModule {
       imports: options.imports ?? [],
       controllers: exposeRest ? [PermissionsController] : [],
       providers,
-      exports: [FeatureGuard, PermissionsService, PermissionsWriteService, PERMISSIONS_OPTIONS],
+      exports: [
+        FeatureGuard,
+        PermissionsService,
+        PermissionsWriteService,
+        PermissionsLimitChecker,
+        PERMISSIONS_OPTIONS,
+      ],
       global: true,
     };
   }

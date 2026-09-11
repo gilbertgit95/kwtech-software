@@ -1,6 +1,6 @@
 import { FEATURE } from '../feature-keys.js';
 import type { AppRole, FeatureKey, PermissionContext, RoleLevel } from '../types.js';
-import { resolveLimits } from './limits.js';
+import { LIMIT_REGISTRY, type LimitSpec, resolveLimits } from './limits.js';
 
 /**
  * A role as the module reads it: a name, the features it collects, and where it
@@ -70,6 +70,20 @@ export interface ComposeInput {
    * lapsed organization, which is the expensive direction to be wrong in.
    */
   plans?: readonly PlanEntitlement[] | null | undefined;
+  /**
+   * EVERY module's caps, composed by the app — the limits half of
+   * `featureRegistry`, and load-bearing for the same reason.
+   *
+   * ⚠ `resolveLimits` builds its map by WALKING this registry, so a cap that is
+   * not in it resolves to nothing at all: a `perm_role_limit` row for an
+   * undeclared key is dropped here, before any checker could read it, and
+   * `checkLimit` then answers "no limit" for a key an operator has explicitly
+   * set a number on. Silently infinite, with the number sitting in the
+   * database. Defaults to this module's own four, which is right for an app
+   * that mounts only this module and wrong the moment a second one declares a
+   * cap.
+   */
+  limitRegistry?: readonly LimitSpec[];
 }
 
 /**
@@ -225,7 +239,7 @@ export function composeContext(input: ComposeInput): PermissionContext {
     subjectId: input.subjectId,
     organizationId,
     workspaceId,
-    limits: resolveLimits({ plans: input.plans, roles: input.roles }),
+    limits: resolveLimits({ plans: input.plans, roles: input.roles }, input.limitRegistry ?? LIMIT_REGISTRY),
     effective: [...effective].sort(),
     accessibleWorkspaceIds,
     granted: [...granted].sort(),

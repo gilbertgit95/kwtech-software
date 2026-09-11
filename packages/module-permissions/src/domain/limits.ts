@@ -1,3 +1,4 @@
+import type { LimitContribution } from '@kwtech/module-kit';
 import type { PlanEntitlement } from './grants.js';
 
 /**
@@ -30,6 +31,13 @@ export type LimitKey = (typeof LIMIT)[keyof typeof LIMIT] | (string & {});
 
 export interface LimitSpec {
   key: string;
+  /**
+   * Which module declared it. Optional because this module's own four predate
+   * the contribution path and answer 'permissions' by construction; a cap
+   * arriving through `LimitContribution` always carries one, and the role
+   * editor groups by it exactly as it groups features.
+   */
+  module?: string;
   label: string;
   description: string;
   /**
@@ -115,6 +123,24 @@ export const LIMIT_REGISTRY: readonly LimitSpec[] = [
     defaultValue: 1,
   },
 ] as const;
+
+/**
+ * This module's own four, shaped as CONTRIBUTIONS so the app composes them
+ * beside every other module's.
+ *
+ * The round trip — spec here, contribution for composition, spec again after
+ * narrowing — is the same one `FEATURE_REGISTRY` already makes, and for the same
+ * reason: composition happens in the app, where both vocabularies are in scope,
+ * and this module must not become the place a second module's caps are listed.
+ *
+ * `module` is filled in rather than optional here. A cap with no owner is a row
+ * the role editor cannot group and nobody can attribute when it starts denying
+ * something.
+ */
+export const LIMIT_CONTRIBUTIONS: readonly LimitContribution[] = LIMIT_REGISTRY.map((spec) => ({
+  ...spec,
+  module: spec.module ?? 'permissions',
+}));
 
 /** null = unrestricted. */
 export type LimitMap = Readonly<Record<string, number | null>>;

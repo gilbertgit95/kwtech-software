@@ -1,3 +1,4 @@
+import type { LimitContribution } from './limits.js';
 import type {
   FeatureContribution,
   ModuleRoute,
@@ -303,4 +304,28 @@ export function serverRoutePrefixes(modules: readonly ServerModuleDescriptor[]):
   return modules
     .filter((mod) => mod.routePrefix)
     .map((mod) => ({ path: mod.routePrefix as string, module: mod.nestModule }));
+}
+
+/**
+ * Every cap declared across every module, for the seed task and the role editor.
+ *
+ * The limits half of `composeFeatures`, and duplicate keys throw for the same
+ * reason: two modules defining one cap differently is an ambiguity no consumer
+ * can resolve, and the one that would resolve it silently is the seeder.
+ */
+export function composeLimits(modules: readonly (WebModuleDescriptor | ServerModuleDescriptor)[]): LimitContribution[] {
+  const seen = new Map<string, string>();
+  const limits: LimitContribution[] = [];
+
+  for (const mod of modules) {
+    for (const limit of mod.limits ?? []) {
+      const owner = seen.get(limit.key);
+      if (owner) {
+        throw new ModuleCompositionError(`Limit '${limit.key}' declared by both '${owner}' and '${mod.key}'`);
+      }
+      seen.set(limit.key, mod.key);
+      limits.push(limit);
+    }
+  }
+  return limits;
 }

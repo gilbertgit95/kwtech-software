@@ -10,6 +10,7 @@ export * from './binding-index.js';
 export * from './feature.guard.js';
 export * from './graphql/permission.types.js';
 export * from './graphql/permissions.resolver.js';
+export * from './limit-checker.js';
 export * from './permissions.controller.js';
 export * from './permissions.module.js';
 export * from './permissions.pubsub.js';

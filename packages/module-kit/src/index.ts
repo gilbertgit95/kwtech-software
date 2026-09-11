@@ -20,6 +20,7 @@
 
 export * from './compose.js';
 export * from './feature-metadata.js';
+export * from './limits.js';
 export * from './status.js';
 export * from './status-store.js';
 export * from './types.js';

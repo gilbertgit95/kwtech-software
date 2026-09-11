@@ -533,6 +533,71 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-11** — **STEP 1 OF `module-chat` IS BUILT, and it touches no chat
+  code: `LimitContribution` + the `LimitChecker` port, and the enforcement
+  plumbing behind them.**
+
+  The cap had no path (2026-09-10). Building the path found it was not one hole
+  but THREE, stacked, each of which independently makes a configured cap
+  enforce nothing — and none of which reports anything:
+
+  1. `LIMIT_REGISTRY` was a const with no contribution mechanism. Known.
+  2. ⚠ `composeContext` called `resolveLimits` with the DEFAULT registry, and
+     `resolveLimits` builds its map by WALKING that registry. So a
+     `perm_role_limit` row for an undeclared key was dropped BEFORE any checker
+     could read it. Setting the number in the database would have changed
+     nothing, with no error to explain why — the number visible in the role
+     editor, the cap infinite. This was the one that would have wasted a day.
+  3. ⚠ `checkCapacity` counts with a hardcoded if/else over `perm_membership`,
+     `perm_workspace` and friends. A key it cannot count FELL THROUGH to
+     `current = 0` — "none yet", therefore always allowed. A registered cap that
+     never denies is worse than an unregistered one, because it looks enforced.
+
+  **What was built**
+
+  `@kwtech/module-kit` gains `limits.ts`: `LimitContribution` (the declaration,
+  parallel to `FeatureContribution`, `countedOver` left a loose string because
+  this package must not own the enforcer's vocabulary), `LimitChecker` with
+  `LimitCheckInput`/`LimitDecision`, and `NULL_LIMIT_CHECKER`. Plus
+  `composeLimits`, refusing duplicate keys the way `composeFeatures` does, and
+  `limits?` on both descriptors.
+
+  ⚠ **THE CALLER SUPPLIES THE COUNT.** `LimitCheckInput.current` is the single
+  most consequential line: the checker resolves the CAP, the module that owns
+  the rows counts them. It cannot run the other way — teaching permissions to
+  count `chat_conversation` puts chat's tables inside the permissions module,
+  which is the import §9 forbids and the thing portability depends on not
+  happening. Hole 3 is what that decision looks like when it has not been made.
+
+  `@kwtech/module-permissions` gains the enforcing half: a `limitRegistry`
+  option (composed by the app, like `featureRegistry`), threaded through all
+  three `composeContext` call sites; `checkDeclaredLimit(ctx, key, current)` and
+  `checkLimitForActor({actorId, key, current})` for caps over rows it does not
+  own; `PermissionsLimitChecker`, the adapter an app binds to any module's
+  `LimitChecker` port; and `LIMIT_CONTRIBUTIONS`, its own four shaped for
+  composition. `checkCapacity` now REFUSES a key outside `COUNTABLE_HERE`
+  instead of answering zero, and names the method to call instead.
+
+  ⚠ **No context means the FLOOR, not "no limit".** `loadContext` answers null
+  for somebody holding no app-level role — a new account is exactly that — and
+  reading null as unrestricted would give the completely ungranted user the only
+  infinite allowance in the system. `checkLimitForActor` resolves the registry
+  defaults instead.
+
+  The app composes `ALL_LIMITS` beside `ALL_FEATURES` in `seed/registry.ts`,
+  narrowed by a `toLimitSpec` that CHECKS `countedOver` rather than casting —
+  `toFeatureSpec` one field over. Composed today even though one module
+  declares caps, because the day a second one does the failure is hole 2.
+
+  Nine tests, all on silences: a contributed cap resolving from a role, the same
+  row DROPPED when the registry omits it, `checkCapacity` refusing what it
+  cannot count, and the floor for an actor with no context.
+
+  **Still open from step 1's premise**: `NULL_LIMIT_CHECKER` means a host that
+  MEANT to enforce a cap and forgot the binding gets silence. That is the stated
+  price of chat running in an app with no permission model at all — recorded
+  here rather than discovered by whoever forgets.
+
 - **2026-09-11** — **SINGLE REPLICA, CHOSEN AND ENFORCED — and the pub/sub
   engine now has ONE place to swap. `src/realtime/` is built.**
 
@@ -1138,7 +1203,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
   removal already established. No read-any-conversation key at all — §12.42.
 
   **Build order — seven commits, and the first two touch no chat code:**
-  1. `module-kit`: `LimitContribution` + the `LimitChecker` port.
+  1. ✅ **DONE 2026-09-11.** `module-kit`: `LimitContribution` + the
+     `LimitChecker` port — plus the enforcing half in `module-permissions`
+     (`limitRegistry`, `checkDeclaredLimit`, `checkLimitForActor`,
+     `PermissionsLimitChecker`), which the premise turned out to require.
   2. `module-permissions`: role-editor limits — draft, form, write path.
   3. `module-chat`: schema + pure domain. The state machine,
      `canAccessConversation`, the `checkLimit` call. Tested with no database.

@@ -1,8 +1,8 @@
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
 import type { FeatureContribution } from '@kwtech/module-kit';
-import { composeFeatures, type WebModuleDescriptor } from '@kwtech/module-kit';
-import type { FeatureSpec, RoleLevel } from '@kwtech/module-permissions';
-import { FEATURE_REGISTRY, isFeatureSurface, isRoleLevel } from '@kwtech/module-permissions';
+import { composeFeatures, composeLimits, type LimitContribution, type WebModuleDescriptor } from '@kwtech/module-kit';
+import type { FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
+import { FEATURE_REGISTRY, isFeatureSurface, isRoleLevel, LIMIT_CONTRIBUTIONS } from '@kwtech/module-permissions';
 
 /**
  * EVERY module's features, composed. ← add a module's registry here
@@ -76,3 +76,40 @@ const FEATURE_SOURCES: readonly WebModuleDescriptor[] = [
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(FEATURE_SOURCES).map(toFeatureSpec);
+
+/**
+ * EVERY module's caps, composed — the limits half of ALL_FEATURES.
+ *
+ * ⚠ Composed even though exactly one module declares caps today, because the
+ * failure when a second one does is SILENT: `resolveLimits` builds its map by
+ * walking whatever registry it was given, so an uncomposed key is dropped before
+ * any check reads it and the cap resolves to "no limit" — with the operator's
+ * number sitting in `perm_role_limit`, visible in the role editor, enforcing
+ * nothing. Adding `module-chat` here is one entry in the array below, exactly as
+ * its features are.
+ */
+const LIMIT_SOURCES: readonly WebModuleDescriptor[] = [{ key: 'permissions', limits: LIMIT_CONTRIBUTIONS }];
+
+/**
+ * A contribution narrowed to a spec, CHECKED rather than cast — `toFeatureSpec`
+ * one field over.
+ *
+ * `countedOver` is the field that matters. module-kit keeps it a plain string
+ * because it must not own this module's vocabulary; the enforcer counts over
+ * exactly three things, and a module naming a fourth has declared a cap nothing
+ * can resolve. Better the seed fails with the key and the bad value than a
+ * number that never denies.
+ */
+function toLimitSpec(contribution: LimitContribution): LimitSpec {
+  const { countedOver, ...rest } = contribution;
+
+  if (countedOver !== 'user' && countedOver !== 'organization' && countedOver !== 'workspace') {
+    throw new Error(
+      `Limit '${contribution.key}' is counted over '${countedOver}'. Expected 'user' | 'organization' | 'workspace'.`,
+    );
+  }
+
+  return { ...rest, countedOver, required: contribution.required ?? false };
+}
+
+export const ALL_LIMITS: readonly LimitSpec[] = composeLimits(LIMIT_SOURCES).map(toLimitSpec);

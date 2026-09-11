@@ -22,7 +22,7 @@ import {
 import { PrismaModule } from './prisma/prisma.module.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
-import { ALL_FEATURES } from './seed/registry.js';
+import { ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
 import { UsersResolver } from './users/users.resolver.js';
 
 /**
@@ -168,6 +168,15 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
      * Same seam as `resolvePrincipal`.
      */
     featureRegistry: ALL_FEATURES,
+
+    /*
+     * The same composition, for caps. One module declares them today; the
+     * reason it is composed anyway is that the failure when a second one does
+     * is invisible — an uncomposed key is dropped out of the resolved map
+     * before any check sees it, so the cap reads as "no limit" while the
+     * operator's number sits in the database looking enforced.
+     */
+    limitRegistry: ALL_LIMITS,
 
     /*
      * How the guard finds the request, on EITHER transport.
