@@ -32,11 +32,10 @@ Last updated: 2026-09-10
 | `packages/web-ui` | `@kwtech/web-ui` | React + Tailwind 4 + AG Grid Community | — |
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
 | `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
+| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema and pure domain only as of 2026-09-11, ⚠ not yet a dependency of any app (§9) | — |
 
-**Planned, not built yet:** `packages/module-chat` (designed 2026-09-10 — see
-the decision log; the first module that is not platform), `packages/db` (Prisma
-— see the note below), `apps/admin`, `apps/worker`, `apps/cli`,
-`packages/mobile-ui`.
+**Planned, not built yet:** `packages/db` (Prisma — see the note below),
+`apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
 
 ⚠️ **A Prisma home is missing from that list and Phase 1 blocks on it.**
 `web-server` cannot reach Postgres without somewhere for the schema and
@@ -532,6 +531,77 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **STEP 3: `packages/module-chat` EXISTS — the schema and the
+  pure domain, with no database and no framework anywhere in it.**
+
+  The first module that is not platform, and the first written rules-first:
+  every decision below is a function taking a literal, because `canAccessConversation`
+  gets tests before it gets a screen. ⚠ C1's exact failure was a helper that
+  existed, was exported, was used by the React layer, and was never called
+  server-side — so the helper lands first, tested, and the server that wraps it
+  in step 4 imports it rather than restating it.
+
+  **The package has no dependencies but `@kwtech/module-kit`.** No Prisma, no
+  Nest, no React, no DOM in its `lib`. That is not minimalism for its own sake:
+  it is what makes the state machine testable without a database, and it is the
+  shape the rest of the module hangs off.
+
+  **`prisma/chat.prisma` — four models, and the ten holes are columns now.**
+  `ChatConversation` (nullable `title`/`icon`, `directKey String? @unique`,
+  `createdById` that never moves, `archivedAt`, denormalised `lastMessageAt`,
+  `metadata Json?`), `ChatParticipant` (the whole state machine as a `status`
+  column, `lastReadMessageId`, `mutedUntil`, `exitedAt`), `ChatMessage`
+  (`kind`, nullable `authorId`, ⚠ nullable `body`, `clientMessageId` unique per
+  conversation, `replyToMessageId`, database-generated `createdAt`, `editedAt`,
+  `deletedAt` + `deletedById`) and `ChatBlock`. No `ChatAttachment` — §12.45, and
+  an empty table is a claim to have thought it through.
+
+  ⚠ **The app does NOT adopt it yet.** `compose-schema.mjs` copies a fragment
+  for every `@kwtech/module-*` dependency in `apps/web-server/package.json`, so
+  adding the dependency is what creates the tables — and that belongs with the
+  migration and the server that uses them, in step 4. The fragment being written
+  and the fragment being APPLIED are different acts, and doing the second one
+  early leaves a schema the database does not have.
+
+  **Four decisions that were not in the plan, made here**
+
+  1. ⚠ **`canAccessConversation` is ACTIVE ONLY, and `invited` gets its own,
+     narrower question.** An invited person sees THAT they were invited — the
+     requests inbox — and never the messages. Rendering somebody else's message
+     content to a non-participant is exactly what the helper exists to prevent.
+     The cost is recorded as an open decision: with no preview, accept-or-decline
+     is close to a coin flip. Every product that solved this showed the first
+     message, and that is a privacy decision rather than a UI one, so it is not
+     being made by default here.
+  2. **A type PREDICATE, not a boolean.** `canAccessConversation` narrows to an
+     `ActiveParticipant`, so a caller cannot read `actor.userId` without having
+     asked. Without it every call site re-tests for null, and the one that
+     forgets compares `undefined` to a user id — which throws when somebody
+     sends a message, not at review.
+  3. **Refusals are REASONS, never booleans.** `refuseRemoval` answers
+     `not_a_participant | target_not_present | self_removal | creator`, and
+     `refuseDelete` answers three of its own. `self_removal` is the one that
+     proves the shape: it is not an error to show, it means the person wanted
+     `leave`.
+  4. **The body cap counts CODE POINTS.** `.length` counts UTF-16 units, so a
+     4000-unit cap cuts a message of 2000 emoji in half — and the first report
+     of it comes from exactly the people most likely to use them. There is a
+     test that a body of 4000 thumbs-up is 8000 units long and accepted.
+
+  **`groupCapAllows` exists to say that DIRECT CHATS DO NOT COUNT**, which was
+  implied and never written down. The cap bounds how many rooms one person can
+  stand up, not who they may talk to: a direct chat is bounded by the other
+  person, who can block, decline or leave, where a group is bounded by nothing.
+
+  `CHAT_FEATURE_REGISTRY` and `CHAT_LIMIT_REGISTRY` are exported as module-kit
+  contributions — the host spreads them into `seed/registry.ts`. ⚠ Their
+  `bindings` are deliberately EMPTY: a key whose binding names a surface that
+  does not exist yet is a worse lie than one with no binding, so they are filled
+  in as steps 4 to 7 land and `auditRegistry()` reports them as unenforced until
+  then.
+
+  Sixty-six tests, no database.
 
 - **2026-09-11** — **STEP 2 IS BUILT: a cap is now an OPERATOR decision instead
   of a deploy. Role-editor limits, end to end.**
@@ -1281,8 +1351,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
   2. ✅ **DONE 2026-09-11.** `module-permissions`: role-editor limits — draft,
      form, write path, plus the `permissionLimits` query the form needs to see a
      contributed cap at all.
-  3. `module-chat`: schema + pure domain. The state machine,
-     `canAccessConversation`, the `checkLimit` call. Tested with no database.
+  3. ✅ **DONE 2026-09-11.** `module-chat`: schema + pure domain. The state
+     machine, `canAccessConversation`, the cap rule. No database, no framework.
+     ⚠ The app does not depend on the package yet — adopting it is what creates
+     the tables, which belongs with step 4's migration.
   4. Server: repository, read/write services on separate clients, GraphQL,
      participation enforced on every path.
   5. Realtime: per-publish filter, the app-owned connection (§12.39), a

@@ -1,0 +1,228 @@
+// The chat module's slice of the data model.
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Chat` and mapped to `chat_*` so a module
+// can never collide with another module's names in a schema it does not own.
+//
+// A DIRECT CHAT IS A GROUP WITH TWO PARTICIPANTS. One table, one state machine,
+// one set of keys. A separate `ChatDirect` shape would duplicate every one of
+// them to express a participant count, and the first feature to want "add
+// somebody to this DM" would have to migrate between them.
+//
+//   user ──participant──▶ conversation ──▶ message
+//     │                        │
+//     └──block──▶ user         └──▶ directKey (two people) or null (a group)
+//
+// ⚠ `userId` is a BARE STRING with no foreign key, the third module to hold one
+// that way. `auth_user` belongs to module-auth, and a module may not reference
+// another module's tables (PLAN §9) — they may not even be in the same
+// database. Turning an id into a name is the `UserDirectory` port's job, which
+// the app implements because the app is the layer that has both.
+
+/// `invited → active | declined`, plus `left` and `removed`.
+///
+/// The WHOLE state machine, and it is a column rather than a token table because
+/// a chat invitation is addressed to a USER WHO EXISTS — you had to find them to
+/// invite them. `PermInvitation` carries a SHA-256 hash, a seven-day expiry and
+/// an account-creating accept path precisely because an organization invite is
+/// addressed to an EMAIL that may have nothing behind it (§12.31). None of that
+/// applies here, and building it anyway would be ceremony copied from a
+/// constraint that does not exist.
+///
+/// ⚠ `declined` KEEPS THE ROW. A re-invite flips it back rather than inserting a
+/// second one, which is what makes "declining bounds re-invitation" expressible
+/// at all — the row is the memory of the refusal.
+enum ChatParticipantStatus {
+  invited
+  active
+  declined
+  left
+  removed
+}
+
+/// `user` or `system`. ⚠ Earning its place in v1 for "X left the conversation".
+///
+/// A system message has a NULL `authorId` — it is not from anybody — and is
+/// excluded from unread counts, because a join notice is not addressed to
+/// anyone. Adding the column later would mean a migration plus a backfill of
+/// every existing row to `user`.
+enum ChatMessageKind {
+  user
+  system
+}
+
+model ChatConversation {
+  id String @id @default(cuid())
+
+  /// Null for a direct chat. A group's name, editable by its participants.
+  title String?
+
+  /// The badge drawn beside the conversation — a NAME, never a component or an
+  /// SVG, exactly as `PermRole.icon` is. An unknown name must FALL BACK rather
+  /// than throw.
+  icon String?
+
+  /// ⚠ SORTED `lowUserId:highUserId` for a direct chat, NULL for a group, and
+  /// COMPUTED SERVER-SIDE ALWAYS.
+  ///
+  /// A client-supplied key forges a DM between two other people: send
+  /// `alice:bob` and you are in their conversation.
+  ///
+  /// The unique constraint is what stops two simultaneous "message Bob" clicks
+  /// producing two threads. ⚠ And the NULL works FOR us here, unlike §12.19:
+  /// Postgres treats NULLs as DISTINCT, so the group rows — which must be free
+  /// to repeat — are exactly the ones the constraint ignores. Chat is not a
+  /// second caller for the partial-index problem.
+  directKey String? @unique
+
+  /// Who opened it. NEVER MOVES — see the cap, which counts live chats you
+  /// created AND are still in. Ownership transfer was the alternative and is
+  /// strictly worse: it hands a quota slot to somebody who never asked for it.
+  createdById String
+
+  /// Archiving FREES A CAP SLOT, which is what makes the cap something a person
+  /// can clear rather than a wall.
+  archivedAt DateTime?
+
+  /// ⚠ DENORMALISED ON PURPOSE. Without it the conversation list does a
+  /// `max(createdAt)` over messages per row, which is the panel's slowest query
+  /// and the one it runs most. Written in the same transaction as the message.
+  lastMessageAt DateTime?
+
+  /// A hatch, offered with its cost stated: somewhere for a host to put "support
+  /// ticket id" without a migration. ⚠ Unqueryable and untyped — anything the
+  /// module itself needs to READ must become a real column. Prisma enums are not
+  /// extensible, so a host wanting a third conversation kind is asking for a
+  /// module change, not a hatch.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  /// The list query: everything I am in, most recent first.
+  @@index([lastMessageAt])
+  @@index([createdById])
+  @@map("chat_conversation")
+}
+
+model ChatParticipant {
+  id             String                @id @default(cuid())
+  conversationId String
+  userId         String
+  status         ChatParticipantStatus @default(invited)
+
+  /// Who put them here. Null for the creator, who put themselves here.
+  invitedById String?
+
+  /// ⚠ MONOTONIC WITH THE KEYSET ORDERING `(createdAt, id)`, which is why unread
+  /// is a message ID rather than a timestamp or a count. A count would be wrong
+  /// the moment somebody reads on a second device; a timestamp ties unread to a
+  /// clock that is not the database's.
+  lastReadMessageId String?
+
+  /// Per-conversation mute, which is what people actually want — far more than a
+  /// global do-not-disturb. Null means unmuted.
+  mutedUntil DateTime?
+
+  joinedAt  DateTime  @default(now())
+  /// When they left, were removed, or declined. Null while the row is live.
+  exitedAt  DateTime?
+  updatedAt DateTime  @updatedAt
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  /// One row per person per conversation. A second would make "am I in this"
+  /// depend on which row a query happened to read.
+  @@unique([conversationId, userId])
+  /// The list query reads this side: every conversation one person is in.
+  @@index([userId, status])
+  @@map("chat_participant")
+}
+
+model ChatMessage {
+  id             String          @id @default(cuid())
+  conversationId String
+  kind           ChatMessageKind @default(user)
+
+  /// Null for a system message — it is not from anybody.
+  authorId String?
+
+  /// ⚠ NULLABLE, and that is file preparation rather than indecision: an
+  /// image-only message with `body: ''` is a lie. There are deliberately no
+  /// `fileUrl`/`fileName` COLUMNS — attachments will be a child table, because
+  /// the columns are the shortcut that breaks on the second file (§12.45).
+  ///
+  /// PLAIN TEXT. Escaped on render, no markdown and no auto-linking: auto-linking
+  /// is a phishing vector the moment display text and href may differ. Markdown
+  /// later is additive; removing it is not.
+  body String?
+
+  /// ⚠ THE IDEMPOTENCY KEY, generated CLIENT-side, unique per conversation.
+  ///
+  /// Optimistic insert plus a flaky network plus a retry equals two identical
+  /// messages. One column fixes it, and it has to be here from the first
+  /// migration — retrofitting means a backfill of rows that never had one.
+  clientMessageId String?
+
+  /// A reply, or null. Self-referential rather than a thread table: v1 shows the
+  /// quoted line above the reply and does not branch.
+  replyToMessageId String?
+
+  /// ⚠ DATABASE-GENERATED, never set by the application.
+  ///
+  /// App-set timestamps plus clock skew between replicas REORDER MESSAGES under
+  /// keyset pagination — and the symptom appears for SOME READERS ONLY, which is
+  /// the worst kind to debug.
+  createdAt DateTime @default(now())
+
+  /// ⚠ An edit NEVER touches `createdAt`, or the message jumps position
+  /// mid-conversation under the keyset ordering. Author only.
+  editedAt DateTime?
+
+  /// Soft delete. The row stays so the keyset ordering does not develop holes.
+  deletedAt DateTime?
+
+  /// ⚠ WHO deleted it, and it is NOT redundant with `authorId`: `chat:moderate`
+  /// lets a participant delete somebody else's message, and "who removed this"
+  /// is the question asked afterwards. Two columns instead of an audit
+  /// subsystem.
+  deletedById String?
+
+  /// The same hatch, with the same warning, as the conversation's.
+  metadata Json?
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  /// ⚠ A RETRIED SEND MUST NOT DOUBLE-POST. Scoped to the conversation rather
+  /// than global so two clients cannot collide on a generated value.
+  @@unique([conversationId, clientMessageId])
+  /// KEYSET pagination, not limit/offset: offset paging over an append-heavy
+  /// list re-shows rows every time somebody posts while you are scrolling.
+  @@index([conversationId, createdAt, id])
+  @@map("chat_message")
+}
+
+/// ⚠ NOBODY COULD REFUSE CONTACT. This table is that fix, and it is v1.
+///
+/// Chat is app level and the directory takes an email, so anyone who knows your
+/// address could open a DM — and declining only let them re-invite. A harassment
+/// vector with no remedy. `chat:moderate` does not help: §12.42 deliberately
+/// makes moderation require participation, so there is no read-any-conversation
+/// key and no platform-side remedy at all. Blocking is the USER's.
+///
+/// ⚠ A blocked sender must get the SAME ANSWER as an unknown address — one
+/// message, one status, the same timing — or the block becomes a notification
+/// that you have been blocked.
+model ChatBlock {
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  /// "Who has blocked me", which is the direction every check reads.
+  @@index([blockedId])
+  @@map("chat_block")
+}
