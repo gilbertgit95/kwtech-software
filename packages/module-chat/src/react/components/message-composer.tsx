@@ -18,7 +18,21 @@ import { MAX_BODY_CODE_POINTS } from '../../domain/messages.js';
  * puts them in this box like any other character. A bundled picker is 200KB–1MB
  * of data hanging off a text field, which is the cost this defers.
  */
-export function MessageComposer({ onSend, disabled }: { onSend: (body: string) => void; disabled?: boolean }) {
+export function MessageComposer({
+  onSend,
+  onTyping,
+  disabled,
+}: {
+  onSend: (body: string) => void;
+  /**
+   * Called on every keystroke. ⚠ THROTTLED BY THE CALLER, not here: the hook
+   * already holds the one timer that decides how often the server hears about
+   * it, and a second throttle in the component would be two answers to one
+   * question.
+   */
+  onTyping?: () => void;
+  disabled?: boolean;
+}) {
   const [body, setBody] = useState('');
 
   const length = [...body].length;
@@ -51,7 +65,10 @@ export function MessageComposer({ onSend, disabled }: { onSend: (body: string) =
       <div className="flex items-end gap-2">
         <textarea
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => {
+            setBody(event.target.value);
+            onTyping?.();
+          }}
           onKeyDown={onKeyDown}
           rows={2}
           disabled={disabled}

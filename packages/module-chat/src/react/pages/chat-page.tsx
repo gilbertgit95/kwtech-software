@@ -76,6 +76,9 @@ export function ChatPage({ client }: { client?: ChatClient } = {}) {
             selectedId={selected?.id ?? null}
             busy={chat.busy}
             starting={starting}
+            presence={chat.presence}
+            myAvailability={chat.myAvailability}
+            onAvailabilityChange={(availability, forMinutes) => void chat.changeAvailability(availability, forMinutes)}
             onOpen={(conversationId) => {
               setStarting(false);
               chat.open(conversationId);
@@ -117,6 +120,9 @@ export function ChatPage({ client }: { client?: ChatClient } = {}) {
               onSend={(body) => void chat.send(body)}
               onLoadOlder={() => void chat.loadOlder()}
               onDelete={(messageId) => void chat.removeMessage(messageId)}
+              presence={chat.presence}
+              typing={chat.typingHere}
+              onTyping={chat.noteTyping}
               onInvite={(userId) => void chat.invite(selected.id, userId)}
               onLeave={() => void chat.leave(selected.id)}
               onFind={chat.lookUp}

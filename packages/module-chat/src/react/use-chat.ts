@@ -2,7 +2,13 @@
 
 import { useRealtime } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type ChatClient, type ChatConversationView, createChatClient } from './chat-client.js';
+import {
+  type ChatClient,
+  type ChatConversationView,
+  type ChatMyAvailabilityView,
+  type ChatPresenceView,
+  createChatClient,
+} from './chat-client.js';
 import { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';
 import { applyMessage, dropPending, optimisticMessage, readMarkFor, type ThreadMessage } from './view/message-view.js';
 
@@ -44,6 +50,11 @@ export function useChat(options: UseChatOptions = {}) {
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** userId → what the viewer may be told. Absent means "nothing known". */
+  const [presence, setPresence] = useState<Map<string, ChatPresenceView>>(new Map());
+  /** `conversationId` → userId → when the signal arrived. Pruned by a timer. */
+  const [typing, setTyping] = useState<{ conversationId: string; userId: string; at: number }[]>([]);
+  const [myAvailability, setMyAvailability] = useState<ChatMyAvailabilityView | null>(null);
 
   const selected = useMemo(
     () => conversations?.find((conversation) => conversation.id === selectedId) ?? null,
@@ -122,6 +133,71 @@ export function useChat(options: UseChatOptions = {}) {
     void loadConversations();
   }, [loadConversations]);
 
+  // ── presence ──────────────────────────────────────────────────────────────
+
+  /**
+   * Everybody the viewer might see a dot for, in one query.
+   *
+   * ⚠ ONE CALL FOR THE WHOLE LIST, not one per conversation per render. The
+   * server answers only for people the viewer shares an active conversation
+   * with and silently drops the rest, so sending every participant id is
+   * already the narrowest honest request.
+   */
+  useEffect(() => {
+    if (!conversations || conversations.length === 0) return;
+
+    const ids = [
+      ...new Set(
+        conversations.flatMap((conversation) =>
+          conversation.participants.map((one) => one.userId).filter((userId) => userId !== conversation.myUserId),
+        ),
+      ),
+    ];
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    api
+      .presenceOf(ids)
+      .then((found) => {
+        if (!cancelled) setPresence(new Map(found.map((one) => [one.userId, one])));
+      })
+      // A missing dot is the correct degradation: presence is an enhancement
+      // over a conversation that works without it.
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, conversations]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .myAvailability()
+      .then((mine) => {
+        if (!cancelled) setMyAvailability(mine);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  /*
+   * ⚠ TYPING CLEARS BY EXPIRY, and something has to notice time passing.
+   *
+   * The server sends "is typing" and never "stopped" — a tab closing mid-word
+   * sends nothing — so the indicator would stick forever without this. The
+   * timer runs ONLY while somebody is typing, so a quiet screen ticks nothing.
+   */
+  useEffect(() => {
+    if (typing.length === 0) return;
+    const timer = setInterval(() => {
+      setTyping((current) => current.filter((one) => Date.now() - one.at < TYPING_TTL_MS));
+    }, 1_000);
+    return () => clearInterval(timer);
+  }, [typing.length]);
+
   // ── the socket ────────────────────────────────────────────────────────────
 
   /*
@@ -149,6 +225,32 @@ export function useChat(options: UseChatOptions = {}) {
       if (event.kind === 'message' && event.message && event.conversationId === selectedRef.current) {
         const arrived = event.message;
         setMessages((current) => (current ? applyMessage(current, arrived) : current));
+      }
+
+      /*
+       * ⚠ APPLIED DIRECTLY AND NOT RE-QUERIED. The payload already went through
+       * the publish boundary — an invisible person arrives as offline — so
+       * there is nothing left to decide and a round trip would only make the
+       * dot late.
+       */
+      if (event.kind === 'presence' && event.userId) {
+        const { userId, online, availability } = event;
+        setPresence((current) => new Map(current).set(userId, { userId, online: online ?? false, availability }));
+        // Somebody who has gone is not still typing.
+        if (!online) setTyping((current) => current.filter((one) => one.userId !== userId));
+        return;
+      }
+
+      if (event.kind === 'typing' && event.userId && event.conversationId) {
+        const { userId, conversationId } = event;
+        setTyping((current) => [
+          ...current.filter((one) => !(one.userId === userId && one.conversationId === conversationId)),
+          { conversationId, userId, at: Date.now() },
+        ]);
+        // ⚠ NOT a reason to re-read the list. Typing changes nothing about a
+        // conversation, and re-reading on every keystroke-burst of every
+        // participant is the load this event was throttled to avoid.
+        return;
       }
 
       /*
@@ -316,6 +418,36 @@ export function useChat(options: UseChatOptions = {}) {
     [act, api],
   );
 
+  /**
+   * "I am writing", sent while somebody is.
+   *
+   * ⚠ THROTTLED HERE AS WELL AS SERVER-SIDE. The server drops a repeat inside
+   * its own window, but only after a round trip — and the composer calls this
+   * on every keystroke. One request every few seconds is the point of the
+   * feature; one per character is an attack on your own API.
+   */
+  const lastTyped = useRef(0);
+  const noteTyping = useCallback(() => {
+    const conversationId = selectedRef.current;
+    if (!conversationId) return;
+
+    const now = Date.now();
+    if (now - lastTyped.current < TYPING_THROTTLE_MS) return;
+    lastTyped.current = now;
+
+    // Silently: a typing ping that did not land is not worth a banner, and the
+    // indicator simply does not appear.
+    api.sendTyping(conversationId).catch(() => undefined);
+  }, [api]);
+
+  const changeAvailability = useCallback(
+    async (availability: string, forMinutes?: number | null) => {
+      const mine = await act(() => api.setAvailability(availability, forMinutes ?? null));
+      if (mine) setMyAvailability(mine);
+    },
+    [act, api],
+  );
+
   const lookUp = useCallback(
     async (email: string) => {
       try {
@@ -335,6 +467,12 @@ export function useChat(options: UseChatOptions = {}) {
     olderCursor,
     error,
     busy,
+    presence,
+    myAvailability,
+    /** Who is writing in the conversation on screen, excluding stale signals. */
+    typingHere: typing
+      .filter((one) => one.conversationId === selected?.id && Date.now() - one.at < TYPING_TTL_MS)
+      .map((one) => one.userId),
     /** ⚠ Null before mount and in an app with no socket — the screen still works. */
     live: realtime !== null,
     open,
@@ -347,9 +485,25 @@ export function useChat(options: UseChatOptions = {}) {
     invite,
     leave,
     lookUp,
+    noteTyping,
+    changeAvailability,
     dismissError: useCallback(() => setError(null), []),
   };
 }
+
+/**
+ * ⚠ BOTH LONGER THAN THE SERVER'S OWN, deliberately.
+ *
+ * The indicator must outlive the gap between one ping and the next or it
+ * flickers while somebody is still writing; the client's throttle must not be
+ * tighter than the server's or every other request is discarded after a round
+ * trip. These mirror `DEFAULT_EPHEMERAL` — a package that cannot import the
+ * server's constants without dragging Nest into a browser bundle, so they are
+ * written here and their relationship is what matters rather than their exact
+ * values.
+ */
+const TYPING_TTL_MS = 6_000;
+const TYPING_THROTTLE_MS = 3_000;
 
 /**
  * An id for one draft.

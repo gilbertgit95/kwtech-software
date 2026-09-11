@@ -32,7 +32,7 @@ Last updated: 2026-09-11
 | `packages/web-ui` | `@kwtech/web-ui` | React + Tailwind 4 + AG Grid Community | — |
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
 | `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
-| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain, the server half, realtime, and `/chat` end to end as of 2026-09-11. Both apps depend on it. Presence, typing and notifications are steps 8-10 (§9) | — |
+| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain, the server, realtime, `/chat`, and the ephemeral tier (presence, availability, typing) as of 2026-09-11. Both apps depend on it. Tone and settings are step 9; Redis is step 10 (§9) | — |
 
 **Planned, not built yet:** `packages/db` (Prisma — see the note below),
 `apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
@@ -533,6 +533,63 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **STEP 8, the UI: the dot, the picker and the indicator.**
+
+  **⚠ NOTHING IS DRAWN FOR SOMEBODY THE SERVER DECLINED TO ANSWER ABOUT, and
+  that is not the same as drawing "offline".** An absent entry means they are
+  not somebody this viewer shares an active conversation with — a grey dot would
+  assert they are away, which the server never said. A missing dot asserts
+  nothing. It is also how an INVISIBLE person appears, and nothing on the client
+  can tell the two apart, which is the point: the decision was made at the
+  publish boundary and there is nothing left here to leak.
+
+  **⚠ A DOT ON A DIRECT CHAT ROW, AND ONE PER NAME IN A GROUP HEADER.** "Who is
+  online" in a group of nine is a row of dots on a list row that says nothing
+  and takes the space the name needs. In the header each dot is attached to the
+  person it describes, which is where the question is actually asked.
+
+  **THE TYPING LINE SITS ABOVE THE COMPOSER AND OUTSIDE THE SCROLLING LIST.**
+  Inside the thread it would push the newest message out of view as it appeared
+  and disappeared, every few seconds, while somebody was trying to read. It
+  occupies no height when nobody is writing — a permanently reserved line is a
+  permanent gap — and three or more typists become a count rather than a
+  paragraph of names nobody reads to the end of.
+
+  **⚠ TYPING IS THROTTLED ON THE CLIENT AS WELL AS THE SERVER.** The composer
+  calls on every keystroke. The server drops a repeat inside its own window, but
+  only after a round trip, so the client holds the one timer that decides how
+  often it is asked — and the component deliberately has no throttle of its own,
+  because two would be two answers to one question. ⚠ The client's TTL and
+  throttle mirror `DEFAULT_EPHEMERAL` and are both longer than the server's: the
+  indicator must outlive the gap between pings or it flickers while somebody is
+  still writing.
+
+  **Three decisions in the picker**
+
+  1. ⚠ **Nothing is drawn until the server has said what the current state is.**
+     Rendering "Available" first and correcting it a moment later would tell
+     somebody who chose to appear offline that they are visible.
+  2. ⚠ **The duration is part of the same act.** "Busy" and "busy until 3pm" are
+     one decision; a separate control would let somebody set a state they never
+     meant to keep. And it is offered only once there is something to time —
+     "available for 30 minutes" has nothing to revert to.
+  3. **Two plain `<select>`s, not a styled dropdown.** A preference touched
+     occasionally, keyboard- and screen-reader-correct for free, and on a phone
+     it opens the OS picker.
+
+  **A presence event is APPLIED, never re-queried.** The payload already went
+  through the publish boundary, so there is nothing left to decide and a round
+  trip would only make the dot late. A typing event is ⚠ explicitly NOT a reason
+  to re-read the conversation list: typing changes nothing about a conversation,
+  and re-reading on every keystroke-burst of every participant is the load the
+  throttle exists to avoid. Somebody going offline clears whatever they were
+  typing.
+
+  **Verified:** `turbo run typecheck lint test build` green across 28 tasks. ⚠
+  Still not seen on screen, and this is the step where that gap is widest — two
+  browsers watching each other is the only real test of a dot, and it needs two
+  signed-in sessions.
 
 - **2026-09-11** — **STEP 8, the server: a socket's life now means something,
   and `graphql.options.ts` still names no module.**
@@ -2010,13 +2067,11 @@ Decisions 1, 2, 3 and 5 gate the next step.
      the invite flow and the requests inbox. ⚠ NO ANCHORED PANEL — §12.52 is
      closed the way the header icon's removal pointed: `/chat` is the only home,
      and a panel can return the day something exists to anchor it to.
-  8. The ephemeral tier: presence as a refcount with a grace period,
-     availability as an enum with a derived `clearAt`, typing on a TTL. Needs
-     `onDisconnect`, which `graphql.options.ts` does not wire today.
-     ⚠ **THE RULES AND THE SERVER ARE DONE 2026-09-11** — the two registries,
-     the availability table and migration, the `onDisconnect`/`onPing` seam, the
-     partner audience and the GraphQL surface. What remains is the UI: the dot,
-     the picker and the indicator.
+  8. ✅ **DONE 2026-09-11**, in three commits. The ephemeral tier: presence as a
+     refcount with a grace period, availability as an enum with a derived
+     `clearAt`, typing on a TTL — plus the `onDisconnect`/`onPing` seam
+     `graphql.options.ts` did not wire, and the dot, the picker and the
+     indicator on screen.
   9. Tone, chat settings in `localStorage`, and the grouped unread query.
   10. Redis (§12.28) — which by then gates PRESENCE, not merely a second
      replica — or single-replica recorded as a deliberate choice.

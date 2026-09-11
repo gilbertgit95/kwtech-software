@@ -21,11 +21,13 @@ export {
   DEFAULT_GRAPHQL_PATH,
 } from './chat-client.js';
 export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.js';
+export { AvailabilityPicker } from './components/availability-picker.js';
 export { ConversationList } from './components/conversation-list.js';
 export { MessageComposer } from './components/message-composer.js';
 export { MessageThread } from './components/message-thread.js';
 export { NewConversation } from './components/new-conversation.js';
 export { PersonFinder } from './components/person-finder.js';
+export { PresenceDot } from './components/presence-dot.js';
 export { CHAT_HREF, type ChatWebModuleOptions, chatWebModule } from './module.js';
 export { ChatPage } from './pages/chat-page.js';
 export { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';

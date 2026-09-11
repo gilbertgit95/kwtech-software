@@ -1,8 +1,10 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import type { ChatConversationView } from '../chat-client.js';
+import type { ChatConversationView, ChatMyAvailabilityView, ChatPresenceView } from '../chat-client.js';
 import { conversationTitle, otherParticipants, splitConversations } from '../view/conversation-view.js';
+import { AvailabilityPicker } from './availability-picker.js';
+import { PresenceDot } from './presence-dot.js';
 
 /**
  * The left column: what is waiting for an answer, then what you can open.
@@ -20,6 +22,9 @@ export function ConversationList({
   onStartNew,
   starting,
   busy,
+  presence,
+  myAvailability,
+  onAvailabilityChange,
 }: {
   conversations: ChatConversationView[] | null;
   selectedId: string | null;
@@ -29,8 +34,23 @@ export function ConversationList({
   /** Whether the "new conversation" pane is the thing on screen. */
   starting: boolean;
   busy: boolean;
+  /** What the viewer may be told about the people in these conversations. */
+  presence: ReadonlyMap<string, ChatPresenceView>;
+  myAvailability: ChatMyAvailabilityView | null;
+  onAvailabilityChange: (availability: string, forMinutes: number | null) => void;
 }) {
   const { active, requests } = splitConversations(conversations ?? []);
+
+  /**
+   * ⚠ A DOT ONLY ON A DIRECT CHAT. "Who is online" in a group of nine is a row
+   * of dots that says nothing useful and takes the space the name needs — the
+   * thread header names them individually, which is where the question is
+   * actually asked.
+   */
+  const dotFor = (conversation: ChatConversationView) =>
+    conversation.isDirect
+      ? presence.get(conversation.participants.find((one) => one.userId !== conversation.myUserId)?.userId ?? '')
+      : undefined;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col border-border sm:w-72 sm:border-r">
@@ -50,6 +70,8 @@ export function ConversationList({
           New
         </button>
       </div>
+
+      <AvailabilityPicker mine={myAvailability} busy={busy} onChange={onAvailabilityChange} />
 
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
         {conversations === null ? <p className="px-1 py-2 text-sm text-muted-foreground">Loading…</p> : null}
@@ -108,6 +130,7 @@ export function ConversationList({
                       : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                   )}
                 >
+                  <PresenceDot presence={dotFor(conversation)} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-foreground">{conversationTitle(conversation)}</span>
                     {!conversation.isDirect ? (

@@ -2,11 +2,12 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { useEffect, useRef, useState } from 'react';
-import type { ChatConversationView, ChatDirectoryMatchView } from '../chat-client.js';
+import type { ChatConversationView, ChatDirectoryMatchView, ChatPresenceView } from '../chat-client.js';
 import { conversationTitle, otherParticipants } from '../view/conversation-view.js';
 import { isPending, type ThreadMessage } from '../view/message-view.js';
 import { MessageComposer } from './message-composer.js';
 import { PersonFinder } from './person-finder.js';
+import { PresenceDot } from './presence-dot.js';
 
 /**
  * The right column: one conversation, its people, and what was said in it.
@@ -22,6 +23,9 @@ export function MessageThread({
   onInvite,
   onLeave,
   onFind,
+  presence,
+  typing,
+  onTyping,
 }: {
   conversation: ChatConversationView;
   messages: ThreadMessage[] | null;
@@ -33,17 +37,40 @@ export function MessageThread({
   onInvite: (userId: string) => void;
   onLeave: () => void;
   onFind: (email: string) => Promise<ChatDirectoryMatchView | null>;
+  presence: ReadonlyMap<string, ChatPresenceView>;
+  /** Who is writing here right now. Already pruned of stale signals. */
+  typing: readonly string[];
+  onTyping: () => void;
 }) {
   const [inviting, setInviting] = useState(false);
   const names = new Map(conversation.participants.map((participant) => [participant.userId, participant.displayName]));
+  const others = conversation.participants.filter((one) => one.userId !== conversation.myUserId);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium text-foreground">{conversationTitle(conversation)}</h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {otherParticipants(conversation).join(', ') || 'Only you'}
+          <h2 className="flex items-center gap-1.5 truncate text-sm font-medium text-foreground">
+            {conversation.isDirect ? <PresenceDot presence={presence.get(others[0]?.userId ?? '')} /> : null}
+            {conversationTitle(conversation)}
+          </h2>
+          {/*
+            ⚠ THE GROUP'S DOTS GO HERE, one per name, rather than on the row in
+            the list — "who is online" in a group of nine is a row of dots on a
+            list row that says nothing and takes the space the name needs. Here
+            each dot is attached to the person it describes.
+          */}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate text-xs text-muted-foreground">
+            {others.length === 0 ? 'Only you' : null}
+            {conversation.isDirect
+              ? null
+              : others.map((one) => (
+                  <span key={one.userId} className="flex items-center gap-1">
+                    <PresenceDot presence={presence.get(one.userId)} />
+                    {one.displayName}
+                  </span>
+                ))}
+            {conversation.isDirect ? otherParticipants(conversation).join(', ') : null}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -108,7 +135,22 @@ export function MessageThread({
         onDelete={onDelete}
       />
 
-      <MessageComposer onSend={onSend} disabled={busy} />
+      {/*
+        ⚠ ABOVE the composer and OUTSIDE the scrolling list, so it cannot push
+        the newest message out of view as it appears and disappears — which is
+        what a typing line inside the thread does, every few seconds, while
+        somebody is trying to read.
+
+        It occupies no height when nobody is writing: a permanently reserved
+        line is a permanent gap.
+      */}
+      {typing.length > 0 ? (
+        <p aria-live="polite" className="px-4 pb-1 text-xs italic text-muted-foreground">
+          {describeTyping(typing, names)}
+        </p>
+      ) : null}
+
+      <MessageComposer onSend={onSend} onTyping={onTyping} disabled={busy} />
     </div>
   );
 }
@@ -218,6 +260,20 @@ function MessageList({
       <div ref={bottom} />
     </div>
   );
+}
+
+/**
+ * "Ada is typing…", and the plural that stops it being a list of names.
+ *
+ * Three or more become a count: a thread with eight people writing would
+ * otherwise put a paragraph of names where a line belongs, and nobody reads the
+ * eighth name.
+ */
+function describeTyping(typing: readonly string[], names: ReadonlyMap<string, string>): string {
+  const people = typing.map((userId) => names.get(userId) ?? 'Someone');
+  if (people.length === 1) return `${people[0]} is typing…`;
+  if (people.length === 2) return `${people[0]} and ${people[1]} are typing…`;
+  return `${people.length} people are typing…`;
 }
 
 function bubble(message: ThreadMessage, mine: boolean): string {
