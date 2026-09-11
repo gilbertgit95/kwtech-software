@@ -11,6 +11,7 @@ import {
 } from '../domain/participation.js';
 import { CHAT_LIMIT } from '../feature-keys.js';
 import { ChatWriteError } from './chat.errors.js';
+import { ChatEventPublisher } from './chat.events.js';
 import { CHAT_DEFAULT_LIMIT_CHECKER } from './chat.options.js';
 import type { ChatTransaction, ChatWriteClient, ConversationRow, MessageRow } from './chat.repository.js';
 import { CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
@@ -22,6 +23,19 @@ import { CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
  * database — not against anything the caller sent and not against a decision
  * made by a guard. The guard answered "may this user use chat". This answers "is
  * this conversation somewhere they may be", which is the question C1 was about.
+ *
+ * ## And every write ANNOUNCES itself, after it has committed
+ *
+ * ⚠ THE PUBLISH IS ALWAYS OUTSIDE THE TRANSACTION, which is why several methods
+ * below assign the result and return it on a second line rather than returning
+ * the `$transaction` call directly. Announcing from inside means announcing a
+ * message that a rollback then un-sends, to clients that have already drawn it.
+ *
+ * Two writes deliberately announce NOTHING. `markRead` moves the viewer's own
+ * mark — their other tabs are stale for a moment and nobody else's view changes
+ * — and `setBlocked` is private by its nature: telling the blocked person is
+ * exactly what §12's blocking design refuses to do. Both are listed here so the
+ * silence reads as a decision rather than an omission.
  */
 @Injectable()
 export class ChatWriteService {
@@ -34,6 +48,13 @@ export class ChatWriteService {
      * down rather than discovered.
      */
     @Optional() @Inject(CHAT_LIMIT_CHECKER) private readonly limits?: LimitChecker,
+    /**
+     * Absent means nothing is announced, and the writes still happen — the
+     * shape a worker importing this service gets. Optional rather than a null
+     * object because the publisher needs a client of its own, and a service
+     * that constructs one would be choosing an engine.
+     */
+    @Optional() private readonly events?: ChatEventPublisher,
   ) {}
 
   private get checker(): LimitChecker {
@@ -50,7 +71,7 @@ export class ChatWriteService {
   async startDirect(actorId: string, otherUserId: string): Promise<ConversationRow> {
     const directKey = directKeyFor(actorId, otherUserId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const conversation = await this.prisma.$transaction(async (tx) => {
       /*
        * ⚠ Blocking is checked on the way IN, in either direction, and the
        * caller is expected to answer with CONTACT_REFUSED_MESSAGE — the same
@@ -87,6 +108,9 @@ export class ChatWriteService {
       });
       return conversation;
     });
+
+    await this.events?.conversationChanged(conversation.id, 'started');
+    return conversation;
   }
 
   /**
@@ -102,7 +126,7 @@ export class ChatWriteService {
     const title = input.title.trim();
     if (!title) throw new ChatWriteError('invalid', 'A group needs a name', {});
 
-    return this.prisma.$transaction(async (tx) => {
+    const conversation = await this.prisma.$transaction(async (tx) => {
       /*
        * ⚠ COUNTED INSIDE THE TRANSACTION, and the count is this module's own —
        * the checker resolves the cap and never learns what a conversation is.
@@ -150,6 +174,9 @@ export class ChatWriteService {
       }
       return conversation;
     });
+
+    await this.events?.conversationChanged(conversation.id, 'started');
+    return conversation;
   }
 
   /** Add somebody to a conversation the actor is in. */
@@ -180,11 +207,19 @@ export class ChatWriteService {
 
       await this.reviveParticipant(tx, conversationId, userId, 'invited', actorId);
     });
+
+    await this.events?.conversationChanged(conversationId, 'invited');
   }
 
   /** Accept or decline an invitation addressed to the actor. */
   async respondToInvitation(actorId: string, conversationId: string, accept: boolean): Promise<void> {
     await this.transition(actorId, conversationId, accept ? 'accept' : 'decline');
+    /*
+     * ⚠ `alsoTell` the person who answered, because declining takes them OUT of
+     * the audience the publisher computes — and their other tabs are the ones
+     * that most need to drop the invitation from the inbox.
+     */
+    await this.events?.conversationChanged(conversationId, accept ? 'accepted' : 'declined', [actorId]);
   }
 
   /**
@@ -193,6 +228,7 @@ export class ChatWriteService {
    */
   async leave(actorId: string, conversationId: string): Promise<void> {
     await this.transition(actorId, conversationId, 'leave');
+    await this.events?.conversationChanged(conversationId, 'left', [actorId]);
   }
 
   /** Remove somebody else. The creator cannot be removed by anybody. */
@@ -221,6 +257,10 @@ export class ChatWriteService {
         data: { status: 'removed', exitedAt: new Date() },
       });
     });
+
+    // The removed person is told LAST and told at all: their client is the one
+    // holding a conversation it may no longer read.
+    await this.events?.conversationChanged(conversationId, 'removed', [userId]);
   }
 
   /**
@@ -246,7 +286,7 @@ export class ChatWriteService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const { message, isNew } = await this.prisma.$transaction(async (tx) => {
       const me = await this.rowFor(tx, input.conversationId, actorId);
       if (!canAccessConversation(me)) {
         throw new ChatWriteError('not_a_participant', 'You are not in that conversation', {
@@ -259,7 +299,7 @@ export class ChatWriteService {
           where: { conversationId: input.conversationId, clientMessageId: input.clientMessageId },
         });
         // The same message, returned again. A retry is not an error.
-        if (already) return already;
+        if (already) return { message: already, isNew: false };
       }
 
       const message = await tx.chatMessage.create({
@@ -282,8 +322,17 @@ export class ChatWriteService {
         where: { id: input.conversationId },
         data: { lastMessageAt: message.createdAt },
       });
-      return message;
+      return { message, isNew: true };
     });
+
+    /*
+     * ⚠ A RETRY ANNOUNCES NOTHING. The first send already published this
+     * message; publishing it again would append it twice on every screen but
+     * the sender's — theirs dedupes on `clientMessageId`, which is exactly the
+     * reason the other screens cannot.
+     */
+    if (isNew) await this.events?.messageSent(message);
+    return message;
   }
 
   /** Edit your own message. Never touches `createdAt`. */
@@ -293,7 +342,7 @@ export class ChatWriteService {
       throw new ChatWriteError('invalid', 'That message cannot be saved', { refused: prepared.refused });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const edited = await this.prisma.$transaction(async (tx) => {
       const message = await tx.chatMessage.findUnique({ where: { id: messageId } });
       if (!message) throw new ChatWriteError('not_found', 'No such message', { messageId });
 
@@ -307,6 +356,8 @@ export class ChatWriteService {
 
       return tx.chatMessage.update({ where: { id: messageId }, data: editPatch(prepared.body, new Date()) });
     });
+    await this.events?.messageChanged(edited);
+    return edited;
   }
 
   /**
@@ -316,7 +367,7 @@ export class ChatWriteService {
    * read grants. The other half — being in the conversation — is read here.
    */
   async delete(actorId: string, messageId: string, options: { mayModerate: boolean }): Promise<MessageRow> {
-    return this.prisma.$transaction(async (tx) => {
+    const deleted = await this.prisma.$transaction(async (tx) => {
       const message = await tx.chatMessage.findUnique({ where: { id: messageId } });
       if (!message) throw new ChatWriteError('not_found', 'No such message', { messageId });
 
@@ -341,6 +392,11 @@ export class ChatWriteService {
         data: { deletedAt: new Date(), deletedById: actorId },
       });
     });
+
+    // The tombstone is an EVENT, not a silent disappearance: every open thread
+    // has the body on screen already, and only a push can take it back.
+    await this.events?.messageChanged(deleted);
+    return deleted;
   }
 
   /** Rename or re-icon a group. Direct chats have no name to change. */
@@ -349,7 +405,7 @@ export class ChatWriteService {
     conversationId: string,
     input: { title?: string | null; icon?: string | null },
   ): Promise<ConversationRow> {
-    return this.prisma.$transaction(async (tx) => {
+    const renamed = await this.prisma.$transaction(async (tx) => {
       const me = await this.rowFor(tx, conversationId, actorId);
       if (!canAccessConversation(me)) {
         throw new ChatWriteError('not_a_participant', 'You are not in that conversation', { conversationId });
@@ -368,11 +424,14 @@ export class ChatWriteService {
         },
       });
     });
+
+    await this.events?.conversationChanged(conversationId, 'renamed');
+    return renamed;
   }
 
   /** Archive or restore. ⚠ Archiving FREES a cap slot for the creator. */
   async setArchived(actorId: string, conversationId: string, archived: boolean): Promise<ConversationRow> {
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const conversation = await tx.chatConversation.findUnique({ where: { id: conversationId } });
       if (!conversation) throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
 
@@ -396,6 +455,9 @@ export class ChatWriteService {
         data: { archivedAt: archived ? new Date() : null },
       });
     });
+
+    await this.events?.conversationChanged(conversationId, 'archived');
+    return updated;
   }
 
   /**

@@ -1,17 +1,27 @@
 import { Inject, Optional } from '@nestjs/common';
-import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Context, Int, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { CONTACT_REFUSED_MESSAGE } from '../../domain/blocking.js';
+import { withCatchUp } from '../chat.catch-up.js';
 import { ChatWriteError } from '../chat.errors.js';
 import type { ChatModuleOptions } from '../chat.options.js';
+import {
+  CHAT_EVENT,
+  type ChatConversationEvent,
+  type ChatMessageEvent,
+  type ChatPubSub,
+  deliverTo,
+  NULL_CHAT_PUBSUB,
+} from '../chat.pubsub.js';
 import type { MessageRow, ParticipantRow } from '../chat.repository.js';
 import type { ConversationSummary } from '../chat.service.js';
 import { ChatService } from '../chat.service.js';
-import { CHAT_OPTIONS, CHAT_USER_DIRECTORY } from '../chat.tokens.js';
+import { CHAT_OPTIONS, CHAT_PUBSUB, CHAT_USER_DIRECTORY } from '../chat.tokens.js';
 import { ChatWriteService } from '../chat-write.service.js';
 import type { UserDirectory } from '../user-directory.js';
 import {
   ChatConversationType,
   ChatDirectoryMatchType,
+  ChatEventType,
   ChatMessagePageType,
   ChatMessageType,
   ChatParticipantType,
@@ -47,6 +57,12 @@ export class ChatResolver {
     private readonly writes: ChatWriteService,
     @Inject(CHAT_OPTIONS) private readonly options: ChatModuleOptions,
     @Optional() @Inject(CHAT_USER_DIRECTORY) private readonly directory?: UserDirectory,
+    /**
+     * Absent means the one subscription below streams nothing and ends — see
+     * `NULL_CHAT_PUBSUB`. A host that mounts chat without realtime gets a
+     * working product over HTTP, which is the point of the port being optional.
+     */
+    @Optional() @Inject(CHAT_PUBSUB) private readonly pubsub?: ChatPubSub,
   ) {}
 
   // ── queries ───────────────────────────────────────────────────────────────
@@ -287,6 +303,108 @@ export class ChatResolver {
     return true;
   }
 
+  // ── the one subscription ──────────────────────────────────────────────────
+
+  /**
+   * Everything happening to this person, on one stream.
+   *
+   * ⚠ ONE SUBSCRIPTION PER SOCKET, not one per conversation. A topic per thread
+   * would have a socket holding as many subscriptions as somebody has
+   * conversations, growing as they talk to more people — which is §12.29's open
+   * question answered by not creating it. The cost is that every subscriber's
+   * filter runs over every published event; the saving is that the number of
+   * subscriptions is one, forever.
+   *
+   * ⚠ `since` IS WHAT STOPS THIS LOSING MAIL. The socket closes when its
+   * authorization expires, by design, so every client reconnects on a clock it
+   * does not control — and the pub/sub has no replay, so an event published in
+   * that gap is gone rather than late. The client sends the cursor of the last
+   * message it holds and gets the gap back before anything live. See
+   * `withCatchUp` for the ordering that makes it race-free.
+   *
+   * Guarded by the `chat:read` BINDING — `Subscription.chatEvents` — like every
+   * other operation here. The subscription is authorised ONCE, at this call;
+   * participation is re-asked on every publish instead, which is what the
+   * audience on each event is.
+   */
+  @Subscription(() => ChatEventType, {
+    name: 'chatEvents',
+    /**
+     * ⚠ REQUIRED, and its absence is silent — the same trap `planChanged`
+     * documents. `graphql-subscriptions` assumes a payload is already keyed by
+     * the field name, and without this GraphQL finds no `chatEvents` property
+     * and delivers `data: null` forever.
+     */
+    resolve: (payload: ChatEventType) => payload,
+  })
+  chatEvents(
+    @Context() gql: { req?: unknown },
+    @Args('since', { type: () => String, nullable: true }) since?: string | null,
+  ): AsyncIterableIterator<ChatEventType> {
+    // Resolved HERE rather than inside the generator: an unauthenticated
+    // subscribe must be refused at subscribe, not on the first event that never
+    // comes.
+    const actorId = this.actor(gql.req);
+    const cursor = decodeCursor(since);
+
+    const live = (this.pubsub ?? NULL_CHAT_PUBSUB).asyncIterableIterator<ChatMessageEvent | ChatConversationEvent>([
+      CHAT_EVENT.message,
+      CHAT_EVENT.conversation,
+    ]);
+
+    return withCatchUp<ChatMessageEvent | ChatConversationEvent, ChatEventType>({
+      live,
+      catchUp: () => this.catchUp(actorId, cursor),
+      // ⚠ THE PER-PUBLISH FILTER. One published event, every subscriber's own
+      // copy of this question.
+      transform: (event) => (deliverTo(event, actorId) ? renderEvent(event) : null),
+      /*
+       * ⚠ THE CHANGE IS PART OF THE KEY, and dropping it would be a bug that
+       * only shows up on reconnection: a catch-up row carries the message as it
+       * stands NOW, and a live `changed` for that same id published a moment
+       * later would be suppressed as a duplicate — leaving the edit invisible
+       * until the next reload.
+       */
+      keyOf: (item) => (item.message ? `${item.change}:${item.message.id}` : null),
+    });
+  }
+
+  /**
+   * What the viewer missed, with `sync` always at the head of it.
+   *
+   * ⚠ `sync` IS EMITTED EVEN WITH NO CURSOR AND EVEN WITH NOTHING MISSED,
+   * because it is what covers everything a message replay cannot: an
+   * invitation, a removal, a rename and an archive have no rows to page
+   * through. One event that means "re-read your list" is the complete answer to
+   * all four, and it costs one query on a client that was only away for a
+   * second.
+   */
+  private async catchUp(
+    actorId: string,
+    cursor: { createdAt: Date; id: string } | undefined,
+  ): Promise<readonly ChatEventType[]> {
+    const sync: ChatEventType = { kind: 'sync', conversationId: null, change: null, message: null };
+    if (!cursor) return [sync];
+
+    const { messages } = await this.chat.missedSince(actorId, cursor);
+    return [
+      sync,
+      ...messages.map(
+        (message): ChatEventType => ({
+          kind: 'message',
+          conversationId: message.conversationId,
+          /*
+           * Replayed as `sent` whatever has happened to it since: to a client
+           * that never saw the message, an edit is not a change, it is the
+           * message. `changed` would name a row it does not hold.
+           */
+          change: 'sent',
+          message: renderMessage(message),
+        }),
+      ),
+    ];
+  }
+
   // ── rendering ─────────────────────────────────────────────────────────────
 
   /**
@@ -343,6 +461,22 @@ function renderParticipant(row: ParticipantRow, people: ReadonlyMap<string, stri
     displayName: people.get(row.userId) ?? row.userId,
     status: row.status,
   };
+}
+
+/**
+ * A published event as one viewer sees it — the audience dropped, which is the
+ * only reason it is safe to carry one.
+ */
+function renderEvent(event: ChatMessageEvent | ChatConversationEvent): ChatEventType {
+  if ('message' in event) {
+    return {
+      kind: 'message',
+      conversationId: event.message.conversationId,
+      change: event.change,
+      message: renderMessage(event.message),
+    };
+  }
+  return { kind: 'conversation', conversationId: event.conversationId, change: event.change, message: null };
 }
 
 function renderMessage(row: MessageRow): ChatMessageType {

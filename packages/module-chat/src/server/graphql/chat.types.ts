@@ -111,6 +111,60 @@ export class ChatMessagePageType {
   nextCursor!: string | null;
 }
 
+/**
+ * One thing that happened, pushed down the socket.
+ *
+ * ⚠ ONE TYPE FOR EVERY EVENT, rather than a union. A union would be tidier in
+ * the schema and would cost every client an inline fragment per case, and the
+ * cases differ by two nullable fields — so this is the shape that stays cheap
+ * as step 8 adds presence and typing to it.
+ *
+ * `kind` says which shape this is; `change` says what happened within it.
+ */
+@ObjectType('ChatEvent')
+export class ChatEventType {
+  /**
+   * 'sync' | 'message' | 'conversation'.
+   *
+   * ⚠ `sync` is the FIRST event on every connection and every reconnection, and
+   * it carries nothing: it means "you have been away, re-read your list". It is
+   * what makes an invitation, a removal or a rename survive a dropped socket
+   * without any of them needing a replay of their own.
+   */
+  @Field()
+  kind!: string;
+
+  /** Absent only on `sync`, which is about everything at once. */
+  @Field(() => String, { nullable: true })
+  conversationId!: string | null;
+
+  /**
+   * For a message: 'sent' | 'changed' — one appends, the other replaces.
+   * For a conversation: 'started' | 'invited' | 'accepted' | 'declined' |
+   * 'left' | 'removed' | 'renamed' | 'archived'.
+   */
+  @Field(() => String, { nullable: true })
+  change!: string | null;
+
+  /**
+   * ⚠ CARRIED, where a conversation event only says "re-read".
+   *
+   * The departure is deliberate and it is the one place chat does not follow
+   * `planChanged`'s "an event is a hint, the guarded query is the data" rule. A
+   * message that costs a round trip before it can be drawn is a chat that feels
+   * broken, and the delivery decision is not weaker for it: the audience on
+   * every published event is re-read from the participant rows AT PUBLISH TIME,
+   * which is fresher than the check any query would repeat.
+   *
+   * What it does cost is bounded and known: entitlement — `chat:read` itself —
+   * is checked once at subscribe, so a role change mid-socket is honoured only
+   * when the socket next closes, which the token expiry guarantees within
+   * minutes. Participation is not on that clock; the key is.
+   */
+  @Field(() => ChatMessageType, { nullable: true })
+  message!: ChatMessageType | null;
+}
+
 @ObjectType('ChatDirectoryMatch')
 export class ChatDirectoryMatchType {
   @Field()

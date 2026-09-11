@@ -424,6 +424,31 @@ describe('bindings from ANOTHER module', () => {
     await expect(g.canActivate(operation('Mutation', 'sendChatMessage'))).resolves.toBe(true);
   });
 
+  it('⚠ guards a SUBSCRIPTION the same way, which is not the same surface', async () => {
+    /*
+     * `graphql_subscription` is a distinct surface from `graphql_operation`
+     * precisely because of what it buys: a subscription is authorised ONCE, at
+     * subscribe, and then streams. A guard that matched queries and mutations
+     * but not subscriptions would leave the one long-lived surface open.
+     */
+    const streaming = [
+      {
+        key: 'chat:read',
+        module: 'chat',
+        level: 'app' as const,
+        label: 'Use chat',
+        description: 'See conversations and read messages in them.',
+        bindings: [{ surface: 'graphql_subscription' as const, identifier: 'Subscription.chatEvents' }],
+      },
+    ];
+
+    const denied = guard({ ...principal, featureRegistry: streaming }, holding([]));
+    await expect(denied.canActivate(operation('Subscription', 'chatEvents'))).rejects.toThrow(/chat:read/);
+
+    const admitted = guard({ ...principal, featureRegistry: streaming }, holding(['chat:read']));
+    await expect(admitted.canActivate(operation('Subscription', 'chatEvents'))).resolves.toBe(true);
+  });
+
   it('leaves an operation nobody bound alone', async () => {
     const loadContext = jest.fn();
     const g = guard({ ...principal, featureRegistry: contributed }, loadContext);

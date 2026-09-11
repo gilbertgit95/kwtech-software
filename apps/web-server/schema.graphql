@@ -63,6 +63,13 @@ type ChatDirectoryMatch {
   userId: String!
 }
 
+type ChatEvent {
+  change: String
+  conversationId: String
+  kind: String!
+  message: ChatMessage
+}
+
 type ChatMessage {
   authorId: String
   body: String
@@ -488,6 +495,7 @@ type SessionInfo {
 }
 
 type Subscription {
+  chatEvents(since: String): ChatEvent!
   planChanged: PermissionPlanChanged!
 }
 

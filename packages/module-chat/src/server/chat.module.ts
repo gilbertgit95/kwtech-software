@@ -1,4 +1,5 @@
 import { type DynamicModule, Module, type Provider } from '@nestjs/common';
+import { ChatEventPublisher } from './chat.events.js';
 import type { ChatModuleOptions } from './chat.options.js';
 import { ChatService } from './chat.service.js';
 import {
@@ -6,6 +7,7 @@ import {
   CHAT_OPTIONS,
   CHAT_PRISMA,
   CHAT_PRISMA_WRITE,
+  CHAT_PUBSUB,
   CHAT_USER_DIRECTORY,
 } from './chat.tokens.js';
 import { ChatWriteService } from './chat-write.service.js';
@@ -35,7 +37,12 @@ export class ChatModule {
 
     const exposeGraphql = options.expose?.graphql ?? true;
 
-    const providers: Provider[] = [{ provide: CHAT_OPTIONS, useValue: options }, ChatService, ChatWriteService];
+    const providers: Provider[] = [
+      { provide: CHAT_OPTIONS, useValue: options },
+      ChatService,
+      ChatWriteService,
+      ChatEventPublisher,
+    ];
     if (options.prismaProvider) providers.push(options.prismaProvider as Provider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider as Provider);
     if (options.userDirectoryProvider) providers.push(options.userDirectoryProvider as Provider);
@@ -48,6 +55,13 @@ export class ChatModule {
      */
     if (options.limitCheckerProvider) providers.push(options.limitCheckerProvider as Provider);
     else providers.push({ provide: CHAT_LIMIT_CHECKER, useValue: undefined });
+    /*
+     * ⚠ No engine means the NULL one, which publishes into nothing and whose
+     * subscription ends rather than hangs. Chat works over HTTP alone; it is
+     * simply not live.
+     */
+    if (options.pubsubProvider) providers.push(options.pubsubProvider as Provider);
+    else providers.push({ provide: CHAT_PUBSUB, useValue: undefined });
 
     if (exposeGraphql) providers.push(ChatResolver);
 
@@ -55,9 +69,9 @@ export class ChatModule {
       module: ChatModule,
       imports: (options.imports ?? []) as NonNullable<DynamicModule['imports']>,
       providers,
-      exports: [ChatService, ChatWriteService, CHAT_OPTIONS],
+      exports: [ChatService, ChatWriteService, ChatEventPublisher, CHAT_OPTIONS],
     };
   }
 }
 
-export { CHAT_LIMIT_CHECKER, CHAT_OPTIONS, CHAT_PRISMA, CHAT_PRISMA_WRITE, CHAT_USER_DIRECTORY };
+export { CHAT_LIMIT_CHECKER, CHAT_OPTIONS, CHAT_PRISMA, CHAT_PRISMA_WRITE, CHAT_PUBSUB, CHAT_USER_DIRECTORY };

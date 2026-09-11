@@ -33,6 +33,17 @@ export interface ChatModuleOptions {
   /** A `UserDirectory` provider. Required in practice; see that port. */
   userDirectoryProvider?: unknown;
   /**
+   * A `ChatPubSub` provider. ⚠ Omitting it means NO REALTIME — the subscription
+   * is still published in the schema and ends immediately, and every write
+   * still succeeds. That is the right shape for a host with no socket, and the
+   * wrong one to arrive at by accident, so it is one explicit line like the cap.
+   *
+   * ⚠ Bind the app's OWN engine, never a fresh `new PubSub()`: two engines in
+   * one process do not see each other's publishes, and the failure is a
+   * subscriber that waits forever with no error.
+   */
+  pubsubProvider?: unknown;
+  /**
    * The module-kit `LimitChecker`. ⚠ Omitting it means NO CAP — the null object
    * — which is what lets chat run in an app with no permission model at all.
    */

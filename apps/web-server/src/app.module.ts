@@ -1,5 +1,5 @@
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
-import { CHAT_LIMIT_CHECKER, CHAT_USER_DIRECTORY, chatServerModule } from '@kwtech/module-chat/server';
+import { CHAT_LIMIT_CHECKER, CHAT_PUBSUB, CHAT_USER_DIRECTORY, chatServerModule } from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
 import {
   FeatureGuard,
@@ -251,6 +251,20 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
      * of the app resolves.
      */
     limitCheckerProvider: { provide: CHAT_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    /*
+     * ⚠ THE SAME ENGINE `module-permissions` PUBLISHES INTO, and that is the
+     * whole reason `realtimePubSub()` exists rather than a `new PubSub()` at
+     * each binding. Two engines in one process do not see each other's
+     * publishes, and the failure is silent — a subscriber waiting forever with
+     * no error anywhere.
+     *
+     * It is also where single-replica is ENFORCED rather than assumed
+     * (PLAN §12.28), which matters more for chat than for anything before it: a
+     * plan badge arriving late is a stale screen, a message that never arrives
+     * is mail that was lost while the sender watched it send.
+     */
+    pubsubProvider: { provide: CHAT_PUBSUB, useValue: realtimePubSub() },
 
     /*
      * Principal → userId. The same seam `resolvePrincipal` is, narrowed: chat

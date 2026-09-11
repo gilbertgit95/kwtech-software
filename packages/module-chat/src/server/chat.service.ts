@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { isContactBlocked } from '../domain/blocking.js';
-import { countsAsUnread, pageSize } from '../domain/messages.js';
+import { countsAsUnread, MAX_CATCH_UP, pageSize } from '../domain/messages.js';
 import { canAccessConversation, isLiveParticipant } from '../domain/participation.js';
 import type { BlockView } from '../types.js';
 import { ChatWriteError } from './chat.errors.js';
@@ -148,6 +148,43 @@ export class ChatService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: pageSize(options.take),
     });
+  }
+
+  /**
+   * Everything the viewer missed while their socket was down.
+   *
+   * ⚠ ACROSS EVERY CONVERSATION AT ONCE, and in ASCENDING order — the opposite
+   * of `listMessages` on both counts, because this is a replay rather than a
+   * page. A thread is read backwards from the newest; a gap is filled forwards
+   * from where the client stopped, or it arrives out of order.
+   *
+   * `truncated` rather than a short page: see `MAX_CATCH_UP`. The caller emits
+   * `sync` regardless, so a viewer who missed too much re-reads instead of
+   * being handed an arbitrary slice of a gap.
+   */
+  async missedSince(
+    actorId: string,
+    after: { createdAt: Date; id: string },
+  ): Promise<{ messages: MessageRow[]; truncated: boolean }> {
+    const mine = await this.prisma.chatParticipant.findMany({ where: { userId: actorId, status: 'active' } });
+    if (mine.length === 0) return { messages: [], truncated: false };
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: {
+        conversationId: { in: mine.map((row) => row.conversationId) },
+        // The same keyset pair the thread is paged by, pointing the other way.
+        OR: [{ createdAt: { gt: after.createdAt } }, { createdAt: after.createdAt, id: { gt: after.id } }],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      /*
+       * One more than the threshold, so "there were too many" is answered by
+       * the same query rather than by a second count.
+       */
+      take: MAX_CATCH_UP + 1,
+    });
+
+    if (messages.length > MAX_CATCH_UP) return { messages: [], truncated: true };
+    return { messages, truncated: false };
   }
 
   /** The viewer's unread count for one conversation, from their own mark. */

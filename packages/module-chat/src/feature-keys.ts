@@ -104,6 +104,16 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       { surface: 'graphql_operation', identifier: 'Query.chatConversation' },
       { surface: 'graphql_operation', identifier: 'Query.chatMessages' },
       { surface: 'graphql_operation', identifier: 'Mutation.markChatRead' },
+      /*
+       * ⚠ ITS OWN SURFACE, and that distinction is the point of
+       * `graphql_subscription` existing separately. A subscription is
+       * authorised ONCE, here, and then streams for as long as the socket
+       * lives — so this key is checked at subscribe and never again, and the
+       * socket closing at token expiry is what bounds how stale that answer can
+       * get. Participation is NOT on that clock: it is re-read on every
+       * publish.
+       */
+      { surface: 'graphql_subscription', identifier: 'Subscription.chatEvents' },
     ],
   },
   {

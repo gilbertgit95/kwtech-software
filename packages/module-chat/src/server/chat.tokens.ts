@@ -22,6 +22,17 @@ export const CHAT_PRISMA_WRITE = 'kwtech:chat-prisma-write';
 export const CHAT_OPTIONS = 'kwtech:chat-options';
 
 /**
+ * The pub/sub engine, if the host runs subscriptions.
+ *
+ * ⚠ Optional, and its default is a NULL OBJECT that publishes into nothing —
+ * so `ChatWriteService` is importable by a worker with no GraphQL layer and no
+ * socket. The engine itself is a DEPLOYMENT fact the app owns (see the host's
+ * `realtimePubSub()`), and binding a constructor here instead would give the
+ * process a second engine whose publishes nobody else sees.
+ */
+export const CHAT_PUBSUB = 'kwtech:chat-pubsub';
+
+/**
  * Turning an id into a person, and an email into an id.
  *
  * ⚠ THE ONE GENUINELY NEW PORT. Both halves read `auth_user`, which belongs to

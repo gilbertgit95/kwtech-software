@@ -173,11 +173,54 @@ export function fakeClient(state: FakeState = emptyState()) {
           ) ?? null
         );
       },
-      async findMany(args: { where: { conversationId: string | { in: string[] } }; take?: number }) {
-        const id = typeof args.where.conversationId === 'string' ? args.where.conversationId : null;
+      /**
+       * ⚠ HONOURS THE KEYSET, both directions, and the ORDER it is asked for.
+       *
+       * It used to sort descending and ignore the `OR` clause entirely, which
+       * made it a fake that could not fail the way the database can: a paging
+       * bug would pass here and re-show rows in production. `missedSince` pages
+       * FORWARDS, so an ascending order that was never honoured would have been
+       * a replay delivered backwards.
+       */
+      async findMany(args: {
+        where: {
+          conversationId: string | { in: string[] };
+          OR?: ({ createdAt: { lt?: Date; gt?: Date } } | { createdAt: Date; id: { lt?: string; gt?: string } })[];
+        };
+        orderBy?: ({ createdAt: 'asc' | 'desc' } | { id: 'asc' | 'desc' })[];
+        take?: number;
+      }) {
+        const where = args.where;
+        const inScope = (row: MessageRow) =>
+          typeof where.conversationId === 'string'
+            ? row.conversationId === where.conversationId
+            : where.conversationId.in.includes(row.conversationId);
+
+        // The pair, exactly as Prisma is asked for it: a timestamp comparison
+        // OR the same timestamp with the id breaking the tie.
+        const matchesKeyset = (row: MessageRow) => {
+          if (!where.OR) return true;
+          return where.OR.some((clause) => {
+            if ('id' in clause) {
+              if (row.createdAt.getTime() !== clause.createdAt.getTime()) return false;
+              return clause.id.lt !== undefined ? row.id < clause.id.lt : row.id > (clause.id.gt as string);
+            }
+            const bound = clause.createdAt;
+            return bound.lt !== undefined
+              ? row.createdAt.getTime() < bound.lt.getTime()
+              : row.createdAt.getTime() > (bound.gt as Date).getTime();
+          });
+        };
+
+        const direction = (args.orderBy?.[0] as { createdAt?: 'asc' | 'desc' } | undefined)?.createdAt ?? 'desc';
+        const sign = direction === 'asc' ? 1 : -1;
+
         return state.messages
-          .filter((row) => (id ? row.conversationId === id : true))
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .filter((row) => inScope(row) && matchesKeyset(row))
+          .sort((a, b) => {
+            const byTime = a.createdAt.getTime() - b.createdAt.getTime();
+            return sign * (byTime !== 0 ? byTime : a.id.localeCompare(b.id));
+          })
           .slice(0, args.take ?? undefined);
       },
       async count(args: { where: { conversationId: string; authorId?: { not: string } } }) {

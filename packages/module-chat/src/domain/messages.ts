@@ -29,6 +29,19 @@ export const MAX_BODY_CODE_POINTS = 4000;
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_PAGE_SIZE = 30;
 
+/**
+ * The most a reconnecting socket will be told about in one go.
+ *
+ * ⚠ NOT A PAGE SIZE — a THRESHOLD, and past it the replay is abandoned rather
+ * than truncated. A client that missed more than this was away long enough that
+ * its whole view is stale, and replaying the newest two hundred of four hundred
+ * messages would leave a thread with a hole in the middle that nothing ever
+ * fills. The `sync` event that precedes every catch-up already tells it to
+ * re-read, so abandoning the replay is the complete answer and truncating is
+ * the broken one.
+ */
+export const MAX_CATCH_UP = 200;
+
 export type BodyRefusal = 'empty' | 'too_long';
 
 /**

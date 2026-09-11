@@ -6,9 +6,12 @@
  * domain rules installs no framework.
  */
 
+export * from './chat.catch-up.js';
 export * from './chat.errors.js';
+export * from './chat.events.js';
 export * from './chat.module.js';
 export * from './chat.options.js';
+export * from './chat.pubsub.js';
 export * from './chat.repository.js';
 export * from './chat.service.js';
 export * from './chat.tokens.js';

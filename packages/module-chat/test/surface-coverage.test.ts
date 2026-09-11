@@ -46,7 +46,7 @@ function publishedOperations(): string[] {
   // `[\s\S]*?` rather than `[^)]*`: the decorator's first argument is a thunk
   // — `@Query(() => [ChatConversationType], { name: '...' })` — so stopping at
   // the first ')' finds nothing at all.
-  for (const match of source.matchAll(/@(Query|Mutation)\([\s\S]*?name:\s*'([^']+)'/g)) {
+  for (const match of source.matchAll(/@(Query|Mutation|Subscription)\([\s\S]*?name:\s*'([^']+)'/g)) {
     found.push(`${match[1]}.${match[2]}`);
   }
   return found;
@@ -55,7 +55,12 @@ function publishedOperations(): string[] {
 const BOUND = new Map<string, string>();
 for (const spec of CHAT_FEATURE_REGISTRY) {
   for (const binding of spec.bindings ?? []) {
-    if (binding.surface === 'graphql_operation') BOUND.set(binding.identifier, spec.key);
+    // ⚠ BOTH SURFACES. A subscription is bound as `graphql_subscription`, and
+    // reading only `graphql_operation` here would have reported the one
+    // streaming surface in the module as unguarded coverage.
+    if (binding.surface === 'graphql_operation' || binding.surface === 'graphql_subscription') {
+      BOUND.set(binding.identifier, spec.key);
+    }
   }
 }
 
@@ -84,5 +89,12 @@ describe('every chat operation is guarded or deliberately is not', () => {
   it('guards deleting somebody else’s message with a DIFFERENT key from deleting your own', () => {
     expect(BOUND.get('Mutation.deleteChatMessage')).toBe('chat:send');
     expect(BOUND.get('Mutation.moderateChatMessage')).toBe('chat:moderate');
+  });
+
+  it('⚠ guards the socket with the same key as the queries it duplicates', () => {
+    // The subscription carries message bodies. Binding it to anything weaker
+    // than the query that returns the same rows would make the socket the way
+    // around `chat:read`.
+    expect(BOUND.get('Subscription.chatEvents')).toBe('chat:read');
   });
 });

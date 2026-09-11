@@ -533,6 +533,91 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-11** — **STEP 5, the server half: chat streams, and the stream does
+  not lose mail.**
+
+  **⚠ THE AUDIENCE IS COMPUTED PER PUBLISH, which is the entire security
+  argument for carrying a message body over a socket.** A subscription is
+  authorised ONCE, at subscribe, and then streams for as long as the socket
+  lives — so nothing checked at subscribe can answer "is this person still in
+  conversation 42". Every published event therefore carries the participant ids
+  as they stand AT THAT INSTANT, read from the database by `ChatEventPublisher`,
+  and each subscriber's filter asks only whether it is in that list. One query
+  per event, not one per event per subscriber, and fresher than any
+  subscribe-time check could be. A person removed at 10:00 stops receiving at
+  10:00, not when their token expires.
+
+  Message events reach ACTIVE participants only. An invited person may see that
+  they were invited and never what was said, and the push path is the one place
+  that rule could have been quietly skipped.
+
+  **⚠ CATCH-UP, AND THE ORDERING THAT MAKES IT RACE-FREE.** The socket closes
+  when its authorization runs out, so every client reconnects on a clock it does
+  not control, and the in-memory pub/sub has no replay: an event published in
+  that gap is gone, not late. So `chatEvents(since:)` replays the gap from the
+  database before streaming anything live. The naive order — query, then
+  subscribe — leaves a window exactly as long as the query, so `withCatchUp`
+  PULLS FIRST (which is what subscribes), then runs the query, then emits the
+  replay, then drains the live stream skipping what the replay already carried.
+  There is a test that publishes DURING the catch-up query and asserts it
+  arrives; reversing the two lines fails that test and nothing else, which is
+  the only reason to trust the comment above them.
+
+  **Four decisions made here**
+
+  1. ⚠ **The dedupe key includes the CHANGE, not just the message id.** A replay
+     carries the message as it stands now; a live `changed` for that same id a
+     moment later would be swallowed as a duplicate, and the edit would stay
+     invisible until the next reload. Its own test.
+  2. ⚠ **`sync` is emitted on every (re)subscribe, always, even with no cursor
+     and nothing missed.** It carries nothing and means "re-read your list". It
+     is what covers everything a message replay cannot — an invitation, a
+     removal, a rename, an archive have no rows to page — and it is why none of
+     those needed a replay mechanism of their own.
+  3. ⚠ **Past `MAX_CATCH_UP` (200) the replay is ABANDONED, not truncated.**
+     Replaying the newest 200 of 400 leaves a hole in the middle that nothing
+     ever fills. `sync` has already told the client to re-read, so abandoning is
+     the complete answer and truncating is the broken one.
+  4. **Messages carry their body; conversation events say "re-read".** The one
+     place chat departs from `planChanged`'s "an event is a hint, the guarded
+     query is the data" rule, and only for messages — a message that costs a
+     round trip before it can be drawn is a chat that feels broken. What the
+     departure costs is bounded and written down: entitlement (`chat:read`
+     itself) is checked once at subscribe, so a role change mid-socket is
+     honoured when the socket next closes, which token expiry guarantees within
+     minutes. Participation is not on that clock; only the key is.
+
+  **ONE SUBSCRIPTION PER SOCKET, which answers §12.29's open half.** Two
+  triggers and one `chatEvents` field, not a topic per conversation — that would
+  have a socket holding as many subscriptions as somebody has threads, growing
+  as they talk to more people. The cost is that every subscriber's filter runs
+  over every publish; the saving is that the count is one, forever.
+
+  **⚠ THE PUBLISH IS ALWAYS OUTSIDE THE TRANSACTION.** Announcing from inside
+  announces a message a rollback then un-sends, to clients that have already
+  drawn it — so several write methods now assign and return on a second line
+  rather than returning the `$transaction` call. A publish that throws is caught
+  and logged: the message is saved, and turning a delivered message into a 500
+  would make the client retry something that already happened. A RETRY of the
+  same `clientMessageId` publishes nothing, because the first send already did.
+
+  Two writes announce nothing, deliberately: `markRead` (nobody else's view
+  changes) and `setBlocked` (telling the blocked person is exactly what the
+  blocking design refuses to do). Written down so the silence reads as a
+  decision.
+
+  **The fake client learned the keyset.** It sorted descending and ignored the
+  `OR` clause entirely, so a paging bug would have passed there and re-shown
+  rows in production — and `missedSince` pages FORWARDS, so an ascending order
+  that was never honoured would have delivered a replay backwards.
+
+  **Verified:** 142 tests in `module-chat`, `turbo run test typecheck lint`
+  green, the server boots with `ChatModule` and emits `chatEvents(since: String):
+  ChatEvent!` into `schema.graphql`. ⚠ Still NOT verified over a real socket —
+  that needs a signed-in session to mint a ws ticket, and the guard's half is
+  asserted in `module-permissions` instead: a `graphql_subscription` binding
+  refuses `Subscription.chatEvents` without `chat:read` and admits it with.
+
 - **2026-09-11** — **STEP 4: the server half — chat has a database, a GraphQL
   surface, and participation re-asked on every path.**
 
@@ -1449,10 +1534,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
   4. ✅ **DONE 2026-09-11.** Server: repository, read/write services on
      separate clients, GraphQL, participation enforced on every path — plus the
      app adopting the package, which is what created the tables.
-  5. Realtime: per-publish filter, the app-owned connection (§12.39), a
-     `graphql_subscription` binding, and ⚠ CATCH-UP ON EVERY (RE)SUBSCRIBE —
-     the socket closes every five minutes by design and the pub/sub has no
-     replay, so a message published in the gap is lost without it (2026-09-11).
+  5. ⚠ **THE SERVER HALF DONE 2026-09-11.** Realtime: per-publish filter, a
+     `graphql_subscription` binding, and CATCH-UP ON EVERY (RE)SUBSCRIBE — the
+     socket closes when its authorization expires by design and the pub/sub has
+     no replay, so a message published in the gap is lost without it. What
+     remains is the APP-OWNED CONNECTION (§12.39): one socket per tab, owned by
+     the app and handed to the modules, rather than one per module.
   6. `module-kit`: the header slot, plus the chat widget that fills it — a
      subscribing client component, because the unread badge must be right before
      anybody opens the panel.
