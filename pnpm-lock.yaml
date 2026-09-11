@@ -141,6 +141,9 @@ importers:
       '@kwtech/module-auth':
         specifier: workspace:*
         version: link:../../packages/module-auth
+      '@kwtech/module-chat':
+        specifier: workspace:*
+        version: link:../../packages/module-chat
       '@kwtech/module-kit':
         specifier: workspace:*
         version: link:../../packages/module-kit
@@ -309,6 +312,15 @@ importers:
         specifier: workspace:*
         version: link:../module-kit
     devDependencies:
+      '@nestjs/common':
+        specifier: 'catalog:'
+        version: 11.1.29(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1)
+      '@nestjs/core':
+        specifier: 'catalog:'
+        version: 11.1.29(@nestjs/common@11.1.29(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/platform-express@11.1.29)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/graphql':
+        specifier: 'catalog:'
+        version: 13.4.5(@nestjs/common@11.1.29(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@11.1.29)(graphql@17.0.2)(reflect-metadata@0.2.2)
       '@swc/core':
         specifier: ^1.16.1
         version: 1.16.1(@swc/helpers@0.5.23)
@@ -321,9 +333,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.1
+      graphql:
+        specifier: 'catalog:'
+        version: 17.0.2
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@24.10.1)(supports-color@8.1.1)
+      reflect-metadata:
+        specifier: 'catalog:'
+        version: 0.2.2
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

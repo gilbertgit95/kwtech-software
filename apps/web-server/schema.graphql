@@ -45,6 +45,47 @@ type AdminUserWriteResult {
   user: AdminUser
 }
 
+type ChatConversation {
+  archived: Boolean!
+  createdById: String!
+  icon: String
+  id: String!
+  isDirect: Boolean!
+  lastMessageAt: String
+  myStatus: String!
+  participants: [ChatParticipant!]!
+  title: String
+  unread: Int!
+}
+
+type ChatDirectoryMatch {
+  displayName: String!
+  userId: String!
+}
+
+type ChatMessage {
+  authorId: String
+  body: String
+  conversationId: String!
+  createdAt: String!
+  deleted: Boolean!
+  editedAt: String
+  id: String!
+  kind: String!
+  replyToMessageId: String
+}
+
+type ChatMessagePage {
+  items: [ChatMessage!]!
+  nextCursor: String
+}
+
+type ChatParticipant {
+  displayName: String!
+  status: String!
+  userId: String!
+}
+
 input FeatureFilterInput {
   isPrivileged: Boolean
   levels: [String!]
@@ -106,22 +147,36 @@ type Mutation {
   createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   declineInvitation(token: String!): InvitationDeclineResult!
+  deleteChatMessage(messageId: String!): ChatMessage!
+  editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
+  inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
+  leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
+  markChatRead(conversationId: String!, messageId: String!): Boolean!
+  moderateChatMessage(messageId: String!): ChatMessage!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
+  removeChatParticipant(conversationId: String!, userId: String!): Boolean!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
+  setChatArchived(archived: Boolean!, conversationId: String!): Boolean!
+  setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
+  startDirectChat(userId: String!): ChatConversation!
+  startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
@@ -371,6 +426,10 @@ type Query {
   adminUser(userId: String!): AdminUserDetail!
   adminUserSessions(userId: String!): [AdminUserSession!]!
   adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
+  chatConversation(conversationId: String!): ChatConversation
+  chatConversations: [ChatConversation!]!
+  chatDirectoryLookup(email: String!): ChatDirectoryMatch
+  chatMessages(conversationId: String!, cursor: String, limit: Int): ChatMessagePage!
   findUserByEmail(email: String!): FoundUser
   findUsersByIds(ids: [String!]!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview

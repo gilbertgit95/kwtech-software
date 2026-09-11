@@ -49,6 +49,19 @@ export type ChatFeatureKey = (typeof CHAT_FEATURE)[keyof typeof CHAT_FEATURE];
  * module-auth's `account:*` removal already established. Anybody may leave any
  * conversation they are in.
  *
+ * ── three mutations are deliberately UNBOUND ────────────────────────────────
+ *
+ * `leaveChat`, `respondToChatInvitation` and `setChatBlocked` carry no key, and
+ * §12.15's warning applies — an operation that SHOULD be guarded and is not
+ * looks exactly like one that is deliberately public, so this is the place it
+ * is said out loud. All three are the person's OWN remedy over their own row:
+ * leaving, answering an invitation addressed to them, and refusing contact.
+ * Withholding any of them is a lockout dressed as a permission, and the last is
+ * the only remedy anybody has, because §12.42 leaves the platform without one.
+ *
+ * They are still not open: every one of them refuses unless the caller's own
+ * participant row says otherwise.
+ *
  * ── and no read-any-conversation key ────────────────────────────────────────
  *
  * §12.42, deliberately. `platform:support_access` is the single exemption in the
@@ -63,11 +76,20 @@ export type ChatFeatureKey = (typeof CHAT_FEATURE)[keyof typeof CHAT_FEATURE];
  * Contributed to the app's composed registry, exactly as `AUTH_FEATURE_REGISTRY`
  * is. The host spreads it into `seed/registry.ts`: one import, one line.
  *
- * ⚠ Bindings name where each key is ENFORCED. A key with no bindings guards
- * nothing while reading as coverage; one whose binding names a surface that has
- * no guard is worse. They are filled in as each surface lands — steps 4 to 7 —
- * so `auditRegistry()` reports an unbound key rather than this file claiming
- * enforcement that does not exist yet.
+ * ⚠ THE BINDINGS ARE THE GUARD, and that is not a figure of speech here.
+ *
+ * `module-chat` cannot use `@RequireFeature` — the decorator belongs to
+ * `module-permissions`, and a module may not import a module (§9). So every
+ * operation is guarded by the binding below: the host composes this registry
+ * into `featureRegistry`, and `FeatureGuard` refuses an operation whose bound
+ * key the caller does not hold.
+ *
+ * ⚠ That path did not work until 2026-09-11. The guard built its binding index
+ * from `FEATURE_REGISTRY` — permissions' OWN — so a contributed binding was
+ * written to the database, offered by the role editor, and enforced NOWHERE.
+ * It now builds from the composed registry, with a test naming this module.
+ *
+ * `ui_route` and `ui_component` bindings arrive with step 7.
  */
 export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
@@ -77,6 +99,12 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Use chat',
     description: 'See conversations and read messages in them.',
     tags: ['chat'],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Query.chatConversations' },
+      { surface: 'graphql_operation', identifier: 'Query.chatConversation' },
+      { surface: 'graphql_operation', identifier: 'Query.chatMessages' },
+      { surface: 'graphql_operation', identifier: 'Mutation.markChatRead' },
+    ],
   },
   {
     key: CHAT_FEATURE.start,
@@ -85,6 +113,12 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Start a conversation',
     description: 'Open a direct chat or create a group. Subject to the group-chat cap.',
     tags: ['chat'],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.startDirectChat' },
+      { surface: 'graphql_operation', identifier: 'Mutation.startGroupChat' },
+      { surface: 'graphql_operation', identifier: 'Mutation.renameChat' },
+      { surface: 'graphql_operation', identifier: 'Mutation.setChatArchived' },
+    ],
   },
   {
     key: CHAT_FEATURE.invite,
@@ -93,6 +127,7 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Invite to a conversation',
     description: 'Add somebody to a conversation you are in.',
     tags: ['chat'],
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.inviteToChat' }],
   },
   {
     key: CHAT_FEATURE.removeParticipant,
@@ -101,6 +136,7 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Remove a participant',
     description: 'Remove somebody else from a conversation you are in. The creator cannot be removed.',
     tags: ['chat'],
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.removeChatParticipant' }],
   },
   {
     key: CHAT_FEATURE.send,
@@ -109,6 +145,11 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Send messages',
     description: 'Post into a conversation you are in.',
     tags: ['chat'],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.sendChatMessage' },
+      { surface: 'graphql_operation', identifier: 'Mutation.editChatMessage' },
+      { surface: 'graphql_operation', identifier: 'Mutation.deleteChatMessage' },
+    ],
   },
   {
     key: CHAT_FEATURE.moderate,
@@ -122,6 +163,7 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Moderate a conversation',
     description: "Delete somebody else's message in a conversation you are in.",
     tags: ['chat'],
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.moderateChatMessage' }],
   },
   {
     key: CHAT_FEATURE.directory,
@@ -138,6 +180,7 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Look somebody up to invite them',
     description: 'Find a person by their exact email address. No prefix or partial search.',
     tags: ['chat'],
+    bindings: [{ surface: 'graphql_operation', identifier: 'Query.chatDirectoryLookup' }],
   },
 ];
 
@@ -177,5 +220,56 @@ export const CHAT_LIMIT_REGISTRY: readonly LimitContribution[] = [
      * resource for an unknown party.
      */
     defaultValue: 20,
+  },
+];
+
+/**
+ * A role a host MAY create, exported as DATA and never seeded by this module.
+ *
+ * The `createPlanIfAbsent` lesson: which roles a platform offers is an operator
+ * decision, and a seed preserves it by GETTING OUT OF THE WAY rather than by
+ * there being no seed at all. So this module ships the shape and the app decides
+ * whether to create it — created if absent, never rewritten.
+ *
+ * ⚠ Not seeded automatically, and the consequence is deliberate: adopting chat
+ * grants nobody anything until somebody says who may use it. `chat:read` is
+ * genuinely deniable — a contractor account that may not message staff is a real
+ * configuration — so a module that handed itself out on install would be
+ * removing the decision it exists to offer.
+ */
+export interface ChatRolePreset {
+  key: string;
+  label: string;
+  icon: string;
+  features: readonly string[];
+  /** Caps this role grants. Role-sourced, so only meaningful at app level. */
+  limits: Readonly<Record<string, number>>;
+}
+
+export const CHAT_ROLE_PRESETS: readonly ChatRolePreset[] = [
+  {
+    key: 'chat-user',
+    label: 'Chat user',
+    icon: 'message-circle',
+    features: [CHAT_FEATURE.read, CHAT_FEATURE.start, CHAT_FEATURE.send, CHAT_FEATURE.invite, CHAT_FEATURE.directory],
+    // The default from the registry, restated so the role is self-describing:
+    // a preset that inherited its cap silently would change meaning the day the
+    // default did.
+    limits: { [CHAT_LIMIT.groupChats]: 20 },
+  },
+  {
+    key: 'chat-moderator',
+    label: 'Chat moderator',
+    icon: 'shield',
+    features: [
+      CHAT_FEATURE.read,
+      CHAT_FEATURE.start,
+      CHAT_FEATURE.send,
+      CHAT_FEATURE.invite,
+      CHAT_FEATURE.directory,
+      CHAT_FEATURE.removeParticipant,
+      CHAT_FEATURE.moderate,
+    ],
+    limits: { [CHAT_LIMIT.groupChats]: 50 },
   },
 ];

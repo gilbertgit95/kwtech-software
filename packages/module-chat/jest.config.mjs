@@ -6,15 +6,29 @@
  * it lets the suite run against src/ directly — a test that needed `tsc` first
  * would stop being run.
  *
- * No decorator options, unlike module-permissions: this package is PURE DOMAIN
- * today. The day a Nest adapter lands here, they arrive with it.
+ * Decorators are on because the server adapter is Nest and its classes do not
+ * parse without them. `emitDecoratorMetadata` for the same reason tsconfig sets
+ * it: DI reads `design:paramtypes` from it, and the surface-coverage suite reads
+ * the resolver's own operation names back out.
  */
 export default {
+  // The surface-coverage suite reads decorator metadata, which needs the
+  // polyfill loaded before the resolver class is evaluated.
+  setupFiles: ['reflect-metadata'],
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/test'],
   moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
   transform: {
-    '^.+\\.(t|j)sx?$': ['@swc/jest', { jsc: { parser: { syntax: 'typescript' }, target: 'es2023' } }],
+    '^.+\\.(t|j)sx?$': [
+      '@swc/jest',
+      {
+        jsc: {
+          parser: { syntax: 'typescript', decorators: true },
+          transform: { decoratorMetadata: true, legacyDecorator: true },
+          target: 'es2023',
+        },
+      },
+    ],
   },
   collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts'],
 };

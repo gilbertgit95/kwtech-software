@@ -1,5 +1,12 @@
 import { AUTH_PRISMA, type AuthPrismaClient, type AuthTransaction } from '@kwtech/module-auth/server';
 import {
+  CHAT_PRISMA,
+  CHAT_PRISMA_WRITE,
+  type ChatPrismaClient,
+  type ChatTransaction,
+  type ChatWriteClient,
+} from '@kwtech/module-chat/server';
+import {
   PERMISSIONS_PRISMA,
   PERMISSIONS_PRISMA_WRITE,
   type PermissionsPrismaClient,
@@ -114,4 +121,27 @@ export const permissionsWritePrismaProvider: Provider = {
     }),
 };
 
-export type { PermissionsPrismaClient };
+/** Reads need no adapter here either — the delegates fit outright. */
+export const chatPrismaProvider: Provider = {
+  provide: CHAT_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const chatWritePrismaProvider: Provider = {
+  provide: CHAT_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): ChatWriteClient =>
+    withTransaction<ChatTransaction, ChatWriteClient>(prisma, {
+      chatConversation: prisma.chatConversation,
+      chatParticipant: prisma.chatParticipant,
+      chatMessage: prisma.chatMessage,
+      /*
+       * Blocking is written by the person doing it and never by an
+       * administrator: §12.42 leaves the platform with no remedy of its own, so
+       * this table is the only one users maintain directly.
+       */
+      chatBlock: prisma.chatBlock,
+    }),
+};
+
+export type { ChatPrismaClient, PermissionsPrismaClient };

@@ -1,4 +1,5 @@
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
+import { CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '@kwtech/module-chat';
 import type { FeatureContribution } from '@kwtech/module-kit';
 import { composeFeatures, composeLimits, type LimitContribution, type WebModuleDescriptor } from '@kwtech/module-kit';
 import type { FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
@@ -73,6 +74,14 @@ function toFeatureSpec(contribution: FeatureContribution): FeatureSpec {
 const FEATURE_SOURCES: readonly WebModuleDescriptor[] = [
   { key: 'permissions', features: FEATURE_REGISTRY },
   { key: 'auth', features: AUTH_FEATURE_REGISTRY },
+  /*
+   * ⚠ Chat's keys are not documentation. `module-chat` cannot use
+   * `@RequireFeature` — the decorator belongs to another module — so its
+   * operations are guarded by the BINDINGS in this registry, and composing it
+   * here is what turns them on. Drop this line and every chat mutation is
+   * reachable by anybody signed in.
+   */
+  { key: 'chat', features: CHAT_FEATURE_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(FEATURE_SOURCES).map(toFeatureSpec);
@@ -88,7 +97,10 @@ export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(FEATURE_SOUR
  * nothing. Adding `module-chat` here is one entry in the array below, exactly as
  * its features are.
  */
-const LIMIT_SOURCES: readonly WebModuleDescriptor[] = [{ key: 'permissions', limits: LIMIT_CONTRIBUTIONS }];
+const LIMIT_SOURCES: readonly WebModuleDescriptor[] = [
+  { key: 'permissions', limits: LIMIT_CONTRIBUTIONS },
+  { key: 'chat', limits: CHAT_LIMIT_REGISTRY },
+];
 
 /**
  * A contribution narrowed to a spec, CHECKED rather than cast — `toFeatureSpec`

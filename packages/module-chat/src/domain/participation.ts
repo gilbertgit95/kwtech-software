@@ -61,12 +61,16 @@ export type ActiveParticipant = ParticipantView & { status: 'active' };
  * somebody else's message content to a non-participant is exactly the failure
  * `canAccessConversation` exists to prevent.
  */
-export function canSeeInvitation(participant: ParticipantView | null | undefined): boolean {
+export function canSeeInvitation(
+  participant: ParticipantView | null | undefined,
+): participant is ParticipantView & { status: 'invited' } {
   return participant?.status === 'invited';
 }
 
 /** Anything the person is expected to see in their conversation list. */
-export function isLiveParticipant(participant: ParticipantView | null | undefined): boolean {
+export function isLiveParticipant(
+  participant: ParticipantView | null | undefined,
+): participant is ParticipantView & { status: 'active' | 'invited' } {
   return canAccessConversation(participant) || canSeeInvitation(participant);
 }
 
@@ -77,7 +81,7 @@ export function isLiveParticipant(participant: ParticipantView | null | undefine
  * other half, and both are required: holding the key without the row is C1, and
  * holding the row without the key is a revoked account still talking.
  */
-export function canSendTo(participant: ParticipantView | null | undefined): boolean {
+export function canSendTo(participant: ParticipantView | null | undefined): participant is ActiveParticipant {
   return canAccessConversation(participant);
 }
 

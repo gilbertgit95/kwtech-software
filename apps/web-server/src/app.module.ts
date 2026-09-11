@@ -1,6 +1,12 @@
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
+import { CHAT_LIMIT_CHECKER, CHAT_USER_DIRECTORY, chatServerModule } from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
-import { FeatureGuard, PERMISSIONS_PUBSUB, permissionsServerModule } from '@kwtech/module-permissions/server';
+import {
+  FeatureGuard,
+  PERMISSIONS_PUBSUB,
+  PermissionsLimitChecker,
+  permissionsServerModule,
+} from '@kwtech/module-permissions/server';
 import type { ApolloDriverConfig } from '@nestjs/apollo';
 import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD, RouterModule } from '@nestjs/core';
@@ -9,6 +15,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
+import { ChatUserDirectory } from './chat/user-directory.js';
 import { env } from './config/env.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
@@ -16,10 +23,13 @@ import { InvitationsResolver } from './invitations/invitations.resolver.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import {
   authPrismaProvider,
+  chatPrismaProvider,
+  chatWritePrismaProvider,
   permissionsPrismaProvider,
   permissionsWritePrismaProvider,
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { PrismaService } from './prisma/prisma.service.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
@@ -207,6 +217,47 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
      * one thing in the app that most deserves a test and least admits one.
      */
     resolvePrincipal,
+  }),
+
+  /*
+   * THE FIRST MODULE THAT IS NOT PLATFORM, and the shortest entry here — which
+   * is the point of the packaging rule it was designed to. Four ports and a
+   * seam, all of them things only this app can answer.
+   */
+  chatServerModule({
+    prismaProvider: chatPrismaProvider,
+    prismaWriteProvider: chatWritePrismaProvider,
+
+    /*
+     * The directory: an email to a person, and ids to names. Both read
+     * `auth_user`, which belongs to another module — see ./chat/user-directory.ts
+     * for why the app is the only layer that can host it.
+     */
+    userDirectoryProvider: {
+      provide: CHAT_USER_DIRECTORY,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new ChatUserDirectory(prisma),
+    },
+
+    /*
+     * ⚠ THE CAP, and binding it is what makes it exist. Omit this line and chat
+     * still works — the null object allows everything — which is the design goal
+     * and also the hazard: a host that MEANT to enforce the cap and forgot would
+     * get silence. It is one explicit line rather than a default for exactly
+     * that reason.
+     *
+     * `useExisting`, not a new instance: the adapter is a provider of the
+     * permissions module, which is global, so this is the same object the rest
+     * of the app resolves.
+     */
+    limitCheckerProvider: { provide: CHAT_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    /*
+     * Principal → userId. The same seam `resolvePrincipal` is, narrowed: chat
+     * needs only the id, and handing it the whole principal would let it grow an
+     * opinion about what a session is.
+     */
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
   }),
 ];
 

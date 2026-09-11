@@ -16,7 +16,7 @@ Reference repo: **`../masterdb-mgt-tool`** — the newest of the Sensorbee repos
 the template for toolchain, conventions and versions here. `../coseller-mono` is
 consulted only where masterdb has not built something yet (notably GraphQL, §6).
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 ---
 
@@ -32,7 +32,7 @@ Last updated: 2026-09-10
 | `packages/web-ui` | `@kwtech/web-ui` | React + Tailwind 4 + AG Grid Community | — |
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
 | `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
-| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema and pure domain only as of 2026-09-11, ⚠ not yet a dependency of any app (§9) | — |
+| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain and the whole server half as of 2026-09-11; `web-server` depends on it and the tables are migrated. No realtime and no UI yet (§9) | — |
 
 **Planned, not built yet:** `packages/db` (Prisma — see the note below),
 `apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
@@ -532,6 +532,96 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **STEP 4: the server half — chat has a database, a GraphQL
+  surface, and participation re-asked on every path.**
+
+  Step 3 left a package with rules and no tables. This is the step that makes
+  `apps/web-server` depend on it, which is what CREATES them: `compose-schema.mjs`
+  picked up `module-chat/prisma/chat.prisma` the moment the dependency appeared,
+  and `20260911112722_chat_conversations` is applied. Four tables, two enums,
+  keyset index on `(conversationId, createdAt, id)`.
+
+  ⚠ **A BUG IN `FeatureGuard` HAD TO BE FIXED BEFORE ANY OF IT ENFORCED
+  ANYTHING, and it had been there since bindings existed.** The guard built its
+  binding index from a static `FEATURE_REGISTRY` — `module-permissions`' OWN —
+  so a binding CONTRIBUTED by another module was seeded to the database, offered
+  by the role editor, displayed as coverage, and enforced nowhere. It now builds
+  lazily from `options.featureRegistry`, the composed one. This matters more
+  than a one-line diff suggests: `module-chat` cannot use `@RequireFeature` (the
+  decorator belongs to another module, §9), so for chat the BINDINGS ARE THE
+  GUARD, and every `chat:*` mutation would have been reachable by anybody signed
+  in. The exact class of drift bindings exist to close, reappearing one module
+  over.
+
+  **`test/surface-coverage.test.ts` is the parity check that stops it coming
+  back.** It parses the resolver's own `@Query`/`@Mutation` declarations and
+  asserts, both directions, that every published operation is bound to a key or
+  named in `DELIBERATELY_UNBOUND`, and that no binding names an operation that
+  does not exist. Three mutations are on that list and say why in it:
+  `leaveChat`, `respondToChatInvitation`, `setChatBlocked` — each is the
+  person's own remedy over their own participant row, and withholding it would
+  be a lockout dressed as a permission.
+
+  **PARTICIPATION IS NOT PERMISSION, enforced in the service and not the
+  guard.** The key answers "may this person use chat"; the row answers "is this
+  conversation somewhere they may be". Every method on `ChatWriteService`
+  re-reads the participant row inside its transaction and runs it through the
+  step-3 helpers — `canAccessConversation` is now a type predicate on three more
+  of them, so a caller cannot reach `userId` without having asked. C1 was a
+  helper that existed and was never called server-side; this is the shape that
+  makes not calling it a type error.
+
+  **Decisions made here, not in the plan**
+
+  1. ⚠ **`directKey` is COMPUTED SERVER-SIDE, never accepted.** A
+     client-supplied key forges a direct chat between two other people, and the
+     only defence is never taking one.
+  2. ⚠ **The cap is counted INSIDE the transaction**, by chat's own `count` over
+     its own rows — the `LimitChecker` resolves the number and never learns what
+     a conversation is, which is the port's rule from step 1. Outside a transaction the check is
+     advisory: two simultaneous creates read the same number and both pass.
+     Direct chats are excluded from the count, and archiving FREES a slot.
+  3. **A blocked person and an unknown address get the SAME sentence.**
+     `CONTACT_REFUSED_MESSAGE`, from the domain layer, on both paths. A distinct
+     refusal is a notification that you have been blocked.
+  4. **A conversation you are not in is NOT FOUND, not forbidden.** "You may not
+     see this" confirms it exists.
+  5. ⚠ **Sending is IDEMPOTENT on `clientMessageId`.** Optimistic insert plus a
+     flaky network is a double-post otherwise, and it is the retry the client
+     will do by itself.
+  6. **`mayModerate` is passed IN to `delete`.** The module does not ask what
+     keys the caller holds — the resolver reads the grant and hands down a
+     boolean, so `chat:send` deletes your own and `chat:moderate` deletes
+     somebody else's, which is why they are separate keys.
+
+  **The one genuinely new port is the directory**, and it lives in the app:
+  `src/chat/user-directory.ts` reads `auth_user`, which `module-auth` owns, for
+  a feature `module-chat` owns, and neither module may import the other. Exact
+  email match only, behind `chat:directory` — a prefix search over `auth_user`
+  is a customer-list harvester — and suspended accounts are excluded, because an
+  invitation nobody can answer is worse than no match. The app's total for
+  adopting chat is one `chatServerModule({...})` call: two clients, the
+  directory, the limit checker bound with `useExisting` to the permissions
+  adapter, and `resolveActorId`.
+
+  **Two clients, not one.** `CHAT_PRISMA` binds `useExisting` to `PrismaService`
+  (reads fit outright); `CHAT_PRISMA_WRITE` is the four delegates behind
+  `withTransaction`, and `satisfies-modules.ts` gains the two assertions that
+  keep the structural fit honest.
+
+  **Verified, not assumed:** 113 tests in `module-chat` (the write service
+  against a fake client, not a mock), full `turbo run test typecheck` green, the
+  migration applied to the local Postgres, and the server booted — `ChatModule
+  dependencies initialized`, `chatConversations` refused with `UNAUTHENTICATED`
+  before any chat code ran. ⚠ An authenticated end-to-end curl was NOT run: it
+  needs credentials for a seeded account, and minting a token from the app
+  secret is not a way to prove a guard works.
+
+  **Not in this step, and deliberately:** no pub/sub anywhere in the module —
+  there is not one `publish()` call — because per-publish filtering and
+  catch-up-on-resubscribe are step 5's problem and half of it is worse than none
+  (§12.28, §12.39).
 
 - **2026-09-11** — **STEP 3: `packages/module-chat` EXISTS — the schema and the
   pure domain, with no database and no framework anywhere in it.**
@@ -1356,8 +1446,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
      machine, `canAccessConversation`, the cap rule. No database, no framework.
      ⚠ The app does not depend on the package yet — adopting it is what creates
      the tables, which belongs with step 4's migration.
-  4. Server: repository, read/write services on separate clients, GraphQL,
-     participation enforced on every path.
+  4. ✅ **DONE 2026-09-11.** Server: repository, read/write services on
+     separate clients, GraphQL, participation enforced on every path — plus the
+     app adopting the package, which is what created the tables.
   5. Realtime: per-publish filter, the app-owned connection (§12.39), a
      `graphql_subscription` binding, and ⚠ CATCH-UP ON EVERY (RE)SUBSCRIBE —
      the socket closes every five minutes by design and the pub/sub has no

@@ -1,4 +1,5 @@
 import type { AuthTransaction } from '@kwtech/module-auth/server';
+import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
 import type { PermissionsPrismaClient, PermissionsTransaction } from '@kwtech/module-permissions/server';
 import type { PrismaService } from './prisma.service.js';
 
@@ -26,6 +27,7 @@ declare const client: PrismaService;
  * The read client, bound with `useExisting`, must fit outright.
  */
 export const _permissionsReadClientFits: PermissionsPrismaClient = client;
+export const _chatReadClientFits: ChatPrismaClient = client;
 
 /**
  * For the two modules that write, what has to hold is that every DELEGATE fits
@@ -40,3 +42,4 @@ export const _permissionsReadClientFits: PermissionsPrismaClient = client;
  */
 export const _authDelegatesFit: AuthTransaction = client;
 export const _permissionsWriteDelegatesFit: PermissionsTransaction = client;
+export const _chatWriteDelegatesFit: ChatTransaction = client;

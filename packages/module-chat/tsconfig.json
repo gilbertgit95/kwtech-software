@@ -11,7 +11,10 @@
     // module-not-found pointing nowhere near the cause. Keeping it in the output
     // directory means deleting the output deletes the claim about it.
     "tsBuildInfoFile": "dist/.tsbuildinfo",
-    "rootDir": "src"
+    "rootDir": "src",
+    // The Nest adapter uses parameter and class decorators.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

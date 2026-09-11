@@ -2,14 +2,18 @@
   "name": "@kwtech/module-chat",
   "version": "0.0.0",
   "private": true,
-  "description": "User-to-user and group messaging — a direct chat is a group with two participants",
+  "description": "User-to-user and group messaging \u2014 a direct chat is a group with two participants",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./prisma": "./prisma/chat.prisma"
+    "./prisma": "./prisma/chat.prisma",
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    }
   },
   "files": [
     "dist",
@@ -30,9 +34,30 @@
     "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
     "jest": "^30.4.2",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/graphql": "catalog:",
+    "graphql": "catalog:",
+    "reflect-metadata": "catalog:"
   },
   "dependencies": {
     "@kwtech/module-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/graphql": "^13.0.0",
+    "reflect-metadata": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@nestjs/common": {
+      "optional": true
+    },
+    "@nestjs/graphql": {
+      "optional": true
+    },
+    "reflect-metadata": {
+      "optional": true
+    }
   }
 }

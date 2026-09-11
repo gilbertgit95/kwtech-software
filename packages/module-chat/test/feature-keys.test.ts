@@ -1,5 +1,11 @@
 import { composeFeatures, composeLimits } from '@kwtech/module-kit';
-import { CHAT_FEATURE, CHAT_FEATURE_REGISTRY, CHAT_LIMIT, CHAT_LIMIT_REGISTRY } from '../src/feature-keys.js';
+import {
+  CHAT_FEATURE,
+  CHAT_FEATURE_REGISTRY,
+  CHAT_LIMIT,
+  CHAT_LIMIT_REGISTRY,
+  CHAT_ROLE_PRESETS,
+} from '../src/feature-keys.js';
 
 /**
  * The registry is a CONTRACT with the host: it composes these into the list the
@@ -64,5 +70,27 @@ describe('CHAT_LIMIT_REGISTRY', () => {
     expect(composeLimits([{ key: 'chat', limits: CHAT_LIMIT_REGISTRY }]).map((spec) => spec.key)).toEqual([
       CHAT_LIMIT.groupChats,
     ]);
+  });
+});
+
+describe('CHAT_ROLE_PRESETS', () => {
+  it('only ever names keys this module declares', () => {
+    const declared = new Set(CHAT_FEATURE_REGISTRY.map((spec) => spec.key));
+    for (const preset of CHAT_ROLE_PRESETS) {
+      expect(preset.features.every((key) => declared.has(key))).toBe(true);
+    }
+  });
+
+  it('⚠ gives the ordinary preset NO moderation key', () => {
+    const user = CHAT_ROLE_PRESETS.find((preset) => preset.key === 'chat-user');
+    expect(user?.features).not.toContain(CHAT_FEATURE.moderate);
+    expect(user?.features).not.toContain(CHAT_FEATURE.removeParticipant);
+  });
+
+  it('only ever sets caps this module declares', () => {
+    const declared = new Set(CHAT_LIMIT_REGISTRY.map((spec) => spec.key));
+    for (const preset of CHAT_ROLE_PRESETS) {
+      expect(Object.keys(preset.limits).every((key) => declared.has(key))).toBe(true);
+    }
   });
 });

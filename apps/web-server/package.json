@@ -26,6 +26,7 @@
     "@apollo/server": "^5.5.1",
     "@as-integrations/express5": "^1.1.2",
     "@kwtech/module-auth": "workspace:*",
+    "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
     "@nestjs/apollo": "catalog:",
