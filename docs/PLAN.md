@@ -500,7 +500,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 25 | Where does a billing provider's webhook write, and who wins a conflict? | before a payment provider is connected | `PermissionsWriteService` now owns the write path and keys idempotency on the live (organization, workspace, plan) row. A provider that writes the same table needs either a `source` column and a precedence rule, or a reconciliation job that treats the provider as authoritative and supersedes admin rows. Precedence is the part teams get wrong, so decide it before the first webhook, not after |
 | 26 | ~~Should plans be SEEDED, like app roles are?~~ **Closed: yes, on request** | — | **Reversed 2026-09-07.** They were left unseeded on the grounds that which products a platform sells is an operator decision. They are now seeded as a STARTING catalogue — `free`, `starter`, `pro`, `enterprise` — with `createPlanIfAbsent`, which creates what is missing and never rewrites what is there. Phase 'seed', not 'sync': the operator decision is preserved by the seed getting out of the way, not by there being no seed. Original entry: | app roles are seeded because the SHAPE is fixed and the definitions are product decisions living app-side. Plans are the same shape of thing, and deliberately not seeded today: which products a platform sells is an operator decision, and a seeded `free` plan would be this repo deciding it. The screens create them instead. Revisit if a fresh environment needs a plan before anyone can subscribe anybody |
 | 27 | Scope role writes to the actor's organization, and put `roles:create/update/disable` back at organization level | **unblocked 2026-09-09** — §12.13 closed | `createRole` writes `organizationId: null` — a SHARED PRESET every tenant sees — and `listRoles` reads that same null scope, so a role write is a platform operation. The three write keys were raised to APP level on 2026-09-07 to say so. Reversing it needs the active organization on the request (§12.13), which is exactly why `role-draft.ts` cannot offer an organization picker today. Do both together or neither. **⚠ The blocker is gone: §12.13 closed on 2026-09-09 and the active organization is now on the request, so `role-draft.ts` COULD offer an organization picker.** Nothing was changed here with it, deliberately — re-levelling three write keys and re-scoping `listRoles` is a change to what every existing role means, and it does not belong in the same commit as the screens that revealed it was possible. What the tenant area does today is narrow the PICKER (`myOrganizationRoles` filters app-level roles out), which is a presentation fix and not the re-scoping this decision asks for |
-| 28 | Redis-backed pub/sub, before `web-server` scales past one replica | before a second replica | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7). **⚠ HARDENED 2026-09-10 — the trigger is now PRESENCE, not the second replica.** Pub/sub across replicas fails silently; presence across replicas fails LOUDLY and constantly, because replica A cannot see sockets held by replica B and half the users show as offline forever. So: Redis before presence ships, or single-replica recorded as a deliberate choice. **`module-chat` is also the feature that makes the pub/sub half unsurvivable** — a plan key arriving late is a stale badge, a message that never arrives is a broken product |
+| 28 | Redis-backed pub/sub, before `web-server` scales past one replica | ⚠ before `/chat` is used by anyone | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7). **⚠ HARDENED 2026-09-10 — the trigger is now PRESENCE, not the second replica.** Pub/sub across replicas fails silently; presence across replicas fails LOUDLY and constantly, because replica A cannot see sockets held by replica B and half the users show as offline forever. So: Redis before presence ships, or single-replica recorded as a deliberate choice. **`module-chat` is also the feature that makes the pub/sub half unsurvivable** — a plan key arriving late is a stale badge, a message that never arrives is a broken product. **⚠ HARDENED AGAIN 2026-09-11 — the gate is now CHAT ITSELF.** Delivery is a requirement rather than an enhancement, and a message that never arrives is a broken product whether the failure is silent or loud. Redis before anyone uses `/chat`, or single-replica enforced by something that FAILS THE BOOT when a second replica appears |
 | 29 | Rate-limiting subscription volume on an open socket | when realtime carries real traffic | `CredentialThrottlerGuard` skips WebSocket operations — it writes rate-limit headers onto a response a socket does not have, and per-request IP limiting is not the question a socket asks. Bounded today only by the handshake needing a live-session ticket and the connection closing at token expiry. Belongs in `graphql-ws`' `onSubscribe`, which can see the connection. **Narrowed 2026-09-10:** `module-chat` puts MUTATIONS on HTTP and only subscriptions on WS, so a send passes `ThrottlerGuard` and message-rate limiting comes for free. What is left is how many topics one socket may hold |
 | 30 | ~~A per-workspace member screen, for WORKSPACE-level role grants~~ **Closed** | — | **2026-09-07.** Each workspace on the organization detail screen expands to its members and their workspace roles, and an Add-member dialog picks from organization members not already in it, with an optional workspace role beside it. `assignWorkspaceRole` and `revokeWorkspaceRole` now have a UI. Original entry: | `assignWorkspaceRole` and `revokeWorkspaceRole` are exposed and guarded and reachable only through the API. The organization detail screen already toggles workspace MEMBERSHIP per member; adding a second role picker to that same row is how a screen becomes unreadable, so the grants belong on a workspace's own screen |
 | 31 | ~~An invite flow for an address with no account~~ **Closed** | — | **2026-09-07.** `PermInvitation` + `inviteMember`/`revokeInvitation`/`acceptInvitation`, a seven-day single-use token stored as a SHA-256 hash, an app-supplied `sendInvitationEmail` hook, and `/invitations/accept` — which creates the account when there is none. `PermMembershipStatus.invited` is still unwritten and now never will be: an invitation is addressed to an EMAIL, and a membership carries a userId there may not be one of. See the decision log |
@@ -526,12 +526,75 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 47 | Read receipts — "seen by" | before the thread UI is final | `lastReadMessageId` already exists for the unread badge, so who has read past message X is nearly FREE to expose, which is exactly why it needs a decision rather than a default. It is a privacy change, not a feature toggle: it tells a sender when a specific person read a specific line, and in a workplace tool that is a management surface. If it ships it must respect `invisible` — somebody appearing offline who silently marks read has been leaked by the side door §12 already closed for typing |
 | 48 | Message search | when a conversation outgrows one screen | Nothing finds anything today. Postgres full-text or `pg_trgm`, scoped by `canAccessConversation` — search is the easiest place to accidentally return a message from a conversation the searcher is not in, because the natural query starts from the message table rather than from participation. Start from participation |
 | 49 | Abuse has no path, which is §12.42's cost | when the first report arrives | `chat:moderate` acts only inside a conversation the actor PARTICIPATES in, and §12.42 deliberately ships no read-any-conversation key. Consistent, and it means a platform-wide abuse report can be received and acted on by nobody. The blocking added in v1 is the USER's remedy; the PLATFORM has none. The honest fill is a report flow that escalates a specific conversation with the reporter's consent — narrow, audited, and not a general read key |
-| 50 | Web Push, and what `dnd` gates once it exists | after `/chat` is used in anger | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience |
+| 50 | Web Push, and what `dnd` gates once it exists | ⚠ with `/chat` v1 | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience. **⚠ IN SCOPE 2026-09-11:** the operator's requirement is that people are TOLD on time, and a tone in an open tab satisfies that only for somebody already looking. Either this comes forward, or `sendChatNotification` is wired at v1 to something that reaches a closed tab — email being the cheapest. Shipping neither does not meet the requirement |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **DELIVERY IS A REQUIREMENT, NOT AN ENHANCEMENT — and that
+  moves three things that were deferred.**
+
+  Stated by the operator: people must be told about a message, and get it, ON
+  TIME. Every realtime decision in this repo so far was written the other way
+  round. `realtime-contract.ts` says it out loud — realtime is an ENHANCEMENT,
+  every screen that subscribes also reads over HTTP and works without a socket,
+  and a failure is reported rather than thrown. That is the correct call for a
+  plan badge. It is the wrong call for a message, and the difference is not a
+  setting: it changes what has to exist before `/chat` can ship.
+
+  **1. §12.28 (Redis) no longer gates on presence. It gates on CHAT.** The entry
+  was hardened once already — from "before a second replica" to "before presence
+  ships" — on the argument that pub/sub fails silently and presence fails
+  loudly. Under a delivery promise that argument inverts: a message published on
+  replica A that never reaches a socket held by replica B is a BROKEN PRODUCT,
+  silent or not, and it is indistinguishable from the recipient ignoring you. So
+  the gate is now: Redis before `/chat` is used by anyone, OR single-replica
+  recorded as a deliberate operational constraint with something that FAILS THE
+  BOOT if a second replica appears. A comment is not that something.
+
+  **2. ⚠ THERE IS NO CATCH-UP ON RECONNECT, AND THE SOCKET CLOSES EVERY FIVE
+  MINUTES.** The sharpest of the three, and it was missing from the ten steps
+  entirely. `closeWhenAuthorizationExpires` drops the socket at
+  `AUTH_ACCESS_TOKEN_TTL` — which this repo's `.env` sets to **5m**, not the
+  library default of fifteen the presence section assumes — and the client
+  reconnects with a fresh ticket. `graphql-subscriptions` is FIRE AND FORGET:
+  there is no replay, no buffer and no offset, so every event published between
+  the close and the resubscribe is gone. Today the symptom is a message that
+  surfaces only when the recipient next opens that conversation, and an unread
+  badge that is wrong until they do.
+
+  So every `subscribe` — and every RE-subscribe, which is the one that matters —
+  is followed by a READ of what was missed, keyed off `lastReadMessageId`. The
+  socket is the fast path; the query is the truth. That is the same "one
+  authorization path" the contract already argues for, applied to a case the
+  contract did not anticipate. It lands in step 5 beside the per-publish filter,
+  not in step 9 with the niceties.
+
+  ⚠ And it is not only the five-minute cycle: a closed laptop lid delivers no
+  close event either, so the gap can be hours. A reconnect must never be assumed
+  to be short.
+
+  **3. Being told with the tab CLOSED is §12.50, and it is now in scope.** The
+  tone only plays in an open tab, which satisfies "on time" only for somebody
+  already looking. Either Web Push comes forward from "after `/chat` is used in
+  anger", or `sendChatNotification` — the optional hook already in the design —
+  is WIRED AT V1 to something that reaches a closed tab, email being the
+  cheapest. ⚠ Shipping neither means the requirement is not met, and it is the
+  only one of the three that adds genuinely new surface (a service worker, a
+  permission prompt, VAPID keys, a delivery path) rather than re-ordering work
+  the plan already had.
+
+  **Pinned while here: a chat event CARRIES THE MESSAGE.** The plan never said,
+  and the obvious precedent points the wrong way — `planChanged` deliberately
+  carries a key and not the row, because it fans out to every subscriber
+  unfiltered and `PermissionPlanDetail` is not filtered per reader. Chat is the
+  opposite case by construction: events are filtered PER PUBLISH, re-checking
+  participation, so by the time one is sent the server has already established
+  that this recipient may read it. Making them re-read anyway costs a round trip
+  per message and makes "on time" worse for no safety gained. The thin-payload
+  rule stands for `planChanged` and does not generalise.
 
 - **2026-09-10** — **`module-chat` reviewed before it exists: ten holes, and the
   packaging rule that the module must be adoptable in one file.**
@@ -1026,7 +1089,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
   4. Server: repository, read/write services on separate clients, GraphQL,
      participation enforced on every path.
   5. Realtime: per-publish filter, the app-owned connection (§12.39), a
-     `graphql_subscription` binding.
+     `graphql_subscription` binding, and ⚠ CATCH-UP ON EVERY (RE)SUBSCRIBE —
+     the socket closes every five minutes by design and the pub/sub has no
+     replay, so a message published in the gap is lost without it (2026-09-11).
   6. `module-kit`: the header slot, plus the chat widget that fills it — a
      subscribing client component, because the unread badge must be right before
      anybody opens the panel.
