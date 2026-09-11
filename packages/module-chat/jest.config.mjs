@@ -23,12 +23,15 @@ export default {
       '@swc/jest',
       {
         jsc: {
-          parser: { syntax: 'typescript', decorators: true },
+          // `tsx` since the web descriptor landed: `react/module.tsx` renders
+          // its route adapter rather than calling it, and a suite that could
+          // not parse JSX could not assert what the module contributes.
+          parser: { syntax: 'typescript', tsx: true, decorators: true },
           transform: { decoratorMetadata: true, legacyDecorator: true },
           target: 'es2023',
         },
       },
     ],
   },
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts', '!src/react/**'],
 };

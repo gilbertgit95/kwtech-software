@@ -1,8 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // No DOM: this package is pure domain and runs on the server and in a test.
-    "lib": ["ES2023"],
+    // DOM since the React half landed: the header widget reads the document's
+    // own timers and the client calls `fetch`. The DOMAIN half still imports
+    // none of it — that is enforced by review rather than by the compiler, and
+    // by `src/index.ts` exporting no React.
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
     "outDir": "dist",
     // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
     // with the build info beside the tsconfig it outlives every `rm -rf dist` —

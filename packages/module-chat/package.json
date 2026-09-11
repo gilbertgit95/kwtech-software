@@ -10,6 +10,10 @@
       "default": "./dist/index.js"
     },
     "./prisma": "./prisma/chat.prisma",
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
     "./server": {
       "types": "./dist/server/index.d.ts",
       "default": "./dist/server/index.js"
@@ -29,17 +33,20 @@
     "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
   },
   "devDependencies": {
+    "@kwtech/web-ui": "workspace:*",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/graphql": "catalog:",
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
-    "jest": "^30.4.2",
-    "typescript": "catalog:",
-    "@nestjs/common": "catalog:",
-    "@nestjs/core": "catalog:",
-    "@nestjs/graphql": "catalog:",
+    "@types/react": "^19.2.18",
     "graphql": "catalog:",
-    "reflect-metadata": "catalog:"
+    "jest": "^30.4.2",
+    "react": "^19.2.8",
+    "reflect-metadata": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@kwtech/module-kit": "workspace:*"
@@ -47,7 +54,9 @@
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/graphql": "^13.0.0",
-    "reflect-metadata": "^0.2.0"
+    "reflect-metadata": "^0.2.0",
+    "react": "^19.0.0",
+    "@kwtech/web-ui": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -57,6 +66,12 @@
       "optional": true
     },
     "reflect-metadata": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "@kwtech/web-ui": {
       "optional": true
     }
   }

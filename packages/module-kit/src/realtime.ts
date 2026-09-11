@@ -53,8 +53,14 @@ export interface RealtimeConnection {
    * own document, and `graphql-ws` multiplexes them over the one socket. So an
    * implementation must not close on the last unsubscribe: the conversation
    * list unmounting is not a reason to drop the plan badge's stream.
+   *
+   * `variables` because a subscription is a GraphQL operation like any other
+   * and can take arguments — chat's carries the cursor it wants replayed from.
+   * A connection that could not pass one would push every caller into
+   * interpolating values into a document string, which is the wrong answer to
+   * a question the protocol already has a right one for.
    */
-  subscribe<T>(document: string, onNext: (data: T) => void): () => void;
+  subscribe<T>(document: string, onNext: (data: T) => void, variables?: Record<string, unknown>): () => void;
   /** Closes the socket. Safe to call twice. The APP calls this, not a module. */
   close(): void;
 }

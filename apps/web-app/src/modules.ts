@@ -1,4 +1,5 @@
 import { authWebModule } from '@kwtech/module-auth/react';
+import { chatWebModule } from '@kwtech/module-chat/react';
 import type { WebModuleDescriptor } from '@kwtech/module-kit';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
 
@@ -16,4 +17,11 @@ import { permissionsWebModule } from '@kwtech/module-permissions/react';
  * -> grant filter -> rendered link. It is hidden from anyone who does not hold
  * the key, so an unfinished page is not an exposed one.
  */
-export const WEB_MODULES: readonly WebModuleDescriptor[] = [authWebModule, permissionsWebModule];
+/*
+ * `module-chat` is the first module to contribute a HEADER SLOT as well as
+ * routes, and it is called rather than spread because it carries the one switch
+ * that turns chat off without a deploy — `chatWebModule({ enabled: false })`
+ * contributes no route, no nav entry and no icon, while keeping its feature
+ * registry so a disable does not strip `chat:*` from every role that holds it.
+ */
+export const WEB_MODULES: readonly WebModuleDescriptor[] = [authWebModule, permissionsWebModule, chatWebModule()];

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@kwtech/module-auth": "workspace:*",
+    "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
     "@kwtech/web-ui": "workspace:*",

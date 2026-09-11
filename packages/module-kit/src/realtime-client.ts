@@ -89,10 +89,13 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
   });
 
   return {
-    subscribe<T>(document: string, onNext: (data: T) => void): () => void {
+    subscribe<T>(document: string, onNext: (data: T) => void, variables?: Record<string, unknown>): () => void {
       if (!client) return () => undefined;
       return client.subscribe<T>(
-        { query: document },
+        // `variables` omitted entirely when there are none, rather than sent as
+        // `{}`: a server that validates the payload shape should see the same
+        // request a client with no arguments has always sent.
+        variables ? { query: document, variables } : { query: document },
         {
           next: (result) => {
             if (result.data) onNext(result.data as T);

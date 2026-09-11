@@ -1,6 +1,8 @@
 import {
+  composeHeaderSlots,
   composeNav,
   composeNavGroups,
+  type HeaderSlot,
   type NavEntry,
   navGroupRank,
   type WebModuleDescriptor,
@@ -128,6 +130,27 @@ export interface NavScopes {
  * `readonly string[] | undefined` and adjacent, which is the shape where a
  * transposed pair typechecks perfectly and filters the wrong section.
  */
+/**
+ * The module-contributed controls in the main header.
+ *
+ * ⚠ APP-LEVEL grants, and only those. The header is not inside a tenant — it is
+ * the same strip on every page — so filtering it with whichever organization
+ * happens to be selected would make an icon appear and disappear as somebody
+ * navigated between their own company and the back office.
+ *
+ * `?? []` fails CLOSED, exactly as the drawer's filter does: a permission
+ * context that could not be resolved means "holds nothing", never "assume the
+ * usual". Drawing an icon for somebody the API refuses is a door that opens
+ * onto a denial.
+ *
+ * Resolved on the SERVER, in the shell, so the first paint is already right. An
+ * icon that appeared after hydration and then vanished would flash chat at
+ * everybody who cannot use it.
+ */
+export function buildHeaderSlots(appFeatures: readonly string[] | undefined): HeaderSlot[] {
+  return composeHeaderSlots(WEB_MODULES, appFeatures ?? []);
+}
+
 export function buildNav(scopes: NavScopes): NavGroup[] {
   const { app: appFeatures, organization: organizationFeatures, workspace: workspaceFeatures, params = {} } = scopes;
   /*

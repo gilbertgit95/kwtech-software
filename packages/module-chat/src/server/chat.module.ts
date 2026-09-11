@@ -1,4 +1,5 @@
 import { type DynamicModule, Module, type Provider } from '@nestjs/common';
+import { chatIsEnabled } from '../enabled.js';
 import { ChatEventPublisher } from './chat.events.js';
 import type { ChatModuleOptions } from './chat.options.js';
 import { ChatService } from './chat.service.js';
@@ -25,7 +26,9 @@ import { ChatResolver } from './graphql/chat.resolver.js';
 @Module({})
 export class ChatModule {
   static forRoot(options: ChatModuleOptions = {}): DynamicModule {
-    if (options.enabled === false) {
+    // ⚠ The same reader the WEB descriptor uses, so the two halves of the
+    // module cannot disagree about what "on" means.
+    if (!chatIsEnabled(options)) {
       /*
        * Deliberately NOT an empty providers array with the resolver removed —
        * nothing at all. The options token is not even bound, so a stray

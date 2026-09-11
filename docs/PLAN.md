@@ -32,7 +32,7 @@ Last updated: 2026-09-11
 | `packages/web-ui` | `@kwtech/web-ui` | React + Tailwind 4 + AG Grid Community | — |
 | `packages/module-permissions` | `@kwtech/module-permissions` | The permissions feature, whole — schema, logic, GraphQL, server, React (§9) | — |
 | `packages/module-auth` | `@kwtech/module-auth` | The authentication feature, whole — identity tables, credentials, tokens, REST, React (§9) | — |
-| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain and the whole server half as of 2026-09-11; `web-server` depends on it and the tables are migrated. No realtime and no UI yet (§9) | — |
+| `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain, the server half, realtime, and the header widget as of 2026-09-11. Both apps depend on it; `/chat` itself is still a stub (§9) | — |
 
 **Planned, not built yet:** `packages/db` (Prisma — see the note below),
 `apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
@@ -532,6 +532,83 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-11** — **STEP 6: the header is COMPOSED, and chat's icon is the
+  first thing in it.**
+
+  The drawer has been `composeNav(WEB_MODULES, granted)` since `module-kit`
+  existed; the header had not caught up. A module wanting a control there had to
+  be hardcoded into the app's `header.tsx`, which is wrong three times over —
+  unfiltered by the module's own key, so the icon appears for people the API
+  refuses; absent from the descriptor, so "what does this module contribute" no
+  longer has one answer; and it teaches the app shell what that module IS, which
+  is the coupling `module-kit` exists to prevent. So `WebModuleDescriptor` gains
+  `headerSlots`, and `composeHeaderSlots` filters them by held keys exactly as
+  nav entries are.
+
+  ⚠ **A COMPONENT REFERENCE, never a function prop.** The composing layer is a
+  server component and a function cannot cross that boundary — `ModuleRoute`'s
+  rule, and the 500 it was learned from. `header.tsx` RENDERS `<Component />`
+  and names no module.
+
+  ⚠ **Duplicate slot keys THROW, and they throw before the grant filter.** Two
+  modules claiming one slot is a wiring bug, and both silent resolutions are
+  wrong: rendering both puts two controls where one was meant, and taking the
+  first makes the winner depend on the order `WEB_MODULES` happens to be written
+  in. Refusing it only for readers who would have SEEN it would be a wiring bug
+  that ships.
+
+  **THE WIDGET SUBSCRIBES, because the badge has to be right before anybody
+  opens anything.** A count rendered on the server is correct for exactly as
+  long as it takes somebody else to send a message, and a person looking at a
+  "0" while a message waits will not trust the number again. It reads once on
+  mount and then follows the app's socket through `useRealtime()` — never one of
+  its own.
+
+  **⚠ AN EVENT MAKES IT RE-READ, never increment.** Counting locally would mean
+  reimplementing `countsAsUnread` — deleted messages do not count, your own do
+  not count, a system message does not count — in a second place, in a language
+  the rule was not written in. Re-reading goes back through the GUARDED query,
+  so one authorization path rather than two. ⚠ COALESCED at 250ms, because a
+  busy conversation would otherwise be one query per message per open tab: the
+  difference between a badge and a load generator.
+
+  **Three smaller decisions**
+
+  1. **The badge counts unread messages AND pending invitations, in one
+     number.** Both are things waiting for you, and two indicators on one icon
+     is how people learn to ignore both. The accessible label spells them apart,
+     because a reader who cannot see the icon has no other way to tell an
+     invitation from a message.
+  2. **A failed read KEEPS the last known count** rather than showing zero. The
+     API being unreachable is not the same as having nothing waiting, and a
+     badge that empties during an outage tells people their messages went away.
+  3. **`subscribe()` grew `variables`.** A subscription is a GraphQL operation
+     like any other and chat's takes the cursor it wants replayed from; a
+     connection that could not pass one would push every caller into
+     interpolating values into a document string.
+
+  **⚠ ONE READER FOR THE ONE SWITCH.** `chatIsEnabled` lives in the package root
+  and BOTH halves use it: `ChatModule.forRoot` and `chatWebModule`. A disabled
+  web descriptor contributes no route, no drawer entry and no icon — and KEEPS
+  its feature registry, because dropping it would have the host's feature sync
+  deprecate every `chat:*` row, and a deprecated feature grants nothing. A
+  flag flipped for an afternoon would otherwise strip chat rights from every
+  role holding them and not return them on the way back. Its own test.
+
+  **`/chat` is contributed as a STUB**, which is the arrangement `/admin/roles`
+  shipped under: listing the route now proves the path the icon depends on —
+  descriptor → compose → grant filter → rendered route → `FeatureDenied` for
+  somebody without the key — and step 7 fills the body. Building the panel first
+  would have made it the only home, permanently cramped.
+
+  **Verified:** `turbo run typecheck lint test build` green across 28 tasks, and
+  `/chat` on the running app answers 307 to the sign-in page exactly as the
+  existing `/admin/roles` does, where an unknown path answers 404 — so the route
+  is composed rather than merely declared. ⚠ The icon itself has NOT been seen
+  on screen: that needs a signed-in session, and what is asserted instead is the
+  composition — the route and the slot carry the same key, neither survives an
+  empty grant set, and both disappear when the module is disabled.
 
 - **2026-09-11** — **STEP 5, the client half: ONE socket per tab, and it belongs
   to the application.**
@@ -1603,9 +1680,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
      no replay, so a message published in the gap is lost without it — and the
      APP-OWNED CONNECTION (§12.39), one socket per tab rather than one per
      module.
-  6. `module-kit`: the header slot, plus the chat widget that fills it — a
-     subscribing client component, because the unread badge must be right before
-     anybody opens the panel.
+  6. ✅ **DONE 2026-09-11.** `module-kit`: the header slot, plus the chat widget
+     that fills it — a subscribing client component, because the unread badge
+     must be right before anybody opens the panel. `/chat` is contributed as a
+     STUB, so the whole path is proven before step 7 fills the page.
   7. Web: `/chat`, the list, the thread, the composer, the invite dialog, the
      requests inbox, and the anchored panel over the same data.
   8. The ephemeral tier: presence as a refcount with a grace period,

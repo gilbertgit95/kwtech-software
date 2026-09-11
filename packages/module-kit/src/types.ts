@@ -166,9 +166,65 @@ export interface NavGroupContribution {
   order: number;
 }
 
+/**
+ * A control a module puts in the app's MAIN HEADER.
+ *
+ * ## Why this is a contribution and not a line in the app's header
+ *
+ * The drawer has been composed since this package existed —
+ * `composeNav(WEB_MODULES, granted)` — and the header had not caught up: a
+ * module wanting a control there had to be hardcoded into the app's
+ * `header.tsx`. That is wrong three times over. It is unfiltered by the
+ * module's own feature key, so the icon appears for people the API refuses; it
+ * is absent from the descriptor, so "what does this module contribute" no
+ * longer has one answer; and it teaches the app shell what that module IS,
+ * which is the coupling this package exists to prevent — duplicated by the
+ * second module that wants one, and there will be a second (a notification bell
+ * joins the same cluster).
+ *
+ * ⚠ A COMPONENT REFERENCE, never a render function or any other callable prop.
+ * The composing layer is a SERVER component, and a function cannot cross that
+ * boundary — this is `ModuleRoute.component`'s rule, and the 500 it was learned
+ * from. `ModuleRoute` already carries a `ComponentType`, so a slot carrying one
+ * is not a new kind of thing.
+ */
+export interface HeaderSlotContribution {
+  /**
+   * Stable and unique across every module. Used as the React key, and two
+   * modules claiming one is refused rather than silently resolved — see
+   * `composeHeaderSlots`.
+   */
+  key: string;
+  /** Rendered, never called. Takes no props: the header knows nothing about it. */
+  Component: ComponentType;
+  /**
+   * Lower renders further left, away from the account menu. Space them — 10,
+   * 50, 90 — so one can be inserted between two that already exist.
+   */
+  order?: number;
+  /**
+   * The key somebody must hold to see it, filtered exactly as a nav entry is.
+   *
+   * ⚠ Filtering is an ERGONOMIC and never the lock. A hidden icon feels like a
+   * control and is not one: the API refuses the same person whether or not the
+   * icon was drawn.
+   */
+  feature?: string;
+}
+
+/** A composed slot, with its order resolved. */
+export interface HeaderSlot extends HeaderSlotContribution {
+  order: number;
+}
+
 export interface WebModuleDescriptor {
   key: string;
   routes?: readonly ModuleRoute[];
+  /**
+   * Controls this module puts in the app's main header — see
+   * `HeaderSlotContribution`.
+   */
+  headerSlots?: readonly HeaderSlotContribution[];
   /**
    * Where this module's nav groups belong, so adopting it stays a one-line edit.
    *
