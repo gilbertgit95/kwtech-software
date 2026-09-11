@@ -98,6 +98,77 @@ describe('applyMessage', () => {
     expect(thread[0]?.id).toBe('m9');
   });
 
+  describe('⚠ the sender must never see their own message twice', () => {
+    /*
+     * REPORTED FROM A REAL SCREEN, 2026-09-12. It happened only when the socket
+     * beat the mutation's own response — which is why one tab on a fast
+     * loopback never showed it.
+     */
+    const draft = () =>
+      optimisticMessage({
+        conversationId: 'c1',
+        authorId: 'ann',
+        body: 'hello',
+        clientMessageId: 'draft-1',
+        now: new Date(at(1)),
+      });
+
+    /** What the mutation answers with — the sender's own id, echoed back. */
+    const confirmed = message({ id: 'm9', clientMessageId: 'draft-1', createdAt: at(1) });
+
+    /**
+     * ⚠ What the SOCKET used to deliver: the same message with no
+     * `clientMessageId`, because the published type did not carry one.
+     *
+     * Kept in the suite even though the server now sends it, because it is also
+     * what a message sent WITHOUT a client id looks like, and because the
+     * invariant must not depend on a field being present.
+     */
+    const fromSocket = message({ id: 'm9', clientMessageId: null, createdAt: at(1) });
+
+    it('when the MUTATION answers first, then the socket delivers it', () => {
+      let thread = applyMessage([draft()], confirmed);
+      thread = applyMessage(thread, fromSocket);
+
+      expect(thread.map((one) => one.id)).toEqual(['m9']);
+    });
+
+    it('⚠ when the SOCKET delivers it first, then the mutation answers', () => {
+      /*
+       * THE ORDER THAT BROKE, and the one a real network produces: the event is
+       * published the instant the transaction commits, often before the
+       * mutation's response has finished travelling back.
+       *
+       * The unmatched event was appended beside the draft, and the response
+       * then replaced BOTH of them — two identical rows, which no sort can
+       * collapse.
+       */
+      let thread = applyMessage([draft()], fromSocket);
+      thread = applyMessage(thread, confirmed);
+
+      expect(thread.map((one) => one.id)).toEqual(['m9']);
+      expect(thread).toHaveLength(1);
+    });
+
+    it('⚠ however many times the same message arrives', () => {
+      // Defence in depth: a reconnect replays, a StrictMode double-mount could
+      // subscribe twice, and neither may show a message twice.
+      let thread: ThreadMessage[] = [draft()];
+      for (let attempt = 0; attempt < 5; attempt += 1) thread = applyMessage(thread, confirmed);
+
+      expect(thread.map((one) => one.id)).toEqual(['m9']);
+    });
+
+    it('keeps two DIFFERENT messages that carry no clientMessageId apart', () => {
+      // The guard on `incoming.clientMessageId`: two messages that both lack
+      // one are not the same message.
+      const first = message({ id: 'm1', clientMessageId: null, createdAt: at(1) });
+      const second = message({ id: 'm2', clientMessageId: null, createdAt: at(2) });
+
+      expect(applyMessage(applyMessage([], first), second).map((one) => one.id)).toEqual(['m1', 'm2']);
+    });
+  });
+
   it('⚠ INSERTS IN ORDER rather than pushing', () => {
     // A replayed gap arrives oldest-first, after the reader has already
     // received newer live messages.

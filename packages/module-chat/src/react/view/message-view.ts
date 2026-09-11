@@ -48,6 +48,9 @@ export function compareMessages(a: ThreadMessage, b: ThreadMessage): number {
  * One message into a thread — arriving live, confirmed after an optimistic
  * send, or replayed after a reconnection.
  *
+ * ⚠ THE ONE INVARIANT: no id appears twice in the result, whatever arrives in
+ * whatever order. Everything below is a consequence of it.
+ *
  * Four cases, and the first two are the ones that go wrong quietly:
  *
  *   1. ⚠ It REPLACES the reader's own pending copy, matched on
@@ -65,15 +68,39 @@ export function compareMessages(a: ThreadMessage, b: ThreadMessage): number {
  *      every conversation this person is in.
  */
 export function applyMessage(messages: readonly ThreadMessage[], incoming: ChatMessageView): ThreadMessage[] {
-  const replaced = messages.map((existing) => {
-    if (existing.id === incoming.id) return incoming;
-    // The optimistic copy, by the id the sender minted for it.
-    if (isPending(existing) && existing.clientMessageId === incoming.clientMessageId) return incoming;
-    return existing;
+  /*
+   * ⚠ DROP EVERY EARLIER COPY, THEN INSERT ONE. Written this way round on
+   * purpose, because the obvious version — map each entry, appending only if
+   * nothing matched — CAN LEAVE TWO ROWS WITH THE SAME ID, and did:
+   *
+   *   1. The sender's draft is on screen as `pending:draft-1`.
+   *   2. The socket delivers the real message first (it is published the
+   *      instant the transaction commits, often before the mutation's own
+   *      response has finished travelling back). Nothing matched, so it was
+   *      appended — two rows.
+   *   3. The mutation's response arrives. A `map` replaced BOTH the appended
+   *      row and the draft with it, leaving two identical rows, and a sort
+   *      cannot remove a duplicate.
+   *
+   * The sender saw their own message twice, permanently, and only when the
+   * socket won the race — which is why it never happened to anybody testing
+   * with one tab and a fast loopback. Reported from a real screen 2026-09-12.
+   *
+   * A filter cannot express that failure: an id appears once because every
+   * earlier copy of it is gone before the new one is added.
+   */
+  const kept = messages.filter((existing) => {
+    if (existing.id === incoming.id) return false;
+    // The optimistic copy, by the id the sender minted for it. Guarded on the
+    // incoming value being present: two messages that both lack one are not
+    // the same message.
+    if (isPending(existing) && incoming.clientMessageId && existing.clientMessageId === incoming.clientMessageId) {
+      return false;
+    }
+    return true;
   });
 
-  const alreadyThere = replaced.some((existing) => existing.id === incoming.id);
-  return (alreadyThere ? replaced : [...replaced, incoming]).sort(compareMessages);
+  return [...kept, incoming].sort(compareMessages);
 }
 
 /**

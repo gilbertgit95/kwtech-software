@@ -606,6 +606,7 @@ function renderMessage(row: MessageRow): ChatMessageType {
     authorId: row.authorId,
     // ⚠ Never the body of a deleted message. One place, so no query forgets.
     body: deleted ? null : row.body,
+    clientMessageId: row.clientMessageId,
     replyToMessageId: row.replyToMessageId,
     createdAt: row.createdAt.toISOString(),
     editedAt: row.editedAt?.toISOString() ?? null,

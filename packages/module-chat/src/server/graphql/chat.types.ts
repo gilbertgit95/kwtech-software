@@ -49,6 +49,24 @@ export class ChatMessageType {
   @Field(() => String, { nullable: true })
   body!: string | null;
 
+  /**
+   * ⚠ THE SENDER'S OWN ID FOR THIS MESSAGE, and it must be on the wire.
+   *
+   * It was left off on the grounds that it is the sender's idea rather than the
+   * server's — which is true and was the wrong conclusion. The sender's client
+   * draws the message optimistically before the server has heard of it, and
+   * reconciles the real one against that draft BY THIS VALUE. A published event
+   * without it cannot be matched to the draft, so the message is appended
+   * beside its own optimistic copy and the sender sees what they just wrote
+   * TWICE. Reported from a real screen, 2026-09-12.
+   *
+   * Null for everybody else's messages and for any message sent without one.
+   * Publishing it discloses nothing: it is a random value the sender minted,
+   * and the people who receive it are the people who receive the message.
+   */
+  @Field(() => String, { nullable: true })
+  clientMessageId!: string | null;
+
   @Field(() => String, { nullable: true })
   replyToMessageId!: string | null;
 

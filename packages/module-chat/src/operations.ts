@@ -39,10 +39,13 @@ const CONVERSATION_FIELDS = `
 `;
 
 /**
- * ⚠ `clientMessageId` IS ABSENT, deliberately. The server does not serve it —
- * it is the sender's own idea — and asking for a field the schema does not
- * publish is a refusal rather than a null. The client puts it back onto the
- * answer of a send, which is where reconciliation needs it.
+ * ⚠ `clientMessageId` IS ASKED FOR EVERYWHERE, including on the subscription.
+ *
+ * It was left out on the grounds that it is the sender's own idea rather than
+ * the server's, and that was a bug rather than a principle: the sender draws
+ * their message optimistically and reconciles the real one against that draft
+ * by this value, so an event without it is appended BESIDE the draft and the
+ * sender sees their own message twice. Fixed 2026-09-12.
  */
 const MESSAGE_FIELDS = `
   id
@@ -50,6 +53,7 @@ const MESSAGE_FIELDS = `
   kind
   authorId
   body
+  clientMessageId
   replyToMessageId
   createdAt
   editedAt

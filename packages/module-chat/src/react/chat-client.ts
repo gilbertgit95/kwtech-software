@@ -192,12 +192,11 @@ export function createChatClient(options: { graphqlPath?: string } = {}): ChatCl
         replyToMessageId: input.replyToMessageId ?? null,
       });
       /*
-       * ⚠ The clientMessageId is put BACK on the answer, because the server
-       * does not return it: the thread reconciles its optimistic copy by that
-       * id, and without it the confirmed message would be appended beside the
-       * pending one instead of replacing it.
+       * The server returns it now, so there is nothing to re-attach — and the
+       * SUBSCRIPTION carries it too, which is what stops the sender seeing
+       * their own message twice when the socket beats this response.
        */
-      return { ...data.sendChatMessage, clientMessageId: input.clientMessageId };
+      return data.sendChatMessage;
     },
 
     async editMessage(messageId, body) {

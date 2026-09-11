@@ -534,6 +534,59 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-12** — **TWO BUGS FOUND BY ACTUALLY USING IT, which is the step no
+  amount of asserting replaces.**
+
+  ## ⚠ THE SENDER SAW THEIR OWN MESSAGE TWICE
+
+  Two faults compounding, and the second is the one worth remembering.
+
+  **Fault one: the published event carried no `clientMessageId`.** It was left
+  off `ChatMessageType` on the grounds that it is the sender's own idea rather
+  than the server's — true, and the wrong conclusion. The sender draws their
+  message optimistically and reconciles the real one against that draft BY THAT
+  VALUE, so an event without it cannot be matched and is appended beside the
+  draft. Publishing it discloses nothing: a random value the sender minted,
+  reaching the people who are receiving the message anyway.
+
+  **Fault two: `applyMessage` could leave two rows with one id.** It mapped over
+  the thread replacing matches and appended when nothing matched — so once the
+  unmatched event had been appended, the mutation's response replaced BOTH the
+  appended row and the draft with itself. Two identical rows, and a sort cannot
+  collapse a duplicate. It now filters every earlier copy out and inserts one,
+  which makes the invariant structural: an id appears once because everything
+  else with that id is gone before the new one is added.
+
+  ⚠ **IT ONLY HAPPENED WHEN THE SOCKET BEAT THE MUTATION**, which a real network
+  produces routinely — the event is published the instant the transaction
+  commits, often before the response has finished travelling back — and which
+  one tab on a fast loopback almost never does. The test that reproduces it
+  interleaves the two arrivals in that order; reverting either fix fails it.
+
+  ## ⚠ IT LOOKED LIKE A FLOATING MODAL THAT NEVER OPENED
+
+  The whole screen was one `rounded-lg border bg-card` block with no heading
+  above it. In a shell whose own header is `bg-card`, that reads as a raised
+  panel dropped onto the page rather than as the page.
+
+  It now opens the way every other screen does — an `h1` at `text-2xl
+  font-semibold tracking-tight`, a description under it, a body filling the rest
+  — and the refusal banner uses the same shape as every other refusal in the
+  app. ⚠ That is `AdminPage`'s 'fill' layout and deliberately NOT an import of
+  it: `AdminPage` belongs to `module-permissions` and a module may not import a
+  module (§9). It is the arrangement `module-auth`'s `SettingsPage` already
+  has — three frames of one shape, each owned by the module rendering inside it.
+
+  The two-pane region keeps its border and loses `bg-card`. The border is
+  structure: the list and the thread are different things and the seam between
+  them has to be visible. The fill was what made it float.
+
+  **The lesson worth keeping:** everything this module ships was asserted —
+  rules, audiences, documents validated against the live schema — and both of
+  these were invisible to all of it. One needed two clients racing, the other
+  needed eyes. ⚠ A screen nobody has opened is not a verified screen, however
+  green the suite is.
+
 - **2026-09-11** — **STEP 8, the UI: the dot, the picker and the indicator.**
 
   **⚠ NOTHING IS DRAWN FOR SOMEBODY THE SERVER DECLINED TO ANSWER ABOUT, and
