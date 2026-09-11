@@ -1,4 +1,5 @@
 import { AUTH_FEATURE } from '@kwtech/module-auth';
+import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
 import { ALL_FEATURES } from './registry.js';
@@ -69,20 +70,54 @@ const OWN_ACCOUNT = [
 ];
 
 /**
- * An ordinary signed-in person, holding NOTHING.
+ * Ordinary use of chat, TAKEN FROM THE MODULE'S OWN PRESET rather than listed
+ * here.
  *
- * Exists to be tested against: with no features at all, every gated surface
- * should refuse and every gated nav entry should be absent. It is the control
- * case for the whole access-checking chain — route guard, page gate, component
- * gate and API guard — and a role that grants nothing is the only one that
- * proves a denial is real rather than incidental.
+ * `module-chat` ships the shape and seeds nothing — adopting chat grants nobody
+ * anything until a host says who may use it, because `chat:read` is genuinely
+ * deniable (a contractor account that may not message staff is a real
+ * configuration). This file is that host saying so.
  *
- * Deliberately overlaps `client`, which also grants nothing. They are kept
- * apart because they answer different questions: `client` says "this account is
- * a customer, not staff", a fact about billing and support; `normal-user` says
- * "this account is here to verify that gating works". Merging them would make a
- * test fixture into a business classification. Drop this one once there are
- * real organization-level roles to test with.
+ * ⚠ READ FROM THE PRESET, so the day chat adds a key that ordinary use needs,
+ * this role gets it without anybody remembering to come here. Restating the
+ * five keys would be the same list in two places, and the copy that drifts is
+ * always the one without a test.
+ *
+ * ⚠ THROWS IF IT IS GONE. A `find` that returned undefined would seed a role
+ * granting nothing, and the symptom would be every chat surface refusing
+ * everybody with no error anywhere — the silent failure a seed is least able
+ * to report.
+ */
+const CHAT_USER = (() => {
+  const preset = CHAT_ROLE_PRESETS.find((one) => one.key === 'chat-user');
+  if (!preset) throw new Error("module-chat no longer ships a 'chat-user' preset; app-roles.ts must be updated.");
+  return preset;
+})();
+
+/**
+ * An ordinary signed-in person: their own account, and chat.
+ *
+ * ## ⚠ IT USED TO HOLD NOTHING, AND THAT CHANGED ON 2026-09-12
+ *
+ * It was the control case for the whole access-checking chain — route guard,
+ * page gate, component gate and API guard — and its comment said, in capitals,
+ * that it must stay empty, because a role that grants nothing is the only one
+ * that proves a denial is real rather than incidental.
+ *
+ * That was the right rule for a registry in which every key was a right over
+ * the ADMIN APP. `chat:*` is the first vocabulary in this product that is not:
+ * messaging a colleague is not an administrative power, and a product whose
+ * ordinary signed-in person cannot use its chat has a chat nobody uses. The
+ * operator asked for it directly.
+ *
+ * ⚠ WHAT IT COSTS, written down rather than discovered. This role no longer
+ * proves that a denial is real — it proves only that ADMIN denials are, since
+ * it still holds no `admin:*`, no `roles:*`, no `members:*` and nothing at
+ * organization or workspace level. A genuinely empty app-level role no longer
+ * exists. The file has always named its replacement: `restricted-user`, the
+ * account whose identity is managed elsewhere and which withholds even the
+ * `account:*` keys. It has not been created, because inventing a role nobody
+ * asked for is the other way to get this wrong — see §12.53.
  */
 const NORMAL_USER: SystemRoleDefinition = {
   key: 'normal-user',
@@ -113,17 +148,26 @@ const NORMAL_USER: SystemRoleDefinition = {
    */
   icon: 'id-card',
   /*
-   * EMPTY, and it must stay empty: adding anything — even `admin:access` "just
-   * to see the dashboard" — would make every denial this role exists to
-   * demonstrate ambiguous.
+   * ⚠ NO ADMIN RIGHTS, STILL, and that line has not moved: adding
+   * `admin:access` "just to see the dashboard" would make every denial this
+   * role still demonstrates ambiguous. What it holds is what an ordinary person
+   * needs to be a person here — their own account, and a way to talk to
+   * somebody.
    *
-   * It DOES hold the own-account keys: the point of the role is to have no
-   * admin rights, not to be unable to rename itself. A role that withholds
-   * those is the future `restricted-user`, and withholding them should be a
-   * deliberate act rather than the default.
+   * ⚠ `chat:moderate` and `chat:remove_participant` are NOT among them. Both
+   * are in the module's `chat-moderator` preset instead, and the split is the
+   * point: taking somebody out of a conversation and deleting what they said
+   * are powers over other people, which is exactly the kind of thing this role
+   * is defined by not having.
    */
-  features: OWN_ACCOUNT,
-  limits: { [LIMIT.userOrganizations]: 5 },
+  features: [...OWN_ACCOUNT, ...CHAT_USER.features],
+  /*
+   * The group-chat cap comes with the keys. It matches the registry's own
+   * default, restated rather than inherited for the reason the preset restates
+   * it: a role that inherited its cap silently would change meaning the day the
+   * default did.
+   */
+  limits: { [LIMIT.userOrganizations]: 5, ...CHAT_USER.limits },
 };
 
 /*

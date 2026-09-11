@@ -528,11 +528,52 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 50 | Web Push, and what `dnd` gates once it exists | ⚠ with `/chat` v1 | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience. **⚠ IN SCOPE 2026-09-11:** the operator's requirement is that people are TOLD on time, and a tone in an open tab satisfies that only for somebody already looking. Either this comes forward, or `sendChatNotification` is wired at v1 to something that reaches a closed tab — email being the cheapest. Shipping neither does not meet the requirement |
 | 51 | Does an INVITED person see the first message before they accept? | before the requests inbox ships (step 7) | `canAccessConversation` is ACTIVE ONLY (2026-09-11), so an invitation shows who sent it and nothing else. ⚠ That makes accept-or-decline close to a coin flip, and every product that has solved this shows the first message — which is the honest argument for changing it. The argument against is the one the helper exists to make: rendering somebody's message content to a NON-PARTICIPANT is what C1 was. A middle exists — the first `kind: user` message only, never the thread — and it is a PRIVACY decision rather than a UI one, so it is not being made by default. ⚠ Whatever is chosen, it must not leak differently for a blocked sender than an unknown one |
 | 52 | ~~Where the chat PANEL opens from~~ **CLOSED 2026-09-11: there is no panel** | — | **✅ CLOSED.** `/chat` is the only home. The panel was a shortcut to this data hanging off a header icon that no longer exists, and building a shortcut before the place it shortcuts to is how the shortcut becomes the only home — permanently cramped. It can return the day something exists to anchor it to, against a page that already works. Original entry: | The anchored popover was anchored to the icon in the main header, and that icon was removed on 2026-09-11 because the drawer already leads to `/chat` — a second door to one place. Three honest answers: `/chat` is the only home and the panel is dropped, which is the smallest and loses the read-without-leaving-the-page property the panel existed for; the panel re-anchors to the drawer entry, which is a popover hanging off a navigation list and is unusual for a reason; or it opens from somewhere new that has to be designed. ⚠ Not guessed at — the panel is most of step 7's UI, and building it against the wrong anchor is the expensive mistake |
+| 53 | There is no longer a genuinely EMPTY app-level role | when a denial needs proving again | `normal-user` was the control case for the whole access-checking chain — route guard, page gate, component gate, API guard — and it held nothing on purpose, because a role that grants nothing is the only one that proves a denial is real rather than incidental. It now carries `chat:*`, on the operator's direct request (2026-09-12), and that was the right call: messaging a colleague is not an administrative power, and a product whose ordinary person cannot use its chat has a chat nobody uses. What is left is weaker — it proves ADMIN denials, since it still holds no `admin:*`, `roles:*` or `members:*` and nothing at organization or workspace level. `app-roles.ts` has always named the replacement: `restricted-user`, the account whose identity is managed elsewhere, which withholds even the `account:*` keys. ⚠ NOT created, because inventing a role nobody asked for is the other way to get this wrong — an operator's role catalogue is theirs. Create it the day a test needs a true zero |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-12** — **Chat is granted to `normal-user`, and the control case it
+  was is recorded as lost.**
+
+  The operator asked for ordinary people to be able to use chat. The keys come
+  from `module-chat`'s OWN `chat-user` preset rather than being restated here:
+  the module ships the shape and seeds nothing — adopting chat grants nobody
+  anything until a host says who may use it — and `app-roles.ts` is that host
+  saying so. ⚠ Read from the preset rather than copied, so the day chat adds a
+  key ordinary use needs, the role gets it without anybody remembering to come
+  back; and it THROWS if the preset is ever gone, because a `find` returning
+  undefined would seed a role granting nothing and the symptom would be every
+  chat surface refusing everybody with no error anywhere.
+
+  **⚠ `chat:moderate` AND `chat:remove_participant` ARE NOT AMONG THEM**, and
+  the split is the point. Taking somebody out of a conversation and deleting
+  what they said are powers over OTHER PEOPLE — exactly the kind of thing this
+  role is defined by not having. They live in the `chat-moderator` preset, which
+  no seeded role adopts.
+
+  **⚠ WHAT THIS COSTS, written down rather than discovered later.**
+  `normal-user` held nothing on purpose. Its comment said in capitals that it
+  must stay empty, because a role that grants nothing is the only one that
+  proves a denial is real rather than incidental — the control case for the
+  route guard, the page gate, the component gate and the API guard at once.
+
+  That rule was right for a registry in which every key was a right over the
+  ADMIN APP. `chat:*` is the first vocabulary here that is not. So the rule is
+  narrowed rather than abandoned: the role still holds no `admin:*`, no
+  `roles:*`, no `members:*` and nothing at organization or workspace level, so
+  it still proves ADMIN denials — and a genuinely empty app-level role no longer
+  exists. §12.53 records that, and names `restricted-user` as the replacement
+  the file has always anticipated. ⚠ It has NOT been created: inventing a role
+  nobody asked for is the other way to get this wrong, and an operator's role
+  catalogue is theirs.
+
+  **Applied, not merely written:** `db:sync` ran, and `normal-user` now carries
+  eight keys — the three `account:*` and the five `chat:*`. Verified by reading
+  `perm_role_feature` back out of the database rather than trusting the seeder's
+  own count.
 
 - **2026-09-12** — **TWO BUGS FOUND BY ACTUALLY USING IT, which is the step no
   amount of asserting replaces.**
