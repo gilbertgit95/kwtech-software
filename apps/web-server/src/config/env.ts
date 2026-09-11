@@ -111,6 +111,36 @@ const envSchema = z
     PERMISSIONS_INVITE_URL_BASE: z.url().default('http://localhost:8081/invitations/accept'),
 
     /**
+     * ── realtime ──────────────────────────────────────────────────────────────
+     *
+     * How many replicas of this service the deployment runs. DECLARED, because
+     * a process cannot count its own siblings.
+     *
+     * It exists for one check, in src/realtime/realtime.pubsub.ts: the
+     * in-memory pub/sub engine serves exactly one instance, and past that an
+     * event published on one replica never reaches a socket held by another —
+     * with no error anywhere. Raising this without configuring REDIS_URL fails
+     * the boot, which is the loud version of a failure that is otherwise
+     * invisible until users report that half of them see nothing.
+     *
+     * ⚠ Its limit, stated rather than discovered: scaling the deployment
+     * WITHOUT raising this passes the check while the product is broken. It
+     * catches the deliberate scale-up, which is the case that actually happens.
+     */
+    REALTIME_REPLICAS: z.coerce.number().int().positive().default(1),
+
+    /**
+     * The distributed pub/sub backend. UNSET TODAY, and that is a decision
+     * (PLAN §12.28): one replica, in memory, recorded rather than assumed.
+     *
+     * Setting it does NOT switch engines by itself — the driver is not
+     * installed, and starting on the in-memory engine while this is set would
+     * report a migration that has not happened. So a set value fails the boot
+     * with the three steps that complete it. See src/realtime/realtime.pubsub.ts.
+     */
+    REDIS_URL: optionalText,
+
+    /**
      * ── mail ──────────────────────────────────────────────────────────────────
      *
      * One URL rather than host/port/user/pass/secure as five variables, because

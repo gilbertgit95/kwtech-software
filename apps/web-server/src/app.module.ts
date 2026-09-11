@@ -6,7 +6,6 @@ import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD, RouterModule } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { PubSub } from 'graphql-subscriptions';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
@@ -21,6 +20,7 @@ import {
   permissionsWritePrismaProvider,
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_FEATURES } from './seed/registry.js';
 import { UsersResolver } from './users/users.resolver.js';
@@ -139,18 +139,21 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
     sendInvitationEmail,
 
     /*
-     * The pub/sub engine, chosen HERE because it is a deployment fact rather
-     * than a module one.
+     * The pub/sub engine, which is a DEPLOYMENT fact rather than a module one —
+     * so the app supplies it, and every module that publishes takes the same
+     * instance from the same place.
      *
-     * `graphql-subscriptions`' in-memory PubSub serves ONE API instance — a
-     * publish reaches only the subscribers connected to this process. The
-     * moment `apps/web-server` runs more than one replica, an event published
-     * on replica A never reaches a socket held by replica B, and the failure is
-     * silent: the UI simply does not update for half the users. Swap in
-     * `graphql-redis-subscriptions` at that point; the module depends on the
-     * structural `PermissionsPubSub` and nothing in it changes (PLAN §7).
+     * ⚠ `new PubSub()` used to be written inline here. That was correct for
+     * exactly as long as one module published: the next one would have
+     * constructed a second engine, and two engines in one process do not see
+     * each other's publishes — a subscriber on B waits forever for an event
+     * sent on A, with no error. `realtimePubSub()` is the single instance, and
+     * it is also where single-replica is ENFORCED rather than assumed
+     * (PLAN §12.28). The module depends only on the structural
+     * `PermissionsPubSub`, so the eventual swap to Redis changes nothing here
+     * or in any resolver (PLAN §7).
      */
-    pubsubProvider: { provide: PERMISSIONS_PUBSUB, useValue: new PubSub() },
+    pubsubProvider: { provide: PERMISSIONS_PUBSUB, useValue: realtimePubSub() },
 
     /*
      * EVERY module's features, not just this module's own.
