@@ -240,7 +240,7 @@ export function Sidebar({
                        */
                       title={collapsed ? item.label : undefined}
                       className={cn(
-                        'flex items-center rounded-lg py-2 text-sm transition-colors',
+                        'relative flex items-center rounded-lg py-2 text-sm transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         collapsed ? 'justify-center gap-0 px-0' : 'gap-2.5 px-2.5',
                         active
@@ -266,6 +266,28 @@ export function Sidebar({
                       >
                         {item.label}
                       </span>
+                      {/*
+                        WHAT A MODULE HANGS OFF ITS OWN ENTRY — an unread count
+                        today. The drawer draws it and never learns what it
+                        counts.
+
+                        ⚠ RENDERED, never called. `item.Badge` is a client
+                        component reference carried through `composeNav`, and
+                        the entry it belongs to has already been filtered by its
+                        feature key — so a badge that subscribes never runs for
+                        somebody the API would refuse.
+
+                        Two placements, because a collapsed drawer has no room
+                        beside the label: pinned to the icon when collapsed,
+                        pushed to the far edge when open. The badge itself knows
+                        neither — the shell decides where it sits and the module
+                        decides what it says.
+                      */}
+                      {item.Badge ? (
+                        <span className={cn('shrink-0', collapsed ? 'absolute right-1 top-1' : 'ml-auto')}>
+                          <item.Badge />
+                        </span>
+                      ) : null}
                     </Link>
                   </li>
                 );

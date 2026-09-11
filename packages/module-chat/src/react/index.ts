@@ -18,7 +18,7 @@ export {
   createChatClient,
   DEFAULT_GRAPHQL_PATH,
 } from './chat-client.js';
-export { ChatWidget, type ChatWidgetProps } from './chat-widget.js';
+export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.js';
 export { CHAT_HREF, type ChatWebModuleOptions, chatWebModule } from './module.js';
 export { ChatPage } from './pages/chat-page.js';
 export { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';

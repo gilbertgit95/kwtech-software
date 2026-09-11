@@ -13,7 +13,7 @@ import {
 import { BareShell } from '@/components/layout/bare-shell';
 import { Header } from '@/components/layout/header';
 import { AppIconSet } from '@/components/layout/icon-set';
-import { buildAccountNav, buildHeaderSlots, buildNav } from '@/components/layout/nav';
+import { buildAccountNav, buildNav } from '@/components/layout/nav';
 import { RememberOrganization } from '@/components/layout/remember-organization';
 import { Sidebar } from '@/components/layout/sidebar';
 import { isCollapsedValue, SIDEBAR_COOKIE } from '@/components/layout/sidebar-state';
@@ -455,18 +455,6 @@ export async function AppShell({
                * reported as a bug in the API.
                */
               roles={permissions?.appRoles ?? []}
-              /*
-               * APP-level grants, like `accountNav` above and for a sharper
-               * reason: the header is the same strip on every page, so
-               * filtering it with whichever organization happens to be selected
-               * would make a module's icon appear and disappear as somebody
-               * moved between their own company and the back office.
-               *
-               * Resolved here, on the server, so the first paint is already
-               * right — an icon that appeared after hydration and then vanished
-               * would flash chat at everybody who cannot use it.
-               */
-              slots={buildHeaderSlots(appGrants)}
             />
             {/* `min-h-0` for the same reason as the column. */}
             <main className="min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6">{children}</main>

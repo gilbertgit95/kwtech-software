@@ -1,6 +1,5 @@
 import {
   composeFeatures,
-  composeHeaderSlots,
   composeNav,
   composeNavGroups,
   composeRoutes,
@@ -11,7 +10,7 @@ import {
   serverModuleImports,
   serverRoutePrefixes,
 } from '../src/compose.js';
-import type { HeaderSlotContribution, ModuleRoute, ServerModuleDescriptor, WebModuleDescriptor } from '../src/types.js';
+import type { ModuleRoute, ServerModuleDescriptor, WebModuleDescriptor } from '../src/types.js';
 
 /**
  * Composition fails LOUDLY. Two modules quietly owning one path — or one
@@ -61,75 +60,6 @@ describe('composeRoutes', () => {
 
   it('tolerates a module with no routes at all', () => {
     expect(composeRoutes([{ key: 'server-only' }])).toEqual([]);
-  });
-});
-
-describe('composeHeaderSlots', () => {
-  const Widget = (() => null) as unknown as HeaderSlotContribution['Component'];
-  const slots = (key: string, ...contributions: HeaderSlotContribution[]): WebModuleDescriptor => ({
-    key,
-    headerSlots: contributions,
-  });
-
-  it('orders left to right, and breaks a tie by key rather than by module order', () => {
-    const composed = composeHeaderSlots([
-      slots('a', { key: 'bell', Component: Widget, order: 50 }),
-      slots('b', { key: 'chat', Component: Widget, order: 10 }),
-      slots('c', { key: 'apples', Component: Widget, order: 10 }),
-    ]);
-
-    // The tiebreak matters: without it, two modules at the same order would
-    // swap places whenever WEB_MODULES was reordered.
-    expect(composed.map((slot) => slot.key)).toEqual(['apples', 'chat', 'bell']);
-  });
-
-  it('defaults a missing order to 0 rather than dropping the slot', () => {
-    expect(composeHeaderSlots([slots('a', { key: 'chat', Component: Widget })])[0]?.order).toBe(0);
-  });
-
-  it('filters by the keys the viewer holds', () => {
-    const modules = [
-      slots('a', { key: 'chat', Component: Widget, feature: 'chat:read' }, { key: 'help', Component: Widget }),
-    ];
-
-    expect(composeHeaderSlots(modules, ['chat:read']).map((slot) => slot.key)).toEqual(['chat', 'help']);
-    // A slot with no feature survives any filter — some controls are for
-    // everybody.
-    expect(composeHeaderSlots(modules, []).map((slot) => slot.key)).toEqual(['help']);
-  });
-
-  it('⚠ returns everything when no filter is given, like composeNav', () => {
-    const modules = [slots('a', { key: 'chat', Component: Widget, feature: 'chat:read' })];
-    expect(composeHeaderSlots(modules)).toHaveLength(1);
-  });
-
-  it('⚠ fails closed: an app that resolved no grants passes [] and gets nothing keyed', () => {
-    // The drawer's `?? false`, in the header. Guessing here would draw an icon
-    // for somebody the API refuses.
-    const modules = [slots('a', { key: 'chat', Component: Widget, feature: 'chat:read' })];
-    expect(composeHeaderSlots(modules, [])).toEqual([]);
-  });
-
-  it('throws on a duplicate key, naming both owners', () => {
-    const modules = [slots('a', { key: 'chat', Component: Widget }), slots('b', { key: 'chat', Component: Widget })];
-
-    expect(() => composeHeaderSlots(modules)).toThrow(ModuleCompositionError);
-    expect(() => composeHeaderSlots(modules)).toThrow(/Header slot 'chat' declared by both 'a' and 'b'/);
-  });
-
-  it('⚠ throws on a duplicate even when the reader would see NEITHER copy', () => {
-    // A wiring bug that only fails for an administrator is a wiring bug that
-    // ships.
-    const modules = [
-      slots('a', { key: 'chat', Component: Widget, feature: 'chat:read' }),
-      slots('b', { key: 'chat', Component: Widget, feature: 'chat:read' }),
-    ];
-
-    expect(() => composeHeaderSlots(modules, [])).toThrow(ModuleCompositionError);
-  });
-
-  it('tolerates a module that contributes none', () => {
-    expect(composeHeaderSlots([{ key: 'server-only' }])).toEqual([]);
   });
 });
 
@@ -338,6 +268,40 @@ describe('server wiring helpers', () => {
 
   it('emits a prefix entry only for modules that asked for one', () => {
     expect(serverRoutePrefixes(modules)).toEqual([{ path: 'perm', module: A }]);
+  });
+});
+
+describe('composeNav — the badge a module hangs off its entry', () => {
+  const Badge = (() => null) as unknown as NonNullable<NonNullable<ModuleRoute['nav']>['badge']>;
+
+  it('carries the component through to the entry', () => {
+    const entries = composeNav([
+      web('chat', [route({ path: '/chat', title: 'Chat', nav: { group: 'Overview', badge: Badge } })]),
+    ]);
+
+    // Rendered by the shell as `<entry.Badge />`, which is why it is carried
+    // rather than looked up again by whoever draws the drawer.
+    expect(entries[0]?.Badge).toBe(Badge);
+  });
+
+  it('leaves the field absent when a route declares none', () => {
+    const entries = composeNav([web('a', [route({ path: '/a', nav: { group: 'Overview' } })])]);
+    expect(entries[0]).not.toHaveProperty('Badge');
+  });
+
+  it('⚠ goes with the entry when the entry is filtered away', () => {
+    // The badge subscribes. One that survived its own entry's feature filter
+    // would be a live query running for somebody the API refuses.
+    const entries = composeNav(
+      [
+        web('chat', [
+          route({ path: '/chat', title: 'Chat', feature: 'chat:read', nav: { group: 'Overview', badge: Badge } }),
+        ]),
+      ],
+      [],
+    );
+
+    expect(entries).toEqual([]);
   });
 });
 

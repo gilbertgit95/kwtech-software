@@ -527,14 +527,75 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 49 | Abuse has no path, which is §12.42's cost | when the first report arrives | `chat:moderate` acts only inside a conversation the actor PARTICIPATES in, and §12.42 deliberately ships no read-any-conversation key. Consistent, and it means a platform-wide abuse report can be received and acted on by nobody. The blocking added in v1 is the USER's remedy; the PLATFORM has none. The honest fill is a report flow that escalates a specific conversation with the reporter's consent — narrow, audited, and not a general read key |
 | 50 | Web Push, and what `dnd` gates once it exists | ⚠ with `/chat` v1 | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience. **⚠ IN SCOPE 2026-09-11:** the operator's requirement is that people are TOLD on time, and a tone in an open tab satisfies that only for somebody already looking. Either this comes forward, or `sendChatNotification` is wired at v1 to something that reaches a closed tab — email being the cheapest. Shipping neither does not meet the requirement |
 | 51 | Does an INVITED person see the first message before they accept? | before the requests inbox ships (step 7) | `canAccessConversation` is ACTIVE ONLY (2026-09-11), so an invitation shows who sent it and nothing else. ⚠ That makes accept-or-decline close to a coin flip, and every product that has solved this shows the first message — which is the honest argument for changing it. The argument against is the one the helper exists to make: rendering somebody's message content to a NON-PARTICIPANT is what C1 was. A middle exists — the first `kind: user` message only, never the thread — and it is a PRIVACY decision rather than a UI one, so it is not being made by default. ⚠ Whatever is chosen, it must not leak differently for a blocked sender than an unknown one |
+| 52 | Where the chat PANEL opens from, now that there is no header icon | before step 7's panel is built | The anchored popover was anchored to the icon in the main header, and that icon was removed on 2026-09-11 because the drawer already leads to `/chat` — a second door to one place. Three honest answers: `/chat` is the only home and the panel is dropped, which is the smallest and loses the read-without-leaving-the-page property the panel existed for; the panel re-anchors to the drawer entry, which is a popover hanging off a navigation list and is unusual for a reason; or it opens from somewhere new that has to be designed. ⚠ Not guessed at — the panel is most of step 7's UI, and building it against the wrong anchor is the expensive mistake |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
 
+- **2026-09-11** — **REVERSED: no chat icon in the top nav. The unread count
+  moves onto the drawer entry.**
+
+  Chat is already in the side drawer, so a header icon was a SECOND DOOR to one
+  place. Two controls for one destination is how somebody learns to wonder which
+  one is the real one, and the drawer is where this application says where you
+  can go. The header slot built hours earlier is gone — the mechanism as well as
+  chat's use of it.
+
+  ⚠ **THE MECHANISM WENT TOO, rather than being left in place for the
+  notification bell that might want it.** `WebModuleDescriptor.headerSlots`,
+  `composeHeaderSlots` and the app's `buildHeaderSlots` had exactly one
+  contributor and now have none, and an unused extension point in a published
+  contract is a claim to have thought through a case nobody has made yet — the
+  same argument that refused an empty `ChatAttachment` table (§12.45). It is one
+  `git revert` of `03c944e` away the day a bell actually needs it, with its tests
+  attached.
+
+  **THE BADGE SURVIVED, and is still a COMPONENT rather than a number.**
+  `ModuleRoute.nav` gains `badge?: ComponentType`, carried through `composeNav`
+  onto the entry as `Badge`. The reason it could not be a number has not
+  changed: everything else on a nav entry is a string resolved once on the
+  server, which is right for exactly as long as it takes somebody else to send a
+  message — and a drawer saying nothing while a message waits is a drawer people
+  stop believing. So the module contributes something that can subscribe, and
+  the shell draws it without learning what it counts.
+
+  **This is strictly less machinery than the header slot was**, which is the
+  other reason to prefer it:
+
+  - No second compose function, no second descriptor field, no duplicate-key
+    rule. A badge is one optional property on a nav entry that already exists.
+  - ⚠ ONE FILTER. The badge hangs off the entry, so it is filtered by the
+    route's own `feature` — there is no second key to keep in step, and a badge
+    that outlived its entry's filter would be a LIVE SUBSCRIPTION running for
+    somebody the API refuses. Its own test.
+  - The drawer decides placement and the module decides content: pinned to the
+    icon when the drawer is collapsed, pushed to the far edge when it is open,
+    and the badge knows neither.
+
+  **One accessibility correction made on the way.** The count was going to carry
+  an `aria-label`, which a bare `<span>` does not support — it has no role, so a
+  reader is free to ignore it. It is real text now, visually hidden, which also
+  lands inside the drawer's link and becomes part of its accessible name: "Chat,
+  3 unread messages". It still spells apart what the number deliberately merges,
+  since unread messages and pending invitations share one figure.
+
+  ⚠ **AND IT LEAVES STEP 7 A QUESTION.** The anchored panel was anchored to the
+  header icon — `/chat` is the full page, and the panel was the shortcut hanging
+  off the icon that no longer exists. Three honest answers, and it is a product
+  decision rather than a technical one: `/chat` is the only home and the panel is
+  dropped; the panel is re-anchored to the drawer entry; or it opens from
+  somewhere new. Recorded as §12.52 rather than guessed at.
+
 - **2026-09-11** — **STEP 6: the header is COMPOSED, and chat's icon is the
   first thing in it.**
+
+  ⚠ **SUPERSEDED THE SAME DAY — see the entry above.** The header slot was built
+  and then removed: chat is in the drawer, and putting it in the top nav as well
+  was a second door to one place. What survives is the badge, moved onto the
+  drawer entry. The rest of this entry is the reasoning as it stood, kept
+  because the mechanism argument outlived the placement.
 
   The drawer has been `composeNav(WEB_MODULES, granted)` since `module-kit`
   existed; the header had not caught up. A module wanting a control there had to
@@ -1358,14 +1419,15 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
   ## Who sees it: one key, filtered in three places, enforced in a fourth
 
-  A user whose app-level role lacks `chat:read` sees no icon, no drawer entry
-  and no route — the drawer through `composeNav(WEB_MODULES, granted)`, the
-  header widget through the same grant filter on the module-kit slot, and the
-  pages through `ModuleRoute.feature`, which the catch-all already resolves and
-  answers with `FeatureDenied`. All three are decided SERVER-SIDE, in the shell
-  composition, so there is no flash of an icon that then vanishes. All three
-  fail closed when grants cannot be resolved, matching the `?? false` the nav
-  filter already uses.
+  A user whose app-level role lacks `chat:read` sees no drawer entry, no unread
+  count and no route — the first two through `composeNav(WEB_MODULES, granted)`,
+  which now carries the badge along with the entry it belongs to, and the pages
+  through `ModuleRoute.feature`, which the catch-all already resolves and
+  answers with `FeatureDenied`. ⚠ ONE FILTER RATHER THAN TWO, since the badge
+  hangs off the entry: there is no second key and no second place for the two to
+  drift apart. Both are decided SERVER-SIDE, in the shell composition, so there
+  is no flash of an entry that then vanishes, and both fail closed when grants
+  cannot be resolved, matching the `?? false` the nav filter already uses.
 
   ⚠ **AND HIDING IS NOT ENFORCING.** This is C1's lesson and it is worth
   restating because a hidden icon feels like a control: every resolver still
@@ -1377,7 +1439,14 @@ Decisions 1, 2, 3 and 5 gate the next step.
 - **2026-09-10** — **`module-chat`, the second design turn: the header slot,
   presence, leaving, and everything that is ephemeral.**
 
-  **THE ICON IS A HEADER SLOT, NOT A LINE IN `header.tsx`.** Chat hangs off the
+  ⚠ **REVERSED 2026-09-11 — THERE IS NO HEADER ICON.** Chat is reachable from
+  the side drawer, which already leads there, and the unread count hangs off
+  that entry instead. The paragraph below is kept because the mechanism argument
+  in it was right and outlived the placement: whatever a module contributes to
+  the shell is a CONTRIBUTION filtered by its own key, never a line in
+  `header.tsx`. See the entry dated 2026-09-11 in §13.
+
+  **~~THE ICON IS A HEADER SLOT, NOT A LINE IN `header.tsx`.~~** Chat hangs off the
   main header, left of `UserMenu` — the right-hand cluster is things about YOU,
   the left is about this page, and a notification bell later joins the same
   cluster. ⚠ But the drawer is `composeNav(WEB_MODULES, granted)`: navigation is
@@ -1680,10 +1749,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
      no replay, so a message published in the gap is lost without it — and the
      APP-OWNED CONNECTION (§12.39), one socket per tab rather than one per
      module.
-  6. ✅ **DONE 2026-09-11.** `module-kit`: the header slot, plus the chat widget
-     that fills it — a subscribing client component, because the unread badge
-     must be right before anybody opens the panel. `/chat` is contributed as a
-     STUB, so the whole path is proven before step 7 fills the page.
+  6. ✅ **DONE 2026-09-11.** `module-kit`: a nav BADGE a module hangs off its own
+     drawer entry, plus the chat count that fills it — a subscribing client
+     component, because the number must be right without a navigation. `/chat`
+     is contributed as a STUB, so the whole path is proven before step 7 fills
+     the page. ⚠ Built first as a HEADER SLOT and reversed the same day: chat is
+     in the drawer, and the top nav would have been a second door to one place.
+     That leaves §12.52 open — the panel had nothing else to anchor to.
   7. Web: `/chat`, the list, the thread, the composer, the invite dialog, the
      requests inbox, and the anchored panel over the same data.
   8. The ephemeral tier: presence as a refcount with a grace period,

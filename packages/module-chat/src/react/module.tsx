@@ -1,20 +1,20 @@
 import type { WebModuleDescriptor } from '@kwtech/module-kit';
 import { chatIsEnabled } from '../enabled.js';
 import { CHAT_FEATURE, CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '../feature-keys.js';
-import { ChatWidget } from './chat-widget.js';
+import { ChatUnreadBadge } from './chat-unread-badge.js';
 import { ChatPage } from './pages/chat-page.js';
 
 /**
- * Chat's web descriptor — the route, the header control and the feature
+ * Chat's web descriptor — the route, its drawer entry and the feature
  * contributions, as data the app composes.
  *
  *   const WEB_MODULES = [authWebModule, permissionsWebModule, chatWebModule()];
  *
  * ⚠ A FUNCTION where the other two are constants, and the reason is the switch:
  * `chatWebModule({ enabled: false })` returns a descriptor that contributes
- * NOTHING — no route, no nav entry, no header slot — and it reads that flag
- * through the same `chatIsEnabled` the Nest module does, so the two halves of
- * the module cannot disagree about what "on" means.
+ * NOTHING — no route, no nav entry, no badge — and it reads that flag through
+ * the same `chatIsEnabled` the Nest module does, so the two halves of the
+ * module cannot disagree about what "on" means.
  *
  * ⚠ THIS FILE IS `.tsx` FOR THE SAME REASON THE OTHER MODULES' ARE. The route
  * adapter must RENDER its page, never call it: the pages are `'use client'`,
@@ -23,7 +23,7 @@ import { ChatPage } from './pages/chat-page.js';
  * ChatPage() from the server".
  */
 
-/** Where chat's own pages live. One constant, so the route and the icon agree. */
+/** Where chat's own pages live. One constant, so the route and every link to it agree. */
 export const CHAT_HREF = '/chat';
 
 function ChatRoute() {
@@ -67,31 +67,30 @@ export function chatWebModule(options: ChatWebModuleOptions = {}): WebModuleDesc
         component: ChatRoute,
         title: 'Chat',
         /*
-         * The same key the API enforces on every chat query, and the same one
-         * the header slot below is filtered by. ⚠ The filter is an ergonomic:
-         * `/chat` typed into the address bar is refused by the catch-all, and
-         * the GraphQL endpoint refuses it again regardless. Hiding is not
-         * enforcing.
+         * The same key the API enforces on every chat query, and the only one
+         * involved: the badge below hangs off this entry, so it is filtered by
+         * this key too and there is no second one to keep in step. ⚠ The filter
+         * is an ergonomic: `/chat` typed into the address bar is refused by the
+         * catch-all, and the GraphQL endpoint refuses it again regardless.
+         * Hiding is not enforcing.
          */
         feature: CHAT_FEATURE.read,
-        nav: { group: 'Overview', order: 20, icon: 'message' },
+        /*
+         * ⚠ THE COUNT HANGS OFF THE DRAWER ENTRY, and there is no icon in the
+         * app's main header.
+         *
+         * The first design put it there — a header slot left of the account
+         * menu — and that was a second door to a place the drawer already
+         * leads. Two controls for one destination is how a person learns to
+         * wonder which one is the real one, and the drawer is where this
+         * application says where you can go. Reversed 2026-09-11.
+         *
+         * The badge is still a COMPONENT rather than a number, because the
+         * reason it existed has not changed: a count resolved on the server is
+         * right until somebody else sends a message.
+         */
+        nav: { group: 'Overview', order: 20, icon: 'message', badge: ChatUnreadBadge },
       },
     ],
-    /*
-     * ⚠ THE ICON IN THE HEADER, contributed rather than wired.
-     *
-     * It hangs left of the account menu — the right-hand cluster is things
-     * about YOU, and a notification bell will join the same cluster later. An
-     * icon hardcoded into the app's `header.tsx` would be unfiltered by
-     * `chat:read`, absent from this descriptor, and would teach the app shell
-     * what chat is.
-     *
-     * ⚠ A COMPONENT REFERENCE, never a function prop: the composing layer is a
-     * server component, and a function cannot cross that boundary.
-     *
-     * 50 leaves room on both sides — a bell at 40, something at 60 — without
-     * anybody renumbering this one.
-     */
-    headerSlots: [{ key: 'chat', Component: ChatWidget, order: 50, feature: CHAT_FEATURE.read }],
   };
 }

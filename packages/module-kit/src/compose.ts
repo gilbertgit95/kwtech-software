@@ -1,7 +1,6 @@
 import type { LimitContribution } from './limits.js';
 import type {
   FeatureContribution,
-  HeaderSlot,
   ModuleRoute,
   NavEntry,
   NavGroupContribution,
@@ -123,57 +122,17 @@ export function composeNav(
       href,
       ...(route.nav.icon !== undefined ? { icon: route.nav.icon } : {}),
       ...(route.feature !== undefined ? { feature: route.feature } : {}),
+      /*
+       * Carried through rather than looked up again by whoever draws the
+       * drawer: the entry and its indicator are one contribution, and a shell
+       * that had to ask a second question about an entry would be a shell that
+       * knows which module it is asking about.
+       */
+      ...(route.nav.badge !== undefined ? { Badge: route.nav.badge } : {}),
     });
   }
 
   return entries.sort((a, b) => a.group.localeCompare(b.group) || a.order - b.order || a.label.localeCompare(b.label));
-}
-
-/**
- * The header's module-contributed controls, left to right.
- *
- * The header's `composeNav`, and deliberately the same contract: pass
- * `heldFeatures` to filter, omit it for everything. A slot with no `feature`
- * survives any filter — some controls are for everybody.
- *
- * ⚠ FAILS CLOSED on an unresolved context, because the caller passes what it
- * resolved: an app that could not read the viewer's grants passes `[]` and gets
- * nothing, never "assume the usual". That matches the `?? false` the drawer
- * already uses, and it is the reason this takes the held keys rather than an
- * optional context it would have to interpret.
- *
- * ⚠ DUPLICATE KEYS THROW. Two modules claiming one slot key is a wiring bug,
- * and the silent resolutions are both wrong: rendering both puts two controls
- * where one was meant, and taking the first makes the winner depend on the
- * order `WEB_MODULES` happens to be written in. The same argument as
- * `composeRoutes`.
- */
-export function composeHeaderSlots(
-  modules: readonly WebModuleDescriptor[],
-  heldFeatures?: readonly string[],
-): HeaderSlot[] {
-  const byKey = new Map<string, string>();
-  const slots: HeaderSlot[] = [];
-
-  for (const mod of modules) {
-    for (const slot of mod.headerSlots ?? []) {
-      const owner = byKey.get(slot.key);
-      if (owner) {
-        throw new ModuleCompositionError(`Header slot '${slot.key}' declared by both '${owner}' and '${mod.key}'`);
-      }
-      byKey.set(slot.key, mod.key);
-
-      /*
-       * ⚠ Registered BEFORE the filter, so a duplicate is refused whether or
-       * not this particular reader would have seen either copy. A wiring bug
-       * that only throws for an administrator is a wiring bug that ships.
-       */
-      if (heldFeatures && slot.feature && !heldFeatures.includes(slot.feature)) continue;
-      slots.push({ ...slot, order: slot.order ?? 0 });
-    }
-  }
-
-  return slots.sort((a, b) => a.order - b.order || a.key.localeCompare(b.key));
 }
 
 /**

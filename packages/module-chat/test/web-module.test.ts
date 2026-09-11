@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { composeHeaderSlots, composeNav, composeRoutes } from '@kwtech/module-kit';
+import { composeNav, composeRoutes } from '@kwtech/module-kit';
 import { chatIsEnabled } from '../src/enabled.js';
 import { CHAT_FEATURE } from '../src/feature-keys.js';
 import { CHAT_HREF, chatWebModule } from '../src/react/module.js';
@@ -17,28 +17,32 @@ import { CHAT_HREF, chatWebModule } from '../src/react/module.js';
  */
 
 describe('chatWebModule', () => {
-  it('contributes the route, the drawer entry and the header icon', () => {
+  it('contributes the route and its drawer entry, with the unread badge on it', () => {
     const module = chatWebModule();
 
     expect(composeRoutes([module]).map((route) => route.path)).toEqual([CHAT_HREF]);
-    expect(composeNav([module], [CHAT_FEATURE.read]).map((entry) => entry.href)).toEqual([CHAT_HREF]);
-    expect(composeHeaderSlots([module]).map((slot) => slot.key)).toEqual(['chat']);
+
+    const [entry] = composeNav([module], [CHAT_FEATURE.read]);
+    expect(entry?.href).toBe(CHAT_HREF);
+    // The count lives on the drawer entry and nowhere else: chat puts nothing
+    // in the app's main header, because the drawer already leads there and two
+    // doors to one place is how somebody learns to wonder which is the real
+    // one.
+    expect(entry?.Badge).toBeDefined();
   });
 
-  it('⚠ guards the icon and the page with the SAME key', () => {
-    // One key, filtered in three places and enforced in a fourth. Two keys here
-    // would let somebody hold the icon and be refused by the page it opens.
+  it('⚠ contributes NOTHING to the app header', () => {
+    // A regression guard with a product decision behind it, not a style one.
+    expect(chatWebModule()).not.toHaveProperty('headerSlots');
+  });
+
+  it('⚠ takes the badge away with the entry when the key is not held', () => {
+    // The badge SUBSCRIBES. One that outlived its entry's filter would be a
+    // live query running for somebody the API refuses.
     const module = chatWebModule();
 
     expect(composeRoutes([module])[0]?.feature).toBe(CHAT_FEATURE.read);
-    expect(composeHeaderSlots([module])[0]?.feature).toBe(CHAT_FEATURE.read);
-  });
-
-  it('shows neither to somebody who does not hold the key', () => {
-    const module = chatWebModule();
-
     expect(composeNav([module], [])).toEqual([]);
-    expect(composeHeaderSlots([module], [])).toEqual([]);
   });
 
   it('declares its features and its cap', () => {
@@ -52,10 +56,9 @@ describe('chatWebModule', () => {
 describe('chatWebModule({ enabled: false })', () => {
   const off = chatWebModule({ enabled: false });
 
-  it('contributes no route, no drawer entry and no icon', () => {
+  it('contributes no route and no drawer entry', () => {
     expect(composeRoutes([off])).toEqual([]);
     expect(composeNav([off])).toEqual([]);
-    expect(composeHeaderSlots([off])).toEqual([]);
   });
 
   it('⚠ KEEPS the feature registry, so a disable does not deprecate the keys', () => {
