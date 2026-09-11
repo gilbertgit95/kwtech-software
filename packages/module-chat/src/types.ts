@@ -22,6 +22,18 @@ export type ParticipantStatus = (typeof PARTICIPANT_STATUSES)[number];
 export const MESSAGE_KINDS = ['user', 'system'] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
+/**
+ * What somebody DECLARES about themselves — mirrors `ChatAvailabilityKind`.
+ *
+ * ⚠ NOT CALLED `status`, which is taken four times already in this codebase; a
+ * fifth meaning is a bug report nobody can read. And an ENUM rather than free
+ * text: free text is user-generated content rendered into other people's
+ * browsers, which means escaping, a length cap and moderation for something
+ * nobody asked for.
+ */
+export const AVAILABILITIES = ['available', 'busy', 'dnd', 'away', 'invisible'] as const;
+export type Availability = (typeof AVAILABILITIES)[number];
+
 /** What the domain needs to know about a participant row. */
 export interface ParticipantView {
   conversationId: string;

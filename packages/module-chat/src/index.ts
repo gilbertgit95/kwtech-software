@@ -11,6 +11,7 @@
  * was used by the React layer, and was never called server-side.
  */
 
+export * from './domain/availability.js';
 export * from './domain/blocking.js';
 export * from './domain/conversations.js';
 export * from './domain/messages.js';

@@ -226,3 +226,58 @@ model ChatBlock {
   @@index([blockedId])
   @@map("chat_block")
 }
+
+/// WHAT SOMEBODY SAYS ABOUT THEMSELVES — and the only half of the ephemeral
+/// tier that is not ephemeral.
+///
+/// ⚠ PRESENCE AND AVAILABILITY ARE TWO FEATURES, and merging them is the
+/// standard way this goes wrong. Presence is OBSERVED — derived from a socket,
+/// ephemeral, and it must NOT survive a restart, because a row reading `online`
+/// after the process died is a lie that persists. Availability is DECLARED:
+/// chosen by a person, durable until they change it. Different sources,
+/// different lifetimes, different stores — so presence is in memory and this is
+/// the only table.
+///
+/// ⚠ NOT CALLED `status`. That word is taken four times already —
+/// `AuthUser.status`, `PermMembershipStatus`, `PermSubscriptionStatus` and
+/// `ChatParticipant.status` — and a fifth meaning is a bug report nobody can
+/// read.
+model ChatAvailability {
+  /// One row per person, so the id IS the user. No `ChatAvailabilityId`, and
+  /// nothing to garbage-collect: a person has one answer or none.
+  userId String @id
+
+  availability ChatAvailabilityKind @default(available)
+
+  /// ⚠ WHEN IT STOPS MEANING ANYTHING, and it is DERIVED ON READ rather than
+  /// written by anybody.
+  ///
+  /// "Clears in an hour" is a promise something has to keep, and there is no
+  /// scheduler in `web-server` (§12.40) — so a written `expired` would have
+  /// nothing to write it, and the row would say `busy` forever. Storing the
+  /// moment instead and treating `clearAt < now` as unset on every read is the
+  /// lesson invitation expiry already learned with `isAcceptable`.
+  clearAt DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("chat_availability")
+}
+
+/// ⚠ AN ENUM, NEVER FREE TEXT. Free text is user-generated content rendered
+/// into other people's browsers: escaping, a length cap and moderation, for
+/// something nobody asked for. Additive later if anybody does.
+///
+/// ⚠ `invisible` MUST EXIST or presence is mandatory surveillance of your own
+/// staff. It is suppressed at the PUBLISH boundary, never filtered client-side
+/// — a client that receives "she is online, but do not show it" has been told —
+/// and it suppresses TYPING too, or it leaks through the side door.
+enum ChatAvailabilityKind {
+  available
+  busy
+  /// Do not disturb. Today it only quietens the local tone; §12.44 records what
+  /// it will gate once anything can reach a closed tab.
+  dnd
+  away
+  invisible
+}

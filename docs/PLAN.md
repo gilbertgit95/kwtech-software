@@ -534,6 +534,81 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-11** — **STEP 8, the rules first: the ephemeral tier, argued with
+  before anything drives it.**
+
+  The same shape step 3 took, and for the same reason — every trap below is a
+  function over a number, so it is settled in a test rather than watched for in
+  production. ⚠ **NO MIGRATION YET.** `ChatAvailability` is a fragment, not a
+  table: the schema being written and the schema being APPLIED are different
+  acts, and doing the second early leaves a database nobody has used.
+
+  **⚠ PRESENCE AND AVAILABILITY ARE TWO FEATURES, kept apart by their STORES.**
+  Presence is OBSERVED — derived from a socket, ephemeral, and it must not
+  survive a restart, because a row reading `online` after the process died is a
+  lie that persists. Availability is DECLARED: chosen by a person, durable until
+  they change it. So presence is memory and availability is the one table, and
+  no function takes both without saying which is which.
+
+  **The three traps every hand-rolled presence system hits, each with a test**
+
+  1. ⚠ **A REFCOUNT, NOT A BOOLEAN.** One person is several sockets, and closing
+     one tab must not take them offline — the direction nobody notices while
+     testing alone. Five tabs opening is ONE "came online", because the fan-out
+     is per conversation partner and five would be five redraws on everybody
+     else's screen.
+  2. ⚠ **THE SOCKET CLOSES EVERY TIME A TOKEN TURNS OVER, BY DESIGN.**
+     `closeWhenAuthorizationExpires` drops it on a timer nobody controls, so
+     immediate-offline means every user in the system visibly flickers offline
+     and back, forever. A grace period covers the reconnect, and a reconnect
+     inside it produces NO events at all — asserted, because "no event" is the
+     kind of correctness nothing notices when it breaks.
+  3. ⚠ **AN UNGRACEFUL DISCONNECT NEVER FIRES.** A closed laptop lid delivers no
+     goodbye. So presence EXPIRES on a TTL refreshed by a heartbeat rather than
+     trusting a farewell — and one dead socket does not take a live one with it.
+
+  Offline is decided in exactly ONE place, `sweep`, which both ways of leaving
+  end at — a grace that ran out and a socket that stopped answering — so there
+  is one rule and one publish site rather than two that can disagree. It reports
+  a departure once, not on every tick.
+
+  **TYPING EXPIRES; IT IS NEVER STOPPED.** A "stopped typing" event is the one a
+  tab closing mid-word never sends, and the indicator would stick forever —
+  which is the single most common way this is built wrong. The client pings
+  while writing continues and the signal runs out. Throttled server-side,
+  because it is the highest-frequency write in the product, and ⚠ the
+  indicator's TTL must outlast the throttle or it flickers between pings — which
+  is a test rather than a comment. Going offline FORGETS everything somebody was
+  typing: an indicator that outlives the person it describes is the same bug as
+  a presence row that outlives the process.
+
+  **⚠ AUTO-CLEAR IS DERIVED ON READ, NEVER WRITTEN.** "Clears in an hour" is a
+  promise something has to keep, and there is no scheduler here (§12.40) — a
+  written `expired` would have nothing to write it and the row would read `busy`
+  for the rest of the year. `clearAt` is stored; the comparison happens on every
+  read. The lesson invitation expiry already learned with `isAcceptable`.
+
+  **⚠ `invisible` IS APPLIED AT THE PUBLISH BOUNDARY, and it had to be.** A
+  client that receives "she is online, but do not show it" has been told — the
+  information is in a payload anybody can read, and the promise is already
+  broken. So an invisible person is rendered INDISTINGUISHABLE from an offline
+  one, which is asserted as exactly that: `publishedPresence('invisible', true)`
+  equals `publishedPresence('available', false)`. It suppresses TYPING too, or
+  it leaks through the side door — typing being the louder signal, since it says
+  not only that somebody is there but that they are writing to you.
+
+  ⚠ **`dnd` IS NOT A CLAIM TO BE ABSENT.** It quietens what reaches you, so it
+  does not suppress typing. Only `invisible` hides.
+
+  **One thing found and fixed on the way:** the typing keys are joined by NUL so
+  a conversation id ending the way a user id does cannot be matched by
+  `forget()` — and the separator is written as an ESCAPE rather than a literal
+  control character, because a real NUL byte in a source file is invisible in
+  every editor and makes the file binary to `grep`. Both have tests.
+
+  **Verified:** 32 new tests (18 presence and typing, 14 availability), and
+  `turbo run typecheck lint test` green across 26 tasks.
+
 - **2026-09-11** — **STEP 7: `/chat` works end to end — the list, the thread,
   the composer, the invitations and the requests.**
 
@@ -1852,6 +1927,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
   8. The ephemeral tier: presence as a refcount with a grace period,
      availability as an enum with a derived `clearAt`, typing on a TTL. Needs
      `onDisconnect`, which `graphql.options.ts` does not wire today.
+     ⚠ **THE RULES ARE DONE 2026-09-11** — the two registries, the availability
+     schema and the publish-boundary decisions, all pure and tested. What
+     remains is the server that drives them: the `onDisconnect` seam, the
+     audience query, the GraphQL surface and the migration.
   9. Tone, chat settings in `localStorage`, and the grouped unread query.
   10. Redis (§12.28) — which by then gates PRESENCE, not merely a second
      replica — or single-replica recorded as a deliberate choice.
