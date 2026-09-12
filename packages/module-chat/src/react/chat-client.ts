@@ -125,6 +125,8 @@ export interface ChatClient {
   startDirect(userId: string): Promise<ChatConversationView>;
   startGroup(title: string, userIds: readonly string[]): Promise<ChatConversationView>;
   invite(conversationId: string, userId: string): Promise<void>;
+  /** ⚠ Groups only — a direct chat is named by who is in it, and the server refuses. */
+  rename(conversationId: string, title: string): Promise<ChatConversationView>;
   /** ⚠ Answers only about people the viewer shares an active conversation with. */
   presenceOf(userIds: readonly string[]): Promise<ChatPresenceView[]>;
   myAvailability(): Promise<ChatMyAvailabilityView>;
@@ -239,6 +241,14 @@ export function createChatClient(options: { graphqlPath?: string } = {}): ChatCl
         userIds: [...userIds],
       });
       return data.startGroupChat;
+    },
+
+    async rename(conversationId, title) {
+      const data = await graphql<{ renameChat: ChatConversationView }>(CHAT_OPERATIONS.renameChat, {
+        conversationId,
+        title,
+      });
+      return data.renameChat;
     },
 
     async invite(conversationId, userId) {

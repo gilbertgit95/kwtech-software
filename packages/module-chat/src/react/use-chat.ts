@@ -402,6 +402,16 @@ export function useChat(options: UseChatOptions = {}) {
     [act, api],
   );
 
+  const rename = useCallback(
+    async (conversationId: string, title: string) => {
+      // `act` re-reads the list afterwards, which is what puts the new name on
+      // the row as well as in the header — the title lives on the conversation,
+      // and both places read it from there rather than holding a copy.
+      await act(() => api.rename(conversationId, title));
+    },
+    [act, api],
+  );
+
   const leave = useCallback(
     async (conversationId: string) => {
       await act(() => api.leave(conversationId));
@@ -483,6 +493,7 @@ export function useChat(options: UseChatOptions = {}) {
     startGroup,
     respond,
     invite,
+    rename,
     leave,
     lookUp,
     noteTyping,

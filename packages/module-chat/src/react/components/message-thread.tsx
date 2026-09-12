@@ -21,6 +21,7 @@ export function MessageThread({
   onLoadOlder,
   onDelete,
   onInvite,
+  onRename,
   onLeave,
   onFind,
   presence,
@@ -35,6 +36,7 @@ export function MessageThread({
   onLoadOlder: () => void;
   onDelete: (messageId: string) => void;
   onInvite: (userId: string) => void;
+  onRename: (title: string) => void;
   onLeave: () => void;
   onFind: (email: string) => Promise<ChatDirectoryMatchView | null>;
   presence: ReadonlyMap<string, ChatPresenceView>;
@@ -43,6 +45,15 @@ export function MessageThread({
   onTyping: () => void;
 }) {
   const [inviting, setInviting] = useState(false);
+  /**
+   * The draft title, or null when nobody is renaming.
+   *
+   * ⚠ NULL rather than a separate boolean beside a string. Two pieces of state
+   * for one question is how a form ends up open with last week's text in it —
+   * and the draft is seeded from the CURRENT name each time it opens, so
+   * renaming twice does not start from the first attempt.
+   */
+  const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const names = new Map(conversation.participants.map((participant) => [participant.userId, participant.displayName]));
   const others = conversation.participants.filter((one) => one.userId !== conversation.myUserId);
 
@@ -92,6 +103,22 @@ export function MessageThread({
             </button>
           ) : null}
           {/*
+            ⚠ GROUPS ONLY, and not because of a permission: a direct chat has no
+            name to change. Its `title` is null by design and it is named by who
+            is in it, so the server refuses outright — this is the affordance
+            agreeing with that rule rather than a second copy of it.
+          */}
+          {!conversation.isDirect ? (
+            <button
+              type="button"
+              onClick={() => setDraftTitle(draftTitle === null ? conversationTitle(conversation) : null)}
+              aria-expanded={draftTitle !== null}
+              className="rounded-md px-2 py-1 text-sm text-primary hover:bg-accent/60"
+            >
+              Rename
+            </button>
+          ) : null}
+          {/*
             ⚠ LEAVING IS OFFERED ON A GROUP ONLY, and not because of a
             permission: a direct chat cannot be left at all. Its `directKey` is
             unique, so a left participant would make `startDirect` find a row
@@ -110,6 +137,61 @@ export function MessageThread({
           ) : null}
         </div>
       </header>
+
+      {draftTitle !== null ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const title = draftTitle.trim();
+            if (!title) return;
+            onRename(title);
+            setDraftTitle(null);
+          }}
+          className="flex items-end gap-2 border-b border-border px-4 py-3"
+        >
+          <div className="min-w-0 flex-1">
+            <label className="mb-1 block text-sm font-medium text-foreground" htmlFor="chat-rename">
+              Name this group
+            </label>
+            <input
+              id="chat-rename"
+              value={draftTitle}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              // Renaming is a one-field task and this form only exists because
+              // somebody just pressed Rename, so focus belongs in the field
+              // they opened. ⚠ The suppression has to be ONE line — a reason
+              // wrapped onto a second line is not read as a reason, and the
+              // rule fires anyway.
+              // biome-ignore lint/a11y/noAutofocus: opened by an explicit button press, and the field is the only thing in it
+              autoFocus
+              className={cn(
+                'w-full rounded-md border border-border bg-background px-3 py-2 text-sm',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              )}
+            />
+          </div>
+          {/*
+            ⚠ Disabled on an empty name rather than sending one. The server
+            reads a blank title as "clear it" and the group becomes "Untitled
+            group" — which is a real state and not one anybody reaches on
+            purpose by pressing Save.
+          */}
+          <button
+            type="submit"
+            disabled={busy || draftTitle.trim() === ''}
+            className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => setDraftTitle(null)}
+            className="shrink-0 rounded-md border border-border px-3 py-2 text-sm"
+          >
+            Cancel
+          </button>
+        </form>
+      ) : null}
 
       {inviting ? (
         <div className="border-b border-border bg-card px-4 py-3">

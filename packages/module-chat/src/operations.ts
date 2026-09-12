@@ -108,6 +108,19 @@ export const CHAT_OPERATIONS = {
     startGroupChat(title: $title, userIds: $userIds) { ${CONVERSATION_FIELDS} }
   }`,
 
+  /**
+   * Rename a group.
+   *
+   * ⚠ `$icon` IS NOT DECLARED, and that is the whole correctness of this
+   * document. The resolver distinguishes an ABSENT argument from a null one —
+   * absent leaves the icon alone, null CLEARS it — so a document that declared
+   * `$icon` and sent nothing for it would silently wipe the icon of every group
+   * anybody renamed. Renaming is not the icon's business.
+   */
+  renameChat: `mutation RenameChat($conversationId: String!, $title: String!) {
+    renameChat(conversationId: $conversationId, title: $title) { ${CONVERSATION_FIELDS} }
+  }`,
+
   inviteToChat: `mutation InviteToChat($conversationId: String!, $userId: String!) {
     inviteToChat(conversationId: $conversationId, userId: $userId)
   }`,
