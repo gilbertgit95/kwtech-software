@@ -31,6 +31,35 @@ export type MessageKind = (typeof MESSAGE_KINDS)[number];
  * browsers, which means escaping, a length cap and moderation for something
  * nobody asked for.
  */
+/**
+ * AUTHORITY INSIDE ONE CONVERSATION — mirrors `ChatParticipantRole`.
+ *
+ * ⚠ THREE, and each earns its place:
+ *
+ *   owner   exactly one, and the only role that can be exactly one. Handing the
+ *           group to somebody else needs a single answer, and two owners is a
+ *           demotion war.
+ *   admin   the delegate, and it exists for one concrete reason: the owner is
+ *           away and somebody still has to add a person.
+ *   member  the floor. Every row that existed before this column backfills to
+ *           it, and a group where everybody is an admin has no roles at all.
+ *
+ * ⚠ THERE IS NO `moderator`. Deleting somebody's words is a different kind of
+ * power from managing membership: it is governed by the app-level, PRIVILEGED
+ * `chat:moderate` plus participation, and letting a group owner appoint
+ * message-deleters is a decision §12.42 deliberately keeps narrow. These roles
+ * govern MEMBERSHIP AND SETTINGS and nothing else.
+ *
+ * ⚠ AND THEY ARE NOT A FOURTH PERMISSION LEVEL. `FeatureLevel` stays
+ * app/organization/workspace. A conversation is not a scope the permission
+ * context resolves at — `/chat` carries no id, the context is resolved once per
+ * request, and a conversation is not inside an organization because chat is app
+ * level so two people with no organization in common can talk. This is a column
+ * on a participant row, owned by this module and read by nothing else.
+ */
+export const CHAT_PARTICIPANT_ROLES = ['owner', 'admin', 'member'] as const;
+export type ChatParticipantRole = (typeof CHAT_PARTICIPANT_ROLES)[number];
+
 export const AVAILABILITIES = ['available', 'busy', 'dnd', 'away', 'invisible'] as const;
 export type Availability = (typeof AVAILABILITIES)[number];
 
@@ -39,6 +68,17 @@ export interface ParticipantView {
   conversationId: string;
   userId: string;
   status: ParticipantStatus;
+  /**
+   * Authority in THIS conversation. Optional so every existing caller and every
+   * test literal still satisfies the shape — and absent reads as `member`,
+   * which is the floor and the safe answer.
+   *
+   * ⚠ SEPARATE FROM `status`, and the two are asked in that order: `status`
+   * says whether you are in the room, `role` says what you may do once you are.
+   * A removed owner is still `owner` on a row that grants nothing, because
+   * status is checked first, everywhere.
+   */
+  role?: ChatParticipantRole | null;
   lastReadMessageId?: string | null;
 }
 

@@ -38,6 +38,27 @@ export const CHAT_FEATURE = {
   moderate: 'chat:moderate',
   /** The exact-email lookup. Its own key because it reads `auth_user`. */
   directory: 'chat:directory',
+  /**
+   * ⚠ ADMINISTER ANY GROUP WITHOUT BEING IN IT — the app level reaching DOWN
+   * into a conversation, the way it already reaches into every organization.
+   *
+   * Renaming a group, adding and removing people, and deciding who runs it,
+   * for a conversation the holder is not a participant of. Inside a
+   * conversation those questions are answered by `ChatParticipant.role`; this
+   * is the answer from above, and it is the only key in this module that acts
+   * without standing in the room.
+   *
+   * ⚠ AND IT CONFERS NO RIGHT TO READ A MESSAGE. Not one. §12.42 ships no
+   * read-any-conversation key and this is not it — "manage" quietly becoming
+   * "read everyone's private messages" is exactly the drift that entry exists
+   * to prevent. Every act it admits is answerable from MEMBERSHIP AND SETTINGS,
+   * which is metadata: who is in a group and what it is called, never a word of
+   * what was said in it. The message queries are bound to `chat:read` and
+   * refuse a non-participant regardless of who is asking.
+   *
+   * PRIVILEGED, so the role editor flags it.
+   */
+  manageAll: 'chat:manage_all',
 } as const;
 
 export type ChatFeatureKey = (typeof CHAT_FEATURE)[keyof typeof CHAT_FEATURE];
@@ -210,6 +231,38 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description: 'Find a person by their exact email address. No prefix or partial search.',
     tags: ['chat'],
     bindings: [{ surface: 'graphql_operation', identifier: 'Query.chatDirectoryLookup' }],
+  },
+  {
+    key: CHAT_FEATURE.manageAll,
+    module: 'chat',
+    /*
+     * ⚠ The app level reaching DOWN into a conversation, which is what every
+     * other level already does — support staff manage any organization without
+     * belonging to it, and a conversation being the one thing in the product
+     * nobody can administer from above would be the odd case, not this.
+     *
+     * PRIVILEGED because it acts on rooms the holder is not in. What it may NOT
+     * do is read them: §12.42 ships no read-any-conversation key, every message
+     * query is bound to `chat:read` and refuses a non-participant, and this key
+     * changes none of that.
+     */
+    isPrivileged: true,
+    level: 'app',
+    label: 'Administer any conversation',
+    description:
+      'Rename any group, add and remove its people, and decide who runs it — without being in it. Does not grant reading any message.',
+    tags: ['chat'],
+    /*
+     * ⚠ NO BINDINGS, and that is not an oversight — it is the one key in this
+     * module the guard cannot enforce by itself.
+     *
+     * A binding says "this operation requires this key", which would REFUSE an
+     * ordinary owner renaming their own group. This key WIDENS who may reach an
+     * operation rather than gating it, so it is resolved by the host inside the
+     * request — `resolvePlatformAdmin` — and handed to the domain as a boolean,
+     * the same seam `mayModerate` already uses. The operations themselves stay
+     * bound to the ordinary keys.
+     */
   },
 ];
 

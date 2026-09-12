@@ -114,6 +114,24 @@ model ChatParticipant {
   userId         String
   status         ChatParticipantStatus @default(invited)
 
+  /// ⚠ WHAT THEY MAY DO HERE, which is a different question from `status` —
+  /// that says whether they are in the room, this says what they may do once
+  /// they are. Asked in that order everywhere: a removed owner is still `owner`
+  /// on a row that grants nothing.
+  ///
+  /// ⚠ IT IS NOT `createdById`, AND THE TWO MUST NOT BE MERGED. `createdById`
+  /// records who spent a GROUP-CHAT CAP SLOT and never moves — the cap counts
+  /// live groups you created and are still in, and handing a slot to somebody
+  /// who never asked for it was rejected when the cap was designed. This one
+  /// MOVES: when an owner leaves, authority passes to somebody still present,
+  /// while the creator's slot frees because they are no longer active. Two
+  /// questions, two columns.
+  ///
+  /// ⚠ MEANINGLESS IN A DIRECT CHAT, where both people are equal and every act
+  /// a role governs is refused anyway — a DM cannot be renamed, cannot take a
+  /// third person, and is not somebody's to archive on the other's behalf.
+  role           ChatParticipantRole   @default(member)
+
   /// Who put them here. Null for the creator, who put themselves here.
   invitedById String?
 
@@ -280,4 +298,24 @@ enum ChatAvailabilityKind {
   dnd
   away
   invisible
+}
+
+/// ⚠ AUTHORITY INSIDE ONE CONVERSATION — see `ChatParticipant.role`.
+///
+/// NOT a fourth permission level. `FeatureLevel` stays app/organization/
+/// workspace: a conversation is not a scope the permission context resolves at,
+/// `/chat` carries no id in its path, the context is resolved once per request
+/// while a conversation list touches hundreds, and a conversation is not inside
+/// an organization at all — chat is app level precisely so two people with no
+/// organization in common can talk. This is a column on a participant row,
+/// owned by this module and read by nothing else.
+enum ChatParticipantRole {
+  /// Exactly one, and the only role that can be. Handing the group to somebody
+  /// else needs a single answer, and two owners is a demotion war.
+  owner
+  /// The delegate. It exists for one concrete reason: the owner is away and
+  /// somebody still has to add a person.
+  admin
+  /// The floor, and the default every existing row backfills to.
+  member
 }

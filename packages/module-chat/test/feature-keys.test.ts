@@ -27,9 +27,9 @@ describe('CHAT_FEATURE_REGISTRY', () => {
     expect(CHAT_FEATURE_REGISTRY.every((spec) => spec.module === 'chat')).toBe(true);
   });
 
-  it('flags the two keys that are irreversible or that read another module’s table', () => {
+  it('flags the keys that are irreversible, read another module’s table, or act from outside a room', () => {
     const privileged = CHAT_FEATURE_REGISTRY.filter((spec) => spec.isPrivileged).map((spec) => spec.key);
-    expect(privileged.sort()).toEqual([CHAT_FEATURE.directory, CHAT_FEATURE.moderate].sort());
+    expect(privileged.sort()).toEqual([CHAT_FEATURE.directory, CHAT_FEATURE.moderate, CHAT_FEATURE.manageAll].sort());
   });
 
   it('has no key for leaving, which would be a lockout dressed as a permission', () => {
@@ -40,6 +40,30 @@ describe('CHAT_FEATURE_REGISTRY', () => {
     // The pressure will come from abuse reports. The honest answer then is a
     // separate, audited key, not a quiet widening of one of these.
     expect(CHAT_FEATURE_REGISTRY.some((spec) => /read_any|read_all|inspect/i.test(spec.key))).toBe(false);
+  });
+
+  it('⚠ `chat:manage_all` is not that key, and says so where somebody will read it', () => {
+    /*
+     * The one key that acts on a conversation its holder is not in, which is
+     * exactly the shape §12.42 refuses for READING. The line between them is
+     * the whole reason it may exist: membership and settings are metadata,
+     * message bodies are not — and "manage" drifting into "read" is what that
+     * entry exists to prevent.
+     *
+     * Asserted on the DESCRIPTION because that is what an operator sees in the
+     * role editor when they decide whether to hand it out. The enforcement is
+     * elsewhere; this is the promise made to the person granting it.
+     */
+    const manageAll = CHAT_FEATURE_REGISTRY.find((spec) => spec.key === CHAT_FEATURE.manageAll);
+    expect(manageAll?.description).toMatch(/does not grant reading/i);
+  });
+
+  it('⚠ binds NO operation, because it widens rather than gates', () => {
+    // A binding would make the operation REQUIRE this key, refusing an ordinary
+    // owner renaming their own group. It is resolved inside the request instead
+    // and handed to the domain as a boolean.
+    const manageAll = CHAT_FEATURE_REGISTRY.find((spec) => spec.key === CHAT_FEATURE.manageAll);
+    expect(manageAll?.bindings ?? []).toEqual([]);
   });
 
   it('composes with another module without collision', () => {
