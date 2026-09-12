@@ -63,6 +63,18 @@ const MESSAGE_FIELDS = `
 export const CHAT_OPERATIONS = {
   chatConversations: `query ChatConversations { chatConversations { ${CONVERSATION_FIELDS} } }`,
 
+  /**
+   * One conversation, for a screen that is about it rather than about the list.
+   *
+   * ⚠ NULL for one the viewer may not see, never a refusal — the server answers
+   * "no such conversation" to a non-participant and to a stranger alike, so a
+   * settings page for somebody else's group is a not-found rather than a hint
+   * that it exists.
+   */
+  chatConversation: `query ChatConversation($conversationId: String!) {
+    chatConversation(conversationId: $conversationId) { ${CONVERSATION_FIELDS} }
+  }`,
+
   chatMessages: `query ChatMessages($conversationId: String!, $cursor: String) {
     chatMessages(conversationId: $conversationId, cursor: $cursor) {
       nextCursor

@@ -107,6 +107,8 @@ export interface ChatConversationView {
 
 export interface ChatClient {
   listConversations(): Promise<ChatConversationView[]>;
+  /** ⚠ Null when the viewer may not see it — the same answer a stranger gets. */
+  getConversation(conversationId: string): Promise<ChatConversationView | null>;
   /**
    * A page of messages, NEWEST FIRST, by keyset.
    *
@@ -188,6 +190,13 @@ export function createChatClient(options: { graphqlPath?: string } = {}): ChatCl
        */
       const data = await graphql<{ chatConversations: ChatConversationView[] }>(CHAT_OPERATIONS.chatConversations);
       return data.chatConversations;
+    },
+
+    async getConversation(conversationId) {
+      const data = await graphql<{ chatConversation: ChatConversationView | null }>(CHAT_OPERATIONS.chatConversation, {
+        conversationId,
+      });
+      return data.chatConversation;
     },
 
     async listMessages(conversationId, cursor) {

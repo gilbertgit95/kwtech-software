@@ -20,9 +20,19 @@ describe('chatWebModule', () => {
   it('contributes the route and its drawer entry, with the unread badge on it', () => {
     const module = chatWebModule();
 
-    expect(composeRoutes([module]).map((route) => route.path)).toEqual([CHAT_HREF]);
+    expect(composeRoutes([module]).map((route) => route.path)).toEqual([
+      CHAT_HREF,
+      `${CHAT_HREF}/:conversationId/settings`,
+    ]);
 
+    /*
+     * ⚠ ONE drawer entry from two routes. The settings page is UNLISTED — no
+     * `nav` at all — because a settings screen for one conversation has nothing
+     * to offer somebody who has not opened that conversation, and the drawer is
+     * for places rather than for things.
+     */
     const [entry] = composeNav([module], [CHAT_FEATURE.read]);
+    expect(composeNav([module], [CHAT_FEATURE.read])).toHaveLength(1);
     expect(entry?.href).toBe(CHAT_HREF);
     // The count lives on the drawer entry and nowhere else: chat puts nothing
     // in the app's main header, because the drawer already leads there and two
@@ -34,6 +44,15 @@ describe('chatWebModule', () => {
   it('⚠ contributes NOTHING to the app header', () => {
     // A regression guard with a product decision behind it, not a style one.
     expect(chatWebModule()).not.toHaveProperty('headerSlots');
+  });
+
+  it('⚠ guards the settings sub-page with the same key as the page', () => {
+    // Which controls appear on it is decided by the participant's ROLE, inside
+    // the page and again at the API. A narrower key here would be a third
+    // answer to a question two places already answer.
+    const settings = composeRoutes([chatWebModule()]).find((route) => route.path.endsWith('/settings'));
+    expect(settings?.feature).toBe(CHAT_FEATURE.read);
+    expect(settings?.nav).toBeUndefined();
   });
 
   it('⚠ takes the badge away with the entry when the key is not held', () => {

@@ -32,6 +32,7 @@ export { CHAT_HREF, type ChatWebModuleOptions, chatWebModule } from './module.js
 export { ChatPage } from './pages/chat-page.js';
 export { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';
 export { type ChatState, type UseChatOptions, useChat } from './use-chat.js';
+export { useConversationSettings } from './use-conversation-settings.js';
 /*
  * The view RULES, which are pure and have no React in them. Exported because
  * they are the answer to "what is this conversation called" and "where does

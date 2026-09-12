@@ -158,7 +158,6 @@ export function ChatPage({ client }: { client?: ChatClient } = {}) {
                 typing={chat.typingHere}
                 onTyping={chat.noteTyping}
                 onInvite={(userId) => void chat.invite(selected.id, userId)}
-                onRename={(title) => void chat.rename(selected.id, title)}
                 onLeave={() => void chat.leave(selected.id)}
                 onFind={chat.lookUp}
               />

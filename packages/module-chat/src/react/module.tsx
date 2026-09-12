@@ -1,8 +1,9 @@
-import type { WebModuleDescriptor } from '@kwtech/module-kit';
+import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { chatIsEnabled } from '../enabled.js';
 import { CHAT_FEATURE, CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '../feature-keys.js';
 import { ChatUnreadBadge } from './chat-unread-badge.js';
 import { ChatPage } from './pages/chat-page.js';
+import { ChatSettingsPage } from './pages/chat-settings-page.js';
 
 /**
  * Chat's web descriptor — the route, its drawer entry and the feature
@@ -25,6 +26,24 @@ import { ChatPage } from './pages/chat-page.js';
 
 /** Where chat's own pages live. One constant, so the route and every link to it agree. */
 export const CHAT_HREF = '/chat';
+
+/**
+ * One conversation's settings.
+ *
+ * ⚠ A FUNCTION, because the path has a `:conversationId` in it and a link needs
+ * the filled one. Written here rather than at each call site so the route and
+ * every link to it cannot disagree about the shape.
+ */
+export function chatSettingsHref(conversationId: string): string {
+  return `${CHAT_HREF}/${encodeURIComponent(conversationId)}/settings`;
+}
+
+function ChatSettingsRoute({ params }: ModuleRouteProps) {
+  // ⚠ Rendered, never called — see `ChatRoute`. `params` carries what the
+  // route's `:conversationId` captured; module-kit matched it, because Next
+  // sees only the catch-all.
+  return <ChatSettingsPage params={params ?? {}} />;
+}
 
 function ChatRoute() {
   /*
@@ -98,6 +117,26 @@ export function chatWebModule(options: ChatWebModuleOptions = {}): WebModuleDesc
          * right until somebody else sends a message.
          */
         nav: { group: 'Overview', order: 20, icon: 'message', badge: ChatUnreadBadge },
+      },
+      {
+        /*
+         * ⚠ UNLISTED — no `nav` at all, which is what `ModuleRoute` means by
+         * "reachable but not in the drawer". A settings page for one
+         * conversation has nothing to offer somebody who has not opened that
+         * conversation, and the drawer is for places rather than for things.
+         * Reached from the thread's own header, exactly as the permissions
+         * module's write screens are.
+         */
+        path: `${CHAT_HREF}/:conversationId/settings`,
+        component: ChatSettingsRoute,
+        title: 'Conversation settings',
+        /*
+         * ⚠ `chat:read` AND NOTHING NARROWER. Which controls appear is decided
+         * by the participant's ROLE, inside the page and again at the API —
+         * a key here would be a third answer to a question two places already
+         * answer, and the one that drifted would be this one.
+         */
+        feature: CHAT_FEATURE.read,
       },
     ],
   };
