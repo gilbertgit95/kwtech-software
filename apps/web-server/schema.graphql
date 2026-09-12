@@ -236,11 +236,15 @@ type PermissionContext {
 }
 
 type PermissionDefault {
+  choices: [PermissionDefaultChoice!]!
   description: String!
   key: String!
   kind: String!
   label: String!
   moment: String!
+  momentBlurb: String
+  momentOrder: Float!
+  momentTitle: String
   targetIcon: String
   targetLabel: String
   targetUnavailable: Boolean!
@@ -248,6 +252,11 @@ type PermissionDefault {
   updatedByUserId: String
   value: String
   whenUnset: String!
+}
+
+type PermissionDefaultChoice {
+  label: String!
+  value: String!
 }
 
 type PermissionFeature {

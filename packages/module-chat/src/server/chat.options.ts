@@ -80,6 +80,17 @@ export interface ChatModuleOptions {
    * then governed by its own participants alone.
    */
   platformAdminProvider?: unknown;
+
+  /**
+   * A `ChatDefaultReader` provider — what the operator chose for chat's two
+   * defaults.
+   *
+   * ⚠ A PROVIDER, like the cap and the platform check, and for the same reason:
+   * the values live in a table `module-permissions` owns, so answering needs a
+   * service this module may not import. Absent means unset, which is the
+   * documented fallback.
+   */
+  defaultsProvider?: unknown;
 }
 
 /** What the module falls back to when the host says nothing. */

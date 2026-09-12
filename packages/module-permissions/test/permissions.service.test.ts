@@ -1,4 +1,4 @@
-import { APP_DEFAULT, APP_DEFAULT_REGISTRY } from '../src/defaults.js';
+import { APP_DEFAULT, APP_DEFAULT_MOMENT_REGISTRY, APP_DEFAULT_REGISTRY } from '../src/defaults.js';
 import { LIMIT } from '../src/domain/limits.js';
 import { FEATURE } from '../src/feature-keys.js';
 import type {
@@ -194,6 +194,11 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
           updatedAt: new Date('2026-01-01T00:00:00Z'),
           updatedByUserId: 'u9',
         })),
+      // The narrow read `readDefault` uses — one key, no target resolution.
+      findFirst: async (args: { where: { key: string } }) => {
+        const row = (db.defaults ?? []).find((one) => one.key === args.where.key);
+        return row ? { ...row, updatedAt: new Date('2026-01-01T00:00:00Z'), updatedByUserId: 'u9' } : null;
+      },
     },
     permOrganization: {
       findMany: async () => db.organizations ?? [],
@@ -1192,5 +1197,131 @@ describe('listDefaults', () => {
 
     const row = (await svc.listDefaults()).find((entry) => entry.key === APP_DEFAULT.organizationFounderRole);
     expect(row).toMatchObject({ targetLabel: 'Organization owner', targetUnavailable: true });
+  });
+
+  /**
+   * ── A CONTRIBUTED DEFAULT ─────────────────────────────────────────────────
+   *
+   * The registry is composed by the app now, so these go through `options`
+   * rather than the constant — which is the whole point of the change: a
+   * service reading its own nine while the app composed eleven would answer
+   * about a catalogue the screen is not showing.
+   */
+  const contributed = {
+    key: 'chat.member_role',
+    module: 'chat',
+    kind: 'choice' as const,
+    moment: 'chat_participant_added',
+    label: 'Role for somebody added to a group',
+    description: 'x',
+    whenUnset: 'They join as a member.',
+    choices: [
+      { value: 'admin', label: 'Admin' },
+      { value: 'member', label: 'Member' },
+    ],
+  };
+
+  const withContribution = (
+    db: Db,
+    moments?: readonly { moment: string; title: string; blurb: string; order: number }[],
+  ) =>
+    new PermissionsService(fakePrisma(db).client, {
+      defaultRegistry: [...APP_DEFAULT_REGISTRY, contributed],
+      ...(moments ? { defaultMomentRegistry: moments } : {}),
+    });
+
+  it('lists a default another module contributed', async () => {
+    const svc = withContribution({ defaults: [] });
+
+    expect((await svc.listDefaults()).map((row) => row.key)).toContain('chat.member_role');
+  });
+
+  /**
+   * ⚠ A `choice` RESOLVES AGAINST ITS OWN DECLARATION. There is no table to
+   * look it up in — the values are an enum in the contributing module's schema
+   * — so the label comes from the spec that travelled with it.
+   */
+  it('resolves a choice default against the choices it declared', async () => {
+    const svc = withContribution({ defaults: [{ key: 'chat.member_role', value: 'admin' }] });
+
+    const row = (await svc.listDefaults()).find((entry) => entry.key === 'chat.member_role');
+    expect(row).toMatchObject({ value: 'admin', targetLabel: 'Admin', targetUnavailable: false });
+  });
+
+  /**
+   * A value that is no longer among the choices is the same situation as a
+   * deleted role: shown raw, resolving to nothing, so the screen can say it
+   * points at something that is gone.
+   */
+  it('keeps the raw value when a choice is no longer offered', async () => {
+    const svc = withContribution({ defaults: [{ key: 'chat.member_role', value: 'owner' }] });
+
+    const row = (await svc.listDefaults()).find((entry) => entry.key === 'chat.member_role');
+    expect(row).toMatchObject({ value: 'owner', targetLabel: null });
+  });
+
+  it("carries the contributed moment's heading, and orders sections by it", async () => {
+    const svc = withContribution({ defaults: [] }, [
+      ...APP_DEFAULT_MOMENT_REGISTRY,
+      { moment: 'chat_participant_added', title: 'When somebody is added to a group', blurb: 'b', order: 80 },
+    ]);
+
+    const rows = await svc.listDefaults();
+    expect(rows.at(-1)).toMatchObject({
+      key: 'chat.member_role',
+      momentTitle: 'When somebody is added to a group',
+      momentOrder: 80,
+    });
+  });
+
+  /**
+   * ⚠ THE FAILURE THIS WHOLE SEAM EXISTS TO MAKE VISIBLE. A module that
+   * declared a default and forgot the heading gets an unnamed section at the
+   * bottom of the screen — not a default that silently never renders, which is
+   * what the page did when it owned the list of moments itself.
+   */
+  it('returns an undeclared moment with no title, sorted last', async () => {
+    const svc = withContribution({ defaults: [] });
+
+    const rows = await svc.listDefaults();
+    expect(rows.at(-1)).toMatchObject({
+      key: 'chat.member_role',
+      momentTitle: null,
+      momentBlurb: null,
+      momentOrder: Number.MAX_SAFE_INTEGER,
+    });
+  });
+});
+
+/**
+ * ── `readDefault` — one value, for a module rather than a screen ────────────
+ *
+ * `listDefaults` reads every row and both target tables to describe a page.
+ * A module consulting one key on a write path wants the string and nothing
+ * else, and `startGroup` consults two of them per group created.
+ */
+describe('readDefault', () => {
+  it('returns the stored value', async () => {
+    const { svc } = service({ defaults: [{ key: 'chat.creator_role', value: 'admin' }] });
+
+    expect(await svc.readDefault('chat.creator_role')).toBe('admin');
+  });
+
+  it('returns null for a key nobody has set', async () => {
+    const { svc } = service({ defaults: [] });
+
+    expect(await svc.readDefault('chat.creator_role')).toBeNull();
+  });
+
+  /**
+   * ⚠ UNVALIDATED, deliberately. The module that declared the default is the
+   * one that knows what its values mean, and it re-checks on arrival — handing
+   * back a stale string is what lets it fall back to its built-in answer, where
+   * a throw here would turn a renamed role into a group nobody can create.
+   */
+  it('hands back a value the catalogue no longer offers, rather than throwing', async () => {
+    const { svc } = service({ defaults: [{ key: 'chat.creator_role', value: 'retired' }] });
+
+    expect(await svc.readDefault('chat.creator_role')).toBe('retired');
   });
 });

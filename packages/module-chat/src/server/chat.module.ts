@@ -5,6 +5,7 @@ import type { ChatModuleOptions } from './chat.options.js';
 import { ChatPresenceService } from './chat.presence.service.js';
 import { ChatService } from './chat.service.js';
 import {
+  CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
   CHAT_OPTIONS,
   CHAT_PLATFORM_ADMIN,
@@ -80,6 +81,20 @@ export class ChatModule {
      */
     if (options.platformAdminProvider) providers.push(options.platformAdminProvider as Provider);
     else providers.push({ provide: CHAT_PLATFORM_ADMIN, useValue: undefined });
+    /*
+     * ⚠ Unbound means EVERY DEFAULT IS UNSET, which is the documented
+     * fallback and a working product: the creator owns the group they made and
+     * everybody else joins as a member, exactly as before the settings existed.
+     *
+     * ⚠ And it is bound to `undefined` rather than left out, for the reason
+     * every token above is. `ChatWriteService` injects this `@Optional()`, and
+     * an optional token that NOTHING provides resolves to undefined only while
+     * no other provider in the graph asks for it by that name — binding it
+     * explicitly is what makes "nobody answered" a stated configuration rather
+     * than a property of the container.
+     */
+    if (options.defaultsProvider) providers.push(options.defaultsProvider as Provider);
+    else providers.push({ provide: CHAT_DEFAULTS, useValue: undefined });
 
     if (exposeGraphql) providers.push(ChatResolver);
 
@@ -93,6 +108,7 @@ export class ChatModule {
 }
 
 export {
+  CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
   CHAT_OPTIONS,
   CHAT_PLATFORM_ADMIN,

@@ -146,6 +146,50 @@ A module says *what* it contributes and roughly where. It never says which
 chrome draws it: `module-auth` places `Account` at 90, and this app lifts that
 group out of the drawer entirely and renders it in the header's account menu.
 
+## Three declarations: features, limits, defaults
+
+A module declares three kinds of thing that a *different* module resolves. All
+three shapes live here, for one reason: **every module declares them, only one
+module answers them**, and the resolver may not import its contributors.
+
+| Declaration | Composed by | Answers |
+|---|---|---|
+| `FeatureContribution` | `composeFeatures` | may this be done |
+| `LimitContribution` | `composeLimits` | how many of these may exist |
+| `DefaultContribution` | `composeDefaults` | what happens when nobody said |
+
+Each is a looser shape than the spec the resolver narrows it to — `kind`,
+`moment`, `countedOver` and `bindings.surface` are plain strings — because this
+package must not own the resolving module's vocabulary. The narrow happens once,
+in the app, where a bad value is a boot failure.
+
+**⚠ An undeclared one does not exist.** The resolver reads the composed
+registry, so a row in its table for a key nobody declared is ignored, and the
+screen that sets it has no control to offer. Setting the value in the database
+changes nothing, with no error to explain why.
+
+### Defaults also need their MOMENT declared
+
+The defaults screen groups by *moment* — somebody arrives asking "what happens
+when a group is created", not "which of these point at a role" — so a default
+needs a section to appear in, and `DefaultMomentContribution` is that section:
+
+```ts
+defaults: CHAT_DEFAULT_REGISTRY,           // the decisions
+defaultMoments: CHAT_DEFAULT_MOMENT_REGISTRY,  // the headings they appear under
+```
+
+`composeDefaultMoments` resolves these the way `composeNavGroups` resolves nav
+groups, and for the same reason — a moment is a shared namespace, and two
+modules may have a default at one:
+
+- **The lowest order wins**, so the result does not depend on module order.
+- **An undeclared moment sorts last**, and its section renders *unnamed* rather
+  than not at all. That is the important half: a module that declared a default
+  and forgot the heading gets a visible section titled with the raw moment key,
+  not a setting that silently never appears on the only screen it can be set
+  from.
+
 ## Dynamic route segments
 
 A route path may carry `:params`, and whatever renders the route hands them to

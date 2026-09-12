@@ -1,4 +1,4 @@
-import { ArgsType, Field, InputType, Int, ObjectType } from '@nestjs/graphql';
+import { ArgsType, Field, Float, InputType, Int, ObjectType } from '@nestjs/graphql';
 import type { PermissionContext } from '../../types.js';
 
 /**
@@ -1073,6 +1073,53 @@ export class PermissionDefaultType {
    */
   @Field()
   targetUnavailable!: boolean;
+
+  /**
+   * What a `choice` default may be set to, carried from the DECLARATION.
+   *
+   * ⚠ Empty for every other kind, whose options are rows the screen lists for
+   * itself. A CONTRIBUTED choice names values in another module's enum — chat's
+   * three participant roles — which this module has no table for, so they
+   * travel with the spec rather than being looked up.
+   */
+  @Field(() => [PermissionDefaultChoiceType])
+  choices!: readonly PermissionDefaultChoiceType[];
+
+  /**
+   * The heading the moment gets, and where the section sits.
+   *
+   * ⚠ SENT WITH THE ROW rather than known by the screen, which is what lets a
+   * CONTRIBUTED default appear at all: the page held the six headings itself
+   * and filtered defaults into them, so a default at a moment it had never
+   * heard of had no section and did not render.
+   *
+   * ⚠ `momentTitle` is null when nobody declared the moment — the section
+   * renders unnamed and sorts last, rather than the default vanishing.
+   */
+  @Field(() => String, { nullable: true })
+  momentTitle!: string | null;
+
+  @Field(() => String, { nullable: true })
+  momentBlurb!: string | null;
+
+  /**
+   * Lower is higher up the page. ⚠ A `Float`, because an undeclared moment's
+   * order is `Number.MAX_SAFE_INTEGER` and that does not fit a GraphQL `Int`
+   * (signed 32-bit) — it would be a serialization error on the one row this
+   * field exists to keep visible.
+   */
+  @Field(() => Float)
+  momentOrder!: number;
+}
+
+/** One option of a `choice` default. A value and the word an operator reads. */
+@ObjectType('PermissionDefaultChoice')
+export class PermissionDefaultChoiceType {
+  @Field()
+  value!: string;
+
+  @Field()
+  label!: string;
 }
 
 /**

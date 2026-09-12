@@ -1,3 +1,4 @@
+import type { DefaultContribution, DefaultMomentContribution } from './defaults.js';
 import type { LimitContribution } from './limits.js';
 import type {
   FeatureContribution,
@@ -311,6 +312,79 @@ export function serverRoutePrefixes(modules: readonly ServerModuleDescriptor[]):
   return modules
     .filter((mod) => mod.routePrefix)
     .map((mod) => ({ path: mod.routePrefix as string, module: mod.nestModule }));
+}
+
+/**
+ * Every DEFAULT declared across every module, for the defaults screen.
+ *
+ * The third of these, and the same rule as the other two: duplicate keys throw,
+ * because two modules defining `chat.creator_role` differently is an ambiguity
+ * no consumer can resolve — and the one that would resolve it silently is the
+ * screen an operator makes a decision on.
+ */
+export function composeDefaults(
+  modules: readonly (WebModuleDescriptor | ServerModuleDescriptor)[],
+): DefaultContribution[] {
+  const seen = new Map<string, string>();
+  const defaults: DefaultContribution[] = [];
+
+  for (const mod of modules) {
+    for (const entry of mod.defaults ?? []) {
+      const owner = seen.get(entry.key);
+      if (owner) {
+        throw new ModuleCompositionError(`Default '${entry.key}' declared by both '${owner}' and '${mod.key}'`);
+      }
+      seen.set(entry.key, mod.key);
+      defaults.push(entry);
+    }
+  }
+  return defaults;
+}
+
+/**
+ * Every MOMENT heading across every module, ordered as the screen shows them.
+ *
+ * ⚠ NOT the duplicate-throws rule the other three use, and the difference is
+ * deliberate: a moment is a shared namespace, so two modules naming one is
+ * legitimate rather than ambiguous. Resolved exactly as `composeNavGroups`
+ * resolves two suggestions about one nav group — the LOWEST order wins, and the
+ * first title seen at that moment is kept.
+ *
+ * Keeping the first rather than throwing on a disagreement is the same call
+ * made there, for the same reason: a heading two modules describe differently is
+ * a wording problem, and failing the boot over one would make adopting a module
+ * that happens to share a moment an outage.
+ */
+export function composeDefaultMoments(
+  modules: readonly (WebModuleDescriptor | ServerModuleDescriptor)[],
+): DefaultMomentContribution[] {
+  const byMoment = new Map<string, DefaultMomentContribution>();
+
+  for (const mod of modules) {
+    for (const entry of mod.defaultMoments ?? []) {
+      const existing = byMoment.get(entry.moment);
+      if (!existing) {
+        byMoment.set(entry.moment, entry);
+        continue;
+      }
+      if (entry.order < existing.order) byMoment.set(entry.moment, { ...existing, order: entry.order });
+    }
+  }
+
+  return [...byMoment.values()].sort((a, b) => a.order - b.order || a.moment.localeCompare(b.moment));
+}
+
+/**
+ * A comparable rank for a moment, for sorting defaults into sections.
+ *
+ * An UNDECLARED moment ranks after every declared one — `navGroupRank`'s rule,
+ * and here it is what keeps a default VISIBLE rather than correct-looking: a
+ * module that declared a default and forgot the heading gets a section at the
+ * bottom, not a default that silently has nowhere to go.
+ */
+export function defaultMomentRank(moments: readonly DefaultMomentContribution[], moment: string): number {
+  const found = moments.find((entry) => entry.moment === moment);
+  return found ? found.order : Number.MAX_SAFE_INTEGER;
 }
 
 /**

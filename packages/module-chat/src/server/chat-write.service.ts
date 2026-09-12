@@ -1,5 +1,6 @@
 import type { LimitChecker } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { CHAT_DEFAULT, type ChatDefaultReader } from '../defaults.js';
 import { clearAtFrom, isAvailability } from '../domain/availability.js';
 import { isContactBlocked } from '../domain/blocking.js';
 import { directKeyFor } from '../domain/conversations.js';
@@ -9,6 +10,7 @@ import {
   canArchiveConversation,
   canInviteToConversation,
   canManageConversation,
+  isChatParticipantRole,
   refuseRoleChange,
   refuseRoleRemoval,
   roleOf,
@@ -30,7 +32,7 @@ import type {
   MessageRow,
   ParticipantRow,
 } from './chat.repository.js';
-import { CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
+import { CHAT_DEFAULTS, CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
 
 /**
  * Every write chat makes, and the one rule they all share.
@@ -77,7 +79,27 @@ export class ChatWriteService {
      * a socket.
      */
     @Optional() private readonly presence?: ChatPresenceService,
+    /**
+     * Absent means every default is unset — the creator owns the group and
+     * everybody else joins as a member, exactly as before the settings existed.
+     */
+    @Optional() @Inject(CHAT_DEFAULTS) private readonly defaults?: ChatDefaultReader,
   ) {}
+
+  /**
+   * What an operator chose, or the built-in answer.
+   *
+   * ⚠ VALIDATED, not trusted. The value is a string in somebody else's table
+   * and can be anything — a role renamed out of existence, a typo, a key set
+   * before this module declared its choices. An unrecognised value falls back
+   * rather than being written, because a participant row carrying a role the
+   * enum does not have is a row every rule reads as `member` anyway, with no
+   * error to explain why.
+   */
+  private async defaultRole(key: string, fallback: ChatParticipantRole): Promise<ChatParticipantRole> {
+    const chosen = await this.defaults?.read(key).catch(() => null);
+    return isChatParticipantRole(chosen) ? chosen : fallback;
+  }
 
   private get checker(): LimitChecker {
     return this.limits ?? CHAT_DEFAULT_LIMIT_CHECKER;
@@ -148,6 +170,17 @@ export class ChatWriteService {
     const title = input.title.trim();
     if (!title) throw new ChatWriteError('invalid', 'A group needs a name', {});
 
+    /*
+     * ⚠ READ BEFORE THE TRANSACTION OPENS. The values live in another module's
+     * table, reached through a port that may do its own query — and holding a
+     * transaction open across a call into somebody else's service is how one
+     * slow read becomes a lock somebody else is waiting on.
+     */
+    const [creatorRole, memberRole] = await Promise.all([
+      this.defaultRole(CHAT_DEFAULT.creatorRole, 'owner'),
+      this.defaultRole(CHAT_DEFAULT.memberRole, 'member'),
+    ]);
+
     const conversation = await this.prisma.$transaction(async (tx) => {
       /*
        * ⚠ COUNTED INSIDE THE TRANSACTION, and the count is this module's own —
@@ -184,9 +217,14 @@ export class ChatWriteService {
        * is minted. Everywhere else the role moves — handed on deliberately, or
        * passed to a successor when the owner leaves — but a group has to start
        * with exactly one, and this is the moment it has one participant.
+       *
+       * ⚠ THE OPERATOR MAY DISAGREE, and the setting says what that costs: a
+       * group whose creator is not the owner has NO owner, because nothing else
+       * mints one. It is their decision to make and the description on the
+       * screen states the consequence rather than the screen refusing it.
        */
       await tx.chatParticipant.create({
-        data: { conversationId: conversation.id, userId: actorId, status: 'active', role: 'owner' },
+        data: { conversationId: conversation.id, userId: actorId, status: 'active', role: creatorRole },
       });
 
       for (const userId of new Set(input.userIds)) {
@@ -197,7 +235,7 @@ export class ChatWriteService {
          */
         if (userId === actorId || isContactBlocked(blocks, actorId, userId)) continue;
         await tx.chatParticipant.create({
-          data: { conversationId: conversation.id, userId, status: 'invited', invitedById: actorId },
+          data: { conversationId: conversation.id, userId, status: 'invited', role: memberRole, invitedById: actorId },
         });
       }
       return conversation;
@@ -214,6 +252,9 @@ export class ChatWriteService {
     userId: string,
     options: { asPlatformAdmin?: boolean } = {},
   ): Promise<void> {
+    // Read outside the transaction — see `startGroup`.
+    const memberRole = await this.defaultRole(CHAT_DEFAULT.memberRole, 'member');
+
     await this.prisma.$transaction(async (tx) => {
       const me = await this.rowFor(tx, conversationId, actorId);
       /*
@@ -244,7 +285,7 @@ export class ChatWriteService {
         throw new ChatWriteError('blocked', 'That person cannot be added', {});
       }
 
-      await this.reviveParticipant(tx, conversationId, userId, 'invited', actorId);
+      await this.reviveParticipant(tx, conversationId, userId, 'invited', actorId, memberRole);
     });
 
     await this.events?.conversationChanged(conversationId, 'invited');
@@ -746,10 +787,18 @@ export class ChatWriteService {
     userId: string,
     status: 'active' | 'invited',
     invitedById: string | null,
+    /**
+     * ⚠ ONLY ON A NEW ROW. Somebody coming BACK keeps the role they had — a
+     * re-invitation is not a demotion, and an admin who was removed by mistake
+     * and added again should not quietly return as a member.
+     */
+    role?: ChatParticipantRole,
   ) {
     const existing = await this.rowFor(tx, conversationId, userId);
     if (!existing) {
-      await tx.chatParticipant.create({ data: { conversationId, userId, status, invitedById } });
+      await tx.chatParticipant.create({
+        data: { conversationId, userId, status, invitedById, ...(role ? { role } : {}) },
+      });
       return;
     }
     if (existing.status === 'active') return;

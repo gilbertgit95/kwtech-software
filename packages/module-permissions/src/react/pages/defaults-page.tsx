@@ -53,46 +53,49 @@ import { AdminPage, AdminPlaceholder } from './admin-page.js';
  * Somebody arrives asking "what happens when a workspace is created", not
  * "which of these point at a role". The moment is the question; the kind is an
  * implementation detail that decides which picker gets drawn.
+ *
+ * ## ⚠ The headings come from the SERVER, and this file used to own them
+ *
+ * There was a `MOMENTS` const here — six moments with their titles and blurbs
+ * — and the page mapped over it, filtering the defaults into each. That was
+ * correct exactly as long as `module-permissions` was the only module with
+ * defaults. `DefaultContribution` ended that, and the consequence was a screen
+ * that dropped what it did not recognise: a contributed default's moment was
+ * not in the list, so it had no section, so it never rendered — composed,
+ * settable through the API, invisible on the only screen anybody sets it from.
+ *
+ * So the grouping is now built FROM THE ROWS, which arrive already ordered and
+ * carrying their heading. A moment nobody declared renders as an unnamed
+ * section at the bottom rather than not at all — the failure that is visible
+ * instead of the one that is not.
  */
 
-/** The heading each moment gets, in the order somebody moves through the product. */
-const MOMENTS: { moment: string; title: string; blurb: string }[] = [
-  {
-    moment: 'account_created',
-    title: 'When an account is created',
-    blurb:
-      'Every account here is created by following an invitation — platform or organization — so this is what fills in the app-level role when the invitation named none.',
-  },
-  {
-    moment: 'organization_created',
-    title: 'When an organization is created',
-    blurb:
-      'The creator becomes its first member — that always happens, because an organization whose founder is not in it is unreachable. These decide what they hold once they are in, and what the organization is entitled to.',
-  },
-  {
-    moment: 'organization_member_added',
-    title: 'When somebody joins an organization',
-    blurb:
-      'Only where nothing else named a role. An invitation that names one always wins, and an existing member’s role is never overwritten.',
-  },
-  {
-    moment: 'invitation_sent',
-    title: 'When an invitation is sent',
-    blurb:
-      'Applies to both kinds — joining an organization and joining the platform. Expiry is derived from the date on the row, so a shorter window retires invitations already sent as well as future ones.',
-  },
-  {
-    moment: 'workspace_created',
-    title: 'When a workspace is created',
-    blurb:
-      'The creator becomes a member of it, which is what lets them enter at all — workspace membership is required and no role widens it. This decides what they may do once inside.',
-  },
-  {
-    moment: 'workspace_member_added',
-    title: 'When somebody is added to a workspace',
-    blurb: 'Only where the person adding them named no role.',
-  },
-];
+/**
+ * The rows in sections, in the order the server put them.
+ *
+ * ⚠ ORDER COMES FROM THE ROWS, not from sorting here. `listDefaults` sorts by
+ * `momentOrder` — the contributed placement — so walking the array in order and
+ * starting a new section whenever the moment changes reproduces it exactly,
+ * with no second opinion about ordering living in the UI.
+ *
+ * A moment with no defaults cannot appear: sections exist because a row put
+ * them there. That is what the old code needed an explicit skip for.
+ */
+export function groupByMoment(
+  defaults: readonly DefaultView[],
+): { moment: string; title: string | null; blurb: string | null; rows: DefaultView[] }[] {
+  const groups: { moment: string; title: string | null; blurb: string | null; rows: DefaultView[] }[] = [];
+
+  for (const row of defaults) {
+    const last = groups.at(-1);
+    if (last && last.moment === row.moment) {
+      last.rows.push(row);
+      continue;
+    }
+    groups.push({ moment: row.moment, title: row.momentTitle, blurb: row.momentBlurb, rows: [row] });
+  }
+  return groups;
+}
 
 const SUBSCRIPTION_STATUSES = ['active', 'past_due', 'canceled'];
 
@@ -190,37 +193,33 @@ export function DefaultsPage({ client }: { client?: PermissionsClient }) {
         <AdminPlaceholder>This build declares no defaults.</AdminPlaceholder>
       ) : (
         <div className="mt-6 flex flex-col gap-8">
-          {MOMENTS.map((group) => {
-            const rows = defaults.filter((row) => row.moment === group.moment);
-            /*
-             * A moment with no defaults is skipped rather than shown empty. The
-             * catalogue drives both lists, so this only happens for a moment
-             * whose defaults were retired — and a heading over nothing would
-             * read as a screen that failed to load.
-             */
-            if (rows.length === 0) return null;
+          {groupByMoment(defaults).map((group) => (
+            <section key={group.moment}>
+              {/*
+               * ⚠ The moment KEY when nobody declared a heading. It is not a
+               * sentence, and that is the point: an operator seeing
+               * `chat_participant_added` over a real setting can act on it,
+               * whereas the old behaviour — no section at all — gave them a
+               * default they could not find.
+               */}
+              <h2 className="text-lg font-medium">{group.title ?? group.moment}</h2>
+              {group.blurb ? <p className="mt-1 text-sm text-muted-foreground">{group.blurb}</p> : null}
 
-            return (
-              <section key={group.moment}>
-                <h2 className="text-lg font-medium">{group.title}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{group.blurb}</p>
-
-                <div className="mt-3 flex flex-col gap-3">
-                  {rows.map((row) => (
-                    <DefaultRow
-                      key={row.key}
-                      row={row}
-                      roles={roles}
-                      plans={plans}
-                      iconsByName={iconsByName}
-                      busy={saving === row.key}
-                      onSave={(value) => void save(row, value)}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+              <div className="mt-3 flex flex-col gap-3">
+                {group.rows.map((row) => (
+                  <DefaultRow
+                    key={row.key}
+                    row={row}
+                    roles={roles}
+                    plans={plans}
+                    iconsByName={iconsByName}
+                    busy={saving === row.key}
+                    onSave={(value) => void save(row, value)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </AdminPage>
@@ -364,11 +363,21 @@ function DefaultControl({
   }
 
   const choices =
-    row.kind === 'plan'
-      ? plans.map((plan) => ({ value: plan.key, label: plan.label }))
-      : row.kind === 'subscription_status'
-        ? SUBSCRIPTION_STATUSES.map((status) => ({ value: status, label: status }))
-        : options.map((role) => ({ value: role.id, label: role.label }));
+    /*
+     * ⚠ A CONTRIBUTED `choice` BRINGS ITS OWN OPTIONS. Every other kind's are
+     * rows this screen can list — roles, plans, a fixed set of statuses — and a
+     * choice declared by another module names values in that module's enum,
+     * which this one has no table for. Falling through to the role list, which
+     * is what happened before this branch, offered an operator a list of roles
+     * for a setting about chat participants.
+     */
+    row.kind === 'choice'
+      ? row.choices
+      : row.kind === 'plan'
+        ? plans.map((plan) => ({ value: plan.key, label: plan.label }))
+        : row.kind === 'subscription_status'
+          ? SUBSCRIPTION_STATUSES.map((status) => ({ value: status, label: status }))
+          : options.map((role) => ({ value: role.id, label: role.label }));
 
   return (
     <select

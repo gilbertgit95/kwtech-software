@@ -16,7 +16,7 @@ Reference repo: **`../masterdb-mgt-tool`** — the newest of the Sensorbee repos
 the template for toolchain, conventions and versions here. `../coseller-mono` is
 consulted only where masterdb has not built something yet (notably GraphQL, §6).
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ---
 
@@ -529,12 +529,151 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 51 | Does an INVITED person see the first message before they accept? | before the requests inbox ships (step 7) | `canAccessConversation` is ACTIVE ONLY (2026-09-11), so an invitation shows who sent it and nothing else. ⚠ That makes accept-or-decline close to a coin flip, and every product that has solved this shows the first message — which is the honest argument for changing it. The argument against is the one the helper exists to make: rendering somebody's message content to a NON-PARTICIPANT is what C1 was. A middle exists — the first `kind: user` message only, never the thread — and it is a PRIVACY decision rather than a UI one, so it is not being made by default. ⚠ Whatever is chosen, it must not leak differently for a blocked sender than an unknown one |
 | 52 | ~~Where the chat PANEL opens from~~ **CLOSED 2026-09-11: there is no panel** | — | **✅ CLOSED.** `/chat` is the only home. The panel was a shortcut to this data hanging off a header icon that no longer exists, and building a shortcut before the place it shortcuts to is how the shortcut becomes the only home — permanently cramped. It can return the day something exists to anchor it to, against a page that already works. Original entry: | The anchored popover was anchored to the icon in the main header, and that icon was removed on 2026-09-11 because the drawer already leads to `/chat` — a second door to one place. Three honest answers: `/chat` is the only home and the panel is dropped, which is the smallest and loses the read-without-leaving-the-page property the panel existed for; the panel re-anchors to the drawer entry, which is a popover hanging off a navigation list and is unusual for a reason; or it opens from somewhere new that has to be designed. ⚠ Not guessed at — the panel is most of step 7's UI, and building it against the wrong anchor is the expensive mistake |
 | 53 | There is no longer a genuinely EMPTY app-level role | when a denial needs proving again | `normal-user` was the control case for the whole access-checking chain — route guard, page gate, component gate, API guard — and it held nothing on purpose, because a role that grants nothing is the only one that proves a denial is real rather than incidental. It now carries `chat:*`, on the operator's direct request (2026-09-12), and that was the right call: messaging a colleague is not an administrative power, and a product whose ordinary person cannot use its chat has a chat nobody uses. What is left is weaker — it proves ADMIN denials, since it still holds no `admin:*`, `roles:*` or `members:*` and nothing at organization or workspace level. `app-roles.ts` has always named the replacement: `restricted-user`, the account whose identity is managed elsewhere, which withholds even the `account:*` keys. ⚠ NOT created, because inventing a role nobody asked for is the other way to get this wrong — an operator's role catalogue is theirs. Create it the day a test needs a true zero |
-| 54 | ⚠ CHAT HAS TWO DEFAULT-SHAPED DECISIONS AND NO WAY TO DECLARE THEM | asked for 2026-09-12; before group roles are configurable | Group roles created exactly the pair `workspace.*` already has: the role a group's CREATOR gets (hardcoded `owner`) and the role somebody ADDED gets (hardcoded `member`). §12's earlier "chat needs no platform default" was about ACCOUNT creation and predates roles entirely — it is not an answer to this. ⚠ But `APP_DEFAULT_REGISTRY` is a FIXED CONSTANT in `module-permissions`: features are contributed through `FeatureContribution` and limits through `LimitContribution`, and defaults have no equivalent, so chat cannot declare one without permissions importing chat (§9 forbids). Closing it needs the same treatment limits got in step 1 — a `DefaultContribution` port in `module-kit`, `composeDefaults`, and `listDefaults` reading the composed registry through options rather than its own constant — PLUS a new `kind` whose target is an ENUM VALUE rather than a `perm_role` row, which every existing default resolves to. Four parts, one of them new machinery |
+| 54 | ~~⚠ Chat has two default-shaped decisions and no way to declare them~~ **CLOSED 2026-09-12** | — | Group roles created exactly the pair `workspace.*` already has: the role a group's CREATOR gets (hardcoded `owner`) and the role somebody ADDED gets (hardcoded `member`). §12's earlier "chat needs no platform default" was about ACCOUNT creation and predates roles entirely — it is not an answer to this. ⚠ But `APP_DEFAULT_REGISTRY` is a FIXED CONSTANT in `module-permissions`: features are contributed through `FeatureContribution` and limits through `LimitContribution`, and defaults have no equivalent, so chat cannot declare one without permissions importing chat (§9 forbids). Closing it needs the same treatment limits got in step 1 — a `DefaultContribution` port in `module-kit`, `composeDefaults`, and `listDefaults` reading the composed registry through options rather than its own constant — PLUS a new `kind` whose target is an ENUM VALUE rather than a `perm_role` row, which every existing default resolves to. Four parts, one of them new machinery. **✅ CLOSED 2026-09-12 — and it was FIVE parts.** `DefaultContribution` and `composeDefaults` in `module-kit`; `AppDefaultSpec` widened (`key` and `moment` become strings, `module` becomes required) with a `choice` kind and `isValidDefaultFor`; `defaultRegistry` on the options, read by BOTH `listDefaults` and `setDefault`; chat declares its two and reads them back through a `ChatDefaultReader` port. The fifth was found by looking rather than by planning: **the screen groups by MOMENT and owned the list of moments**, so a contributed default had no section and never rendered — declared, composed, settable through the API, invisible on the only screen it can be set from. `DefaultMomentContribution` + `composeDefaultMoments` fix that, and an undeclared moment now renders an unnamed section rather than nothing |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-12** — **THE THIRD DECLARATION: a module can now say what happens
+  when nobody said, and the screen stopped owning the list of moments.**
+
+  Chat arrived with two default-shaped decisions — the role a group's CREATOR
+  gets, the role somebody ADDED gets, exactly the pair `workspace.*` already had
+  — and could declare neither. `APP_DEFAULT_REGISTRY` was a const inside
+  `module-permissions`, so chat's two options were to hardcode them (offering
+  the operator nothing) or to have the permissions module import chat, which §9
+  forbids. The same place `LIMIT_REGISTRY` was in before step 1.
+
+  **`DefaultContribution` in `module-kit`, and `composeDefaults` beside
+  `composeFeatures` and `composeLimits`.** Three declarations now, answering
+  three questions: may this be done, how many may exist, and what happens when
+  nobody said. All three shapes live in `module-kit` for one reason — every
+  module declares them and exactly one module answers them, and the answerer may
+  not import its contributors. Duplicate keys throw, as they do for the other
+  two: two modules defining `chat.creator_role` differently is an ambiguity no
+  consumer can resolve, and the one that would resolve it silently is a screen
+  somebody makes a decision on.
+
+  **⚠ `AppDefaultSpec` had to be WIDENED, not extended.** `key` was the closed
+  `AppDefaultKey` union and `moment` the closed `AppDefaultMoment` — both are
+  plain strings now, because a contributed key is by definition not a member of
+  a union in a package the contributor may not import, and because the
+  permissions module cannot know that conversations get created. Both unions
+  survive as the vocabulary for this module's own nine, where they still catch a
+  typo. `module` became REQUIRED on the way through: the nine did not need it
+  while the registry was closed — everything in it was permissions' by
+  construction — and a default with no attribution is one nobody can trace back
+  to the feature it belongs to.
+
+  **⚠ A new `kind`, because a contributed default may point at nothing this
+  module stores.** Every kind that shipped — `app_role`, `plan`,
+  `subscription_status`, `days` — names either a row the screen can list or a
+  shape it can check. Chat's two name one of three participant roles, which are
+  an enum in *chat's* schema and not rows anybody can enumerate. So `choice`
+  carries its own `choices` from the declaration, the screen renders those, and
+  `isValidDefaultFor(spec, value)` validates against them. The old
+  `isValidAppDefaultValue(kind, value)` could not: a choice's valid values are a
+  property of the DECLARATION, not of its kind, so it fell through to "anything
+  non-empty" and would have accepted a role name that does not exist — the exact
+  failure a picker prevents and an API caller does not have. ⚠ A `choice` with
+  no choices accepts NOTHING, deliberately: a declaration that forgot them is a
+  default nobody can set, which is visible, where the alternative accepts
+  anything, which is not.
+
+  **⚠ BOTH HALVES READ THE COMPOSED REGISTRY, and that is not a detail.**
+  `listDefaults` resolves it to build the screen; `setDefault` looks a key up in
+  it to validate a write. A service left on its own nine while the app composed
+  eleven would show a control for chat's default and then refuse to save it with
+  "that is not a default this build has" — a screen arguing with itself. So
+  `defaultRegistry` sits on the module options next to `limitRegistry`, the app
+  composes it in `seed/registry.ts` beside the other two, and `ALL_DEFAULTS` is
+  CHECKED rather than cast on the way through, exactly as `toFeatureSpec` is.
+
+  **⚠ THE FIFTH PART, WHICH THE PLAN DID NOT NAME — the screen grouped by
+  MOMENT and owned the list of moments.** §12.54 said four parts. A fifth was
+  found by reading the page rather than the plan: `defaults-page.tsx` held a
+  `MOMENTS` const of six headings and filtered the defaults into them, so a
+  default whose moment was not among them had no section and therefore never
+  rendered. Chat's two would have been declared, composed, validated, settable
+  through the API — and invisible on the only screen anybody sets them from.
+  That is the *same* silence `DefaultContribution` exists to end, one level up,
+  and it would have looked like the feature working.
+
+  So the headings became a contribution too. `DefaultMomentContribution` +
+  `composeDefaultMoments` mirror `NavGroupContribution` + `composeNavGroups`,
+  because a moment is the same kind of thing as a nav group: a shared namespace
+  two modules may both have entries at, so the lowest order wins rather than a
+  duplicate throwing, and disagreeing about the title is a wording problem
+  rather than a boot failure. `listDefaults` now sends `momentTitle`,
+  `momentBlurb` and `momentOrder` with each row and sorts by them, and the page
+  builds its sections from the rows — the UI holds no second opinion about
+  ordering. ⚠ **An undeclared moment renders an UNNAMED section, not nothing**:
+  a module that declared a default and forgot the heading gets a section titled
+  with the raw moment key, which an operator can act on. The failure that is
+  visible instead of the one that is not.
+  (`momentOrder` is a GraphQL `Float`, not an `Int`: an undeclared moment's
+  order is `Number.MAX_SAFE_INTEGER`, which does not fit a signed 32-bit `Int` —
+  it would have been a serialization error on the one row the field exists to
+  keep visible.)
+
+  **⚠ `readDefault`, because `listDefaults` is a SCREEN's answer.** The port was
+  first wired to `listDefaults`, which reads every row, then both target tables,
+  then resolves a label, an icon and an availability flag per default — three
+  queries to describe a page. `startGroup` consults two keys, so creating one
+  group ran that twice and threw away all but two strings. `readDefault(key)` is
+  one row. It is deliberately UNGUARDED — there is no actor; the caller is chat
+  creating a group, already inside a write the actor was permitted to make, and
+  `perm_default` holds an operator's choices rather than anybody's data — and
+  deliberately UNVALIDATED, because the module that declared the default is the
+  one that knows what its values mean. The defaults screen's own read stays
+  behind `defaults:manage`.
+
+  **⚠ Chat VALIDATES what comes back, and falls back rather than failing.** The
+  value is a string in another module's table: a role renamed out of existence,
+  a typo, a key set before chat declared its choices. An unrecognised one falls
+  back to the built-in answer, because a participant row carrying a role the
+  enum does not have is a row every rule reads as `member` anyway, with no error
+  to explain why. A read that THROWS falls back too and the group is still
+  created — a default is a convenience and must never become a gate, which is
+  the same reading `defaultRoleId` already made on the resolving side. Both
+  reads happen BEFORE the transaction opens: holding one open across a call into
+  another module's service is how one slow read becomes a lock somebody else is
+  waiting on.
+
+  **⚠ `owner` is not among the choices for the ADDED role, and the write path
+  agrees.** `transferOwnership` is what mints an owner, in one act that demotes
+  the previous one; an arrival silently becoming owner would take the group from
+  whoever built it on the next invitation. The picker refusing it is the screen
+  agreeing with the rule rather than the rule's only enforcement.
+  The creator role is the opposite case: setting it to anything but Owner leaves
+  a group with NO owner, because nothing else mints one — and that is the
+  operator's decision to make, so the description says so in capitals and the
+  write path applies it. Refusing it would make a configured platform unable to
+  create a group at all.
+
+  **⚠ Somebody coming BACK keeps the role they had.** `reviveParticipant` takes
+  the default role as an argument that applies to a NEW row only: a
+  re-invitation is not a demotion, and an admin removed by mistake and added
+  again must not quietly return as whatever the default says today.
+
+  Two implementations moved out of `app.module.ts` into `src/chat/` —
+  `ChatPlatformAdmin` and `ChatDefaults`. That file composes modules; twenty
+  lines of permission logic inside a descriptor is how a composition file stops
+  being one, and `ChatUserDirectory` had already set the precedent.
+
+  Also wired: `CHAT_DEFAULTS` is bound in `ChatModule.forRoot` — the token, the
+  service's injection and the option existed with nothing connecting them, so
+  every read would have returned undefined and the setting would have had no
+  effect whatever an operator chose. Bound to `undefined` when the host says
+  nothing, like every other optional token there, so "nobody answered" is a
+  stated configuration rather than a property of the container.
+
+  Cost paid: `pnpm typecheck`, `lint` and all 1 424 tests green, and
+  `schema.graphql` regenerated by booting the server rather than hand-edited —
+  the generated file came back byte-identical to the edit, which is the only way
+  to know a hand-edit was right.
 
 - **2026-09-12** — **Chat is granted to `normal-user`, and the control case it
   was is recorded as lost.**
@@ -2167,6 +2306,15 @@ Decisions 1, 2, 3 and 5 gate the next step.
      `clearAt`, typing on a TTL — plus the `onDisconnect`/`onPing` seam
      `graphql.options.ts` did not wire, and the dot, the picker and the
      indicator on screen.
+  8b. ✅ **DONE 2026-09-12**, in several commits, and NOT ON THIS LIST when it
+     was written. Group roles: who runs a group as rules first, then enforced,
+     then the app level reaching down into one (`chat:manage_all`), then a
+     settings page, then — because roles created two default-shaped decisions
+     — **the third declaration**, `DefaultContribution`, which is a
+     `module-kit` port rather than a chat feature. Recorded here rather than
+     folded into step 9: the list is the honest account of what was built, and
+     a step that appeared because something earlier had a consequence is the
+     most useful kind to write down. See §12.54 and the 2026-09-12 entries.
   9. Tone, chat settings in `localStorage`, and the grouped unread query.
   10. Redis (§12.28) — which by then gates PRESENCE, not merely a second
      replica — or single-replica recorded as a deliberate choice.

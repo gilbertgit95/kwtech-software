@@ -63,6 +63,26 @@ export interface DefaultView {
   targetLabel: string | null;
   targetIcon: string | null;
   targetUnavailable: boolean;
+  /**
+   * What a `choice` default may be set to, from the DECLARATION.
+   *
+   * ⚠ Empty for every other kind — those options are rows the screen lists for
+   * itself. A contributed choice names values in another module's enum, so they
+   * arrive with the row rather than being looked up.
+   */
+  choices: { value: string; label: string }[];
+  /**
+   * The heading for the moment this default happens at, and where that section
+   * sits on the page.
+   *
+   * ⚠ FROM THE SERVER, not from a list in the page. The page used to hold the
+   * headings and filter defaults into them, which silently dropped any default
+   * at a moment it had not heard of — every contributed one. A null title is a
+   * moment nobody declared: the section renders unnamed rather than vanishing.
+   */
+  momentTitle: string | null;
+  momentBlurb: string | null;
+  momentOrder: number;
 }
 
 export interface RoleInput {
@@ -682,6 +702,8 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
              key kind moment label description whenUnset
              value updatedAt updatedByUserId
              targetLabel targetIcon targetUnavailable
+             choices { value label }
+             momentTitle momentBlurb momentOrder
            }
          }`,
       );

@@ -1,9 +1,28 @@
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
-import { CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '@kwtech/module-chat';
+import {
+  CHAT_DEFAULT_MOMENT_REGISTRY,
+  CHAT_DEFAULT_REGISTRY,
+  CHAT_FEATURE_REGISTRY,
+  CHAT_LIMIT_REGISTRY,
+} from '@kwtech/module-chat';
 import type { FeatureContribution } from '@kwtech/module-kit';
-import { composeFeatures, composeLimits, type LimitContribution, type WebModuleDescriptor } from '@kwtech/module-kit';
-import type { FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
-import { FEATURE_REGISTRY, isFeatureSurface, isRoleLevel, LIMIT_CONTRIBUTIONS } from '@kwtech/module-permissions';
+import {
+  composeDefaultMoments,
+  composeDefaults,
+  composeFeatures,
+  composeLimits,
+  type LimitContribution,
+  type WebModuleDescriptor,
+} from '@kwtech/module-kit';
+import type { AppDefaultSpec, FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
+import {
+  APP_DEFAULT_MOMENT_REGISTRY,
+  APP_DEFAULT_REGISTRY,
+  FEATURE_REGISTRY,
+  isFeatureSurface,
+  isRoleLevel,
+  LIMIT_CONTRIBUTIONS,
+} from '@kwtech/module-permissions';
 
 /**
  * EVERY module's features, composed. ← add a module's registry here
@@ -101,6 +120,57 @@ const LIMIT_SOURCES: readonly WebModuleDescriptor[] = [
   { key: 'permissions', limits: LIMIT_CONTRIBUTIONS },
   { key: 'chat', limits: CHAT_LIMIT_REGISTRY },
 ];
+
+/**
+ * THE THIRD DECLARATION — what happens when nobody says.
+ *
+ * ⚠ The same hazard as the other two, and the quietest of the three: the
+ * defaults SCREEN lists this registry, so a default nobody composed has no row
+ * to set — and `listDefaults` reads it to answer, so a `perm_default` row for
+ * an uncomposed key is ignored. An operator would set a value and nothing would
+ * read it, with no error anywhere.
+ *
+ * `module-permissions` contributes its own nine through its constant; chat
+ * contributes two. Neither module can see the other's.
+ */
+const DEFAULT_SOURCES: readonly WebModuleDescriptor[] = [
+  { key: 'permissions', defaults: APP_DEFAULT_REGISTRY, defaultMoments: APP_DEFAULT_MOMENT_REGISTRY },
+  { key: 'chat', defaults: CHAT_DEFAULT_REGISTRY, defaultMoments: CHAT_DEFAULT_MOMENT_REGISTRY },
+];
+
+/**
+ * The HEADINGS those defaults appear under, from the same sources.
+ *
+ * ⚠ Composed from one list with the defaults themselves, so a module cannot be
+ * added to one and forgotten in the other. The screen groups by moment; a
+ * module whose moment nobody named gets an unnamed section at the bottom rather
+ * than — as the screen did before this — no section and no row at all.
+ *
+ * ⚠ NOT a duplicate-throws compose. A moment is a shared namespace, so two
+ * modules naming one is legitimate: the lowest order wins. See
+ * `composeDefaultMoments`.
+ */
+export const ALL_DEFAULT_MOMENTS = composeDefaultMoments(DEFAULT_SOURCES);
+
+/**
+ * Every default the app offers, narrowed to what the resolving module needs.
+ *
+ * ⚠ CHECKED rather than cast, exactly as `toFeatureSpec` is: a contribution is
+ * a looser shape than a spec — `kind` and `moment` are plain strings, because
+ * `module-kit` must not own the resolving module's vocabulary — and the narrow
+ * happens once, here, where a bad value is a boot failure rather than a screen
+ * that renders nothing.
+ */
+export const ALL_DEFAULTS: readonly AppDefaultSpec[] = composeDefaults(DEFAULT_SOURCES).map((contribution) => ({
+  key: contribution.key,
+  module: contribution.module,
+  kind: contribution.kind as AppDefaultSpec['kind'],
+  moment: contribution.moment,
+  label: contribution.label,
+  description: contribution.description,
+  whenUnset: contribution.whenUnset,
+  ...(contribution.choices ? { choices: contribution.choices } : {}),
+}));
 
 /**
  * A contribution narrowed to a spec, CHECKED rather than cast — `toFeatureSpec`

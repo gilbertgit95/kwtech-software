@@ -541,6 +541,17 @@ export interface PermissionsPrismaClient {
    */
   permDefault: {
     findMany(args: { orderBy: { key: 'asc' } }): Promise<DefaultRow[]>;
+    /**
+     * ONE default, for a caller that wants a VALUE rather than a screen.
+     *
+     * ⚠ The note above argues that filtering this table costs more to express
+     * than to skip, and that is still true OF `listDefaults` — it has to see
+     * every row. It is not true of a module consulting a single key on a write
+     * path: that caller reads one row and uses one string, and going through
+     * the unfiltered read would drag both target tables along with it. See
+     * `PermissionsService.readDefault`.
+     */
+    findFirst(args: { where: { key: string } }): Promise<DefaultRow | null>;
   };
   permOrganization: {
     /**

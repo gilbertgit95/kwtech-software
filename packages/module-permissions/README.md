@@ -223,6 +223,44 @@ plus a workspace plan, adds capacity rather than one capping the other.
 boundary, and `JSON.stringify(Infinity)` is `null`, which a client cannot tell
 apart from "unknown".
 
+### What happens when nobody says — defaults
+
+This module owns the *storage* and the *screen* for platform defaults, and no
+longer owns the list of them. `APP_DEFAULT_REGISTRY` is this module's own nine;
+`defaultRegistry` on the module options is the catalogue actually in force,
+composed by the app across every module through `module-kit`'s
+`DefaultContribution`. `module-chat` contributes two — the role a group's
+creator gets and the role somebody added gets.
+
+**⚠ Both halves read the composed registry, and they have to.** `listDefaults`
+resolves it to build the screen and `setDefault` looks a key up in it to
+validate a write. A service left on its own nine while the app composed eleven
+would show a control for a default and then refuse to save it, with the message
+"that is not a default this build has".
+
+Three things follow from a default that another module declared:
+
+- **`kind: 'choice'`** exists for a default that points at neither a role nor a
+  plan. Every kind this module shipped names something it stores, so the screen
+  could offer a picker over rows it can list; chat's two name one of three
+  participant roles, which are an enum in *chat's* schema. So the values travel
+  with the declaration as `choices`, and `isValidDefaultFor` validates against
+  them — `isValidAppDefaultValue` would fall through to "anything non-empty" and
+  accept a role that does not exist.
+- **The moment's heading travels too.** The screen groups by moment and used to
+  hold the six headings itself, which silently dropped every default at a moment
+  it had not heard of. `momentTitle`/`momentBlurb`/`momentOrder` now come back
+  with each row, and a moment nobody declared renders as an unnamed section at
+  the bottom rather than nowhere at all.
+- **`readDefault(key)` is how a module asks, not `listDefaults()`.** The list is
+  the screen's answer: every row, both target tables, and a resolved label, icon
+  and availability per default. A module consulting one key on a write path —
+  chat reads two per group created — wants the string and nothing else. It is
+  unguarded and unvalidated by design: the caller is already inside a permitted
+  write, and the module that declared the default is the one that knows what its
+  values mean, so it re-checks on arrival and falls back to its built-in answer.
+  A default is a convenience; it must never become a gate.
+
 ## How access is resolved
 
 A request carries its level in the path, and **the level decides which grant

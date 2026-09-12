@@ -1,4 +1,5 @@
 import type { LimitChecker } from '@kwtech/module-kit';
+import { CHAT_DEFAULT, type ChatDefaultReader } from '../src/defaults.js';
 import type { ChatWriteError } from '../src/server/chat.errors.js';
 import { ChatWriteService } from '../src/server/chat-write.service.js';
 import { emptyState, type FakeState, fakeClient } from './fake-client.js';
@@ -242,6 +243,113 @@ describe('removeParticipant', () => {
     const conversation = await h.svc.startGroup('ann', { title: 'Team', userIds: ['bob'] });
 
     expect(await reason(h.svc.removeParticipant('mallory', conversation.id, 'bob'))).toBe('not_a_participant');
+  });
+});
+
+/**
+ * ── WHAT THE OPERATOR CHOSE ────────────────────────────────────────────────
+ *
+ * Chat DECLARES its two defaults and cannot read them: the value lives in
+ * `perm_default`, a table `module-permissions` owns, so it arrives through a
+ * port. These assert the three things that can happen to a value coming out of
+ * somebody else's table — it is a role chat knows, it is not, or the read
+ * fails — and that the group is created in all three.
+ */
+describe("startGroup and the operator's defaults", () => {
+  const reader = (values: Record<string, string | null>): ChatDefaultReader => ({
+    async read(key) {
+      return values[key] ?? null;
+    },
+  });
+
+  const withDefaults = (defaults: ChatDefaultReader) => {
+    const { client, state } = fakeClient(emptyState());
+    return { svc: new ChatWriteService(client, undefined, undefined, undefined, defaults), state };
+  };
+
+  const roleOf = (state: FakeState, conversationId: string, userId: string) =>
+    state.participants.find((row) => row.conversationId === conversationId && row.userId === userId)?.role;
+
+  it('unbound: the creator owns the group and everybody else joins as a member', async () => {
+    // The documented fallback, and a working product — the behaviour that
+    // existed before the settings did.
+    const { svc, state } = harness();
+    const group = await svc.startGroup('ann', { title: 'Team', userIds: ['bob'] });
+
+    expect(roleOf(state, group.id, 'ann')).toBe('owner');
+    expect(roleOf(state, group.id, 'bob')).toBe('member');
+  });
+
+  it('applies both settings when the operator has chosen them', async () => {
+    const { svc, state } = withDefaults(
+      reader({ [CHAT_DEFAULT.creatorRole]: 'admin', [CHAT_DEFAULT.memberRole]: 'admin' }),
+    );
+    const group = await svc.startGroup('ann', { title: 'Team', userIds: ['bob'] });
+
+    /*
+     * ⚠ A GROUP WITH NO OWNER, which is the operator's decision to make and
+     * the setting's description says so in capitals: nothing else mints one.
+     * The write path does not second-guess it — refusing here would make a
+     * configured platform unable to create a group at all.
+     */
+    expect(roleOf(state, group.id, 'ann')).toBe('admin');
+    expect(roleOf(state, group.id, 'bob')).toBe('admin');
+  });
+
+  /**
+   * ⚠ VALIDATED, NOT TRUSTED. The value is a string in another module's table:
+   * a role renamed out of existence, a typo, a key set before this module
+   * declared its choices. It falls back rather than being written, because a
+   * participant row carrying a role the enum does not have reads as `member`
+   * to every rule anyway, with no error to explain why.
+   */
+  it('⚠ falls back when the stored value is not a role chat has', async () => {
+    const { svc, state } = withDefaults(reader({ [CHAT_DEFAULT.creatorRole]: 'superuser' }));
+    const group = await svc.startGroup('ann', { title: 'Team', userIds: ['bob'] });
+
+    expect(roleOf(state, group.id, 'ann')).toBe('owner');
+  });
+
+  /**
+   * ⚠ A READ THAT THROWS MUST NOT FAIL THE WRITE. The port reaches into
+   * another module's service; a default is a convenience and must never become
+   * a gate, which is the same reading every default gets on the resolving side.
+   */
+  it('⚠ creates the group anyway when the port throws', async () => {
+    const angry: ChatDefaultReader = {
+      async read() {
+        throw new Error('permissions is down');
+      },
+    };
+    const { svc, state } = withDefaults(angry);
+    const group = await svc.startGroup('ann', { title: 'Team', userIds: ['bob'] });
+
+    expect(roleOf(state, group.id, 'ann')).toBe('owner');
+    expect(roleOf(state, group.id, 'bob')).toBe('member');
+  });
+
+  it('applies the member default to somebody INVITED later, not just at creation', async () => {
+    const { svc, state } = withDefaults(reader({ [CHAT_DEFAULT.memberRole]: 'admin' }));
+    const group = await svc.startGroup('ann', { title: 'Team', userIds: [] });
+    await svc.invite('ann', group.id, 'bob');
+
+    expect(roleOf(state, group.id, 'bob')).toBe('admin');
+  });
+
+  /**
+   * ⚠ SOMEBODY COMING BACK KEEPS THE ROLE THEY HAD. A re-invitation is not a
+   * demotion: an admin removed by mistake and added again must not quietly
+   * return as whatever the default says today.
+   */
+  it('⚠ does not re-role somebody who was already in the group', async () => {
+    const { svc, state } = withDefaults(reader({ [CHAT_DEFAULT.memberRole]: 'member' }));
+    const group = await svc.startGroup('ann', { title: 'Team', userIds: ['bob'] });
+    await svc.respondToInvitation('bob', group.id, true);
+    await svc.setParticipantRole('ann', group.id, 'bob', 'admin');
+    await svc.removeParticipant('ann', group.id, 'bob');
+    await svc.invite('ann', group.id, 'bob');
+
+    expect(roleOf(state, group.id, 'bob')).toBe('admin');
   });
 });
 

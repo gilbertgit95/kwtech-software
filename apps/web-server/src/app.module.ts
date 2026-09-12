@@ -1,13 +1,12 @@
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
-import { CHAT_FEATURE } from '@kwtech/module-chat';
 import {
+  CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
   CHAT_PLATFORM_ADMIN,
   CHAT_PUBSUB,
   CHAT_USER_DIRECTORY,
   ChatPresenceService,
   chatServerModule,
-  type PlatformAdminCheck,
 } from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
 import {
@@ -25,6 +24,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
+import { ChatDefaults } from './chat/defaults-reader.js';
+import { ChatPlatformAdmin } from './chat/platform-admin.js';
 import { ChatUserDirectory } from './chat/user-directory.js';
 import { env } from './config/env.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
@@ -42,7 +43,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
-import { ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
+import { ALL_DEFAULT_MOMENTS, ALL_DEFAULTS, ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
 import { UsersResolver } from './users/users.resolver.js';
 
 /**
@@ -141,41 +142,32 @@ const CHAT_SERVER_MODULE: ServerModuleDescriptor = chatServerModule({
   resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
 
   /*
-   * ⚠ THE APP LEVEL REACHING DOWN INTO A CONVERSATION, and the one place this
-   * question can be answered.
+   * ⚠ THE APP LEVEL REACHING DOWN INTO A CONVERSATION — chat's second port
+   * that only this layer can fill, beside the directory above.
    *
-   * Chat DECLARES `chat:manage_all` — it is a chat right and belongs in chat's
-   * registry — and cannot CHECK it: asking whether somebody holds a key is
-   * `module-permissions`' question, and a module may not import a module (§9).
-   * So the app, which depends on both, fills in the port.
-   *
-   * A PROVIDER rather than a function on the options, because answering needs
-   * the injected `PermissionsService` — the same reason the directory and the
-   * limit checker are providers.
+   * Chat declares `chat:manage_all` and cannot check it: asking whether
+   * somebody holds a key is the permissions module's question, and neither may
+   * import the other (§9). The implementation is in ./chat/platform-admin.ts —
+   * this file composes modules, and twenty lines of permission logic inside a
+   * descriptor is how a composition file stops being one.
    */
   platformAdminProvider: {
     provide: CHAT_PLATFORM_ADMIN,
     inject: [PermissionsService],
-    useFactory: (permissions: PermissionsService): PlatformAdminCheck => ({
-      async isPlatformAdmin(request: unknown) {
-        const userId = resolvePrincipal(request)?.userId;
-        if (!userId) return false;
+    useFactory: (permissions: PermissionsService) => new ChatPlatformAdmin(permissions),
+  },
 
-        /*
-         * ⚠ APP-LEVEL GRANTS ONLY, from a context loaded with NO SCOPE. A
-         * conversation belongs to no organization, so an organization-scoped
-         * reading would be answering about the wrong thing —
-         * `grantedAtAppLevel` is exactly "what this person holds everywhere",
-         * which is what reaching down from the top means.
-         *
-         * It costs a context load per mutation that offers it. Affordable
-         * because every one is a write on a single conversation: it is never on
-         * a read path and never on the message list.
-         */
-        const context = await permissions.loadContext(userId);
-        return context?.grantedAtAppLevel.includes(CHAT_FEATURE.manageAll) ?? false;
-      },
-    }),
+  /*
+   * ⚠ CHAT DECLARES ITS TWO DEFAULTS AND CANNOT READ THEM. The declaration
+   * belongs to chat — they are chat's decisions, about chat's participant roles
+   * — and the VALUE lives in `perm_default`, a table `module-permissions` owns.
+   * The same split as the cap: chat declares `chat:group_chats` and calls a
+   * `LimitChecker` to find out the number.
+   */
+  defaultsProvider: {
+    provide: CHAT_DEFAULTS,
+    inject: [PermissionsService],
+    useFactory: (permissions: PermissionsService) => new ChatDefaults(permissions),
   },
 });
 
@@ -297,6 +289,25 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
      * operator's number sits in the database looking enforced.
      */
     limitRegistry: ALL_LIMITS,
+
+    /*
+     * ⚠ THE THIRD COMPOSED REGISTRY, and the quietest one to get wrong.
+     *
+     * The defaults SCREEN lists this, so a default nobody composed has no row
+     * to set — and `setDefault` looks a key up in it, so a contributed key is
+     * refused as "not a default this build has" while the screen is showing a
+     * control for it. Both halves have to read the same catalogue.
+     */
+    defaultRegistry: ALL_DEFAULTS,
+
+    /*
+     * ⚠ And the section HEADINGS, which is the half that decides whether a
+     * contributed default is REACHABLE. The screen groups by moment, so a
+     * default at a moment nobody named lands in an unnamed section at the
+     * bottom — and before these were contributable at all, it landed nowhere
+     * and did not render.
+     */
+    defaultMomentRegistry: ALL_DEFAULT_MOMENTS,
 
     /*
      * How the guard finds the request, on EITHER transport.

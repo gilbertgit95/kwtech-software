@@ -1,5 +1,11 @@
+import type { DefaultMomentContribution } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { APP_DEFAULT_REGISTRY, type AppDefaultSpec, appDefaultRoleLevel } from '../defaults.js';
+import {
+  APP_DEFAULT_MOMENT_REGISTRY,
+  APP_DEFAULT_REGISTRY,
+  type AppDefaultSpec,
+  appDefaultRoleLevel,
+} from '../defaults.js';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
 import {
@@ -66,6 +72,29 @@ export interface ResolvedDefault {
   whenUnset: string;
   /** The stored value — a role ID, or a plan KEY. Null when no default is set. */
   value: string | null;
+  /**
+   * What a `choice` default may be set to, carried from the DECLARATION.
+   *
+   * ⚠ Every other kind's options are rows this module can list — roles, plans —
+   * so the screen builds those lists itself. A contributed `choice` names
+   * values in another module's enum, which this module has no table for and no
+   * business having one, so the options travel with the spec.
+   */
+  choices: readonly { value: string; label: string }[];
+  /**
+   * The heading the moment gets, and where the section sits.
+   *
+   * ⚠ CARRIED WITH THE ROW rather than known by the screen. The page used to
+   * hold the six headings itself and filter the defaults into them, so a
+   * contributed default — whose moment was not among them — had no section and
+   * did not render at all. See `DefaultMomentContribution`.
+   *
+   * ⚠ `momentTitle` is null for a moment NOBODY declared. The section still
+   * renders; it is simply unnamed, and sorts last.
+   */
+  momentTitle: string | null;
+  momentBlurb: string | null;
+  momentOrder: number;
   updatedAt: Date | null;
   updatedByUserId: string | null;
   /** The target's name today, or null when the value no longer resolves. */
@@ -105,6 +134,23 @@ export class PermissionsService {
    */
   private limitRegistry(): readonly LimitSpec[] {
     return this.options?.limitRegistry ?? LIMIT_REGISTRY;
+  }
+
+  /**
+   * Every default the app offers — the COMPOSED registry when the host passed
+   * one, this module's own nine otherwise.
+   *
+   * The same shape as `limitRegistry` above, and the same hazard: left at the
+   * default while another module declares one, the contributed default has no
+   * row on the screen and is never resolved.
+   */
+  private defaultRegistry(): readonly AppDefaultSpec[] {
+    return this.options?.defaultRegistry ?? APP_DEFAULT_REGISTRY;
+  }
+
+  /** The moment headings — composed when the host passed them, this module's six otherwise. */
+  private defaultMomentRegistry(): readonly DefaultMomentContribution[] {
+    return this.options?.defaultMomentRegistry ?? APP_DEFAULT_MOMENT_REGISTRY;
   }
 
   /**
@@ -766,11 +812,13 @@ export class PermissionsService {
 
     const roleById = new Map(roles.map((role) => [role.id, role]));
     const planByKey = new Map(plans.map((plan) => [plan.key, plan]));
+    const momentByKey = new Map(this.defaultMomentRegistry().map((one) => [one.moment, one]));
 
-    return APP_DEFAULT_REGISTRY.map((spec) => {
+    const resolved = this.defaultRegistry().map((spec) => {
       const row = byKey.get(spec.key) ?? null;
       const value = row?.value ?? null;
       const level = appDefaultRoleLevel(spec.kind);
+      const choices = spec.choices ?? [];
 
       /*
        * The target, or null when it no longer resolves.
@@ -790,12 +838,33 @@ export class PermissionsService {
       const role = level && value ? (roleById.get(value) ?? null) : null;
       const plan = spec.kind === 'plan' && value ? (planByKey.get(value) ?? null) : null;
 
+      /*
+       * ⚠ A `choice` RESOLVES AGAINST ITS OWN DECLARATION, not against a table.
+       * Its "target" is one of the values the contributing module named, so a
+       * value that is no longer among them is the same situation as a deleted
+       * role — shown raw, with the screen able to say it points at something
+       * that is gone.
+       */
+      const chosen = spec.kind === 'choice' && value ? (choices.find((one) => one.value === value) ?? null) : null;
+
       const target =
         role && role.level === level
           ? { targetLabel: role.label, targetIcon: role.icon, targetUnavailable: role.disabled }
           : plan
             ? { targetLabel: plan.label, targetIcon: plan.icon, targetUnavailable: plan.archived }
-            : { targetLabel: null, targetIcon: null, targetUnavailable: false };
+            : chosen
+              ? { targetLabel: chosen.label, targetIcon: null, targetUnavailable: false }
+              : { targetLabel: null, targetIcon: null, targetUnavailable: false };
+
+      /*
+       * ⚠ A MOMENT NOBODY DECLARED IS NOT AN ERROR AND NOT A DROP. It comes
+       * back with no title and `MAX_SAFE_INTEGER` for an order, which puts its
+       * section at the bottom of the screen, unnamed — `defaultMomentRank`'s
+       * rule, and the same call `navGroupRank` makes for an unplaced nav group.
+       * The alternative the screen used to implement was to render nothing,
+       * which made a declared default invisible.
+       */
+      const moment = momentByKey.get(spec.moment) ?? null;
 
       return {
         key: spec.key,
@@ -805,11 +874,50 @@ export class PermissionsService {
         description: spec.description,
         whenUnset: spec.whenUnset,
         value,
+        choices,
+        momentTitle: moment?.title ?? null,
+        momentBlurb: moment?.blurb ?? null,
+        momentOrder: moment?.order ?? Number.MAX_SAFE_INTEGER,
         updatedAt: row?.updatedAt ?? null,
         updatedByUserId: row?.updatedByUserId ?? null,
         ...target,
       };
     });
+
+    /*
+     * ⚠ SORTED HERE, so the screen never has to know the order of anything.
+     * The registry arrives in composition order — permissions' nine then
+     * chat's two — which is not the order somebody reads the page in. Within a
+     * moment the registry's own order is kept (a stable sort), because the
+     * defaults at one moment are written in the order they are consulted.
+     */
+    return resolved.sort((a, b) => a.momentOrder - b.momentOrder || a.moment.localeCompare(b.moment));
+  }
+
+  /**
+   * THE STORED VALUE OF ONE DEFAULT, and nothing else.
+   *
+   * ⚠ Exists because `listDefaults` is a SCREEN's answer, not a lookup. It
+   * reads every row, then both target tables, then resolves a label and an icon
+   * and an availability flag for each — three queries to describe a page. A
+   * module asking "what did the operator choose for this one key" through that
+   * pays all of it, twice per group created, to use one string and throw the
+   * rest away.
+   *
+   * ⚠ UNVALIDATED AND UNRESOLVED, deliberately. It does not check that the
+   * value is still among a `choice`'s options, or that a role still exists —
+   * the module that DECLARED the default is the one that knows what its values
+   * mean, and it re-checks on arrival for exactly that reason. Handing back a
+   * stale string is what lets that module fall back to its built-in answer; a
+   * throw here would turn a renamed role into a group nobody can create.
+   *
+   * @param key any declared default's key, this module's own or a contributed
+   * one. An UNDECLARED key returns null rather than throwing — the same reading
+   * an unset default gets, because to a caller they are the same situation.
+   */
+  async readDefault(key: string): Promise<string | null> {
+    const row = await this.prisma.permDefault.findFirst({ where: { key } });
+    return row?.value ?? null;
   }
 
   /**

@@ -3,10 +3,12 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { hasFeature } from '../check.js';
 import {
   APP_DEFAULT,
+  APP_DEFAULT_REGISTRY,
   type AppDefaultKey,
+  type AppDefaultSpec,
   appDefaultRoleLevel,
   appDefaultSpec,
-  isValidAppDefaultValue,
+  isValidDefaultFor,
 } from '../defaults.js';
 import type { CloneMode } from '../domain/feature-merge.js';
 import {
@@ -200,6 +202,25 @@ export class PermissionsWriteService {
    * path does not know about turns a typed cap into a saved row that resolves
    * to nothing. Validation refuses an undeclared key rather than storing it.
    */
+  /**
+   * Every default the app offers — the COMPOSED registry when the host passed
+   * one, this module's own otherwise.
+   *
+   * ⚠ WITHOUT THIS, A CONTRIBUTED DEFAULT CANNOT BE SET AT ALL. `setDefault`
+   * looks its key up to find the spec, and a lookup against this module's own
+   * constant answers "that is not a default this build has" — for a key the
+   * screen is at that moment showing a control for. The read path and the write
+   * path have to be looking at the same catalogue.
+   */
+  private get defaultRegistry(): readonly AppDefaultSpec[] {
+    return this.options?.defaultRegistry ?? APP_DEFAULT_REGISTRY;
+  }
+
+  /** One spec out of the composed catalogue — never out of the constant. */
+  private defaultSpec(key: string): AppDefaultSpec | undefined {
+    return this.defaultRegistry.find((spec) => spec.key === key);
+  }
+
   private get limitRegistry(): readonly LimitSpec[] {
     return this.options?.limitRegistry ?? LIMIT_REGISTRY;
   }
@@ -2441,7 +2462,7 @@ export class PermissionsWriteService {
     this.assertPermitted(actor, FEATURE.defaultsManage);
     const db = this.client();
 
-    const spec = appDefaultSpec(input.key);
+    const spec = this.defaultSpec(input.key);
     if (!spec) {
       throw new PermissionWriteError('not_found', 'That is not a default this build has', { key: input.key });
     }
@@ -2452,7 +2473,9 @@ export class PermissionsWriteService {
      * as a set default pointing at nothing.
      */
     const value = input.value?.trim() ? input.value.trim() : null;
-    if (!isValidAppDefaultValue(spec.kind, value)) {
+    // ⚠ SPEC-AWARE, because a `choice` default's valid values live on the
+    // declaration rather than in its kind — see `isValidDefaultFor`.
+    if (!isValidDefaultFor(spec, value)) {
       throw new PermissionWriteError('draft_invalid', 'That is not a usable value for this default', {
         key: spec.key,
         kind: spec.kind,
@@ -2512,8 +2535,10 @@ export class PermissionsWriteService {
         });
       }
     }
-    // `subscription_status` and `days` point at nothing in the database — their
-    // shape check in `isValidAppDefaultValue` is the whole validation.
+    // `subscription_status`, `days` and `choice` point at nothing in the
+    // database — their check in `isValidDefaultFor` is the whole validation.
+    // A `choice` in particular names a value in ANOTHER module's enum, which
+    // this module has no table to look it up in and no business having one.
   }
 
   /**

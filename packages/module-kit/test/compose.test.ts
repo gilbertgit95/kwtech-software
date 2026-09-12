@@ -1,8 +1,11 @@
 import {
+  composeDefaultMoments,
+  composeDefaults,
   composeFeatures,
   composeNav,
   composeNavGroups,
   composeRoutes,
+  defaultMomentRank,
   ModuleCompositionError,
   matchRoute,
   matchRouteWithParams,
@@ -302,6 +305,107 @@ describe('composeNav — the badge a module hangs off its entry', () => {
     );
 
     expect(entries).toEqual([]);
+  });
+});
+
+describe('composeDefaults', () => {
+  const entry = (key: string, module: string) => ({
+    key,
+    module,
+    kind: 'choice',
+    moment: 'chat_conversation_created',
+    label: 'x',
+    description: 'x',
+    whenUnset: 'x',
+  });
+
+  it('collects what every module declares', () => {
+    const composed = composeDefaults([
+      { key: 'chat', defaults: [entry('chat.creator_role', 'chat')] },
+      { key: 'other', defaults: [entry('other.thing', 'other')] },
+    ]);
+
+    expect(composed.map((one) => one.key)).toEqual(['chat.creator_role', 'other.thing']);
+  });
+
+  it('⚠ throws on a duplicate key, naming both owners', () => {
+    // Two modules defining one default differently is an ambiguity no consumer
+    // can resolve — and the one that would resolve it silently is the screen an
+    // operator makes a decision on.
+    const modules = [
+      { key: 'a', defaults: [entry('chat.creator_role', 'a')] },
+      { key: 'b', defaults: [entry('chat.creator_role', 'b')] },
+    ];
+
+    expect(() => composeDefaults(modules)).toThrow(ModuleCompositionError);
+    expect(() => composeDefaults(modules)).toThrow(/Default 'chat.creator_role' declared by both 'a' and 'b'/);
+  });
+
+  it('tolerates a module that declares none', () => {
+    expect(composeDefaults([{ key: 'server-only' }])).toEqual([]);
+  });
+
+  it('carries CHOICES through, for a default whose target is not a row', () => {
+    // The reason the field exists: chat's defaults name one of three
+    // participant roles, which are an enum in chat's own schema and not rows
+    // anybody can list.
+    const withChoices = {
+      ...entry('chat.creator_role', 'chat'),
+      choices: [
+        { value: 'owner', label: 'Owner' },
+        { value: 'admin', label: 'Admin' },
+      ],
+    };
+
+    expect(composeDefaults([{ key: 'chat', defaults: [withChoices] }])[0]?.choices).toHaveLength(2);
+  });
+});
+
+describe('composeDefaultMoments', () => {
+  const moment = (key: string, order: number, title = key) => ({ moment: key, order, title, blurb: 'b' });
+
+  it('orders the sections, lowest first', () => {
+    const composed = composeDefaultMoments([
+      { key: 'chat', defaultMoments: [moment('chat_participant_added', 80)] },
+      { key: 'permissions', defaultMoments: [moment('account_created', 10)] },
+    ]);
+
+    expect(composed.map((one) => one.moment)).toEqual(['account_created', 'chat_participant_added']);
+  });
+
+  /*
+   * ⚠ NOT the duplicate-throws rule the other three composers use. A moment is
+   * a shared namespace — two modules may have a default at one — so naming it
+   * twice is legitimate, and the lowest order wins exactly as it does for a nav
+   * group. Failing the boot over a wording disagreement would make adopting a
+   * module that happens to share a moment an outage.
+   */
+  it('takes the LOWEST order when two modules name one moment, keeping the first title', () => {
+    const composed = composeDefaultMoments([
+      { key: 'a', defaultMoments: [moment('shared', 50, 'From a')] },
+      { key: 'b', defaultMoments: [moment('shared', 20, 'From b')] },
+    ]);
+
+    expect(composed).toEqual([{ moment: 'shared', order: 20, title: 'From a', blurb: 'b' }]);
+  });
+
+  it('tolerates a module that names none', () => {
+    expect(composeDefaultMoments([{ key: 'quiet' }])).toEqual([]);
+  });
+});
+
+describe('defaultMomentRank', () => {
+  /*
+   * ⚠ THE RULE THAT KEEPS A DEFAULT VISIBLE. A module that declared a default
+   * and forgot the heading gets a section at the BOTTOM of the screen — not a
+   * default with nowhere to go, which is what the page did when it owned the
+   * list of moments itself.
+   */
+  it('ranks an undeclared moment after every declared one', () => {
+    const moments = [{ moment: 'account_created', order: 10, title: 't', blurb: 'b' }];
+
+    expect(defaultMomentRank(moments, 'account_created')).toBe(10);
+    expect(defaultMomentRank(moments, 'chat_participant_added')).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
 

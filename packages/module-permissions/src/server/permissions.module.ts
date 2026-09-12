@@ -1,5 +1,7 @@
+import type { DefaultMomentContribution } from '@kwtech/module-kit';
 import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { AppDefaultSpec } from '../defaults.js';
 import type { LimitSpec } from '../domain/limits.js';
 import type { RequestScope } from '../scope.js';
 import type { FeatureSpec, PermissionContext } from '../types.js';
@@ -151,6 +153,35 @@ export interface PermissionsModuleOptions {
    * — `composeLimits(SERVER_MODULES)` — and the two stay in step.
    */
   limitRegistry?: readonly LimitSpec[];
+
+  /**
+   * Every DEFAULT the app offers, composed across its modules.
+   *
+   * Defaults to this module's own nine. ⚠ Leaving it there while another module
+   * declares one is the same silence `limitRegistry` describes: the screen
+   * lists this registry, so an undeclared key has no row to set, and
+   * `listDefaults` reads it to answer, so a `perm_default` row for an
+   * undeclared key is ignored. Setting the value in the database would change
+   * nothing, with no error to explain why.
+   *
+   * Compose it beside the other two — `composeDefaults(SERVER_MODULES)` — and
+   * the three stay in step.
+   */
+  defaultRegistry?: readonly AppDefaultSpec[];
+
+  /**
+   * The HEADINGS for the moments those defaults happen at, composed the same
+   * way.
+   *
+   * Defaults to this module's own six. ⚠ A default whose moment is in neither
+   * list still RENDERS — in an unnamed section at the bottom of the screen —
+   * which is the one silence in this area that was deliberately not preserved:
+   * the screen used to drop such a default entirely, and a setting nobody can
+   * see is worse than one nobody named.
+   *
+   * Compose it beside the registry — `composeDefaultMoments(SERVER_MODULES)`.
+   */
+  defaultMomentRegistry?: readonly DefaultMomentContribution[];
 
   /**
    * How an invitation link REACHES the person invited.

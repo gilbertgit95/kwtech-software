@@ -1,4 +1,5 @@
 import type { ServerModuleDescriptor } from '@kwtech/module-kit';
+import { CHAT_DEFAULT_MOMENT_REGISTRY, CHAT_DEFAULT_REGISTRY } from '../defaults.js';
 import { CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '../feature-keys.js';
 import { ChatModule } from './chat.module.js';
 import type { ChatModuleOptions } from './chat.options.js';
@@ -21,5 +22,18 @@ export function chatServerModule(options: ChatModuleOptions = {}): ServerModuleD
     nestModule: ChatModule.forRoot(options),
     features: CHAT_FEATURE_REGISTRY,
     limits: CHAT_LIMIT_REGISTRY,
+    /*
+     * ⚠ The third declaration, and it rides along for the same reason the other
+     * two do: the app composes them in one place, and a module that declared a
+     * default nobody composed would have an operator setting a value nothing
+     * reads.
+     */
+    defaults: CHAT_DEFAULT_REGISTRY,
+    /*
+     * ⚠ And the HEADINGS they appear under. Declaring the defaults without
+     * these puts them in an unnamed section at the bottom of the screen —
+     * visible, but unexplained.
+     */
+    defaultMoments: CHAT_DEFAULT_MOMENT_REGISTRY,
   };
 }

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import type { DefaultContribution, DefaultMomentContribution } from './defaults.js';
 import type { LimitContribution } from './limits.js';
 
 /**
@@ -172,6 +173,24 @@ export interface ServerModuleDescriptor {
    * unauthorised one.
    */
   limits?: readonly LimitContribution[];
+  /**
+   * Decisions an OPERATOR should make once rather than at every creation —
+   * see `DefaultContribution`. A third kind of declaration, because it answers
+   * a third question: not what may be done, nor how many, but what happens when
+   * nobody said.
+   */
+  defaults?: readonly DefaultContribution[];
+  /**
+   * The HEADINGS for the moments this module's defaults happen at — see
+   * `DefaultMomentContribution`.
+   *
+   * ⚠ Separate from `defaults` because a moment is shared: two modules may
+   * have a default at one, so it is a namespace rather than a property of any
+   * one declaration. Omitting it while declaring a default AT that moment means
+   * the default appears under an unnamed section at the bottom of the screen —
+   * visible, which is the point, but not explained.
+   */
+  defaultMoments?: readonly DefaultMomentContribution[];
 }
 
 /**
@@ -210,6 +229,10 @@ export interface WebModuleDescriptor {
   features?: readonly FeatureContribution[];
   /** Caps this module declares — see `ServerModuleDescriptor.limits`. */
   limits?: readonly LimitContribution[];
+  /** Defaults this module declares — see `ServerModuleDescriptor.defaults`. */
+  defaults?: readonly DefaultContribution[];
+  /** Moment headings this module contributes — see `ServerModuleDescriptor.defaultMoments`. */
+  defaultMoments?: readonly DefaultMomentContribution[];
 }
 
 export interface NavEntry {

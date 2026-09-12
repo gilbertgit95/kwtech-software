@@ -1,3 +1,5 @@
+import type { DefaultMomentContribution } from '@kwtech/module-kit';
+
 /**
  * ── THE PLATFORM'S DEFAULTS, as a catalogue ──────────────────────────────────
  *
@@ -66,7 +68,19 @@ export type AppDefaultKind =
   | 'workspace_role'
   | 'plan'
   | 'subscription_status'
-  | 'days';
+  | 'days'
+  /**
+   * ⚠ ONE OF A FIXED SET THIS MODULE DOES NOT STORE, and the kind a CONTRIBUTED
+   * default needs.
+   *
+   * Every kind above points at something this module owns — a role row, a plan
+   * row — so the screen offers a picker over rows it can list. A default
+   * contributed by another module may point at neither: chat's two name one of
+   * three participant roles, which are an enum in chat's schema and not rows
+   * anybody can enumerate. The contribution carries its own `choices`, and the
+   * screen renders those.
+   */
+  | 'choice';
 
 /**
  * When the default is consulted — the process it is the default FOR.
@@ -83,9 +97,31 @@ export type AppDefaultMoment =
   | 'workspace_member_added';
 
 export interface AppDefaultSpec {
-  key: AppDefaultKey;
+  /**
+   * ⚠ WHICH MODULE DECLARED IT, which this module's own nine now carry too.
+   *
+   * They did not need it while this registry was a closed constant — everything
+   * in it was, by construction, permissions'. It is required the moment another
+   * module can contribute one: the screen groups by it, and a default with no
+   * attribution is one nobody can trace back to the feature it belongs to.
+   */
+  module: string;
+  /**
+   * ⚠ `string`, not the closed `AppDefaultKey` union it was.
+   *
+   * The union lists the keys THIS module declares, and a contributed one is by
+   * definition not among them — `module-chat` cannot add a member to a union in
+   * a package it may not import. The union survives as the vocabulary for this
+   * module's own nine, where it still catches a typo.
+   */
+  key: string;
   kind: AppDefaultKind;
-  moment: AppDefaultMoment;
+  /**
+   * ⚠ `string` for the same reason, and more sharply: this module cannot know
+   * that conversations get created. It groups the screen by this and never
+   * branches on it.
+   */
+  moment: string;
   label: string;
   description: string;
   /**
@@ -99,6 +135,14 @@ export interface AppDefaultSpec {
    * one word.
    */
   whenUnset: string;
+  /**
+   * The values a `choice` default may take — see that kind.
+   *
+   * Carried from the contribution untouched: the module that declared the
+   * default is the one that knows what its enum contains, and this module's job
+   * is to store one of them and hand it back.
+   */
+  choices?: readonly { value: string; label: string }[];
 }
 
 /**
@@ -145,6 +189,7 @@ export type AppDefaultKey = (typeof APP_DEFAULT)[keyof typeof APP_DEFAULT];
 export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   {
     key: APP_DEFAULT.accountRole,
+    module: 'permissions',
     kind: 'app_role',
     moment: 'account_created',
     label: 'Role for a new account',
@@ -162,6 +207,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.organizationFounderRole,
+    module: 'permissions',
     kind: 'organization_role',
     moment: 'organization_created',
     label: "Role for an organization's founder",
@@ -172,6 +218,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.organizationMemberRole,
+    module: 'permissions',
     kind: 'organization_role',
     moment: 'organization_member_added',
     label: 'Role for a new member',
@@ -182,6 +229,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.organizationPlan,
+    module: 'permissions',
     kind: 'plan',
     moment: 'organization_created',
     description:
@@ -192,6 +240,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.organizationPlanStatus,
+    module: 'permissions',
     kind: 'subscription_status',
     moment: 'organization_created',
     label: 'Status that subscription starts in',
@@ -201,6 +250,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.organizationPlanPeriodDays,
+    module: 'permissions',
     kind: 'days',
     moment: 'organization_created',
     label: 'Length of the first period',
@@ -211,6 +261,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.invitationExpiryDays,
+    module: 'permissions',
     kind: 'days',
     moment: 'invitation_sent',
     label: 'How long an invitation stays valid',
@@ -221,6 +272,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.workspaceCreatorRole,
+    module: 'permissions',
     kind: 'workspace_role',
     moment: 'workspace_created',
     label: "Role for a workspace's creator",
@@ -230,6 +282,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
   },
   {
     key: APP_DEFAULT.workspaceMemberRole,
+    module: 'permissions',
     kind: 'workspace_role',
     moment: 'workspace_member_added',
     label: 'Role for a new workspace member',
@@ -284,3 +337,89 @@ export function isValidAppDefaultValue(kind: AppDefaultKind, value: string | nul
   // the database can be asked about, and asking is the server's job.
   return value.trim().length > 0;
 }
+
+/**
+ * The same question, asked where the SPEC is in hand.
+ *
+ * ⚠ REQUIRED FOR `choice`, and this is why the kind-only check above is not
+ * enough any more. A choice default's valid values are not a property of its
+ * KIND — every one of them has a different list — they are a property of the
+ * DECLARATION, carried from the module that made it. `isValidAppDefaultValue`
+ * would fall through to "anything non-empty" and accept a role name that does
+ * not exist, which is the failure mode a picker exists to prevent and an API
+ * caller does not have.
+ *
+ * ⚠ A `choice` with no choices accepts NOTHING. A declaration that forgot them
+ * is a default nobody can set, which is visible; the alternative is one that
+ * accepts anything, which is not.
+ */
+export function isValidDefaultFor(spec: Pick<AppDefaultSpec, 'kind' | 'choices'>, value: string | null): boolean {
+  if (value === null) return true;
+  if (spec.kind === 'choice') return (spec.choices ?? []).some((choice) => choice.value === value);
+  return isValidAppDefaultValue(spec.kind, value);
+}
+
+/**
+ * THE HEADINGS FOR THIS MODULE'S SIX MOMENTS, in the order somebody moves
+ * through the product.
+ *
+ * ## ⚠ Why this is here and not on the screen
+ *
+ * It WAS on the screen — a `MOMENTS` const in `defaults-page.tsx`, which the
+ * page mapped over and filtered the defaults into. That worked exactly as long
+ * as this module was the only one with defaults: a contributed default's moment
+ * was not in the list, so it had no section, so it did not render. Composed,
+ * settable through the API, and invisible on the only screen anybody sets it
+ * from.
+ *
+ * So the headings became a CONTRIBUTION (`DefaultMomentContribution`), the page
+ * groups by what the server sends it, and these six are this module's
+ * contribution rather than the page's furniture. The prose is unchanged.
+ *
+ * ⚠ Orders are spaced by ten so a module can land a moment BETWEEN two of these
+ * without renumbering them — `module-chat`'s two sit at 70 and 80, after
+ * everything here.
+ */
+export const APP_DEFAULT_MOMENT_REGISTRY: readonly DefaultMomentContribution[] = [
+  {
+    moment: 'account_created',
+    order: 10,
+    title: 'When an account is created',
+    blurb:
+      'Every account here is created by following an invitation — platform or organization — so this is what fills in the app-level role when the invitation named none.',
+  },
+  {
+    moment: 'organization_created',
+    order: 20,
+    title: 'When an organization is created',
+    blurb:
+      'The creator becomes its first member — that always happens, because an organization whose founder is not in it is unreachable. These decide what they hold once they are in, and what the organization is entitled to.',
+  },
+  {
+    moment: 'organization_member_added',
+    order: 30,
+    title: 'When somebody joins an organization',
+    blurb:
+      'Only where nothing else named a role. An invitation that names one always wins, and an existing member’s role is never overwritten.',
+  },
+  {
+    moment: 'invitation_sent',
+    order: 40,
+    title: 'When an invitation is sent',
+    blurb:
+      'Applies to both kinds — joining an organization and joining the platform. Expiry is derived from the date on the row, so a shorter window retires invitations already sent as well as future ones.',
+  },
+  {
+    moment: 'workspace_created',
+    order: 50,
+    title: 'When a workspace is created',
+    blurb:
+      'The creator becomes a member of it, which is what lets them enter at all — workspace membership is required and no role widens it. This decides what they may do once inside.',
+  },
+  {
+    moment: 'workspace_member_added',
+    order: 60,
+    title: 'When somebody is added to a workspace',
+    blurb: 'Only where the person adding them named no role.',
+  },
+];

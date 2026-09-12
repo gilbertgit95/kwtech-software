@@ -61,3 +61,13 @@ export const CHAT_LIMIT_CHECKER = 'kwtech:chat-limit-checker';
  * wants anyway.
  */
 export const CHAT_PLATFORM_ADMIN = 'kwtech:chat-platform-admin';
+
+/**
+ * A `ChatDefaultReader` — what the operator chose for the two settings chat
+ * declares.
+ *
+ * ⚠ Optional, and absent means UNSET, which is a working product rather than a
+ * degraded one: the creator owns the group and everybody else joins as a
+ * member, exactly as they did before the settings existed.
+ */
+export const CHAT_DEFAULTS = 'kwtech:chat-defaults';

@@ -19,6 +19,7 @@
  */
 
 export * from './compose.js';
+export * from './defaults.js';
 export * from './feature-metadata.js';
 export * from './limits.js';
 export * from './realtime.js';
