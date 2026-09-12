@@ -7,6 +7,7 @@ import { ChatService } from './chat.service.js';
 import {
   CHAT_LIMIT_CHECKER,
   CHAT_OPTIONS,
+  CHAT_PLATFORM_ADMIN,
   CHAT_PRISMA,
   CHAT_PRISMA_WRITE,
   CHAT_PUBSUB,
@@ -73,6 +74,12 @@ export class ChatModule {
      */
     if (options.pubsubProvider) providers.push(options.pubsubProvider as Provider);
     else providers.push({ provide: CHAT_PUBSUB, useValue: undefined });
+    /*
+     * ⚠ Unbound means NOBODY administers a conversation they are not in. A host
+     * that has not answered the question has not granted the right.
+     */
+    if (options.platformAdminProvider) providers.push(options.platformAdminProvider as Provider);
+    else providers.push({ provide: CHAT_PLATFORM_ADMIN, useValue: undefined });
 
     if (exposeGraphql) providers.push(ChatResolver);
 
@@ -85,4 +92,12 @@ export class ChatModule {
   }
 }
 
-export { CHAT_LIMIT_CHECKER, CHAT_OPTIONS, CHAT_PRISMA, CHAT_PRISMA_WRITE, CHAT_PUBSUB, CHAT_USER_DIRECTORY };
+export {
+  CHAT_LIMIT_CHECKER,
+  CHAT_OPTIONS,
+  CHAT_PLATFORM_ADMIN,
+  CHAT_PRISMA,
+  CHAT_PRISMA_WRITE,
+  CHAT_PUBSUB,
+  CHAT_USER_DIRECTORY,
+};

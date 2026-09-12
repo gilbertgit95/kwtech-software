@@ -4,7 +4,6 @@ import {
   isLiveParticipant,
   nextParticipantStatus,
   type ParticipantTransition,
-  refuseRemoval,
 } from '../src/domain/participation.js';
 import {
   type ConversationView,
@@ -97,60 +96,5 @@ describe('nextParticipantStatus', () => {
     // again immediately" is the harassment vector this design already refused.
     expect(nextParticipantStatus('declined', 'reinvite')).toBe('invited');
     expect(nextParticipantStatus('active', 'reinvite')).toBeNull();
-  });
-});
-
-describe('refuseRemoval', () => {
-  it('lets an active participant remove another', () => {
-    expect(
-      refuseRemoval({
-        conversation: conversation(),
-        actor: participant('active', 'remover'),
-        target: participant('active', 'target'),
-      }),
-    ).toBeNull();
-  });
-
-  it('⚠ refuses somebody who holds the key but is not in the room', () => {
-    expect(
-      refuseRemoval({
-        conversation: conversation(),
-        actor: participant('left', 'remover'),
-        target: participant('active', 'target'),
-      }),
-    ).toBe('not_a_participant');
-    expect(
-      refuseRemoval({ conversation: conversation(), actor: undefined, target: participant('active', 'target') }),
-    ).toBe('not_a_participant');
-  });
-
-  it('⚠ refuses to remove the CREATOR — it would free their cap slot and orphan the group', () => {
-    expect(
-      refuseRemoval({
-        conversation: conversation({ createdById: 'owner' }),
-        actor: participant('active', 'remover'),
-        target: participant('active', 'owner'),
-      }),
-    ).toBe('creator');
-  });
-
-  it('names self-removal separately, because that person wanted to LEAVE', () => {
-    expect(
-      refuseRemoval({
-        conversation: conversation(),
-        actor: participant('active', 'me'),
-        target: participant('active', 'me'),
-      }),
-    ).toBe('self_removal');
-  });
-
-  it('refuses a target who is already gone', () => {
-    expect(
-      refuseRemoval({
-        conversation: conversation(),
-        actor: participant('active', 'remover'),
-        target: participant('removed', 'target'),
-      }),
-    ).toBe('target_not_present');
   });
 });

@@ -6,7 +6,7 @@ import type {
   MessageRow,
   ParticipantRow,
 } from '../src/server/chat.repository.js';
-import type { ParticipantStatus } from '../src/types.js';
+import type { ChatParticipantRole, ParticipantStatus } from '../src/types.js';
 
 /**
  * An in-memory stand-in for the host's Prisma client.
@@ -135,13 +135,28 @@ export function fakeClient(state: FakeState = emptyState()) {
           .length;
       },
       async create(args: {
-        data: { conversationId: string; userId: string; status: ParticipantStatus; invitedById?: string | null };
+        data: {
+          conversationId: string;
+          userId: string;
+          status: ParticipantStatus;
+          role?: ChatParticipantRole;
+          invitedById?: string | null;
+        };
       }) {
         const row: ParticipantRow = {
           id: nextId('part-'),
           conversationId: args.data.conversationId,
           userId: args.data.userId,
           status: args.data.status,
+          /*
+           * ⚠ THE COLUMN'S DEFAULT, honoured here rather than left undefined.
+           *
+           * The fake dropping it was worth three failing tests: the creator was
+           * written as `owner` and read back as `member`, so a group's owner
+           * could not archive their own conversation. A fake that silently
+           * loses a column proves the wrong thing.
+           */
+          role: args.data.role ?? 'member',
           invitedById: args.data.invitedById ?? null,
           lastReadMessageId: null,
           mutedUntil: null,

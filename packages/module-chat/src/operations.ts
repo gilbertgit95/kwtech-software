@@ -35,7 +35,7 @@ const CONVERSATION_FIELDS = `
   myStatus
   myUserId
   unread
-  participants { userId displayName status }
+  participants { userId displayName status role }
 `;
 
 /**
@@ -119,6 +119,18 @@ export const CHAT_OPERATIONS = {
    */
   renameChat: `mutation RenameChat($conversationId: String!, $title: String!) {
     renameChat(conversationId: $conversationId, title: $title) { ${CONVERSATION_FIELDS} }
+  }`,
+
+  setChatParticipantRole: `mutation SetChatParticipantRole($conversationId: String!, $userId: String!, $role: String!) {
+    setChatParticipantRole(conversationId: $conversationId, userId: $userId, role: $role)
+  }`,
+
+  removeChatParticipant: `mutation RemoveChatParticipant($conversationId: String!, $userId: String!) {
+    removeChatParticipant(conversationId: $conversationId, userId: $userId)
+  }`,
+
+  setChatArchived: `mutation SetChatArchived($conversationId: String!, $archived: Boolean!) {
+    setChatArchived(conversationId: $conversationId, archived: $archived)
   }`,
 
   inviteToChat: `mutation InviteToChat($conversationId: String!, $userId: String!) {

@@ -1,16 +1,20 @@
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
+import { CHAT_FEATURE } from '@kwtech/module-chat';
 import {
   CHAT_LIMIT_CHECKER,
+  CHAT_PLATFORM_ADMIN,
   CHAT_PUBSUB,
   CHAT_USER_DIRECTORY,
   ChatPresenceService,
   chatServerModule,
+  type PlatformAdminCheck,
 } from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
 import {
   FeatureGuard,
   PERMISSIONS_PUBSUB,
   PermissionsLimitChecker,
+  PermissionsService,
   permissionsServerModule,
 } from '@kwtech/module-permissions/server';
 import type { ApolloDriverConfig } from '@nestjs/apollo';
@@ -135,6 +139,44 @@ const CHAT_SERVER_MODULE: ServerModuleDescriptor = chatServerModule({
    * opinion about what a session is.
    */
   resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+  /*
+   * ⚠ THE APP LEVEL REACHING DOWN INTO A CONVERSATION, and the one place this
+   * question can be answered.
+   *
+   * Chat DECLARES `chat:manage_all` — it is a chat right and belongs in chat's
+   * registry — and cannot CHECK it: asking whether somebody holds a key is
+   * `module-permissions`' question, and a module may not import a module (§9).
+   * So the app, which depends on both, fills in the port.
+   *
+   * A PROVIDER rather than a function on the options, because answering needs
+   * the injected `PermissionsService` — the same reason the directory and the
+   * limit checker are providers.
+   */
+  platformAdminProvider: {
+    provide: CHAT_PLATFORM_ADMIN,
+    inject: [PermissionsService],
+    useFactory: (permissions: PermissionsService): PlatformAdminCheck => ({
+      async isPlatformAdmin(request: unknown) {
+        const userId = resolvePrincipal(request)?.userId;
+        if (!userId) return false;
+
+        /*
+         * ⚠ APP-LEVEL GRANTS ONLY, from a context loaded with NO SCOPE. A
+         * conversation belongs to no organization, so an organization-scoped
+         * reading would be answering about the wrong thing —
+         * `grantedAtAppLevel` is exactly "what this person holds everywhere",
+         * which is what reaching down from the top means.
+         *
+         * It costs a context load per mutation that offers it. Affordable
+         * because every one is a write on a single conversation: it is never on
+         * a read path and never on the message list.
+         */
+        const context = await permissions.loadContext(userId);
+        return context?.grantedAtAppLevel.includes(CHAT_FEATURE.manageAll) ?? false;
+      },
+    }),
+  },
 });
 
 const SERVER_MODULES: readonly ServerModuleDescriptor[] = [

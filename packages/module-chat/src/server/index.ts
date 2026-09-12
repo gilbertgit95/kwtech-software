@@ -20,5 +20,6 @@ export * from './chat.tokens.js';
 export * from './chat-write.service.js';
 export * from './graphql/chat.resolver.js';
 export * from './graphql/chat.types.js';
+export * from './platform-admin.js';
 export * from './server-module.js';
 export * from './user-directory.js';

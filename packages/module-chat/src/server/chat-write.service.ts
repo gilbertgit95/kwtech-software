@@ -5,12 +5,19 @@ import { isContactBlocked } from '../domain/blocking.js';
 import { directKeyFor } from '../domain/conversations.js';
 import { canEditMessage, editPatch, prepareBody, refuseDelete } from '../domain/messages.js';
 import {
-  canAccessConversation,
-  isLiveParticipant,
-  nextParticipantStatus,
-  refuseRemoval,
-} from '../domain/participation.js';
+  type ActorAuthority,
+  canArchiveConversation,
+  canInviteToConversation,
+  canManageConversation,
+  refuseRoleChange,
+  refuseRoleRemoval,
+  roleOf,
+  successorTo,
+  transferOwnership,
+} from '../domain/participant-roles.js';
+import { canAccessConversation, isLiveParticipant, nextParticipantStatus } from '../domain/participation.js';
 import { CHAT_LIMIT } from '../feature-keys.js';
+import type { ChatParticipantRole } from '../types.js';
 import { ChatWriteError } from './chat.errors.js';
 import { ChatEventPublisher } from './chat.events.js';
 import { CHAT_DEFAULT_LIMIT_CHECKER } from './chat.options.js';
@@ -21,6 +28,7 @@ import type {
   ChatWriteClient,
   ConversationRow,
   MessageRow,
+  ParticipantRow,
 } from './chat.repository.js';
 import { CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
 
@@ -171,8 +179,14 @@ export class ChatWriteService {
       const conversation = await tx.chatConversation.create({
         data: { title, icon: input.icon?.trim() || null, directKey: null, createdById: actorId },
       });
+      /*
+       * ⚠ THE CREATOR IS THE OWNER, and this is the only place a group's owner
+       * is minted. Everywhere else the role moves — handed on deliberately, or
+       * passed to a successor when the owner leaves — but a group has to start
+       * with exactly one, and this is the moment it has one participant.
+       */
       await tx.chatParticipant.create({
-        data: { conversationId: conversation.id, userId: actorId, status: 'active' },
+        data: { conversationId: conversation.id, userId: actorId, status: 'active', role: 'owner' },
       });
 
       for (const userId of new Set(input.userIds)) {
@@ -194,11 +208,22 @@ export class ChatWriteService {
   }
 
   /** Add somebody to a conversation the actor is in. */
-  async invite(actorId: string, conversationId: string, userId: string): Promise<void> {
+  async invite(
+    actorId: string,
+    conversationId: string,
+    userId: string,
+    options: { asPlatformAdmin?: boolean } = {},
+  ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const me = await this.rowFor(tx, conversationId, actorId);
-      if (!canAccessConversation(me)) {
-        throw new ChatWriteError('not_a_participant', 'You are not in that conversation', { conversationId });
+      /*
+       * ⚠ THE ROLE, not merely the row. Holding `chat:invite` says you may add
+       * people to conversations you run; it says nothing about a group you
+       * merely belong to. That distinction was inexpressible while the only
+       * answer was an app-level key.
+       */
+      if (!canInviteToConversation({ participant: me, asPlatformAdmin: options.asPlatformAdmin })) {
+        throw new ChatWriteError('not_permitted', 'Only an owner or an admin can add somebody', { conversationId });
       }
       const conversation = await tx.chatConversation.findUnique({ where: { id: conversationId } });
       if (!conversation) throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
@@ -239,21 +264,63 @@ export class ChatWriteService {
   /**
    * Leave. ⚠ NO KEY GUARDS THIS — withholding one would be a lockout dressed as
    * a permission, and the creator leaving is how they free a cap slot honestly.
+   *
+   * ⚠ AN OWNER LEAVING HANDS THE GROUP ON, in the same transaction. The
+   * alternatives were both worse: refusing to let them go strands a group when
+   * an account is closed, and letting them go without a successor leaves a room
+   * nobody can rename, archive or hand on — a dead end that reads as a bug
+   * months later. See `successorTo` for who gets it and why.
    */
   async leave(actorId: string, conversationId: string): Promise<void> {
-    await this.transition(actorId, conversationId, 'leave');
+    await this.prisma.$transaction(async (tx) => {
+      const me = await this.rowFor(tx, conversationId, actorId);
+      if (!isLiveParticipant(me)) {
+        throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
+      }
+
+      if (roleOf(me) === 'owner') {
+        const everyone = await tx.chatParticipant.findMany({ where: { conversationId } });
+        const successor = successorTo(everyone, actorId, (one) => rowOf(everyone, one.userId)?.joinedAt.getTime() ?? 0);
+
+        /*
+         * Nobody left to hand it to means they are the last one here, and the
+         * room goes with them — archived rather than deleted, so coming back is
+         * an invitation rather than an act of recovery.
+         */
+        if (successor) {
+          await tx.chatParticipant.update({
+            where: { conversationId_userId: { conversationId, userId: successor } },
+            data: { role: 'owner' },
+          });
+        }
+      }
+
+      await this.applyTransition(tx, actorId, conversationId, 'leave');
+    });
+
     await this.events?.conversationChanged(conversationId, 'left', [actorId]);
   }
 
-  /** Remove somebody else. The creator cannot be removed by anybody. */
-  async removeParticipant(actorId: string, conversationId: string, userId: string): Promise<void> {
+  /**
+   * Take somebody out. ⚠ THE OWNER CANNOT BE, by anybody — see
+   * `refuseRoleRemoval`.
+   */
+  async removeParticipant(
+    actorId: string,
+    conversationId: string,
+    userId: string,
+    options: { asPlatformAdmin?: boolean } = {},
+  ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const conversation = await tx.chatConversation.findUnique({ where: { id: conversationId } });
       if (!conversation) throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
 
       const actor = await this.rowFor(tx, conversationId, actorId);
       const target = await this.rowFor(tx, conversationId, userId);
-      const refusal = refuseRemoval({ conversation, actor, target });
+      const refusal = refuseRoleRemoval({
+        actor: { participant: actor, asPlatformAdmin: options.asPlatformAdmin },
+        target,
+      });
       if (refusal === 'not_a_participant') {
         throw new ChatWriteError('not_a_participant', 'You are not in that conversation', { conversationId });
       }
@@ -261,8 +328,11 @@ export class ChatWriteService {
         // Not an error the UI should show: they wanted to leave.
         throw new ChatWriteError('invalid', 'Leave the conversation instead', { conversationId });
       }
-      if (refusal === 'creator') {
-        throw new ChatWriteError('not_permitted', 'The person who started this cannot be removed', { conversationId });
+      if (refusal === 'owner') {
+        throw new ChatWriteError('not_permitted', 'The owner of a conversation cannot be removed', { conversationId });
+      }
+      if (refusal === 'not_permitted') {
+        throw new ChatWriteError('not_permitted', 'You cannot remove that person', { conversationId, userId });
       }
       if (refusal) throw new ChatWriteError('not_found', 'That person is not in this conversation', { userId });
 
@@ -418,11 +488,17 @@ export class ChatWriteService {
     actorId: string,
     conversationId: string,
     input: { title?: string | null; icon?: string | null },
+    options: { asPlatformAdmin?: boolean } = {},
   ): Promise<ConversationRow> {
     const renamed = await this.prisma.$transaction(async (tx) => {
       const me = await this.rowFor(tx, conversationId, actorId);
-      if (!canAccessConversation(me)) {
-        throw new ChatWriteError('not_a_participant', 'You are not in that conversation', { conversationId });
+      /*
+       * ⚠ NARROWED. This was open to every active participant, so anybody in a
+       * group could rename it for everybody — not a decision, the absence of
+       * one.
+       */
+      if (!canManageConversation({ participant: me, asPlatformAdmin: options.asPlatformAdmin })) {
+        throw new ChatWriteError('not_permitted', 'Only an owner or an admin can rename this', { conversationId });
       }
       const conversation = await tx.chatConversation.findUnique({ where: { id: conversationId } });
       if (!conversation) throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
@@ -444,22 +520,32 @@ export class ChatWriteService {
   }
 
   /** Archive or restore. ⚠ Archiving FREES a cap slot for the creator. */
-  async setArchived(actorId: string, conversationId: string, archived: boolean): Promise<ConversationRow> {
+  async setArchived(
+    actorId: string,
+    conversationId: string,
+    archived: boolean,
+    options: { asPlatformAdmin?: boolean } = {},
+  ): Promise<ConversationRow> {
     const updated = await this.prisma.$transaction(async (tx) => {
       const conversation = await tx.chatConversation.findUnique({ where: { id: conversationId } });
       if (!conversation) throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
 
       const me = await this.rowFor(tx, conversationId, actorId);
-      if (!canAccessConversation(me)) {
-        throw new ChatWriteError('not_a_participant', 'You are not in that conversation', { conversationId });
-      }
       /*
-       * ⚠ THE CREATOR'S ALONE, because archiving is what spends and frees their
-       * cap slot — see `countsTowardCap`. Letting any participant archive would
-       * let one person clear somebody else's quota, or fill it back up.
+       * ⚠ THE OWNER'S ALONE, and an admin does not get it.
+       *
+       * It was the CREATOR's — a hardcoded `createdById` check, which was the
+       * right answer before there was a word for authority and the wrong one
+       * after: the creator can hand a group on, or leave it, and the person
+       * running it afterwards is the one who should be able to put it away.
+       *
+       * The cap still follows `createdById` and is untouched by this. Archiving
+       * frees the CREATOR's slot whoever presses the button, because the slot
+       * was theirs to spend — two different questions, answered by two
+       * different columns.
        */
-      if (conversation.createdById !== actorId) {
-        throw new ChatWriteError('not_permitted', 'Only the person who started this can archive it', {
+      if (!canArchiveConversation({ participant: me, asPlatformAdmin: options.asPlatformAdmin })) {
+        throw new ChatWriteError('not_permitted', 'Only the owner can archive this conversation', {
           conversationId,
         });
       }
@@ -564,19 +650,85 @@ export class ChatWriteService {
 
   /** accept / decline / leave, which are all the actor's own decision. */
   private async transition(actorId: string, conversationId: string, move: 'accept' | 'decline' | 'leave') {
-    await this.prisma.$transaction(async (tx) => {
-      const me = await this.rowFor(tx, conversationId, actorId);
-      if (!isLiveParticipant(me)) {
-        throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
-      }
-      const next = nextParticipantStatus(me.status, move);
-      if (!next) throw new ChatWriteError('invalid', 'That is not available from here', { status: me.status });
+    await this.prisma.$transaction((tx) => this.applyTransition(tx, actorId, conversationId, move));
+  }
 
-      await tx.chatParticipant.update({
-        where: { conversationId_userId: { conversationId, userId: actorId } },
-        data: { status: next, exitedAt: next === 'active' ? null : new Date() },
-      });
+  /**
+   * The move itself, INSIDE a transaction the caller already opened.
+   *
+   * Split out because `leave` needs to hand the group on in the same
+   * transaction — a successor promoted in one transaction and the owner's
+   * departure committed in another is a window with two owners or none, and
+   * the window is exactly as long as a database round trip.
+   */
+  private async applyTransition(
+    tx: ChatTransaction,
+    actorId: string,
+    conversationId: string,
+    move: 'accept' | 'decline' | 'leave',
+  ) {
+    const me = await this.rowFor(tx, conversationId, actorId);
+    if (!isLiveParticipant(me)) {
+      throw new ChatWriteError('not_found', 'No such conversation', { conversationId });
+    }
+    const next = nextParticipantStatus(me.status, move);
+    if (!next) throw new ChatWriteError('invalid', 'That is not available from here', { status: me.status });
+
+    await tx.chatParticipant.update({
+      where: { conversationId_userId: { conversationId, userId: actorId } },
+      data: { status: next, exitedAt: next === 'active' ? null : new Date() },
     });
+  }
+
+  /**
+   * Hand the conversation to somebody else, or change what they may do in it.
+   *
+   * ⚠ OWNERSHIP IS A TRANSFER, never a second owner. `transferOwnership`
+   * promotes and demotes in one answer so the demotion cannot be lost, and both
+   * writes land in one transaction — there is no instant at which the group has
+   * two owners or none.
+   */
+  async setParticipantRole(
+    actorId: string,
+    conversationId: string,
+    userId: string,
+    next: ChatParticipantRole,
+    options: { asPlatformAdmin?: boolean } = {},
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const actor = await this.rowFor(tx, conversationId, actorId);
+      const target = await this.rowFor(tx, conversationId, userId);
+
+      const refusal = refuseRoleChange({
+        actor: { participant: actor, asPlatformAdmin: options.asPlatformAdmin },
+        target,
+        next,
+      });
+      if (refusal === 'not_a_participant') {
+        throw new ChatWriteError('not_a_participant', 'You are not in that conversation', { conversationId });
+      }
+      if (refusal === 'self_demotion') {
+        throw new ChatWriteError('invalid', 'Hand the conversation to somebody else instead', { conversationId });
+      }
+      if (refusal === 'not_permitted') {
+        throw new ChatWriteError('not_permitted', 'Only the owner can change what somebody may do here', {
+          conversationId,
+        });
+      }
+      if (refusal) throw new ChatWriteError('not_found', 'That person is not in this conversation', { userId });
+
+      const everyone = await tx.chatParticipant.findMany({ where: { conversationId } });
+      const changes = next === 'owner' ? transferOwnership(everyone, userId) : [{ userId, role: next }];
+
+      for (const change of changes) {
+        await tx.chatParticipant.update({
+          where: { conversationId_userId: { conversationId, userId: change.userId } },
+          data: { role: change.role },
+        });
+      }
+    });
+
+    await this.events?.conversationChanged(conversationId, 'renamed');
   }
 
   /**
@@ -606,6 +758,11 @@ export class ChatWriteService {
       data: { status, invitedById, exitedAt: null },
     });
   }
+}
+
+/** One row out of a set already loaded, for the successor's joining order. */
+function rowOf(rows: readonly ParticipantRow[], userId: string): ParticipantRow | undefined {
+  return rows.find((one) => one.userId === userId);
 }
 
 /** Strictly later in the thread's own ordering — `(createdAt, id)`, both halves. */

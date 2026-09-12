@@ -1,4 +1,9 @@
-import type { ChatParticipantRole, ConversationView, ParticipantView } from '../types.js';
+import {
+  CHAT_PARTICIPANT_ROLES,
+  type ChatParticipantRole,
+  type ConversationView,
+  type ParticipantView,
+} from '../types.js';
 import { canAccessConversation } from './participation.js';
 
 /**
@@ -65,8 +70,12 @@ export interface ActorAuthority {
    * Whether the caller holds the app-level `chat:manage_all` is a permission
    * question, and this module may not read grants — the same seam `mayModerate`
    * already uses on `delete`. The host resolves it and passes a boolean.
+   *
+   * `| undefined` written out because of `exactOptionalPropertyTypes`: a caller
+   * forwarding an optional flag passes `undefined`, and without this that
+   * assignment does not compile.
    */
-  asPlatformAdmin?: boolean;
+  asPlatformAdmin?: boolean | undefined;
 }
 
 /**
@@ -78,6 +87,16 @@ export interface ActorAuthority {
  */
 export function roleOf(participant: ParticipantView | null | undefined): ChatParticipantRole {
   return participant?.role ?? 'member';
+}
+
+/**
+ * ⚠ THE GUARD THE TRANSPORT NEEDS. The GraphQL field is a `String` — the enum
+ * lives in the database and in this module, not in the wire format — so
+ * anything at all can arrive, and a role that is not one must be refused rather
+ * than written.
+ */
+export function isChatParticipantRole(value: unknown): value is ChatParticipantRole {
+  return typeof value === 'string' && (CHAT_PARTICIPANT_ROLES as readonly string[]).includes(value);
 }
 
 /**

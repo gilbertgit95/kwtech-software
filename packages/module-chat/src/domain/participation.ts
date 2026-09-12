@@ -1,4 +1,4 @@
-import type { ConversationView, ParticipantStatus, ParticipantView } from '../types.js';
+import type { ParticipantStatus, ParticipantView } from '../types.js';
 
 /**
  * PARTICIPATION IS NOT PERMISSION.
@@ -124,42 +124,18 @@ export function nextParticipantStatus(
   }
 }
 
-export interface RemovalRequest {
-  conversation: ConversationView;
-  /** The remover's own participant row. */
-  actor: ParticipantView | null | undefined;
-  /** The row being removed. */
-  target: ParticipantView | null | undefined;
-}
-
 /**
- * Why a removal is refused, or `null` when it may proceed.
+ * ⚠ `refuseRemoval` LIVED HERE AND IS GONE — superseded by `refuseRoleRemoval`
+ * in `participant-roles.ts`, 2026-09-12.
  *
- * A REASON rather than a boolean, because every one of these is shown to
- * somebody who needs to know which rule stopped them — and because
- * "self_removal" is not a refusal the UI should surface as an error at all: it
- * means the person wanted `leave`.
+ * It answered "who may remove whom" with the only vocabulary available at the
+ * time: the CREATOR could not be removed and everybody else could remove
+ * anybody. That was never a decision about authority, it was the absence of
+ * one — there was no word for an owner or a delegate, so `createdById` stood in
+ * for both and every other participant was equal.
  *
- * ⚠ Who may remove whom was UNDEFINED in the first design, and it touched the
- * cap: a member removing the creator would free the creator's quota slot and
- * orphan the group.
+ * The replacement asks the participant's ROLE, and the invariant moved with it:
+ * it is the OWNER who cannot be removed, not the creator, because ownership can
+ * be handed on while `createdById` never moves. Kept as a note rather than a
+ * deprecated export: a second answer to one question is how the two drift.
  */
-export type RemovalRefusal = 'not_a_participant' | 'target_not_present' | 'self_removal' | 'creator';
-
-export function refuseRemoval({ conversation, actor, target }: RemovalRequest): RemovalRefusal | null {
-  // Holding `chat:remove_participant` is not standing in the room. The guard
-  // checks the key; this checks the room.
-  if (!canAccessConversation(actor)) return 'not_a_participant';
-  if (!target || nextParticipantStatus(target.status, 'remove') === null) return 'target_not_present';
-  if (actor.userId === target.userId) return 'self_removal';
-  /*
-   * ⚠ THE CREATOR CANNOT BE REMOVED BY ANYBODY ELSE.
-   *
-   * `createdById` never moves, and the cap counts live chats you created AND are
-   * still in — so removing the creator would hand their quota back while leaving
-   * the group standing with an owner who is not in it. The creator may LEAVE,
-   * which frees the slot honestly and is their own decision.
-   */
-  if (target.userId === conversation.createdById) return 'creator';
-  return null;
-}

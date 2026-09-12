@@ -22,7 +22,12 @@ const conversation = (
   ...over,
 });
 
-const person = (userId: string, displayName: string, status = 'active') => ({ userId, displayName, status });
+const person = (userId: string, displayName: string, status = 'active', role = 'member') => ({
+  userId,
+  displayName,
+  status,
+  role,
+});
 
 describe('conversationTitle', () => {
   it('⚠ names a direct chat by WHO IS IN IT, which is why title is nullable', () => {

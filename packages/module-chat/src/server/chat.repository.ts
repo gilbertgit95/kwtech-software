@@ -1,4 +1,4 @@
-import type { Availability, MessageKind, ParticipantStatus } from '../types.js';
+import type { Availability, ChatParticipantRole, MessageKind, ParticipantStatus } from '../types.js';
 
 /**
  * The slice of a Prisma client this module uses — declared STRUCTURALLY, never
@@ -30,6 +30,11 @@ export interface ParticipantRow {
   conversationId: string;
   userId: string;
   status: ParticipantStatus;
+  /**
+   * ⚠ AUTHORITY HERE, which is a different question from `status` — and asked
+   * second, everywhere. See `participant-roles.ts`.
+   */
+  role: ChatParticipantRole;
   invitedById: string | null;
   lastReadMessageId: string | null;
   mutedUntil: Date | null;
@@ -201,12 +206,19 @@ export interface ChatWriteClient extends ChatPrismaClient {
   };
   chatParticipant: ChatPrismaClient['chatParticipant'] & {
     create(args: {
-      data: { conversationId: string; userId: string; status: ParticipantStatus; invitedById?: string | null };
+      data: {
+        conversationId: string;
+        userId: string;
+        status: ParticipantStatus;
+        role?: ChatParticipantRole;
+        invitedById?: string | null;
+      };
     }): Promise<ParticipantRow>;
     update(args: {
       where: { conversationId_userId: { conversationId: string; userId: string } };
       data: {
         status?: ParticipantStatus;
+        role?: ChatParticipantRole;
         invitedById?: string | null;
         exitedAt?: Date | null;
         lastReadMessageId?: string;

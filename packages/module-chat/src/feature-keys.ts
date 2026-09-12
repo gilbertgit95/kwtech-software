@@ -179,7 +179,18 @@ export const CHAT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Remove a participant',
     description: 'Remove somebody else from a conversation you are in. The creator cannot be removed.',
     tags: ['chat'],
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.removeChatParticipant' }],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.removeChatParticipant' },
+      /*
+       * ⚠ THE SAME KEY AS REMOVAL, not `chat:start`.
+       *
+       * Deciding who RUNS a conversation is the same kind of act as deciding
+       * who is IN it — both change what other people may do — and the rule
+       * inside narrows it further to the owner alone. The key says you may take
+       * part in managing membership; the row says whether you may here.
+       */
+      { surface: 'graphql_operation', identifier: 'Mutation.setChatParticipantRole' },
+    ],
   },
   {
     key: CHAT_FEATURE.send,

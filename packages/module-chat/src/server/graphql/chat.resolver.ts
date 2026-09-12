@@ -1,6 +1,7 @@
 import { Inject, Optional } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { CONTACT_REFUSED_MESSAGE } from '../../domain/blocking.js';
+import { isChatParticipantRole } from '../../domain/participant-roles.js';
 import { withCatchUp } from '../chat.catch-up.js';
 import { ChatWriteError } from '../chat.errors.js';
 import type { ChatModuleOptions } from '../chat.options.js';
@@ -18,8 +19,9 @@ import {
 import type { MessageRow, ParticipantRow } from '../chat.repository.js';
 import type { ConversationSummary } from '../chat.service.js';
 import { ChatService } from '../chat.service.js';
-import { CHAT_OPTIONS, CHAT_PUBSUB, CHAT_USER_DIRECTORY } from '../chat.tokens.js';
+import { CHAT_OPTIONS, CHAT_PLATFORM_ADMIN, CHAT_PUBSUB, CHAT_USER_DIRECTORY } from '../chat.tokens.js';
 import { ChatWriteService } from '../chat-write.service.js';
+import type { PlatformAdminCheck } from '../platform-admin.js';
 import type { UserDirectory } from '../user-directory.js';
 import {
   ChatConversationType,
@@ -68,6 +70,11 @@ export class ChatResolver {
      * working product over HTTP, which is the point of the port being optional.
      */
     @Optional() @Inject(CHAT_PUBSUB) private readonly pubsub?: ChatPubSub,
+    /**
+     * Absent means nobody may administer a conversation they are not in, which
+     * is the right default for a host that has not granted it.
+     */
+    @Optional() @Inject(CHAT_PLATFORM_ADMIN) private readonly platform?: PlatformAdminCheck,
     /**
      * Absent means the ephemeral tier is not mounted: presence answers empty
      * and typing goes nowhere, while every conversation still works. That is
@@ -265,7 +272,9 @@ export class ChatResolver {
     @Args('conversationId') conversationId: string,
     @Args('userId') userId: string,
   ): Promise<boolean> {
-    await this.writes.invite(this.actor(gql.req), conversationId, userId);
+    await this.writes.invite(this.actor(gql.req), conversationId, userId, {
+      asPlatformAdmin: await this.platformAdmin(gql.req),
+    });
     return true;
   }
 
@@ -292,7 +301,9 @@ export class ChatResolver {
     @Args('conversationId') conversationId: string,
     @Args('userId') userId: string,
   ): Promise<boolean> {
-    await this.writes.removeParticipant(this.actor(gql.req), conversationId, userId);
+    await this.writes.removeParticipant(this.actor(gql.req), conversationId, userId, {
+      asPlatformAdmin: await this.platformAdmin(gql.req),
+    });
     return true;
   }
 
@@ -304,10 +315,15 @@ export class ChatResolver {
     @Args('icon', { type: () => String, nullable: true }) icon?: string | null,
   ): Promise<ChatConversationType> {
     const actorId = this.actor(gql.req);
-    await this.writes.rename(actorId, conversationId, {
-      ...(title !== undefined ? { title } : {}),
-      ...(icon !== undefined ? { icon } : {}),
-    });
+    await this.writes.rename(
+      actorId,
+      conversationId,
+      {
+        ...(title !== undefined ? { title } : {}),
+        ...(icon !== undefined ? { icon } : {}),
+      },
+      { asPlatformAdmin: await this.platformAdmin(gql.req) },
+    );
     return this.render(await this.chat.conversationFor(actorId, conversationId));
   }
 
@@ -317,7 +333,9 @@ export class ChatResolver {
     @Args('conversationId') conversationId: string,
     @Args('archived') archived: boolean,
   ): Promise<boolean> {
-    await this.writes.setArchived(this.actor(gql.req), conversationId, archived);
+    await this.writes.setArchived(this.actor(gql.req), conversationId, archived, {
+      asPlatformAdmin: await this.platformAdmin(gql.req),
+    });
     return true;
   }
 
@@ -371,6 +389,28 @@ export class ChatResolver {
     // answer a stranger gets for one that does not exist.
     await this.chat.conversationFor(actorId, conversationId);
     await this.presence?.noteTyping(conversationId, actorId);
+    return true;
+  }
+
+  /**
+   * Hand the conversation on, or change what somebody may do in it.
+   *
+   * ⚠ THE OWNER'S ALONE, or the platform's — `refuseRoleChange` decides, and
+   * setting somebody to `owner` is a TRANSFER rather than a second owner.
+   */
+  @Mutation(() => Boolean, { name: 'setChatParticipantRole' })
+  async setParticipantRole(
+    @Context() gql: { req?: unknown },
+    @Args('conversationId') conversationId: string,
+    @Args('userId') userId: string,
+    @Args('role') role: string,
+  ): Promise<boolean> {
+    if (!isChatParticipantRole(role)) {
+      throw new ChatWriteError('invalid', 'That is not a role', { role });
+    }
+    await this.writes.setParticipantRole(this.actor(gql.req), conversationId, userId, role, {
+      asPlatformAdmin: await this.platformAdmin(gql.req),
+    });
     return true;
   }
 
@@ -504,6 +544,17 @@ export class ChatResolver {
     return actorId;
   }
 
+  /**
+   * Whether this caller may administer a conversation they are not in.
+   *
+   * ⚠ FALSE WHEN THE HOST WIRED NOTHING, which is the correct default: a host
+   * that has not answered the question has not granted the right, and every
+   * conversation is then governed by its own participants alone.
+   */
+  private async platformAdmin(request: unknown): Promise<boolean> {
+    return (await this.platform?.isPlatformAdmin(request)) ?? false;
+  }
+
   /** One directory call for a whole page, never one per participant. */
   private async renderAll(summaries: readonly ConversationSummary[]): Promise<ChatConversationType[]> {
     const ids = summaries.flatMap((summary) => summary.participants.map((row) => row.userId));
@@ -544,6 +595,7 @@ function renderConversation(summary: ConversationSummary, people: ReadonlyMap<st
 function renderParticipant(row: ParticipantRow, people: ReadonlyMap<string, string>): ChatParticipantType {
   return {
     userId: row.userId,
+    role: row.role,
     // The id is a poor name and a working one. A missing directory entry — a
     // deleted account, an unwired port — must not blank the whole conversation.
     displayName: people.get(row.userId) ?? row.userId,

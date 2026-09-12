@@ -99,6 +99,7 @@ type ChatMyAvailability {
 
 type ChatParticipant {
   displayName: String!
+  role: String!
   status: String!
   userId: String!
 }
@@ -195,6 +196,7 @@ type Mutation {
   setChatArchived(archived: Boolean!, conversationId: String!): Boolean!
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
+  setChatParticipantRole(conversationId: String!, role: String!, userId: String!): Boolean!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!

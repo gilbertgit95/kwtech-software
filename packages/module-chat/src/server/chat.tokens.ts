@@ -51,3 +51,13 @@ export const CHAT_USER_DIRECTORY = 'kwtech:chat-user-directory';
  * a design goal rather than an accident.
  */
 export const CHAT_LIMIT_CHECKER = 'kwtech:chat-limit-checker';
+
+/**
+ * The app-level right to administer a conversation you are not in.
+ *
+ * ⚠ Optional, and absent means NOBODY HAS IT. A host that has not answered the
+ * question has not granted the right — so every conversation is governed by its
+ * own participants, which is the shape a deployment with no platform staff
+ * wants anyway.
+ */
+export const CHAT_PLATFORM_ADMIN = 'kwtech:chat-platform-admin';

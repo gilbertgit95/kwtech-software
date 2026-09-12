@@ -412,6 +412,33 @@ export function useChat(options: UseChatOptions = {}) {
     [act, api],
   );
 
+  const setParticipantRole = useCallback(
+    async (conversationId: string, userId: string, role: string) => {
+      await act(() => api.setParticipantRole(conversationId, userId, role));
+    },
+    [act, api],
+  );
+
+  const removeParticipant = useCallback(
+    async (conversationId: string, userId: string) => {
+      await act(() => api.removeParticipant(conversationId, userId));
+    },
+    [act, api],
+  );
+
+  const setArchived = useCallback(
+    async (conversationId: string, archived: boolean) => {
+      await act(() => api.setArchived(conversationId, archived));
+      /*
+       * Archiving takes the conversation OFF the list — `splitConversations`
+       * drops archived ones — so a thread left open would be a view of
+       * something the list no longer offers.
+       */
+      if (archived && selectedRef.current === conversationId) open(null);
+    },
+    [act, api, open],
+  );
+
   const leave = useCallback(
     async (conversationId: string) => {
       await act(() => api.leave(conversationId));
@@ -494,6 +521,9 @@ export function useChat(options: UseChatOptions = {}) {
     respond,
     invite,
     rename,
+    setParticipantRole,
+    removeParticipant,
+    setArchived,
     leave,
     lookUp,
     noteTyping,

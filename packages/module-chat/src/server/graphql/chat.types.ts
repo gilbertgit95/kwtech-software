@@ -22,6 +22,15 @@ export class ChatParticipantType {
   /** 'invited' | 'active'. Nothing else is ever listed — see the read service. */
   @Field()
   status!: string;
+
+  /**
+   * 'owner' | 'admin' | 'member' — what they may do in THIS conversation.
+   *
+   * ⚠ Meaningless in a direct chat, where both people are equal and every act a
+   * role governs is refused anyway. The screen does not draw it there.
+   */
+  @Field()
+  role!: string;
 }
 
 @ObjectType('ChatMessage')

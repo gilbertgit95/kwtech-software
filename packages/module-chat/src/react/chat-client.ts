@@ -34,6 +34,11 @@ export interface ChatParticipantView {
   displayName: string;
   /** 'invited' | 'active'. Nobody else is ever listed. */
   status: string;
+  /**
+   * 'owner' | 'admin' | 'member' — what they may do in THIS conversation.
+   * ⚠ Meaningless in a direct chat, where both people are equal.
+   */
+  role: string;
 }
 
 /** One message, as the thread reads it. Mirrors `ChatMessageType`. */
@@ -127,6 +132,11 @@ export interface ChatClient {
   invite(conversationId: string, userId: string): Promise<void>;
   /** ⚠ Groups only — a direct chat is named by who is in it, and the server refuses. */
   rename(conversationId: string, title: string): Promise<ChatConversationView>;
+  /** ⚠ The owner's alone. Setting somebody to `owner` is a TRANSFER, not a second owner. */
+  setParticipantRole(conversationId: string, userId: string, role: string): Promise<void>;
+  removeParticipant(conversationId: string, userId: string): Promise<void>;
+  /** ⚠ The owner's alone, and it frees the CREATOR's group-chat cap slot. */
+  setArchived(conversationId: string, archived: boolean): Promise<void>;
   /** ⚠ Answers only about people the viewer shares an active conversation with. */
   presenceOf(userIds: readonly string[]): Promise<ChatPresenceView[]>;
   myAvailability(): Promise<ChatMyAvailabilityView>;
@@ -249,6 +259,18 @@ export function createChatClient(options: { graphqlPath?: string } = {}): ChatCl
         title,
       });
       return data.renameChat;
+    },
+
+    async setParticipantRole(conversationId, userId, role) {
+      await graphql(CHAT_OPERATIONS.setChatParticipantRole, { conversationId, userId, role });
+    },
+
+    async removeParticipant(conversationId, userId) {
+      await graphql(CHAT_OPERATIONS.removeChatParticipant, { conversationId, userId });
+    },
+
+    async setArchived(conversationId, archived) {
+      await graphql(CHAT_OPERATIONS.setChatArchived, { conversationId, archived });
     },
 
     async invite(conversationId, userId) {
