@@ -165,13 +165,19 @@ half-written message and sending that would destroy the draft.
 | `/chat/preferences` | your DEFAULT, used wherever a conversation has no opinion |
 | a conversation's own settings → *Your quick emoji here* | this ONE conversation's button |
 
-⚠ **Including direct messages.** The settings link is on every thread — labelled
-*Options* on a DM, where there are no group settings to speak of. It was
-groups-only, on the reasoning that a direct chat has no settings at all; that
-stopped being true the moment the page gained a setting belonging to the VIEWER
-rather than to the conversation, and hiding the link left it unreachable in
-every DM. The group-only controls stay group-only: a DM cannot be renamed, take
-a third person, or be archived or left.
+⚠ **Including direct messages, which get their OWN layout.** A DM has no group
+settings — it cannot be renamed (it is named by who is in it), take a third
+person, or be archived or left — so its settings page is a short page of its
+own rather than the group one with holes cut in it. What it does have is this
+section, because the quick emoji belongs to the VIEWER rather than to the
+conversation.
+
+⚠ **`QuickEmojiSection` is a shared component, outside every role check.** A
+member has exactly as much right to it as an owner, and a DM has no roles at
+all — so it cannot live inside the group page's markup. It did at first, which
+is how it came to be unreachable in every DM: that page returned early with "a
+direct conversation has no settings", a sentence that was true until this
+section existed.
 
 ⚠ Both screens choose from **the whole catalogue**, the same one the composer
 offers — not a shortlist. They briefly offered ten, which meant one screen let

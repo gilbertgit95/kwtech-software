@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   canArchiveConversation,
   canInviteToConversation,
@@ -12,17 +12,9 @@ import {
 } from '../../domain/participant-roles.js';
 import type { ChatParticipantRole } from '../../types.js';
 import type { ChatClient } from '../chat-client.js';
-import {
-  type ChatSettings,
-  DEFAULT_CHAT_SETTINGS,
-  readChatSettings,
-  withQuickEmojiFor,
-  writeChatSettings,
-} from '../chat-settings.js';
 import { ChatSubPage } from '../components/chat-sub-page.js';
-import { EmojiGrid } from '../components/emoji-picker.js';
 import { PersonFinder } from '../components/person-finder.js';
-import { CHAT_PREFERENCES_HREF } from '../routes.js';
+import { QuickEmojiSection } from '../components/quick-emoji-section.js';
 import { useConversationSettings } from '../use-conversation-settings.js';
 import { conversationTitle } from '../view/conversation-view.js';
 
@@ -64,21 +56,6 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
    */
   const conversationId = params?.conversationId ?? '';
 
-  /*
-   * ⚠ Read once on mount, not per render — `readChatSettings` touches
-   * localStorage. Held in state so the buttons reflect a change immediately;
-   * written through on every change so another tab picks it up on its next read.
-   */
-  const [prefs, setPrefs] = useState<ChatSettings>(DEFAULT_CHAT_SETTINGS);
-  useEffect(() => setPrefs(readChatSettings()), []);
-
-  const override = prefs.quickEmojiByConversation[conversationId];
-
-  const setQuick = (emoji: string | null) => {
-    const next = withQuickEmojiFor(prefs, conversationId, emoji);
-    setPrefs(next);
-    writeChatSettings(next);
-  };
   const settings = useConversationSettings(conversationId, client ? { client } : {});
   const { conversation, participants, me } = settings;
 
@@ -104,16 +81,32 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
   }
 
   /*
-   * ⚠ A DIRECT CHAT HAS NO SETTINGS. It cannot be renamed (it is named by who
-   * is in it), cannot take a third person, and is not one person's to archive
-   * on the other's behalf. Rendering an empty settings page would suggest those
-   * controls are merely missing.
+   * ⚠ A DIRECT CHAT HAS NO **GROUP** SETTINGS, AND THAT IS NOT THE SAME AS NONE.
+   *
+   * It cannot be renamed — it is named by who is in it — cannot take a third
+   * person, and is not one person's to archive on the other's behalf. So none
+   * of the sections below apply, and this branch renders its own short page
+   * rather than the group one with five `isDirect ?` holes cut in it. Those
+   * holes were there briefly and were the wrong shape: a layout that is mostly
+   * absent is a different layout, not the same one with conditions.
+   *
+   * ⚠ What it DOES have is the viewer's own quick emoji, which belongs to the
+   * person rather than the conversation and is available to every participant.
+   * This page previously said "a direct conversation has no settings" and
+   * returned — a sentence that was true until that section existed, and which
+   * left the setting unreachable in every DM.
    */
   if (conversation.isDirect) {
     return (
-      <ChatSubPage title={conversationTitle(conversation)}>
-        <p className="text-sm text-muted-foreground">
-          A direct conversation has no settings. It is named by who is in it, and only the two of you are ever in it.
+      <ChatSubPage
+        title={conversationTitle(conversation)}
+        description="Your own settings for this conversation. Nothing here is shared with the other person."
+      >
+        <QuickEmojiSection conversationId={conversationId} />
+
+        <p className="mt-8 border-t border-border pt-6 text-sm text-muted-foreground">
+          A direct conversation has nothing else to configure: it is named by who is in it, only the two of you are ever
+          in it, and neither of you can archive it on the other's behalf.
         </p>
       </ChatSubPage>
     );
@@ -126,21 +119,7 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
   const names = new Map(conversation.participants.map((one) => [one.userId, one.displayName]));
 
   return (
-    <ChatSubPage
-      title={conversationTitle(conversation)}
-      /*
-       * ⚠ A DIRECT CHAT HAS NO GROUP SETTINGS, and saying "who runs it" there
-       * would describe a hierarchy that does not exist — both people are equal
-       * and every act a role governs is refused. What it DOES have is the
-       * viewer's own quick emoji, so the page is reachable and honest about
-       * being almost empty rather than hidden.
-       */
-      description={
-        conversation.isDirect
-          ? 'Your own settings for this conversation. Nothing here is shared with the other person.'
-          : 'Who is in this conversation, and who runs it.'
-      }
-    >
+    <ChatSubPage title={conversationTitle(conversation)} description="Who is in this conversation, and who runs it.">
       {settings.error ? (
         <p
           role="alert"
@@ -222,17 +201,7 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">{names.get(one.userId) ?? one.userId}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {/*
-                      ⚠ NO ROLE ON A DIRECT CHAT. Both people are equal there
-                      and every act a role governs is refused, so printing
-                      "Member" under each name describes a standing that does
-                      not exist and invites somebody to wonder who the owner is.
-                    */}
-                    {one.status === 'invited'
-                      ? 'Invited — has not answered yet'
-                      : conversation.isDirect
-                        ? null
-                        : ROLE_LABELS[role]}
+                    {one.status === 'invited' ? 'Invited — has not answered yet' : ROLE_LABELS[role]}
                   </span>
                 </span>
 
@@ -302,56 +271,13 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
       </section>
 
       {/*
-        ⚠ NOT ROLE-GATED, and that is the point of where it sits.
-        
-        Everything above this is about the CONVERSATION — its name, who is in
-        it, who runs it — and is shared, server-side, and gated on what this
-        person may do. This is about the VIEWER: it is stored in their browser,
-        it is never sent anywhere, and the other participants cannot see it.
-        A member has exactly as much right to it as an owner, so it is outside
-        every `canManage` block.
+        ⚠ THE VIEWER'S OWN, and the one section here that is not role-gated —
+        see `QuickEmojiSection`. Shared with the direct-chat layout above rather
+        than written twice, which is what stops the two drifting.
       */}
-      <section className="space-y-3 border-b border-border py-6">
-        <h2 className="text-sm font-medium text-foreground">Your quick emoji here</h2>
-        <p className="text-sm text-muted-foreground">
-          The one-tap button beside the message box, just for this conversation. ⚠ Saved in this browser and visible
-          only to you — nobody else in here sees what you chose.
-        </p>
-
-        {/* ⚠ The same catalogue the composer offers — see the preferences page. */}
-        <div className="rounded-md border border-border p-2">
-          <EmojiGrid selected={override} onPick={(emoji) => setQuick(emoji)} />
-        </div>
-
-        {/*
-          ⚠ THREE STATES, NOT TWO, and they are genuinely different answers:
-          "use my default" FORGETS the override so this conversation follows
-          whatever the default becomes later; "no button here" is a choice to
-          have none in this thread specifically, which somebody may want in
-          exactly the conversation where a stray tap would be worst.
-        */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setQuick(null)}
-            disabled={override === undefined}
-            className="rounded-md border border-border px-3 py-1 text-sm hover:bg-accent disabled:opacity-50"
-          >
-            Use my default ({prefs.quickEmoji || 'none'})
-          </button>
-          <button
-            type="button"
-            onClick={() => setQuick('')}
-            disabled={override === ''}
-            className="rounded-md border border-border px-3 py-1 text-sm hover:bg-accent disabled:opacity-50"
-          >
-            No button here
-          </button>
-          <a href={CHAT_PREFERENCES_HREF} className="text-sm text-muted-foreground hover:text-foreground">
-            Change my default →
-          </a>
-        </div>
-      </section>
+      <div className="border-b border-border py-6">
+        <QuickEmojiSection conversationId={conversationId} />
+      </div>
 
       <section className="space-y-3 pt-6">
         <h2 className="text-sm font-medium text-foreground">This conversation</h2>

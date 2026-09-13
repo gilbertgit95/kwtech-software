@@ -539,6 +539,50 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **A direct message gets its own settings page, and the
+  viewer's own control stops living inside the group page's markup.**
+
+  The operator's point: the quick emoji is a per-user customisation, so it
+  should be reachable on a DM by anybody, and a direct conversation needs a
+  settings surface of its own.
+
+  **⚠ THE PREVIOUS FIX WAS ONLY HALF A FIX, and this is the second time the same
+  comment has been wrong.** Linking the page from a DM did nothing, because the
+  page RETURNED EARLY for a direct conversation:
+
+  > *"A direct conversation has no settings. It is named by who is in it, and
+  > only the two of you are ever in it."*
+
+  True when written, and false from the moment the page gained a section
+  belonging to the VIEWER rather than to the conversation. The five
+  `isDirect ? null :` holes cut in the group layout in that same commit were
+  DEAD CODE — the early return meant they were never reached. Fixing the link
+  without reading what it led to is exactly the shape of mistake the entry above
+  this one is about.
+
+  **⚠ A LAYOUT THAT IS MOSTLY ABSENT IS A DIFFERENT LAYOUT.** A DM now renders
+  its own short page — the quick emoji section, and one sentence saying there is
+  nothing else to configure and why — rather than the group page with conditions
+  threaded through it. Those conditions are deleted: rename, role labels and the
+  varying description are gone, because the branch that needed them does not run
+  the group layout at all.
+
+  **⚠ `QuickEmojiSection` IS A SHARED COMPONENT, and that is the structural
+  point.** It is the viewer's own preference: stored in their browser, never
+  sent, invisible to the other participants. So it sits OUTSIDE every role
+  check, and a member has exactly as much right to it as an owner — while a DM
+  has no roles at all. Markup inside the group page could never satisfy both,
+  which is precisely how it came to be unreachable. A test asserts the component
+  mentions no `canManage`, `canInvite`, `canArchive` or `roleOf`, and that both
+  layouts render it.
+
+  ⚠ Recorded as a pattern now, because this is the third instance in two days:
+  **a capability that lives inside one consumer is not shared, and the next
+  surface does not inherit it.** The back link inside one page's private
+  `Frame`; the wire-to-domain bridge inside `useConversationSettings`; this.
+  Each shipped a gap that looked like an oversight and was really a scoping
+  choice made silently.
+
 - **2026-09-13** — **The quick emoji was unreachable in every DIRECT MESSAGE,
   and both settings screens offered a tenth of the catalogue.**
 

@@ -161,10 +161,47 @@ describe('the surfaces that offer to add somebody', () => {
    * list of ten while the composer offered a hundred and sixty — for what is
    * the same choice.
    */
-  it('⚠ lets both settings screens choose from the whole catalogue', () => {
-    for (const file of ['pages/chat-preferences-page.tsx', 'pages/chat-settings-page.tsx']) {
-      expect(read(file)).toContain('<EmojiGrid');
+  it('⚠ lets every screen choose from the whole catalogue, never a shortlist', () => {
+    // The default is chosen straight from the grid; a conversation's override
+    // reaches it through the shared section. Neither may reintroduce a shortlist.
+    expect(read('pages/chat-preferences-page.tsx')).toContain('<EmojiGrid');
+    expect(read('components/quick-emoji-section.tsx')).toContain('<EmojiGrid');
+
+    for (const file of [
+      'pages/chat-preferences-page.tsx',
+      'pages/chat-settings-page.tsx',
+      'components/quick-emoji-section.tsx',
+    ]) {
       expect(read(file)).not.toContain('QUICK_EMOJI_CHOICES');
+    }
+  });
+
+  /**
+   * ⚠ THE GAP THE OPERATOR REPORTED. A direct conversation returned early with
+   * "a direct conversation has no settings" — true until the page gained a
+   * setting belonging to the VIEWER rather than to the conversation. Its own
+   * layout must render the quick emoji section, or the setting is unreachable
+   * in every DM again.
+   */
+  it('⚠ gives a direct chat its own layout, carrying the quick emoji section', () => {
+    const page = read('pages/chat-settings-page.tsx');
+
+    expect(page).toContain('if (conversation.isDirect)');
+    // Rendered in BOTH branches, from one shared component.
+    expect(page.match(/<QuickEmojiSection/g) ?? []).toHaveLength(2);
+    expect(page).not.toContain('A direct conversation has no settings.');
+  });
+
+  /**
+   * ⚠ AVAILABLE TO EVERY PARTICIPANT. It is the viewer's own preference, stored
+   * in their browser and invisible to everybody else, so a member has exactly as
+   * much right to it as an owner — and a DM has no roles at all.
+   */
+  it('⚠ keeps the quick emoji section outside every role check', () => {
+    const section = read('components/quick-emoji-section.tsx');
+
+    for (const gate of ['canManageConversation', 'canInviteToConversation', 'canArchiveConversation', 'roleOf']) {
+      expect(section).not.toContain(gate);
     }
   });
 

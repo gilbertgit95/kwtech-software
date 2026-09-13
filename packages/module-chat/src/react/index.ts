@@ -49,6 +49,7 @@ export { MessageThread } from './components/message-thread.js';
 export { NewConversation } from './components/new-conversation.js';
 export { PersonFinder } from './components/person-finder.js';
 export { PresenceDot } from './components/presence-dot.js';
+export { QuickEmojiSection } from './components/quick-emoji-section.js';
 export {
   ALL_EMOJI,
   EMOJI_GROUPS,
