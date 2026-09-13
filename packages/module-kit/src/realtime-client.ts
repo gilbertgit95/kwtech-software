@@ -1,7 +1,7 @@
 'use client';
 
 import { type Client, createClient } from 'graphql-ws';
-import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions } from './realtime.js';
+import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions, reconnectDelay } from './realtime.js';
 
 /**
  * The app's realtime half: ONE WebSocket, opened with a short-lived ticket.
@@ -34,6 +34,10 @@ import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions }
  * reconnect — nothing would fail, and the cost would multiply by the number of
  * modules. `RealtimeProvider` is where the one connection is put so every
  * module can reach it.
+ *
+ * ⚠ The ONE documented exception (PLAN §12.39): a public queue display, which
+ * has no session to mint a ticket from and opens its own socket with
+ * `connectionParams` carrying its display pass.
  */
 
 /**
@@ -48,6 +52,22 @@ import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions }
  */
 export function createRealtimeConnection(options: RealtimeOptions): RealtimeConnection {
   const ticketPath = options.ticketPath ?? DEFAULT_WS_TICKET_PATH;
+
+  const mintTicket = async () => {
+    const response = await fetch(ticketPath, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // The session is an httpOnly cookie on THIS origin. Without this the
+      // mint request goes out unauthenticated and 401s.
+      credentials: 'same-origin',
+      body: '{}',
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('Could not authorize the realtime connection.');
+    const body = (await response.json()) as { ticket?: string };
+    if (!body.ticket) throw new Error('The realtime ticket was empty.');
+    return { ticket: body.ticket };
+  };
 
   let client: Client | null = createClient({
     url: options.wsUrl,
@@ -70,33 +90,28 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
      * connections, which is the more common reason to set it.
      */
     keepAlive: 20_000,
-    connectionParams: async () => {
-      const response = await fetch(ticketPath, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        // The session is an httpOnly cookie on THIS origin. Without this the
-        // mint request goes out unauthenticated and 401s.
-        credentials: 'same-origin',
-        body: '{}',
-        cache: 'no-store',
-      });
-      if (!response.ok) throw new Error('Could not authorize the realtime connection.');
-      const body = (await response.json()) as { ticket?: string };
-      if (!body.ticket) throw new Error('The realtime ticket was empty.');
-      return { ticket: body.ticket };
-    },
+    // Called on EVERY attempt — see above. A display's pass, or a fresh ticket.
+    connectionParams: options.connectionParams ?? mintTicket,
     on: {
       error: (error) => options.onError?.(error instanceof Error ? error : new Error(String(error))),
+      connected: () => options.onConnected?.(),
+      closed: (event) => options.onClosed?.((event as { code?: number } | undefined)?.code),
     },
+    ...(options.retryForever
+      ? {
+          retryAttempts: Number.POSITIVE_INFINITY,
+          retryWait: (retries: number) => new Promise<void>((resolve) => setTimeout(resolve, reconnectDelay(retries))),
+        }
+      : {}),
     /**
      * Do not retry a REFUSAL.
      *
      * 4403 is the server declining the connection — a ticket that is missing,
-     * forged, or minted from a session that has been signed out. None of those
-     * becomes valid by trying again, and a retry loop against an auth failure
-     * is how one broken tab keeps a server busy. Every other close, including
-     * the 4499 the server sends when the authorization expires, is worth
-     * retrying: that one is expected, and the retry mints a fresh ticket.
+     * forged, or minted from a session that has been signed out, or a display
+     * pass whose queuing session has stopped. None of those becomes valid by
+     * trying again, and a retry loop against an auth failure is how one broken
+     * tab keeps a server busy. Every other close, including the 4499 the server
+     * sends when the authorization expires, is worth retrying.
      */
     shouldRetry: (event) => (event as { code?: number })?.code !== 4403,
   });

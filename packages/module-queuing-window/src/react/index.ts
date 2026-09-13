@@ -8,9 +8,11 @@
  * a client module does not answer the enumeration `export *` compiles to.
  */
 
+export { QUEUE_CALL_CHIME } from './call-chime.js';
 export { QrCode } from './components/qr-code.js';
-export { queueWebModule } from './module.js';
+export { type QueueWebModuleOptions, queueWebModule } from './module.js';
 export { QueueConsolePage } from './pages/queue-console-page.js';
+export { QueueDisplayPage } from './pages/queue-display-page.js';
 export { QueueSettingsPage } from './pages/queue-settings-page.js';
 export {
   createQueueClient,
@@ -29,12 +31,31 @@ export {
 } from './queue-client.js';
 export {
   QUEUE_CONSOLE_PATH,
+  QUEUE_DISPLAY_PATH,
   QUEUE_SETTINGS_PATH,
   queueConsoleHref,
   queueSettingsHref,
   WORKSPACE_NAV_GROUP,
 } from './routes.js';
 export { type QueueConsoleState, useQueueConsole } from './use-queue-console.js';
+export {
+  type DisplayNotice,
+  type DisplayPhase,
+  type QueueDisplayState,
+  useQueueDisplay,
+} from './use-queue-display.js';
+export {
+  codeFromFragment,
+  displayStorageKeys,
+  filterBoard,
+  isStale,
+  type QueueBoardCallView,
+  type QueueBoardView,
+  type QueueDisplayEventView,
+  servingRows,
+  spokenCall,
+  spokenLabel,
+} from './view/board-view.js';
 export {
   activeLines,
   activeWindows,

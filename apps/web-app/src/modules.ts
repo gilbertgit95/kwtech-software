@@ -29,5 +29,6 @@ export const WEB_MODULES: readonly WebModuleDescriptor[] = [
   authWebModule,
   permissionsWebModule,
   chatWebModule(),
-  queueWebModule(),
+  // The public display opens its own socket, so it needs to know where the API is.
+  queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
 ];

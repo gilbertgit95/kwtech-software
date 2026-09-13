@@ -143,6 +143,16 @@ export interface QueueClient {
   setMyNickname(scope: QueueScopeView, nickname: string): Promise<void>;
   clearMyNickname(scope: QueueScopeView): Promise<void>;
   clearNickname(scope: QueueScopeView, userId: string): Promise<void>;
+
+  /**
+   * A TV's code, for a pass. ⚠ NULL for every refusal — the page may say only
+   * `DISPLAY_CODE_REFUSAL_MESSAGE`. Public: sent with no session.
+   */
+  openDisplay(
+    organizationKey: string,
+    workspaceKey: string,
+    code: string,
+  ): Promise<{ pass: string; workspaceName: string } | null>;
 }
 
 export function createQueueClient(options: { graphqlPath?: string } = {}): QueueClient {
@@ -267,6 +277,14 @@ export function createQueueClient(options: { graphqlPath?: string } = {}): Queue
     },
     async clearNickname(scope, userId) {
       await graphql(ops.clearQueueNickname, scoped(scope, { userId }));
+    },
+
+    async openDisplay(organizationKey, workspaceKey, code) {
+      const data = await graphql<{ openQueueDisplay: { pass: string; workspaceName: string } | null }>(
+        ops.openQueueDisplay,
+        { organizationKey, workspaceKey, code },
+      );
+      return data.openQueueDisplay;
     },
   };
 }

@@ -4,23 +4,25 @@ A walk-in queue per workspace. Staff are assigned named **windows**, press
 **Call next**, and the number appears on a **public display** — a TV in the
 waiting room, admitted by a per-session code, live over `graphql-ws`.
 
-> **Status: server, realtime and the staff console built (steps 4–6).** Both
-> apps have adopted it. The public board page is step 8.
+> **Status: complete (steps 1–8).** Both apps have adopted it. Staff run the
+> queue from the console, and a TV admitted by its display code shows the board
+> live, with a chime and a spoken announcement. The design, and every decision
+> behind it, is in `docs/PLAN.md` §13 under the 2026-09-13
+> `module-queuing-window` entries. Read the newest first.
 
 ## In a Next.js app
 
 ```ts
 // src/modules.ts
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
-export const WEB_MODULES = [/* … */ queueWebModule()];
+export const WEB_MODULES = [/* … */ queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL })];
 ```
 
 That contributes `…/workspaces/:workspaceId/queue` (the console, in the
 Workspace drawer group) and the unlisted `…/queue/settings`, both gated on
 `queue:read`. Controls inside each page show only to the key that may use them;
-the API refuses again regardless. The design, and every decision behind it, is in
-> `docs/PLAN.md` §13 under the 2026-09-13 `module-queuing-window` entries. Read
-> the newest first.
+the API refuses again regardless. It also contributes the public display — see
+below.
 
 ## In a NestJS app
 
@@ -55,6 +57,10 @@ Every port is optional, and each absence means something specific:
 | `staffDirectoryProvider` | no picker, and seats read "A member" |
 | `workspaceLocatorProvider` | no display can ever open |
 | `pubsubProvider` | NOT LIVE: writes work, the console updates only when re-read, and a TV draws its board once and stops. ⚠ Bind the app's one engine |
+| `resolveActorId` | every operation that needs an actor refuses |
+
+The app's adapters live in `apps/web-server/src/queue/`, because each reads
+another module's tables.
 
 ## Realtime
 
@@ -70,10 +76,6 @@ Every port is optional, and each absence means something specific:
 
 ⚠ **A TV must also treat a refused reconnect (4403) as stopped.** A TV that
 was asleep when queuing stopped never received the event.
-| `resolveActorId` | every operation that needs an actor refuses |
-
-The app's adapters live in `apps/web-server/src/queue/`, because each reads
-another module's tables.
 
 ## Vocabulary
 
@@ -106,3 +108,21 @@ React. Each is a function over plain values, tested without a database.
 | `feature-keys.ts` | the six workspace-level `queue:*` keys, two plan-sourced caps, three role presets |
 
 Refusals are reasons, never booleans, so a caller can say which rule refused.
+
+## The public display
+
+`/queue-display/:organizationKey/:workspaceKey` is public, fullscreen and
+unlisted.
+
+1. **Code.** Type the code, or scan the console's QR, which carries it in the
+   URL fragment. The page removes the code from the address bar at once.
+2. **Start display.** One tap unlocks the chime and speech and keeps the screen
+   awake. Browsers allow none of the three without a gesture.
+3. **Board.** It stays live on the page's own socket, admitted by the pass, and
+   never stops reconnecting. After 15 seconds disconnected it dims and says so.
+4. **Stopped.** When queuing stops — or the handshake refuses the pass, for a
+   TV that missed the event — the TV deletes its pass and returns to the code
+   prompt. Its line filter stays.
+
+⚠ `wsUrl` must be passed to `queueWebModule`. Without it, the board says live
+updates are not configured instead of showing a board that never changes.

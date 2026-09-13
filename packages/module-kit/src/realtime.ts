@@ -83,6 +83,45 @@ export interface RealtimeOptions {
    * outcome than one that stopped updating by itself.
    */
   onError?: (error: Error) => void;
+  /**
+   * What to send in `connection_init`, INSTEAD of minting a ticket from the
+   * session. Called on every connect attempt.
+   *
+   * For a socket admitted by something other than a session — a queue display
+   * presenting its pass. ⚠ Still one constructor: a module that needs its own
+   * socket for a screen with no session gets it through this option, never a
+   * second copy of this file.
+   */
+  connectionParams?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
+  /** The socket is up and acknowledged. */
+  onConnected?: () => void;
+  /**
+   * The socket closed, with the close code when there was one. `4403` is the
+   * server REFUSING the connection — for a display pass, "that session has
+   * stopped" — and is never retried.
+   */
+  onClosed?: (code: number | undefined) => void;
+  /**
+   * Never stop reconnecting (a refusal aside), with a delay capped by
+   * `reconnectDelay`. For a screen nobody is watching to press reload: the
+   * library's default gives up after five attempts, and a TV that gave up at 3am
+   * shows yesterday's number all morning.
+   */
+  retryForever?: boolean;
+}
+
+/** The longest a `retryForever` connection waits between attempts. */
+export const MAX_RECONNECT_DELAY_MS = 15_000;
+
+/**
+ * How long to wait before reconnect attempt `retries` (0-based): exponential
+ * from one second, capped at `MAX_RECONNECT_DELAY_MS`, plus up to a second of
+ * jitter so a room of TVs that lost the network together does not reconnect in
+ * one stampede.
+ */
+export function reconnectDelay(retries: number, random: () => number = Math.random): number {
+  const base = Math.min(1000 * 2 ** Math.max(0, retries), MAX_RECONNECT_DELAY_MS);
+  return base + Math.floor(random() * 1000);
 }
 
 export interface RealtimeConnection {

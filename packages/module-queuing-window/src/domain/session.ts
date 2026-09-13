@@ -186,3 +186,10 @@ const PASS_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 export function isDisplayPassShaped(value: unknown): value is string {
   return typeof value === 'string' && PASS_SHAPE.test(value);
 }
+
+/**
+ * The `connectionParams` field a TV puts its pass in. Here, in the domain, because
+ * the server's handshake hook and the browser's socket must spell it the same —
+ * and the browser must never import server code to learn it.
+ */
+export const DISPLAY_PASS_PARAM = 'displayPass';

@@ -1,7 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { anonymousAdmission } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { DISPLAY_PASS_BYTES, evaluateCodeExchange, isDisplayPassShaped, isSessionOpen } from '../domain/session.js';
+import {
+  DISPLAY_PASS_BYTES,
+  DISPLAY_PASS_PARAM,
+  evaluateCodeExchange,
+  isDisplayPassShaped,
+  isSessionOpen,
+} from '../domain/session.js';
 import type { QueueWorkspaceLocator } from './ports.js';
 import type { QueueWriteClient } from './queue.repository.js';
 import { QUEUE_PRISMA_WRITE, QUEUE_WORKSPACE_LOCATOR } from './queue.tokens.js';
@@ -19,9 +25,6 @@ export function hashDisplayPass(pass: string): string {
 
 /** More than any code, formatted or not. Anything longer is refused unread. */
 const MAX_TYPED_CODE = 32;
-
-/** The `connectionParams` field a TV puts its pass in. The client and `admit` both read this. */
-export const DISPLAY_PASS_PARAM = 'displayPass';
 
 /**
  * What a socket admitted by a display pass carries, under module-kit's

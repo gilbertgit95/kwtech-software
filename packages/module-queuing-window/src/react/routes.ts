@@ -22,6 +22,12 @@ export const WORKSPACE_NAV_GROUP = 'Workspace';
 export const QUEUE_CONSOLE_PATH = '/organizations/:organizationId/workspaces/:workspaceId/queue';
 export const QUEUE_SETTINGS_PATH = `${QUEUE_CONSOLE_PATH}/settings`;
 
+/**
+ * The public board. By KEY, not id, because it is typed on a TV remote. ⚠ If an
+ * organization or workspace key ever becomes renamable, every TV URL breaks.
+ */
+export const QUEUE_DISPLAY_PATH = '/queue-display/:organizationKey/:workspaceKey';
+
 export function queueConsoleHref(organizationId: string, workspaceId: string): string {
   return `/organizations/${encodeURIComponent(organizationId)}/workspaces/${encodeURIComponent(workspaceId)}/queue`;
 }

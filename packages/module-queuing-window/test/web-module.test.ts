@@ -1,19 +1,37 @@
 import { composeNav, composeRoutes } from '@kwtech/module-kit';
 import { QUEUE_FEATURE } from '../src/feature-keys.js';
 import { queueWebModule } from '../src/react/module.js';
-import { QUEUE_CONSOLE_PATH, QUEUE_SETTINGS_PATH, WORKSPACE_NAV_GROUP } from '../src/react/routes.js';
+import {
+  QUEUE_CONSOLE_PATH,
+  QUEUE_DISPLAY_PATH,
+  QUEUE_SETTINGS_PATH,
+  WORKSPACE_NAV_GROUP,
+} from '../src/react/routes.js';
 
 /** What adopting the queue on the web contributes. */
 describe('queueWebModule', () => {
   const module = queueWebModule();
 
   it('contributes the console and its settings, both under a workspace path', () => {
-    expect(composeRoutes([module]).map((route) => route.path)).toEqual([QUEUE_CONSOLE_PATH, QUEUE_SETTINGS_PATH]);
+    expect(composeRoutes([module]).map((route) => route.path)).toEqual([
+      QUEUE_CONSOLE_PATH,
+      QUEUE_SETTINGS_PATH,
+      QUEUE_DISPLAY_PATH,
+    ]);
     expect(QUEUE_CONSOLE_PATH).toBe('/organizations/:organizationId/workspaces/:workspaceId/queue');
   });
 
-  it('⚠ gates both on queue:read — a WORKSPACE key, asked of the workspace in the URL', () => {
-    expect(composeRoutes([module]).every((route) => route.feature === QUEUE_FEATURE.read)).toBe(true);
+  it('⚠ gates the console and settings on queue:read — a WORKSPACE key, asked of the workspace in the URL', () => {
+    const [consoleRoute, settingsRoute] = composeRoutes([module]);
+    expect([consoleRoute?.feature, settingsRoute?.feature]).toEqual([QUEUE_FEATURE.read, QUEUE_FEATURE.read]);
+  });
+
+  it('⚠ makes the display PUBLIC and fullscreen: no key, no drawer entry, no frame', () => {
+    const display = composeRoutes([module]).find((route) => route.path === QUEUE_DISPLAY_PATH);
+    expect(display?.feature).toBeUndefined();
+    expect(display?.nav).toBeUndefined();
+    expect(display?.chrome).toBe('fullscreen');
+    expect(QUEUE_DISPLAY_PATH).toBe('/queue-display/:organizationKey/:workspaceKey');
   });
 
   const params = { organizationId: 'org-1', workspaceId: 'ws-1' };

@@ -548,11 +548,97 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 66 | ~~Printing an issued number~~ **CLOSED 2026-09-13: moot** | — | Raised only by the in-system issuing reading of §12.58, which the operator corrected the same day: numbers are handed out outside the system, so nothing here prints. Original entry: | v1 has the issuer read the number out or write it down. A small browser print view of one ticket is cheap and needs no new dependency. A thermal receipt printer (ESC/POS over USB or the network) is a hardware and driver decision, and browsers cannot reach one without a local bridge or WebUSB. Do not pick a printer on a customer's behalf |
 | 67 | A new display code without stopping the queue | if a code leaks mid-session | Per the operator, a new code comes only with a new session. So the remedy for a code seen by the wrong person is Stop and Start — which, unless Continue numbering is ticked, restarts the numbers. A "new code" button that also invalidated every existing pass would be gentler. It is not built, because nobody asked for it and because a leaked code exposes a board that is already on a public wall |
 | 68 | A session nobody stops | before the first site forgets | There is no job runner (§12.40), so nothing ends a session at closing time. Numbers keep counting into the next morning and TVs stay admitted. v1: the console shows "Running since yesterday, 8:02 am", in warning colour, to holders of `queue:stop`. An automatic stop at a set hour needs a scheduler AND a time zone — the very setting this design just removed |
+| 69 | The API cannot see a browser's own IP address, so rate limits are shared | before a display, or sign-in, is used by more than a handful of people | Every browser request reaches the API through the Next server's proxy. `module-auth`'s route handlers forward `X-Forwarded-For`, but `web-server` does not set Express's `trust proxy`, so `ThrottlerGuard` tracks the Next server's address for every request. **The tight `credential` bucket (10 a minute) is therefore shared by every person and every TV behind that server** — sign-in, the 2FA challenge, password reset, and now `openQueueDisplay`. One waiting room setting up four TVs while staff sign in can exhaust it. This predates the queue and is a DEPLOYMENT decision: `trust proxy` must name exactly the proxies in front of the API, or a client sets its own `X-Forwarded-For` and escapes every limit. §12.59's note about proxies is the same problem one layer out |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **`module-queuing-window` step 8: the public board, on a TV.
+  The build is complete.** A TV opens
+  `/queue-display/:organizationKey/:workspaceKey`, takes the code (typed, or
+  from the console's QR), taps Start display once, and shows the queue live
+  until queuing stops. **Verified end to end through the real web app** — see
+  below.
+
+  **What was built:**
+  - **The page**, in the package: `QueueDisplayPage`, driven by
+    `useQueueDisplay`. It is the descriptor's third route: no feature, no drawer
+    entry, `chrome: 'fullscreen'` — the chrome step 1 added for it. The app's
+    whole edit is `queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL })`.
+  - **The phases:**
+    - **prompt** — the code. It renders identically for a workspace that exists
+      and one that does not, and every refusal shows the one message.
+    - **start** — a pass is held, and one tap unlocks the chime and speech and
+      takes a Screen Wake Lock.
+    - **board** — live.
+    - **back to prompt** on `stopped`, or when the handshake refuses the pass
+      with 4403.
+  - **The board:**
+    - the workspace name and a clock;
+    - Now serving, one large row per window, in a STABLE order by window name,
+      with the newest call pulsing for ten seconds;
+    - the recent calls;
+    - a line filter kept on this screen;
+    - a "Sound is off — press to turn it on" control whenever audio is still
+      locked.
+  - **The call:** `QUEUE_CALL_CHIME`, a falling ding-dong at a louder peak than
+    chat's desk tone, then "Now serving C, zero four two, at Window 3." spoken
+    after the chime rather than over it.
+  - **`module-kit`'s `createRealtimeConnection` gained three options** and stays
+    the one constructor: `connectionParams` (a display pass instead of a
+    ticket), `onConnected`/`onClosed(code)`, and `retryForever` with a capped,
+    jittered `reconnectDelay` (tested).
+  - **`DISPLAY_PASS_PARAM` moved into the framework-free domain,** so the
+    browser never imports server code to learn how to spell it.
+
+  **Decisions the plan did not contain:**
+  - ⚠ **A refused reconnect IS a stop.** A TV asleep when queuing stopped never
+    received `stopped`. When its next handshake is refused with 4403, it deletes
+    its pass and returns to the prompt exactly as if it had. Without that, it
+    would show the last number of a stopped queue forever.
+  - ⚠ **The TV never gives up reconnecting.** `graphql-ws` stops after five
+    attempts by default, and a TV that gave up at 3am shows yesterday's number
+    all morning. Backoff is capped at 15s, with up to a second of jitter so a
+    room of TVs does not reconnect in one stampede. After 15s disconnected the
+    board dims under "Reconnecting… the numbers below may be out of date."
+  - **Rows are ordered by window name, not by latest call.** A board reordering
+    on every call makes people re-find their window; the pulse marks the newest
+    call instead.
+  - **The code in the fragment wins over a stored pass.** Scanning a new QR on a
+    TV that already holds an old pass exchanges the new code. The fragment is
+    removed from the address bar before anything renders.
+  - **Speech reads each digit** ("C, zero four two"), because read naively
+    "C-042" is "C minus forty-two". English only — §12.64 stays open for other
+    languages and voices.
+  - **Start display keeps `autoFocus`**, with a lint suppression that says why:
+    a TV is driven by a remote with no pointer, and focus already on the one
+    button is what makes OK start it.
+  - **Storage failures are survivable.** Every `localStorage` call is guarded:
+    without storage a TV simply asks for the code again after a reload.
+
+  **Verified end to end,** with the API and the production-built web app
+  running against the local database, a real organization and workspace
+  (`kwtech-printing` / `kwtech-ilang-branch`), and a session inserted directly:
+  1. The public page answered 200 with no session.
+  2. A wrong code sent through the web app's GraphQL proxy was refused with
+     `null`, and `failedCodeAttempts` went to 1.
+  3. The right code, typed lower-case with a dash, returned a 43-character pass
+     for "Kwtech Ilang Branch", stored only as its hash.
+  4. A socket presenting that pass received `queueDisplay`'s board.
+  5. After the session was stopped, the same pass was refused with 4403.
+
+  Tests: `module-kit` 91, the queue package 289 (board rules, chime, descriptor
+  and more), and the web app typechecks and builds.
+
+  ⚠ **Not verified in a browser on a TV:** the chime, speech, the wake lock
+  and the visuals. Nothing here runs a browser. They are the next thing to
+  check by hand, on the TV that will actually hang in the room.
+
+  **New open decision, §12.69:** every browser's request reaches the API
+  through the Next server, and the API does not trust `X-Forwarded-For`, so the
+  tight credential bucket is shared by everyone behind that server.
 
 - **2026-09-13** — **`module-queuing-window` step 7: the tone engine moved from
   `module-chat` to `@kwtech/web-ui`; chat's catalogue stayed.** The queue board
