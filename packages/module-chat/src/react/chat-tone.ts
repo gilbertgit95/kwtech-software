@@ -30,8 +30,106 @@
  * needs a user gesture just as playback does. See `unlockChatTones`.
  */
 
-/** The catalogue. Each is a couple of notes, described rather than recorded. */
-export const CHAT_TONES = [
+/**
+ * ── ONE NOTE ───────────────────────────────────────────────────────────────
+ *
+ * Enough description to build the sounds people expect from a messenger, and
+ * no more. ⚠ The engine grew these three fields together, because a "pop" is
+ * not a tone: it is a fast upward PITCH SWEEP with a percussive decay, and a
+ * catalogue of steady sine notes cannot express one at all.
+ */
+export interface ChatToneNote {
+  /** Where the pitch starts, in hertz. */
+  hz: number;
+  /**
+   * Where it ENDS, for a note that slides. Omitted means steady.
+   *
+   * ⚠ This is what makes a pop, a bubble and a swoop possible. It ramps
+   * EXPONENTIALLY, because pitch is perceived that way — a linear sweep from
+   * 200Hz to 800Hz spends most of its time sounding high.
+   */
+  toHz?: number;
+  /** Milliseconds after the tone starts. */
+  at: number;
+  /** How long this note lasts. */
+  ms: number;
+  /**
+   * `sine` is round and quiet, `triangle` is brighter, `square` is harsh and
+   * carries across a noisy room. Defaults to `sine`.
+   */
+  wave?: 'sine' | 'triangle' | 'square';
+  /**
+   * `flat` holds its level and fades at the end; `decay` drops away from the
+   * first instant, which is what makes something sound STRUCK rather than
+   * played. Percussive sounds — pop, tap, marimba — need the second.
+   */
+  shape?: 'flat' | 'decay';
+  /** Relative loudness, 0 to 1. For a note meant to sit under another. */
+  level?: number;
+}
+
+export interface ChatTone {
+  id: string;
+  label: string;
+  notes: readonly ChatToneNote[];
+}
+
+/**
+ * ── THE CATALOGUE ──────────────────────────────────────────────────────────
+ *
+ * Ten, described rather than recorded, roughly ordered from most discreet to
+ * most noticeable so the picker reads as a range rather than a list.
+ *
+ * ## ⚠ NAMED FOR WHAT THEY SOUND LIKE, NEVER FOR A PRODUCT
+ *
+ * "Pop", "Ding", "Ping" — not the name of any messenger that has one. Two
+ * reasons and the second is the real one: a real product's notification sound
+ * is a recorded asset somebody owns, so these are ORIGINAL sounds in the same
+ * genre rather than imitations of a specific one; and a tone called after
+ * another app sets an expectation this cannot meet, which reads as a bad copy
+ * rather than as its own sound.
+ *
+ * ## Why there is a ceiling at all
+ *
+ * A picker somebody scrolls is a picker somebody abandons, and every tone here
+ * has to be auditioned one at a time to be chosen. Ten is about the most that
+ * stays a decision rather than a chore.
+ */
+export const CHAT_TONES: readonly ChatTone[] = [
+  {
+    id: 'tap',
+    label: 'Tap',
+    /** One note, as short as is still audible. For somebody who wants almost nothing. */
+    notes: [{ hz: 1320, at: 0, ms: 55, shape: 'decay' }],
+  },
+  {
+    id: 'knock',
+    label: 'Knock',
+    /** Two low, flat notes — the least musical option, for a shared room. */
+    notes: [
+      { hz: 220, at: 0, ms: 70, shape: 'decay' },
+      { hz: 220, at: 110, ms: 70, shape: 'decay' },
+    ],
+  },
+  {
+    id: 'pop',
+    label: 'Pop',
+    /**
+     * ⚠ THE BUBBLE-POP EVERY MESSENGER HAS, and it is a SWEEP rather than a
+     * note: pitch rising fast through a very short decay is what the ear reads
+     * as something bursting. A steady tone of the same length is just a beep.
+     */
+    notes: [{ hz: 420, toHz: 1180, at: 0, ms: 90, shape: 'decay' }],
+  },
+  {
+    id: 'bubble',
+    label: 'Bubble',
+    /** Two pops, the second higher and softer — a smaller bubble behind the first. */
+    notes: [
+      { hz: 360, toHz: 980, at: 0, ms: 85, shape: 'decay' },
+      { hz: 620, toHz: 1420, at: 95, ms: 70, shape: 'decay', level: 0.6 },
+    ],
+  },
   {
     id: 'blip',
     label: 'Blip',
@@ -42,30 +140,60 @@ export const CHAT_TONES = [
     ],
   },
   {
-    id: 'knock',
-    label: 'Knock',
-    /** Two low, flat notes — the least musical option, for a shared room. */
+    id: 'ping',
+    label: 'Ping',
+    /** Bright and quick, a fifth apart. `triangle` is what makes it cut through. */
     notes: [
-      { hz: 220, at: 0, ms: 70 },
-      { hz: 220, at: 110, ms: 70 },
+      { hz: 988, at: 0, ms: 70, wave: 'triangle' },
+      { hz: 1480, at: 70, ms: 140, wave: 'triangle', shape: 'decay' },
+    ],
+  },
+  {
+    id: 'ding',
+    label: 'Ding',
+    /**
+     * One bright note with a long tail. ⚠ The quiet note an octave above is
+     * what stops it sounding like a test tone — a real bell has overtones, and
+     * one sine alone never does.
+     */
+    notes: [
+      { hz: 1046, at: 0, ms: 320, wave: 'triangle', shape: 'decay' },
+      { hz: 2093, at: 0, ms: 180, shape: 'decay', level: 0.35 },
     ],
   },
   {
     id: 'chime',
     label: 'Chime',
-    /** A rising third, the longest of them, and still under a third of a second. */
+    /** A rising third, the most musical of them. */
     notes: [
       { hz: 660, at: 0, ms: 110 },
-      { hz: 990, at: 80, ms: 200 },
+      { hz: 990, at: 80, ms: 200, shape: 'decay' },
     ],
   },
   {
-    id: 'tap',
-    label: 'Tap',
-    /** One note, as short as is still audible. For somebody who wants almost nothing. */
-    notes: [{ hz: 1320, at: 0, ms: 55 }],
+    id: 'marimba',
+    label: 'Marimba',
+    /** Warm and wooden — two struck notes, a fourth apart, with no sharp edge. */
+    notes: [
+      { hz: 587, at: 0, ms: 150, wave: 'triangle', shape: 'decay' },
+      { hz: 880, at: 90, ms: 220, wave: 'triangle', shape: 'decay' },
+    ],
   },
-] as const;
+  {
+    id: 'alert',
+    label: 'Alert',
+    /**
+     * The loudest option, for somebody who must not miss one. ⚠ `square` is
+     * deliberately harsh and the two notes are close together, which is what
+     * the ear reads as urgent rather than pleasant.
+     */
+    notes: [
+      { hz: 784, at: 0, ms: 80, wave: 'square', level: 0.55 },
+      { hz: 1047, at: 95, ms: 80, wave: 'square', level: 0.55 },
+      { hz: 784, at: 190, ms: 110, wave: 'square', level: 0.55, shape: 'decay' },
+    ],
+  },
+];
 
 export type ChatToneId = (typeof CHAT_TONES)[number]['id'];
 
@@ -179,14 +307,24 @@ export function playChatTone(id: ChatToneId): void {
       const oscillator = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      // A sine, because every other wave shape is harsher at the volume a
-      // notification wants to be.
-      oscillator.type = 'sine';
-      oscillator.frequency.value = note.hz;
+      oscillator.type = note.wave ?? 'sine';
+      oscillator.frequency.setValueAtTime(note.hz, start + note.at / 1000);
 
       const from = start + note.at / 1000;
       const to = from + note.ms / 1000;
-      const fade = FADE_MS / 1000;
+      const peak = PEAK_GAIN * (note.level ?? 1);
+      const fade = Math.min(FADE_MS / 1000, note.ms / 2000);
+
+      /*
+       * ⚠ EXPONENTIAL, because pitch is PERCEIVED that way. A linear sweep from
+       * 420Hz to 1180Hz spends most of its time already sounding high, and the
+       * fast rise that makes a pop sound like a pop is gone.
+       *
+       * ⚠ `exponentialRampToValueAtTime` cannot approach zero and throws on a
+       * non-positive target — harmless here because every `toHz` is a real
+       * frequency, and stated because it is the trap in this API.
+       */
+      if (note.toHz) oscillator.frequency.exponentialRampToValueAtTime(note.toHz, to);
 
       /*
        * ⚠ THE FADES ARE NOT POLISH. An oscillator switched on and off at full
@@ -194,9 +332,24 @@ export function playChatTone(id: ChatToneId): void {
        * waveform — which is louder and more irritating than the note itself.
        */
       gain.gain.setValueAtTime(0, from);
-      gain.gain.linearRampToValueAtTime(PEAK_GAIN, from + fade);
-      gain.gain.setValueAtTime(PEAK_GAIN, Math.max(from + fade, to - fade));
-      gain.gain.linearRampToValueAtTime(0, to);
+      gain.gain.linearRampToValueAtTime(peak, from + fade);
+
+      if (note.shape === 'decay') {
+        /*
+         * ⚠ STRUCK RATHER THAN PLAYED. The level falls away from the first
+         * instant, which is what a bell, a block of wood and a bursting bubble
+         * all have in common and a held note does not.
+         *
+         * ⚠ Ramped to a near-zero epsilon and then SET to zero. Exponential
+         * ramps cannot reach zero — passing it throws — and stopping at the
+         * epsilon instead would leave the very click the fades exist to avoid.
+         */
+        gain.gain.exponentialRampToValueAtTime(Math.max(peak * 0.001, 0.0001), to);
+        gain.gain.setValueAtTime(0, to);
+      } else {
+        gain.gain.setValueAtTime(peak, Math.max(from + fade, to - fade));
+        gain.gain.linearRampToValueAtTime(0, to);
+      }
 
       oscillator.connect(gain).connect(ctx.destination);
       oscillator.start(from);

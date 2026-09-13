@@ -116,7 +116,17 @@ export function ChatPreferencesPage() {
                   value={choice.value}
                   checked={settings.tone === choice.value}
                   disabled={!loaded || !settings.enabled}
-                  onChange={() => update({ ...settings, tone: choice.value })}
+                  /*
+                   * ⚠ CHOOSING ONE PLAYS IT. Every OS sound picker does this,
+                   * and with ten options the alternative is picking blind and
+                   * then hunting for the Play button to find out what you
+                   * chose. It doubles as the unlock, so somebody who never
+                   * presses Play is still unlocked by choosing.
+                   */
+                  onChange={() => {
+                    update({ ...settings, tone: choice.value });
+                    playChatTone(choice.value);
+                  }}
                 />
                 <span className="text-sm">{choice.label}</span>
               </label>

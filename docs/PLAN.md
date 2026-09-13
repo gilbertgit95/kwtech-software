@@ -539,6 +539,70 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **Ten tones, and the engine grew to make them possible.**
+
+  Asked for by the operator: more tones, "like Messenger and more". Four became
+  ten, and the interesting part is that the catalogue could not simply be
+  extended — **a pop is not a note.** It is a fast upward PITCH SWEEP under a
+  percussive decay, and an engine of steady sine tones cannot express one at
+  all. A steady tone of the same length is a beep.
+
+  So `ChatToneNote` gained three fields, each of which unlocks a family of
+  sounds: **`toHz`** (a sweep — pop, bubble), **`wave`** (`triangle` brightens,
+  `square` is harsh and carries — ping, alert), and **`shape: 'decay'`** (struck
+  rather than played — tap, marimba, ding). Plus `level`, so a quiet overtone
+  can sit under a fundamental, which is what stops `ding` sounding like a test
+  tone: a real bell has overtones and one sine never does.
+
+  **⚠ EXPONENTIAL RAMPS, because pitch is perceived that way.** A linear sweep
+  from 420Hz to 1180Hz spends most of its time already sounding high, and the
+  fast rise that makes a pop a pop is gone. ⚠ And `exponentialRampToValueAtTime`
+  THROWS on a non-positive target and cannot reach zero — so a decay ramps to an
+  epsilon and then SETS zero, because stopping at the epsilon leaves exactly the
+  click the envelope exists to remove. A test asserts every frequency in the
+  catalogue is positive, since a `toHz: 0` typo would throw inside the
+  try/catch that keeps a tone from breaking a render: silent, and the tone
+  simply never plays again.
+
+  **⚠ NAMED FOR WHAT THEY SOUND LIKE, NEVER FOR A PRODUCT.** "Pop", "Ding",
+  "Ping" — not the name of any messenger that has one. Two reasons and the
+  second is the real one: a real product's notification sound is a recorded
+  asset somebody owns, so these are ORIGINAL sounds in a familiar genre rather
+  than imitations of a specific one; and a tone named after another app sets an
+  expectation this cannot meet, which reads as a bad copy rather than as its own
+  sound. A test fails on a brand name in the catalogue.
+
+  **Ten, and there is a ceiling for a reason.** A picker somebody scrolls is a
+  picker somebody abandons, and every tone has to be auditioned one at a time to
+  be chosen. ⚠ Which is also why **choosing one now PLAYS it** — with four
+  options the Play button was enough; with ten, picking blind and then hunting
+  for Play to discover what you chose is the actual experience. It doubles as
+  the autoplay unlock.
+
+  ## ⚠ A LINT AUTOFIX SILENTLY DISARMED A TEST
+
+  Worth its own heading, because it is the most alarming thing found today and
+  it will happen again.
+
+  `tone-playback.test.ts` stubs `AudioContext` so the audio GRAPH can be
+  asserted — nothing here runs a browser, so "does it sound right" is
+  unanswerable, but "are the right calls made in the right order" is. The stub
+  was `{ AudioContext: function () { return context; } }`. It passed.
+
+  Then `biome check --write` ran and rewrote it to `() => context`. **`new` on
+  an arrow function throws**, `playChatTone` swallows every exception by design,
+  and all seven assertions started seeing zero oscillators — while the file
+  still looked correct. The failure was caught only because the full suite ran
+  after the autofix.
+
+  ⚠ The lesson is not "distrust the formatter". It is that **a test whose
+  subject swallows exceptions can be disabled without failing**, and the
+  swallowing is deliberate and correct here. The fake is now a `class`, which is
+  a real constructor Biome will not rewrite, with the reason written above it
+  and a targeted `biome-ignore` for `noConstructorReturn` — returning the shared
+  context IS the fake, and copying its fields onto `this` would detach `state`,
+  which `resume()` mutates and the suspended-context test depends on.
+
 - **2026-09-13** — **A sub-page with no way out, and the reason a private
   helper is not a convention.**
 

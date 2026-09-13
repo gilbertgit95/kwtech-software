@@ -159,8 +159,18 @@ what switches the feature on for real.
 
 ### Synthesised, not fetched
 
-No audio file ships. The tones are built from an oscillator, described in
-`chat-tone.ts` as a couple of notes each. A file has to arrive before it can
+No audio file ships. The ten tones are built from an oscillator, described in
+`chat-tone.ts` as a few notes each — a note being a pitch, a duration, an
+optional SWEEP to a second pitch, a waveform and an envelope. ⚠ The sweep is
+what makes a pop a pop: pitch rising fast through a short decay is what the ear
+reads as something bursting, and a steady tone of the same length is a beep.
+
+⚠ **Named for what they sound like, never for a product.** "Pop", "Ding",
+"Ping" — not the name of any messenger that has one. A real product's
+notification sound is a recorded asset somebody owns, so these are original
+sounds in a familiar genre; and a tone named after another app sets an
+expectation this cannot meet, which reads as a bad copy rather than its own
+sound. A test fails on a brand name in the catalogue. A file has to arrive before it can
 play — so the first message after a load would race the download, and the fix
 is preloading every tone on every page. ⚠ What this gives up: a designer cannot
 replace a sound without writing code. If that becomes the point, `play` takes a
