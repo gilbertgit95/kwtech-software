@@ -100,6 +100,19 @@ describe('the tone catalogue', () => {
   });
 
   /**
+   * ⚠ THE DEFAULT IS A PRODUCT DECISION, not an incidental value — it is what
+   * everybody who never opens the picker hears, forever. Pinned so that
+   * reordering the catalogue or renaming a tone cannot move it by accident.
+   *
+   * ⚠ Changing it moves nobody who has already chosen: the setting lives in
+   * `localStorage` and the default is consulted only when there is no stored
+   * value. See `DEFAULT_CHAT_TONE`.
+   */
+  it('⚠ defaults to the bubble pop, which is what a message sounds like', () => {
+    expect(DEFAULT_CHAT_TONE).toBe('bubble');
+  });
+
+  /**
    * ⚠ THE TRAP IN THE WEB AUDIO API, and the one a catalogue entry can spring
    * without anybody noticing. `exponentialRampToValueAtTime` THROWS on a
    * non-positive target, so a sweep written with `toHz: 0` — or a typo that

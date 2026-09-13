@@ -188,6 +188,11 @@ validates — storage that throws, unparseable JSON, the wrong shape, a tone thi
 build no longer ships — because every one of those failures otherwise lands at
 the moment a message arrives.
 
+⚠ The default tone is **Bubble** — the sound people already read as "a
+message", so it needs no explanation. ⚠ Changing the default moves nobody who
+has chosen: the stored value wins, and the default is consulted only when there
+is none.
+
 ⚠ Sound is **off by default**. Chat is one page inside a back-office
 application, and a tab that starts making noise because somebody navigated to
 the product is a setting people hunt for angrily rather than discover.

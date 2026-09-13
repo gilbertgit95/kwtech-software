@@ -124,7 +124,11 @@ export const CHAT_TONES: readonly ChatTone[] = [
   {
     id: 'bubble',
     label: 'Bubble',
-    /** Two pops, the second higher and softer — a smaller bubble behind the first. */
+    /**
+     * Two pops, the second higher and softer — a smaller bubble behind the
+     * first. ⚠ THE DEFAULT: the sound people already read as "a message",
+     * which is the one that needs no explanation.
+     */
     notes: [
       { hz: 360, toHz: 980, at: 0, ms: 85, shape: 'decay' },
       { hz: 620, toHz: 1420, at: 95, ms: 70, shape: 'decay', level: 0.6 },
@@ -133,7 +137,7 @@ export const CHAT_TONES: readonly ChatTone[] = [
   {
     id: 'blip',
     label: 'Blip',
-    /** Two quick notes up. The default: short, and hard to mistake for the OS. */
+    /** Two quick notes up. Short, and hard to mistake for an OS sound. */
     notes: [
       { hz: 880, at: 0, ms: 90 },
       { hz: 1175, at: 90, ms: 120 },
@@ -197,8 +201,18 @@ export const CHAT_TONES: readonly ChatTone[] = [
 
 export type ChatToneId = (typeof CHAT_TONES)[number]['id'];
 
-/** Two notes up: short, distinct, and not mistakable for a system sound. */
-export const DEFAULT_CHAT_TONE: ChatToneId = 'blip';
+/**
+ * Two bubble pops, the second smaller. The sound people already associate with
+ * a message arriving, which makes it the one that needs no explanation.
+ *
+ * ⚠ CHANGING THIS MOVES NOBODY WHO HAS CHOSEN. The setting lives in
+ * `localStorage` and `readChatSettings` falls back to this only when the stored
+ * value is absent or no longer valid — so a new default reaches people who
+ * never opened the picker, and leaves everybody who did exactly where they
+ * were. That is the right way round, and it is a property of where the setting
+ * is stored rather than of anything written here.
+ */
+export const DEFAULT_CHAT_TONE: ChatToneId = 'bubble';
 
 export function isChatToneId(value: unknown): value is ChatToneId {
   return typeof value === 'string' && CHAT_TONES.some((tone) => tone.id === value);
