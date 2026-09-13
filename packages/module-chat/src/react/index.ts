@@ -40,11 +40,21 @@ export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.
 export { AvailabilityPicker } from './components/availability-picker.js';
 export { ChatSubPage } from './components/chat-sub-page.js';
 export { ConversationList } from './components/conversation-list.js';
+export { EmojiPicker } from './components/emoji-picker.js';
 export { MessageComposer } from './components/message-composer.js';
 export { MessageThread } from './components/message-thread.js';
 export { NewConversation } from './components/new-conversation.js';
 export { PersonFinder } from './components/person-finder.js';
 export { PresenceDot } from './components/presence-dot.js';
+export {
+  ALL_EMOJI,
+  EMOJI_GROUPS,
+  type EmojiGroup,
+  insertEmoji,
+  isPlausibleEmoji,
+  MAX_RECENT_EMOJI,
+  withRecentEmoji,
+} from './emoji.js';
 export { type ChatWebModuleOptions, chatWebModule } from './module.js';
 export { ChatPage } from './pages/chat-page.js';
 export { ChatPreferencesPage } from './pages/chat-preferences-page.js';

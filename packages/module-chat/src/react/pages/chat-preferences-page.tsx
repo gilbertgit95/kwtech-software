@@ -155,6 +155,57 @@ export function ChatPreferencesPage() {
           only affects this tab is a worse answer to the same question.
         */}
       </section>
+
+      <section className="mt-4 rounded-md border border-border p-4">
+        <h2 className="text-sm font-medium">Quick emoji</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          One tap sends this, without touching whatever you are already writing. Pick one, or clear it to remove the
+          button.
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-1">
+          {QUICK_EMOJI_CHOICES.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => update({ ...settings, quickEmoji: emoji })}
+              aria-label={emoji}
+              aria-pressed={settings.quickEmoji === emoji}
+              className={cn(
+                'rounded-md border px-2 py-1 text-lg leading-none',
+                settings.quickEmoji === emoji ? 'border-primary bg-accent' : 'border-border hover:bg-accent/60',
+              )}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
+        {/*
+          ⚠ Clearing is offered explicitly rather than by deselecting the chosen
+          one. "Press the highlighted button again to turn it off" is a rule
+          nobody is told, and a person who wants the button gone should not have
+          to guess that toggling is how.
+        */}
+        <button
+          type="button"
+          onClick={() => update({ ...settings, quickEmoji: '' })}
+          disabled={!loaded || settings.quickEmoji === ''}
+          className="mt-3 rounded-md border border-border px-3 py-1 text-sm hover:bg-accent disabled:opacity-50"
+        >
+          {settings.quickEmoji === '' ? 'No quick button' : 'Remove the button'}
+        </button>
+      </section>
     </ChatSubPage>
   );
 }
+
+/**
+ * What the quick button may be set to, from this screen.
+ *
+ * ⚠ A SHORT LIST, not the whole picker. This is the one-tap reply — the handful
+ * of things people actually send alone — and offering four hundred here would
+ * make choosing one a task. Anything else is still reachable: the composer's
+ * picker inserts any emoji into a message.
+ */
+const QUICK_EMOJI_CHOICES = ['👍', '👌', '🙏', '❤️', '🎉', '😂', '👀', '✅', '🔥', '💯'];

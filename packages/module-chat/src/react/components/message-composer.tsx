@@ -1,8 +1,11 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { type KeyboardEvent, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { MAX_BODY_CODE_POINTS } from '../../domain/messages.js';
+import { type ChatSettings, DEFAULT_CHAT_SETTINGS, readChatSettings, writeChatSettings } from '../chat-settings.js';
+import { insertEmoji, withRecentEmoji } from '../emoji.js';
+import { EmojiPicker } from './emoji-picker.js';
 
 /**
  * Writing a message.
@@ -34,6 +37,15 @@ export function MessageComposer({
   disabled?: boolean;
 }) {
   const [body, setBody] = useState('');
+  const [picking, setPicking] = useState(false);
+  /*
+   * ⚠ Read ONCE on mount, not per render: `readChatSettings` touches
+   * localStorage, and this component re-renders on every keystroke.
+   */
+  const [settings, setSettings] = useState<ChatSettings>(DEFAULT_CHAT_SETTINGS);
+  useEffect(() => setSettings(readChatSettings()), []);
+
+  const box = useRef<HTMLTextAreaElement>(null);
 
   const length = [...body].length;
   const tooLong = length > MAX_BODY_CODE_POINTS;
@@ -43,6 +55,58 @@ export function MessageComposer({
     if (!sendable) return;
     onSend(body);
     setBody('');
+  }
+
+  /**
+   * Put the chosen emoji where the caret is, and leave the caret after it.
+   *
+   * ⚠ THE SELECTION IS READ FROM THE DOM, not from React state, because the
+   * textarea owns it and nothing else knows where the caret went. The insertion
+   * ITSELF is `insertEmoji`, a pure function with tests — this is the ten lines
+   * that cannot be tested without a browser, kept as small as possible.
+   */
+  function pick(emoji: string) {
+    const field = box.current;
+    const at = field
+      ? { start: field.selectionStart, end: field.selectionEnd }
+      : { start: body.length, end: body.length };
+
+    const { text, caret } = insertEmoji(body, emoji, at);
+    setBody(text);
+    remember(emoji);
+
+    /*
+     * ⚠ AFTER THE RENDER, or the caret is set on a textarea that still holds
+     * the old value and React overwrites it. The picker stays OPEN — people
+     * send several in a row, and a panel that closes after one is a panel
+     * somebody reopens four times.
+     */
+    requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(caret, caret);
+    });
+  }
+
+  /** Move it to the front of the recents, and persist. */
+  function remember(emoji: string) {
+    setSettings((current) => {
+      const next = { ...current, recentEmoji: withRecentEmoji(current.recentEmoji, emoji) };
+      writeChatSettings(next);
+      return next;
+    });
+  }
+
+  /**
+   * ⚠ SENDS IMMEDIATELY, and does NOT touch what is in the box.
+   *
+   * The quick button is a reply, not a shortcut for typing one — appending to a
+   * half-written message and sending THAT would destroy the draft. Somebody
+   * mid-sentence who taps 👍 means "yes, and I am still writing".
+   */
+  function sendQuick() {
+    if (disabled || !settings.quickEmoji) return;
+    onSend(settings.quickEmoji);
+    remember(settings.quickEmoji);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -64,6 +128,7 @@ export function MessageComposer({
     <div className="border-t border-border p-3">
       <div className="flex items-end gap-2">
         <textarea
+          ref={box}
           value={body}
           onChange={(event) => {
             setBody(event.target.value);
@@ -80,6 +145,45 @@ export function MessageComposer({
             'disabled:opacity-50',
           )}
         />
+        {/*
+          `relative`, because the picker is absolutely positioned against this
+          and opens UPWARDS — a panel below the composer would be off the bottom
+          of the screen on every phone.
+        */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setPicking((open) => !open)}
+            disabled={disabled}
+            aria-expanded={picking}
+            aria-label="Choose an emoji"
+            className="rounded-md px-2 py-2 text-lg leading-none hover:bg-accent disabled:opacity-50"
+          >
+            🙂
+          </button>
+          {picking ? (
+            <EmojiPicker recent={settings.recentEmoji} onPick={pick} onClose={() => setPicking(false)} />
+          ) : null}
+        </div>
+
+        {/*
+          ⚠ THE QUICK BUTTON, and it is hidden rather than disabled when unset —
+          somebody who cleared it in preferences asked for it to be gone, not
+          greyed out. Set in /chat/preferences.
+        */}
+        {settings.quickEmoji ? (
+          <button
+            type="button"
+            onClick={sendQuick}
+            disabled={disabled}
+            title={`Send ${settings.quickEmoji}`}
+            aria-label={`Send ${settings.quickEmoji}`}
+            className="shrink-0 rounded-md border border-border px-2 py-2 text-lg leading-none hover:bg-accent disabled:opacity-50"
+          >
+            {settings.quickEmoji}
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={send}

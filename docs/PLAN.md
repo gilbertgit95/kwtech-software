@@ -539,6 +539,80 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **An emoji picker and a one-tap button, and the picker is
+  160 strings rather than a megabyte.**
+
+  Asked for by the operator. Emoji already worked — verified end to end against
+  the live API, including a ZWJ family sequence — because they are Unicode text
+  in a normal textarea. What was missing was a shortcut to the common ones.
+
+  **⚠ CURATED, NOT A LIBRARY, which is the decision §9 deferred.** Every npm
+  picker ships the full Unicode set with names, keywords and usually sprite
+  sheets: 200KB to over 1MB hanging off a text box in a back-office
+  application. This is **160 emoji in four groups — 967 bytes of plain
+  strings** — plus a recents row, and a test fails if the catalogue grows past
+  400, because at that point the trade that justified writing it by hand has
+  quietly been lost.
+  ⚠ What it gives up, stated: the complete catalogue, search by name, skin-tone
+  variants beyond the few listed, flags. What it does NOT give up is access to
+  any of them — the OS picker still works. This is a shortcut, not the only way
+  in.
+
+  **⚠ INSERTION IS AT THE CARET, and replaces a selection.** A naive picker
+  appends to the end, which moves somebody's cursor without asking every time
+  they pick one mid-sentence. `insertEmoji` is PURE so the rule is testable; the
+  ten lines that genuinely need a textarea stay in the component.
+  ⚠ The caret is measured in UTF-16 UNITS, not code points, because that is
+  what `selectionStart` and `setSelectionRange` speak. Mixing the two puts an
+  emoji INSIDE a previous one and produces a broken glyph — asserted.
+
+  **⚠ `onMouseDown` WITH `preventDefault`, NOT `onClick`**, and this is the
+  detail that would have shipped broken. A click moves focus to the button,
+  which BLURS the textarea, and a blurred textarea reports a selection of 0 —
+  so every emoji would land at the start of the message rather than at the
+  caret. Preventing the default keeps focus where it is.
+
+  **The picker stays OPEN after a pick.** People send several in a row, and a
+  panel that closes after one is a panel somebody reopens four times.
+
+  ## The quick button
+
+  **⚠ IT DOES NOT TOUCH WHAT IS IN THE BOX.** The quick button is a REPLY, not a
+  shortcut for typing one: appending to a half-written message and sending that
+  would destroy the draft. Somebody mid-sentence who taps 👍 means "yes, and I
+  am still writing".
+
+  **⚠ IT DEFAULTS TO ON, which points the opposite way to the tone default —
+  deliberately.** A sound plays without being asked for, in a room that may have
+  other people in it, so silence is the polite default. A button sits there and
+  does nothing until pressed, and it is the single most-sent message in any
+  chat; defaulting it to absent would hide the feature from everybody who never
+  opens preferences. The two defaults disagree because the two things are not
+  alike.
+
+  **⚠ THE STORED VALUE IS VALIDATED, AND THIS IS THE ONE THAT MATTERS.** It comes
+  out of `localStorage`, which a person can edit by hand, and **one tap SENDS
+  it** — so without a cap a hand-edited entry is an arbitrary message body one
+  tap away. `isPlausibleEmoji` bounds the length at twelve code points (a
+  four-person ZWJ family is seven, so it cannot be one) and refuses whitespace
+  and control characters.
+  ⚠ DELIBERATELY LOOSE beyond that, and pinned by a test so nobody "fixes" it:
+  real emoji validation needs Unicode property tables, which is the thing this
+  whole file exists to avoid shipping. Somebody can set their own button to
+  "ok". That is their device and their button — it is a guard against a stored
+  value rendering as something surprising, not a security property.
+
+  **⚠ THREE OUTCOMES FOR A STORED `quickEmoji`, not two.** Absent means never
+  chosen, so it takes the default; `''` means deliberately removed, so it stays
+  empty; anything implausible falls back to NO BUTTON rather than to the
+  default, because silently restoring a button somebody removed is the more
+  surprising failure. Recents are filtered and capped for the same reason — a
+  hand-edited array of a thousand strings must not become a thousand buttons.
+
+  ⚠ **REACTIONS ARE STILL A DIFFERENT FEATURE** (§12.43's neighbour): an emoji
+  attached TO a message, with its own table. None of this is that, and the two
+  must not be conflated because one now exists.
+
 - **2026-09-13** — **What adopting `module-chat` actually costs, measured — and
   one real redundancy removed.**
 

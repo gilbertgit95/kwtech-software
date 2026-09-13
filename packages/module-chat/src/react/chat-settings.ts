@@ -24,6 +24,7 @@
  */
 
 import { CHAT_TONES, type ChatToneId, DEFAULT_CHAT_TONE, isChatToneId } from './chat-tone.js';
+import { isPlausibleEmoji, MAX_RECENT_EMOJI } from './emoji.js';
 
 /**
  * ⚠ `kwtech_` prefixed, like every other preference these apps store.
@@ -43,6 +44,22 @@ export interface ChatSettings {
   enabled: boolean;
   /** Which sound, remembered across a mute. */
   tone: ChatToneId;
+  /**
+   * The one-tap emoji beside the composer. Empty string means no button.
+   *
+   * ⚠ Per device like everything else here, and that is the RIGHT scope for
+   * this one too: the quick button is a habit of the keyboard somebody is
+   * sitting at, not a property of who they are.
+   */
+  quickEmoji: string;
+  /**
+   * The picker's recents, most recent first.
+   *
+   * ⚠ Stored rather than held in React state, because the value of a recents
+   * list is entirely that it survives — one that resets on reload is a list
+   * that is always empty when it matters.
+   */
+  recentEmoji: string[];
 }
 
 /**
@@ -55,7 +72,22 @@ export interface ChatSettings {
  * first tone anybody hears is the one they just previewed in settings, which is
  * the same gesture that unlocks playback.
  */
-export const DEFAULT_CHAT_SETTINGS: ChatSettings = { enabled: false, tone: DEFAULT_CHAT_TONE };
+export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
+  enabled: false,
+  tone: DEFAULT_CHAT_TONE,
+  /**
+   * ⚠ A thumbs-up, and the button is ON by default — unlike the tone.
+   *
+   * The two defaults point opposite ways on purpose. A sound plays without
+   * being asked for, in a room that may have other people in it, so silence is
+   * the polite default. A button sits there and does nothing until somebody
+   * presses it, and it is the single most-sent message in any chat — defaulting
+   * it to absent would hide the feature from everybody who never opens
+   * preferences.
+   */
+  quickEmoji: '👍',
+  recentEmoji: [],
+};
 
 /**
  * What is stored, or the default.
@@ -81,10 +113,28 @@ export function readChatSettings(): ChatSettings {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_CHAT_SETTINGS;
 
-    const candidate = parsed as { enabled?: unknown; tone?: unknown };
+    const candidate = parsed as { enabled?: unknown; tone?: unknown; quickEmoji?: unknown; recentEmoji?: unknown };
     return {
       enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : DEFAULT_CHAT_SETTINGS.enabled,
       tone: isChatToneId(candidate.tone) ? candidate.tone : DEFAULT_CHAT_SETTINGS.tone,
+      /*
+       * ⚠ VALIDATED, and this one SENDS. The quick button's value becomes a
+       * message body on one tap, and it comes out of storage a person can edit
+       * by hand — so an implausible value falls back to none rather than to the
+       * default, because silently restoring a button somebody removed is worse
+       * than showing no button.
+       *
+       * `''` is a legitimate stored value: it is "I turned the button off".
+       */
+      quickEmoji: quickEmojiFrom(candidate.quickEmoji),
+      /*
+       * ⚠ FILTERED, not taken. Every entry is checked and the list is capped,
+       * so a hand-edited array of a thousand strings cannot become a thousand
+       * buttons in the picker.
+       */
+      recentEmoji: Array.isArray(candidate.recentEmoji)
+        ? candidate.recentEmoji.filter(isPlausibleEmoji).slice(0, MAX_RECENT_EMOJI)
+        : [],
     };
   } catch {
     return DEFAULT_CHAT_SETTINGS;
@@ -113,3 +163,17 @@ export function writeChatSettings(settings: ChatSettings): void {
 
 /** The tones, as a picker's options. One list, from the catalogue itself. */
 export const CHAT_TONE_CHOICES = CHAT_TONES.map((tone) => ({ value: tone.id, label: tone.label }));
+
+/**
+ * What a stored `quickEmoji` is worth.
+ *
+ * ⚠ Three outcomes, not two. Absent means "never chosen", so it takes the
+ * default; an empty string means "deliberately removed", so it stays empty; and
+ * anything implausible falls back to NO BUTTON rather than to the default,
+ * because restoring a button somebody removed is the more surprising failure.
+ */
+function quickEmojiFrom(stored: unknown): string {
+  if (stored === undefined) return DEFAULT_CHAT_SETTINGS.quickEmoji;
+  if (stored === '') return '';
+  return isPlausibleEmoji(stored) ? stored : '';
+}

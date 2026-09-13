@@ -128,6 +128,47 @@ in it, deciding who runs it — and **not one word of what was said in it**.
 seeds nothing; a host says who may use chat by adopting the `chat-user` preset
 into one of its own roles.
 
+## Emoji — a picker, and a one-tap button
+
+Emoji always worked: they are Unicode text in a normal textarea, which is why
+no schema and no server change was ever needed. What was missing was a shortcut
+to the common ones.
+
+⚠ **No library.** Every npm picker ships the full Unicode set with names,
+keywords and usually sprite sheets — 200KB to over 1MB hanging off a text box.
+This is **160 curated emoji in four groups, under 1KB of plain strings**, plus a
+recents row. What it gives up: the complete catalogue, search by name, and
+flags. What it does not give up is access to anything else — **the OS picker
+still works**, and this is a shortcut rather than the only way in.
+
+⚠ **Insertion is at the CARET, replacing a selection.** A naive picker appends
+to the end, which moves somebody's cursor without asking every time they pick
+one mid-sentence. `insertEmoji` is pure and tested; the caret is measured in
+UTF-16 units because that is what `selectionStart` speaks — mixing that with
+code points is how an emoji lands inside a previous one.
+
+⚠ The picker's buttons use `onMouseDown` with `preventDefault`, not `onClick`.
+A click moves focus to the button, which blurs the textarea, and a blurred
+textarea reports a selection of 0 — so the emoji would land at the start of the
+message rather than at the caret.
+
+### The quick button
+
+One tap sends a single emoji. ⚠ It **does not touch what is in the box**: the
+quick button is a reply, not a shortcut for typing one, and appending to a
+half-written message and sending that would destroy the draft.
+
+Set it in `/chat/preferences`; clearing it removes the button. ⚠ It defaults to
+👍 and is ON, which points the opposite way to the tone default — deliberately.
+A sound plays without being asked for in a room that may have other people in
+it, so silence is polite; a button sits there doing nothing until pressed, and
+defaulting it to absent would hide the feature from everybody who never opens
+preferences.
+
+⚠ **The stored value is validated, and this is the one that matters**: it comes
+out of `localStorage`, which a person can edit by hand, and one tap SENDS it.
+Without a cap a hand-edited entry is an arbitrary message body one tap away.
+
 ## The tone, and the settings that are not on the server
 
 A short sound when a message arrives — and **the whole of what `dnd` can
