@@ -86,57 +86,51 @@ function toFeatureSpec(contribution: FeatureContribution): FeatureSpec {
 }
 
 /**
- * Shaped as descriptors so `composeFeatures` can read them. Only `key` and
- * `features` are required by `WebModuleDescriptor`, which is what makes it the
- * cheap shape to borrow here — no Nest module has to be constructed.
+ * ── WHAT EVERY MODULE DECLARES, IN ONE LIST ────────────────────────────────
+ *
+ * One descriptor per module, carrying all four of its registries.
+ *
+ * ## ⚠ Why this is one array and not three
+ *
+ * It WAS three — `FEATURE_SOURCES`, `LIMIT_SOURCES`, `DEFAULT_SOURCES` — each
+ * listing the same modules again. That is three chances to add a module to two
+ * of them, and **every one of those omissions is silent**:
+ *
+ *   features   an unlisted module's BINDINGS never load, so every one of its
+ *              mutations is reachable by anybody signed in. `module-chat`
+ *              cannot use `@RequireFeature` — the decorator belongs to another
+ *              module — so this registry IS its guard.
+ *   limits     an undeclared cap resolves to UNLIMITED, which is the expensive
+ *              direction and reports nothing.
+ *   defaults   an uncomposed default has no row on the screen and is never
+ *              resolved, so an operator sets a value nothing reads.
+ *
+ * `WebModuleDescriptor` already carries all four fields, and each composer
+ * ignores a module that declares nothing for it. So one list feeds all of them,
+ * and adopting a module is one line that cannot be half-done.
+ *
+ * ⚠ Descriptors rather than Nest modules on purpose: only `key` is required, so
+ * nothing here has to construct a `DynamicModule` to be counted.
  */
-const FEATURE_SOURCES: readonly WebModuleDescriptor[] = [
-  { key: 'permissions', features: FEATURE_REGISTRY },
+const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
+  {
+    key: 'permissions',
+    features: FEATURE_REGISTRY,
+    limits: LIMIT_CONTRIBUTIONS,
+    defaults: APP_DEFAULT_REGISTRY,
+    defaultMoments: APP_DEFAULT_MOMENT_REGISTRY,
+  },
   { key: 'auth', features: AUTH_FEATURE_REGISTRY },
-  /*
-   * ⚠ Chat's keys are not documentation. `module-chat` cannot use
-   * `@RequireFeature` — the decorator belongs to another module — so its
-   * operations are guarded by the BINDINGS in this registry, and composing it
-   * here is what turns them on. Drop this line and every chat mutation is
-   * reachable by anybody signed in.
-   */
-  { key: 'chat', features: CHAT_FEATURE_REGISTRY },
+  {
+    key: 'chat',
+    features: CHAT_FEATURE_REGISTRY,
+    limits: CHAT_LIMIT_REGISTRY,
+    defaults: CHAT_DEFAULT_REGISTRY,
+    defaultMoments: CHAT_DEFAULT_MOMENT_REGISTRY,
+  },
 ];
 
-export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(FEATURE_SOURCES).map(toFeatureSpec);
-
-/**
- * EVERY module's caps, composed — the limits half of ALL_FEATURES.
- *
- * ⚠ Composed even though exactly one module declares caps today, because the
- * failure when a second one does is SILENT: `resolveLimits` builds its map by
- * walking whatever registry it was given, so an uncomposed key is dropped before
- * any check reads it and the cap resolves to "no limit" — with the operator's
- * number sitting in `perm_role_limit`, visible in the role editor, enforcing
- * nothing. Adding `module-chat` here is one entry in the array below, exactly as
- * its features are.
- */
-const LIMIT_SOURCES: readonly WebModuleDescriptor[] = [
-  { key: 'permissions', limits: LIMIT_CONTRIBUTIONS },
-  { key: 'chat', limits: CHAT_LIMIT_REGISTRY },
-];
-
-/**
- * THE THIRD DECLARATION — what happens when nobody says.
- *
- * ⚠ The same hazard as the other two, and the quietest of the three: the
- * defaults SCREEN lists this registry, so a default nobody composed has no row
- * to set — and `listDefaults` reads it to answer, so a `perm_default` row for
- * an uncomposed key is ignored. An operator would set a value and nothing would
- * read it, with no error anywhere.
- *
- * `module-permissions` contributes its own nine through its constant; chat
- * contributes two. Neither module can see the other's.
- */
-const DEFAULT_SOURCES: readonly WebModuleDescriptor[] = [
-  { key: 'permissions', defaults: APP_DEFAULT_REGISTRY, defaultMoments: APP_DEFAULT_MOMENT_REGISTRY },
-  { key: 'chat', defaults: CHAT_DEFAULT_REGISTRY, defaultMoments: CHAT_DEFAULT_MOMENT_REGISTRY },
-];
+export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);
 
 /**
  * The HEADINGS those defaults appear under, from the same sources.
@@ -150,7 +144,7 @@ const DEFAULT_SOURCES: readonly WebModuleDescriptor[] = [
  * modules naming one is legitimate: the lowest order wins. See
  * `composeDefaultMoments`.
  */
-export const ALL_DEFAULT_MOMENTS = composeDefaultMoments(DEFAULT_SOURCES);
+export const ALL_DEFAULT_MOMENTS = composeDefaultMoments(MODULE_DECLARATIONS);
 
 /**
  * Every default the app offers, narrowed to what the resolving module needs.
@@ -161,7 +155,7 @@ export const ALL_DEFAULT_MOMENTS = composeDefaultMoments(DEFAULT_SOURCES);
  * happens once, here, where a bad value is a boot failure rather than a screen
  * that renders nothing.
  */
-export const ALL_DEFAULTS: readonly AppDefaultSpec[] = composeDefaults(DEFAULT_SOURCES).map((contribution) => ({
+export const ALL_DEFAULTS: readonly AppDefaultSpec[] = composeDefaults(MODULE_DECLARATIONS).map((contribution) => ({
   key: contribution.key,
   module: contribution.module,
   kind: contribution.kind as AppDefaultSpec['kind'],
@@ -194,4 +188,4 @@ function toLimitSpec(contribution: LimitContribution): LimitSpec {
   return { ...rest, countedOver, required: contribution.required ?? false };
 }
 
-export const ALL_LIMITS: readonly LimitSpec[] = composeLimits(LIMIT_SOURCES).map(toLimitSpec);
+export const ALL_LIMITS: readonly LimitSpec[] = composeLimits(MODULE_DECLARATIONS).map(toLimitSpec);

@@ -539,6 +539,63 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **What adopting `module-chat` actually costs, measured — and
+  one real redundancy removed.**
+
+  The operator asked how the apps use the module, how many lines it takes, and
+  whether it can be smaller. Measured rather than estimated, counting CODE lines
+  with comments stripped (this repo's comment density makes raw `wc -l`
+  meaningless):
+
+  | | lines |
+  |---|---|
+  | `apps/web-app` — the whole frontend adoption | **2** |
+  | `chatServerModule({…})` descriptor | 27 |
+  | registry declaration | 9 |
+  | the four PORTS the app must fill | 100 |
+  | env + mail template | 1 + ~55 prose |
+  | **web-server total** | **~137** |
+
+  ⚠ **The frontend is genuinely two lines** — an import and an array entry —
+  and that is the descriptor pattern working exactly as §9 intended: routes,
+  navigation, the unread badge, three pages and the drawer entry all derive from
+  `chatWebModule()`.
+
+  **⚠ THE 100 LINES OF PORTS ARE NOT CEREMONY, AND MUST NOT BE REMOVED.** They
+  are the price of §9's rule that a module may not import a module. Chat
+  DECLARES `chat:manage_all`, `chat:group_chats` and two defaults and can check
+  none of them, because all three are `module-permissions`' questions; and it
+  cannot send mail, because that is the app's. Each adapter is the app answering
+  a question only it can answer, and collapsing them would mean either chat
+  importing the permissions module or the permissions module importing chat.
+  The 100 lines buy a module that runs in an app with no permission model at
+  all.
+
+  **What WAS redundant, and is now gone.** `seed/registry.ts` had THREE arrays
+  — `FEATURE_SOURCES`, `LIMIT_SOURCES`, `DEFAULT_SOURCES` — each listing the
+  same modules again. `WebModuleDescriptor` already carries all four registries
+  and every composer ignores a module that declares nothing for it, so one
+  `MODULE_DECLARATIONS` feeds all four.
+
+  ⚠ **The size was not the point; the SILENCE was.** Three lists is three
+  chances to add a module to two of them, and every omission fails quietly:
+  an unlisted module's feature BINDINGS never load, so its mutations are
+  reachable by anybody signed in (chat cannot use `@RequireFeature` — the
+  decorator belongs to another module — so that registry IS its guard); an
+  undeclared cap resolves to UNLIMITED; an uncomposed default has no row on the
+  screen and is never read. Adopting a module is now one entry that cannot be
+  half-done.
+
+  Verified the composed output is unchanged: 50 features (8 chat), 5 limits
+  (1 chat), 11 defaults (2 chat), 8 moments.
+
+  **What was considered and REJECTED as a simplification:** collapsing the four
+  provider blocks in `app.module.ts` into `useClass`. Each is five lines of
+  `{ provide, inject, useFactory }`, which looks like ceremony — but `useClass`
+  would need `PermissionsService` and `PrismaService` resolvable inside the chat
+  module's own injector, which means importing those modules INTO chat. That is
+  the coupling the ports exist to avoid, traded for twelve lines.
+
 - **2026-09-13** — **A control offered to people the server refuses, and the
   bridge that existed in only one place.**
 
