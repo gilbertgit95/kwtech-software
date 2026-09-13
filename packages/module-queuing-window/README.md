@@ -4,9 +4,9 @@ A walk-in queue per workspace. Staff are assigned named **windows**, press
 **Call next**, and the number appears on a **public display** — a TV in the
 waiting room, admitted by a per-session code, live over `graphql-ws`.
 
-> **Status: server half built (step 4).** `apps/web-server` has adopted it and
-> the tables are migrated. There is no realtime yet (step 5) and no React yet
-> (steps 6 and 8). The design, and every decision behind it, is in
+> **Status: server and realtime built (steps 4 and 5).** `apps/web-server` has
+> adopted it, the tables are migrated, and a TV admitted by its display pass
+> watches the board live. There is no React yet (steps 6 and 8). The design, and every decision behind it, is in
 > `docs/PLAN.md` §13 under the 2026-09-13 `module-queuing-window` entries. Read
 > the newest first.
 
@@ -42,6 +42,22 @@ Every port is optional, and each absence means something specific:
 | `staffCheckProvider` | a window can be assigned only to yourself |
 | `staffDirectoryProvider` | no picker, and seats read "A member" |
 | `workspaceLocatorProvider` | no display can ever open |
+| `pubsubProvider` | NOT LIVE: writes work, the console updates only when re-read, and a TV draws its board once and stops. ⚠ Bind the app's one engine |
+
+## Realtime
+
+- **`queueEvents(organizationId, workspaceId)`** is the staff console's stream,
+  bound to `queue:read`. It sends `sync` first on every (re)subscribe (re-read
+  the console), then this workspace's calls and changes.
+- **`queueDisplay`** is the public board. It is reachable only on a socket
+  admitted at the handshake by a display pass: the app passes
+  `QueueDisplayService.admit` as `admitAnonymous`, and the TV sends
+  `{ displayPass }` in `connectionParams`. Every event is the whole board, with
+  `announce` set when there is a call to chime for. The last event is
+  `stopped`.
+
+⚠ **A TV must also treat a refused reconnect (4403) as stopped.** A TV that
+was asleep when queuing stopped never received the event.
 | `resolveActorId` | every operation that needs an actor refuses |
 
 The app's adapters live in `apps/web-server/src/queue/`, because each reads

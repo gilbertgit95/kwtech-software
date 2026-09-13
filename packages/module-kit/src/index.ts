@@ -18,6 +18,7 @@
  * it can be named and tested without a renderer; only the bindings need React.
  */
 
+export * from './catch-up.js';
 export * from './compose.js';
 export * from './defaults.js';
 export * from './feature-metadata.js';

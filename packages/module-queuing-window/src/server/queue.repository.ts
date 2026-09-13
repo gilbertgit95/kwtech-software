@@ -238,6 +238,9 @@ export interface QueueTransaction {
   };
 
   queueDisplayPass: {
+    /** The handshake's lookup: a pass is found by its hash, never by its value. */
+    findUnique(args: { where: { tokenHash: string } }): Promise<DisplayPassRow | null>;
+    updateMany(args: { where: { id: string }; data: { lastSeenAt: Date } }): Promise<{ count: number }>;
     count(args: { where: { sessionId: string } }): Promise<number>;
     create(args: { data: Scoped & { sessionId: string; tokenHash: string } }): Promise<DisplayPassRow>;
     deleteMany(args: { where: { sessionId: string } }): Promise<{ count: number }>;
@@ -314,6 +317,8 @@ export interface QueueTransaction {
       update: { nickname: string };
     }): Promise<NicknameRow>;
     deleteMany(args: { where: { workspaceId: string; userId: string } }): Promise<{ count: number }>;
+    /** The board's nicknames: every caller on it, in one read. */
+    findMany(args: { where: { workspaceId: string; userId: { in: string[] } } }): Promise<NicknameRow[]>;
   };
 }
 

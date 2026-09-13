@@ -554,6 +554,97 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **`module-queuing-window` step 5: live. The staff console
+  has a stream, and a TV admitted by its pass watches the board over
+  `graphql-ws`.** Proven over a real socket against the local database.
+
+  **What was built:**
+  - **Events.** `QUEUE_EVENT` has three triggers: `queue.call`, `queue.session`
+    and `queue.workspace`. `QueueEventPublisher` publishes each one AFTER the
+    transaction commits, and a failed publish never fails the write. Every
+    write in `QueueWriteService` announces itself.
+    - ⚠ **A replayed `clientRequestId` announces nothing** — one call, one
+      chime.
+    - ⚠ **Payload dates are ISO strings.** With Redis behind the engine a
+      payload is JSON, and a `Date` would arrive as a string.
+  - **`Subscription.queueEvents(organizationId, workspaceId)`** for the
+    console. It is bound as `graphql_subscription` to `queue:read`, and the
+    resolver class's workspace scope applies to it. It sends `sync` first on
+    every (re)subscribe, because the engine has no replay, then this
+    workspace's events.
+    - Filtered by workspace alone, as planned: a call event carries only what
+      the public board shows.
+  - **`Subscription.queueDisplay`** for TVs, on the public resolver. It takes
+    no arguments: the workspace and session come from the pass the socket
+    presented at the handshake. With no display admission it refuses before
+    streaming.
+  - **`QueueDisplayService.admit`**, the handshake hook, is wired in `AppModule`
+    as step 2's `admitAnonymous`. The queue module is hoisted beside chat's,
+    because `GraphQLModule.forRootAsync` must import the same dynamic module to
+    resolve the service.
+    - It takes `{ displayPass }`, refuses anything not shaped like a pass
+      before querying, looks the pass up by hash, requires its session to be
+      open, and records `lastSeenAt`.
+    - The admission carries `kind: 'queue-display'`, and `readDisplayAdmission`
+      checks it, so another module's admission is never read as a display's.
+  - **`withCatchUp` moved from `module-chat` into `module-kit`** — §9 rule 8, now
+    that it has a second consumer. Chat's `chat.catch-up.ts` re-exports it, so
+    nothing in chat changed, and all 369 chat tests pass.
+
+  **Decisions the plan did not contain:**
+  - ⚠ **The board is SENT WHOLE, every time — snapshots, not deltas.** A TV
+    receives the entire board rebuilt from the database, plus `announce` (the
+    one call to chime for) when there is one.
+    - A TV applying deltas needs every delta in order, and a board that missed
+      one stays wrong until a reload — the "looks current and is not" failure
+      this screen exists to prevent.
+    - The cost is a few queries per display per call, bounded by
+      `MAX_DISPLAYS_CEILING`.
+  - ⚠ **The per-publish re-check is a primary-key read inside the snapshot, not
+    a cache.** The plan said "cached, and invalidated by the stop event". Every
+    redraw already reads the database, so the session check costs one lookup,
+    and there is no cache to go stale. A session found stopped ends the stream
+    with `stopped`, whether or not the stop event was seen — a test deletes the
+    event and still gets `stopped`.
+  - **What redraws a TV:** a call or a recall, a change of lines or windows, the
+    show-nicknames setting, and a nickname. Done, No-show and seat changes do
+    not: the board shows each window's latest CALL, and a customer being served
+    is not news in a waiting room.
+  - **The nickname on the board belongs to whoever CALLED the number** — "C-042
+    → Window 3 · Ate Joy". It is read live on every snapshot, so clearing it, or
+    turning names off, takes it off every TV at once, recent calls included.
+  - **The staff subscription stays filtered by workspace alone.**
+    `QueueTicketPayload` carries `calledById` for the board's nickname lookup.
+    That is an account id, already visible on the console, and never a name.
+    ⚠ The day a payload carries a customer's name or a phone number, chat's
+    per-publish audience applies.
+
+  **Verified live** against the local database: a session and a pass inserted
+  directly, with the server built and booted.
+  - A socket presenting the pass received `queueDisplay`'s first event: the
+    board, with its line.
+  - A guessed pass was closed 4403.
+  - The same pass-admitted socket asking for `queueEvents` got `Not signed in`.
+  - The pass's `lastSeenAt` was recorded.
+  - After the session was stopped, the same pass was closed 4403.
+
+  **Tests:** the package has 247, including a realtime suite over an in-memory
+  engine that fans out with no replay. It covers:
+  - what is announced, and when not;
+  - admission and its refusals;
+  - the opening board, and a call arriving as a fresh board plus `announce`;
+  - no redraw for Done;
+  - nicknames appearing and leaving with the setting;
+  - `stopped` on stop, and again on the re-check;
+  - another workspace ignored;
+  - the console's `sync`-first stream.
+
+  The app's 132 tests pass, and `schema.graphql` was regenerated by booting.
+
+  **Not yet:** the web console and settings (step 6), the tone synthesiser move
+  (step 7), and the board page itself (step 8). The client side of the
+  handshake — a second socket opened with `{ displayPass }` — lands with step 8.
+
 - **2026-09-13** — **`module-queuing-window` step 4: the server half, adopted by
   `web-server`, with the tables migrated.** Calling, windows, lines, seats,
   sessions and the display code exchange all work over GraphQL. There is no

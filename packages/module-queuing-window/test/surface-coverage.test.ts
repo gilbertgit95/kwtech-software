@@ -86,17 +86,25 @@ describe('the workspace resolver', () => {
 });
 
 describe('the public resolver', () => {
-  it('publishes exactly the code exchange', () => {
-    expect(PUBLIC_OPERATIONS).toEqual(['Mutation.openQueueDisplay']);
+  it('publishes exactly the code exchange and the board', () => {
+    expect(PUBLIC_OPERATIONS).toEqual(['Mutation.openQueueDisplay', 'Subscription.queueDisplay']);
   });
 
-  it('⚠ is public on every handler, with a reason, and marked as a credential surface', () => {
+  it('⚠ is public on every handler, with a reason', () => {
     const all = handlers(QueueDisplayResolver);
-    expect(all.length).toBeGreaterThan(0);
+    expect(all.length).toBe(2);
     for (const [, handler] of all) {
       expect(Reflect.getMetadata(PUBLIC_SURFACE_METADATA, handler)).toEqual(expect.stringMatching(/\S/));
-      expect(Reflect.getMetadata(CREDENTIAL_SURFACE_METADATA, handler)).toEqual(expect.stringMatching(/\S/));
     }
+  });
+
+  it('⚠ marks the code exchange — and only it — as a credential surface', () => {
+    const prototype = QueueDisplayResolver.prototype;
+    expect(Reflect.getMetadata(CREDENTIAL_SURFACE_METADATA, prototype.openQueueDisplay)).toEqual(
+      expect.stringMatching(/\S/),
+    );
+    // A 256-bit pass is not guessed, and the board is a socket operation.
+    expect(Reflect.getMetadata(CREDENTIAL_SURFACE_METADATA, prototype.queueDisplay)).toBeUndefined();
   });
 
   it('declares no scope — it names its workspace by key, and nobody is signed in', () => {
@@ -116,6 +124,8 @@ describe('the bindings', () => {
 
   it.each([
     ['Query.queueConsole', QUEUE_FEATURE.read],
+    // The socket is guarded with the same key as the console it keeps live.
+    ['Subscription.queueEvents', QUEUE_FEATURE.read],
     ['Mutation.setMyQueueNickname', QUEUE_FEATURE.read],
     ['Mutation.callNextQueueTicket', QUEUE_FEATURE.serve],
     ['Mutation.markQueueTicketNoShow', QUEUE_FEATURE.serve],

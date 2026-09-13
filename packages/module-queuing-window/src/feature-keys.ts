@@ -81,6 +81,12 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
        * "a member of this workspace" true before the row is written.
        */
       op('Mutation.setMyQueueNickname'),
+      /*
+       * ⚠ ITS OWN SURFACE. A subscription is authorised ONCE, here, and then
+       * streams; the socket closing when its token expires is what bounds how
+       * stale that answer can get.
+       */
+      { surface: 'graphql_subscription', identifier: 'Subscription.queueEvents' },
     ],
   },
   {

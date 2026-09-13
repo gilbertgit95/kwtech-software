@@ -19,9 +19,11 @@ import {
 } from '@kwtech/module-permissions/server';
 import {
   QUEUE_LIMIT_CHECKER,
+  QUEUE_PUBSUB,
   QUEUE_STAFF_CHECK,
   QUEUE_STAFF_DIRECTORY,
   QUEUE_WORKSPACE_LOCATOR,
+  QueueDisplayService,
   queueServerModule,
 } from '@kwtech/module-queuing-window/server';
 import type { ApolloDriverConfig } from '@nestjs/apollo';
@@ -199,6 +201,55 @@ const CHAT_SERVER_MODULE: ServerModuleDescriptor = chatServerModule({
   },
 });
 
+/**
+ * The walk-in queue — the first WORKSPACE-level module that is not permissions.
+ * Every port below reads another module's tables, which is why each is here;
+ * the adapters are in ./queue/.
+ *
+ * HOISTED like chat's, and for the same reason: the GraphQL options need the
+ * SAME dynamic module object, to resolve `QueueDisplayService` for the socket
+ * handshake — see `admitAnonymous` there.
+ */
+const QUEUE_SERVER_MODULE: ServerModuleDescriptor = queueServerModule({
+  prismaProvider: queuePrismaProvider,
+  prismaWriteProvider: queueWritePrismaProvider,
+
+  // ⚠ The caps exist because this line does. Omitted, windows are unlimited.
+  limitCheckerProvider: { provide: QUEUE_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+  /*
+   * ⚠ Without it, a window can be assigned only to yourself — the module
+   * cannot vouch for anybody else's membership or `queue:serve`.
+   */
+  staffCheckProvider: {
+    provide: QUEUE_STAFF_CHECK,
+    inject: [PermissionsService],
+    useFactory: (permissions: PermissionsService) => new QueueStaffAccess(permissions),
+  },
+  staffDirectoryProvider: {
+    provide: QUEUE_STAFF_DIRECTORY,
+    inject: [PermissionsService, PrismaService],
+    useFactory: (permissions: PermissionsService, prisma: PrismaService) =>
+      new QueueStaffDirectoryAdapter(permissions, prisma, new QueueStaffAccess(permissions)),
+  },
+
+  // ⚠ Without it, no display can ever open.
+  workspaceLocatorProvider: {
+    provide: QUEUE_WORKSPACE_LOCATOR,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService) => new QueueWorkspaceLocatorAdapter(prisma),
+  },
+
+  // Principal → userId, the same narrowed seam chat takes.
+  resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+  /*
+   * ⚠ THE SAME ENGINE chat and permissions publish into. A second engine would
+   * never see these publishes, and a TV would wait forever with no error.
+   */
+  pubsubProvider: { provide: QUEUE_PUBSUB, useValue: realtimePubSub() },
+});
+
 const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   /*
    * Three things, and every one of them is genuinely this app's:
@@ -370,44 +421,7 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
 
   CHAT_SERVER_MODULE,
 
-  /*
-   * The walk-in queue — the first WORKSPACE-level module that is not
-   * permissions. Every port below reads another module's tables, which is why
-   * each is here; the adapters are in ./queue/.
-   */
-  queueServerModule({
-    prismaProvider: queuePrismaProvider,
-    prismaWriteProvider: queueWritePrismaProvider,
-
-    // ⚠ The caps exist because this line does. Omitted, windows are unlimited.
-    limitCheckerProvider: { provide: QUEUE_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
-
-    /*
-     * ⚠ Without it, a window can be assigned only to yourself — the module
-     * cannot vouch for anybody else's membership or `queue:serve`.
-     */
-    staffCheckProvider: {
-      provide: QUEUE_STAFF_CHECK,
-      inject: [PermissionsService],
-      useFactory: (permissions: PermissionsService) => new QueueStaffAccess(permissions),
-    },
-    staffDirectoryProvider: {
-      provide: QUEUE_STAFF_DIRECTORY,
-      inject: [PermissionsService, PrismaService],
-      useFactory: (permissions: PermissionsService, prisma: PrismaService) =>
-        new QueueStaffDirectoryAdapter(permissions, prisma, new QueueStaffAccess(permissions)),
-    },
-
-    // ⚠ Without it, no display can ever open.
-    workspaceLocatorProvider: {
-      provide: QUEUE_WORKSPACE_LOCATOR,
-      inject: [PrismaService],
-      useFactory: (prisma: PrismaService) => new QueueWorkspaceLocatorAdapter(prisma),
-    },
-
-    // Principal → userId, the same narrowed seam chat takes.
-    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
-  }),
+  QUEUE_SERVER_MODULE,
 ];
 
 /**
@@ -485,8 +499,11 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
        * socket a presence store nothing else could read, and nothing would
        * report it.
        */
-      imports: [CHAT_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number]],
-      inject: [TokenService, ChatPresenceService],
+      imports: [
+        CHAT_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number],
+        QUEUE_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number],
+      ],
+      inject: [TokenService, ChatPresenceService, QueueDisplayService],
       /*
        * ⚠ THE SEAM THAT KEEPS `graphql.options.ts` FREE OF MODULE NAMES.
        *
@@ -501,12 +518,23 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
        * synchronous — it records the moment and lets the sweep decide, because
        * the grace period is the whole point.
        */
-      useFactory: (tokens: TokenService, presence: ChatPresenceService) =>
-        graphqlOptions(tokens, {
-          opened: (userId, socketId) => void presence.connected(userId, socketId),
-          closed: (userId, socketId) => presence.disconnected(userId, socketId),
-          alive: (userId, socketId) => presence.heartbeat(userId, socketId),
-        }),
+      useFactory: (tokens: TokenService, presence: ChatPresenceService, displays: QueueDisplayService) =>
+        graphqlOptions(
+          tokens,
+          {
+            opened: (userId, socketId) => void presence.connected(userId, socketId),
+            closed: (userId, socketId) => presence.disconnected(userId, socketId),
+            alive: (userId, socketId) => presence.heartbeat(userId, socketId),
+          },
+          /*
+           * ⚠ A SOCKET WITH NO TICKET IS OFFERED TO THE QUEUE: a TV presenting its
+           * display pass. What it admits carries no principal, so it reaches the
+           * public board and nothing else — see ./graphql/ws-context.ts. Another
+           * module wanting anonymous sockets would compose here, keyed on its own
+           * connection parameter.
+           */
+          (params) => displays.admit(params),
+        ),
     }),
 
     /*

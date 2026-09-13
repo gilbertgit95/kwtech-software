@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { anonymousAdmission } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { DISPLAY_PASS_BYTES, evaluateCodeExchange } from '../domain/session.js';
+import { DISPLAY_PASS_BYTES, evaluateCodeExchange, isDisplayPassShaped, isSessionOpen } from '../domain/session.js';
 import type { QueueWorkspaceLocator } from './ports.js';
 import type { QueueWriteClient } from './queue.repository.js';
 import { QUEUE_PRISMA_WRITE, QUEUE_WORKSPACE_LOCATOR } from './queue.tokens.js';
@@ -18,6 +19,37 @@ export function hashDisplayPass(pass: string): string {
 
 /** More than any code, formatted or not. Anything longer is refused unread. */
 const MAX_TYPED_CODE = 32;
+
+/** The `connectionParams` field a TV puts its pass in. The client and `admit` both read this. */
+export const DISPLAY_PASS_PARAM = 'displayPass';
+
+/**
+ * What a socket admitted by a display pass carries, under module-kit's
+ * `ANONYMOUS_ADMISSION_KEY`. ⚠ Not an identity: see that key.
+ *
+ * `kind` is checked on the way back out, so an admission some OTHER module's
+ * hook produced can never be read as a display's.
+ */
+export interface QueueDisplayAdmission {
+  kind: 'queue-display';
+  passId: string;
+  sessionId: string;
+  organizationId: string;
+  workspaceId: string;
+}
+
+/** The display admission on a request, or null for anything else — a signed-in socket included. */
+export function readDisplayAdmission(request: unknown): QueueDisplayAdmission | null {
+  const admission = anonymousAdmission<Partial<QueueDisplayAdmission>>(request);
+  if (admission?.kind !== 'queue-display') return null;
+  const { passId, sessionId, organizationId, workspaceId } = admission;
+  return typeof passId === 'string' &&
+    typeof sessionId === 'string' &&
+    typeof organizationId === 'string' &&
+    typeof workspaceId === 'string'
+    ? { kind: 'queue-display', passId, sessionId, organizationId, workspaceId }
+    : null;
+}
 
 export interface OpenedDisplay {
   /** The raw pass. Returned once, to the TV, and never stored. */
@@ -43,6 +75,39 @@ export class QueueDisplayService {
     /** Absent means no display can ever open. */
     @Optional() @Inject(QUEUE_WORKSPACE_LOCATOR) private readonly locator?: QueueWorkspaceLocator,
   ) {}
+
+  /**
+   * The socket handshake's hook: a pass in `connectionParams`, an admission out.
+   *
+   * Wired by the app as `admitAnonymous` (see the web server's
+   * `openConnection`). Null refuses the socket as 4403, which a TV treats as
+   * final: its session has stopped, and it goes back to the code prompt. A
+   * database fault THROWS, so the socket closes 4500 and the TV retries.
+   *
+   * ⚠ NO ATTEMPT LIMITER, and none is needed: the pass is 256 random bits, so it
+   * cannot be guessed. Anything not shaped like one is refused before a query.
+   */
+  async admit(connectionParams: Readonly<Record<string, unknown>>): Promise<QueueDisplayAdmission | null> {
+    const pass = connectionParams[DISPLAY_PASS_PARAM];
+    if (!isDisplayPassShaped(pass)) return null;
+
+    const row = await this.prisma.queueDisplayPass.findUnique({ where: { tokenHash: hashDisplayPass(pass) } });
+    if (!row) return null;
+
+    // ⚠ A pass is only as good as its session. Stop deletes passes too, so this
+    // is the second of two locks on the same door.
+    const session = await this.prisma.queueSession.findUnique({ where: { id: row.sessionId } });
+    if (!isSessionOpen(session)) return null;
+
+    await this.prisma.queueDisplayPass.updateMany({ where: { id: row.id }, data: { lastSeenAt: new Date() } });
+    return {
+      kind: 'queue-display',
+      passId: row.id,
+      sessionId: row.sessionId,
+      organizationId: row.organizationId,
+      workspaceId: row.workspaceId,
+    };
+  }
 
   /**
    * A pass for this TV, or null.

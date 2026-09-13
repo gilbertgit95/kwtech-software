@@ -1,16 +1,18 @@
-import { declareScope, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
-import { Inject, SetMetadata } from '@nestjs/common';
-import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { declareScope, REQUIRED_SCOPE_METADATA, withCatchUp } from '@kwtech/module-kit';
+import { Inject, Optional, SetMetadata } from '@nestjs/common';
+import { Args, Context, Int, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { MAX_FAILED_CODE_ATTEMPTS } from '../../domain/session.js';
 import { QueueWriteError } from '../queue.errors.js';
 import type { QueueModuleOptions } from '../queue.options.js';
+import { ALL_QUEUE_EVENTS, NULL_QUEUE_PUBSUB, type QueueEvent, type QueuePubSub } from '../queue.pubsub.js';
 import type { LineRow, SessionRow, TicketRow, WindowRow } from '../queue.repository.js';
 import { type QueueConsoleView, type QueueScope, QueueService } from '../queue.service.js';
-import { QUEUE_OPTIONS } from '../queue.tokens.js';
+import { QUEUE_OPTIONS, QUEUE_PUBSUB } from '../queue.tokens.js';
 import { QueueWriteService } from '../queue-write.service.js';
 import {
   QueueConsoleType,
   QueueDisplayCodeType,
+  QueueEventType,
   QueueLineType,
   QueueSeatType,
   QueueSessionType,
@@ -53,6 +55,8 @@ export class QueueResolver {
     private readonly queue: QueueService,
     private readonly writes: QueueWriteService,
     @Inject(QUEUE_OPTIONS) private readonly options: QueueModuleOptions,
+    /** Absent means the console is not live: `queueEvents` sends `sync` and ends. */
+    @Optional() @Inject(QUEUE_PUBSUB) private readonly pubsub?: QueuePubSub,
   ) {}
 
   // ── queries ───────────────────────────────────────────────────────────────
@@ -80,6 +84,50 @@ export class QueueResolver {
     @Args('workspaceId') workspaceId: string,
   ): Promise<QueueStaffMemberType[]> {
     return [...(await this.queue.staffCandidates({ organizationId, workspaceId }))];
+  }
+
+  // ── the live console ──────────────────────────────────────────────────────
+
+  /**
+   * The staff console's stream: every call, session change and "re-read" in
+   * this workspace.
+   *
+   * Bound as `graphql_subscription` to `queue:read`, and the class's workspace
+   * scope applies to it like any operation, so the guard runs
+   * `canAccessWorkspace` at subscribe. Authorised ONCE, then bounded by the
+   * socket closing when the token that opened it expires.
+   *
+   * ⚠ FILTERED BY WORKSPACE ALONE, unlike chat's per-publish audience — a
+   * deliberate difference. A call event carries what the public board shows,
+   * so a member removed mid-shift keeps seeing what anybody in the waiting room
+   * can, for at most one access token's life. See `QueueTicketPayload` for the
+   * day that stops being true.
+   *
+   * ⚠ `sync` FIRST, on every (re)subscribe: the engine has no replay, so a call
+   * made while the socket was reconnecting would otherwise never reach the
+   * console. The client re-reads `queueConsole` on it.
+   */
+  @Subscription(() => QueueEventType, {
+    name: 'queueEvents',
+    // ⚠ REQUIRED: without it GraphQL looks for a `queueEvents` key on the
+    // payload, finds none, and delivers `data: null` forever.
+    resolve: (payload: QueueEventType) => payload,
+  })
+  queueEvents(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+  ): AsyncIterableIterator<QueueEventType> {
+    // At subscribe, so a socket with nobody on it is refused now, not never.
+    this.actor(gql.req);
+
+    return withCatchUp<QueueEvent, QueueEventType>({
+      live: (this.pubsub ?? NULL_QUEUE_PUBSUB).asyncIterableIterator<QueueEvent>(ALL_QUEUE_EVENTS),
+      catchUp: async () => [{ kind: 'sync', change: null, ticket: null }],
+      transform: (event) =>
+        event.workspaceId === workspaceId && event.organizationId === organizationId ? renderQueueEvent(event) : null,
+      keyOf: () => null,
+    });
   }
 
   // ── sessions ──────────────────────────────────────────────────────────────
@@ -364,6 +412,17 @@ export class QueueResolver {
     const actorId = this.options.resolveActorId?.(request);
     if (!actorId) throw new QueueWriteError('not_permitted', 'Not signed in');
     return actorId;
+  }
+}
+
+function renderQueueEvent(event: QueueEvent): QueueEventType {
+  switch (event.kind) {
+    case 'call':
+      return { kind: 'call', change: event.change, ticket: { ...event.ticket } };
+    case 'session':
+      return { kind: 'session', change: event.change, ticket: null };
+    case 'workspace':
+      return { kind: 'changed', change: event.change, ticket: null };
   }
 }
 

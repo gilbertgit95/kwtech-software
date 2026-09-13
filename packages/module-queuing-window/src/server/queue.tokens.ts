@@ -26,3 +26,12 @@ export const QUEUE_STAFF_DIRECTORY = 'kwtech:queue-staff-directory';
 
 /** A `QueueWorkspaceLocator`. Unbound means no display can ever open. */
 export const QUEUE_WORKSPACE_LOCATOR = 'kwtech:queue-workspace-locator';
+
+/**
+ * The pub/sub engine. Unbound means NOT LIVE: every write still works, the
+ * console only updates when re-read, and a TV draws its board once and stops.
+ *
+ * ⚠ Bind the app's OWN engine, never a fresh one: two engines in one process do
+ * not see each other's publishes, and the failure is a TV that waits forever.
+ */
+export const QUEUE_PUBSUB = 'kwtech:queue-pubsub';

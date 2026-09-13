@@ -1,15 +1,18 @@
 import { type DynamicModule, Module, type Provider } from '@nestjs/common';
 import { QueueResolver } from './graphql/queue.resolver.js';
 import { QueueDisplayResolver } from './graphql/queue-display.resolver.js';
+import { QueueEventPublisher } from './queue.events.js';
 import type { QueueModuleOptions } from './queue.options.js';
 import { QueueService } from './queue.service.js';
 import {
   QUEUE_LIMIT_CHECKER,
   QUEUE_OPTIONS,
+  QUEUE_PUBSUB,
   QUEUE_STAFF_CHECK,
   QUEUE_STAFF_DIRECTORY,
   QUEUE_WORKSPACE_LOCATOR,
 } from './queue.tokens.js';
+import { QueueBoardService } from './queue-board.service.js';
 import { QueueDisplayService } from './queue-display.service.js';
 import { QueueWriteService } from './queue-write.service.js';
 
@@ -25,6 +28,8 @@ export class QueueModule {
       QueueService,
       QueueWriteService,
       QueueDisplayService,
+      QueueEventPublisher,
+      QueueBoardService,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider as Provider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider as Provider);
@@ -40,6 +45,7 @@ export class QueueModule {
       [options.staffCheckProvider, QUEUE_STAFF_CHECK],
       [options.staffDirectoryProvider, QUEUE_STAFF_DIRECTORY],
       [options.workspaceLocatorProvider, QUEUE_WORKSPACE_LOCATOR],
+      [options.pubsubProvider, QUEUE_PUBSUB],
     ];
     for (const [provider, token] of optional) {
       providers.push(provider ? (provider as Provider) : { provide: token, useValue: undefined });
@@ -51,7 +57,19 @@ export class QueueModule {
       module: QueueModule,
       imports: (options.imports ?? []) as NonNullable<DynamicModule['imports']>,
       providers,
-      exports: [QueueService, QueueWriteService, QueueDisplayService, QUEUE_OPTIONS],
+      /*
+       * `QueueDisplayService` is exported for the app's socket handshake, which
+       * resolves it through `GraphQLModule.forRootAsync` — see the web server's
+       * `admitAnonymous`.
+       */
+      exports: [
+        QueueService,
+        QueueWriteService,
+        QueueDisplayService,
+        QueueEventPublisher,
+        QueueBoardService,
+        QUEUE_OPTIONS,
+      ],
     };
   }
 }

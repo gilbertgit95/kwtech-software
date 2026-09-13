@@ -520,6 +520,30 @@ type Query {
   viewer: Viewer
 }
 
+type QueueBoard {
+  lines: [QueueBoardLine!]!
+  recent: [QueueBoardCall!]!
+  serving: [QueueBoardCall!]!
+  showStaffNames: Boolean!
+}
+
+type QueueBoardCall {
+  calledAt: String!
+  label: String!
+  lineId: String!
+  nickname: String
+  recallCount: Int!
+  ticketId: String!
+  windowId: String!
+  windowName: String!
+}
+
+type QueueBoardLine {
+  id: String!
+  name: String!
+  prefix: String!
+}
+
 type QueueConsole {
   lines: [QueueLine!]!
   myNickname: String
@@ -540,9 +564,21 @@ type QueueDisplayCode {
   maxDisplays: Int!
 }
 
+type QueueDisplayEvent {
+  announce: QueueBoardCall
+  board: QueueBoard
+  kind: String!
+}
+
 type QueueDisplayPass {
   pass: String!
   workspaceName: String!
+}
+
+type QueueEvent {
+  change: String
+  kind: String!
+  ticket: QueueTicket
 }
 
 type QueueLine {
@@ -637,6 +673,8 @@ type SessionInfo {
 type Subscription {
   chatEvents(since: String): ChatEvent!
   planChanged: PermissionPlanChanged!
+  queueDisplay: QueueDisplayEvent!
+  queueEvents(organizationId: String!, workspaceId: String!): QueueEvent!
 }
 
 input SubscriptionDraftInput {

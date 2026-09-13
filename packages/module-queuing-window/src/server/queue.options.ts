@@ -22,6 +22,12 @@ export interface QueueModuleOptions {
   staffDirectoryProvider?: unknown;
   /** A `QueueWorkspaceLocator` provider. Unbound: no display can open. */
   workspaceLocatorProvider?: unknown;
+  /**
+   * A `QueuePubSub` provider. ⚠ Omitting it means NOT LIVE — and a TV that is
+   * not live looks exactly like one showing a quiet queue. Bind the app's one
+   * engine, never a new one.
+   */
+  pubsubProvider?: unknown;
 
   /** Modules the host wants visible inside this one's injector. */
   imports?: unknown[];

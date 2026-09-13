@@ -206,3 +206,100 @@ export class QueueDisplayPassType {
   @Field()
   workspaceName!: string;
 }
+
+/**
+ * One event on the staff console's stream.
+ *
+ * `sync` arrives first on every (re)subscribe and means "re-read the console":
+ * the socket had a gap, and the in-memory engine has no replay. `call` carries
+ * the ticket; `session` and `changed` say what to re-read.
+ */
+@ObjectType('QueueEvent')
+export class QueueEventType {
+  /** 'sync' | 'call' | 'session' | 'changed'. */
+  @Field()
+  kind!: string;
+
+  /** For 'call': called | recalled | done | no_show. 'session': started | stopped. 'changed': lines | windows | seats | settings | staff. */
+  @Field(() => String, { nullable: true })
+  change!: string | null;
+
+  @Field(() => QueueTicketType, { nullable: true })
+  ticket!: QueueTicketType | null;
+}
+
+@ObjectType('QueueBoardLine')
+export class QueueBoardLineType {
+  @Field()
+  id!: string;
+
+  @Field()
+  prefix!: string;
+
+  @Field()
+  name!: string;
+}
+
+@ObjectType('QueueBoardCall')
+export class QueueBoardCallType {
+  @Field()
+  ticketId!: string;
+
+  @Field()
+  lineId!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  windowId!: string;
+
+  @Field()
+  windowName!: string;
+
+  @Field()
+  calledAt!: string;
+
+  @Field(() => Int)
+  recallCount!: number;
+
+  /** A nickname the person chose, and only while the workspace shows names. Never an account name. */
+  @Field(() => String, { nullable: true })
+  nickname!: string | null;
+}
+
+@ObjectType('QueueBoard')
+export class QueueBoardType {
+  @Field()
+  showStaffNames!: boolean;
+
+  @Field(() => [QueueBoardLineType])
+  lines!: QueueBoardLineType[];
+
+  /** One row per window that has called a number this session. */
+  @Field(() => [QueueBoardCallType])
+  serving!: QueueBoardCallType[];
+
+  @Field(() => [QueueBoardCallType])
+  recent!: QueueBoardCallType[];
+}
+
+/**
+ * One event on a public display's stream.
+ *
+ * 'board' is the WHOLE board, every time, with `announce` set to the call to
+ * chime for when there is one. 'stopped' is the last event a TV receives: the
+ * session is over, and the stream ends.
+ */
+@ObjectType('QueueDisplayEvent')
+export class QueueDisplayEventType {
+  /** 'board' | 'stopped'. */
+  @Field()
+  kind!: string;
+
+  @Field(() => QueueBoardType, { nullable: true })
+  board!: QueueBoardType | null;
+
+  @Field(() => QueueBoardCallType, { nullable: true })
+  announce!: QueueBoardCallType | null;
+}
