@@ -531,10 +531,58 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 53 | There is no longer a genuinely EMPTY app-level role | when a denial needs proving again | `normal-user` was the control case for the whole access-checking chain — route guard, page gate, component gate, API guard — and it held nothing on purpose, because a role that grants nothing is the only one that proves a denial is real rather than incidental. It now carries `chat:*`, on the operator's direct request (2026-09-12), and that was the right call: messaging a colleague is not an administrative power, and a product whose ordinary person cannot use its chat has a chat nobody uses. What is left is weaker — it proves ADMIN denials, since it still holds no `admin:*`, `roles:*` or `members:*` and nothing at organization or workspace level. `app-roles.ts` has always named the replacement: `restricted-user`, the account whose identity is managed elsewhere, which withholds even the `account:*` keys. ⚠ NOT created, because inventing a role nobody asked for is the other way to get this wrong — an operator's role catalogue is theirs. Create it the day a test needs a true zero |
 | 54 | ~~⚠ Chat has two default-shaped decisions and no way to declare them~~ **CLOSED 2026-09-12** | — | Group roles created exactly the pair `workspace.*` already has: the role a group's CREATOR gets (hardcoded `owner`) and the role somebody ADDED gets (hardcoded `member`). §12's earlier "chat needs no platform default" was about ACCOUNT creation and predates roles entirely — it is not an answer to this. ⚠ But `APP_DEFAULT_REGISTRY` is a FIXED CONSTANT in `module-permissions`: features are contributed through `FeatureContribution` and limits through `LimitContribution`, and defaults have no equivalent, so chat cannot declare one without permissions importing chat (§9 forbids). Closing it needs the same treatment limits got in step 1 — a `DefaultContribution` port in `module-kit`, `composeDefaults`, and `listDefaults` reading the composed registry through options rather than its own constant — PLUS a new `kind` whose target is an ENUM VALUE rather than a `perm_role` row, which every existing default resolves to. Four parts, one of them new machinery. **✅ CLOSED 2026-09-12 — and it was FIVE parts.** `DefaultContribution` and `composeDefaults` in `module-kit`; `AppDefaultSpec` widened (`key` and `moment` become strings, `module` becomes required) with a `choice` kind and `isValidDefaultFor`; `defaultRegistry` on the options, read by BOTH `listDefaults` and `setDefault`; chat declares its two and reads them back through a `ChatDefaultReader` port. The fifth was found by looking rather than by planning: **the screen groups by MOMENT and owned the list of moments**, so a contributed default had no section and never rendered — declared, composed, settable through the API, invisible on the only screen it can be set from. `DefaultMomentContribution` + `composeDefaultMoments` fix that, and an undeclared moment now renders an unnamed section rather than nothing |
 
+| 55 | ⚠ The chat notification path has never sent a real email | before anybody relies on being told | Built and wired 2026-09-13, and **exercised only against fakes**: there is no SMTP server on the development machine, so `renderEmail('chat-message', …)` is rendered but `transport.sendMail` has never run. What is unproven is everything a mail server decides — whether it is accepted, whether it lands in a spam folder, whether the `text`/`html` pair renders, and whether the From address passes SPF/DKIM on the real domain. ⚠ The FAILURE IS SILENT BY DESIGN: the notifier swallows everything so a dead mail server cannot break a send, so nobody finds out by chatting. Send one real message to a real inbox, then re-read this row. ⚠ Chat itself does not depend on it — with no `SMTP_URL` the path returns early and logs |
+| 56 | ⚠ The plan describes seams in the PRESENT TENSE that were never built | next time this document is trusted | Three found in three days, all by looking rather than by testing: `sendChatNotification` was "the optional hook already in the design" and did not exist; `listConversations` said "ONE GROUPED PASS — three queries total" while running `3 + 2n`; the nav badge told its reader "the server already computes unread in one grouped pass". Each read as a description of the code and was a description of the INTENTION. That is the cost of a document written alongside the work rather than after it — which is still the right trade — but it means **a claim here is not evidence**. ⚠ Nothing has audited the rest of §§9–11 for the same thing, and the ones found were all in areas that happened to be worked on. Grep the plan for present-tense claims about behaviour and check each against the code |
+
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **A sub-page with no way out, and the reason a private
+  helper is not a convention.**
+
+  Found by the operator using it: `/chat/preferences` had **no way back to
+  chat**. Reported as "it's hard to go back", which is the accurate description
+  — the drawer still had a Chat entry, so it was possible and unobvious.
+
+  **⚠ THE CAUSE IS THE INTERESTING PART.** The back link lived in a PRIVATE
+  `Frame` inside `chat-settings-page.tsx`. `/chat/preferences` was written as a
+  new file and simply did not have one — **you cannot forget a component you
+  never knew existed.** Nothing was skipped and no rule was broken; there was
+  no rule, only a habit that happened to live in one file.
+
+  So the frame became `ChatSubPage`, shared, with the link INSIDE it rather
+  than passed to it, and `chat-sub-pages.test.ts` fails if any file under
+  `pages/` other than the chat page itself does not render it. ⚠ A convention
+  that lives in one file is a habit, and a habit is exactly what a new file
+  does not inherit.
+
+  **The audit the operator asked for, since one gap implies others.** Every
+  other sub-page in the product already had a way back: `module-permissions`
+  has `AdminPage`'s `backTo` with a `BackLink` that names its destination, and
+  `module-auth`'s admin and settings shells carry their own. The pages showing
+  no back link are all TOP-LEVEL drawer entries, which correctly have none, or
+  are components rather than pages. **`/chat/preferences` was the only one**,
+  and it was the newest thing in the repo — which is the shape this kind of
+  defect takes.
+
+  ⚠ **`backHref` was deleted rather than kept.** It was a prop defaulting to
+  `/chat` that nobody ever passed anything else to — a configurable answer to a
+  question with one answer, and it did not save the page that omitted the frame
+  entirely. `ChatSubPage` owns the link and reads `CHAT_HREF`, so the route and
+  the link to it cannot drift.
+
+  **"← Back to chat", never "← Back."** A bare Back names the direction and not
+  the destination, which is the wrong half for somebody who has forgotten how
+  they arrived. `module-permissions`' `BackLink` already carried that argument
+  in a comment; this is the second module to reach it.
+
+  ⚠ **The browser's Back button is not an answer**, and neither is the drawer.
+  Back works when the page was reached by a link and does not when it was
+  reached from a URL or an email; the drawer collapses and is hidden entirely
+  at narrow widths. A screen whose only exit is chrome traps whoever arrives
+  another way.
 
 - **2026-09-13** — **§12.50 and §12.51 closed: people are told with the tab
   shut, and an invitation is no longer a coin flip.**

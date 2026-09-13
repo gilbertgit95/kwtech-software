@@ -38,6 +38,7 @@ export {
 } from './chat-tone.js';
 export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.js';
 export { AvailabilityPicker } from './components/availability-picker.js';
+export { ChatSubPage } from './components/chat-sub-page.js';
 export { ConversationList } from './components/conversation-list.js';
 export { MessageComposer } from './components/message-composer.js';
 export { MessageThread } from './components/message-thread.js';

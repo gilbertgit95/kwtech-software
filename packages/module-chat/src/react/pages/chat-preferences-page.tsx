@@ -10,6 +10,7 @@ import {
   writeChatSettings,
 } from '../chat-settings.js';
 import { type ChatToneId, playChatTone, unlockChatTones } from '../chat-tone.js';
+import { ChatSubPage } from '../components/chat-sub-page.js';
 
 /**
  * `/chat/preferences` — how chat tells you, on THIS device.
@@ -69,14 +70,11 @@ export function ChatPreferencesPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-6">
-      <h1 className="text-xl font-medium">Chat preferences</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        How chat tells you a message has arrived. ⚠ These are stored in this browser, on this device — muting here does
-        not mute your phone, and signing in elsewhere starts from the default.
-      </p>
-
-      <section className="mt-6 rounded-md border border-border p-4">
+    <ChatSubPage
+      title="Chat preferences"
+      description="How chat tells you a message has arrived. These are stored in this browser, on this device — muting here does not mute your phone, and signing in elsewhere starts from the default."
+    >
+      <section className="rounded-md border border-border p-4">
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
@@ -147,6 +145,6 @@ export function ChatPreferencesPage() {
           only affects this tab is a worse answer to the same question.
         */}
       </section>
-    </div>
+    </ChatSubPage>
   );
 }

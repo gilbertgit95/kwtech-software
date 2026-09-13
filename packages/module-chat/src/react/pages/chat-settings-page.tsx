@@ -12,6 +12,7 @@ import {
 } from '../../domain/participant-roles.js';
 import type { ChatParticipantRole } from '../../types.js';
 import type { ChatClient } from '../chat-client.js';
+import { ChatSubPage } from '../components/chat-sub-page.js';
 import { PersonFinder } from '../components/person-finder.js';
 import { useConversationSettings } from '../use-conversation-settings.js';
 import { conversationTitle } from '../view/conversation-view.js';
@@ -45,15 +46,13 @@ import { conversationTitle } from '../view/conversation-view.js';
  * administrator acting on a group they are not in needs a surface of its own,
  * which does not exist yet.
  */
-export function ChatSettingsPage({
-  params,
-  client,
-  backHref = '/chat',
-}: {
-  params?: Record<string, string>;
-  client?: ChatClient;
-  backHref?: string;
-}) {
+export function ChatSettingsPage({ params, client }: { params?: Record<string, string>; client?: ChatClient }) {
+  /*
+   * ⚠ There is no `backHref` prop any more. It defaulted to '/chat' and nobody
+   * ever passed anything else, which made it a configurable answer to a
+   * question with one answer — and the page that FORGOT to render the frame at
+   * all was not saved by it being configurable. `ChatSubPage` owns the link.
+   */
   const conversationId = params?.conversationId ?? '';
   const settings = useConversationSettings(conversationId, client ? { client } : {});
   const { conversation, participants, me } = settings;
@@ -63,19 +62,19 @@ export function ChatSettingsPage({
 
   if (settings.missing) {
     return (
-      <Frame backHref={backHref} title="Conversation not found">
+      <ChatSubPage title="Conversation not found">
         <p className="text-sm text-muted-foreground">
           This conversation does not exist, or you are not in it. Those are the same answer on purpose.
         </p>
-      </Frame>
+      </ChatSubPage>
     );
   }
 
   if (!conversation) {
     return (
-      <Frame backHref={backHref} title="Settings">
+      <ChatSubPage title="Settings">
         <p className="text-sm text-muted-foreground">Loading…</p>
-      </Frame>
+      </ChatSubPage>
     );
   }
 
@@ -87,11 +86,11 @@ export function ChatSettingsPage({
    */
   if (conversation.isDirect) {
     return (
-      <Frame backHref={backHref} title={conversationTitle(conversation)}>
+      <ChatSubPage title={conversationTitle(conversation)}>
         <p className="text-sm text-muted-foreground">
           A direct conversation has no settings. It is named by who is in it, and only the two of you are ever in it.
         </p>
-      </Frame>
+      </ChatSubPage>
     );
   }
 
@@ -102,11 +101,7 @@ export function ChatSettingsPage({
   const names = new Map(conversation.participants.map((one) => [one.userId, one.displayName]));
 
   return (
-    <Frame
-      backHref={backHref}
-      title={conversationTitle(conversation)}
-      description="Who is in this conversation, and who runs it."
-    >
+    <ChatSubPage title={conversationTitle(conversation)} description="Who is in this conversation, and who runs it.">
       {settings.error ? (
         <p
           role="alert"
@@ -293,7 +288,7 @@ export function ChatSettingsPage({
           </p>
         </div>
       </section>
-    </Frame>
+    </ChatSubPage>
   );
 }
 
@@ -302,34 +297,3 @@ const ROLE_LABELS: Record<ChatParticipantRole, string> = {
   admin: 'Admin — can add and remove people',
   member: 'Member',
 };
-
-/**
- * The page frame, in the shape every other screen in this app uses.
- *
- * ⚠ NOT an import of `module-permissions`' `AdminPage`, which is the same shape
- * — a module may not import a module (§9). The third frame of one form, owned
- * by the module rendering inside it, exactly as `module-auth`'s `SettingsPage`
- * is the second.
- */
-function Frame({
-  title,
-  description,
-  backHref,
-  children,
-}: {
-  title: string;
-  description?: string;
-  backHref: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-2xl">
-      <a href={backHref} className="text-sm text-muted-foreground hover:text-foreground">
-        ← Back to chat
-      </a>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-      <div className="mt-8">{children}</div>
-    </div>
-  );
-}
