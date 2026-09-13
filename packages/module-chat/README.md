@@ -197,6 +197,35 @@ is none.
 application, and a tab that starts making noise because somebody navigated to
 the product is a setting people hunt for angrily rather than discover.
 
+## Controls follow the rules the server enforces
+
+Every role-gated control in the UI calls the **same domain function the server
+enforces with** — imported, never restated:
+
+| Control | Rule | Who |
+|---|---|---|
+| New conversation | `chat:start` (a feature key) | anyone holding it |
+| Add someone | `canInviteToConversation` | owner, admin |
+| Rename, roles, remove | `canManageConversation` and the refusal helpers | owner, admin |
+| Archive | `canArchiveConversation` | owner only |
+| Delete a message | authorship | its author |
+| Leave | — | anyone; withholding it would be a lockout |
+
+⚠ **Hidden, not disabled.** A greyed-out control raises a question the screen
+cannot answer — a member has no way to discover that inviting is an
+owner-or-admin power, so a disabled button reads as a bug rather than a rule.
+
+⚠ **Hiding is not enforcing**, and the direction of failure is the point:
+because these are the server's own functions, the worst a mistake here can do is
+HIDE a control the API would have allowed. It can never show one the API
+refuses. The mutation is authorised again at the API regardless, and an app with
+no permission model at all sees an empty list of held features — which hides
+controls rather than revealing them.
+
+Use `viewerAuthority(conversation)` to ask what the viewer may do; it narrows
+the wire shape into what the rules accept, and an unknown role falls back to
+`member`.
+
 ## Being told with the tab closed
 
 The tone only plays in an open tab, which satisfies "people are told on time"

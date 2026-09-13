@@ -64,6 +64,8 @@ export {
   otherParticipants,
   type SplitConversations,
   splitConversations,
+  viewerAuthority,
+  viewerParticipant,
 } from './view/conversation-view.js';
 export {
   applyMessage,

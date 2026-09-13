@@ -1,3 +1,6 @@
+import type { ActorAuthority } from '../../domain/participant-roles.js';
+import { isChatParticipantRole } from '../../domain/participant-roles.js';
+import type { ParticipantView } from '../../types.js';
 import type { ChatConversationView } from '../chat-client.js';
 
 /**
@@ -103,4 +106,52 @@ export function countWaiting(conversations: readonly ChatConversationView[]): { 
     unread: active.reduce((total, conversation) => total + conversation.unread, 0),
     requests: requests.length,
   };
+}
+
+/**
+ * THE VIEWER, AS THE RULES SEE THEM — their own participant row, narrowed from
+ * the wire shape into what `domain/participant-roles.ts` accepts.
+ *
+ * ## ⚠ Why this is shared rather than done where it is needed
+ *
+ * Because it was done in one place and not the other, and the gap shipped. The
+ * conversation SETTINGS page built this bridge inside
+ * `useConversationSettings` and gated its "Add someone" on
+ * `canInviteToConversation`; the THREAD header had no bridge, so its own "Add
+ * someone" was gated on nothing but `!isDirect` — every member of a group saw a
+ * button that the server refuses.
+ *
+ * One helper, so the question "what may this viewer do here" has one answer
+ * that every surface reads.
+ *
+ * ⚠ `role` is NARROWED, not cast. It crosses GraphQL as a plain string, and an
+ * unrecognised value falls back to `member` — the floor, and the safe direction:
+ * a value this build does not know must not be read as authority it cannot
+ * verify.
+ *
+ * @returns undefined when the viewer is not in the participant list at all,
+ *   which every rule reads as "no authority" rather than throwing.
+ */
+export function viewerParticipant(conversation: ChatConversationView): ParticipantView | undefined {
+  const mine = conversation.participants.find((one) => one.userId === conversation.myUserId);
+  if (!mine) return undefined;
+
+  return {
+    conversationId: conversation.id,
+    userId: mine.userId,
+    status: mine.status as ParticipantView['status'],
+    role: isChatParticipantRole(mine.role) ? mine.role : 'member',
+  };
+}
+
+/**
+ * What the viewer may do in this conversation, ready for the domain's rules.
+ *
+ * A convenience over `viewerParticipant` so a component reads
+ * `canInviteToConversation(viewerAuthority(conversation))` rather than
+ * assembling the wrapper object at each call site — which is one more place to
+ * get it subtly wrong.
+ */
+export function viewerAuthority(conversation: ChatConversationView): ActorAuthority {
+  return { participant: viewerParticipant(conversation) };
 }

@@ -2,9 +2,10 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { useEffect, useRef, useState } from 'react';
+import { canInviteToConversation } from '../../domain/participant-roles.js';
 import type { ChatConversationView, ChatDirectoryMatchView, ChatPresenceView } from '../chat-client.js';
 import { chatSettingsHref as settingsHref } from '../module.js';
-import { conversationTitle, otherParticipants } from '../view/conversation-view.js';
+import { conversationTitle, otherParticipants, viewerAuthority } from '../view/conversation-view.js';
 import { isPending, type ThreadMessage } from '../view/message-view.js';
 import { MessageComposer } from './message-composer.js';
 import { PersonFinder } from './person-finder.js';
@@ -44,6 +45,14 @@ export function MessageThread({
   onTyping: () => void;
 }) {
   const [inviting, setInviting] = useState(false);
+  /*
+   * ⚠ HIDDEN, NOT DISABLED. A greyed-out "Add someone" raises a question the
+   * screen cannot answer — a member has no way to see that inviting is an
+   * owner-or-admin power, so the disabled control reads as a bug. The settings
+   * page hides its equivalent for the same reason, and this is the precedent
+   * every role-gated affordance in this module follows.
+   */
+  const canInvite = canInviteToConversation(viewerAuthority(conversation));
   const names = new Map(conversation.participants.map((participant) => [participant.userId, participant.displayName]));
   const others = conversation.participants.filter((one) => one.userId !== conversation.myUserId);
 
@@ -76,13 +85,24 @@ export function MessageThread({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/*
-            ⚠ NO INVITE ON A DIRECT CHAT. Two people are what its `directKey`
+            ⚠ TWO CONDITIONS, AND BOTH ARE THE SERVER'S OWN RULES.
+
+            NO INVITE ON A DIRECT CHAT: two people are what its `directKey`
             means, and adding a third would leave a conversation whose unique
-            key no longer describes who is in it. The server refuses it too —
-            this is the affordance agreeing with the rule rather than a second
-            copy of it.
+            key no longer describes who is in it.
+
+            ⚠ AND ONLY AN OWNER OR ADMIN, which this button did not check. Every
+            member of a group saw it, opened the finder, found somebody and had
+            the invitation refused by the API — a control that exists to be
+            denied. The conversation SETTINGS page gated its own "Add someone"
+            on this from the start; the two are now the same call.
+
+            `canInviteToConversation` is imported from the domain, never
+            restated: the same function the server enforces with, so the worst a
+            mistake here can do is HIDE a control the API would have allowed —
+            never show one it refuses.
           */}
-          {!conversation.isDirect ? (
+          {!conversation.isDirect && canInvite ? (
             <button
               type="button"
               onClick={() => setInviting((open) => !open)}

@@ -1,6 +1,8 @@
 'use client';
 
+import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { cn } from '@kwtech/web-ui/react';
+import { CHAT_FEATURE } from '../../feature-keys.js';
 import type { ChatConversationView, ChatMyAvailabilityView, ChatPresenceView } from '../chat-client.js';
 import { conversationTitle, otherParticipants, splitConversations } from '../view/conversation-view.js';
 import { AvailabilityPicker } from './availability-picker.js';
@@ -40,6 +42,13 @@ export function ConversationList({
   onAvailabilityChange: (availability: string, forMinutes: number | null) => void;
 }) {
   const { active, requests } = splitConversations(conversations ?? []);
+  /*
+   * ⚠ HIDDEN, NOT DISABLED, like every role-gated control in this module. A
+   * greyed-out New raises a question the screen cannot answer — somebody
+   * without `chat:start` has no way to discover that starting conversations is
+   * a separate right, so a disabled button reads as a bug rather than a rule.
+   */
+  const canStart = useHoldsFeature(CHAT_FEATURE.start);
 
   /**
    * ⚠ A DOT ONLY ON A DIRECT CHAT. "Who is online" in a group of nine is a row
@@ -56,19 +65,36 @@ export function ConversationList({
     <div className="flex h-full min-h-0 w-full flex-col border-border sm:w-72 sm:border-r">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h2 className="text-sm font-medium text-foreground">Conversations</h2>
-        <button
-          type="button"
-          onClick={onStartNew}
-          disabled={busy}
-          aria-pressed={starting}
-          className={cn(
-            'rounded-md px-2 py-1 text-sm font-medium',
-            starting ? 'bg-accent text-accent-foreground' : 'text-primary hover:bg-accent/60',
-            'disabled:opacity-50',
-          )}
-        >
-          New
-        </button>
+        {/*
+          ⚠ ONLY FOR SOMEBODY WHO MAY START ONE. `chat:read` opens this page;
+          `chat:start` is a separate key, and a role can hold the first without
+          the second — somebody who may follow conversations they are added to
+          and may not open new ones. They were shown a New button that the API
+          then refused.
+
+          ⚠ `useHoldsFeature` comes from `module-kit`, not from
+          `module-permissions`, which this module may not import (§9). An app
+          with no permission model at all sees an EMPTY list of held features,
+          and a missing provider HIDES controls rather than revealing them —
+          which is the safe direction and the reason the seam is shaped this
+          way. Hiding is not enforcing: the mutation is authorised again at the
+          API regardless.
+        */}
+        {canStart ? (
+          <button
+            type="button"
+            onClick={onStartNew}
+            disabled={busy}
+            aria-pressed={starting}
+            className={cn(
+              'rounded-md px-2 py-1 text-sm font-medium',
+              starting ? 'bg-accent text-accent-foreground' : 'text-primary hover:bg-accent/60',
+              'disabled:opacity-50',
+            )}
+          >
+            New
+          </button>
+        ) : null}
       </div>
 
       <AvailabilityPicker mine={myAvailability} busy={busy} onChange={onAvailabilityChange} />

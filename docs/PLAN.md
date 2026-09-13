@@ -539,6 +539,57 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **A control offered to people the server refuses, and the
+  bridge that existed in only one place.**
+
+  Found by the operator: the thread header's **"Add someone" was shown to every
+  member of a group.** `canInviteToConversation` is owner-or-admin, so a member
+  saw the button, opened the finder, found somebody, and had the invitation
+  refused by the API — a control that exists to be denied.
+
+  **⚠ THE SETTINGS PAGE HAD IT RIGHT THE WHOLE TIME**, which is the part worth
+  recording. `/chat/:conversationId/settings` gated its own "Add someone" on
+  exactly this rule from the day it shipped. The difference was not care: the
+  BRIDGE from the wire shape to the domain's rules — narrowing a
+  `ChatParticipantView` into a `ParticipantView` the rules accept — lived inside
+  `useConversationSettings`, so the surface that did not use that hook had no
+  way to ask the question at all.
+
+  ⚠ **The same shape as the back-link bug two commits ago.** A capability
+  living inside one consumer is not shared, and the next surface does not
+  inherit it. So `viewerParticipant` / `viewerAuthority` moved to
+  `view/conversation-view.ts`, where both read them, with tests over each role.
+
+  **⚠ AND A SECOND ONE FOUND BY LOOKING**, which the operator asked for: the
+  conversation list's **New** button was gated on nothing. `chat:read` opens the
+  page and `chat:start` is a SEPARATE key — a role can hold the first without
+  the second, somebody who may follow conversations they are added to and may
+  not open new ones. Now `useHoldsFeature(CHAT_FEATURE.start)`, from
+  `module-kit` rather than `module-permissions`, which this module may not
+  import (§9).
+
+  **⚠ HIDDEN, NOT DISABLED**, and the operator offered both. A greyed-out "Add
+  someone" raises a question the screen cannot answer: a member has no way to
+  discover that inviting is an owner-or-admin power, so the disabled control
+  reads as a bug rather than a rule. Hiding is also the precedent every
+  role-gated affordance in this module already followed.
+
+  ⚠ **Hiding is not enforcing, and the direction of failure is what makes this
+  safe.** Every one of these calls the SAME domain function the server enforces
+  with — imported, never restated — so the worst a mistake here can do is hide
+  a control the API would have allowed. It can never show one the API refuses.
+  That is C1's lesson applied to affordances rather than to queries, and it is
+  why `useHoldsFeature` returning an empty list in an app with no permission
+  model HIDES rather than reveals.
+
+  **The rest of the surface, audited rather than assumed:** message deletion is
+  gated on authorship, which matches the server for a non-moderator — a
+  moderator's delete is a MISSING affordance rather than a wrongly-shown one,
+  and that is the safe direction. Leaving deliberately takes no key at all;
+  withholding it would be a lockout dressed as a permission. Rename, roles,
+  removal and archiving on the settings page were already gated on their own
+  rules.
+
 - **2026-09-13** — **Ten tones, and the engine grew to make them possible.**
 
   Asked for by the operator: more tones, "like Messenger and more". Four became
