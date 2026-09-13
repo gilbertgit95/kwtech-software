@@ -47,6 +47,19 @@ model QueueSettings {
   /// account's display name. Changing it mid-session reaches every TV at once.
   showStaffNames Boolean @default(false)
 
+  /// How a TV reads a call aloud. PRESETS stored as text and validated by
+  /// `src/domain/voice.ts`: a new preset is then a code change rather than a
+  /// migration, and a value no longer offered reads back as its default.
+  ///
+  /// ⚠ `voiceType` is a PREFERENCE. A device picks a voice by name, and one
+  /// with no woman's or man's voice uses its own, pitched higher or lower.
+  voiceEnabled Boolean @default(true)
+  voiceType    String  @default("any")
+  voicePitch   String  @default("normal")
+  voiceSpeed   String  @default("normal")
+  voiceVolume  String  @default("full")
+  voiceRepeat  Int     @default(1)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

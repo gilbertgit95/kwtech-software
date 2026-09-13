@@ -1,4 +1,5 @@
 import type { LimitChecker } from '@kwtech/module-kit';
+import { DEFAULT_VOICE } from '../src/domain/voice.js';
 import { QUEUE_LIMIT } from '../src/feature-keys.js';
 import type { QueueStaffCheck } from '../src/server/ports.js';
 import type { QueueWriteError } from '../src/server/queue.errors.js';
@@ -462,5 +463,36 @@ describe('nicknames', () => {
     await svc.setMyNickname(SCOPE, 'joy', 'Ate Joy');
     expect(await svc.clearNickname(SCOPE, 'joy')).toBe(true);
     expect(state.queueStaffNickname).toHaveLength(0);
+  });
+});
+
+describe('announcements', () => {
+  it('stores the voice a workspace chose', async () => {
+    const { svc, state } = harness();
+    await svc.setVoice(SCOPE, {
+      enabled: true,
+      type: 'woman',
+      pitch: 'high',
+      speed: 'slow',
+      volume: 'medium',
+      repeat: 2,
+    });
+    expect(state.queueSettings[0]).toMatchObject({
+      workspaceId: 'ws',
+      voiceEnabled: true,
+      voiceType: 'woman',
+      voicePitch: 'high',
+      voiceSpeed: 'slow',
+      voiceVolume: 'medium',
+      voiceRepeat: 2,
+    });
+  });
+
+  it('⚠ refuses a value that is not one of the choices, and saves nothing', async () => {
+    const { svc, state } = harness();
+    const error = await refusal(svc.setVoice(SCOPE, { ...DEFAULT_VOICE, pitch: 'ear-splitting' }));
+    expect(error.reason).toBe('invalid');
+    expect(error.detail).toEqual({ field: 'pitch' });
+    expect(state.queueSettings ?? []).toHaveLength(0);
   });
 });

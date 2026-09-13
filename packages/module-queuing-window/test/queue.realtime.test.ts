@@ -1,4 +1,5 @@
 import { ANONYMOUS_ADMISSION_KEY } from '@kwtech/module-kit';
+import { DEFAULT_VOICE } from '../src/domain/voice.js';
 import { QueueResolver } from '../src/server/graphql/queue.resolver.js';
 import type { QueueEventType } from '../src/server/graphql/queue.types.js';
 import type { QueueWorkspaceLocator } from '../src/server/ports.js';
@@ -249,6 +250,16 @@ describe('the board a TV receives', () => {
     // Clearing it takes it off the board at once.
     await h.writes.clearNickname(SCOPE, 'joy');
     expect((await next(stream)).board?.serving[0]?.nickname).toBeNull();
+    await stream.return?.();
+  });
+
+  it('carries the workspace voice, and a change reaches the TV with the next board', async () => {
+    const h = await harness();
+    const stream = h.board.stream(h.admission);
+    expect((await next(stream)).board?.voice).toEqual(DEFAULT_VOICE);
+
+    await h.writes.setVoice(SCOPE, { ...DEFAULT_VOICE, type: 'woman', repeat: 2 });
+    expect((await next(stream)).board?.voice).toMatchObject({ type: 'woman', repeat: 2 });
     await stream.return?.();
   });
 

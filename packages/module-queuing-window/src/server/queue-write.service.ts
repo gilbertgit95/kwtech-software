@@ -14,6 +14,7 @@ import { planAssignment } from '../domain/seats.js';
 import { checkCallingAllowed, checkCanStart, generateDisplayCode, stoppedSessionFields } from '../domain/session.js';
 import type { DisplayTextRefusal } from '../domain/text.js';
 import { checkTicketAct, nextTicketStatus, planCallNumber } from '../domain/tickets.js';
+import { normalizeVoice, type QueueVoice, VOICE_FIELD_LABELS, voiceRefusal } from '../domain/voice.js';
 import { prepareWindowName, windowNameKey, windowServesLine } from '../domain/windows.js';
 import { QUEUE_LIMIT } from '../feature-keys.js';
 import type { TicketStatus } from '../types.js';
@@ -36,6 +37,7 @@ import type {
 } from './queue.repository.js';
 import type { QueueScope } from './queue.service.js';
 import { QUEUE_LIMIT_CHECKER, QUEUE_PRISMA_WRITE, QUEUE_STAFF_CHECK } from './queue.tokens.js';
+import { voiceColumns } from './voice-columns.js';
 
 /**
  * The most displays one session admits, whatever a plan says — including a plan
@@ -222,6 +224,30 @@ export class QueueWriteService {
       where: { workspaceId: scope.workspaceId },
       create: { ...scoped(scope), showStaffNames: show },
       update: { showStaffNames: show },
+    });
+    await this.events?.workspaceChanged(scope, 'settings');
+    return settings;
+  }
+
+  /**
+   * How every TV reads a call aloud.
+   *
+   * ⚠ The whole voice or nothing: one value that is not a choice refuses the
+   * write, so a TV never reads with half a new setting. Reaches every TV at
+   * once, with the next board.
+   */
+  async setVoice(scope: QueueScope, input: Partial<Record<keyof QueueVoice, unknown>>): Promise<SettingsRow> {
+    const refused = voiceRefusal(input);
+    if (refused) {
+      throw new QueueWriteError('invalid', `That ${VOICE_FIELD_LABELS[refused]} is not one of the choices`, {
+        field: refused,
+      });
+    }
+    const columns = voiceColumns(normalizeVoice(input));
+    const settings = await this.prisma.queueSettings.upsert({
+      where: { workspaceId: scope.workspaceId },
+      create: { ...scoped(scope), ...columns },
+      update: columns,
     });
     await this.events?.workspaceChanged(scope, 'settings');
     return settings;

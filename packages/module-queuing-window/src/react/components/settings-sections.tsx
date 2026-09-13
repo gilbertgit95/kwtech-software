@@ -3,9 +3,21 @@
 import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { ConfirmDialog } from '@kwtech/web-ui/react';
 import { useEffect, useState } from 'react';
+import {
+  normalizeVoice,
+  type QueueVoice,
+  VOICE_LABELS,
+  VOICE_PITCHES,
+  VOICE_REPEATS,
+  VOICE_SPEEDS,
+  VOICE_TYPES,
+  VOICE_VOLUMES,
+} from '../../domain/voice.js';
 import { QUEUE_FEATURE } from '../../feature-keys.js';
 import type { QueueLineView, QueueStaffMemberView, QueueWindowView } from '../queue-client.js';
+import { primeSpeech, speakAnnouncement } from '../speech.js';
 import type { QueueConsoleState } from '../use-queue-console.js';
+import { announcementSentence, spokenCall } from '../view/board-view.js';
 import { activeLines, activeWindows, seatAt } from '../view/console-view.js';
 import { buttonClass, inputClass, Section } from './ui.js';
 
@@ -484,5 +496,149 @@ export function DisplaySection({ state }: { state: QueueConsoleState }) {
         </span>
       </label>
     </Section>
+  );
+}
+
+// ── announcements ─────────────────────────────────────────────────────────────
+
+const SAMPLE_CALL = { label: 'C-042', windowName: 'Window 3' };
+
+/**
+ * How TVs read a call aloud. `queue:start`, beside what a display shows.
+ *
+ * Each change saves at once and reaches every TV with its next board, like the
+ * nickname switch above. ⚠ The sample plays on THIS computer, whose voices are
+ * not the TV's — the note says so, rather than letting the sample promise it.
+ */
+export function AnnouncementSection({ state }: { state: QueueConsoleState }) {
+  const { view, busy, run, client, scope } = state;
+  if (!view) return null;
+  const voice = normalizeVoice(view.settings.voice);
+  const save = (change: Partial<QueueVoice>) => run(() => client.setVoice(scope, { ...voice, ...change }));
+  const off = busy || !voice.enabled;
+
+  return (
+    <Section
+      title="Announcements"
+      description="After the chime, every display reads the call aloud. Changes reach every display at once."
+    >
+      <div className="flex flex-col gap-4">
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={voice.enabled}
+            disabled={busy}
+            onChange={(event) => save({ enabled: event.target.checked })}
+          />
+          <span>
+            <span className="text-sm font-medium text-foreground">Read each call aloud</span>
+            <span className="mt-1 block text-sm text-muted-foreground">
+              Displays say: “{announcementSentence(SAMPLE_CALL.label, SAMPLE_CALL.windowName)}” — the number digit by
+              digit. Off, a display only chimes.
+            </span>
+          </span>
+        </label>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <VoiceChoice
+            label="Voice"
+            value={voice.type}
+            choices={VOICE_TYPES}
+            labels={VOICE_LABELS.type}
+            disabled={off}
+            onChange={(type) => save({ type })}
+          />
+          <VoiceChoice
+            label="Pitch"
+            value={voice.pitch}
+            choices={VOICE_PITCHES}
+            labels={VOICE_LABELS.pitch}
+            disabled={off}
+            onChange={(pitch) => save({ pitch })}
+          />
+          <VoiceChoice
+            label="Speed"
+            value={voice.speed}
+            choices={VOICE_SPEEDS}
+            labels={VOICE_LABELS.speed}
+            disabled={off}
+            onChange={(speed) => save({ speed })}
+          />
+          <VoiceChoice
+            label="Volume"
+            value={voice.volume}
+            choices={VOICE_VOLUMES}
+            labels={VOICE_LABELS.volume}
+            disabled={off}
+            onChange={(volume) => save({ volume })}
+          />
+          <VoiceChoice
+            label="Read each call"
+            value={voice.repeat}
+            choices={VOICE_REPEATS}
+            labels={VOICE_LABELS.repeat}
+            disabled={off}
+            onChange={(repeat) => save({ repeat })}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className={buttonClass('secondary')}
+            disabled={!voice.enabled}
+            onClick={() => {
+              primeSpeech();
+              speakAnnouncement(spokenCall(SAMPLE_CALL), voice);
+            }}
+          >
+            Play a sample
+          </button>
+          <span className="text-sm text-muted-foreground">
+            Plays on this computer. Each display uses the closest voice it has: one with no woman’s or man’s voice uses
+            its own, pitched higher or lower.
+          </span>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function VoiceChoice<T extends string | number>({
+  label,
+  value,
+  choices,
+  labels,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  choices: readonly T[];
+  labels: Record<T, string>;
+  disabled: boolean;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-sm">
+      <span className="font-medium text-foreground">{label}</span>
+      <select
+        className={inputClass}
+        value={String(value)}
+        disabled={disabled}
+        onChange={(event) => {
+          // The option list IS the choices, so this always finds one.
+          const chosen = choices.find((choice) => String(choice) === event.target.value);
+          if (chosen !== undefined) onChange(chosen);
+        }}
+      >
+        {choices.map((choice) => (
+          <option key={String(choice)} value={String(choice)}>
+            {labels[choice]}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

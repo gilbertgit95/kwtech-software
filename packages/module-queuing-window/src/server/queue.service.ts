@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { formatDisplayCode, MAX_FAILED_CODE_ATTEMPTS } from '../domain/session.js';
+import type { QueueVoice } from '../domain/voice.js';
 import type { QueueStaffCheck, QueueStaffDirectory, QueueStaffMember, QueueWorkspaceLocator } from './ports.js';
 import type {
   LineRow,
@@ -11,6 +12,7 @@ import type {
   WindowRow,
 } from './queue.repository.js';
 import { QUEUE_PRISMA, QUEUE_STAFF_CHECK, QUEUE_STAFF_DIRECTORY, QUEUE_WORKSPACE_LOCATOR } from './queue.tokens.js';
+import { voiceOf } from './voice-columns.js';
 
 /** How many recent calls the console lists. */
 export const RECENT_CALLS = 20;
@@ -24,7 +26,7 @@ export interface QueueScope {
 }
 
 export interface QueueConsoleView {
-  settings: Pick<SettingsRow, 'enabled' | 'showStaffNames'>;
+  settings: Pick<SettingsRow, 'enabled' | 'showStaffNames'> & { voice: QueueVoice };
   /** The OPEN session, or null. ⚠ Never carries the code — see `displayCode`. */
   session: SessionRow | null;
   lines: LineRow[];
@@ -135,7 +137,11 @@ export class QueueService {
     );
 
     return {
-      settings: { enabled: settings?.enabled ?? true, showStaffNames: settings?.showStaffNames ?? false },
+      settings: {
+        enabled: settings?.enabled ?? true,
+        showStaffNames: settings?.showStaffNames ?? false,
+        voice: voiceOf(settings),
+      },
       session,
       lines,
       windows: windows.map((window) => ({

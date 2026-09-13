@@ -120,7 +120,9 @@ describe('what the TV says', () => {
   });
 
   it('announces the number and the window', () => {
-    expect(spokenCall({ label: 'C-042', windowName: 'Window 3' })).toBe('Now serving C, zero four two, at Window 3.');
+    expect(spokenCall({ label: 'C-042', windowName: 'Window 3' })).toBe(
+      'Number C, zero four two, please proceed to Window 3.',
+    );
   });
 });
 

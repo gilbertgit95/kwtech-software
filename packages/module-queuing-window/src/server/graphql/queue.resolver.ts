@@ -9,6 +9,7 @@ import type { LineRow, SessionRow, TicketRow, WindowRow } from '../queue.reposit
 import { type QueueConsoleView, type QueueScope, QueueService } from '../queue.service.js';
 import { QUEUE_OPTIONS, QUEUE_PUBSUB } from '../queue.tokens.js';
 import { QueueWriteService } from '../queue-write.service.js';
+import { type VoiceColumns, voiceOf } from '../voice-columns.js';
 import {
   QueueConsoleType,
   QueueDisplayCodeType,
@@ -19,6 +20,7 @@ import {
   QueueSettingsType,
   QueueStaffMemberType,
   QueueTicketType,
+  QueueVoiceInputType,
   QueueWindowType,
 } from './queue.types.js';
 
@@ -161,8 +163,17 @@ export class QueueResolver {
     @Args('workspaceId') workspaceId: string,
     @Args('show') show: boolean,
   ): Promise<QueueSettingsType> {
-    const settings = await this.writes.setShowStaffNames({ organizationId, workspaceId }, show);
-    return { enabled: settings.enabled, showStaffNames: settings.showStaffNames };
+    return renderSettings(await this.writes.setShowStaffNames({ organizationId, workspaceId }, show));
+  }
+
+  /** How every TV reads a call aloud. Bound with the other display settings, to `queue:start`. */
+  @Mutation(() => QueueSettingsType, { name: 'setQueueVoice' })
+  async setVoice(
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('voice', { type: () => QueueVoiceInputType }) voice: QueueVoiceInputType,
+  ): Promise<QueueSettingsType> {
+    return renderSettings(await this.writes.setVoice({ organizationId, workspaceId }, { ...voice }));
   }
 
   // ── calling ───────────────────────────────────────────────────────────────
@@ -468,6 +479,10 @@ function renderTicket(row: TicketRow): QueueTicketType {
     calledAt: row.calledAt.toISOString(),
     recallCount: row.recallCount,
   };
+}
+
+function renderSettings(settings: { enabled: boolean; showStaffNames: boolean } & VoiceColumns): QueueSettingsType {
+  return { enabled: settings.enabled, showStaffNames: settings.showStaffNames, voice: voiceOf(settings) };
 }
 
 function renderConsole(view: QueueConsoleView): QueueConsoleType {

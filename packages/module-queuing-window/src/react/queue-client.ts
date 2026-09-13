@@ -1,5 +1,6 @@
 'use client';
 
+import type { QueueVoice, StoredVoice } from '../domain/voice.js';
 import { QUEUE_OPERATIONS } from '../operations.js';
 
 /**
@@ -67,7 +68,7 @@ export interface QueueSessionView {
 }
 
 export interface QueueConsoleView {
-  settings: { enabled: boolean; showStaffNames: boolean };
+  settings: { enabled: boolean; showStaffNames: boolean; voice: StoredVoice };
   session: QueueSessionView | null;
   lines: QueueLineView[];
   windows: QueueWindowView[];
@@ -118,6 +119,8 @@ export interface QueueClient {
   startQueue(scope: QueueScopeView, continueNumbering: boolean): Promise<void>;
   stopQueue(scope: QueueScopeView): Promise<void>;
   setShowStaffNames(scope: QueueScopeView, show: boolean): Promise<void>;
+  /** ⚠ The whole voice; the server refuses any value that is not a preset. */
+  setVoice(scope: QueueScopeView, voice: QueueVoice): Promise<void>;
 
   /** ⚠ Pass a FRESH `clientRequestId` per press, so a retried request never skips a number. */
   callNext(scope: QueueScopeView, lineId: string, clientRequestId: string): Promise<QueueTicketView>;
@@ -208,6 +211,11 @@ export function createQueueClient(options: { graphqlPath?: string } = {}): Queue
     },
     async setShowStaffNames(scope, show) {
       await graphql(ops.setQueueShowStaffNames, scoped(scope, { show }));
+    },
+
+    async setVoice(scope, { enabled, type, pitch, speed, volume, repeat }) {
+      // Copied field by field, so nothing extra — a __typename — reaches the input type.
+      await graphql(ops.setQueueVoice, scoped(scope, { voice: { enabled, type, pitch, speed, volume, repeat } }));
     },
 
     async callNext(scope, lineId, clientRequestId) {

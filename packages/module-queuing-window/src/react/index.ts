@@ -37,6 +37,7 @@ export {
   queueSettingsHref,
   WORKSPACE_NAV_GROUP,
 } from './routes.js';
+export { primeSpeech, speakAnnouncement } from './speech.js';
 export { type QueueConsoleState, useQueueConsole } from './use-queue-console.js';
 export {
   type DisplayNotice,
@@ -45,6 +46,7 @@ export {
   useQueueDisplay,
 } from './use-queue-display.js';
 export {
+  announcementSentence,
   codeFromFragment,
   displayStorageKeys,
   filterBoard,
@@ -69,3 +71,4 @@ export {
   sessionAge,
   spaceLine,
 } from './view/console-view.js';
+export { FALLBACK_PITCH_SHIFT, pickVoice, type SpeechPlan, speechPlan, type VoiceLike } from './view/voice-view.js';

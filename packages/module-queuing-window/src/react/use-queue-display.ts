@@ -4,9 +4,11 @@ import { createRealtimeConnection } from '@kwtech/module-kit/realtime';
 import { playTone, unlockTones } from '@kwtech/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DISPLAY_PASS_PARAM } from '../domain/session.js';
+import { DEFAULT_VOICE, normalizeVoice, type QueueVoice } from '../domain/voice.js';
 import { QUEUE_OPERATIONS } from '../operations.js';
 import { CALL_CHIME_MS, CALL_CHIME_PEAK, QUEUE_CALL_CHIME } from './call-chime.js';
 import { createQueueClient, type QueueClient } from './queue-client.js';
+import { primeSpeech, speakAnnouncement } from './speech.js';
 import {
   codeFromFragment,
   displayStorageKeys,
@@ -70,19 +72,6 @@ const storage = {
   },
 };
 
-function speak(text: string): void {
-  const synth = globalThis.speechSynthesis;
-  if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
-  try {
-    synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    synth.speak(utterance);
-  } catch {
-    // No voice is not an error; the chime still played.
-  }
-}
-
 type WakeLockSentinelLike = { release: () => Promise<void> };
 
 async function requestWakeLock(): Promise<WakeLockSentinelLike | null> {
@@ -127,6 +116,8 @@ export function useQueueDisplay(options: {
   const [soundReady, setSoundReady] = useState(false);
   const [exchanging, setExchanging] = useState(false);
   const wakeLock = useRef<WakeLockSentinelLike | null>(null);
+  /** The workspace's voice, from the latest board — read when a call arrives, not when the socket opened. */
+  const voice = useRef<QueueVoice>(DEFAULT_VOICE);
 
   const end = useCallback(
     (notice: DisplayNotice) => {
@@ -189,14 +180,14 @@ export function useQueueDisplay(options: {
   const start = useCallback(async () => {
     if (phase.kind !== 'start') return;
     const stored = phase.stored;
-    speak('');
+    primeSpeech();
     setSoundReady(await unlockTones());
     wakeLock.current = await requestWakeLock();
     setPhase({ kind: 'board', stored });
   }, [phase]);
 
   const enableSound = useCallback(async () => {
-    speak('');
+    primeSpeech();
     setSoundReady(await unlockTones());
   }, []);
 
@@ -229,7 +220,7 @@ export function useQueueDisplay(options: {
       setAnnounced({ ticketId: call.ticketId, at: Date.now() });
       playTone(QUEUE_CALL_CHIME, { peak: CALL_CHIME_PEAK });
       // After the chime, not over it.
-      setTimeout(() => speak(spokenCall(call)), CALL_CHIME_MS + 150);
+      setTimeout(() => speakAnnouncement(spokenCall(call), voice.current), CALL_CHIME_MS + 150);
     };
 
     // ⚠ The page's OWN socket — the documented exception to one per tab: the
@@ -256,7 +247,10 @@ export function useQueueDisplay(options: {
           endRef.current('stopped');
           return;
         }
-        if (event.board) setBoard(event.board);
+        if (event.board) {
+          voice.current = normalizeVoice(event.board.voice);
+          setBoard(event.board);
+        }
         if (event.announce) announce(event.announce);
       },
     );

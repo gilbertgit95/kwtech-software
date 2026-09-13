@@ -1,4 +1,5 @@
 import type { TicketStatus } from '../types.js';
+import type { VoiceColumns } from './voice-columns.js';
 
 /**
  * The slice of a Prisma client this module uses — declared STRUCTURALLY, never
@@ -16,7 +17,7 @@ import type { TicketStatus } from '../types.js';
 
 type SortOrder = 'asc' | 'desc';
 
-export interface SettingsRow {
+export interface SettingsRow extends VoiceColumns {
   workspaceId: string;
   organizationId: string;
   enabled: boolean;
@@ -169,8 +170,8 @@ export interface QueueTransaction {
     findUnique(args: { where: { workspaceId: string } }): Promise<SettingsRow | null>;
     upsert(args: {
       where: { workspaceId: string };
-      create: Scoped & { showStaffNames?: boolean };
-      update: { showStaffNames?: boolean };
+      create: Scoped & { showStaffNames?: boolean } & Partial<VoiceColumns>;
+      update: { showStaffNames?: boolean } & Partial<VoiceColumns>;
     }): Promise<SettingsRow>;
   };
 

@@ -124,5 +124,34 @@ unlisted.
    TV that missed the event — the TV deletes its pass and returns to the code
    prompt. Its line filter stays.
 
+### What a display says
+
+After the chime, a display reads the call aloud with the browser's own speech
+(the Web Speech API, `speechSynthesis`):
+
+> Number C, zero four two, please proceed to window Cashier 1.
+
+The number is read digit by digit, as printed on the slip. A window already
+named "Window 3" is read as "…proceed to Window 3", not "window Window 3".
+
+**Announcements** on the queue settings page (`queue:start`) set the voice for
+the whole workspace. Every display gets the change with its next board:
+
+| Setting | Choices |
+| --- | --- |
+| Read each call aloud | on / off (off: chime only) |
+| Voice | the display's own · woman · man |
+| Pitch | low · normal · high · very high |
+| Speed | slow · normal · fast |
+| Volume | soft · medium · full |
+| Read each call | once · twice |
+
+⚠ **Woman and man are a preference.** Browsers expose only a voice's name and
+language, so a display looks for a name known to be a woman's or a man's
+(`pickVoice`). A display with no such voice uses its own default, pitched a
+little higher or lower. **Play a sample** plays on the computer showing the
+settings page, whose voices may differ from the TV's. English only for now
+(PLAN §12.64).
+
 ⚠ `wsUrl` must be passed to `queueWebModule`. Without it, the board says live
 updates are not configured instead of showing a board that never changes.

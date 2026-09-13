@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { boardNickname } from '../domain/nicknames.js';
 import { isSessionOpen } from '../domain/session.js';
+import type { QueueVoice } from '../domain/voice.js';
 import {
   ALL_QUEUE_EVENTS,
   NULL_QUEUE_PUBSUB,
@@ -11,6 +12,7 @@ import {
 import type { QueuePrismaClient, TicketRow } from './queue.repository.js';
 import { QUEUE_PRISMA, QUEUE_PUBSUB } from './queue.tokens.js';
 import type { QueueDisplayAdmission } from './queue-display.service.js';
+import { voiceOf } from './voice-columns.js';
 
 /** How many recent calls a TV lists under Now serving. */
 export const BOARD_RECENT_CALLS = 8;
@@ -36,6 +38,8 @@ export interface QueueBoardCall {
 
 export interface QueueBoard {
   showStaffNames: boolean;
+  /** How the TV reads a call aloud. */
+  voice: QueueVoice;
   /** For the TV's own line filter. A presentation filter, not a boundary. */
   lines: Array<{ id: string; prefix: string; name: string }>;
   /** One row per window that has called a number this session — its latest call. */
@@ -125,6 +129,7 @@ export class QueueBoardService {
 
     return {
       showStaffNames,
+      voice: voiceOf(settings),
       lines: lines.map((line) => ({ id: line.id, prefix: line.prefix, name: line.name })),
       serving: serving.map(render),
       recent: recent.map(render),

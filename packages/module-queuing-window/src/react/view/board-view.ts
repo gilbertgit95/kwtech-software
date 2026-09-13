@@ -1,4 +1,5 @@
 import { isDisplayPassShaped } from '../../domain/session.js';
+import type { StoredVoice } from '../../domain/voice.js';
 
 /**
  * The public board's view rules — pure, and tested without a browser.
@@ -18,6 +19,8 @@ export interface QueueBoardCallView {
 
 export interface QueueBoardView {
   showStaffNames: boolean;
+  /** Untrusted strings; read through `normalizeVoice`. */
+  voice: StoredVoice;
   lines: Array<{ id: string; prefix: string; name: string }>;
   serving: QueueBoardCallView[];
   recent: QueueBoardCallView[];
@@ -133,8 +136,22 @@ export function spokenLabel(label: string): string {
     .join(', ');
 }
 
+/**
+ * The sentence a display reads for a call: "Number C-042, please proceed to
+ * window Cashier 1."
+ *
+ * Give it the label as it should be SAID — `spokenCall` does — or as printed,
+ * for a preview. A window already named "Window 3" is not read as "window
+ * Window 3".
+ */
+export function announcementSentence(label: string, windowName: string): string {
+  const name = windowName.trim();
+  const destination = /^window\b/i.test(name) ? name : `window ${name}`;
+  return `Number ${label}, please proceed to ${destination}.`;
+}
+
 export function spokenCall(call: Pick<QueueBoardCallView, 'label' | 'windowName'>): string {
-  return `Now serving ${spokenLabel(call.label)}, at ${call.windowName}.`;
+  return announcementSentence(spokenLabel(call.label), call.windowName);
 }
 
 /**

@@ -1,10 +1,59 @@
-import { Field, Int, ObjectType } from '@nestjs/graphql';
+import { Field, InputType, Int, ObjectType } from '@nestjs/graphql';
 
 /**
  * The public shapes. Code-first, so these classes ARE the schema.
  *
  * ⚠ Dates cross as ISO STRINGS, matching every other type in this schema.
  */
+
+/** How a TV reads a call aloud. Each field is one of `src/domain/voice.ts`'s presets. */
+@ObjectType('QueueVoice')
+export class QueueVoiceType {
+  @Field()
+  enabled!: boolean;
+
+  /** any | woman | man — a preference; see VOICE_TYPES. */
+  @Field()
+  type!: string;
+
+  /** low | normal | high | very_high */
+  @Field()
+  pitch!: string;
+
+  /** slow | normal | fast */
+  @Field()
+  speed!: string;
+
+  /** soft | medium | full */
+  @Field()
+  volume!: string;
+
+  /** 1 | 2 */
+  @Field(() => Int)
+  repeat!: number;
+}
+
+/** The whole voice. ⚠ Every field is required and checked against the presets. */
+@InputType('QueueVoiceInput')
+export class QueueVoiceInputType {
+  @Field()
+  enabled!: boolean;
+
+  @Field()
+  type!: string;
+
+  @Field()
+  pitch!: string;
+
+  @Field()
+  speed!: string;
+
+  @Field()
+  volume!: string;
+
+  @Field(() => Int)
+  repeat!: number;
+}
 
 @ObjectType('QueueSettings')
 export class QueueSettingsType {
@@ -14,6 +63,9 @@ export class QueueSettingsType {
   /** Whether public displays show a staff nickname. Never an account name. */
   @Field()
   showStaffNames!: boolean;
+
+  @Field(() => QueueVoiceType)
+  voice!: QueueVoiceType;
 }
 
 /** The open session. ⚠ Carries no code — `queueDisplayCode` is bound to `queue:start`. */
@@ -284,6 +336,10 @@ export class QueueBoardCallType {
 export class QueueBoardType {
   @Field()
   showStaffNames!: boolean;
+
+  /** How this board reads a call aloud. */
+  @Field(() => QueueVoiceType)
+  voice!: QueueVoiceType;
 
   @Field(() => [QueueBoardLineType])
   lines!: QueueBoardLineType[];

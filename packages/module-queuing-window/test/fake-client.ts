@@ -54,7 +54,18 @@ const UNIQUES: Record<TableName, string[][]> = {
 
 /** What the database fills in. Every nullable column is present, so a filter on it means something. */
 const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
-  queueSettings: (_id, now) => ({ enabled: true, showStaffNames: false, createdAt: now, updatedAt: now }),
+  queueSettings: (_id, now) => ({
+    enabled: true,
+    showStaffNames: false,
+    voiceEnabled: true,
+    voiceType: 'any',
+    voicePitch: 'normal',
+    voiceSpeed: 'normal',
+    voiceVolume: 'full',
+    voiceRepeat: 1,
+    createdAt: now,
+    updatedAt: now,
+  }),
   queueLine: (id, now) => ({
     id,
     startNumber: 1,

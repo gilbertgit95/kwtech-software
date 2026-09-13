@@ -13,13 +13,14 @@
 const TICKET = 'id lineId label number cycle status windowId windowName calledAt recallCount';
 const LINE = 'id name prefix startNumber endNumber padTo sortOrder archived';
 const WINDOW = 'id name sortOrder archived lineIds';
+const VOICE = 'voice { enabled type pitch speed volume repeat }';
 const SCOPE_VARS = '$organizationId: String!, $workspaceId: String!';
 const SCOPE_ARGS = 'organizationId: $organizationId, workspaceId: $workspaceId';
 
 export const QUEUE_OPERATIONS = {
   queueConsole: `query QueueConsole(${SCOPE_VARS}) {
     queueConsole(${SCOPE_ARGS}) {
-      settings { enabled showStaffNames }
+      settings { enabled showStaffNames ${VOICE} }
       session { id startedAt startedById continuedNumbering codeLocked }
       lines { ${LINE} }
       windows { ${WINDOW} }
@@ -57,7 +58,12 @@ export const QUEUE_OPERATIONS = {
   stopQueue: `mutation StopQueue(${SCOPE_VARS}) { stopQueue(${SCOPE_ARGS}) }`,
 
   setQueueShowStaffNames: `mutation SetQueueShowStaffNames(${SCOPE_VARS}, $show: Boolean!) {
-    setQueueShowStaffNames(${SCOPE_ARGS}, show: $show) { enabled showStaffNames }
+    setQueueShowStaffNames(${SCOPE_ARGS}, show: $show) { enabled showStaffNames ${VOICE} }
+  }`,
+
+  /** ⚠ The whole voice — every field is required. */
+  setQueueVoice: `mutation SetQueueVoice(${SCOPE_VARS}, $voice: QueueVoiceInput!) {
+    setQueueVoice(${SCOPE_ARGS}, voice: $voice) { enabled showStaffNames ${VOICE} }
   }`,
 
   callNextQueueTicket: `mutation CallNextQueueTicket(${SCOPE_VARS}, $lineId: String!, $clientRequestId: String) {
@@ -143,6 +149,7 @@ export const QUEUE_OPERATIONS = {
       kind
       board {
         showStaffNames
+        ${VOICE}
         lines { id prefix name }
         serving { ticketId lineId label windowId windowName calledAt recallCount nickname }
         recent { ticketId lineId label windowId windowName calledAt recallCount nickname }

@@ -555,6 +555,46 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **What a display says, and a workspace voice.**
+
+  A user request. The spoken call is now **"Number C, zero four two, please
+  proceed to window Cashier 1."** It was "Now serving C, zero four two, at
+  Cashier 1." `announcementSentence` does not say "window Window 3" when a
+  window is already named that way.
+
+  **The voice is a workspace setting** (`setQueueVoice`, bound to
+  `queue:start` beside `setQueueShowStaffNames`: the people who decide what a
+  display publishes). It covers on/off, voice (display default · woman · man),
+  pitch (low · normal · high · very high), speed (slow · normal · fast), volume
+  (soft · medium · full), and read once or twice. It travels on the board
+  snapshot, so a change reaches every TV with the next redraw. The
+  settings-changed event already causes that redraw.
+  - **Presets, not numbers.** The API takes pitch 0–2, rate 0.1–10 and volume
+    0–1. Named presets map to values that sound reasonable (`speechPlan`), so
+    nobody has to find out 3× speed is a blur on a live TV.
+  - **Stored as text columns, not a Prisma enum.** Migration
+    `20260913150028_queue_voice` adds six defaulted columns, so it is additive
+    and existing rows hear what they heard before. A new preset is then a code
+    change. A stored value no longer offered reads back as its default
+    (`normalizeVoice`), so it cannot break a TV. Writes are strict:
+    `voiceRefusal` refuses the whole voice when any of the six fields is
+    missing or not a choice.
+  - ⚠ **"Woman" / "man" is a preference, and the UI says so.** The Web Speech
+    API exposes a voice's name and language, nothing about how it sounds.
+    `pickVoice` matches names known to be a woman's or a man's across
+    Chrome, Edge, Safari, Android and Windows. It prefers English voices and
+    checks women first, because "Female" contains "male". A device with no
+    match keeps its default voice, shifted ±0.3 in pitch, rather than
+    pretending. **Rejected: a free voice-name field.** Voice names differ on
+    every device, so a name chosen on the supervisor's laptop would usually
+    mean nothing on the TV.
+  - **Play a sample** speaks on the settings computer, and the note says the
+    TV's voices may differ.
+  - Speech moved into `src/react/speech.ts`, and the choice logic into
+    `view/voice-view.ts`, which is pure and tested. A new call still cancels the
+    one being read. §12.64 (language) stays open: the digit words and the
+    sentence are English.
+
 - **2026-09-13** — **After the queue build: socket caps, a trust-proxy switch, and the queue on the local plans.**
 
   **§12.59 — anonymous socket caps, built.** `AnonymousSocketLimiter` in

@@ -152,6 +152,7 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       // The people who can authorise a display are the people who can see what authorises it.
       op('Query.queueDisplayCode'),
       op('Mutation.setQueueShowStaffNames'),
+      op('Mutation.setQueueVoice'),
     ],
   },
   {

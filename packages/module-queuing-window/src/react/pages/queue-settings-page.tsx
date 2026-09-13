@@ -2,7 +2,13 @@
 
 import { useHoldsFeature } from '@kwtech/module-kit/react';
 import { QUEUE_FEATURE } from '../../feature-keys.js';
-import { AssignmentsSection, DisplaySection, LinesSection, WindowsSection } from '../components/settings-sections.js';
+import {
+  AnnouncementSection,
+  AssignmentsSection,
+  DisplaySection,
+  LinesSection,
+  WindowsSection,
+} from '../components/settings-sections.js';
 import { ErrorBanner, QueuePage } from '../components/ui.js';
 import { queueConsoleHref } from '../routes.js';
 import { useQueueConsole } from '../use-queue-console.js';
@@ -39,6 +45,7 @@ export function QueueSettingsPage({ params }: { params: Record<string, string> }
       {canManage ? <WindowsSection state={state} /> : null}
       {canAssign ? <AssignmentsSection state={state} /> : null}
       {canStart ? <DisplaySection state={state} /> : null}
+      {canStart ? <AnnouncementSection state={state} /> : null}
     </QueuePage>
   );
 }

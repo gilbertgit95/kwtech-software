@@ -217,6 +217,7 @@ type Mutation {
   setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
   setQueueLineNextNumber(lineId: String!, next: Int!, organizationId: String!, workspaceId: String!): Int!
   setQueueShowStaffNames(organizationId: String!, show: Boolean!, workspaceId: String!): QueueSettings!
+  setQueueVoice(organizationId: String!, voice: QueueVoiceInput!, workspaceId: String!): QueueSettings!
   setQueueWindowArchived(archived: Boolean!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setQueueWindowLines(lineIds: [String!]!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
@@ -525,6 +526,7 @@ type QueueBoard {
   recent: [QueueBoardCall!]!
   serving: [QueueBoardCall!]!
   showStaffNames: Boolean!
+  voice: QueueVoice!
 }
 
 type QueueBoardCall {
@@ -613,6 +615,7 @@ type QueueSession {
 type QueueSettings {
   enabled: Boolean!
   showStaffNames: Boolean!
+  voice: QueueVoice!
 }
 
 type QueueStaffMember {
@@ -631,6 +634,24 @@ type QueueTicket {
   status: String!
   windowId: String!
   windowName: String!
+}
+
+type QueueVoice {
+  enabled: Boolean!
+  pitch: String!
+  repeat: Int!
+  speed: String!
+  type: String!
+  volume: String!
+}
+
+input QueueVoiceInput {
+  enabled: Boolean!
+  pitch: String!
+  repeat: Int!
+  speed: String!
+  type: String!
+  volume: String!
 }
 
 type QueueWindow {
