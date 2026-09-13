@@ -554,6 +554,57 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **`module-queuing-window` step 7: the tone engine moved from
+  `module-chat` to `@kwtech/web-ui`; chat's catalogue stayed.** The queue board
+  needs a chime and may not import chat (§9), so the second consumer moves the
+  code (§9 rule 8). No behaviour changed for chat.
+
+  **What moved, and what did not:**
+  - ⚠ **The ENGINE moved; the CATALOGUE did not.** How notes become sound —
+    the one lazy `AudioContext`, the unlock, the fades, the exponential sweep,
+    struck-note decay to true silence — is now `playTone`, `unlockTones` and
+    `toneState` in `packages/web-ui/src/tones.ts`. Which ten sounds a message
+    can make is chat's product decision, so `CHAT_TONES` stays in
+    `module-chat/src/react/chat-tone.ts`. The queue board will define its own
+    chime in step 8.
+  - **It sits at `web-ui`'s framework-free ROOT, not `/react`.** It needs no
+    React and no dependency, and touches `window` only when a sound is asked
+    for, so the root's zero-runtime-dependency rule still holds.
+  - **Chat's public surface is unchanged.** `playChatTone`, `unlockChatTones`,
+    `CHAT_TONES`, `ChatToneId`, `DEFAULT_CHAT_TONE` and `isChatToneId` are all
+    still exported. They are now a catalogue plus two one-line wrappers.
+    `ChatTone` and `ChatToneNote` became deprecated aliases of `Tone` and
+    `ToneNote`.
+
+  **Two additions the board needs, both beside the engine:**
+  - **`playTone(tone, { peak })`.** Chat's desk-level 0.14 stays the default. A
+    waiting room is louder than a desk, and a TV may ask for more, capped at
+    `MAX_TONE_PEAK` (0.5) because overlapping notes past that clip into
+    distortion rather than sounding louder.
+  - **`toneState()` ('unavailable' | 'locked' | 'ready') and an `unlockTones()`
+    that resolves to whether it worked.** A TV is a screen nobody touches after
+    it is set up. It must know that audio is still locked and ask for the one
+    tap, instead of chiming into silence all day — the "looks like it works"
+    failure the board plan names.
+
+  **Tests moved with the code.** `web-ui` gains Jest, its first code whose
+  behaviour a script cannot check, and its `test` script runs the contrast check
+  first, then Jest.
+  - `test/tones.test.ts` has 12 tests over a faked audio graph: one oscillator
+    per note and every one stopped, the sweep only when asked, waveforms,
+    decay ending at a hard zero, fades on flat notes, peak scaling and its
+    ceiling, a suspended context building nothing, never throwing on a zero
+    ramp target, silence on a server, and the unlock resolving true or false.
+  - Chat's `tone-playback.test.ts` shrank to chat's half: every catalogue tone
+    reaches the engine with all its notes, an unknown id falls back rather than
+    going silent, and the unlock still unlocks.
+  - Chat's catalogue tests (`tone.test.ts`: short, positive frequencies, no
+    brand names) are unchanged.
+
+  **Verified:** `web-ui` builds and passes its contrast check and 12 tests.
+  Chat typechecks and passes 364 tests (five engine tests moved out). The web
+  app typechecks and compiles in `next build`.
+
 - **2026-09-13** — **`module-queuing-window` step 6: the staff console and the
   queue settings, on the web.** Staff can now start and stop queuing, call
   numbers, assign windows and manage lines from the app. The public board page

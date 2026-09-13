@@ -21,3 +21,13 @@ export {
   readStoredPalette,
 } from './palette-runtime.js';
 export { DEFAULT_PALETTE, isPalette, PALETTES, type PaletteOption } from './palettes.js';
+export {
+  DEFAULT_TONE_PEAK,
+  MAX_TONE_PEAK,
+  type PlayToneOptions,
+  playTone,
+  type Tone,
+  type ToneNote,
+  toneState,
+  unlockTones,
+} from './tones.js';

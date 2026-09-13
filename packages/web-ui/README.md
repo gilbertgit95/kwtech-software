@@ -577,3 +577,28 @@ characters appear a beat after they are typed.
 Debounce rather than throttle. Throttling emits during the burst, which is
 exactly the prefixes nobody wanted — and responses can arrive out of order,
 leaving the results showing matches for `featur`.
+
+## Tones
+
+`playTone`, `unlockTones` and `toneState` at the package root synthesise short
+sounds with Web Audio. They power chat's message tone and the queue board's
+call chime. There is no React and no dependency, and `window` is touched only
+when a sound is asked for.
+
+```ts
+import { playTone, toneState, unlockTones } from '@kwtech/web-ui';
+
+playTone({ notes: [{ hz: 660, at: 0, ms: 110 }, { hz: 990, at: 80, ms: 200, shape: 'decay' }] }, { peak: 0.3 });
+```
+
+- **The engine is shared; the sounds are not.** Each module keeps its own
+  catalogue, because which sound a message or a call makes is that module's
+  decision.
+- ⚠ **Browsers block audio until a user gesture.** Call `unlockTones()` from a
+  click handler, never an effect. Until then `toneState()` is `'locked'` and
+  every tone is skipped silently. A screen nobody touches, such as a TV, should
+  ask for the one tap.
+- ⚠ **`playTone` never throws.** A mistake in a note shows up as silence, so
+  keep every frequency positive: the Web Audio API throws on a zero ramp target.
+- **`peak` defaults to desk level (0.14)** and is capped at 0.5, because
+  overlapping notes past that clip into distortion.

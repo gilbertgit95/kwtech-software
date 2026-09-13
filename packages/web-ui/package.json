@@ -29,7 +29,7 @@
     "lint": "biome check .",
     "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
     "check:contrast": "node scripts/check-contrast.mjs",
-    "test": "node scripts/check-contrast.mjs"
+    "test": "node scripts/check-contrast.mjs && jest"
   },
   "peerDependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.24",
@@ -44,11 +44,15 @@
   },
   "devDependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
     "ag-grid-community": "^36.1.0",
     "ag-grid-react": "^36.1.0",
     "clsx": "^2.1.1",
+    "jest": "^30.4.2",
     "lucide-react": "^0.577.0",
     "react": "19.2.8",
     "tailwind-merge": "^3.6.0",
