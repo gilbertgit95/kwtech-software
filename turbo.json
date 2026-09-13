@@ -33,6 +33,20 @@
       "cache": false
     },
 
+    // Browser tests run against a stack somebody started, so they are never
+    // cached. The account and workspace reach them without entering a cache key.
+    "test:e2e": {
+      "cache": false,
+      "passThroughEnv": [
+        "E2E_BASE_URL",
+        "E2E_EMAIL",
+        "E2E_PASSWORD",
+        "E2E_ORGANIZATION_ID",
+        "E2E_WORKSPACE_ID",
+        "PLAYWRIGHT_LIBRARY_PATH"
+      ]
+    },
+
     // Long-running by nature: never cached, never awaited.
     //
     // `dependsOn: ["^build"]` is what makes `pnpm dev` work from a clean

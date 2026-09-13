@@ -44,3 +44,5 @@ pnpm-debug.log*
 **/prisma/_modules/
 # Prisma 7 emits the client as TypeScript source. Generated, not authored.
 **/src/generated/
+test-results/
+playwright-report/

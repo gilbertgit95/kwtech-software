@@ -555,6 +555,34 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **Browser tests: Playwright, against a stack you start.**
+
+  `apps/web-app/e2e` (`pnpm --filter @kwtech/web-app test:e2e`) runs headless
+  Chromium against the BUILT API and app. It proves what no unit test can see.
+  A signed-in console starts queuing. A second, signed-out browser opens the
+  display from the console's link, and the `#code` leaves the address bar.
+  Call next appears on that TV over its own socket, and Stop returns the TV to
+  its code prompt. The Announcements settings save and survive a reload. A
+  wrong code gets the one refusal sentence. **All three pass locally**
+  (2026-09-13).
+  - **Nothing is started or seeded by the tests.** A suite that booted its own
+    servers would quietly test its own setup. They need `E2E_*` variables and
+    skip with the reason without them.
+  - ⚠ **They write real rows** (line `Z9`, window "E2E window", a seat, a
+    session) and put them back: stopped, released, archived, pitch restored.
+    Checked in the database after the run.
+  - ⚠ **`page.request` arrived "Not signed in".** Under `next start` the
+    session cookie is `Secure` (`module-auth` sets it in production). Chromium
+    sends that to 127.0.0.1, but Playwright's separate request context does not.
+    Setup calls therefore use `page.evaluate(fetch)`, the same same-origin call
+    the console makes. This is not a product bug.
+  - **Not covered:** headless Chromium has no audio device and no speech
+    voices. The tests prove a board RECEIVES a call, not that a TV chimes or
+    speaks. Check those on a real screen.
+  - Without root, Chromium's missing libraries (`libnspr4`, `libnss3`,
+    `libasound2`) are unpacked from `apt-get download` and passed in with
+    `PLAYWRIGHT_LIBRARY_PATH`. See the e2e README.
+
 - **2026-09-13** — **What a display says, and a workspace voice.**
 
   A user request. The spoken call is now **"Number C, zero four two, please

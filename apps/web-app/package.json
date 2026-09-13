@@ -8,7 +8,8 @@
     "start": "next start -p 8081",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
-    "clean": "rm -rf .next .turbo *.tsbuildinfo"
+    "clean": "rm -rf .next .turbo *.tsbuildinfo",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@kwtech/module-auth": "workspace:*",
@@ -32,6 +33,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
