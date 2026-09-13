@@ -6,12 +6,14 @@ import { GqlExecutionContext } from '@nestjs/graphql';
 import { env } from '../config/env.js';
 import {
   type AdmitAnonymous,
+  AnonymousSocketLimiter,
   closeWhenAuthorizationExpires,
   connectionContext,
   connectionUserId,
   openConnection,
   rememberConnection,
   rememberedConnection,
+  SocketCapacityError,
 } from './ws-context.js';
 
 /**
@@ -186,6 +188,13 @@ export function graphqlOptions(
   lifecycle: SocketLifecycle = {},
   admitAnonymous?: AdmitAnonymous,
 ): ApolloDriverConfig {
+  /*
+   * Anonymous sockets counted per admission and in total, and the release for
+   * each acknowledged socket — see `AnonymousSocketLimiter` (PLAN §12.59).
+   */
+  const anonymousSockets = new AnonymousSocketLimiter();
+  const releases = new WeakMap<object, () => void>();
+
   return {
     driver: ApolloDriver,
     path: `/api/v1/${GRAPHQL_PATH}`,
@@ -293,8 +302,27 @@ export function graphqlOptions(
            * adapter without a socket must lose the expiry timer, not throw
            * inside the handshake and refuse every connection.
            */
-          const socket = (ctx.extra as { socket?: { close(code: number, reason: string): void } } | undefined)?.socket;
-          if (socket) closeWhenAuthorizationExpires(socket, connection.expiresAt);
+          const socket = (ctx.extra as { socket?: unknown } | undefined)?.socket;
+
+          /*
+           * ⚠ AN ANONYMOUS SOCKET TAKES A SLOT, and a full cap is THROWN — a 4500
+           * the client retries — never `false`, whose 4403 a TV reads as "queuing
+           * has stopped". A dead socket's slot is freed by graphql-ws' own
+           * keepAlive — see `MAX_SOCKETS_PER_ADMISSION`.
+           */
+          if (!connectionUserId(connection)) {
+            const release = anonymousSockets.acquire(connection.connectionKey);
+            if (!release) throw new SocketCapacityError();
+            if (typeof ctx.extra === 'object' && ctx.extra !== null) releases.set(ctx.extra, release);
+          }
+
+          const closable = socket as { close?: (code: number, reason: string) => void } | undefined;
+          if (typeof closable?.close === 'function') {
+            closeWhenAuthorizationExpires(
+              closable as { close(code: number, reason: string): void },
+              connection.expiresAt,
+            );
+          }
 
           /*
            * ⚠ TOLD LAST, after everything that can refuse has refused. A
@@ -328,6 +356,16 @@ export function graphqlOptions(
           const connection = rememberedConnection(ctx.extra);
           const userId = connection && connectionUserId(connection);
           if (connection && userId) lifecycle.closed?.(userId, connection.socketId);
+        },
+
+        /**
+         * ⚠ A SLOT IS RELEASED ON `onClose`, which fires for EVERY close —
+         * unlike presence above, a slot is taken inside `onConnect`, before
+         * the acknowledgement, so a socket that drops in that gap would leak it
+         * under `onDisconnect`. Releasing twice is harmless; never is not.
+         */
+        onClose: (ctx: { extra?: unknown }) => {
+          if (typeof ctx.extra === 'object' && ctx.extra !== null) releases.get(ctx.extra)?.();
         },
 
         ...heartbeat(lifecycle),

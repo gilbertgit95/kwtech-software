@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { env } from './config/env.js';
@@ -14,7 +15,14 @@ import { env } from './config/env.js';
 const API_PREFIX = 'api/v1';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  /**
+   * Whose `X-Forwarded-For` to believe, which is what every per-IP rate limit is
+   * keyed on (PLAN §12.69). Off unless the deployment names its proxies — see
+   * ./config/trust-proxy.ts.
+   */
+  app.set('trust proxy', env.TRUST_PROXY);
 
   app.setGlobalPrefix(API_PREFIX);
 

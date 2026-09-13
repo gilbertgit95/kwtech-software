@@ -82,6 +82,11 @@ export type WsRequestLike = SignedInRequestLike | AnonymousRequestLike;
 export interface WsConnectionContext<Request extends WsRequestLike = WsRequestLike> {
   req: Request;
   /**
+   * What an anonymous admission counts against — one display pass, say — for
+   * `AnonymousSocketLimiter`'s per-admission cap. Absent for a signed-in socket.
+   */
+  connectionKey?: string;
+  /**
    * THIS SOCKET, as distinct from this person.
    *
    * ⚠ Presence is a refcount over sockets — one person is several tabs and a
@@ -293,6 +298,7 @@ export async function openConnection(
     req: { [ANONYMOUS_ADMISSION_KEY]: admission },
     expiresAt: Math.floor(now() / 1000) + ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS,
     socketId: randomUUID(),
+    ...connectionKeyOf(admission),
   };
 }
 
@@ -337,4 +343,89 @@ export function closeWhenAuthorizationExpires(
   // Do not hold the process open for a socket that may outlive the work.
   timer.unref?.();
   return timer;
+}
+
+/**
+ * The key an admission asked to be counted under, if it named one.
+ *
+ * The hook's admission is otherwise opaque to the app. A module that wants its
+ * credential capped — the queue caps sockets per display pass — includes a
+ * `connectionKey` string in what it returns.
+ */
+function connectionKeyOf(admission: object): { connectionKey?: string } {
+  const key = (admission as { connectionKey?: unknown }).connectionKey;
+  return typeof key === 'string' && key !== '' ? { connectionKey: key } : {};
+}
+
+// ── anonymous socket caps ───────────────────────────────────────────────────
+
+/**
+ * Sockets one admission may hold at once. Two covers a reload, where the new
+ * page connects before the old socket's close arrives.
+ *
+ * ⚠ A CAP IS ONLY SAFE BECAUSE A DEAD SOCKET IS NOTICED. A TV that loses Wi-Fi
+ * sends no close frame; its socket would hold the slot its own reconnect needs.
+ * `graphql-ws`' `useServer` pings every socket every 12 seconds and terminates
+ * one that has not answered by the next ping (its `keepAlive`, left at the
+ * default by Nest), and termination fires `onClose` — so a dead socket's slot
+ * is free within about 24 seconds, and the refused reconnect retries until it
+ * is. PLAN §12.59.
+ */
+export const MAX_SOCKETS_PER_ADMISSION = 2;
+
+/** Anonymous sockets this process holds in total, whatever admitted them. */
+export const MAX_ANONYMOUS_SOCKETS = 1000;
+
+/**
+ * Refused for capacity. ⚠ THROWN, never `false`: graphql-ws closes a throw as
+ * 4500, which a client retries — while `false` is 4403, which a queue display
+ * reads as "queuing has stopped" and gives up its pass for.
+ */
+export class SocketCapacityError extends Error {
+  constructor() {
+    super('Too many connections for this display right now — retrying');
+    this.name = 'SocketCapacityError';
+  }
+}
+
+/**
+ * Counts anonymous sockets, per admission and in total (PLAN §12.59).
+ *
+ * In memory, per process: the same single-replica assumption the in-memory
+ * pub/sub makes (§12.28). `acquire` returns a release function, safe to call
+ * more than once, or null when either cap is full.
+ */
+export class AnonymousSocketLimiter {
+  private readonly perKey = new Map<string, number>();
+  private total = 0;
+
+  constructor(
+    private readonly limits: { perAdmission: number; total: number } = {
+      perAdmission: MAX_SOCKETS_PER_ADMISSION,
+      total: MAX_ANONYMOUS_SOCKETS,
+    },
+  ) {}
+
+  get size(): number {
+    return this.total;
+  }
+
+  acquire(connectionKey: string | undefined): (() => void) | null {
+    if (this.total >= this.limits.total) return null;
+    if (connectionKey !== undefined && (this.perKey.get(connectionKey) ?? 0) >= this.limits.perAdmission) return null;
+
+    this.total += 1;
+    if (connectionKey !== undefined) this.perKey.set(connectionKey, (this.perKey.get(connectionKey) ?? 0) + 1);
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.total -= 1;
+      if (connectionKey === undefined) return;
+      const left = (this.perKey.get(connectionKey) ?? 1) - 1;
+      if (left <= 0) this.perKey.delete(connectionKey);
+      else this.perKey.set(connectionKey, left);
+    };
+  }
 }

@@ -3,6 +3,7 @@ import { PRINCIPAL_KEY } from '@kwtech/module-auth/server';
 import { ANONYMOUS_ADMISSION_KEY } from '@kwtech/module-kit';
 import {
   ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS,
+  AnonymousSocketLimiter,
   authenticateConnection,
   closeWhenAuthorizationExpires,
   connectionContext,
@@ -248,5 +249,48 @@ describe('openConnection — a socket with no session', () => {
       throw new Error('database unavailable');
     });
     await expect(openConnection(tokens('good'), { displayPass: PASS }, admit)).rejects.toThrow('database unavailable');
+  });
+});
+
+describe('AnonymousSocketLimiter — anonymous socket caps (§12.59)', () => {
+  it('⚠ caps sockets per admission, and a release frees the slot', () => {
+    const limiter = new AnonymousSocketLimiter({ perAdmission: 2, total: 10 });
+    const first = limiter.acquire('pass-1');
+    const second = limiter.acquire('pass-1');
+    expect(first && second).toBeTruthy();
+    expect(limiter.acquire('pass-1')).toBeNull();
+    expect(limiter.acquire('pass-2')).not.toBeNull();
+
+    first?.();
+    expect(limiter.acquire('pass-1')).not.toBeNull();
+  });
+
+  it('caps anonymous sockets in total, whatever admitted them', () => {
+    const limiter = new AnonymousSocketLimiter({ perAdmission: 5, total: 2 });
+    limiter.acquire('a');
+    limiter.acquire(undefined);
+    expect(limiter.acquire('b')).toBeNull();
+    expect(limiter.size).toBe(2);
+  });
+
+  it('ignores a second release, so a close and a disconnect cannot double-count', () => {
+    const limiter = new AnonymousSocketLimiter({ perAdmission: 1, total: 1 });
+    const release = limiter.acquire('a');
+    release?.();
+    release?.();
+    expect(limiter.size).toBe(0);
+    expect(limiter.acquire('a')).not.toBeNull();
+  });
+});
+
+describe('openConnection — an admission names what it is counted against', () => {
+  it('carries a connectionKey the hook returned, and nothing when it returned none', async () => {
+    const keyed = await openConnection(tokens('good'), { displayPass: 'x' }, async () => ({
+      connectionKey: 'queue-display:p1',
+    }));
+    const unkeyed = await openConnection(tokens('good'), { displayPass: 'x' }, async () => ({ sessionId: 's' }));
+
+    expect(keyed?.connectionKey).toBe('queue-display:p1');
+    expect(unkeyed && 'connectionKey' in unkeyed).toBe(false);
   });
 });

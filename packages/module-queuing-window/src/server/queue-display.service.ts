@@ -36,6 +36,8 @@ const MAX_TYPED_CODE = 32;
 export interface QueueDisplayAdmission {
   kind: 'queue-display';
   passId: string;
+  /** What the app's socket limiter counts against: one pass, a few sockets. */
+  connectionKey: string;
   sessionId: string;
   organizationId: string;
   workspaceId: string;
@@ -50,7 +52,14 @@ export function readDisplayAdmission(request: unknown): QueueDisplayAdmission | 
     typeof sessionId === 'string' &&
     typeof organizationId === 'string' &&
     typeof workspaceId === 'string'
-    ? { kind: 'queue-display', passId, sessionId, organizationId, workspaceId }
+    ? {
+        kind: 'queue-display',
+        passId,
+        sessionId,
+        organizationId,
+        workspaceId,
+        connectionKey: `queue-display:${passId}`,
+      }
     : null;
 }
 
@@ -106,6 +115,7 @@ export class QueueDisplayService {
     return {
       kind: 'queue-display',
       passId: row.id,
+      connectionKey: `queue-display:${row.id}`,
       sessionId: row.sessionId,
       organizationId: row.organizationId,
       workspaceId: row.workspaceId,

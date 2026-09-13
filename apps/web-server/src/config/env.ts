@@ -4,6 +4,7 @@
 // missing .env is simply a no-op — and an exported variable always wins.
 import 'dotenv/config';
 import { z } from 'zod';
+import { parseTrustProxy } from './trust-proxy.js';
 
 /**
  * Boot-time configuration, validated once.
@@ -95,6 +96,12 @@ const envSchema = z
               .filter(Boolean)
           : null,
       ),
+
+    /**
+     * Which proxies may tell this API a client's address. ⚠ Default OFF — see
+     * ./trust-proxy.ts for why trusting the Next server blindly is worse than not.
+     */
+    TRUST_PROXY: z.string().optional().transform(parseTrustProxy),
 
     /** Where the emailed reset link points — a page in the Next app. */
     AUTH_RESET_URL_BASE: z.url().default('http://localhost:8081/auth/reset-password'),

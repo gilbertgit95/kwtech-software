@@ -70,7 +70,8 @@ class ProbeResolver {
 
 const lifecycle = { opened: jest.fn(), closed: jest.fn(), alive: jest.fn() };
 const admit = jest.fn(async (params: Readonly<Record<string, unknown>>) =>
-  params.displayPass === PASS ? { sessionId: 'session-1' } : null,
+  // `connectionKey` is what the app's socket caps count against — one pass, a few sockets.
+  params.displayPass === PASS ? { sessionId: 'session-1', connectionKey: `display:${PASS}` } : null,
 );
 
 let app: INestApplication;
@@ -204,5 +205,67 @@ describe('a ticketed socket, beside the anonymous branch', () => {
     expect(lifecycle.opened).toHaveBeenCalledWith('u1', expect.any(String));
     expect(lifecycle.closed).toHaveBeenCalledWith('u1', expect.any(String));
     expect(admit).not.toHaveBeenCalled();
+  });
+});
+
+describe('anonymous socket caps (§12.59)', () => {
+  /** Opens a socket that stays open, and reports whether the handshake was acknowledged or the close code. */
+  function connect(connectionParams: Record<string, unknown>) {
+    return new Promise<{ client: ReturnType<typeof createClient>; result: 'connected' | number }>((resolve) => {
+      let settled = false;
+      const done = (result: 'connected' | number) => {
+        if (settled) return;
+        settled = true;
+        resolve({ client, result });
+      };
+      const client = createClient({
+        url,
+        webSocketImpl: WebSocket,
+        connectionParams,
+        lazy: false,
+        retryAttempts: 0,
+        onNonLazyError: () => undefined,
+        on: {
+          connected: () => done('connected'),
+          closed: (event) => done((event as { code: number }).code),
+        },
+      });
+    });
+  }
+
+  /**
+   * ⚠ A FULL CAP IS 4500, NEVER 4403. The queue display reads 4403 as "queuing
+   * has stopped" and gives up its pass; 4500 is retried, so the TV keeps trying
+   * until a slot frees.
+   */
+  it('refuses a third socket on one pass with a retryable close, and frees the slot when one closes', async () => {
+    const first = await connect({ displayPass: PASS });
+    const second = await connect({ displayPass: PASS });
+    expect([first.result, second.result]).toEqual(['connected', 'connected']);
+
+    const third = await connect({ displayPass: PASS });
+    expect(third.result).toBe(4500);
+    await third.client.dispose();
+
+    await first.client.dispose();
+    await settle();
+    const fourth = await connect({ displayPass: PASS });
+    expect(fourth.result).toBe('connected');
+
+    await Promise.all([second.client.dispose(), fourth.client.dispose()]);
+    await settle();
+  });
+
+  it('never counts a signed-in socket, or a refused one', async () => {
+    const refused = await Promise.all([connect({ displayPass: 'guessed' }), connect({ displayPass: 'guessed' })]);
+    const signedIn = await Promise.all([1, 2, 3].map(() => connect({ ticket: TICKET })));
+    const anonymous = await Promise.all([connect({ displayPass: PASS }), connect({ displayPass: PASS })]);
+
+    expect(refused.map((one) => one.result)).toEqual([4403, 4403]);
+    expect(signedIn.map((one) => one.result)).toEqual(['connected', 'connected', 'connected']);
+    expect(anonymous.map((one) => one.result)).toEqual(['connected', 'connected']);
+
+    await Promise.all([...refused, ...signedIn, ...anonymous].map((one) => one.client.dispose()));
+    await settle();
   });
 });
