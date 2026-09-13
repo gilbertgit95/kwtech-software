@@ -1,7 +1,16 @@
+import { PUBLIC_SURFACE_METADATA } from '@kwtech/module-kit';
 import { createParamDecorator, type ExecutionContext, SetMetadata } from '@nestjs/common';
 import type { Principal, TokenScope } from '../types.js';
 
-export const IS_PUBLIC = 'kwtech:auth-public';
+/**
+ * The key `@Public` writes and `JwtAuthGuard` reads.
+ *
+ * Its value lives in `@kwtech/module-kit` so that a module which is not this
+ * one can mark a surface public without importing this package (PLAN §9) —
+ * `module-queuing-window`'s display board is the first. Kept under this name so
+ * nothing that reads it had to change.
+ */
+export const IS_PUBLIC = PUBLIC_SURFACE_METADATA;
 export const ALLOWED_SCOPES = 'kwtech:auth-scopes';
 
 /** Where the guard stashes the verified principal. */

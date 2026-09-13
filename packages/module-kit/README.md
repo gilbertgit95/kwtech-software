@@ -251,6 +251,39 @@ crash — a missing provider HIDES controls, it never reveals them.
 **Not a security boundary.** Hiding a control hides an affordance, not an
 endpoint; the request is authorised again at the API.
 
+## Declaring scope and public surfaces, for modules that are not the enforcer
+
+`@RequireScope` belongs to `@kwtech/module-permissions` and `@Public` to
+`@kwtech/module-auth`, and neither may be imported by another module. The
+metadata KEYS live here instead, so a module declares both with its own
+`SetMetadata`:
+
+```ts
+import { declareScope, PUBLIC_SURFACE_METADATA, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
+import { SetMetadata } from '@nestjs/common';
+
+@SetMetadata(REQUIRED_SCOPE_METADATA, declareScope('workspace'))
+@Query(() => QueueBoard)
+queueBoard(@Args('organizationId') organizationId: string, @Args('workspaceId') workspaceId: string) {}
+
+@SetMetadata(PUBLIC_SURFACE_METADATA, 'a TV in a waiting room has no session')
+@Subscription(() => QueueDisplayEvent)
+queueDisplay() {}
+```
+
+`FeatureGuard` and `JwtAuthGuard` read these exact constants, and the
+enforcers' own `REQUIRED_SCOPE` and `IS_PUBLIC` are the same strings.
+
+⚠ **A module below app level MUST declare its scope on every GraphQL
+resolver.** A resolver has no path, so with no declaration the guard resolves
+app level, where no organization- or workspace-level key participates — and
+every one of the module's keys grants nothing, to everybody, with no error.
+Give the module a test that fails on an undeclared resolver.
+
+⚠ **The public reason must be a non-empty string.** The authentication guard
+treats any truthy value as public, which is also why the two keys must never
+share a value.
+
 ## The status channel
 
 The global status bar's vocabulary lives here for the same reason

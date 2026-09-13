@@ -1,16 +1,22 @@
+import { REQUIRED_SCOPE_METADATA, type ScopeDeclaration } from '@kwtech/module-kit';
 import { SetMetadata } from '@nestjs/common';
 import type { RoleLevel } from '../types.js';
 
-export const REQUIRED_SCOPE = 'kwtech:required-scope';
+/**
+ * The key `@RequireScope` writes and `FeatureGuard` reads.
+ *
+ * ⚠ Its value lives in `@kwtech/module-kit`, and that is load-bearing rather
+ * than tidy: a module below app level must declare its scope, and it may not
+ * import this package (PLAN §9). Without the shared key a workspace resolver in
+ * another module resolves at app level and every workspace-level key grants
+ * nothing — §12.13's trap, one module over. Kept under this name so the guard
+ * and every existing reader are unchanged.
+ */
+export const REQUIRED_SCOPE = REQUIRED_SCOPE_METADATA;
 
-export interface ScopeSpec {
+/** A `ScopeDeclaration`, spelled in this module's own level vocabulary (the same union). */
+export interface ScopeSpec extends ScopeDeclaration {
   level: RoleLevel;
-  /**
-   * Where the ids live for a handler with no path to read — a GraphQL
-   * resolver, chiefly. Defaults match the usual argument names.
-   */
-  organizationIdArg?: string;
-  workspaceIdArg?: string;
 }
 
 /**

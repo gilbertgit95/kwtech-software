@@ -554,6 +554,49 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **`module-queuing-window` step 1: the enforcement metadata
+  KEYS moved into `module-kit`, and a route can be `chrome: 'fullscreen'`.** No
+  queue code yet, and no behaviour change.
+
+  **The keys.** `packages/module-kit/src/metadata.ts` now owns
+  `PUBLIC_SURFACE_METADATA` (`'kwtech:auth-public'`), `REQUIRED_SCOPE_METADATA`
+  (`'kwtech:required-scope'`), the `ScopeDeclaration` shape and a
+  `declareScope(level, args?)` builder. `module-auth`'s `IS_PUBLIC` and
+  `module-permissions`' `REQUIRED_SCOPE` are now aliases of those constants.
+  `ScopeSpec` extends `ScopeDeclaration`, re-typed as `RoleLevel` (the same union). The guards,
+  `@Public` and `@RequireScope` are unchanged, and so is every reader.
+  - **Why:** §9 forbids a module importing a module, so `module-queuing-window`
+    could neither mark its display surface public nor declare that its
+    resolvers are workspace level. The second gap fails SILENTLY (§12.13): a
+    resolver with no declared scope resolves at app level, and every
+    workspace-level key grants nothing. It is the fix `FeatureContribution`
+    already got: move the vocabulary into the package every module depends on.
+  - **Rejected: shared DECORATORS in `module-kit`.** They would make
+    `module-kit` import Nest, and it has no framework dependency today. A
+    string constant and one shape are enough, because a module applies them
+    with its own `SetMetadata`.
+  - ⚠ **The VALUES are pinned by a test** (`module-kit/test/metadata.test.ts`).
+    The mechanism is that a writer and a guard read one string. Renaming the
+    value would orphan metadata written under the old one. The same test
+    requires the two keys to differ: `JwtAuthGuard` treats any truthy value
+    under its key as public, so a shared string would make every scoped
+    handler anonymous.
+  - **Each enforcer has a test that the direct `SetMetadata` form and its own
+    decorator write the same key** (`module-auth/test/public-surface.test.ts`,
+    `module-permissions/test/require-scope.test.ts`). The existing suites of
+    both packages pass unmodified, as step 1 required.
+  - The `module-kit` README gained "Declaring scope and public surfaces". It
+    warns that a module below app level must declare a scope on every
+    resolver, and that a public reason must be a non-empty string.
+
+  **`chrome: 'fullscreen'`** joins `'app' | 'bare'` on `ModuleRoute`. The
+  catch-all page returns such a page with no shell at all: no header, no theme
+  control, no status bar. It is for the public board on a TV. Nobody can reach
+  a control drawn over a TV picture with a remote, and the page must report its
+  own connection state, because a stale board that looks current is the
+  failure it exists to prevent. Nothing declares it yet; step 8 is its first
+  user.
+
 - **2026-09-13** — **`module-queuing-window`: window assignments and display
   settings PERSIST across queuing runs, and Start shows a QR code.** The
   operator reviewed the display-code entry below. The URL by organization and

@@ -128,7 +128,10 @@ export default async function ModuleRoutePage({
   // Which shell the route asked for, declared on the descriptor rather than
   // guessed from the path here. 'app' is the default because a module route is
   // normally a page of the application; the auth routes opt out because they
-  // exist for someone who has no session to put in a header.
+  // exist for someone who has no session to put in a header. 'fullscreen' gets
+  // no frame at all: the page is the whole screen and reports its own state.
+  if (route.chrome === 'fullscreen') return page;
+
   return route.chrome === 'bare' ? (
     <BareShell>{page}</BareShell>
   ) : (

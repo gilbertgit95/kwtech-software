@@ -151,11 +151,18 @@ export interface ModuleRoute {
    * shell with nothing to say, and its account menu would be furniture around
    * an empty chair.
    *
+   * 'fullscreen' is for a page that IS the screen — a public queue display on a
+   * TV in a waiting room. No header, no theme control, no status bar: the page
+   * owns every pixel and must report its own connection state, because a
+   * control pinned over a TV picture is one nobody can reach with a remote,
+   * and a stale screen that looks current is the failure such a page exists
+   * to avoid.
+   *
    * Declared per route rather than inferred from the path, because '/auth' is
    * a naming convention and this is a rendering decision — an app that renamed
    * the prefix would silently lose the distinction.
    */
-  chrome?: 'app' | 'bare';
+  chrome?: 'app' | 'bare' | 'fullscreen';
 }
 
 export interface ServerModuleDescriptor {

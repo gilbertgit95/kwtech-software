@@ -22,6 +22,7 @@ export * from './compose.js';
 export * from './defaults.js';
 export * from './feature-metadata.js';
 export * from './limits.js';
+export * from './metadata.js';
 export * from './realtime.js';
 export * from './status.js';
 export * from './status-store.js';
