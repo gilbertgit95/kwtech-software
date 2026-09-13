@@ -284,6 +284,35 @@ Give the module a test that fails on an undeclared resolver.
 treats any truthy value as public, which is also why the two keys must never
 share a value.
 
+### A public surface a socket reaches with no session
+
+A screen nobody signs in to — a queue board on a TV — can still hold a live
+subscription. The host app lets a module admit such a socket on the module's
+own credential (in `web-server`, the `admitAnonymous` argument of
+`graphqlOptions`). What the module's hook returns is kept on the socket's
+request under `ANONYMOUS_ADMISSION_KEY`, and the module's public resolver
+reads it back:
+
+```ts
+import { anonymousAdmission, PUBLIC_SURFACE_METADATA } from '@kwtech/module-kit';
+
+@SetMetadata(PUBLIC_SURFACE_METADATA, 'a TV in a waiting room has no session')
+@Subscription(() => QueueDisplayEvent)
+queueDisplay(@Context('req') req: unknown) {
+  const admission = anonymousAdmission<{ sessionId: string }>(req);
+  // ...
+}
+```
+
+⚠ **An admission is not an identity.** The socket carries no principal, so
+every operation on it that is not marked public is refused "Not signed in".
+That absence is the entire safety argument; never treat an admission as a
+principal.
+
+⚠ **Reading an admission is not checking it.** It was valid at the
+handshake. Re-check it on every publish, because the socket's twelve-hour
+maximum lifetime is only a backstop.
+
 ## The status channel
 
 The global status bar's vocabulary lives here for the same reason

@@ -538,7 +538,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 57 | ⚠ Two more batch-by-id queries rest on the argument `findUsersByIds` just retracted | before either key is granted below platform admin | `permissionUserAppRoles` (`roles:read`) and `permissionUserOrganizations` (`organizations:read`) accept a list of user ids and justify it with the same comment: *"the ids come from a list the caller could already see, so batching discloses nothing new"*. That is true of the screen and not of the endpoint, which answers for whatever ids it is sent — the flaw fixed in `findUsersByIds` on 2026-09-13. **Neither declares `@RequireScope`, so both resolve at APP level today and only platform administrators reach them.** That is why this is open rather than fixed: the exposure is the one `findUsersByIds` had before its fix, and it is acceptable only while it stays admin-only. The moment either key is granted inside an organization, or the query gains a scope, it needs the same membership intersection, done in the database. Their comments, and the matching ones in `permissions.service.ts`, still cite `findUsersByIds` as their precedent and should be reworded when this closes |
 
 | 58 | ~~How queue numbers are ISSUED: outside the system, or a kiosk~~ **CLOSED 2026-09-13: outside the system, by a person** | — | **✅ CLOSED by the operator.** A staff member or guard hands out numbers; Call next allocates the next one, skipping numbers already called, and a line's next number can be set to match the slips. The system cannot know who is waiting. ⚠ First recorded as in-system issuing, corrected the same day. Original entry: | **v1: outside** — a paper roll, a dispenser or a receptionist — and Call next allocates the next number. A kiosk ("take a number") is what makes "how many are waiting" and "estimated wait" answerable at all. ⚠ It is also a PUBLIC WRITE: an anonymous route that creates rows, which is a spam and exhaustion surface the read-only board is not, so it needs its own limit before its own screen. The schema already carries `waiting`, so this is a route and a status, not a migration. ⚠ "Text me when my turn is near" needs the kiosk AND a phone number, which is personal data this module does not hold today — and holding it changes §12.60 and the display-key paragraph of the 2026-09-13 entry |
-| 59 | Per-IP limits on anonymous `graphql-ws` sockets | before a display is used anywhere public | **⚠ NARROWED 2026-09-13:** the code is exchanged over HTTP under the `credential` bucket plus a per-session attempt count, and the socket takes a 256-bit pass, so the handshake is no longer a guessing surface. What remains is sockets per pass (cap 2, to cover a reload's overlap) and a ceiling on total anonymous sockets. Original entry: The handshake caps connections PER DISPLAY KEY (default 10). Nothing caps connections per IP or in total, and the credential is printed on a screen in a public room. §12.29 was bounded by "the handshake needs a live-session ticket", and for anonymous sockets that bound is gone. `ThrottlerGuard` skips WebSocket operations, so this lives in `onConnect`, which can see the upgrade request's address. ⚠ Behind a proxy, that address is the proxy's unless `trust proxy` is set, and a per-IP cap then becomes a global one that locks every TV out together |
+| 59 | Per-IP limits on anonymous `graphql-ws` sockets | before a display is used anywhere public | **⚠ NARROWED 2026-09-13:** the code is exchanged over HTTP under the `credential` bucket plus a per-session attempt count, and the socket takes a 256-bit pass, so the handshake is no longer a guessing surface. What remains is sockets per pass (cap 2, to cover a reload's overlap) and a ceiling on total anonymous sockets. ⚠ **Not built in step 2 (2026-09-13):** a socket that drops without a close frame is not noticed until TCP gives up, so a per-pass cap of 2 would lock out a TV whose Wi-Fi blinked twice — a server-side liveness timeout has to come first. Original entry: The handshake caps connections PER DISPLAY KEY (default 10). Nothing caps connections per IP or in total, and the credential is printed on a screen in a public room. §12.29 was bounded by "the handshake needs a live-session ticket", and for anonymous sockets that bound is gone. `ThrottlerGuard` skips WebSocket operations, so this lives in `onConnect`, which can see the upgrade request's address. ⚠ Behind a proxy, that address is the proxy's unless `trust proxy` is set, and a per-IP cap then becomes a global one that locks every TV out together |
 | 60 | ~~Staff names on the public board~~ **CLOSED 2026-09-13: optional per display, nickname only** | — | **✅ CLOSED by the operator.** `showStaffNames` as one persistent workspace setting, off by default, showing a nickname the person sets for themselves — never their account name as a fallback. That keeps call events free of personal data and the display key a plain link. Original entry: | **No, by default.** The board says "C-042 → Window 3". A name on a screen in a public room makes a person findable by anybody with a grievance. Saying yes is more than a UI change: call events would then carry personal data, so they need chat's per-publish membership re-check, and the display key becomes a credential that should be hashed. Decide both together |
 | 61 | ~~Which plan tiers sell `queue:*`~~ **CLOSED 2026-09-13: every tier except `free`** | — | **✅ CLOSED by the operator.** `starter`, `pro` and `enterprise` carry all six keys as one `QUEUE` group. ⚠ Environments that are already seeded still need an operator on `/admin/plans`. Original entry: | Workspace-level keys pass the entitlement filter, so a key no plan carries grants nothing, and the denial correctly says `not_entitled`. This is a product decision (free? starter and up?), not an engineering one. ⚠ Whatever is chosen, `createPlanIfAbsent` will not add it to plans that already exist, so every seeded environment needs an operator on `/admin/plans` |
 | 62 | A queue seat outlives workspace membership | before the console is relied on | **⚠ NARROWED 2026-09-13:** assignment now checks `QueueStaffCheck` when it is made, and the guard refuses Call next from anyone who lost `queue:serve` or membership, so the leftover harm is a window that LOOKS occupied. Whoever holds `queue:assign_windows` fixes it by reassigning. **⚠ Not narrowed further:** by the operator's choice, seats persist across queuing runs, so only an assigner ends a stale seat. The console flags any seat whose holder can no longer serve. Original entry: `userId` has no FK and removing a workspace member writes nothing in `queue_*` — `module-permissions` does not know the queue exists, and §9 keeps it that way. So a removed member still holds Window 3 until `queue:manage_windows` releases it or the service day ends. The honest fixes are an app-side hook on member removal (the app is the only layer that sees both modules), or re-checking `canAccessWorkspace` when reading seats — which costs a permission resolution per seat per read |
@@ -553,6 +553,73 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **`module-queuing-window` step 2: a socket can be admitted
+  WITHOUT a session, and then reaches only what is public.** Still no queue
+  code. Proven over a real socket with a stand-in public subscription, so the
+  security property is tested on its own.
+
+  **What was built:**
+  - `graphqlOptions(tokens, lifecycle, admitAnonymous?)`. The hook is the
+    third argument, so `graphql.options.ts` still names no module. `AppModule`
+    does NOT pass one yet, because no module implements it. Until step 4 wires
+    the queue module's admit, a socket without a ticket is refused exactly as
+    before.
+  - `openConnection` in `ws-context.ts` decides: a ticket, or the hook's
+    admission, or a refusal. An admitted socket carries the admission under
+    `ANONYMOUS_ADMISSION_KEY` and **no principal**. The key and its reader,
+    `anonymousAdmission(request)`, live in `module-kit`, because the module
+    that implements the hook may not import the app (§9) — the step 1
+    argument again.
+  - **No presence.** Every lifecycle hook goes through `connectionUserId`,
+    which is undefined for an anonymous socket. The old code read
+    `req[PRINCIPAL_KEY].userId` directly and would have thrown inside
+    `onConnect` — a 4500, which the client retries forever.
+  - **A 12-hour maximum lifetime** (`ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS`),
+    closed with the same 4499 as an expired ticket, so the client reconnects
+    and catches up. ⚠ It is a backstop. Stopping a session must still reach a
+    TV through the per-publish re-check in step 5.
+
+  **Why an anonymous socket is safe, and why nothing new enforces it:**
+  `JwtAuthGuard` already runs on every socket operation and refuses "Not
+  signed in" when there is no principal, unless the handler is public.
+  `test/anonymous-socket.test.ts` boots GraphQL with the real options and
+  guard, and asserts both halves:
+  - an admitted socket gets the public subscription, and its resolver reads
+    the admission;
+  - the same socket gets exactly `Not signed in` from a non-public one.
+
+  The same suite covers a refused credential closing as 4403, no presence
+  event either way, and a ticketed socket still working beside the new branch.
+
+  **Two rules in the branch, each preventing a specific failure:**
+  - ⚠ **A presented ticket is never downgraded.** If `connectionParams` has a
+    `ticket` key at all, only the ticket path runs. Otherwise a signed-in tab
+    with an expired ticket would be admitted anonymously and refused on every
+    operation, instead of getting the 4403 that sends it to mint a fresh
+    ticket. The hook is also never handed a session credential.
+  - ⚠ **The hook returns null for a bad credential and throws only for a
+    fault.** Null closes 4403, which a client treats as final. A throw closes
+    4500, which it retries. Swallowing a database error as null would make a TV
+    give up on a pass that was valid.
+
+  **Rejected: a synthetic principal for a display** (say, scope `'display'`).
+  Every non-public surface would then have to decide whether a display counts
+  as signed in, and `resolvePrincipal` — the seam between auth and permissions
+  — would learn a new word. An admission that is visibly NOT a principal
+  needs no such decision anywhere.
+
+  **Not built: the §12.59 socket caps.** A socket that drops without a close
+  frame is not noticed until TCP gives up. So a per-pass cap of 2 would lock
+  out a TV whose Wi-Fi blinked twice, and it needs a server-side liveness
+  timeout first. §12.59 stays open.
+
+  **Two notes for whoever touches this next:**
+  - The test overrides `autoSchemaFile: true`. The real options WRITE
+    `schema.graphql`, and a probe resolver's schema would overwrite the
+    checked-in contract.
+  - `ws` is now a web-server devDependency, pinned to the 8.21.3 that
+    `graphql-ws` already resolves, so the workspace still holds one copy.
 
 - **2026-09-13** — **`module-queuing-window` step 1: the enforcement metadata
   KEYS moved into `module-kit`, and a route can be `chrome: 'fullscreen'`.** No

@@ -1,9 +1,13 @@
 import type { Principal } from '@kwtech/module-auth';
 import { PRINCIPAL_KEY } from '@kwtech/module-auth/server';
+import { ANONYMOUS_ADMISSION_KEY } from '@kwtech/module-kit';
 import {
+  ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS,
   authenticateConnection,
   closeWhenAuthorizationExpires,
   connectionContext,
+  connectionUserId,
+  openConnection,
   rememberConnection,
   WS_CLOSE,
 } from '../src/graphql/ws-context.js';
@@ -164,5 +168,85 @@ describe('closeWhenAuthorizationExpires', () => {
 
     expect(close).toHaveBeenCalledWith(WS_CLOSE.expired, 'Authorization expired');
     jest.useRealTimers();
+  });
+});
+
+describe('openConnection — a socket with no session', () => {
+  /** Admits exactly one pass-shaped credential, the way a display module would. */
+  const PASS = 'p'.repeat(43);
+  const admitPass = () =>
+    jest.fn(async (params: Readonly<Record<string, unknown>>) =>
+      params.displayPass === PASS ? { sessionId: 'session-1' } : null,
+    );
+
+  it('admits what the hook admits, carrying the admission and NO principal', async () => {
+    const connection = await openConnection(tokens('good'), { displayPass: PASS }, admitPass());
+    if (!connection) throw new Error('expected a connection');
+
+    expect(connection.req).toEqual({ [ANONYMOUS_ADMISSION_KEY]: { sessionId: 'session-1' } });
+    // ⚠ The missing principal is the safety argument: it is why JwtAuthGuard
+    // refuses every operation on this socket that is not marked public.
+    expect(PRINCIPAL_KEY in connection.req).toBe(false);
+    expect(connectionUserId(connection)).toBeUndefined();
+  });
+
+  it('closes after the maximum lifetime, having no token to expire', async () => {
+    const now = 1_000_000_000_000;
+    const connection = await openConnection(tokens('good'), { displayPass: PASS }, admitPass(), () => now);
+
+    expect(connection?.expiresAt).toBe(now / 1000 + ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS);
+    expect(ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS).toBe(12 * 60 * 60);
+  });
+
+  it.each([
+    ['a pass the hook refuses', { displayPass: 'guessed' }],
+    ['no connectionParams', undefined],
+    ['an empty object', {}],
+  ])('refuses %s', async (_label, params) => {
+    expect(await openConnection(tokens('good'), params, admitPass())).toBeNull();
+  });
+
+  it('does not ask the hook when nothing was presented', async () => {
+    const admit = admitPass();
+    await openConnection(tokens('good'), {}, admit);
+    expect(admit).not.toHaveBeenCalled();
+  });
+
+  it('refuses every socket without a ticket when the app wires no hook, as before', async () => {
+    expect(await openConnection(tokens('good'), { displayPass: PASS })).toBeNull();
+  });
+
+  /**
+   * ⚠ A PRESENTED TICKET IS NEVER DOWNGRADED. A signed-in tab whose ticket
+   * expired must be closed with 4403 and mint a fresh one, not admitted
+   * anonymously and refused "Not signed in" on every operation. And a hook is
+   * never handed a session credential.
+   */
+  it('never offers a presented ticket to the hook, even a bad one', async () => {
+    const admit = admitPass();
+    expect(await openConnection(tokens('good'), { ticket: 'forged', displayPass: PASS }, admit)).toBeNull();
+    expect(admit).not.toHaveBeenCalled();
+  });
+
+  it('still opens a ticketed socket, with its user', async () => {
+    const connection = await openConnection(tokens('good'), { ticket: 'good' }, admitPass());
+    expect(connection && connectionUserId(connection)).toBe('u1');
+  });
+
+  it('refuses a hook answer that is not an object', async () => {
+    const admit = jest.fn(async () => 'yes' as unknown as object);
+    expect(await openConnection(tokens('good'), { displayPass: PASS }, admit)).toBeNull();
+  });
+
+  /**
+   * A FAULT IS NOT A REFUSAL. A throw reaches graphql-ws, which closes 4500 and
+   * the client retries — right for a database that blinked. Swallowing it as
+   * null would close 4403, and the TV would give up on a pass that was valid.
+   */
+  it('lets a hook fault propagate, so the client retries', async () => {
+    const admit = jest.fn(async () => {
+      throw new Error('database unavailable');
+    });
+    await expect(openConnection(tokens('good'), { displayPass: PASS }, admit)).rejects.toThrow('database unavailable');
   });
 });

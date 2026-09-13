@@ -1,13 +1,15 @@
 import { join } from 'node:path';
-import { PRINCIPAL_KEY, type TokenService } from '@kwtech/module-auth/server';
+import type { TokenService } from '@kwtech/module-auth/server';
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import type { ExecutionContext } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { env } from '../config/env.js';
 import {
-  authenticateConnection,
+  type AdmitAnonymous,
   closeWhenAuthorizationExpires,
   connectionContext,
+  connectionUserId,
+  openConnection,
   rememberConnection,
   rememberedConnection,
 } from './ws-context.js';
@@ -141,6 +143,9 @@ export interface SocketLifecycle {
 /**
  * @param tokens the app's TokenService, for the WebSocket handshake.
  * @param lifecycle what to tell about sockets opening and closing, if anything.
+ * @param admitAnonymous how a socket with no ticket may still be admitted, on a
+ *   module's own credential. Omitted, only a ticket opens a socket. See
+ *   `openConnection` in ./ws-context.ts.
  *
  * Passed in rather than imported so this stays a pure function of its inputs
  * and the module wires it — `AppModule` uses `useFactory` with `inject`, which
@@ -169,7 +174,9 @@ function heartbeat(lifecycle: SocketLifecycle): Record<string, unknown> {
   return {
     onPing: (ctx: { extra?: unknown }) => {
       const connection = rememberedConnection(ctx.extra);
-      if (connection) lifecycle.alive?.(connection.req[PRINCIPAL_KEY].userId, connection.socketId);
+      // An anonymous socket pings too, and is nobody's heartbeat.
+      const userId = connection && connectionUserId(connection);
+      if (connection && userId) lifecycle.alive?.(userId, connection.socketId);
     },
   };
 }
@@ -177,6 +184,7 @@ function heartbeat(lifecycle: SocketLifecycle): Record<string, unknown> {
 export function graphqlOptions(
   tokens: Pick<TokenService, 'verifyWsTicket'>,
   lifecycle: SocketLifecycle = {},
+  admitAnonymous?: AdmitAnonymous,
 ): ApolloDriverConfig {
   return {
     driver: ApolloDriver,
@@ -252,8 +260,8 @@ export function graphqlOptions(
          * connection that failed to authenticate must not linger in a state
          * where a later `subscribe` might be evaluated against no principal.
          */
-        onConnect: (ctx: { connectionParams?: Record<string, unknown> | undefined; extra?: unknown }) => {
-          const connection = authenticateConnection(tokens, ctx.connectionParams);
+        onConnect: async (ctx: { connectionParams?: Record<string, unknown> | undefined; extra?: unknown }) => {
+          const connection = await openConnection(tokens, ctx.connectionParams, admitAnonymous);
           /*
            * FALSE, not a throw. `graphql-ws` closes a thrown error as 4500
            * "internal server error", which tells the client to retry — and a
@@ -272,6 +280,8 @@ export function graphqlOptions(
 
           /*
            * The socket closes when the authorization that opened it expires.
+           * For an anonymous socket that is its maximum lifetime — see
+           * `ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS`.
            *
            * The one property that makes subscriptions safe to add: a query is
            * authorized per request, a subscription once at subscribe time. See
@@ -291,7 +301,11 @@ export function graphqlOptions(
            * presence event for a socket that is then closed would announce
            * somebody who never arrived.
            */
-          lifecycle.opened?.(connection.req[PRINCIPAL_KEY].userId, connection.socketId);
+          //
+          // ⚠ Never for an anonymous socket: it has no user, and chat's
+          // refcount would count a television as somebody online.
+          const userId = connectionUserId(connection);
+          if (userId) lifecycle.opened?.(userId, connection.socketId);
 
           // `true`, not the connection. See above.
           return true;
@@ -312,7 +326,8 @@ export function graphqlOptions(
          */
         onDisconnect: (ctx: { extra?: unknown }) => {
           const connection = rememberedConnection(ctx.extra);
-          if (connection) lifecycle.closed?.(connection.req[PRINCIPAL_KEY].userId, connection.socketId);
+          const userId = connection && connectionUserId(connection);
+          if (connection && userId) lifecycle.closed?.(userId, connection.socketId);
         },
 
         ...heartbeat(lifecycle),

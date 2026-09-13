@@ -30,6 +30,46 @@
 /** Where an app mounts `@kwtech/module-auth`'s ticket endpoint. Overridable. */
 export const DEFAULT_WS_TICKET_PATH = '/api/auth/ws-ticket';
 
+/**
+ * Where a socket admitted WITHOUT a session carries what admitted it.
+ *
+ * A socket normally carries a principal: somebody signed in, and the handshake
+ * verified a ticket minted from their session. A public board on a TV in a
+ * waiting room has no session to mint one from, so an app may also admit a
+ * socket through a hook a MODULE implements — `module-queuing-window`'s display
+ * pass will be the first. What that hook returns is kept on the socket's
+ * request-shaped context under this key, and the module's public resolver reads
+ * it back to learn which display it is serving.
+ *
+ * Here rather than beside the handshake because the module that implements the
+ * hook may not import the app, nor `module-auth` (PLAN §9) — the same reason
+ * `PUBLIC_SURFACE_METADATA` is here.
+ *
+ * ⚠ AN ADMISSION IS NOT AN IDENTITY. An anonymous socket carries no principal,
+ * and that absence is what keeps it safe: `JwtAuthGuard` refuses every
+ * operation on it that is not marked public. A guard that accepted an admission
+ * in place of a principal would open every surface to a television.
+ *
+ * ⚠ Nothing outside the process can set it, for the reason nothing can set the
+ * principal: the handshake assigns it on an object the handshake built. It is
+ * never a header, a parameter or a field a client sends.
+ */
+export const ANONYMOUS_ADMISSION_KEY = 'kwtechAnonymousAdmission';
+
+/**
+ * The admission a socket was opened with, or undefined for anything else — an
+ * HTTP request, or a socket somebody signed in to.
+ *
+ * The caller names the shape, because only the module that admitted the socket
+ * knows it. ⚠ Reading it is not checking it: what admitted a socket at the
+ * handshake can be withdrawn later, so a module re-checks it on every publish.
+ */
+export function anonymousAdmission<T extends object>(request: unknown): T | undefined {
+  if (typeof request !== 'object' || request === null) return undefined;
+  const value = (request as Record<string, unknown>)[ANONYMOUS_ADMISSION_KEY];
+  return typeof value === 'object' && value !== null ? (value as T) : undefined;
+}
+
 export interface RealtimeOptions {
   /** `wss://api.example.com/api/v1/graphql`. No default — only the app knows it. */
   wsUrl: string;

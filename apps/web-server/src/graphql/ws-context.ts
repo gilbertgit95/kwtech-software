@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Principal } from '@kwtech/module-auth';
 import type { TokenService } from '@kwtech/module-auth/server';
 import { PRINCIPAL_KEY } from '@kwtech/module-auth/server';
+import { ANONYMOUS_ADMISSION_KEY } from '@kwtech/module-kit';
 
 /**
  * Authentication for the WebSocket handshake.
@@ -32,9 +33,27 @@ import { PRINCIPAL_KEY } from '@kwtech/module-auth/server';
  * that in `connectionParams`. `verifyWsTicket` exchanges it for an ordinary
  * `full` principal; the `ws` token type never travels further than this file.
  * See `TokenService.issueWsTicket` for what a stolen ticket is worth.
+ *
+ * ## Or a module's own credential, for a screen nobody signs in to
+ *
+ * A public board on a TV in a waiting room has no session to mint a ticket
+ * from. So the app may supply `admitAnonymous`, implemented by the module that
+ * owns such a screen, and a socket presenting no ticket is offered to it. What
+ * it admits carries NO principal — only the admission, under
+ * `ANONYMOUS_ADMISSION_KEY`.
+ *
+ * ⚠ That absence is the whole safety argument, and it adds nothing to
+ * remember. `JwtAuthGuard` already runs on every operation over a socket and
+ * refuses "Not signed in" when it finds no principal, unless the handler is
+ * public. So an anonymous socket reaches exactly the operations marked public
+ * and nothing else: no allowlist to maintain, and no second path to a
+ * principal. test/anonymous-socket.test.ts proves it over a real socket.
  */
 
-/** What the client sends in `connection_init`. Anything else is refused. */
+/**
+ * What the client sends in `connection_init`: a ticket or, when the app
+ * supplies `admitAnonymous`, whatever that hook reads. See `openConnection`.
+ */
 interface ConnectionParams {
   ticket?: unknown;
 }
@@ -46,12 +65,22 @@ interface ConnectionParams {
  * property anything reads. Giving it headers or a url would invite code to
  * start using them, and none of it would be true.
  */
-export interface WsRequestLike {
+export interface SignedInRequestLike {
   [PRINCIPAL_KEY]: Principal;
 }
 
-export interface WsConnectionContext {
-  req: WsRequestLike;
+/**
+ * The same, for a socket admitted without a session: the admission, and
+ * deliberately no principal. See the note at the top of this file.
+ */
+export interface AnonymousRequestLike {
+  [ANONYMOUS_ADMISSION_KEY]: object;
+}
+
+export type WsRequestLike = SignedInRequestLike | AnonymousRequestLike;
+
+export interface WsConnectionContext<Request extends WsRequestLike = WsRequestLike> {
+  req: Request;
   /**
    * THIS SOCKET, as distinct from this person.
    *
@@ -63,8 +92,10 @@ export interface WsConnectionContext {
    */
   socketId: string;
   /**
-   * Epoch seconds, inherited from the access token the ticket was minted from.
-   * The socket is closed on it — see `closeWhenAuthorizationExpires`.
+   * Epoch seconds. For a ticket, inherited from the access token it was minted
+   * from; for an anonymous socket, `ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS` after
+   * the handshake. The socket is closed on it — see
+   * `closeWhenAuthorizationExpires`.
    */
   expiresAt: number;
 }
@@ -127,6 +158,23 @@ export function rememberedConnection(extra: unknown): WsConnectionContext | unde
 }
 
 /**
+ * Who is on this socket, or undefined for one admitted without a session.
+ *
+ * ⚠ Every presence hook goes through this rather than reading the principal,
+ * because an anonymous socket has none. Reading `.userId` off it inside
+ * `onConnect` would throw — a 4500 the TV retries forever — and a presence
+ * event for it would be worse: chat's refcount would count a television as a
+ * person.
+ */
+export function connectionUserId(connection: WsConnectionContext): string | undefined {
+  return isSignedIn(connection.req) ? connection.req[PRINCIPAL_KEY].userId : undefined;
+}
+
+function isSignedIn(request: WsRequestLike): request is SignedInRequestLike {
+  return PRINCIPAL_KEY in request;
+}
+
+/**
  * `graphql-ws`' close codes, as the library actually uses them.
  *
  * Measured, not assumed — an earlier version of this file claimed a thrown
@@ -169,7 +217,7 @@ export const WS_CLOSE = {
 export function authenticateConnection(
   tokens: Pick<TokenService, 'verifyWsTicket'>,
   connectionParams: unknown,
-): WsConnectionContext | null {
+): WsConnectionContext<SignedInRequestLike> | null {
   const params = (connectionParams ?? {}) as ConnectionParams;
   const ticket = typeof params.ticket === 'string' ? params.ticket : undefined;
 
@@ -177,6 +225,75 @@ export function authenticateConnection(
   if (!principal) return null;
 
   return { req: { [PRINCIPAL_KEY]: principal }, expiresAt: principal.expiresAt, socketId: randomUUID() };
+}
+
+/**
+ * How long a socket admitted without a session may stay open.
+ *
+ * A ticketed socket closes when the access token it came from expires, so
+ * nothing about it goes unchecked for longer than that token's life. An
+ * anonymous socket has no token to expire, and a board left running for a week
+ * would be trusting a connection nobody had checked since Monday. Twelve hours
+ * closes it at least once a working day: the client reconnects, the hook runs
+ * again, and the board catches up.
+ *
+ * ⚠ A BACKSTOP, not how access is withdrawn. A module re-checks its admission
+ * on every publish, because twelve hours is far too long for "Stop queuing" to
+ * take a TV dark.
+ */
+export const ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS = 12 * 60 * 60;
+
+/**
+ * Admits a socket that presents no ticket, on a module's own credential — a
+ * display pass, for the first. Returns the admission to keep on the socket, or
+ * null to refuse.
+ *
+ * ⚠ RETURN NULL FOR A BAD CREDENTIAL; THROW ONLY FOR A FAULT. Null closes the
+ * socket as 4403, which a client treats as final. A throw closes it as 4500,
+ * which a client retries: right for a database that blinked, and a reconnect
+ * loop against a pass that will never be valid.
+ */
+export type AdmitAnonymous = (
+  connectionParams: Readonly<Record<string, unknown>>,
+) => Promise<object | null> | object | null;
+
+/**
+ * The handshake: a ticket, or a module's admission, or a refusal.
+ *
+ * ⚠ A PRESENTED TICKET IS NEVER DOWNGRADED. If `connectionParams` carries a
+ * `ticket` key at all, only the ticket path runs, and a bad ticket is refused
+ * rather than offered to `admitAnonymous`. Otherwise a signed-in tab whose
+ * ticket had expired would be admitted ANONYMOUSLY — acknowledged, then refused
+ * "Not signed in" on every operation — instead of closed with the 4403 that
+ * sends it to mint a fresh ticket. It also means the hook is never handed a
+ * session credential.
+ *
+ * With no hook, a socket without a ticket is refused, exactly as before the
+ * hook existed.
+ */
+export async function openConnection(
+  tokens: Pick<TokenService, 'verifyWsTicket'>,
+  connectionParams: unknown,
+  admitAnonymous?: AdmitAnonymous,
+  now: () => number = Date.now,
+): Promise<WsConnectionContext | null> {
+  const params =
+    typeof connectionParams === 'object' && connectionParams !== null
+      ? (connectionParams as Record<string, unknown>)
+      : {};
+  if ('ticket' in params) return authenticateConnection(tokens, params);
+
+  // Presenting nothing is never an admission, whatever a hook would say.
+  if (!admitAnonymous || Object.keys(params).length === 0) return null;
+
+  const admission = await admitAnonymous(params);
+  if (typeof admission !== 'object' || admission === null) return null;
+
+  return {
+    req: { [ANONYMOUS_ADMISSION_KEY]: admission },
+    expiresAt: Math.floor(now() / 1000) + ANONYMOUS_SOCKET_MAX_LIFETIME_SECONDS,
+    socketId: randomUUID(),
+  };
 }
 
 /**
