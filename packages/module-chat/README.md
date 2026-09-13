@@ -158,7 +158,34 @@ One tap sends a single emoji. ⚠ It **does not touch what is in the box**: the
 quick button is a reply, not a shortcut for typing one, and appending to a
 half-written message and sending that would destroy the draft.
 
-Set it in `/chat/preferences`; clearing it removes the button. ⚠ It defaults to
+**It is configured in two places, and the second is the important one:**
+
+| Where | What it sets |
+|---|---|
+| `/chat/preferences` | your DEFAULT, used wherever a conversation has no opinion |
+| `/chat/:conversationId/settings` → *Your quick emoji here* | this ONE conversation's button |
+
+⚠ A thumbs-up is right for a standup group and wrong for the one conversation
+where somebody always replies ❤️ or 👀. So the button is chosen where it is
+USED, and the default is only the fallback.
+
+⚠ **Per device and per person by construction.** It is `localStorage`, so it is
+never sent anywhere — two people in one group can have entirely different
+buttons and neither can see the other's. That also means the per-conversation
+control is **not role-gated**: a member has exactly as much right to it as an
+owner, so it sits outside every `canManage` block on that page.
+
+⚠ **Three states, not two.** *Use my default* FORGETS the override, so the
+conversation follows whatever the default becomes later; *No button here* is a
+choice to have none in this thread specifically — which somebody may want in
+exactly the conversation where a stray tap would be worst. `resolveQuickEmoji`
+is the one place that order is written down.
+
+⚠ The override map is **capped**: nothing ever deletes an entry — a
+conversation can be archived, left, or never opened again and its id lingers —
+so without a bound it is a store that only grows on a device nobody clears.
+Past the cap the oldest is dropped, and that conversation falls back to the
+default, which is what it had before anybody chose. ⚠ It defaults to
 👍 and is ON, which points the opposite way to the tone default — deliberately.
 A sound plays without being asked for in a room that may have other people in
 it, so silence is polite; a button sits there doing nothing until pressed, and

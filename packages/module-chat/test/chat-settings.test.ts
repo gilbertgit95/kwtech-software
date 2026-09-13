@@ -1,7 +1,10 @@
 import {
   CHAT_SETTINGS_STORAGE_KEY,
   DEFAULT_CHAT_SETTINGS,
+  MAX_QUICK_OVERRIDES,
   readChatSettings,
+  resolveQuickEmoji,
+  withQuickEmojiFor,
   writeChatSettings,
 } from '../src/react/chat-settings.js';
 
@@ -152,5 +155,117 @@ describe('writeChatSettings', () => {
       },
     });
     expect(() => writeChatSettings({ ...DEFAULT_CHAT_SETTINGS, enabled: true, tone: 'tap' })).not.toThrow();
+  });
+});
+
+/**
+ * ── THE QUICK BUTTON, PER CONVERSATION ─────────────────────────────────────
+ *
+ * A thumbs-up is right for a standup group and wrong for the one conversation
+ * where somebody always replies ❤️ or 👀. So the button is chosen where it is
+ * USED, and the person's own default is only what a conversation with no
+ * opinion gets.
+ *
+ * ⚠ Per DEVICE and per PERSON by construction — this is localStorage, so it is
+ * never sent anywhere. Two people in one group can have different buttons and
+ * neither can see the other's.
+ */
+describe('resolveQuickEmoji', () => {
+  const settings = { ...DEFAULT_CHAT_SETTINGS, quickEmoji: '👍', quickEmojiByConversation: { c1: '❤️', c2: '' } };
+
+  it('uses the conversation’s own choice when it has one', () => {
+    expect(resolveQuickEmoji(settings, 'c1')).toBe('❤️');
+  });
+
+  it('falls back to the default for a conversation that has none', () => {
+    expect(resolveQuickEmoji(settings, 'c9')).toBe('👍');
+  });
+
+  /**
+   * ⚠ AN OVERRIDE OF `''` IS NOT THE SAME AS HAVING NONE. It is "no quick
+   * button in this conversation", which somebody may want in exactly the thread
+   * where a stray tap would be worst — and it must not silently fall through to
+   * the default.
+   */
+  it('⚠ honours an explicit "no button here" rather than falling back', () => {
+    expect(resolveQuickEmoji(settings, 'c2')).toBe('');
+  });
+
+  it('uses the default with no conversation at all', () => {
+    expect(resolveQuickEmoji(settings, null)).toBe('👍');
+    expect(resolveQuickEmoji(settings, undefined)).toBe('👍');
+  });
+
+  /** ⚠ The default itself can be empty: then nothing has a button anywhere. */
+  it('⚠ shows no button when the default is cleared and nothing overrides it', () => {
+    expect(resolveQuickEmoji({ ...settings, quickEmoji: '' }, 'c9')).toBe('');
+  });
+});
+
+describe('withQuickEmojiFor', () => {
+  const base = { ...DEFAULT_CHAT_SETTINGS, quickEmoji: '👍' };
+
+  it('sets one conversation without touching another', () => {
+    const next = withQuickEmojiFor(withQuickEmojiFor(base, 'c1', '❤️'), 'c2', '🎉');
+
+    expect(resolveQuickEmoji(next, 'c1')).toBe('❤️');
+    expect(resolveQuickEmoji(next, 'c2')).toBe('🎉');
+    expect(resolveQuickEmoji(next, 'c3')).toBe('👍');
+  });
+
+  /**
+   * ⚠ THREE STATES, AND THE LAST TWO ARE DIFFERENT ANSWERS. `null` forgets the
+   * override so the conversation follows whatever the default becomes later;
+   * `''` is a choice to have no button in this thread specifically.
+   */
+  it('⚠ tells "use my default" apart from "no button here"', () => {
+    const withNone = withQuickEmojiFor(base, 'c1', '');
+    expect(resolveQuickEmoji(withNone, 'c1')).toBe('');
+
+    const forgotten = withQuickEmojiFor(withNone, 'c1', null);
+    expect(forgotten.quickEmojiByConversation.c1).toBeUndefined();
+    expect(resolveQuickEmoji(forgotten, 'c1')).toBe('👍');
+  });
+
+  it('refuses an implausible value rather than storing something sendable', () => {
+    const next = withQuickEmojiFor(base, 'c1', 'approve the budget please');
+    expect(next.quickEmojiByConversation.c1).toBeUndefined();
+  });
+
+  /**
+   * ⚠ NOTHING EVER DELETES AN OVERRIDE on its own — a conversation can be
+   * archived, left, or never opened again, and its id stays in this map. Without
+   * a bound it is a store that only grows on a device nobody clears.
+   */
+  it('⚠ caps the map, dropping the oldest rather than growing forever', () => {
+    let settings = base;
+    for (let index = 0; index < MAX_QUICK_OVERRIDES + 5; index += 1) {
+      settings = withQuickEmojiFor(settings, `c${index}`, '🎉');
+    }
+
+    const keys = Object.keys(settings.quickEmojiByConversation);
+    expect(keys).toHaveLength(MAX_QUICK_OVERRIDES);
+    // The oldest went; the newest stayed.
+    expect(keys).not.toContain('c0');
+    expect(keys).toContain(`c${MAX_QUICK_OVERRIDES + 4}`);
+  });
+});
+
+describe('reading the overrides back', () => {
+  it('keeps a valid map and drops entries that are not sendable', () => {
+    withStorage({
+      getItem: () => JSON.stringify({ quickEmojiByConversation: { c1: '❤️', c2: 'a whole sentence', c3: '' } }),
+    });
+
+    const stored = readChatSettings().quickEmojiByConversation;
+    expect(stored.c1).toBe('❤️');
+    expect(stored.c2).toBeUndefined();
+    // ⚠ '' survives: it is a deliberate "no button here", not a broken value.
+    expect(stored.c3).toBe('');
+  });
+
+  it('reads a non-object as no overrides', () => {
+    withStorage({ getItem: () => JSON.stringify({ quickEmojiByConversation: ['nope'] }) });
+    expect(readChatSettings().quickEmojiByConversation).toEqual({});
   });
 });

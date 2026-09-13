@@ -539,6 +539,62 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **The quick button is PER CONVERSATION, not one setting for
+  everywhere.**
+
+  Asked for by the operator, and it is the right correction: a thumbs-up is
+  right for a standup group and wrong for the one conversation where somebody
+  always replies ❤️ or 👀. Built first as a single global preference, which
+  made the button a property of the PERSON when it is really a property of the
+  RELATIONSHIP.
+
+  **Two places, and the second is the one that matters.** `/chat/preferences`
+  sets the default; a conversation's own settings page sets that thread's
+  button. `resolveQuickEmoji` is the one place the fallback order is written
+  down, so the composer and the settings screen cannot disagree about which
+  emoji a given thread shows.
+
+  **⚠ NOT ROLE-GATED, and that decides where it sits on the page.** Everything
+  else on `/chat/:conversationId/settings` is about the CONVERSATION — its name,
+  who is in it, who runs it — and is shared, server-side, and gated on what this
+  person may do. This is about the VIEWER: stored in their browser, never sent,
+  invisible to the other participants. A member has exactly as much right to it
+  as an owner, so it is outside every `canManage` block. ⚠ Putting a personal
+  per-device setting on a page of shared server-side ones needs the screen to
+  SAY so, which it does in the blurb — otherwise it reads as something the group
+  can see.
+
+  **⚠ PER PERSON BY CONSTRUCTION, which is worth saying out loud.** It is
+  `localStorage`. Two people in one group can have entirely different buttons
+  and neither can see the other's, and no server change was needed for any of
+  it.
+
+  **⚠ THREE STATES, NOT TWO, and the last two are different answers.** *Use my
+  default* FORGETS the override, so the conversation follows whatever the
+  default becomes later. *No button here* is a choice to have none in this
+  thread specifically — which somebody may want in exactly the conversation
+  where a stray tap would be worst. Collapsing them would make one of the two
+  unreachable.
+
+  ⚠ **A test caught a real bug in exactly that distinction.** `''` is a
+  legitimate stored override and `isPlausibleEmoji('')` is false — correctly,
+  since an empty string is not an emoji — so the read path filtered it out and
+  silently handed the default button back to somebody who had deliberately
+  removed it. The filter now admits `''` explicitly, with the reason written
+  beside it.
+
+  **⚠ THE MAP IS CAPPED, because nothing ever deletes an entry.** A conversation
+  can be archived, left, or never opened again and its id stays; without a bound
+  this is a store that only grows on a device nobody clears. Fifty, dropping the
+  OLDEST — objects preserve insertion order for string keys, so "oldest" is a
+  real answer rather than an arbitrary one. Dropping an override is not
+  destructive: that conversation falls back to the default, which is what it had
+  before anybody chose.
+
+  `QUICK_EMOJI_CHOICES` moved into `emoji.ts` rather than being declared on both
+  screens, so the default and the override cannot come to offer different
+  options for one setting.
+
 - **2026-09-13** — **An emoji picker and a one-tap button, and the picker is
   160 strings rather than a megabyte.**
 

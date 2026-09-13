@@ -190,7 +190,7 @@ export function MessageThread({
         </p>
       ) : null}
 
-      <MessageComposer onSend={onSend} onTyping={onTyping} disabled={busy} />
+      <MessageComposer conversationId={conversation.id} onSend={onSend} onTyping={onTyping} disabled={busy} />
     </div>
   );
 }

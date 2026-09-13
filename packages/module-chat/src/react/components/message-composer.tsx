@@ -3,7 +3,13 @@
 import { cn } from '@kwtech/web-ui/react';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { MAX_BODY_CODE_POINTS } from '../../domain/messages.js';
-import { type ChatSettings, DEFAULT_CHAT_SETTINGS, readChatSettings, writeChatSettings } from '../chat-settings.js';
+import {
+  type ChatSettings,
+  DEFAULT_CHAT_SETTINGS,
+  readChatSettings,
+  resolveQuickEmoji,
+  writeChatSettings,
+} from '../chat-settings.js';
 import { insertEmoji, withRecentEmoji } from '../emoji.js';
 import { EmojiPicker } from './emoji-picker.js';
 
@@ -22,6 +28,7 @@ import { EmojiPicker } from './emoji-picker.js';
  * of data hanging off a text field, which is the cost this defers.
  */
 export function MessageComposer({
+  conversationId,
   onSend,
   onTyping,
   disabled,
@@ -35,6 +42,14 @@ export function MessageComposer({
    */
   onTyping?: () => void;
   disabled?: boolean;
+  /**
+   * Which conversation this composer is writing into.
+   *
+   * ⚠ Only the QUICK BUTTON needs it, and only to decide which emoji this
+   * conversation was given. Sending does not go through here — `onSend` is the
+   * caller's, which already knows where the message goes.
+   */
+  conversationId?: string;
 }) {
   const [body, setBody] = useState('');
   const [picking, setPicking] = useState(false);
@@ -46,6 +61,13 @@ export function MessageComposer({
   useEffect(() => setSettings(readChatSettings()), []);
 
   const box = useRef<HTMLTextAreaElement>(null);
+
+  /*
+   * ⚠ THIS CONVERSATION'S BUTTON, not the person's default. The fallback order
+   * lives in `resolveQuickEmoji` so this screen and the settings screen cannot
+   * disagree about which emoji a given thread shows.
+   */
+  const quickEmoji = resolveQuickEmoji(settings, conversationId);
 
   const length = [...body].length;
   const tooLong = length > MAX_BODY_CODE_POINTS;
@@ -104,9 +126,9 @@ export function MessageComposer({
    * mid-sentence who taps 👍 means "yes, and I am still writing".
    */
   function sendQuick() {
-    if (disabled || !settings.quickEmoji) return;
-    onSend(settings.quickEmoji);
-    remember(settings.quickEmoji);
+    if (disabled || !quickEmoji) return;
+    onSend(quickEmoji);
+    remember(quickEmoji);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -171,16 +193,16 @@ export function MessageComposer({
           somebody who cleared it in preferences asked for it to be gone, not
           greyed out. Set in /chat/preferences.
         */}
-        {settings.quickEmoji ? (
+        {quickEmoji ? (
           <button
             type="button"
             onClick={sendQuick}
             disabled={disabled}
-            title={`Send ${settings.quickEmoji}`}
-            aria-label={`Send ${settings.quickEmoji}`}
+            title={`Send ${quickEmoji}`}
+            aria-label={`Send ${quickEmoji}`}
             className="shrink-0 rounded-md border border-border px-2 py-2 text-lg leading-none hover:bg-accent disabled:opacity-50"
           >
-            {settings.quickEmoji}
+            {quickEmoji}
           </button>
         ) : null}
 

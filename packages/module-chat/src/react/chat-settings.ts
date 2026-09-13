@@ -53,6 +53,24 @@ export interface ChatSettings {
    */
   quickEmoji: string;
   /**
+   * PER-CONVERSATION overrides of the quick button, by conversation id.
+   *
+   * ⚠ The default is a fallback, not a setting that applies everywhere. A
+   * thumbs-up is right for a standup group and wrong for the one conversation
+   * where somebody always replies ❤️ or 👀 — so the button is chosen where it
+   * is USED, and `quickEmoji` is only what a conversation with no opinion gets.
+   *
+   * ⚠ Per DEVICE like everything else here, and per PERSON by construction:
+   * this is `localStorage`, so it is never shared with the other participants.
+   * Two people in one group can have entirely different buttons and neither can
+   * see the other's.
+   *
+   * ⚠ CAPPED. A map keyed by conversation id grows every time somebody
+   * customises another thread and nothing ever removes an entry — a conversation
+   * can be archived or left and its id lingers. See `MAX_QUICK_OVERRIDES`.
+   */
+  quickEmojiByConversation: Record<string, string>;
+  /**
    * The picker's recents, most recent first.
    *
    * ⚠ Stored rather than held in React state, because the value of a recents
@@ -86,8 +104,24 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
    * preferences.
    */
   quickEmoji: '👍',
+  quickEmojiByConversation: {},
   recentEmoji: [],
 };
+
+/**
+ * How many per-conversation overrides to keep.
+ *
+ * ⚠ A CAP, because nothing ever deletes one. A conversation can be archived,
+ * left, or simply never opened again, and its id stays in this map forever —
+ * so without a bound this is a store that only grows, on a device somebody
+ * never clears. Fifty is far more than anybody customises by hand, and past it
+ * the OLDEST entry is dropped: objects preserve insertion order for string
+ * keys, so "oldest" is a real answer rather than an arbitrary one.
+ *
+ * ⚠ Dropping an override is not destructive — that conversation falls back to
+ * the default button, which is what it had before anybody chose.
+ */
+export const MAX_QUICK_OVERRIDES = 50;
 
 /**
  * What is stored, or the default.
@@ -113,7 +147,13 @@ export function readChatSettings(): ChatSettings {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_CHAT_SETTINGS;
 
-    const candidate = parsed as { enabled?: unknown; tone?: unknown; quickEmoji?: unknown; recentEmoji?: unknown };
+    const candidate = parsed as {
+      enabled?: unknown;
+      tone?: unknown;
+      quickEmoji?: unknown;
+      quickEmojiByConversation?: unknown;
+      recentEmoji?: unknown;
+    };
     return {
       enabled: typeof candidate.enabled === 'boolean' ? candidate.enabled : DEFAULT_CHAT_SETTINGS.enabled,
       tone: isChatToneId(candidate.tone) ? candidate.tone : DEFAULT_CHAT_SETTINGS.tone,
@@ -127,6 +167,14 @@ export function readChatSettings(): ChatSettings {
        * `''` is a legitimate stored value: it is "I turned the button off".
        */
       quickEmoji: quickEmojiFrom(candidate.quickEmoji),
+      /*
+       * ⚠ Every VALUE validated, for the reason `quickEmoji` is: each one can
+       * become a message body on one tap. The KEY is a conversation id and is
+       * not validated against anything — an id for a conversation the viewer is
+       * no longer in simply never matches, which costs a few bytes and is not
+       * worth a lookup on every read.
+       */
+      quickEmojiByConversation: overridesFrom(candidate.quickEmojiByConversation),
       /*
        * ⚠ FILTERED, not taken. Every entry is checked and the list is capped,
        * so a hand-edited array of a thousand strings cannot become a thousand
@@ -176,4 +224,75 @@ function quickEmojiFrom(stored: unknown): string {
   if (stored === undefined) return DEFAULT_CHAT_SETTINGS.quickEmoji;
   if (stored === '') return '';
   return isPlausibleEmoji(stored) ? stored : '';
+}
+
+/**
+ * The stored per-conversation overrides, validated and capped.
+ *
+ * Entries whose value is not a plausible emoji are DROPPED rather than
+ * defaulted: an unreadable override means that conversation falls back to the
+ * default button, which is what it had before anybody customised it.
+ */
+function overridesFrom(stored: unknown): Record<string, string> {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
+
+  const entries = Object.entries(stored as Record<string, unknown>)
+    /*
+     * ⚠ `''` SURVIVES, and `isPlausibleEmoji` refuses it — correctly, since an
+     * empty string is not an emoji. Here it is a deliberate "no button in this
+     * conversation", which is the answer somebody chose in exactly the thread
+     * where a stray tap would be worst. Filtering it out would silently give
+     * them the default button back.
+     */
+    .filter((entry): entry is [string, string] => entry[1] === '' || isPlausibleEmoji(entry[1]))
+    .slice(0, MAX_QUICK_OVERRIDES);
+
+  return Object.fromEntries(entries);
+}
+
+/**
+ * WHICH EMOJI THE QUICK BUTTON SENDS IN THIS CONVERSATION.
+ *
+ * ⚠ The one place the fallback order is written down, so the composer and the
+ * settings screen cannot disagree about it:
+ *
+ *   1. what this conversation was given, if anything
+ *   2. otherwise the person's own default
+ *   3. and `''` means NO BUTTON — at either level, deliberately chosen
+ *
+ * ⚠ An override of `''` is meaningful and is NOT the same as having none: it is
+ * "no quick button in this conversation", which somebody may want in exactly
+ * the thread where a stray tap would be worst.
+ */
+export function resolveQuickEmoji(settings: ChatSettings, conversationId: string | null | undefined): string {
+  if (!conversationId) return settings.quickEmoji;
+
+  const override = settings.quickEmojiByConversation[conversationId];
+  return override === undefined ? settings.quickEmoji : override;
+}
+
+/**
+ * Set, clear, or remove this conversation's override.
+ *
+ * @param emoji an emoji to use here, `''` for no button here, or `null` to
+ *   FORGET the override entirely so the conversation follows the default again.
+ *   ⚠ The last two are different and both are needed: "no button here" and "use
+ *   whatever my default is" are answers to different questions.
+ */
+export function withQuickEmojiFor(settings: ChatSettings, conversationId: string, emoji: string | null): ChatSettings {
+  const next = { ...settings.quickEmojiByConversation };
+
+  if (emoji === null) delete next[conversationId];
+  else if (emoji === '' || isPlausibleEmoji(emoji)) next[conversationId] = emoji;
+  else return settings;
+
+  /*
+   * ⚠ Capped on WRITE as well as on read. The read cap protects against a
+   * hand-edited store; this one stops the map growing past the bound through
+   * ordinary use, dropping the oldest insertion.
+   */
+  const entries = Object.entries(next);
+  const capped = entries.length > MAX_QUICK_OVERRIDES ? entries.slice(entries.length - MAX_QUICK_OVERRIDES) : entries;
+
+  return { ...settings, quickEmojiByConversation: Object.fromEntries(capped) };
 }

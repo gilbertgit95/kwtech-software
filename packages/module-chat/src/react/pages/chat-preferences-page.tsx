@@ -11,6 +11,7 @@ import {
 } from '../chat-settings.js';
 import { type ChatToneId, playChatTone, unlockChatTones } from '../chat-tone.js';
 import { ChatSubPage } from '../components/chat-sub-page.js';
+import { QUICK_EMOJI_CHOICES } from '../emoji.js';
 
 /**
  * `/chat/preferences` — how chat tells you, on THIS device.
@@ -199,13 +200,3 @@ export function ChatPreferencesPage() {
     </ChatSubPage>
   );
 }
-
-/**
- * What the quick button may be set to, from this screen.
- *
- * ⚠ A SHORT LIST, not the whole picker. This is the one-tap reply — the handful
- * of things people actually send alone — and offering four hundred here would
- * make choosing one a task. Anything else is still reachable: the composer's
- * picker inserts any emoji into a message.
- */
-const QUICK_EMOJI_CHOICES = ['👍', '👌', '🙏', '❤️', '🎉', '😂', '👀', '✅', '🔥', '💯'];

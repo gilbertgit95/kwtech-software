@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   canArchiveConversation,
   canInviteToConversation,
@@ -12,8 +12,17 @@ import {
 } from '../../domain/participant-roles.js';
 import type { ChatParticipantRole } from '../../types.js';
 import type { ChatClient } from '../chat-client.js';
+import {
+  type ChatSettings,
+  DEFAULT_CHAT_SETTINGS,
+  readChatSettings,
+  withQuickEmojiFor,
+  writeChatSettings,
+} from '../chat-settings.js';
 import { ChatSubPage } from '../components/chat-sub-page.js';
 import { PersonFinder } from '../components/person-finder.js';
+import { QUICK_EMOJI_CHOICES } from '../emoji.js';
+import { CHAT_PREFERENCES_HREF } from '../routes.js';
 import { useConversationSettings } from '../use-conversation-settings.js';
 import { conversationTitle } from '../view/conversation-view.js';
 
@@ -54,6 +63,22 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
    * all was not saved by it being configurable. `ChatSubPage` owns the link.
    */
   const conversationId = params?.conversationId ?? '';
+
+  /*
+   * ⚠ Read once on mount, not per render — `readChatSettings` touches
+   * localStorage. Held in state so the buttons reflect a change immediately;
+   * written through on every change so another tab picks it up on its next read.
+   */
+  const [prefs, setPrefs] = useState<ChatSettings>(DEFAULT_CHAT_SETTINGS);
+  useEffect(() => setPrefs(readChatSettings()), []);
+
+  const override = prefs.quickEmojiByConversation[conversationId];
+
+  const setQuick = (emoji: string | null) => {
+    const next = withQuickEmojiFor(prefs, conversationId, emoji);
+    setPrefs(next);
+    writeChatSettings(next);
+  };
   const settings = useConversationSettings(conversationId, client ? { client } : {});
   const { conversation, participants, me } = settings;
 
@@ -240,6 +265,71 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
             </button>
           )
         ) : null}
+      </section>
+
+      {/*
+        ⚠ NOT ROLE-GATED, and that is the point of where it sits.
+        
+        Everything above this is about the CONVERSATION — its name, who is in
+        it, who runs it — and is shared, server-side, and gated on what this
+        person may do. This is about the VIEWER: it is stored in their browser,
+        it is never sent anywhere, and the other participants cannot see it.
+        A member has exactly as much right to it as an owner, so it is outside
+        every `canManage` block.
+      */}
+      <section className="space-y-3 border-b border-border py-6">
+        <h2 className="text-sm font-medium text-foreground">Your quick emoji here</h2>
+        <p className="text-sm text-muted-foreground">
+          The one-tap button beside the message box, just for this conversation. ⚠ Saved in this browser and visible
+          only to you — nobody else in here sees what you chose.
+        </p>
+
+        <div className="flex flex-wrap gap-1">
+          {QUICK_EMOJI_CHOICES.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => setQuick(emoji)}
+              aria-label={emoji}
+              aria-pressed={override === emoji}
+              className={cn(
+                'rounded-md border px-2 py-1 text-lg leading-none',
+                override === emoji ? 'border-primary bg-accent' : 'border-border hover:bg-accent/60',
+              )}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
+        {/*
+          ⚠ THREE STATES, NOT TWO, and they are genuinely different answers:
+          "use my default" FORGETS the override so this conversation follows
+          whatever the default becomes later; "no button here" is a choice to
+          have none in this thread specifically, which somebody may want in
+          exactly the conversation where a stray tap would be worst.
+        */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setQuick(null)}
+            disabled={override === undefined}
+            className="rounded-md border border-border px-3 py-1 text-sm hover:bg-accent disabled:opacity-50"
+          >
+            Use my default ({prefs.quickEmoji || 'none'})
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuick('')}
+            disabled={override === ''}
+            className="rounded-md border border-border px-3 py-1 text-sm hover:bg-accent disabled:opacity-50"
+          >
+            No button here
+          </button>
+          <a href={CHAT_PREFERENCES_HREF} className="text-sm text-muted-foreground hover:text-foreground">
+            Change my default →
+          </a>
+        </div>
       </section>
 
       <section className="space-y-3 pt-6">
