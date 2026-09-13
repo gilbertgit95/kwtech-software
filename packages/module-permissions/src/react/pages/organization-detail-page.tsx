@@ -159,7 +159,7 @@ export function OrganizationDetailPage({
             invitation.acceptedByUserId ? [invitation.acceptedByUserId] : [],
           ),
         ];
-        const users = await api.findUsersByIds(ids);
+        const users = await api.findUsersByIds(organizationId, ids);
         setPeople(new Map(users.map((user) => [user.id, user])));
       }
     } catch (cause) {

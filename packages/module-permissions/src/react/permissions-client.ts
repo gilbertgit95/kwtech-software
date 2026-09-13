@@ -454,7 +454,15 @@ export interface PermissionsClient {
    * names. Returns FEWER rows than asked for when an id has no account — a
    * membership can outlive the account it names.
    */
-  findUsersByIds(ids: readonly string[]): Promise<FoundUser[]>;
+  /**
+   * ⚠ TAKES THE ORGANIZATION, and the answer is limited to its members.
+   *
+   * Without it the request resolved at APP level, where `members:read` is a
+   * platform administrator's key — so an ordinary member saw raw ids on every
+   * roster while a super administrator saw names. Naming the organization is
+   * what lets an organization-level grant apply.
+   */
+  findUsersByIds(organizationId: string, ids: readonly string[]): Promise<FoundUser[]>;
   addMember(organizationId: string, userId: string): Promise<WriteResult>;
   /**
    * Invites an ADDRESS, which may have no account yet.
@@ -925,14 +933,14 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
       return data.findUserByEmail;
     },
 
-    async findUsersByIds(ids) {
+    async findUsersByIds(organizationId, ids) {
       if (ids.length === 0) return [];
       try {
         const data = await graphql<{ findUsersByIds: FoundUser[] }>(
-          `query FindUsersByIds($ids: [String!]!) {
-             findUsersByIds(ids: $ids) { id email displayName username }
+          `query FindUsersByIds($organizationId: String!, $ids: [String!]!) {
+             findUsersByIds(organizationId: $organizationId, ids: $ids) { id email displayName username }
            }`,
-          { ids: [...ids] },
+          { organizationId, ids: [...ids] },
         );
         return data.findUsersByIds;
       } catch {

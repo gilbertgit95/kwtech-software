@@ -533,11 +533,56 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 
 | 55 | ⚠ The chat notification path has never sent a real email | before anybody relies on being told | Built and wired 2026-09-13, and **exercised only against fakes**: there is no SMTP server on the development machine, so `renderEmail('chat-message', …)` is rendered but `transport.sendMail` has never run. What is unproven is everything a mail server decides — whether it is accepted, whether it lands in a spam folder, whether the `text`/`html` pair renders, and whether the From address passes SPF/DKIM on the real domain. ⚠ The FAILURE IS SILENT BY DESIGN: the notifier swallows everything so a dead mail server cannot break a send, so nobody finds out by chatting. Send one real message to a real inbox, then re-read this row. ⚠ Chat itself does not depend on it — with no `SMTP_URL` the path returns early and logs |
 | 56 | ⚠ The plan describes seams in the PRESENT TENSE that were never built | next time this document is trusted | Three found in three days, all by looking rather than by testing: `sendChatNotification` was "the optional hook already in the design" and did not exist; `listConversations` said "ONE GROUPED PASS — three queries total" while running `3 + 2n`; the nav badge told its reader "the server already computes unread in one grouped pass". Each read as a description of the code and was a description of the INTENTION. That is the cost of a document written alongside the work rather than after it — which is still the right trade — but it means **a claim here is not evidence**. ⚠ Nothing has audited the rest of §§9–11 for the same thing, and the ones found were all in areas that happened to be worked on. Grep the plan for present-tense claims about behaviour and check each against the code |
+| 57 | ⚠ Two more batch-by-id queries rest on the argument `findUsersByIds` just retracted | before either key is granted below platform admin | `permissionUserAppRoles` (`roles:read`) and `permissionUserOrganizations` (`organizations:read`) accept a list of user ids and justify it with the same comment: *"the ids come from a list the caller could already see, so batching discloses nothing new"*. That is true of the screen and not of the endpoint, which answers for whatever ids it is sent — the flaw fixed in `findUsersByIds` on 2026-09-13. **Neither declares `@RequireScope`, so both resolve at APP level today and only platform administrators reach them.** That is why this is open rather than fixed: the exposure is the one `findUsersByIds` had before its fix, and it is acceptable only while it stays admin-only. The moment either key is granted inside an organization, or the query gains a scope, it needs the same membership intersection, done in the database. Their comments, and the matching ones in `permissions.service.ts`, still cite `findUsersByIds` as their precedent and should be reworded when this closes |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **`findUsersByIds` is scoped to an ORGANIZATION, and answers
+  only with that organization's members.**
+
+  Reported from the product: a super administrator saw names on every roster,
+  and an ordinary member of an organization saw raw user ids.
+
+  **⚠ THE CAUSE WAS A MISSING `@RequireScope`.** `members:read` is an
+  organization-level key. A GraphQL request has no organization in its URL, so
+  without a declared scope the guard fell through to the path convention and
+  resolved at APP level — where only a platform administrator holds the key.
+  The lookup was refused, the client fails soft by design, and the id is the
+  fallback. So the bug looked like missing data rather than a denial. The query
+  now takes `organizationId`, the guard resolves that scope, and an
+  organization-level grant applies. App-level grants still apply too
+  (`composeContext` adds them to every scope), so platform administrators are
+  unaffected.
+
+  **⚠ THE SCOPE FIX MADE A SECOND CHANGE NECESSARY.** The original reasoning
+  (§ below, "acceptable as a batch precisely because it is by id") said the
+  caller already holds the ids, so the batch discloses nothing new. That holds
+  for a SCREEN but not for an ENDPOINT, which accepts whatever ids it is sent.
+  While the key was app-level, that gap was reachable only by platform
+  administrators. Widening the key to every organization member without closing
+  the gap would have made the query a directory harvester over the whole
+  platform: send your own organization id plus guessed user ids, collect names
+  and addresses. So the answer is INTERSECTED with `perm_membership` for the
+  organization named.
+
+  - **In the database, not filtered afterwards.** Reading every user and then
+    dropping non-members would still read them, and a bug in the filter would
+    leak data instead of returning an empty list. `auth_user` is queried only
+    for ids already confirmed as members, and not at all when none are.
+  - **Any membership status counts.** Suspended and invited members are on the
+    roster the caller is already looking at. Showing their id without their name
+    would leave half the screen unreadable for no reason anyone could see.
+
+  Rejected: keeping the query app-scoped and granting `members:read` at app
+  level to everyone. That fixes the symptom and leaves the harvester open to
+  all of them.
+
+  All four callers (`organization-detail-page`, `workspace-detail-page`,
+  `useMyOrganization`, `useMyWorkspace`) already had the organization id in
+  hand, so the client signature change costs nothing.
 
 - **2026-09-13** — **A direct message gets its own settings page, and the
   viewer's own control stops living inside the group page's markup.**
@@ -4773,6 +4818,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
   by id: the caller already holds those ids, from a query that was itself
   guarded, so it discloses nothing new. Capped at 200 and de-duplicated, because
   an uncapped `in` list is an unbounded query somebody can send.
+  ⚠ **Superseded 2026-09-13:** "the caller already holds those ids" is true of
+  the screen, not of the endpoint. The query now takes `organizationId`, declares
+  organization scope, and returns only that organization's members. See the
+  decision log entry of that date.
 
   ⚠ Both are named by the module's CLIENT by convention, the way
   `DEFAULT_GRAPHQL_PATH` names a route module-auth mounts — the module does not

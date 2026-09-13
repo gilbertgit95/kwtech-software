@@ -1,5 +1,5 @@
 import { FEATURE } from '@kwtech/module-permissions';
-import { RequireFeature } from '@kwtech/module-permissions/server';
+import { RequireFeature, RequireScope } from '@kwtech/module-permissions/server';
 import { Injectable } from '@nestjs/common';
 import { Args, Field, ObjectType, Query, Resolver } from '@nestjs/graphql';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -77,12 +77,36 @@ export class UsersResolver {
    * The people behind a set of ids, for a screen that has membership rows and
    * no names.
    *
-   * ## Why by ID and not by search
+   * ## ⚠ IT IS SCOPED TO AN ORGANIZATION, and it was not
    *
-   * The caller already HOLDS these ids — they came from
-   * `permissionOrganizationDetail`, which is itself guarded. So this discloses
-   * nothing that was not already disclosed, which is what makes a batch
-   * acceptable here where a batch of email searches would not be.
+   * This used to take ids alone, with no `@RequireScope`. A GraphQL request has
+   * no organization in its URL, so the guard fell through to the path
+   * convention and resolved the request at **APP LEVEL** — where `members:read`
+   * is held by platform administrators and by nobody else. The effect was
+   * precise and easy to miss: a super administrator saw names everywhere, and
+   * an ordinary member of an organization — who holds `members:read` INSIDE
+   * their organization — saw raw ids on every roster. The lookup failed, the
+   * client fails soft, and the id is the fallback.
+   *
+   * So the caller names the organization it is asking about, the guard resolves
+   * that scope, and an organization-level grant applies. An app-level grant
+   * still applies too (`composeContext` adds app-level features to every
+   * scope), so platform administrators are unaffected.
+   *
+   * ## ⚠ AND THE ANSWER IS INTERSECTED WITH THAT ORGANIZATION'S MEMBERSHIP
+   *
+   * This is the half that the scope change makes necessary rather than
+   * optional. The old comment argued that a batch of ids "discloses nothing
+   * that was not already disclosed, because the caller already holds them" —
+   * true of a screen, and not true of an ENDPOINT, which accepts whatever ids
+   * it is sent. While the key was app-level that gap was reachable only by
+   * platform administrators. Widening it to every organization member would
+   * have turned it into a directory harvester over the whole platform: send
+   * your own organization id and a hundred guessed user ids, collect names and
+   * email addresses.
+   *
+   * So a user is returned only if they are a MEMBER of the organization named —
+   * which is exactly the set the roster already shows the caller.
    *
    * ## Missing ids are simply absent
    *
@@ -92,8 +116,12 @@ export class UsersResolver {
    * honest answer, and the caller falls back to showing the id.
    */
   @RequireFeature(FEATURE.membersRead)
+  @RequireScope('organization')
   @Query(() => [FoundUserType], { name: 'findUsersByIds' })
-  async findUsersByIds(@Args('ids', { type: () => [String] }) ids: string[]): Promise<FoundUserType[]> {
+  async findUsersByIds(
+    @Args('organizationId') organizationId: string,
+    @Args('ids', { type: () => [String] }) ids: string[],
+  ): Promise<FoundUserType[]> {
     /*
      * De-duplicated and CAPPED. The cap is not about this screen — an
      * organization with two hundred members is ordinary — it is about the
@@ -103,8 +131,27 @@ export class UsersResolver {
     const unique = [...new Set(ids.filter((id) => typeof id === 'string' && id.length > 0))].slice(0, MAX_USER_LOOKUP);
     if (unique.length === 0) return [];
 
+    /*
+     * ⚠ THE INTERSECTION, and it is done in the database rather than by
+     * filtering afterwards: asking `auth_user` for everybody and then dropping
+     * non-members would still have READ them, and a mistake in the filter would
+     * be a disclosure rather than an empty list.
+     *
+     * ⚠ Any membership STATUS counts, not just active. A suspended or invited
+     * member is on the roster the caller is already looking at — showing their
+     * id but not their name would make a screen that is half legible for a
+     * reason nobody could explain.
+     */
+    const memberships = await this.prisma.permMembership.findMany({
+      where: { organizationId, userId: { in: unique } },
+      select: { userId: true },
+    });
+
+    const members = memberships.map((row) => row.userId);
+    if (members.length === 0) return [];
+
     return this.prisma.authUser.findMany({
-      where: { id: { in: unique } },
+      where: { id: { in: members } },
       select: { id: true, email: true, displayName: true, username: true },
     });
   }

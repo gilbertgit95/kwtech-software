@@ -75,7 +75,10 @@ export function useMyWorkspace(
           .then(setRoles)
           .catch(() => setRoles([])),
         api
-          .findUsersByIds(found.organizationMembers.map((member) => member.userId))
+          .findUsersByIds(
+            organizationId,
+            found.organizationMembers.map((member) => member.userId),
+          )
           .then((users) => setPeople(new Map(users.map((user) => [user.id, user]))))
           .catch(() => setPeople(new Map())),
       ]);

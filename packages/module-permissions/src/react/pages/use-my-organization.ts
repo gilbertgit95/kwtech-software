@@ -67,7 +67,10 @@ export function useMyOrganization(api: PermissionsClient, organizationId: string
       if (!found) return;
 
       try {
-        const users = await api.findUsersByIds(found.members.map((member) => member.userId));
+        const users = await api.findUsersByIds(
+          organizationId,
+          found.members.map((member) => member.userId),
+        );
         setPeople(new Map(users.map((user) => [user.id, user])));
       } catch {
         /*

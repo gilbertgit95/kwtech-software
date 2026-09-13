@@ -470,7 +470,7 @@ type Query {
   chatMyAvailability: ChatMyAvailability!
   chatPresence(userIds: [String!]!): [ChatPresence!]!
   findUserByEmail(email: String!): FoundUser
-  findUsersByIds(ids: [String!]!): [FoundUser!]!
+  findUsersByIds(ids: [String!]!, organizationId: String!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview
   mfaFactors: [MfaFactor!]!
   myOrganization(organizationId: String!): PermissionOrganizationDetail

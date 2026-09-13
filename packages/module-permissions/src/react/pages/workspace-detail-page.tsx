@@ -75,7 +75,10 @@ export function WorkspaceDetailPage({
       setRoles(roleList);
       setError(null);
       if (found) {
-        const users = await api.findUsersByIds(found.members.map((member) => member.userId));
+        const users = await api.findUsersByIds(
+          organizationId,
+          found.members.map((member) => member.userId),
+        );
         setPeople(new Map(users.map((user) => [user.id, user])));
       }
     } catch (cause) {
