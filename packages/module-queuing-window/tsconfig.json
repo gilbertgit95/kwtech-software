@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM and no decorators yet: this package is pure domain until step 4
+    // adds the server half and step 6 the React half. Each widens this file
+    // when it lands, as module-chat's did.
+    "outDir": "dist",
+    // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
+    // with the build info beside the tsconfig it outlives every `rm -rf dist` —
+    // after which tsc concludes nothing changed and emits NOTHING. See
+    // module-chat's tsconfig for the incident.
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -554,6 +554,109 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **`module-queuing-window` step 3: the schema and the rules,
+  with no database in sight.** A new package, `packages/module-queuing-window`,
+  that depends on `@kwtech/module-kit` and nothing else. It has no Prisma
+  client, no Nest and no React, and its `lib` has no DOM. 123 tests, none of
+  them touching a database.
+
+  ⚠ **No app has adopted the package yet.** `compose-schema.mjs` copies a
+  fragment for every `@kwtech/module-*` dependency of `apps/web-server`, so
+  adding the dependency is what creates the tables. That belongs with the
+  migration and the server in step 4, as it did for chat. `prisma/queue.prisma`
+  was checked with `prisma validate` and `prisma format` against the app's own
+  generator and datasource header.
+
+  **What is in it:**
+  - **`prisma/queue.prisma`** — ten models, one enum:
+    - `QueueSettings`, `QueueLine`, `QueueWindow`, `QueueWindowLine`,
+      `QueueSeat`, `QueueSession`, `QueueDisplayPass`, `QueueSequence`,
+      `QueueTicket` and `QueueStaffNickname`;
+    - the enum is `QueueTicketStatus` (`called | done | no_show`);
+    - every row carries `workspaceId` and `organizationId`.
+  - **`domain/numbering.ts`** — the skip-already-called allocator
+    (`nextToCall`), wrapping, setting a line's next number, and Continue
+    numbering.
+  - **`domain/tickets.ts`** — the state machine, plus what Call number… does
+    with a number that is already called.
+  - **`domain/seats.ts`** — assignment, replacing, moving, and releasing.
+  - **`domain/session.ts`** — the session gate, the display code, the code
+    exchange, and the shape of a pass.
+  - **`domain/lines.ts`, `domain/windows.ts`, `domain/nicknames.ts`** — the
+    text that reaches a public screen.
+  - **`feature-keys.ts`** — the six keys, two caps and three presets.
+
+  **Decisions the plan did not contain:**
+  - ⚠ **The ticket's formatted number is `label`, not `displayCode`.** The
+    original plan named it `displayCode` before the display-code entry gave
+    that name to the session's code. Two columns called `displayCode` meaning a
+    customer's number and a TV credential is a bug waiting in a `select`.
+  - **`firstCalledAt` beside `calledAt`.** A Recall or a re-call moves
+    `calledAt`. §12.65's wait-time report needs the first call, and it would be
+    unrecoverable once overwritten.
+  - **`clientRequestId` is unique per SESSION, not globally.** A global unique
+    lets one tenant's id collide with another's, and turns a retry into a
+    cross-tenant lookup the server would then have to guard.
+  - **A ticket's `windowId` has no foreign key.** Windows are archived, never
+    deleted, and history must not hang on a row an operator might one day
+    remove. The name is snapshotted anyway.
+  - **A prefix is unique per workspace including archived lines.** A new `C`
+    line beside an archived one is refused; unarchive instead, so two lines'
+    history never shares a prefix.
+  - ⚠ **Call number… on a number already called:**
+    - a no-show is called again, from ANY window, on the same row;
+    - a ticket still called at this window is a recall;
+    - one called at ANOTHER window is refused, because one customer sent to
+      two windows is the confusion a queue exists to prevent;
+    - a done ticket is refused.
+
+    Recall, Done and No-show belong to the window the ticket was called to.
+  - **A line must span at least two numbers.** With one, every Call next wraps,
+    and skip-already-called would call the same number once per cycle forever.
+  - **Setting the next number keeps the cycle.** Setting it back onto numbers
+    already called still skips them. Reusing them takes a wrap or a new
+    session. Recorded in the code, because a supervisor will try it.
+  - **Continue numbering restarts the cycle at 0.** Tickets are unique per
+    session, so nothing can collide. A previous position outside the line's
+    current range starts fresh rather than calling a number the line no longer
+    has.
+  - **Code input follows Crockford's own decoding:** O is read as 0, I and L
+    as 1, and U is refused. Those are the misreadings the alphabet exists to
+    absorb, and they are exactly what somebody reading a code off a console
+    across a room will type.
+  - ⚠ **The exchange checks "locked" BEFORE comparing,** so a locked session
+    refuses the right code too and stops confirming which code is right. A
+    right code on a full session (`display_cap`) is not counted as a failed
+    attempt, because the person typing it was told the code.
+  - **With `QueueStaffCheck` bound, the check applies to the actor too.** A
+    supervisor without `queue:serve` who seats themselves gets a window that
+    looks staffed and is not. Unbound, only self-assignment is allowed, per
+    answer 2.
+  - **Text on a public screen:**
+    - control and invisible formatting characters are REFUSED, not stripped;
+    - whitespace is collapsed first, so a pasted tab becomes a space;
+    - length counts code points;
+    - window names are capped at 32, line names at 40, nicknames at 24;
+    - a window name is unique on its NFKC, case-folded form, so a full-width
+      "Ｗｉｎｄｏｗ ３" is Window 3.
+
+    ⚠ The cost: `\p{Cf}` includes the zero-width joiner inside some emoji
+    sequences, so a family emoji is refused in a name.
+  - **Prefixes are A–Z and 0–9, at most three, stored upper case.** They are
+    read aloud, and a character with no spoken name, or a dash read as "minus",
+    is a customer who never hears their number.
+  - **`boardNickname(showStaffNames, nickname)` takes no account name at
+    all,** so the "no nickname means no name" rule cannot be broken by a caller
+    passing one in. A test asserts the arity.
+  - **`queue:start` is the one `isPrivileged` key** — the disclosure act that
+    `queue:publish_display` was.
+  - **`queue:displays` defaults to 5**, per the display-code entry, which
+    supersedes answer 3's 3. `queue:windows` defaults to 10. Both are
+    plan-sourced and counted over the workspace.
+  - **The feature bindings are deliberately empty**, as chat's were at this
+    step. A binding naming an operation that does not exist is a worse lie than
+    none; step 4 fills them in with the resolvers.
+
 - **2026-09-13** — **`module-queuing-window` step 2: a socket can be admitted
   WITHOUT a session, and then reaches only what is public.** Still no queue
   code. Proven over a real socket with a stand-in public subscription, so the

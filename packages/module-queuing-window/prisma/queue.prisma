@@ -1,0 +1,341 @@
+// The queuing-window module's slice of the data model.
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Queue` and mapped to `queue_*`: shorter
+// than the package name on purpose, because `QueuingWindowTicket` in every query
+// is a tax paid forever for a name read once.
+//
+//   line ──▶ sequence (one per session) ──▶ ticket ──▶ window name, snapshotted
+//     ▲
+//     └── window line ──▶ window ◀── seat (one per window, one per person)
+//
+//   session ──▶ display pass
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised — §12.34's
+// lesson applied up front rather than retrofitted. A row naming only a workspace
+// cannot be checked against a tenant without reading `perm_workspace`, which
+// belongs to another module and may be in another database.
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key, the fourth module to hold
+// them that way. `auth_user` belongs to module-auth (PLAN §9).
+
+/// `called → done | no_show`, plus `no_show → called` for a re-call.
+///
+/// ⚠ NO `waiting`. Numbers are handed out OUTSIDE the system, by a person
+/// (§12.58), so a ticket is born at the moment it is called and nothing could
+/// ever write `waiting`. A value nothing writes is how
+/// `PermMembershipStatus.invited` misled everybody. If in-system issuing ever
+/// arrives, adding a value is an additive migration.
+enum QueueTicketStatus {
+  called
+  done
+  no_show
+}
+
+/// One row per workspace that has touched the queue. An absent row means the
+/// defaults below.
+model QueueSettings {
+  workspaceId    String @id
+  organizationId String
+
+  enabled Boolean @default(true)
+
+  /// Whether public displays show a staff NICKNAME beside a call.
+  ///
+  /// ⚠ Off until somebody turns it on, and a nickname is the ONLY name that
+  /// ever reaches a display: no nickname means no name, never a fallback to the
+  /// account's display name. Changing it mid-session reaches every TV at once.
+  showStaffNames Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("queue_settings")
+}
+
+/// One numbered sequence — `C` Cashier, `E` Enrollment.
+model QueueLine {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name String
+
+  /// 1–3 characters, A–Z and 0–9, stored upper case.
+  ///
+  /// ⚠ Unique per workspace INCLUDING archived lines. A new `C` line while an
+  /// archived one holds `C` is refused; unarchive the old one instead, so two
+  /// lines' history never shares a prefix.
+  prefix String
+
+  /// Call next wraps from `endNumber` back to `startNumber`, and `cycle`
+  /// increments, so the morning's 7 and the afternoon's 7 are different tickets.
+  startNumber Int @default(1)
+  endNumber   Int @default(999)
+
+  /// Zero-padding for the label: 3 turns 42 into `C-042`.
+  padTo Int @default(3)
+
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  windows   QueueWindowLine[]
+  sequences QueueSequence[]
+  tickets   QueueTicket[]
+
+  @@unique([workspaceId, prefix])
+  @@index([organizationId])
+  @@map("queue_line")
+}
+
+/// A named service point — counter, desk, booth, "Window 3".
+///
+/// Created by `queue:manage_windows`, never by typing a name into the console,
+/// so a typo does not put "Windw 3" on every TV.
+model QueueWindow {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name String
+
+  /// `name` normalised for uniqueness — see `windowNameKey`. "Window 3",
+  /// "window  3" and a full-width "Ｗｉｎｄｏｗ ３" are one window.
+  nameKey String
+
+  sortOrder   Int       @default(0)
+  archivedAt  DateTime?
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines QueueWindowLine[]
+  seat  QueueSeat?
+
+  @@unique([workspaceId, nameKey])
+  @@index([organizationId])
+  @@map("queue_window")
+}
+
+/// Which lines a window serves. NO rows means ALL lines, so a site with one
+/// line configures nothing here.
+model QueueWindowLine {
+  windowId       String
+  lineId         String
+  organizationId String
+  workspaceId    String
+
+  window QueueWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  line   QueueLine   @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@id([windowId, lineId])
+  @@index([lineId])
+  @@map("queue_window_line")
+}
+
+/// A member assigned to a window.
+///
+/// ⚠ TWO CONSTRAINTS, because each stops a different thing: one person per
+/// window, and one window per person. Assigning somebody who already sits
+/// elsewhere MOVES them, and assigning an occupied window REPLACES its occupant.
+///
+/// ⚠ PERSISTS ACROSS SESSIONS. Stop queuing never touches a seat, so the next
+/// Start opens with the same people at the same windows. The cost (§12.62): a
+/// seat can outlive its holder's membership or their `queue:serve`. The guard
+/// still refuses their Call next, and the console flags the seat.
+model QueueSeat {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  windowId       String @unique
+  userId         String
+
+  assignedById String
+  assignedAt   DateTime @default(now())
+
+  window QueueWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([organizationId])
+  @@map("queue_seat")
+}
+
+/// One run of the queue, from Start queuing to Stop queuing. Calling is refused
+/// with no open session, and every display goes dark when it stops.
+model QueueSession {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  /// ⚠ AT MOST ONE OPEN SESSION PER WORKSPACE, without raw SQL.
+  ///
+  /// Holds `workspaceId` while the session is open and NULL once it stops.
+  /// Postgres treats NULLs as distinct, so any number of stopped sessions
+  /// coexist while a second open one is a unique violation — two supervisors
+  /// pressing Start together get one session and one code. It stands in for
+  /// the partial index Prisma cannot express (§12.19).
+  openWorkspaceId String? @unique
+
+  /// The code a person types into a TV, normalised: upper case, no dash.
+  ///
+  /// ⚠ PLAIN, not hashed, because staff must read it off the console again at
+  /// 2pm for a TV that got unplugged. CLEARED when the session stops, so a
+  /// stopped session holds no live secret.
+  displayCode String?
+
+  /// Wrong codes against this session. At `MAX_FAILED_CODE_ATTEMPTS` the code
+  /// stops being accepted at all, and the console tells the staff why.
+  failedCodeAttempts Int @default(0)
+
+  /// How many displays may hold a pass in this session.
+  ///
+  /// ⚠ RESOLVED AT START from the starter's plan limits and stored here. The
+  /// code exchange has no actor to ask about, and `LimitChecker` reads an
+  /// actor's limits — §12.35 hit exactly that on invitation accept.
+  maxDisplays Int
+
+  /// Whether Start carried each line's numbering on from the previous session.
+  continuedNumbering Boolean @default(false)
+
+  startedById String
+  startedAt   DateTime  @default(now())
+  stoppedById String?
+  stoppedAt   DateTime?
+
+  passes    QueueDisplayPass[]
+  sequences QueueSequence[]
+  tickets   QueueTicket[]
+
+  @@index([workspaceId, startedAt])
+  @@index([organizationId])
+  @@map("queue_session")
+}
+
+/// What one display holds once its code is accepted: its credential for the
+/// rest of the session. Each pass is one TV, or one phone that scanned the QR.
+///
+/// ⚠ HASHED, unlike the code. A pass is a bearer credential on a device in a
+/// public room, so it follows the invitation-token rule, and nobody ever needs
+/// to read one back. The raw value is 256 random bits, base64url.
+model QueueDisplayPass {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  sessionId      String
+
+  /// SHA-256 of the pass, hex.
+  tokenHash String @unique
+
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  session QueueSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("queue_display_pass")
+}
+
+/// Where a line's numbering stands in one session: the number Call next
+/// allocated last, and which pass through the range it belongs to.
+///
+/// ⚠ ALLOCATION IS A CONDITIONAL UPDATE of `lastNumber`, never read-then-write.
+/// See `domain/numbering.ts`.
+model QueueSequence {
+  lineId         String
+  sessionId      String
+  organizationId String
+  workspaceId    String
+
+  lastNumber Int
+  cycle      Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  line    QueueLine    @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  session QueueSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([lineId, sessionId])
+  @@index([sessionId])
+  @@map("queue_sequence")
+}
+
+/// One number, called in one line in one session, and what happened to it.
+///
+/// A row is created AT THE CALL, already `called`. The system never sees the
+/// paper slip being handed out, so it cannot know who is waiting.
+model QueueTicket {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  lineId         String
+  sessionId      String
+
+  cycle  Int
+  number Int
+
+  /// "C-042", as shown when it was called. Prefix and padding are snapshotted,
+  /// so editing a line never rewrites what a customer was told.
+  label String
+
+  status QueueTicketStatus @default(called)
+
+  /// The window it was called to, and that window's name AT THE CALL.
+  ///
+  /// The name is snapshotted because renaming Window 3 at noon must not rewrite
+  /// the morning's history. A re-call from another window moves both. No
+  /// foreign key: a window is archived, never deleted, and history must not
+  /// hang on it.
+  windowId   String
+  windowName String
+
+  calledById    String
+  firstCalledAt DateTime  @default(now())
+  /// The latest call, which a Recall or a re-call moves.
+  calledAt      DateTime  @default(now())
+  recallCount   Int       @default(0)
+  completedAt   DateTime?
+
+  /// ⚠ IDEMPOTENCY FOR CALL NEXT. A double-tap, or a retry over flaky counter
+  /// Wi-Fi, would otherwise SKIP a number: the customer holding it is never
+  /// called, and nothing on any screen says so. Scoped to the session so one
+  /// tenant's id can never collide with another's.
+  clientRequestId String?
+
+  line    QueueLine    @relation(fields: [lineId], references: [id])
+  session QueueSession @relation(fields: [sessionId], references: [id])
+
+  /// ⚠ THE BACKSTOP: a duplicate call is a constraint error, never two people
+  /// walking to two windows holding one number.
+  @@unique([lineId, sessionId, cycle, number])
+  @@unique([sessionId, clientRequestId])
+  @@index([sessionId, calledAt])
+  @@index([windowId])
+  @@index([organizationId])
+  @@map("queue_ticket")
+}
+
+/// The name a person chose for public displays, per workspace — the same
+/// person may go by different names at two branches.
+///
+/// Set only by the person themselves. `queue:manage_windows` can CLEAR one but
+/// never set one: putting words on a public screen in somebody else's name is
+/// not an admin power. Read live, never snapshotted on a ticket, so clearing it
+/// takes the name off every board at once.
+model QueueStaffNickname {
+  workspaceId    String
+  userId         String
+  organizationId String
+
+  nickname String
+
+  updatedAt DateTime @updatedAt
+
+  @@id([workspaceId, userId])
+  @@index([organizationId])
+  @@map("queue_staff_nickname")
+}

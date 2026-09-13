@@ -1,0 +1,38 @@
+{
+  "name": "@kwtech/module-queuing-window",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A walk-in queue per workspace: windows, numbered lines, and a live public display",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./prisma": "./prisma/queue.prisma"
+  },
+  "files": [
+    "dist",
+    "prisma"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput --tsBuildInfoFile dist/.tsbuildinfo.dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "@types/node": "catalog:",
+    "jest": "^30.4.2",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@kwtech/module-kit": "workspace:*"
+  }
+}
