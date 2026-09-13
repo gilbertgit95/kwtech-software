@@ -29,6 +29,7 @@
     "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
+    "@kwtech/module-queuing-window": "workspace:*",
     "@nestjs/apollo": "catalog:",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",

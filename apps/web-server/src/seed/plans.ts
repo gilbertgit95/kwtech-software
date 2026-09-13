@@ -1,4 +1,5 @@
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
+import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
 import { ALL_FEATURES } from './registry.js';
 
 /**
@@ -128,6 +129,26 @@ const TEAMWORK = [
 ];
 
 /**
+ * The walk-in queue, sold in every tier except free (PLAN §12.61, the
+ * operator's answer).
+ *
+ * One named group, so the tiers cannot drift apart key by key. All six keys are
+ * workspace level, so they pass the entitlement filter like the rest of a plan.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. Every environment
+ * seeded before the queue shipped needs an operator to add these six keys, and
+ * the two caps below, to Starter, Pro and Enterprise on `/admin/plans`. Until
+ * then every queue surface answers `not_entitled`.
+ */
+const QUEUE = Object.values(QUEUE_FEATURE);
+
+/** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
+const QUEUE_CAPS = {
+  [QUEUE_LIMIT.windows]: 10,
+  [QUEUE_LIMIT.displays]: 5,
+};
+
+/**
  * Free — one workspace, a couple of people, nothing to administer.
  *
  * The caps are the product, not the features: a free organization can see how
@@ -160,11 +181,12 @@ const STARTER: PlanDefinition = {
   label: 'Starter',
   isPublic: true,
   icon: 'rocket',
-  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK],
+  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK, ...QUEUE],
   limits: {
     [LIMIT.organizationMembers]: 10,
     [LIMIT.organizationWorkspaces]: 3,
     [LIMIT.workspaceMembers]: 10,
+    ...QUEUE_CAPS,
   },
 };
 
@@ -186,11 +208,12 @@ const PRO: PlanDefinition = {
   label: 'Pro',
   isPublic: true,
   icon: 'zap',
-  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK],
+  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK, ...QUEUE],
   limits: {
     [LIMIT.organizationMembers]: 50,
     [LIMIT.organizationWorkspaces]: 25,
     [LIMIT.workspaceMembers]: 50,
+    ...QUEUE_CAPS,
   },
 };
 
@@ -224,6 +247,8 @@ const ENTERPRISE: PlanDefinition = {
     [LIMIT.organizationMembers]: 10_000,
     [LIMIT.organizationWorkspaces]: 1_000,
     [LIMIT.workspaceMembers]: 10_000,
+    // The queue's keys arrive through the derived feature list; its caps do not.
+    ...QUEUE_CAPS,
   },
 };
 

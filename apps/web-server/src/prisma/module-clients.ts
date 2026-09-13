@@ -13,6 +13,12 @@ import {
   type PermissionsTransaction,
   type PermissionsWriteClient,
 } from '@kwtech/module-permissions/server';
+import {
+  QUEUE_PRISMA,
+  QUEUE_PRISMA_WRITE,
+  type QueueTransaction,
+  type QueueWriteClient,
+} from '@kwtech/module-queuing-window/server';
 import type { Provider } from '@nestjs/common';
 import { PrismaService } from './prisma.service.js';
 
@@ -147,6 +153,35 @@ export const chatWritePrismaProvider: Provider = {
        * touches a database at all.
        */
       chatAvailability: prisma.chatAvailability,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const queuePrismaProvider: Provider = {
+  provide: QUEUE_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const queueWritePrismaProvider: Provider = {
+  provide: QUEUE_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): QueueWriteClient =>
+    withTransaction<QueueTransaction, QueueWriteClient>(prisma, {
+      queueSettings: prisma.queueSettings,
+      queueLine: prisma.queueLine,
+      queueWindow: prisma.queueWindow,
+      queueWindowLine: prisma.queueWindowLine,
+      queueSeat: prisma.queueSeat,
+      queueSession: prisma.queueSession,
+      queueDisplayPass: prisma.queueDisplayPass,
+      /*
+       * ⚠ The allocator's compare-and-set runs against this delegate, inside the
+       * transaction `withTransaction` dispatches. Reads bound to the read client
+       * must never be used to allocate.
+       */
+      queueSequence: prisma.queueSequence,
+      queueTicket: prisma.queueTicket,
+      queueStaffNickname: prisma.queueStaffNickname,
     }),
 };
 

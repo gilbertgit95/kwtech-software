@@ -284,6 +284,14 @@ Give the module a test that fails on an undeclared resolver.
 treats any truthy value as public, which is also why the two keys must never
 share a value.
 
+### A surface where somebody guesses a secret
+
+Mark it with `CREDENTIAL_SURFACE_METADATA` and a reason, beside the public
+marker. The host points its tightest rate limit at every handler carrying it —
+in `web-server`, `CredentialThrottlerGuard`'s `credential` bucket, the one
+sign-in uses. A module may not depend on the throttler, so it declares the fact
+and the app applies the policy.
+
 ### A public surface a socket reaches with no session
 
 A screen nobody signs in to — a queue board on a TV — can still hold a live

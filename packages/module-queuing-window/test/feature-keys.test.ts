@@ -37,8 +37,9 @@ describe('QUEUE_FEATURE_REGISTRY', () => {
     expect(QUEUE_FEATURE_REGISTRY.some((spec) => /issue|release|nickname/i.test(spec.key))).toBe(false);
   });
 
-  it('⚠ binds nothing yet — a binding to an operation that does not exist is a worse lie than none', () => {
-    expect(QUEUE_FEATURE_REGISTRY.every((spec) => (spec.bindings ?? []).length === 0)).toBe(true);
+  it('⚠ binds every key to something — a key with no binding guards nothing while reading as coverage', () => {
+    const unbound = QUEUE_FEATURE_REGISTRY.filter((spec) => (spec.bindings ?? []).length === 0);
+    expect(unbound.map((spec) => spec.key)).toEqual([]);
   });
 
   it('composes with another module without collision', () => {

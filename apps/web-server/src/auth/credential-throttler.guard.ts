@@ -1,4 +1,5 @@
 import { AuthController, CREDENTIAL_ENDPOINTS } from '@kwtech/module-auth/server';
+import { CREDENTIAL_SURFACE_METADATA } from '@kwtech/module-kit';
 import { type ExecutionContext, Injectable } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
@@ -94,7 +95,24 @@ export class CredentialThrottlerGuard extends ThrottlerGuard {
 
     // The `credential` bucket applies only to the guessing endpoints. Returning
     // true skips this bucket for the request without consuming from it.
-    return isCredentialEndpoint(request.context) ? super.handleRequest(request) : true;
+    const guessing = isCredentialEndpoint(request.context) || this.isMarkedCredential(request.context);
+    return guessing ? super.handleRequest(request) : true;
+  }
+
+  /**
+   * A handler a MODULE marked as a guessing surface — the second way onto the
+   * tight bucket, for modules whose surface is GraphQL rather than
+   * `AuthController`.
+   *
+   * `module-queuing-window`'s `openQueueDisplay` is the first: somebody typing
+   * a display code is guessing a secret exactly as somebody typing a password
+   * is. The module cannot carry `@Throttle` (it may not depend on the
+   * throttler), so it writes `CREDENTIAL_SURFACE_METADATA` and this reads it.
+   * Read off the resolved HANDLER, like the controller check above, so it cannot
+   * drift from a route string.
+   */
+  private isMarkedCredential(context: ExecutionContext): boolean {
+    return Boolean(this.reflector.get<string | undefined>(CREDENTIAL_SURFACE_METADATA, context.getHandler()));
   }
 }
 

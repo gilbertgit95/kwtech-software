@@ -1,4 +1,9 @@
-import { declareScope, PUBLIC_SURFACE_METADATA, REQUIRED_SCOPE_METADATA } from '../src/index.js';
+import {
+  CREDENTIAL_SURFACE_METADATA,
+  declareScope,
+  PUBLIC_SURFACE_METADATA,
+  REQUIRED_SCOPE_METADATA,
+} from '../src/index.js';
 
 describe('the enforcement metadata keys', () => {
   it('keep the strings their enforcers read before the keys moved here', () => {
@@ -14,6 +19,13 @@ describe('the enforcement metadata keys', () => {
     // "public". Were the two keys one string, a scope declaration would read
     // as a reason and every scoped handler would be anonymous.
     expect(PUBLIC_SURFACE_METADATA).not.toBe(REQUIRED_SCOPE_METADATA);
+  });
+
+  it('keep the credential-surface key apart from both', () => {
+    // A credential marker is always written BESIDE a public one, so sharing a
+    // string would be harmless there and ruinous on a scoped handler.
+    expect(new Set([PUBLIC_SURFACE_METADATA, REQUIRED_SCOPE_METADATA, CREDENTIAL_SURFACE_METADATA]).size).toBe(3);
+    expect(CREDENTIAL_SURFACE_METADATA).toBe('kwtech:credential-surface');
   });
 });
 

@@ -164,10 +164,18 @@ type Mutation {
   adminUpdateUserProfile(displayName: String, userId: String!, username: String): AdminUser!
   archiveWorkspace(organizationId: String!, workspaceId: String!): PermissionWriteResult!
   assignAppRole(roleId: String!, userId: String!): PermissionWriteResult!
+  assignQueueWindow(confirmReplace: Boolean, organizationId: String!, userId: String!, windowId: String!, workspaceId: String!): QueueSeat
   assignRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  callNextQueueTicket(clientRequestId: String, lineId: String!, organizationId: String!, workspaceId: String!): QueueTicket!
+  callQueueNumber(lineId: String!, number: Int!, organizationId: String!, workspaceId: String!): QueueTicket!
+  clearMyQueueNickname(organizationId: String!, workspaceId: String!): Boolean!
+  clearQueueNickname(organizationId: String!, userId: String!, workspaceId: String!): Boolean!
+  completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
   createPlan(input: PlanDraftInput!): PermissionPlanDetail!
+  createQueueLine(endNumber: Int, name: String!, organizationId: String!, padTo: Int, prefix: String!, startNumber: Int, workspaceId: String!): QueueLine!
+  createQueueWindow(name: String!, organizationId: String!, workspaceId: String!): QueueWindow!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
   createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
@@ -175,15 +183,20 @@ type Mutation {
   deleteChatMessage(messageId: String!): ChatMessage!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
+  freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
   inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
   leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
   markChatRead(conversationId: String!, messageId: String!): Boolean!
+  markQueueTicketNoShow(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   moderateChatMessage(messageId: String!): ChatMessage!
+  openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
+  recallQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
+  releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
   removeChatParticipant(conversationId: String!, userId: String!): Boolean!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
@@ -198,17 +211,27 @@ type Mutation {
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
   setChatParticipantRole(conversationId: String!, role: String!, userId: String!): Boolean!
+  setMyQueueNickname(nickname: String!, organizationId: String!, workspaceId: String!): String!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
+  setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
+  setQueueLineNextNumber(lineId: String!, next: Int!, organizationId: String!, workspaceId: String!): Int!
+  setQueueShowStaffNames(organizationId: String!, show: Boolean!, workspaceId: String!): QueueSettings!
+  setQueueWindowArchived(archived: Boolean!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
+  setQueueWindowLines(lineIds: [String!]!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   startDirectChat(userId: String!): ChatConversation!
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
+  startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
+  stopQueue(organizationId: String!, workspaceId: String!): Boolean!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
   updateProfile(input: UpdateProfileInput!): Viewer!
+  updateQueueLine(endNumber: Int, lineId: String!, name: String, organizationId: String!, padTo: Int, sortOrder: Int, startNumber: Int, workspaceId: String!): QueueLine!
+  updateQueueWindow(name: String, organizationId: String!, sortOrder: Int, windowId: String!, workspaceId: String!): QueueWindow!
   updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
   updateSubscription(currentPeriodEnd: String!, status: String!, subscriptionId: String!): PermissionSubscription!
   updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
@@ -490,8 +513,93 @@ type Query {
   permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
   permissionUserAppRoles(userIds: [String!]!): [UserAppRole!]!
   permissionUserOrganizations(userIds: [String!]!): [UserOrganization!]!
+  queueConsole(organizationId: String!, workspaceId: String!): QueueConsole!
+  queueDisplayCode(organizationId: String!, workspaceId: String!): QueueDisplayCode
+  queueStaffCandidates(organizationId: String!, workspaceId: String!): [QueueStaffMember!]!
   session: SessionInfo
   viewer: Viewer
+}
+
+type QueueConsole {
+  lines: [QueueLine!]!
+  myNickname: String
+  myWindowId: String
+  recent: [QueueTicket!]!
+  seats: [QueueSeat!]!
+  serving: [QueueTicket!]!
+  session: QueueSession
+  settings: QueueSettings!
+  windows: [QueueWindow!]!
+}
+
+type QueueDisplayCode {
+  activeDisplays: Int!
+  code: String!
+  failedCodeAttempts: Int!
+  locked: Boolean!
+  maxDisplays: Int!
+}
+
+type QueueDisplayPass {
+  pass: String!
+  workspaceName: String!
+}
+
+type QueueLine {
+  archived: Boolean!
+  endNumber: Int!
+  id: String!
+  name: String!
+  padTo: Int!
+  prefix: String!
+  sortOrder: Int!
+  startNumber: Int!
+}
+
+type QueueSeat {
+  canServe: Boolean
+  displayName: String!
+  userId: String!
+  windowId: String!
+}
+
+type QueueSession {
+  codeLocked: Boolean!
+  continuedNumbering: Boolean!
+  id: String!
+  startedAt: String!
+  startedById: String!
+}
+
+type QueueSettings {
+  enabled: Boolean!
+  showStaffNames: Boolean!
+}
+
+type QueueStaffMember {
+  displayName: String!
+  userId: String!
+}
+
+type QueueTicket {
+  calledAt: String!
+  cycle: Int!
+  id: String!
+  label: String!
+  lineId: String!
+  number: Int!
+  recallCount: Int!
+  status: String!
+  windowId: String!
+  windowName: String!
+}
+
+type QueueWindow {
+  archived: Boolean!
+  id: String!
+  lineIds: [String!]!
+  name: String!
+  sortOrder: Int!
 }
 
 type RoleClonePreview {

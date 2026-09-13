@@ -23,6 +23,7 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
+import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
 
 /**
  * EVERY module's features, composed. ← add a module's registry here
@@ -128,6 +129,12 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
     defaults: CHAT_DEFAULT_REGISTRY,
     defaultMoments: CHAT_DEFAULT_MOMENT_REGISTRY,
   },
+  /*
+   * ⚠ THE BINDINGS ARE THE QUEUE'S GUARD, as chat's are — the module cannot use
+   * `@RequireFeature`. Leaving this line out would leave every queue mutation
+   * reachable by anybody signed in, and both caps unlimited.
+   */
+  { key: 'queue', features: QUEUE_FEATURE_REGISTRY, limits: QUEUE_LIMIT_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

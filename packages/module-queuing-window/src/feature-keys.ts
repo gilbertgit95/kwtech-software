@@ -51,14 +51,18 @@ export type QueueFeatureKey = (typeof QUEUE_FEATURE)[keyof typeof QUEUE_FEATURE]
  * withdrawn with the reading that invented it.
  */
 
+const op = (identifier: string) => ({ surface: 'graphql_operation', identifier });
+
 /**
  * Contributed to the app's composed registry. The host spreads it into
  * `seed/registry.ts`: one import, one line.
  *
- * ⚠ THE BINDINGS ARE DELIBERATELY EMPTY. A binding naming an operation that
- * does not exist yet is a worse lie than none. Step 4 fills them in with the
- * resolvers, and until then the keys are unenforced because there is nothing
- * to enforce.
+ * ⚠ THE BINDINGS ARE THE GUARD. This module cannot use `@RequireFeature` — the
+ * decorator belongs to `module-permissions`, and a module may not import a
+ * module (§9) — so `FeatureGuard` enforces each operation through the binding
+ * below. A missing binding is an UNGUARDED MUTATION, which is why
+ * `surface-coverage.test.ts` fails on any operation that is neither bound nor
+ * named there as deliberately unbound.
  */
 export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
@@ -68,6 +72,16 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'See the queue',
     description: 'Open the queue console and watch every window live.',
     tags: ['queue'],
+    bindings: [
+      op('Query.queueConsole'),
+      /*
+       * ⚠ A person's OWN nickname, and still bound. An unbound operation skips
+       * the guard's workspace-membership check entirely, and this one WRITES a
+       * row into the workspace named in the request. The key is what makes
+       * "a member of this workspace" true before the row is written.
+       */
+      op('Mutation.setMyQueueNickname'),
+    ],
   },
   {
     key: QUEUE_FEATURE.serve,
@@ -76,6 +90,13 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Serve at a window',
     description: 'Call, recall and complete numbers at the window you are assigned, while queuing is running.',
     tags: ['queue'],
+    bindings: [
+      op('Mutation.callNextQueueTicket'),
+      op('Mutation.callQueueNumber'),
+      op('Mutation.recallQueueTicket'),
+      op('Mutation.completeQueueTicket'),
+      op('Mutation.markQueueTicketNoShow'),
+    ],
   },
   {
     key: QUEUE_FEATURE.assignWindows,
@@ -84,6 +105,7 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Assign windows',
     description: 'Assign a window to a member, including yourself, move someone to another window, or free a window.',
     tags: ['queue'],
+    bindings: [op('Query.queueStaffCandidates'), op('Mutation.assignQueueWindow'), op('Mutation.freeQueueWindow')],
   },
   {
     key: QUEUE_FEATURE.manageWindows,
@@ -92,6 +114,18 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Manage windows and lines',
     description: "Create, rename and archive windows and lines, set a line's next number, and clear a staff nickname.",
     tags: ['queue'],
+    bindings: [
+      op('Mutation.createQueueWindow'),
+      op('Mutation.updateQueueWindow'),
+      op('Mutation.setQueueWindowLines'),
+      op('Mutation.setQueueWindowArchived'),
+      op('Mutation.createQueueLine'),
+      op('Mutation.updateQueueLine'),
+      op('Mutation.setQueueLineArchived'),
+      op('Mutation.setQueueLineNextNumber'),
+      // Clearing somebody else's nickname. Never setting one.
+      op('Mutation.clearQueueNickname'),
+    ],
   },
   {
     key: QUEUE_FEATURE.start,
@@ -107,6 +141,12 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description:
       'Start a queuing session, which generates the code that admits public displays, and choose whether displays show staff nicknames.',
     tags: ['queue'],
+    bindings: [
+      op('Mutation.startQueue'),
+      // The people who can authorise a display are the people who can see what authorises it.
+      op('Query.queueDisplayCode'),
+      op('Mutation.setQueueShowStaffNames'),
+    ],
   },
   {
     key: QUEUE_FEATURE.stop,
@@ -115,6 +155,7 @@ export const QUEUE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Stop queuing',
     description: 'Stop the queuing session. Every public display goes dark; window assignments are kept.',
     tags: ['queue'],
+    bindings: [op('Mutation.stopQueue')],
   },
 ];
 

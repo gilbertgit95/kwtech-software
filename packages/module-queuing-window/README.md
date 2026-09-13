@@ -4,11 +4,48 @@ A walk-in queue per workspace. Staff are assigned named **windows**, press
 **Call next**, and the number appears on a **public display** — a TV in the
 waiting room, admitted by a per-session code, live over `graphql-ws`.
 
-> **Status: schema and rules only (build step 3).** No server, no React, and no
-> app has adopted the package yet. Adding it as a dependency of
-> `apps/web-server` is what creates the tables, so that happens with the server
-> in step 4. The design, and every decision behind it, is in `docs/PLAN.md` §13
-> under the 2026-09-13 `module-queuing-window` entries. Read the newest first.
+> **Status: server half built (step 4).** `apps/web-server` has adopted it and
+> the tables are migrated. There is no realtime yet (step 5) and no React yet
+> (steps 6 and 8). The design, and every decision behind it, is in
+> `docs/PLAN.md` §13 under the 2026-09-13 `module-queuing-window` entries. Read
+> the newest first.
+
+## In a NestJS app
+
+```ts
+// src/app.module.ts — one entry in SERVER_MODULES
+queueServerModule({
+  prismaProvider: queuePrismaProvider,
+  prismaWriteProvider: queueWritePrismaProvider,
+  limitCheckerProvider: { provide: QUEUE_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+  staffCheckProvider: { provide: QUEUE_STAFF_CHECK, /* … */ },
+  staffDirectoryProvider: { provide: QUEUE_STAFF_DIRECTORY, /* … */ },
+  workspaceLocatorProvider: { provide: QUEUE_WORKSPACE_LOCATOR, /* … */ },
+  resolveActorId: (request) => resolvePrincipal(request)?.userId,
+}),
+```
+
+⚠ **Also compose `QUEUE_FEATURE_REGISTRY` and `QUEUE_LIMIT_REGISTRY` in the
+seed registry.** The bindings ARE the guard, since this module cannot use
+`@RequireFeature`. An uncomposed registry leaves every mutation reachable by
+anybody signed in, and both caps unlimited.
+
+⚠ **Put the six keys in a plan.** They are workspace level, so the plan filter
+applies: a key no plan sells is a key nobody can use.
+
+Every port is optional, and each absence means something specific:
+
+| Port | Unbound means |
+|---|---|
+| `prismaProvider` / `prismaWriteProvider` | no database — the module opens nothing |
+| `limitCheckerProvider` | no cap on windows; displays held to `MAX_DISPLAYS_CEILING` |
+| `staffCheckProvider` | a window can be assigned only to yourself |
+| `staffDirectoryProvider` | no picker, and seats read "A member" |
+| `workspaceLocatorProvider` | no display can ever open |
+| `resolveActorId` | every operation that needs an actor refuses |
+
+The app's adapters live in `apps/web-server/src/queue/`, because each reads
+another module's tables.
 
 ## Vocabulary
 

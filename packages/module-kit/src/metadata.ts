@@ -36,6 +36,18 @@ export const PUBLIC_SURFACE_METADATA = 'kwtech:auth-public';
 /** Declares the level a handler operates at. The value is a `ScopeDeclaration`. */
 export const REQUIRED_SCOPE_METADATA = 'kwtech:required-scope';
 
+/**
+ * Marks a handler where somebody GUESSES A SECRET — a code typed into a TV, a
+ * password. The host points its tightest rate limit at every handler carrying
+ * it. The value is the reason, a non-empty string.
+ *
+ * Here for the reason the other two are: the module that owns the handler may
+ * not depend on the throttler, which is the APP's policy. `module-auth`
+ * publishes a list for its REST controller; a module with a GraphQL surface
+ * marks the handler instead, and the app's guard reads this key.
+ */
+export const CREDENTIAL_SURFACE_METADATA = 'kwtech:credential-surface';
+
 export interface ScopeDeclaration {
   level: FeatureLevel;
   /**

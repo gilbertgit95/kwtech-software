@@ -17,6 +17,13 @@ import {
   PermissionsService,
   permissionsServerModule,
 } from '@kwtech/module-permissions/server';
+import {
+  QUEUE_LIMIT_CHECKER,
+  QUEUE_STAFF_CHECK,
+  QUEUE_STAFF_DIRECTORY,
+  QUEUE_WORKSPACE_LOCATOR,
+  queueServerModule,
+} from '@kwtech/module-queuing-window/server';
 import type { ApolloDriverConfig } from '@nestjs/apollo';
 import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD, RouterModule } from '@nestjs/core';
@@ -40,9 +47,14 @@ import {
   chatWritePrismaProvider,
   permissionsPrismaProvider,
   permissionsWritePrismaProvider,
+  queuePrismaProvider,
+  queueWritePrismaProvider,
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { QueueStaffAccess } from './queue/staff-check.js';
+import { QueueStaffDirectoryAdapter } from './queue/staff-directory.js';
+import { QueueWorkspaceLocatorAdapter } from './queue/workspace-locator.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_DEFAULT_MOMENTS, ALL_DEFAULTS, ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
@@ -357,6 +369,45 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   }),
 
   CHAT_SERVER_MODULE,
+
+  /*
+   * The walk-in queue — the first WORKSPACE-level module that is not
+   * permissions. Every port below reads another module's tables, which is why
+   * each is here; the adapters are in ./queue/.
+   */
+  queueServerModule({
+    prismaProvider: queuePrismaProvider,
+    prismaWriteProvider: queueWritePrismaProvider,
+
+    // ⚠ The caps exist because this line does. Omitted, windows are unlimited.
+    limitCheckerProvider: { provide: QUEUE_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    /*
+     * ⚠ Without it, a window can be assigned only to yourself — the module
+     * cannot vouch for anybody else's membership or `queue:serve`.
+     */
+    staffCheckProvider: {
+      provide: QUEUE_STAFF_CHECK,
+      inject: [PermissionsService],
+      useFactory: (permissions: PermissionsService) => new QueueStaffAccess(permissions),
+    },
+    staffDirectoryProvider: {
+      provide: QUEUE_STAFF_DIRECTORY,
+      inject: [PermissionsService, PrismaService],
+      useFactory: (permissions: PermissionsService, prisma: PrismaService) =>
+        new QueueStaffDirectoryAdapter(permissions, prisma, new QueueStaffAccess(permissions)),
+    },
+
+    // ⚠ Without it, no display can ever open.
+    workspaceLocatorProvider: {
+      provide: QUEUE_WORKSPACE_LOCATOR,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new QueueWorkspaceLocatorAdapter(prisma),
+    },
+
+    // Principal → userId, the same narrowed seam chat takes.
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+  }),
 ];
 
 /**
