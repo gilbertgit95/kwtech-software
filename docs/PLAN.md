@@ -16,7 +16,7 @@ Reference repo: **`../masterdb-mgt-tool`** — the newest of the Sensorbee repos
 the template for toolchain, conventions and versions here. `../coseller-mono` is
 consulted only where masterdb has not built something yet (notably GraphQL, §6).
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 ---
 
@@ -35,7 +35,9 @@ Last updated: 2026-09-12
 | `packages/module-chat` | `@kwtech/module-chat` | Messaging — schema, pure domain, the server, realtime, `/chat`, and the ephemeral tier (presence, availability, typing) as of 2026-09-11. Both apps depend on it. Tone and settings are step 9; Redis is step 10 (§9) | — |
 
 **Planned, not built yet:** `packages/db` (Prisma — see the note below),
-`apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`.
+`apps/admin`, `apps/worker`, `apps/cli`, `packages/mobile-ui`, and
+`packages/module-queuing-window` — a per-workspace walk-in queue with a live
+public display over `graphql-ws`, planned end to end in §13 (2026-09-13).
 
 ⚠️ **A Prisma home is missing from that list and Phase 1 blocks on it.**
 `web-server` cannot reach Postgres without somewhere for the schema and
@@ -535,10 +537,852 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 56 | ⚠ The plan describes seams in the PRESENT TENSE that were never built | next time this document is trusted | Three found in three days, all by looking rather than by testing: `sendChatNotification` was "the optional hook already in the design" and did not exist; `listConversations` said "ONE GROUPED PASS — three queries total" while running `3 + 2n`; the nav badge told its reader "the server already computes unread in one grouped pass". Each read as a description of the code and was a description of the INTENTION. That is the cost of a document written alongside the work rather than after it — which is still the right trade — but it means **a claim here is not evidence**. ⚠ Nothing has audited the rest of §§9–11 for the same thing, and the ones found were all in areas that happened to be worked on. Grep the plan for present-tense claims about behaviour and check each against the code |
 | 57 | ⚠ Two more batch-by-id queries rest on the argument `findUsersByIds` just retracted | before either key is granted below platform admin | `permissionUserAppRoles` (`roles:read`) and `permissionUserOrganizations` (`organizations:read`) accept a list of user ids and justify it with the same comment: *"the ids come from a list the caller could already see, so batching discloses nothing new"*. That is true of the screen and not of the endpoint, which answers for whatever ids it is sent — the flaw fixed in `findUsersByIds` on 2026-09-13. **Neither declares `@RequireScope`, so both resolve at APP level today and only platform administrators reach them.** That is why this is open rather than fixed: the exposure is the one `findUsersByIds` had before its fix, and it is acceptable only while it stays admin-only. The moment either key is granted inside an organization, or the query gains a scope, it needs the same membership intersection, done in the database. Their comments, and the matching ones in `permissions.service.ts`, still cite `findUsersByIds` as their precedent and should be reworded when this closes |
 
+| 58 | ~~How queue numbers are ISSUED: outside the system, or a kiosk~~ **CLOSED 2026-09-13: outside the system, by a person** | — | **✅ CLOSED by the operator.** A staff member or guard hands out numbers; Call next allocates the next one, skipping numbers already called, and a line's next number can be set to match the slips. The system cannot know who is waiting. ⚠ First recorded as in-system issuing, corrected the same day. Original entry: | **v1: outside** — a paper roll, a dispenser or a receptionist — and Call next allocates the next number. A kiosk ("take a number") is what makes "how many are waiting" and "estimated wait" answerable at all. ⚠ It is also a PUBLIC WRITE: an anonymous route that creates rows, which is a spam and exhaustion surface the read-only board is not, so it needs its own limit before its own screen. The schema already carries `waiting`, so this is a route and a status, not a migration. ⚠ "Text me when my turn is near" needs the kiosk AND a phone number, which is personal data this module does not hold today — and holding it changes §12.60 and the display-key paragraph of the 2026-09-13 entry |
+| 59 | Per-IP limits on anonymous `graphql-ws` sockets | before a display is used anywhere public | **⚠ NARROWED 2026-09-13:** the code is exchanged over HTTP under the `credential` bucket plus a per-session attempt count, and the socket takes a 256-bit pass, so the handshake is no longer a guessing surface. What remains is sockets per pass (cap 2, to cover a reload's overlap) and a ceiling on total anonymous sockets. Original entry: The handshake caps connections PER DISPLAY KEY (default 10). Nothing caps connections per IP or in total, and the credential is printed on a screen in a public room. §12.29 was bounded by "the handshake needs a live-session ticket", and for anonymous sockets that bound is gone. `ThrottlerGuard` skips WebSocket operations, so this lives in `onConnect`, which can see the upgrade request's address. ⚠ Behind a proxy, that address is the proxy's unless `trust proxy` is set, and a per-IP cap then becomes a global one that locks every TV out together |
+| 60 | ~~Staff names on the public board~~ **CLOSED 2026-09-13: optional per display, nickname only** | — | **✅ CLOSED by the operator.** `showStaffNames` as one persistent workspace setting, off by default, showing a nickname the person sets for themselves — never their account name as a fallback. That keeps call events free of personal data and the display key a plain link. Original entry: | **No, by default.** The board says "C-042 → Window 3". A name on a screen in a public room makes a person findable by anybody with a grievance. Saying yes is more than a UI change: call events would then carry personal data, so they need chat's per-publish membership re-check, and the display key becomes a credential that should be hashed. Decide both together |
+| 61 | ~~Which plan tiers sell `queue:*`~~ **CLOSED 2026-09-13: every tier except `free`** | — | **✅ CLOSED by the operator.** `starter`, `pro` and `enterprise` carry all six keys as one `QUEUE` group. ⚠ Environments that are already seeded still need an operator on `/admin/plans`. Original entry: | Workspace-level keys pass the entitlement filter, so a key no plan carries grants nothing, and the denial correctly says `not_entitled`. This is a product decision (free? starter and up?), not an engineering one. ⚠ Whatever is chosen, `createPlanIfAbsent` will not add it to plans that already exist, so every seeded environment needs an operator on `/admin/plans` |
+| 62 | A queue seat outlives workspace membership | before the console is relied on | **⚠ NARROWED 2026-09-13:** assignment now checks `QueueStaffCheck` when it is made, and the guard refuses Call next from anyone who lost `queue:serve` or membership, so the leftover harm is a window that LOOKS occupied. Whoever holds `queue:assign_windows` fixes it by reassigning. **⚠ Not narrowed further:** by the operator's choice, seats persist across queuing runs, so only an assigner ends a stale seat. The console flags any seat whose holder can no longer serve. Original entry: `userId` has no FK and removing a workspace member writes nothing in `queue_*` — `module-permissions` does not know the queue exists, and §9 keeps it that way. So a removed member still holds Window 3 until `queue:manage_windows` releases it or the service day ends. The honest fixes are an app-side hook on member removal (the app is the only layer that sees both modules), or re-checking `canAccessWorkspace` when reading seats — which costs a permission resolution per seat per read |
+| 63 | ~~Can any server OPEN a window, or only an administrator?~~ **CLOSED 2026-09-13: through a role** | — | **✅ CLOSED by the operator.** `queue:manage_windows` creates windows, and `queue:assign_windows` assigns one to a member (yourself included). Self-seating is a role carrying both it and `queue:serve`, not a setting. Original entry: | **v1: anyone holding `queue:serve` may open one by naming it**, bounded by the `queue:windows` cap and by case-insensitive name uniqueness — the operator's "assign a window name for his unit". The cost: a typo creates "Windw 3" and it sits on every TV until somebody archives it. The alternative — administrators define windows and staff only pick — is tidier and slower on a site's first morning. A workspace setting could offer both, and that setting is exactly the sort of switch not to build before someone asks for it |
+| 64 | Spoken announcements: language, voice and how a code is read | before a non-English site | `speechSynthesis` voices are whatever the TV's OS ships, so the same board sounds different on two devices and may have no voice at all for a language. "C-042" also has to be read as "C, zero four two" rather than "C minus forty-two", which is a formatting rule per language. Needs a `lang` chosen on the TV and a fallback to the chime alone when no voice matches — silently announcing nothing is the failure to avoid |
+| 65 | Queue history: retention and reports | after `module-queuing-window` v1 | `calledAt`/`completedAt` make wait and service times computable, which is the first thing a site manager asks for. Nothing purges `queue_ticket`, and a busy site writes thousands of rows a day. Decide how long tickets are kept and whether a report reads live rows or a daily rollup before the table is large, not after |
+| 66 | ~~Printing an issued number~~ **CLOSED 2026-09-13: moot** | — | Raised only by the in-system issuing reading of §12.58, which the operator corrected the same day: numbers are handed out outside the system, so nothing here prints. Original entry: | v1 has the issuer read the number out or write it down. A small browser print view of one ticket is cheap and needs no new dependency. A thermal receipt printer (ESC/POS over USB or the network) is a hardware and driver decision, and browsers cannot reach one without a local bridge or WebUSB. Do not pick a printer on a customer's behalf |
+| 67 | A new display code without stopping the queue | if a code leaks mid-session | Per the operator, a new code comes only with a new session. So the remedy for a code seen by the wrong person is Stop and Start — which, unless Continue numbering is ticked, restarts the numbers. A "new code" button that also invalidated every existing pass would be gentler. It is not built, because nobody asked for it and because a leaked code exposes a board that is already on a public wall |
+| 68 | A session nobody stops | before the first site forgets | There is no job runner (§12.40), so nothing ends a session at closing time. Numbers keep counting into the next morning and TVs stay admitted. v1: the console shows "Running since yesterday, 8:02 am", in warning colour, to holders of `queue:stop`. An automatic stop at a set hour needs a scheduler AND a time zone — the very setting this design just removed |
+
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **`module-queuing-window`: window assignments and display
+  settings PERSIST across queuing runs, and Start shows a QR code.** The
+  operator reviewed the display-code entry below. The URL by organization and
+  workspace key, calling only while a session is open, and per-session
+  numbering are confirmed. Two of its choices are reversed, and one feature is
+  added.
+
+  **Seats persist (reverses "Stopping releases every seat").**
+  - A window assignment stays until a holder of `queue:assign_windows` changes
+    or frees it, or its holder releases it. Stop queuing leaves every seat as it
+    is, so the next Start opens with the same people at the same windows.
+  - The operator's reason: staffing is mostly the same from one day to the next,
+    and reassigning every window every morning is work that buys nothing.
+  - **The cost is §12.62 at full strength again:** a seat can outlive its
+    holder's membership, or their `queue:serve`.
+    - The guard still refuses that person's Call next, so the harm stays "a
+      window that looks occupied".
+    - The console marks any seat whose holder can no longer serve. This is
+      checked through `QueueStaffCheck` when the console loads, not on every
+      event.
+  - **Someone off today still occupies their window.** The console shows every
+    seat, and freeing one takes an assigner a single click. The board shows only
+    windows that have called a number this session, so a staffed-but-idle window
+    never appears on a TV.
+
+  **Display settings persist (reverses "a SESSION choice").**
+  - **Show staff nicknames is a WORKSPACE setting**,
+    `QueueSettings.showStaffNames`. A holder of `queue:start` sets it once on the
+    queue settings page — the same people who chose it at every Start, now
+    choosing once. It stays off until somebody turns it on. The Start dialog no
+    longer asks about it and only offers Continue numbering.
+  - ⚠ **Changing it mid-session reaches every TV at once**, published as a
+    `queue.settings` event. Someone who asks to be taken off the board must not
+    have to wait until tomorrow.
+  - **A TV's line filter survives sessions.** It lives in the TV's
+    `localStorage` under the organization and workspace keys, separate from the
+    pass. Stop deletes the pass but keeps the filter, so after the next code the
+    Cashier TV still shows only `C`.
+  - ⚠ **The filter's limitation, stated up front:** clearing the TV browser's
+    data, or opening a different browser on the same screen, loses it. Storing
+    it server-side would need a durable identity for a TV across sessions —
+    exactly the long-lived credential the display-code design removed.
+
+  **A QR code at Start.** When a session starts, the console's code panel shows
+  a **QR code** beside the code, plus **Copy link** and **Open display**.
+  Scanning it on a phone, or opening the link in the TV's browser, reaches the
+  display without typing either the URL or the code.
+  - **It encodes the full display URL, with the code in the fragment:**
+    `https://<app>/queue-display/acme/main-branch#code=K7QM4XHT`.
+  - ⚠ **The fragment, never the query string.**
+    - A browser never sends the fragment to the server, so the code does not land
+      in Next's or a proxy's request logs, and never travels in a `Referer`
+      header.
+    - The page reads the code on the client and exchanges it through the same
+      throttled `openQueueDisplay`.
+    - It then **removes the code from the address bar** with
+      `history.replaceState`, so a photo of the TV's address bar shows the URL
+      and not the code.
+  - **It lives exactly as long as the code.** A QR scanned after Stop opens the
+    code prompt with the same single failure message as a wrong code. Printing it
+    is pointless, and the panel says so: the next session has a different code.
+  - ⚠ **Generated in the browser, never by a QR web service.**
+    - A hosted QR API receives the URL it draws, which here contains a live
+      code.
+    - One small MIT library, `qrcode`, draws it to SVG in the module's react
+      layer, with no network request.
+    - It is the module's own dependency, not `web-ui`'s, because it has one
+      consumer (§9 rule 8).
+  - **Same visibility as the code:** holders of `queue:start` only.
+  - ⚠ **Every device that opens the display takes a display pass.** A scanned
+    phone counts toward the session's `maxDisplays` (default 5) exactly as a TV
+    does, so a supervisor checking the board from their phone uses one of the
+    five. The console's "3 displays connected" count is where that shows up.
+  - **The link uses the browser's own origin**, not a server setting, so the QR
+    points at whichever address the staff member is using. That is correct for
+    the one web app this repo has. ⚠ If the console is ever served from an
+    internal hostname the TVs cannot reach, the QR will be wrong, and the fix is
+    `FRONTEND_URL`.
+
+  **Keys, adjusted:**
+  - `queue:start` — Start queuing (generates the code and QR, offers Continue
+    numbering), sees the code and QR while the session runs, and sets whether
+    TVs show nicknames.
+  - `queue:stop` — Stop queuing, which takes every display dark. It no longer
+    releases seats.
+
+  **Schema:** `showStaffNames` moves from `QueueSession` to `QueueSettings`.
+  `QueueSeat` is unchanged, and Stop never touches it.
+
+  **Build order:**
+  - **Step 3** drops "Stop releases seats".
+  - **Step 6:** the code panel gains the QR, Copy link and Open display, and
+    settings gains the nickname switch.
+  - **Step 8:** the board reads a `#code=` fragment, strips it from the address
+    bar, and keeps the line filter separate from the pass.
+
+- **2026-09-13** — **`module-queuing-window`: a TV is admitted by a CODE THAT
+  LIVES AND DIES WITH A QUEUING SESSION.** The operator's design, replacing the
+  durable display links in both entries below. ⚠ Read this one first; the
+  entries below are marked wherever it overrides them.
+
+  **The operator's flow:**
+  1. Someone whose workspace role carries `queue:start` presses **Start
+     queuing**, and the system generates a random **display code**.
+  2. A TV opens the public URL for the organization and workspace. On its own,
+     that page shows nothing but a prompt for the code, and somebody types it
+     in.
+  3. From then on, the TV shows the workspace's queue, live.
+  4. It stays that way until somebody holding `queue:stop` presses **Stop
+     queuing**. Every TV then goes dark.
+  5. The next Start generates a NEW code, so every TV has to be given the new
+     code.
+
+  **Why this beats the link it replaces** — written down so nobody undoes it
+  out of nostalgia for the convenience. A durable display link was a credential
+  shown on a screen in a public room, valid until somebody remembered to rotate
+  it; a photo of the TV's address bar was access for months. Now the URL admits
+  nothing on its own, a code works only until the session stops, and the daily
+  routine of starting and stopping the queue is what rotates it. Rotation is no
+  longer a chore nobody does.
+
+  **New vocabulary:**
+
+  | Term | Means |
+  |---|---|
+  | **session** | one run of the queue in a workspace, from Start queuing to Stop queuing |
+  | **display code** | the short random value a person types into a TV — one per session |
+  | **display pass** | what a TV holds once its code is accepted; its credential for the rest of the session |
+
+  **The session is a row, and a workspace has at most ONE open.** `QueueSession`
+  carries `startedAt`, `startedById`, `stoppedAt` and `stoppedById`.
+  - ⚠ "At most one open" is naturally a partial unique index —
+    `UNIQUE (workspaceId) WHERE stoppedAt IS NULL` — which Prisma cannot express
+    (§12.19).
+  - It needs no raw SQL, for the same reason chat's `directKey` needed none. An
+    `openWorkspaceId String? @unique` column holds the workspace id while the
+    session is open and is set to null when it stops. Postgres treats NULLs as
+    distinct, so any number of stopped sessions can coexist, while a second open
+    session is a constraint error.
+  - Two supervisors pressing Start at the same moment get one session, not two
+    codes.
+
+  **The session gates the queue, not just the TV.** With no open session, Call
+  next, Recall and Call number… are refused with "Queuing has not started", and
+  the console says so above the button. Starting is the first act of the day,
+  and stopping is the last.
+
+  ⚠ **REVERSED: seats persist across sessions — see the persistence entry above.** **Stopping releases every seat.** This replaces "the end of the service day
+  releases every seat", which depended on a service day that no longer exists.
+  Tomorrow's staffing is assigned tomorrow. §12.62 narrows again: a removed
+  member's seat lasts at most until the next Stop.
+
+  **Numbering belongs to the SESSION; the service day and the workspace time
+  zone are gone.**
+  - `QueueSequence` is keyed `(lineId, sessionId)`, and a ticket is unique on
+    `(lineId, sessionId, cycle, number)`. Every session starts each line at its
+    `startNumber`.
+  - That deletes `QueueSettings.timeZone`, the lazy date computation and the
+    midnight edge case. The board's clock is simply the TV's own.
+  - ⚠ **The cost is a mistaken restart.** A supervisor who stops and restarts at
+    11am — to get a new code, say — would send the numbering back to 1 while
+    the guard's slips are at 87. So the Start dialog offers **Continue numbering
+    from the last session**, off by default. "Set a line's next number" (answer
+    1 in the entry below) remains the repair.
+  - ⚠ A session nobody stops runs overnight, and the next day's numbers carry
+    on from yesterday's — §12.68.
+
+  **The code: short enough to type with a TV remote, long enough not to be
+  guessed.**
+  - **Format:** eight characters of Crockford base32 — digits and letters minus
+    I, L, O and U, the ones people misread — shown as `K7QM-4XHT`. Input is
+    case-insensitive and the dash is ignored. That gives 32⁸ ≈ 2⁴⁰ possible
+    codes.
+  - ⚠ **Guessing happens over HTTP, never at the socket.**
+    - The TV exchanges the code through a `@Public` mutation,
+      `openQueueDisplay(organizationKey, workspaceKey, code)`, which passes
+      `ThrottlerGuard`. The app points the TIGHT `credential` bucket at it — the
+      one sign-in uses — because this too is somebody guessing a secret.
+    - `ThrottlerGuard` skips WebSocket operations, so a code accepted at the
+      handshake would be a guessing surface with no limit at all.
+    - On top of the per-IP bucket, each session counts failed attempts and
+      **stops accepting its code after 20 failures**. The console then says "Too
+      many wrong codes — stop and restart to get a new one".
+    - Why both limits: per-IP alone is defeated by a botnet, and a per-session
+      count alone lets somebody lock the TVs out by guessing wrong on purpose.
+      The console message makes that attack visible instead of mysterious.
+  - **Stored in plain while the session is open, and CLEARED when it stops.**
+    Staff must be able to read the code off the console again at 2pm for a TV
+    that got unplugged, so it cannot be hashed. That is acceptable because a
+    stopped session holds no live secret at all.
+  - **Shown on the console to holders of `queue:start`.** The people who can
+    authorise a display are the people who can see what authorises it.
+
+  **The pass: why a TV does not simply keep the code.** A successful exchange
+  returns a random 256-bit **display pass**, stored SHA-256-hashed in
+  `QueueDisplayPass(sessionId, tokenHash, createdAt, lastSeenAt)`. The TV keeps
+  it in `localStorage`.
+  - **The socket handshake presents the pass, never the code.** A 256-bit value
+    cannot be guessed, so the handshake needs no attempt limiter, which is what
+    lets it stay unthrottled.
+  - **A power cut or a reload needs nobody with a remote.** The TV reconnects
+    with its pass for as long as the session is open.
+  - ⚠ **The pass is hashed, the code is not.** A pass is a bearer credential
+    sitting on a device in a public room, so it follows the invitation-token
+    rule. Nobody ever needs to read a pass back, whereas staff do need to re-read
+    the code.
+  - **Each pass is one TV**, so the console can show "3 displays connected" —
+    which is how somebody notices a fourth screen they never set up.
+  - **Capped per session** by `queue:displays` (default 5). ⚠ The cap is resolved
+    at START, from the starter's limits, and stored on the session as
+    `maxDisplays`. The exchange has no actor, and `LimitChecker` reads the
+    actor's limits. §12.35 hit exactly that on invitation accept; asking at Start
+    means there is still somebody to ask about.
+
+  **The URL names the organization and workspace by KEY:**
+  `/queue-display/:organizationKey/:workspaceKey` — `acme/main-branch` rather
+  than two cuids, because it gets typed on a TV remote.
+  `PermOrganization.key` and `PermWorkspace.key` already exist and are unique.
+  ⚠ Both belong to `module-permissions`, so resolving them needs a new port,
+  `QueueWorkspaceLocator` (keys → ids plus the workspace name), filled app-side.
+  Unbound means no display can open. ⚠ If either key ever becomes renamable,
+  every TV URL for that tenant breaks.
+
+  ⚠ **The public page must not become a tenant directory.** Organization keys
+  are human-readable company names. A page that answered "no such organization"
+  differently from "wrong code" would let anybody enumerate customers by
+  guessing names. So every failure — unknown organization, unknown workspace, no
+  session running, wrong code, too many attempts, display cap reached — returns
+  ONE message ("That code is not valid here right now") with the same status.
+  The code prompt renders identically for a workspace that exists and one that
+  does not, and the workspace NAME appears only after a pass is issued. The
+  console gets the specific reason; the TV never does.
+
+  **When the session stops, each TV is told, not abandoned.**
+  - Stop publishes a `queue.session` event. Every display stream receives a final
+    `stopped` event and then ends. The TV shows "Queuing has stopped", deletes
+    its pass and returns to the code prompt.
+  - The per-publish re-check becomes "is this pass's session still open?" —
+    cached, and invalidated by that same event. The handshake refuses any pass
+    from a stopped session.
+  - ⚠ A TV that missed the event — asleep, or off the network — finds out at its
+    next reconnect, when the handshake refuses its pass. So the board's
+    stale-dimming must also trigger on a refused reconnect. Otherwise a TV could
+    show the last number of a stopped queue forever.
+
+  ⚠ **REVERSED: a persistent workspace setting — see the persistence entry above.** **Staff nicknames on displays are now a SESSION choice**, because display rows
+  no longer exist. The Start dialog carries "Show staff nicknames on displays",
+  remembering the last session's choice, so whoever starts the queue decides
+  what that session publishes. The nickname rules in answer 4 below are
+  unchanged.
+
+  ⚠ **Amended: the filter now persists across sessions — see the persistence entry above.** **The line filter moves onto the TV.** "The Cashier TV shows only `C`" is
+  chosen on the TV after its code is accepted, and remembered in its
+  `localStorage`. ⚠ This is a presentation filter, not a security boundary: the
+  pass admits the whole workspace's board, and the TV merely hides lines.
+  Nothing on the board is private (nicknames are opted into), so the difference
+  does not matter today. If it ever does, the filter moves onto the pass.
+
+  **What goes away:** `QueueDisplay` and its durable key,
+  `queue:publish_display`, the rotate/revoke screen, per-display
+  `showStaffNames`, the per-key connection cap, `QueueSettings.timeZone`, the
+  service day, and the daily reset.
+
+  **Keys — six, replacing the table in the entry below:**
+
+  | Key | Admits |
+  |---|---|
+  | `queue:read` | the console, the live board inside the app, `queueEvents` |
+  | `queue:serve` | work the window you are assigned: Call next, Recall, Done, No-show, Call number… — only while a session is open |
+  | `queue:assign_windows` | assign a window to a member (yourself included), move someone, free a window |
+  | `queue:manage_windows` | create, rename and archive windows; manage lines and set a line's next number; clear a nickname |
+  | `queue:start` | Start queuing: generate the display code and QR, continue numbering; see the code and QR while the session runs; set whether TVs show nicknames (a persistent setting) |
+  | `queue:stop` | Stop queuing: take every display dark (seats are kept) |
+
+  Start and stop are separate keys because they are different risks. Starting
+  publishes the queue to TVs; stopping takes every screen dark and every window
+  out of service mid-shift. A role may carry both.
+  - **Presets:** `queue-staff` (read + serve); `queue-supervisor` (read + serve +
+    assign_windows + start + stop); `queue-admin` (all six).
+  - **Plans:** all six go into `starter`, `pro` and `enterprise`. Answer 3 is
+    unchanged; only the count is now six.
+
+  **Schema changes against the plan below:**
+  - **Add `QueueSession`:** `openWorkspaceId @unique`, a nullable `displayCode`,
+    `failedCodeAttempts`, `maxDisplays`, and who started and
+    stopped it, and when.
+  - **Add `QueueDisplayPass`.**
+  - **`QueueSequence`** is now keyed `(lineId, sessionId)`.
+  - **`QueueTicket`** gains `sessionId` and loses `serviceDate`.
+  - **Drop `QueueDisplay` and `QueueSettings.timeZone`.** `QueueSettings` keeps
+    `enabled` and gains `showStaffNames` (persistence entry above).
+
+  **Routes:** unchanged, except that the public route is now
+  `/queue-display/:organizationKey/:workspaceKey` (fullscreen, no feature).
+  Start and Stop live on the console, not in settings, because they are daily
+  acts.
+
+  **Build order changes:**
+  - **Step 2:** the dummy public subscription is admitted by a pass-shaped token
+    instead of a display key.
+  - **Step 3** adds the session rules — one open per workspace, the session
+    gates calling — plus code generation and
+    normalisation.
+  - **Step 4** adds:
+    - `startQueue` / `stopQueue`;
+    - `openQueueDisplay`, with the attempt counter and the single failure
+      message;
+    - the `QueueWorkspaceLocator` port and its app adapter;
+    - the `credential` bucket binding.
+  - **Step 5:** the per-publish re-check is "is the session still open".
+  - **Step 6:** the console gains Start and Stop, plus a code panel with the
+    count of connected displays and the QR (persistence entry above). Settings loses its displays
+    section.
+  - **Step 8:** the board gains the code prompt, pass storage and the "stopped"
+    screen.
+
+- **2026-09-13** — **`module-queuing-window`: the operator's four answers, and
+  what each one changes.** Given the same day as the plan below, before any
+  code. ⚠ Parts of that entry are superseded and marked in place; read this
+  one first.
+
+  **1. NUMBERS ARE ISSUED OUTSIDE THE SYSTEM, by a person (§12.58 closed).** A
+  staff member or a guard at the entrance hands each arriving client a number —
+  a paper slip, a card, a roll. The system never sees that hand-over.
+  ⚠ **Corrected the same day.** This answer was first read as issuing INSIDE the
+  app — an Issue page, a `queue:issue` key, tickets created `waiting` — and the
+  operator corrected it. That reading is withdrawn in full, and the original
+  plan's allocation stands. What this confirms, and what it adds:
+  - **Call next allocates the next number AT THE CALL** and creates the ticket
+    already `called`. The conditional `increment` on `QueueSequence`, the unique
+    backstop and `clientRequestId` all stay on the call.
+  - ⚠ **The system cannot know who is waiting.** No waiting count, no estimated
+    wait, and no "nobody waiting" state. Call next always has a next number,
+    whether or not anyone holds it; if nobody comes forward, staff mark No-show
+    and call again. A waiting count on a screen would be an invented number.
+  - **The paper and the system can drift, so a line's next number is
+    SETTABLE.** The guard starts a fresh roll at 150, or throws away a torn
+    slip. `queue:manage_windows` can set "next number" on a line, which writes
+    the open session's `QueueSequence.lastNumber`. Without it, the only way to realign the
+    board with the slips in people's hands is to press Call next again and again,
+    marking each one a no-show.
+  - **Call number… calls any number, ahead or behind** — the person who stepped
+    out, or someone who arrives holding a number already passed. A number
+    already called today is a RE-CALL of that ticket (`no_show → called`), not a
+    second row.
+  - ⚠ **Call next SKIPS numbers already called in the current cycle.** If 57 was
+    called out of order, the sequence steps from 56 straight to 58, because
+    calling 57 twice sends a second person looking for a turn that has already
+    happened. The allocator retries against the unique
+    `(lineId, sessionId, cycle, number)` constraint.
+  - **The states are `called → done | no_show`, plus `no_show → called` for a
+    re-call.** `waiting`, `serving` and `cancelled` are dropped. ⚠ The plan kept
+    `waiting` so that a future kiosk would need no migration — exactly how
+    `PermMembershipStatus.invited` became a value nothing writes. If in-system
+    issuing ever arrives, adding an enum value is an additive migration, which
+    is cheaper than carrying a misleading one now.
+  - **No issue page, no `queue:issue` key, no printing question.** §12.66 is
+    moot and closed.
+
+  **2. WINDOWS ARE ASSIGNED THROUGH A ROLE, not opened by the person sitting
+  there (§12.63 closed).** The operator's rule: someone whose workspace role
+  carries the right assigns a window to a user. What that changes:
+  - **Windows are created by `queue:manage_windows`**, and no longer by typing a
+    name into the console. The "Windw 3" typo problem goes with it.
+  - **New key `queue:assign_windows`**: assign a window to a workspace member
+    (yourself included), move a person to another window, or free a window.
+    Self-assignment is not a separate right. A role meant to let staff seat
+    themselves carries both `queue:serve` and `queue:assign_windows`. The ROLE
+    decides, which is the operator's point, and it needs no setting.
+  - **`queue:serve` shrinks** to working the window you are assigned: Call next,
+    Recall, Done, No-show, Call number…. Someone holding it with no seat sees "You
+    are not assigned a window" on the console.
+  - **Assigning an occupied window REPLACES the occupant**, after a confirmation
+    ("Move X off Window 3?"). The person assigning has that authority, and
+    refusing would only force them to free the window in a second step. Both
+    constraints still stand — one person per window, one window per person — so
+    assigning someone who already sits elsewhere moves them.
+  - ⚠ **The assignee must be a workspace member who holds `queue:serve` there —
+    and the module cannot check that**, because membership and grants live in
+    `module-permissions`' tables. Two new ports, both filled app-side:
+    - `QueueStaffCheck` — `canServe(organizationId, workspaceId, userId)`, built
+      on `PermissionsService` the same way `ChatPlatformAdmin` is.
+    - `QueueStaffDirectory` — the members who can serve, for the picker,
+      composed from workspace membership and `auth_user` names.
+
+    **Unbound means you can assign only yourself.** The guard has already proven
+    you; anyone else is someone the module cannot vouch for. Fail closed.
+  - ⚠ **Assignment is checked when it is made, and never re-checked.** Someone
+    who later loses `queue:serve` keeps the seat, but the guard refuses their
+    Call next. §12.62 narrows to "a window can look occupied by someone who
+    cannot use it".
+  - Releasing your OWN seat still needs no key. Ending a shift is not a
+    permission.
+
+  **3. `queue:*` IS SOLD IN EVERY TIER EXCEPT `free` (§12.61 closed).**
+  `starter`, `pro` and `enterprise` carry all six keys in `seed/plans.ts` (six since the display-code entry), as one
+  named group `QUEUE` beside `TEAMWORK`, so the tiers cannot drift apart key by
+  key. The caps are the same in all three for now (`queue:windows` 10,
+  `queue:displays` 3). Tiering them later is a product decision with no schema
+  cost. ⚠ **Repeated because it bites:** `createPlanIfAbsent` never rewrites a
+  plan that already exists, so every environment seeded before this ships needs
+  an operator to add the six keys to those three plans on `/admin/plans`. A
+  tenant on the free plan gets `not_entitled`. That is correct, and the screen
+  should read it as an upgrade prompt, not as an error.
+
+  **4. STAFF NAMES ON THE BOARD ARE OPTIONAL, AND ARE A NICKNAME (§12.60
+  closed).**
+  - ⚠ **SUPERSEDED: one persistent WORKSPACE setting, not per display — see the persistence entry above.** **Per display:** a `showStaffNames` setting, off by default, set by whoever
+    holds `queue:publish_display`. The Cashier TV can show
+    "C-042 → Window 3 · Ate Joy" while the lobby TV shows no names at all.
+  - **The name shown is a NICKNAME the person sets themselves**, stored as
+    `QueueStaffNickname(workspaceId, userId, nickname)`. It is per workspace,
+    because the same person may go by different names at two branches. It is set
+    from the console ("Shown on public displays as…") and needs no key, because
+    it is the person's own row (the `leaveChat` rule).
+  - ⚠ **NO NICKNAME MEANS NO NAME — never a fallback to the account's display
+    name.** Only what a person typed for a public screen ever reaches one. A
+    fallback would put a real name on a TV for everyone who never opened the
+    setting, who are exactly the people least aware it exists. It is also what
+    keeps the rest of the design true. The plan said a staff name on the board
+    would make call events personal data and the display key a credential to
+    hash. A nickname chosen for public display is neither, so the key stays plain
+    and copyable, and the staff subscription stays filtered by workspace alone.
+    ⚠ If a real-name fallback is ever added, both of those paragraphs become
+    wrong on the same day.
+  - **A nickname goes on a TV in a public room, so it is bounded:** trimmed,
+    1–24 characters, no control or invisible formatting characters.
+    `queue:manage_windows` can CLEAR a nickname but not set one — putting words
+    on a public screen in somebody else's name is not an admin power.
+  - **The nickname is read live, not snapshotted on the ticket.** Someone who
+    clears their nickname wants off the board now, including today's
+    recent-calls list. The window name IS snapshotted, because it records what
+    the customer was told; a nickname records nothing the customer needs. A
+    `queue.staff` event re-renders the boards when a nickname changes.
+  - ⚠ **Now workspace-wide: every TV gets nicknames, or none does — see the persistence entry above.** **Board events carry a nickname only to displays that show names.** The
+    per-publish loop that already re-checks each display key drops it, so a TV
+    with names turned off never receives one.
+
+  ⚠ **SUPERSEDED: six keys, with `queue:start` and `queue:stop` replacing `queue:publish_display` — see the display-code entry above.** **Keys, replacing the keys table in the plan below:**
+
+  | Key | Admits |
+  |---|---|
+  | `queue:read` | the console, the live board inside the app, `queueEvents` |
+  | `queue:serve` | work the window you are assigned: Call next, Recall, Done, No-show, Call number… |
+  | `queue:assign_windows` | assign a window to a member (yourself included), move someone, free a window |
+  | `queue:manage_windows` | create, rename and archive windows; manage lines and set a line's next number; clear a nickname; set the time zone |
+  | `queue:publish_display` | create, rotate and revoke display links; turn staff nicknames on or off per display. `isPrivileged` |
+
+  Presets: `queue-staff` (read + serve), `queue-supervisor` (read + serve +
+  assign_windows), and `queue-admin` (all five).
+
+  ⚠ **The public route is now keyed by organization and workspace KEY — see the display-code entry above.** **Routes, replacing the routes table below:**
+
+  | Path | Feature | Drawer |
+  |---|---|---|
+  | `…/queue` | `queue:read` | Workspace group — the console |
+  | `…/queue/settings` | `queue:read` | unlisted — windows, lines, assignments, displays |
+  | `/queue-display/:displayKey` | none | none (public) |
+
+  ⚠ **Revised again by the display-code entry above.** **Build order, replacing the one below — eight commits, and the first two
+  still touch no queue code:**
+  1. Unchanged: the shared metadata keys in `module-kit`, plus
+     `chrome: 'fullscreen'`.
+  2. Unchanged: the anonymous handshake, proven on its own.
+  3. Schema and domain, now including the skip-already-called allocator,
+     setting a line's next number, the assignment rules, and nickname
+     validation.
+  4. Server, now including the assign flow and the two new ports with their app
+     adapters. Plans are seeded per answer 3.
+  5. Realtime, with nicknames filtered per display.
+  6. Web: the console, and settings with assignments and next-number.
+  7. `web-ui`: the tone synthesiser, unchanged.
+  8. The public display, with optional nicknames.
+
+  The kiosk step is gone.
+
+- **2026-09-13** — **`module-queuing-window`, planned: the first WORKSPACE-level
+  module that is not permissions, and a public board that is live over
+  `graphql-ws` with nobody signed in.** Not built yet. ⚠ **Revised the same day by the operator's four answers — the entry above. Superseded paragraphs are marked below.**
+
+  **What it is.** A walk-in queue per workspace. A member takes a named
+  **window** — counter, desk, booth, "Window 3" — for themselves, presses **Call
+  next**, and the next number is assigned to their window. A **public display**
+  — a TV in the waiting room, opened from a link, no sign-in — shows which
+  number is being served at which window and changes **the instant it is
+  called**, with a chime and an optional spoken announcement. The operator's
+  requirements: one queue per workspace, members assign a window to themselves,
+  staff step through the numbers, and the public display is realtime over
+  `graphql-ws` exactly as `module-chat` is — no refresh, no polling.
+
+  **Vocabulary, fixed before anything is named after it** — chat found "status"
+  already taken four times over, and renaming after the schema exists is a
+  migration:
+
+  | Term | Means | Not |
+  |---|---|---|
+  | **line** | one numbered sequence with its own prefix — `C` Cashier, `E` Enrollment | "queue", which is the whole feature |
+  | **window** | a named service point in a workspace | the person at it |
+  | **seat** | a member occupying a window right now | a role |
+  | **ticket** | one number, in one line, on one service day, and what happened to it | a support ticket |
+  | **call** | a ticket being assigned to a window — the event the board exists for | |
+  | **display** | a public, revocable link that renders the board | the staff console |
+  | **service day** | the calendar day, in the workspace's time zone, a number belongs to | the UTC date |
+
+  Package `packages/module-queuing-window` (`@kwtech/module-queuing-window`), as
+  the operator named it. ⚠ The model PREFIX is shortened on purpose — `Queue*`
+  classes, `queue_*` tables, `queue:*` keys — because `QueuingWindowTicket` in
+  every query is a tax paid forever for a name read once.
+
+  **WORKSPACE LEVEL, and the URL gives it that for free — but here the level
+  comes with a trap chat never hit.** Per §12.13,
+  `/organizations/:orgId/workspaces/:wsId/queue` resolves at workspace level, so
+  `queue:*` are workspace-level keys and the guard runs `canAccessWorkspace`: a
+  non-member cannot be seated, with no module code. ⚠ **But a GraphQL resolver
+  has no path, and the module CANNOT declare its level.** `@RequireScope` belongs
+  to `module-permissions`, and §9 forbids importing it. Chat got away with this
+  only because app level needs no declaration. A workspace resolver with no
+  declared scope resolves at APP level, where no workspace key applies — so
+  **every `queue:*` key grants nothing to everybody, silently.** That is the
+  failure that left organization-level roles granting nothing for weeks
+  (§12.13), and the one `findUsersByIds` hit again this morning. Chat hit the
+  same wall with `@RequireFeature`, and bindings were the answer there; nothing
+  equivalent exists for scope.
+
+  **The same wall, second door: `@Public`.** The board's query and subscription
+  must be anonymous, and `Public` belongs to `module-auth`. Every `@Public`
+  surface today is in `module-auth` or in the APP (health, invitations). A module
+  cannot declare one.
+
+  ⚠ Both are fixed the way `FeatureContribution` was: **the metadata KEYS move
+  into `module-kit`**, which both enforcing modules already depend on.
+  `module-kit` still imports no Nest — it exports two string constants and the
+  `ScopeSpec` shape. A module applies them with its own `SetMetadata`, and
+  `JwtAuthGuard` / `FeatureGuard` read the same constant they read today.
+  `RequireScope` and `Public` keep their signatures, rebuilt on the shared keys,
+  so no existing caller changes. Two alternatives were rejected:
+  - An app-supplied `resolveScope` override that names queue operations. The
+    app would be describing the module's surface — the drift bindings exist to
+    close.
+  - Hosting the public resolver in the app, like `InvitationsResolver`. That one
+    is app-side because it composes TWO modules; this composes none, so it would
+    split the module over a decorator.
+
+  **THE PUBLIC BOARD IS LIVE OVER `graphql-ws` WITH NO SESSION — and the
+  handshake refuses that today.** `onConnect` accepts one credential: a
+  sixty-second ticket minted from a session cookie. A TV in a waiting room has
+  neither. Three shapes were weighed:
+
+  1. **A display ticket minted by the Next server** — a new `typ: 'display'`
+     token from `module-auth`. Rejected: authentication would learn what a queue
+     display is, and the ticket would be minted from a public route anyway. That
+     adds a hop and proves nothing the display key does not.
+  2. **Server-Sent Events from a `@Public` controller.** Rejected on the
+     operator's instruction. It would also be a second realtime transport, and
+     §7 prefers one.
+  3. ⚠ **SUPERSEDED: admitted by a display PASS, obtained with a per-session code — see the display-code entry above.** ✅ **An ANONYMOUS connection, admitted by a DISPLAY KEY.** The client sends
+     `connectionParams: { displayKey }` instead of `{ ticket }`. The app supplies
+     an `admitAnonymous(params)` hook, and `app.module.ts` wires it to the queue
+     module's `QueueDisplayService.admit`. `graphql.options.ts` stays free of
+     module names, just as the presence callbacks keep it. A socket admitted
+     this way carries **no principal**.
+
+  ⚠ **An anonymous socket is safe without anything new to remember.**
+  `JwtAuthGuard` already runs on every operation over a socket, and throws "Not
+  signed in" when there is no principal unless the handler is public. So an
+  anonymous socket reaches **exactly the operations marked public, and nothing
+  else**, through the guard that already exists. There is no allowlist to
+  maintain and no second path to a principal. The seam between auth and
+  permissions stays two places wide: this socket has no principal for
+  permissions to read.
+
+  ⚠ **Four things the anonymous branch must do that the ticket branch gets for
+  free:**
+  - **No presence.** `lifecycle.opened` takes a userId. An anonymous socket must
+    never call it, or chat's refcount counts a TV as a person.
+  - ⚠ **Now the re-check is "is the session still open" — see the display-code entry above.** **No token expiry to close on, so revocation is checked on EVERY PUBLISH.**
+    Each board event re-reads whether the display key is still live — cached,
+    and invalidated by a `queue.display` event. A revoked or rotated key ENDS
+    the stream. This is chat's rule (filter per publish, never once at
+    subscribe) for the same reason: a leaked link on a TV must go dark when it is
+    revoked, not keep streaming until somebody unplugs it.
+  - **A maximum socket lifetime** (12 h), so a board running for a week
+    reconnects and catches up, rather than trusting a connection nobody has
+    checked since Monday.
+  - ⚠ **Narrowed: the code is guessed over throttled HTTP, and the socket takes a 256-bit pass — see the display-code entry above.** **§12.29 becomes live, and sharper.** A ticketed socket is bounded by needing
+    a session. An anonymous one is bounded only by knowing a display key, which
+    is shown on a screen in a public room. Connections per display key are
+    capped at the handshake (default 10); per-IP limits are §12.59.
+
+  **Staff console realtime is chat's shape exactly.** Mutations go over HTTP, so
+  `ThrottlerGuard` bounds a stuck Call next button for free — §12.29's bargain.
+  One subscription rides the app's single socket:
+  `Subscription.queueEvents(organizationId, workspaceId)`, bound as
+  `graphql_subscription` to `queue:read`, with its workspace scope declared.
+  **Catch-up runs on every (re)subscribe, for board and console alike.** The
+  socket closes at token expiry by design and pub/sub has no replay, so a number
+  called in the gap would otherwise never reach the TV. The socket is the fast
+  path; `queueBoard` is the truth.
+
+  ⚠ **Events are NOT membership-filtered per publish — a deliberate difference
+  from chat.** Chat re-checks participation on every message because a message
+  is private to its conversation. A call event carries exactly what the PUBLIC
+  board shows: line, number, window name, time. So a member removed from the
+  workspace keeps seeing what anybody in the waiting room can see, for at most
+  `AUTH_ACCESS_TOKEN_TTL`, and filtering by workspace id is enough. ⚠ **This
+  holds only while the event carries nothing private.** The day a call event
+  carries a staff member's name, a customer's name or a phone number, chat's
+  rule applies and this paragraph is wrong.
+
+  ⚠ **SUPERSEDED: names are optional per display, and only a self-set nickname — see the operator's answers entry above.** ⚠ **No staff names on the public board.** It says "C-042 → Window 3", never who
+  is sitting there. A name on a screen in a public room makes a person findable
+  by anybody with a grievance, and the operator never asked for it. The console
+  shows names; the display does not. §12.60.
+
+  **A NUMBER IS ALLOCATED BY A CONDITIONAL UPDATE, never read-then-write.** Two
+  staff pressing Call next in the same millisecond is the normal case at opening
+  time, not an edge case. `QueueSequence(lineId, serviceDate)` holds
+  `lastNumber`, and allocation is a single `increment` update inside the write
+  transaction. `@@unique([lineId, serviceDate, cycle, number])` on the ticket is
+  the backstop: a duplicate becomes a constraint error rather than two people
+  walking to two windows holding one number. Refresh-token rotation already
+  relies on the same discipline. ⚠ Prisma's `update` with `increment` is ONE
+  statement, so no raw SQL is needed, and this is not a second caller for
+  §12.19.
+
+  **Idempotent by `clientRequestId`** — chat's `clientMessageId` again. Without
+  it, a double-tap or a retry over flaky counter Wi-Fi SKIPS a number: the
+  customer holding it is never called, and nothing on any screen says so.
+
+  ⚠ **SUPERSEDED: numbering belongs to the session, and the service day and time zone are gone — see the display-code entry above.** **The daily reset needs no scheduler.** `web-server` has no job runner
+  (§12.40 already paid for that discovery), so the reset is not an act at all.
+  The sequence is keyed by `serviceDate`, computed in the workspace's time zone
+  at allocation. The first call of a new day finds no row and starts at the
+  line's `startNumber`. A reset that never runs cannot fail to run. ⚠ The time
+  zone is the queue module's OWN setting (`QueueSettings.timeZone`), not a
+  column on `perm_workspace`, which belongs to another module.
+
+  **"Loop" means two things, and both are built.**
+  - **Staff step through numbers:** Call next, Recall (re-announce the same
+    ticket, counted), No-show, Done, and Call number… for the person who stepped
+    out when they were called.
+  - **A line wraps:** after `endNumber` (say 999) it returns to `startNumber` and
+    `cycle` increments, so the morning's ticket 7 and ticket 7 after the wrap are
+    different rows. Without the wrap, a two-digit display is showing a
+    four-digit number by mid-afternoon.
+
+  ⚠ **Confirmed by the operator, and extended with a settable next number and skip-already-called — see the answers entry above.** **v1 issues numbers OUTSIDE the system** — a paper roll, a dispenser, a
+  receptionist — so Call next means "allocate the next number and assign it to
+  my window". ⚠ **The ticket is still a ROW**, created at the moment of the
+  call. That makes a kiosk ("take a number", which knows how many are waiting) a
+  status value and a public route later, not a migration. An issued ticket is a
+  row born `waiting` instead of `called`, and Call next then claims the oldest
+  waiting ticket with the same conditional-update discipline. §12.58 is that
+  decision.
+
+  ⚠ **SUPERSEDED: windows are created by `queue:manage_windows` and assigned through a role — see the operator's answers entry above.** **Windows are named by the people who sit at them.** A member holding
+  `queue:serve` either takes an existing free window or **opens a new one by
+  typing its name** — the operator's "assign a window name for his unit".
+  Names are unique per workspace, case-insensitively, so "window 3" cannot sit
+  beside "Window 3". The `queue:windows` cap bounds how many exist. Renaming or
+  archiving somebody else's window is `queue:manage_windows`. §12.63 covers
+  whether opening a window should instead be admin-only.
+
+  ⚠ **Constraints still hold; taking a seat is now ASSIGNMENT, and a seat persists until it is changed — nothing releases it at the end of a day or a session. See the entries above.** **Seats: one window per member, and one member per window.** `QueueSeat`
+  carries both `@@unique([windowId])` AND `@@unique([workspaceId, userId])` —
+  two constraints, following `PermWorkspaceMemberRole`'s pattern, because each
+  one stops a different thing. The guard refuses someone not permitted to take a
+  seat; the row refuses a window that is already occupied. Releasing your own
+  seat needs no key: withholding it would be a lockout dressed as a permission
+  (the `leaveChat` rule).
+  ⚠ **A seat outlives the person's membership.** A member removed from the
+  workspace still occupies Window 3 until somebody frees it.
+  `queue:manage_windows` can force-release a seat, and the end of the service
+  day releases every seat (lazily, at the next claim or read). §12.62.
+
+  **Tickets snapshot the window NAME.** Renaming Window 3 to "Cashier 1" at noon
+  must not rewrite the morning's history, and the board's recent-calls list must
+  keep saying what the customer was told.
+
+  ⚠ **SUPERSEDED: no durable display key exists; a per-session code and a hashed pass replace it — see the display-code entry above.** **The display key is a random value stored in plain, NOT hashed like an
+  invitation token — and that difference is the point.** An invitation token is
+  a credential that creates an account. A display key reveals ticket numbers and
+  window names that are already on a wall in a public room. Hashing it would
+  stop an administrator copying the link again from the settings page, to
+  protect nothing secret. It is revocable and ROTATABLE, and rotating is the
+  answer to "somebody posted a photo of the TV's URL". ⚠ If a board ever shows
+  anything private, this paragraph is wrong and the key becomes a hashed
+  credential.
+
+  **Browsers refuse to play sound or speech before a user gesture** — chat's
+  tone lesson, now on a TV. The board opens on a full-screen **Start display**
+  button. Pressing it unlocks the chime and `speechSynthesis`, and acquires the
+  Screen Wake Lock that stops the TV sleeping at 2pm. A board that silently
+  never chimes looks exactly like a working one until a customer misses their
+  number.
+
+  ⚠ **The chime cannot import chat's tone engine**, because `module-chat/react`
+  is another module (§9). The synthesiser moves to `@kwtech/web-ui`. That is
+  rule 8 met exactly: code earns a shared home when a second consumer needs it,
+  and this is the second.
+
+  ⚠ **A stale board must LOOK stale.** A TV showing "Now serving C-041" from a
+  socket that died ten minutes ago is this module's worst failure: people keep
+  waiting for a number that has already been called. After 15 s disconnected,
+  the board dims and says it is reconnecting. It is the `ConnectivityMonitor`
+  argument made about sign-in, applied to the one screen nobody watches closely.
+
+  ⚠ **SUPERSEDED: six keys, not four — see the operator's answers entry above.** **Keys — workspace level, atomic, split by risk:**
+
+  | Key | Admits | Why it is separate |
+  |---|---|---|
+  | `queue:read` | the console, the live board inside the app, `queueEvents` | seeing the queue is not serving it |
+  | `queue:serve` | take, open or release a window; Call next, Recall, No-show, Done, Call number… | the everyday staff right |
+  | `queue:manage_windows` | rename or archive any window, manage lines, force-release a seat, set the time zone | it changes what everybody else does |
+  | `queue:publish_display` | create, rotate and revoke display links | ⚠ **a DISCLOSURE act**: it publishes workspace data to anybody with the link, so it is not bundled with renaming a window. `isPrivileged` |
+
+  No key for releasing your own seat (see above). Two presets are shipped —
+  `queue-staff` (read + serve) and `queue-admin` (all four) — for the host to
+  adopt into its own roles. As with chat, adopting the module grants nobody
+  anything.
+
+  ⚠ **WORKSPACE KEYS ARE FILTERED BY THE PLAN** — the second live-database trap
+  of 2026-09-09. A `queue:*` key that no plan entitles is a key nobody can use,
+  and the denial correctly reads `not_entitled`. `seed/plans.ts` must add the
+  keys to the tiers that sell the queue (§12.61). **`createPlanIfAbsent` never
+  rewrites an existing plan**, so every environment seeded before then needs an
+  operator on `/admin/plans` before anyone can press Call next. That belongs in
+  the release note, not in anybody's memory.
+
+  ⚠ **`queue:displays` now counts TVs per session, resolved at Start — see the display-code entry above.** **Caps, plan-sourced and counted over the workspace:** `queue:windows`
+  (default 10) and `queue:displays` (default 3), declared through
+  `LimitContribution`. The floor is 1; omission never means unlimited.
+
+  ⚠ **Changed: `QueueSession` and `QueueDisplayPass` added, `QueueDisplay` and the service day removed — see the display-code entry above.** **Schema — `queue.prisma`, with `workspaceId` AND `organizationId`
+  denormalised onto every row.** This applies §12.34's lesson from the first
+  migration instead of retrofitting it: a queue row that names only a workspace
+  cannot be checked against a tenant without reading another module's table.
+
+  | Model | Holds | Load-bearing constraint |
+  |---|---|---|
+  | `QueueSettings` | per workspace: time zone, enabled | PK `workspaceId` |
+  | `QueueLine` | name, prefix, `startNumber`, `endNumber`, zero-padding, order, `archivedAt` | `@@unique([workspaceId, prefix])` |
+  | `QueueWindow` | name, normalised name, order, `archivedAt`, `createdById` | `@@unique([workspaceId, nameKey])` |
+  | `QueueWindowLine` | which lines a window serves; none means all | `@@id([windowId, lineId])` |
+  | `QueueSeat` | who sits at a window now | `@@unique([windowId])`, `@@unique([workspaceId, userId])` |
+  | `QueueSequence` | `lastNumber` and `cycle` for a line on a service day | `@@id([lineId, serviceDate])` |
+  | `QueueTicket` | number, `displayCode`, status, `windowId`, `windowName` snapshot, `calledById`, `calledAt`, `recallCount`, `completedAt`, `clientRequestId` | `@@unique([lineId, serviceDate, cycle, number])`, `@@unique([clientRequestId])` |
+  | `QueueDisplay` | `key`, title, which lines, voice on/off, `revokedAt` | `@@unique([key])` |
+
+  `QueueTicketStatus`: `waiting → called → serving → done | no_show`, plus
+  `cancelled`. v1 never writes `waiting`, because numbers are issued outside the
+  system. ⚠ The enum's comment must say so, or it becomes another
+  `PermMembershipStatus.invited` — a value nothing writes and everybody assumes
+  something does. `userId`s are bare strings with no FK; this is the fourth
+  module to hold them that way.
+
+  ⚠ **Three more ports: two staff ports in the answers entry and `QueueWorkspaceLocator` in the display-code entry above.** **Ports.** Every one is optional, and each absence is documented as a MEANING,
+  following chat's table:
+
+  | Port | Unbound means |
+  |---|---|
+  | `prismaProvider` / `prismaWriteProvider` | no database — the module opens nothing |
+  | `pubsubProvider` | it works over HTTP, but the console is not live and **the board never updates** — so the board says "live updates unavailable" rather than looking current |
+  | `userDirectoryProvider` | the console shows "a member" at a seat instead of a name. ⚠ The app adapter must use the ORGANIZATION-scoped `findUsersByIds` fixed today, never an unscoped lookup |
+  | `limitCheckerProvider` | no cap |
+  | `resolveActorId` | nobody can be seated |
+
+  `QueueDisplayService.admit` is exported for the app's handshake hook. It is
+  not a port: the module implements it, and the app only wires it in.
+
+  ⚠ **The public route is now `/queue-display/:organizationKey/:workspaceKey` — see the display-code entry above.** **Routes:**
+
+  | Path | Chrome | Feature | Drawer |
+  |---|---|---|---|
+  | `/organizations/:organizationId/workspaces/:workspaceId/queue` | app | `queue:read` | Workspace group — the console |
+  | `…/queue/settings` | app | `queue:read`; controls inside take `manage_windows` / `publish_display` | unlisted, reached from the console |
+  | `/queue-display/:displayKey` | ⚠ **new: `'fullscreen'`** | none | none |
+
+  ⚠ `'bare'` is not enough for the board: it pins a theme toggle and a status
+  bar over a TV picture and assumes a centred card. A third `chrome` value in
+  `module-kit` is better than a page fighting its frame.
+  ⚠ The public route opens its OWN anonymous connection — the single documented
+  exception to one socket per tab (§12.39). The app's connection mints its
+  ticket from a session the TV does not have. `createRealtimeConnection` gains a
+  `connectionParams` option, so it remains the one constructor.
+
+  **The console**, ordered by how often each part is touched:
+  1. My window: take one, open a new one, or change.
+  2. The ticket at my window, with **Call next** as the largest thing on the
+     page, and beside it Recall · No-show · Done · Call number….
+  3. Every window and what it is serving, live.
+  4. A link to open the public display.
+
+  Space calls next, because counter staff do it three hundred times a day.
+
+  **The board**: a Now serving list with one large row per window holding a
+  ticket. The newest call pulses for ten seconds, with the chime and "Now
+  serving C-042 at Window 3" spoken aloud. Below it are recent calls, a clock
+  and the display's title. Each display filters by line, so the Cashier TV shows
+  only `C`.
+
+  ⚠ **SUPERSEDED: eight commits, no kiosk; steps 3–8 revised in the answers entry, and again in the display-code entry — see the operator's answers entry above.** **Build order — nine commits, and the first two touch no queue code:**
+  1. `module-kit`: the shared `REQUIRED_SCOPE` and `PUBLIC_SURFACE` metadata
+     keys, with `module-permissions` and `module-auth` rebuilt on them and no
+     behaviour change — proven by their existing suites passing untouched. Plus
+     `chrome: 'fullscreen'`.
+  2. `web-server`: the anonymous handshake — the `admitAnonymous` hook, no
+     presence, a maximum lifetime, a per-key connection cap. It ships with an
+     app test that an anonymous socket asking for a non-public subscription gets
+     "Not signed in". ⚠ Proven with a dummy public subscription BEFORE any queue
+     code exists, so the security property is tested on its own.
+  3. `module-queuing-window`: schema and pure domain — the service date in a time
+     zone, wrapping, the ticket state machine, seat exclusivity, window-name
+     normalisation, display-code formatting. No database and no framework.
+  4. Server: repository, read and write services on separate clients, GraphQL
+     with a scope declared on every resolver, the conditional-update allocator,
+     and `clientRequestId`. The app adopts the package (which creates the
+     tables) and seeds the keys and plan entitlements. ⚠ A `surface-coverage`
+     test fails on any resolver without a declared scope or a public marker —
+     the §12.13 trap turned into a red build.
+  5. Realtime: `queueEvents`, the public `queueDisplay`, the per-publish
+     display-key re-check, and catch-up on every (re)subscribe.
+  6. Web: the console, plus settings — windows, lines, and displays with copy,
+     rotate and revoke.
+  7. `web-ui`: the tone synthesiser moved out of `module-chat`, with chat
+     re-pointed at it.
+  8. Web: `/queue-display/:displayKey` — the Start display unlock, chime, speech,
+     wake lock and stale dimming.
+  9. A kiosk / take-a-number page — ⚠ ONLY if §12.58 is answered that way.
 
 - **2026-09-13** — **`findUsersByIds` is scoped to an ORGANIZATION, and answers
   only with that organization's members.**
