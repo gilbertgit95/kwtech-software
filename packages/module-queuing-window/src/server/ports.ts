@@ -57,4 +57,13 @@ export interface QueueWorkspaceLocation {
  */
 export interface QueueWorkspaceLocator {
   locate(organizationKey: string, workspaceKey: string): Promise<QueueWorkspaceLocation | null>;
+  /**
+   * The other direction: ids → keys, so the console can build the display link
+   * and its QR code. Optional; without it the console shows the code alone and
+   * somebody types the address on the TV.
+   */
+  keysFor?(
+    organizationId: string,
+    workspaceId: string,
+  ): Promise<{ organizationKey: string; workspaceKey: string } | null>;
 }

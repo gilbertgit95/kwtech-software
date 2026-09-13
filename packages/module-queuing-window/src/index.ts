@@ -16,4 +16,5 @@ export * from './domain/text.js';
 export * from './domain/tickets.js';
 export * from './domain/windows.js';
 export * from './feature-keys.js';
+export * from './operations.js';
 export * from './types.js';

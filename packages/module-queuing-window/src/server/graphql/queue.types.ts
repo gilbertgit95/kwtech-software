@@ -100,6 +100,10 @@ export class QueueSeatType {
    */
   @Field(() => Boolean, { nullable: true })
   canServe!: boolean | null;
+
+  /** What this person chose for public displays — shown to staff so it can be seen, and cleared. */
+  @Field(() => String, { nullable: true })
+  nickname!: string | null;
 }
 
 @ObjectType('QueueTicket')
@@ -155,6 +159,10 @@ export class QueueConsoleType {
   @Field(() => [QueueSeatType])
   seats!: QueueSeatType[];
 
+  /** Who is asking. */
+  @Field()
+  myUserId!: string;
+
   @Field(() => String, { nullable: true })
   myWindowId!: string | null;
 
@@ -186,6 +194,10 @@ export class QueueDisplayCodeType {
 
   @Field()
   locked!: boolean;
+
+  /** `/queue-display/:organizationKey/:workspaceKey`, or null when the keys cannot be found. */
+  @Field(() => String, { nullable: true })
+  displayPath!: string | null;
 }
 
 @ObjectType('QueueStaffMember')

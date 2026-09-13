@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // No DOM yet: the React half arrives in step 6 and widens this file then.
+    // DOM since the React half landed. The DOMAIN half still imports none of it —
+    // `src/index.ts` exports no React, and the server half no DOM.
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
     "outDir": "dist",
     // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
     // with the build info beside the tsconfig it outlives every `rm -rf dist` —

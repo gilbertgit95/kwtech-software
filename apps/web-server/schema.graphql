@@ -547,6 +547,7 @@ type QueueBoardLine {
 type QueueConsole {
   lines: [QueueLine!]!
   myNickname: String
+  myUserId: String!
   myWindowId: String
   recent: [QueueTicket!]!
   seats: [QueueSeat!]!
@@ -559,6 +560,7 @@ type QueueConsole {
 type QueueDisplayCode {
   activeDisplays: Int!
   code: String!
+  displayPath: String
   failedCodeAttempts: Int!
   locked: Boolean!
   maxDisplays: Int!
@@ -595,6 +597,7 @@ type QueueLine {
 type QueueSeat {
   canServe: Boolean
   displayName: String!
+  nickname: String
   userId: String!
   windowId: String!
 }

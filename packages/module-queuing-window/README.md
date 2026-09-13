@@ -4,9 +4,21 @@ A walk-in queue per workspace. Staff are assigned named **windows**, press
 **Call next**, and the number appears on a **public display** — a TV in the
 waiting room, admitted by a per-session code, live over `graphql-ws`.
 
-> **Status: server and realtime built (steps 4 and 5).** `apps/web-server` has
-> adopted it, the tables are migrated, and a TV admitted by its display pass
-> watches the board live. There is no React yet (steps 6 and 8). The design, and every decision behind it, is in
+> **Status: server, realtime and the staff console built (steps 4–6).** Both
+> apps have adopted it. The public board page is step 8.
+
+## In a Next.js app
+
+```ts
+// src/modules.ts
+import { queueWebModule } from '@kwtech/module-queuing-window/react';
+export const WEB_MODULES = [/* … */ queueWebModule()];
+```
+
+That contributes `…/workspaces/:workspaceId/queue` (the console, in the
+Workspace drawer group) and the unlisted `…/queue/settings`, both gated on
+`queue:read`. Controls inside each page show only to the key that may use them;
+the API refuses again regardless. The design, and every decision behind it, is in
 > `docs/PLAN.md` §13 under the 2026-09-13 `module-queuing-window` entries. Read
 > the newest first.
 

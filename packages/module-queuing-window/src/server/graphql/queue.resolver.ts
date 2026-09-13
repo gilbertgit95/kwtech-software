@@ -241,7 +241,9 @@ export class QueueResolver {
       confirmReplace: confirmReplace ?? false,
     });
     // Names and the serve check come with the console, which the client re-reads.
-    return seat ? { windowId: seat.windowId, userId: seat.userId, displayName: seat.userId, canServe: null } : null;
+    return seat
+      ? { windowId: seat.windowId, userId: seat.userId, displayName: seat.userId, canServe: null, nickname: null }
+      : null;
   }
 
   @Mutation(() => Boolean, { name: 'freeQueueWindow' })
@@ -479,7 +481,9 @@ function renderConsole(view: QueueConsoleView): QueueConsoleType {
       userId: seat.userId,
       displayName: seat.displayName,
       canServe: seat.canServe,
+      nickname: seat.nickname,
     })),
+    myUserId: view.myUserId,
     myWindowId: view.myWindowId,
     myNickname: view.myNickname,
     serving: view.serving.map(renderTicket),

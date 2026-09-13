@@ -35,4 +35,20 @@ export class QueueWorkspaceLocatorAdapter implements QueueWorkspaceLocator {
 
     return { organizationId: organization.id, workspaceId: workspace.id, workspaceName: workspace.name };
   }
+
+  /**
+   * Ids → keys, for the display link the console shows to holders of
+   * `queue:start`. Scoped by BOTH ids, so a workspace id from another tenant
+   * finds nothing.
+   */
+  async keysFor(
+    organizationId: string,
+    workspaceId: string,
+  ): Promise<{ organizationKey: string; workspaceKey: string } | null> {
+    const workspace = await this.prisma.permWorkspace.findFirst({
+      where: { id: workspaceId, organizationId },
+      select: { key: true, organization: { select: { key: true } } },
+    });
+    return workspace ? { organizationKey: workspace.organization.key, workspaceKey: workspace.key } : null;
+  }
 }

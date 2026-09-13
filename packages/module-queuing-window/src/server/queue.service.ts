@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { formatDisplayCode, MAX_FAILED_CODE_ATTEMPTS } from '../domain/session.js';
-import type { QueueStaffCheck, QueueStaffDirectory, QueueStaffMember } from './ports.js';
+import type { QueueStaffCheck, QueueStaffDirectory, QueueStaffMember, QueueWorkspaceLocator } from './ports.js';
 import type {
   LineRow,
   QueuePrismaClient,
@@ -10,10 +10,13 @@ import type {
   TicketRow,
   WindowRow,
 } from './queue.repository.js';
-import { QUEUE_PRISMA, QUEUE_STAFF_CHECK, QUEUE_STAFF_DIRECTORY } from './queue.tokens.js';
+import { QUEUE_PRISMA, QUEUE_STAFF_CHECK, QUEUE_STAFF_DIRECTORY, QUEUE_WORKSPACE_LOCATOR } from './queue.tokens.js';
 
 /** How many recent calls the console lists. */
 export const RECENT_CALLS = 20;
+
+/** Where a TV opens the board. The keys are filled in; see `displayPath`. */
+export const DISPLAY_ROUTE_PREFIX = '/queue-display';
 
 export interface QueueScope {
   organizationId: string;
@@ -31,8 +34,15 @@ export interface QueueConsoleView {
       displayName: string;
       /** Null when the app bound no `QueueStaffCheck`. */
       canServe: boolean | null;
+      /**
+       * What this person chose for public displays, if anything — shown to
+       * STAFF here so a supervisor can see what a TV would say, and clear it.
+       */
+      nickname: string | null;
     }
   >;
+  /** Who is asking — so "take this window" can name the viewer without a second lookup. */
+  myUserId: string;
   myWindowId: string | null;
   myNickname: string | null;
   /** The ticket each window is serving right now: its latest still-called one. */
@@ -47,6 +57,11 @@ export interface QueueDisplayCodeView {
   maxDisplays: number;
   failedCodeAttempts: number;
   locked: boolean;
+  /**
+   * `/queue-display/:organizationKey/:workspaceKey`, or null when the host bound
+   * no way to find the keys. The console adds its own origin and `#code=`.
+   */
+  displayPath: string | null;
 }
 
 /** What a seat shows when the host bound no directory. */
@@ -62,6 +77,7 @@ export class QueueService {
     @Inject(QUEUE_PRISMA) private readonly prisma: QueuePrismaClient,
     @Optional() @Inject(QUEUE_STAFF_DIRECTORY) private readonly directory?: QueueStaffDirectory,
     @Optional() @Inject(QUEUE_STAFF_CHECK) private readonly staff?: QueueStaffCheck,
+    @Optional() @Inject(QUEUE_WORKSPACE_LOCATOR) private readonly locator?: QueueWorkspaceLocator,
   ) {}
 
   /**
@@ -103,9 +119,16 @@ export class QueueService {
     const serving = new Map<string, TicketRow>();
     for (const ticket of called) if (!serving.has(ticket.windowId)) serving.set(ticket.windowId, ticket);
 
-    const names = new Map(
-      (await this.describe(seats.map((seat) => seat.userId))).map((p) => [p.userId, p.displayName]),
-    );
+    const seatUserIds = [...new Set(seats.map((seat) => seat.userId))];
+    const [people, seatNicknames] = await Promise.all([
+      this.describe(seatUserIds),
+      seatUserIds.length
+        ? this.prisma.queueStaffNickname.findMany({ where: { workspaceId, userId: { in: seatUserIds } } })
+        : Promise.resolve([]),
+    ]);
+    const names = new Map(people.map((person) => [person.userId, person.displayName]));
+    const nicknames = new Map(seatNicknames.map((row) => [row.userId, row.nickname]));
+
     const staff = this.staff;
     const canServe = await Promise.all(
       seats.map((seat) => (staff ? staff.canServe(organizationId, workspaceId, seat.userId) : Promise.resolve(null))),
@@ -123,7 +146,9 @@ export class QueueService {
         ...seat,
         displayName: names.get(seat.userId) ?? UNNAMED_MEMBER,
         canServe: canServe[index] ?? null,
+        nickname: nicknames.get(seat.userId) ?? null,
       })),
+      myUserId: actorId,
       myWindowId: seats.find((seat) => seat.userId === actorId)?.windowId ?? null,
       myNickname: nickname?.nickname ?? null,
       serving: [...serving.values()],
@@ -140,13 +165,19 @@ export class QueueService {
     const session = await this.prisma.queueSession.findUnique({ where: { openWorkspaceId: scope.workspaceId } });
     if (!session?.displayCode) return null;
 
-    const activeDisplays = await this.prisma.queueDisplayPass.count({ where: { sessionId: session.id } });
+    const [activeDisplays, keys] = await Promise.all([
+      this.prisma.queueDisplayPass.count({ where: { sessionId: session.id } }),
+      this.locator?.keysFor ? this.locator.keysFor(scope.organizationId, scope.workspaceId) : Promise.resolve(null),
+    ]);
     return {
       code: formatDisplayCode(session.displayCode),
       activeDisplays,
       maxDisplays: session.maxDisplays,
       failedCodeAttempts: session.failedCodeAttempts,
       locked: session.failedCodeAttempts >= MAX_FAILED_CODE_ATTEMPTS,
+      displayPath: keys
+        ? `${DISPLAY_ROUTE_PREFIX}/${encodeURIComponent(keys.organizationKey)}/${encodeURIComponent(keys.workspaceKey)}`
+        : null,
     };
   }
 

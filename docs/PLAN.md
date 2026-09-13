@@ -554,6 +554,93 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **`module-queuing-window` step 6: the staff console and the
+  queue settings, on the web.** Staff can now start and stop queuing, call
+  numbers, assign windows and manage lines from the app. The public board page
+  is step 8.
+
+  **What was built — all in the package, `@kwtech/module-queuing-window/react`:**
+  - **`queueWebModule()`**, with two routes, both gated on `queue:read`:
+    - `/organizations/:organizationId/workspaces/:workspaceId/queue` — the
+      console, listed in the Workspace drawer group between Overview and
+      Settings;
+    - `…/queue/settings` — unlisted, reached from the console.
+
+    The app's edit is one line in `modules.ts` plus the dependency.
+  - **The console**, ordered by how often each part is touched:
+    - Start and Stop. Continue numbering is off by default, and Stop asks for
+      confirmation.
+    - The code panel for holders of `queue:start`: the code, a QR code, Copy
+      link, Open display, "N of M displays connected", and the too-many-wrong-
+      codes message.
+    - My window: Call next as the largest thing on the page, Recall, No-show,
+      Done, and Call number…. A person with no window who holds
+      `queue:assign_windows` gets "Take this window".
+    - My nickname.
+    - Every window, who is assigned to it, and what it is serving, with a seat
+      whose holder can no longer serve flagged. Then the recent calls.
+  - **Settings:** each section is shown only to the key that may change it.
+    - Lines (`queue:manage_windows`): edit, archive, set the next number while
+      running, and add.
+    - Windows (`queue:manage_windows`): rename, choose the lines served,
+      archive, and add.
+    - Assignments (`queue:assign_windows`): assign, with a confirmation before
+      replacing, free a window, and see a seat's nickname and clear it with
+      `queue:manage_windows`.
+    - Public displays (`queue:start`): show staff nicknames.
+  - **`QUEUE_OPERATIONS`** at the package root. `web-server`'s
+    `module-operations.test.ts` validates every document against the schema,
+    including the two public ones step 8 will send.
+  - **`useQueueConsole`** reads once, subscribes to `queueEvents`, and answers
+    EVERY event with a debounced re-read, `sync` included. The screen never
+    applies a call to its own copy of the queue: what a call completed by
+    implication is the server's arithmetic, and a second implementation of it is
+    a console that disagrees with the TV.
+
+  **Server additions this step needed:**
+  - `queueConsole.myUserId`, so "Take this window" can name the viewer.
+  - `QueueSeat.nickname`, shown to staff only.
+  - `queueDisplayCode.displayPath`, from a new optional `keysFor` on the
+    locator port, which turns ids into keys. The app adapter scopes that read by
+    both ids.
+
+  **Decisions the plan did not contain:**
+  - ⚠ **Space calls next ONLY when the line is unambiguous:** the line of the
+    ticket the window is serving, or the only line the window serves. With two
+    lines and nothing current it does nothing, because guessing between lines
+    calls the wrong customer. It stands aside when focus is in a field, a
+    select, a button or a link, and it ignores key repeat.
+  - ⚠ **One action at a time per console.** `run()` refuses while another
+    action is in flight, because a keyboard shortcut does not respect a
+    disabled button, and two Call nexts in one tick are two numbers. Every Call
+    next sends a fresh `clientRequestId`.
+  - **The QR is drawn from `qrcode`'s matrix as one SVG path,** never from its
+    SVG string injected as markup, and never by a QR web service. It is always
+    dark on white regardless of theme, because scanners read contrast.
+    `qrcode` is the module's own dependency (§9 rule 8).
+  - **The display link uses the browser's own origin,** and the code goes in
+    the fragment, undashed.
+  - **The connected-display count is re-read every 15 seconds** while running,
+    for holders of `queue:start` only. A TV opening publishes nothing, and
+    publishing on every handshake would be a second event stream for a number
+    nobody watches closely.
+  - **The Workspace group name is a documented duplicate.** `'Workspace'` is
+    `module-permissions`' string, which this module may not import, and a test
+    pins the spelling.
+  - **No `web-ui` Button.** It has none; the queue's `buttonClass` is local, with
+    one consumer.
+
+  **Verified:**
+  - Package: 272 tests, including the view rules (Space's line,
+    `sessionAge`, the fragment link, typing targets) and the descriptor.
+  - App: `web-server` passes 160 tests with the regenerated schema, and
+    `web-app` passes typecheck and a production `next build`.
+
+  ⚠ **Not verified in a browser.** No signed-in session with the queue keys
+  exists locally, and the local plans still lack them — see step 4. Trying the
+  console needs an operator to add the six keys and two caps on `/admin/plans`,
+  and a workspace role carrying them.
+
 - **2026-09-13** — **`module-queuing-window` step 5: live. The staff console
   has a stream, and a TV admitted by its pass watches the board over
   `graphql-ws`.** Proven over a real socket against the local database.

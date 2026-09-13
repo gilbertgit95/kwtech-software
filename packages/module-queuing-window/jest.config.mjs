@@ -7,7 +7,9 @@
  *
  * Decorators are on because the server adapter is Nest, and the surface-coverage
  * suite reads the resolvers' metadata back — which needs the polyfill loaded
- * before a resolver class is evaluated.
+ * before a resolver class is evaluated. `tsx` because the web descriptor renders
+ * its route adapters, and a suite that could not parse JSX could not assert what
+ * the module contributes.
  */
 export default {
   setupFiles: ['reflect-metadata'],
@@ -19,12 +21,12 @@ export default {
       '@swc/jest',
       {
         jsc: {
-          parser: { syntax: 'typescript', decorators: true },
-          transform: { decoratorMetadata: true, legacyDecorator: true },
+          parser: { syntax: 'typescript', tsx: true, decorators: true },
+          transform: { decoratorMetadata: true, legacyDecorator: true, react: { runtime: 'automatic' } },
           target: 'es2023',
         },
       },
     ],
   },
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts', '!src/react/**'],
 };

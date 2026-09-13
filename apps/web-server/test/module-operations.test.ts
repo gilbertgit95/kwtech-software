@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
+import { QUEUE_OPERATIONS } from '@kwtech/module-queuing-window';
 import { buildSchema, type GraphQLSchema, parse, validate } from 'graphql';
 
 /**
@@ -51,6 +52,7 @@ beforeAll(() => {
 
 const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   chat: CHAT_OPERATIONS,
+  queue: QUEUE_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {

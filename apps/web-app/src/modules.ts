@@ -2,6 +2,7 @@ import { authWebModule } from '@kwtech/module-auth/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import type { WebModuleDescriptor } from '@kwtech/module-kit';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
+import { queueWebModule } from '@kwtech/module-queuing-window/react';
 
 /**
  * Every module this app composes, listed once (PLAN §9).
@@ -24,4 +25,9 @@ import { permissionsWebModule } from '@kwtech/module-permissions/react';
  * contributes no route, no nav entry and no icon, while keeping its feature
  * registry so a disable does not strip `chat:*` from every role that holds it.
  */
-export const WEB_MODULES: readonly WebModuleDescriptor[] = [authWebModule, permissionsWebModule, chatWebModule()];
+export const WEB_MODULES: readonly WebModuleDescriptor[] = [
+  authWebModule,
+  permissionsWebModule,
+  chatWebModule(),
+  queueWebModule(),
+];
