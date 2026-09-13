@@ -499,7 +499,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 25 | Where does a billing provider's webhook write, and who wins a conflict? | before a payment provider is connected | `PermissionsWriteService` now owns the write path and keys idempotency on the live (organization, workspace, plan) row. A provider that writes the same table needs either a `source` column and a precedence rule, or a reconciliation job that treats the provider as authoritative and supersedes admin rows. Precedence is the part teams get wrong, so decide it before the first webhook, not after |
 | 26 | ~~Should plans be SEEDED, like app roles are?~~ **Closed: yes, on request** | — | **Reversed 2026-09-07.** They were left unseeded on the grounds that which products a platform sells is an operator decision. They are now seeded as a STARTING catalogue — `free`, `starter`, `pro`, `enterprise` — with `createPlanIfAbsent`, which creates what is missing and never rewrites what is there. Phase 'seed', not 'sync': the operator decision is preserved by the seed getting out of the way, not by there being no seed. Original entry: | app roles are seeded because the SHAPE is fixed and the definitions are product decisions living app-side. Plans are the same shape of thing, and deliberately not seeded today: which products a platform sells is an operator decision, and a seeded `free` plan would be this repo deciding it. The screens create them instead. Revisit if a fresh environment needs a plan before anyone can subscribe anybody |
 | 27 | Scope role writes to the actor's organization, and put `roles:create/update/disable` back at organization level | **unblocked 2026-09-09** — §12.13 closed | `createRole` writes `organizationId: null` — a SHARED PRESET every tenant sees — and `listRoles` reads that same null scope, so a role write is a platform operation. The three write keys were raised to APP level on 2026-09-07 to say so. Reversing it needs the active organization on the request (§12.13), which is exactly why `role-draft.ts` cannot offer an organization picker today. Do both together or neither. **⚠ The blocker is gone: §12.13 closed on 2026-09-09 and the active organization is now on the request, so `role-draft.ts` COULD offer an organization picker.** Nothing was changed here with it, deliberately — re-levelling three write keys and re-scoping `listRoles` is a change to what every existing role means, and it does not belong in the same commit as the screens that revealed it was possible. What the tenant area does today is narrow the PICKER (`myOrganizationRoles` filters app-level roles out), which is a presentation fix and not the re-scoping this decision asks for |
-| 28 | Redis-backed pub/sub, before `web-server` scales past one replica | ⚠ before a second replica OR presence — now ENFORCED at boot | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7). **⚠ HARDENED 2026-09-10 — the trigger is now PRESENCE, not the second replica.** Pub/sub across replicas fails silently; presence across replicas fails LOUDLY and constantly, because replica A cannot see sockets held by replica B and half the users show as offline forever. So: Redis before presence ships, or single-replica recorded as a deliberate choice. **`module-chat` is also the feature that makes the pub/sub half unsurvivable** — a plan key arriving late is a stale badge, a message that never arrives is a broken product. **⚠ HARDENED AGAIN 2026-09-11 — the gate is now CHAT ITSELF, not presence.** Delivery is a requirement rather than an enhancement, and the silence of the failure stops being the point: a message that does not arrive is indistinguishable from being ignored. Redis before anyone uses `/chat`, or single-replica enforced by something that FAILS THE BOOT when a second replica appears. **⚠ PARTLY CLOSED 2026-09-11 — single replica is now a DECISION, not an assumption.** `src/realtime/realtime.pubsub.ts` is the one place the engine is chosen, every module's pub/sub token binds to `realtimePubSub()` rather than to a constructor, and `assertRealtimeTopology` fails the boot on `REALTIME_REPLICAS > 1` or on a `REDIS_URL` that is set but not wired. What remains open is only the swap itself: three steps, one file |
+| 28 | ~~Redis-backed pub/sub, before `web-server` scales past one replica~~ **CLOSED 2026-09-13** | — | `graphql-subscriptions`' in-memory `PubSub` is bound in app.module.ts. An event published on replica A never reaches a socket held by replica B, and the failure is SILENT — half the users simply stop updating. The module depends on the structural `PermissionsPubSub`, so the swap to `graphql-redis-subscriptions` is one provider and no resolver change (§7). **⚠ HARDENED 2026-09-10 — the trigger is now PRESENCE, not the second replica.** Pub/sub across replicas fails silently; presence across replicas fails LOUDLY and constantly, because replica A cannot see sockets held by replica B and half the users show as offline forever. So: Redis before presence ships, or single-replica recorded as a deliberate choice. **`module-chat` is also the feature that makes the pub/sub half unsurvivable** — a plan key arriving late is a stale badge, a message that never arrives is a broken product. **⚠ HARDENED AGAIN 2026-09-11 — the gate is now CHAT ITSELF, not presence.** Delivery is a requirement rather than an enhancement, and the silence of the failure stops being the point: a message that does not arrive is indistinguishable from being ignored. Redis before anyone uses `/chat`, or single-replica enforced by something that FAILS THE BOOT when a second replica appears. **⚠ PARTLY CLOSED 2026-09-11 — single replica is now a DECISION, not an assumption.** `src/realtime/realtime.pubsub.ts` is the one place the engine is chosen, every module's pub/sub token binds to `realtimePubSub()` rather than to a constructor, and `assertRealtimeTopology` fails the boot on `REALTIME_REPLICAS > 1` or on a `REDIS_URL` that is set but not wired. **✅ CLOSED 2026-09-13, and NOT as the three-step swap this entry described.** The operator asked for it to be a CONFIGURATION rather than a code change, which is the better design and was adopted: `graphql-redis-subscriptions` + `ioredis` ship installed, and **`REDIS_URL` alone chooses the engine** — set it and the process runs on Redis, leave it unset and it runs in memory. No rebuild, no flag, no edit. The old arrangement made scaling out — an operational act, usually urgent — need a developer, a pull request and a release, and its 'set but not wired' branch turned configuring the thing correctly into a boot failure. ⚠ The ONE refusal left is the one worth keeping: `REALTIME_REPLICAS > 1` with no `REDIS_URL` still fails the boot, because that is the silent failure. With Redis configured the replica count is not consulted at all |
 | 29 | Rate-limiting subscription volume on an open socket | when realtime carries real traffic | `CredentialThrottlerGuard` skips WebSocket operations — it writes rate-limit headers onto a response a socket does not have, and per-request IP limiting is not the question a socket asks. Bounded today only by the handshake needing a live-session ticket and the connection closing at token expiry. Belongs in `graphql-ws`' `onSubscribe`, which can see the connection. **Narrowed 2026-09-10:** `module-chat` puts MUTATIONS on HTTP and only subscriptions on WS, so a send passes `ThrottlerGuard` and message-rate limiting comes for free. What is left is how many topics one socket may hold |
 | 30 | ~~A per-workspace member screen, for WORKSPACE-level role grants~~ **Closed** | — | **2026-09-07.** Each workspace on the organization detail screen expands to its members and their workspace roles, and an Add-member dialog picks from organization members not already in it, with an optional workspace role beside it. `assignWorkspaceRole` and `revokeWorkspaceRole` now have a UI. Original entry: | `assignWorkspaceRole` and `revokeWorkspaceRole` are exposed and guarded and reachable only through the API. The organization detail screen already toggles workspace MEMBERSHIP per member; adding a second role picker to that same row is how a screen becomes unreadable, so the grants belong on a workspace's own screen |
 | 31 | ~~An invite flow for an address with no account~~ **Closed** | — | **2026-09-07.** `PermInvitation` + `inviteMember`/`revokeInvitation`/`acceptInvitation`, a seven-day single-use token stored as a SHA-256 hash, an app-supplied `sendInvitationEmail` hook, and `/invitations/accept` — which creates the account when there is none. `PermMembershipStatus.invited` is still unwritten and now never will be: an invitation is addressed to an EMAIL, and a membership carries a userId there may not be one of. See the decision log |
@@ -535,6 +535,86 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **STEP 10: Redis is a CONFIGURATION, not a migration — and
+  that is the operator's call, not the plan's.**
+
+  §12.28 had this as "three steps, one file": install the driver, return a
+  `RedisPubSub` in `createEngine`, delete a branch. The operator asked for
+  something better — *"can we make it not a one file swap but just an optional
+  configuration? so that if ever we have redis user just need to configure redis
+  and automatically it will be set to be used"* — and they are right.
+
+  **Scaling out is an OPERATIONAL act, usually urgent.** It should not need a
+  developer, a pull request and a release to complete. The person who
+  provisions a Redis is the person who needed it, and they need it now. So the
+  driver ships installed and **`REDIS_URL` alone decides**: set it and the
+  process publishes and subscribes through Redis, leave it unset and it runs in
+  memory. No rebuild, no second flag, no code change.
+
+  It also deletes the only genuinely perverse state the old design had: a
+  deployment carrying a `REDIS_URL` that nothing read FAILED THE BOOT. Loud,
+  yes — and still an outage caused by configuring the thing correctly.
+
+  ⚠ **The one refusal left is the one worth keeping.** `REALTIME_REPLICAS > 1`
+  with no `REDIS_URL` still fails the boot, because that is the silent failure
+  this whole file exists for: an event published on replica A never reaches a
+  socket held by replica B, with nothing logged, and subscriptions look
+  connected while delivering to a fraction of users. With Redis configured the
+  replica count is not consulted at all — the distributed engine serves one
+  replica perfectly well, and refusing a single-replica deployment that happens
+  to have a Redis would punish the operator who configured it BEFORE scaling,
+  which is the order everybody should do it in.
+
+  **⚠ TWO CONNECTIONS, not one.** A Redis connection in subscriber mode accepts
+  no other commands, so publishing down the same socket fails — `RedisPubSub`
+  takes a separate `publisher` and `subscriber` for exactly that reason, and
+  handing it one client twice is a bug that appears only on the first publish
+  after the first subscribe.
+
+  **⚠ `maxRetriesPerRequest: null`, not the default of 20.** That default fails
+  a command once the connection has been down for twenty retries — sensible for
+  a request with somebody waiting on it, wrong for a subscriber whose whole job
+  is to still be there when the network comes back. A chat that stops delivering
+  after a blip and never resumes is the failure the engine exists to prevent.
+
+  **⚠ AN `error` LISTENER IS NOT OPTIONAL.** ioredis is an EventEmitter, and an
+  emitter that emits `error` with nothing listening THROWS — so a briefly
+  unreachable Redis would take the process down instead of reconnecting.
+
+  **⚠ TWO COPIES OF `ioredis`, caught by the compiler, exactly as the catalog
+  comment predicted.** `pnpm add ioredis` resolved 6.0.0 while
+  `graphql-redis-subscriptions` depends on 5.x, and `tsc` refused the client:
+  two `RedisOptions` from two installs are not the same type. Pinned to `^5`,
+  and `pnpm why ioredis` now reports one version. This is the third time in this
+  repo that a second copy of a package was a bug rather than a duplicate.
+  (Also: the NAMED `Redis` export, not the default — ioredis is CJS and under
+  NodeNext its default import is the module namespace, which is neither
+  constructable nor usable as a type. And the options object is written inline
+  rather than annotated `RedisOptions`, because `exactOptionalPropertyTypes`
+  refuses the annotated one.)
+
+  **VERIFIED BY RUNNING IT, both ways.** With `REDIS_URL` pointed at a port
+  with nothing on it: the boot log says `pub/sub engine: redis`, both
+  connections are opened, the error listener logs `ECONNREFUSED` instead of the
+  process dying, and **the API still starts and serves**. With it unset:
+  `pub/sub engine: memory`, no Redis client constructed. ⚠ What is NOT verified
+  is delivery through a real Redis — there is none on this machine — so
+  cross-replica publish/subscribe is typed, wired and unexercised.
+
+  ⚠ **And that last point corrected a comment I had just written.** The first
+  draft said a process that cannot reach its backend "should be visibly down
+  rather than invisibly delivering to a fraction of its users" — which is not
+  what it does. It starts and retries, and that is the right behaviour: failing
+  the boot would mean a Redis blip during a deploy takes down every REST and
+  GraphQL path in the product, none of which needs pub/sub. Degrading one
+  feature beats losing all of them. The comment now says what actually happens,
+  which is the same lesson as the entry above it.
+
+  **`packages/module-chat/README.md` now exists**, which it did not — the only
+  package without one. It documents the ports and what each one's ABSENCE
+  means, the realtime decision above, participation-is-not-permission, the four
+  registries it declares, and the unread rule.
 
 - **2026-09-13** — **STEP 9, the server half: the grouped unread query, which
   two comments already claimed existed.**
