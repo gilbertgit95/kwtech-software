@@ -301,17 +301,3 @@ export function insertEmoji(
     caret: start + emoji.length,
   };
 }
-
-/**
- * What the quick button may be set to, from either settings screen.
- *
- * ⚠ A SHORT LIST, not the whole picker. This is the one-tap reply — the handful
- * of things people actually send alone — and offering four hundred here would
- * make choosing one a task. Anything else is still reachable: the composer's
- * picker inserts any emoji into a message.
- *
- * ⚠ Shared by `/chat/preferences` (the default) and by a conversation's own
- * settings (the override) rather than declared in each, so the two screens
- * cannot come to offer different choices for one setting.
- */
-export const QUICK_EMOJI_CHOICES: readonly string[] = ['👍', '👌', '🙏', '❤️', '🎉', '😂', '👀', '✅', '🔥', '💯'];

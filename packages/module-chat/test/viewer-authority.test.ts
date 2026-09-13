@@ -126,6 +126,49 @@ describe('the surfaces that offer to add somebody', () => {
   });
 
   /**
+   * ⚠ THE GAP A PREVIOUS COMMIT CREATED. The settings link was groups-only,
+   * on the reasoning that "a direct chat has no settings at all" — true of
+   * everything on that page at the time. It stopped being true the moment the
+   * page gained the viewer's OWN quick emoji, which is per-device, invisible to
+   * the other person, and exactly as applicable to a DM. Hiding the link left
+   * that setting unreachable in every direct conversation.
+   */
+  it('⚠ offers the settings link on a DIRECT chat too, or its quick emoji is unreachable', () => {
+    const source = read('components/message-thread.tsx');
+
+    // The link is no longer inside a `!conversation.isDirect` branch.
+    expect(source).not.toContain('{!conversation.isDirect ? (\n            <a');
+    expect(source).toContain("conversation.isDirect ? 'Options' : 'Settings'");
+  });
+
+  /**
+   * ⚠ BUT THE GROUP-ONLY CONTROLS STAY GROUP-ONLY. A DM cannot be renamed —
+   * it is named by who is in it — cannot take a third person, and is not one
+   * person's to archive or leave.
+   */
+  it('⚠ keeps rename, invite, leave and roles off a direct chat', () => {
+    const thread = read('components/message-thread.tsx');
+    const page = read('pages/chat-settings-page.tsx');
+
+    expect(thread).toContain('!conversation.isDirect && canInvite');
+    // Rename and the role labels are both behind an isDirect check on the page.
+    expect(page).toContain('{conversation.isDirect ? null : (');
+    expect(page).toContain('conversation.isDirect');
+  });
+
+  /**
+   * ⚠ THE SAME CATALOGUE IN BOTH SETTINGS SCREENS. They offered a hand-written
+   * list of ten while the composer offered a hundred and sixty — for what is
+   * the same choice.
+   */
+  it('⚠ lets both settings screens choose from the whole catalogue', () => {
+    for (const file of ['pages/chat-preferences-page.tsx', 'pages/chat-settings-page.tsx']) {
+      expect(read(file)).toContain('<EmojiGrid');
+      expect(read(file)).not.toContain('QUICK_EMOJI_CHOICES');
+    }
+  });
+
+  /**
    * ⚠ A SEPARATE KEY FROM READING. A role can hold `chat:read` without
    * `chat:start` — somebody who may follow conversations they are added to and
    * may not open new ones.

@@ -20,8 +20,8 @@ import {
   writeChatSettings,
 } from '../chat-settings.js';
 import { ChatSubPage } from '../components/chat-sub-page.js';
+import { EmojiGrid } from '../components/emoji-picker.js';
 import { PersonFinder } from '../components/person-finder.js';
-import { QUICK_EMOJI_CHOICES } from '../emoji.js';
 import { CHAT_PREFERENCES_HREF } from '../routes.js';
 import { useConversationSettings } from '../use-conversation-settings.js';
 import { conversationTitle } from '../view/conversation-view.js';
@@ -126,7 +126,21 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
   const names = new Map(conversation.participants.map((one) => [one.userId, one.displayName]));
 
   return (
-    <ChatSubPage title={conversationTitle(conversation)} description="Who is in this conversation, and who runs it.">
+    <ChatSubPage
+      title={conversationTitle(conversation)}
+      /*
+       * ⚠ A DIRECT CHAT HAS NO GROUP SETTINGS, and saying "who runs it" there
+       * would describe a hierarchy that does not exist — both people are equal
+       * and every act a role governs is refused. What it DOES have is the
+       * viewer's own quick emoji, so the page is reachable and honest about
+       * being almost empty rather than hidden.
+       */
+      description={
+        conversation.isDirect
+          ? 'Your own settings for this conversation. Nothing here is shared with the other person.'
+          : 'Who is in this conversation, and who runs it.'
+      }
+    >
       {settings.error ? (
         <p
           role="alert"
@@ -139,48 +153,58 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
         </p>
       ) : null}
 
-      <section className="space-y-3 border-b border-border pb-6">
-        <h2 className="text-sm font-medium text-foreground">Name</h2>
-        {canManage ? (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const next = (title ?? '').trim();
-              if (!next) return;
-              void settings.rename(next);
-              setTitle(null);
-            }}
-            className="flex items-end gap-2"
-          >
-            <input
-              value={title ?? conversation.title ?? ''}
-              onChange={(event) => setTitle(event.target.value)}
-              aria-label="Group name"
-              className={cn(
-                'min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              )}
-            />
-            {/*
+      {/*
+        ⚠ NOT ON A DIRECT CHAT, and not because of a role. A DM is NAMED BY WHO
+        IS IN IT — that is why `title` is nullable in the schema at all — so
+        there is nothing to rename and nobody who could. The fallback below says
+        "only an owner or an admin can rename this", which on a DM would be a
+        sentence about a hierarchy that does not exist and a permission nobody
+        has.
+      */}
+      {conversation.isDirect ? null : (
+        <section className="space-y-3 border-b border-border pb-6">
+          <h2 className="text-sm font-medium text-foreground">Name</h2>
+          {canManage ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const next = (title ?? '').trim();
+                if (!next) return;
+                void settings.rename(next);
+                setTitle(null);
+              }}
+              className="flex items-end gap-2"
+            >
+              <input
+                value={title ?? conversation.title ?? ''}
+                onChange={(event) => setTitle(event.target.value)}
+                aria-label="Group name"
+                className={cn(
+                  'min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                )}
+              />
+              {/*
               Disabled on an empty name rather than sending one: the server
               reads a blank title as "clear it" and the group becomes "Untitled
               group", which is a real state and not one to reach by pressing
               Save.
             */}
-            <button
-              type="submit"
-              disabled={settings.busy || (title ?? conversation.title ?? '').trim() === ''}
-              className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-            >
-              Save
-            </button>
-          </form>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {conversationTitle(conversation)} — only an owner or an admin can rename this.
-          </p>
-        )}
-      </section>
+              <button
+                type="submit"
+                disabled={settings.busy || (title ?? conversation.title ?? '').trim() === ''}
+                className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              >
+                Save
+              </button>
+            </form>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {conversationTitle(conversation)} — only an owner or an admin can rename this.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="space-y-3 border-b border-border py-6">
         <h2 className="text-sm font-medium text-foreground">People</h2>
@@ -198,7 +222,17 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">{names.get(one.userId) ?? one.userId}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {one.status === 'invited' ? 'Invited — has not answered yet' : ROLE_LABELS[role]}
+                    {/*
+                      ⚠ NO ROLE ON A DIRECT CHAT. Both people are equal there
+                      and every act a role governs is refused, so printing
+                      "Member" under each name describes a standing that does
+                      not exist and invites somebody to wonder who the owner is.
+                    */}
+                    {one.status === 'invited'
+                      ? 'Invited — has not answered yet'
+                      : conversation.isDirect
+                        ? null
+                        : ROLE_LABELS[role]}
                   </span>
                 </span>
 
@@ -284,22 +318,9 @@ export function ChatSettingsPage({ params, client }: { params?: Record<string, s
           only to you — nobody else in here sees what you chose.
         </p>
 
-        <div className="flex flex-wrap gap-1">
-          {QUICK_EMOJI_CHOICES.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => setQuick(emoji)}
-              aria-label={emoji}
-              aria-pressed={override === emoji}
-              className={cn(
-                'rounded-md border px-2 py-1 text-lg leading-none',
-                override === emoji ? 'border-primary bg-accent' : 'border-border hover:bg-accent/60',
-              )}
-            >
-              {emoji}
-            </button>
-          ))}
+        {/* ⚠ The same catalogue the composer offers — see the preferences page. */}
+        <div className="rounded-md border border-border p-2">
+          <EmojiGrid selected={override} onPick={(emoji) => setQuick(emoji)} />
         </div>
 
         {/*

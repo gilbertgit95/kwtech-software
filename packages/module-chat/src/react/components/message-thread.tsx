@@ -118,19 +118,22 @@ export function MessageThread({
             archiving would have made this a settings screen wearing a thread as
             a hat — with every one of them pushing the newest message down the
             moment somebody opened it.
-            
-            ⚠ GROUPS ONLY, and not because of a permission: a direct chat has no
-            settings at all. It is named by who is in it, cannot take a third
-            person, and is not one person's to archive on the other's behalf.
+
+            ⚠ ON A DIRECT CHAT TOO, which it was not. The old reasoning was that
+            "a direct chat has no settings at all" — it cannot be renamed, take
+            a third person, or be archived on the other person's behalf — and
+            that was true of everything on the page at the time. It stopped
+            being true the moment the page gained the VIEWER'S OWN quick emoji,
+            which is per-device, invisible to the other person, and exactly as
+            applicable to a DM as to a group. Hiding the link left that setting
+            unreachable in every direct conversation.
           */}
-          {!conversation.isDirect ? (
-            <a
-              href={settingsHref(conversation.id)}
-              className="rounded-md px-2 py-1 text-sm text-primary hover:bg-accent/60"
-            >
-              Settings
-            </a>
-          ) : null}
+          <a
+            href={settingsHref(conversation.id)}
+            className="rounded-md px-2 py-1 text-sm text-primary hover:bg-accent/60"
+          >
+            {conversation.isDirect ? 'Options' : 'Settings'}
+          </a>
           {/*
             ⚠ LEAVING IS OFFERED ON A GROUP ONLY, and not because of a
             permission: a direct chat cannot be left at all. Its `directKey` is

@@ -163,7 +163,19 @@ half-written message and sending that would destroy the draft.
 | Where | What it sets |
 |---|---|
 | `/chat/preferences` | your DEFAULT, used wherever a conversation has no opinion |
-| `/chat/:conversationId/settings` → *Your quick emoji here* | this ONE conversation's button |
+| a conversation's own settings → *Your quick emoji here* | this ONE conversation's button |
+
+⚠ **Including direct messages.** The settings link is on every thread — labelled
+*Options* on a DM, where there are no group settings to speak of. It was
+groups-only, on the reasoning that a direct chat has no settings at all; that
+stopped being true the moment the page gained a setting belonging to the VIEWER
+rather than to the conversation, and hiding the link left it unreachable in
+every DM. The group-only controls stay group-only: a DM cannot be renamed, take
+a third person, or be archived or left.
+
+⚠ Both screens choose from **the whole catalogue**, the same one the composer
+offers — not a shortlist. They briefly offered ten, which meant one screen let
+you choose from 160 emoji and another from 10 for the same choice.
 
 ⚠ A thumbs-up is right for a standup group and wrong for the one conversation
 where somebody always replies ❤️ or 👀. So the button is chosen where it is

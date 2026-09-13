@@ -11,7 +11,7 @@ import {
 } from '../chat-settings.js';
 import { type ChatToneId, playChatTone, unlockChatTones } from '../chat-tone.js';
 import { ChatSubPage } from '../components/chat-sub-page.js';
-import { QUICK_EMOJI_CHOICES } from '../emoji.js';
+import { EmojiGrid } from '../components/emoji-picker.js';
 
 /**
  * `/chat/preferences` — how chat tells you, on THIS device.
@@ -164,22 +164,15 @@ export function ChatPreferencesPage() {
           button.
         </p>
 
-        <div className="mt-3 flex flex-wrap gap-1">
-          {QUICK_EMOJI_CHOICES.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => update({ ...settings, quickEmoji: emoji })}
-              aria-label={emoji}
-              aria-pressed={settings.quickEmoji === emoji}
-              className={cn(
-                'rounded-md border px-2 py-1 text-lg leading-none',
-                settings.quickEmoji === emoji ? 'border-primary bg-accent' : 'border-border hover:bg-accent/60',
-              )}
-            >
-              {emoji}
-            </button>
-          ))}
+        {/*
+          ⚠ THE SAME CATALOGUE THE COMPOSER OFFERS, not a shortlist. This was a
+          hand-written list of ten, which meant one screen let somebody choose
+          from a hundred and sixty emoji and another from ten — for what is the
+          same choice. A shortlist is defensible for the one-tap reply itself
+          and indefensible as the only thing you may pick it from.
+        */}
+        <div className="mt-3 rounded-md border border-border p-2">
+          <EmojiGrid selected={settings.quickEmoji} onPick={(emoji) => update({ ...settings, quickEmoji: emoji })} />
         </div>
 
         {/*

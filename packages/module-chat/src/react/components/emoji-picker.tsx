@@ -29,7 +29,6 @@ export function EmojiPicker({
   onPick: (emoji: string) => void;
   onClose: () => void;
 }) {
-  const [group, setGroup] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
 
   /*
@@ -54,8 +53,6 @@ export function EmojiPicker({
     };
   }, [onClose]);
 
-  const current = EMOJI_GROUPS[group] ?? EMOJI_GROUPS[0];
-
   return (
     <div
       ref={panel}
@@ -63,14 +60,56 @@ export function EmojiPicker({
       aria-label="Choose an emoji"
       className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-lg border border-border bg-card p-2 shadow-lg"
     >
-      {recent.length > 0 ? (
+      <EmojiGrid recent={recent} onPick={onPick} />
+    </div>
+  );
+}
+
+/**
+ * THE CATALOGUE ITSELF — tabs, a grid, and an optional recents row.
+ *
+ * ## ⚠ Why this is separate from the popover
+ *
+ * Because the same catalogue is chosen from in three places: the composer's
+ * popover, the default quick-emoji setting, and a conversation's own quick
+ * emoji. Those last two are INLINE on a settings page, not popovers — they need
+ * no positioning, no Escape handler and no click-outside.
+ *
+ * ⚠ And they used to offer a hand-written list of TEN instead, which is the
+ * bug this split fixes: one screen let somebody choose from a hundred and sixty
+ * emoji and the other from ten, for what is the same choice. A shortlist is
+ * defensible for a one-tap reply and indefensible as the only option.
+ */
+export function EmojiGrid({
+  recent,
+  selected,
+  onPick,
+}: {
+  /** Most recent first. Omitted or empty renders no recents row. */
+  recent?: readonly string[] | undefined;
+  /**
+   * Drawn as chosen, for the settings screens. The composer passes none.
+   *
+   * ⚠ `| undefined` explicitly: this repo compiles with
+   * `exactOptionalPropertyTypes`, so "may be absent" and "may be undefined" are
+   * different types — and a conversation with no override IS `undefined`.
+   */
+  selected?: string | undefined;
+  onPick: (emoji: string) => void;
+}) {
+  const [group, setGroup] = useState(0);
+  const current = EMOJI_GROUPS[group] ?? EMOJI_GROUPS[0];
+
+  return (
+    <div>
+      {recent && recent.length > 0 ? (
         <div className="mb-2 border-b border-border pb-2">
           <p className="px-1 pb-1 text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">
             Recent
           </p>
           <div className="flex flex-wrap">
             {recent.map((emoji) => (
-              <EmojiButton key={`recent-${emoji}`} emoji={emoji} onPick={onPick} />
+              <EmojiButton key={`recent-${emoji}`} emoji={emoji} selected={emoji === selected} onPick={onPick} />
             ))}
           </div>
         </div>
@@ -99,20 +138,29 @@ export function EmojiPicker({
       </div>
 
       {/*
-        A fixed height with its own scroll, so opening the picker never changes
-        the size of the composer beneath it — a panel that resizes as you switch
-        tabs moves the send button while somebody is reaching for it.
+        A fixed height with its own scroll, so switching tabs never changes the
+        size of whatever is around it — a panel that resizes as you switch moves
+        the send button while somebody is reaching for it, and on a settings page
+        it makes everything below jump.
       */}
       <div className="flex h-44 flex-wrap content-start overflow-y-auto">
         {current?.emoji.map((emoji) => (
-          <EmojiButton key={emoji} emoji={emoji} onPick={onPick} />
+          <EmojiButton key={emoji} emoji={emoji} selected={emoji === selected} onPick={onPick} />
         ))}
       </div>
     </div>
   );
 }
 
-function EmojiButton({ emoji, onPick }: { emoji: string; onPick: (emoji: string) => void }) {
+function EmojiButton({
+  emoji,
+  selected,
+  onPick,
+}: {
+  emoji: string;
+  selected?: boolean;
+  onPick: (emoji: string) => void;
+}) {
   return (
     <button
       type="button"
@@ -128,7 +176,10 @@ function EmojiButton({ emoji, onPick }: { emoji: string; onPick: (emoji: string)
         onPick(emoji);
       }}
       aria-label={emoji}
-      className="rounded p-1 text-lg leading-none hover:bg-accent"
+      className={cn(
+        'rounded p-1 text-lg leading-none hover:bg-accent',
+        selected ? 'bg-accent ring-2 ring-primary' : '',
+      )}
     >
       {emoji}
     </button>

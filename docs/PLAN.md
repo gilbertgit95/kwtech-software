@@ -539,6 +539,46 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **The quick emoji was unreachable in every DIRECT MESSAGE,
+  and both settings screens offered a tenth of the catalogue.**
+
+  Two corrections from the operator, and the first is a gap the previous commit
+  created.
+
+  **⚠ THE SETTINGS LINK WAS GROUPS-ONLY**, on reasoning that was sound when it
+  was written: *"a direct chat has no settings at all — it is named by who is in
+  it, cannot take a third person, and is not one person's to archive on the
+  other's behalf."* True of everything on that page **at the time**. It stopped
+  being true the moment the page gained the VIEWER'S OWN quick emoji, which is
+  per-device, invisible to the other person, and exactly as applicable to a DM
+  as to a group. So the per-conversation setting shipped unreachable in every
+  direct conversation.
+
+  ⚠ **The lesson is about the comment, not the link.** The justification was
+  accurate and became false because the page's PURPOSE changed underneath it —
+  from "settings the conversation has" to "settings about this conversation,
+  some of them yours". A reason that holds for a page's contents is not a reason
+  that holds for its contents forever, and nothing re-reads it.
+
+  The link is now on every thread, labelled **Options** on a DM. ⚠ And the
+  group-only controls stay group-only: rename is hidden entirely rather than
+  falling back to "only an owner or an admin can rename this" — which on a DM
+  describes a hierarchy that does not exist and a permission nobody has — and
+  role labels are dropped, because printing "Member" under both names invites
+  somebody to wonder who the owner is.
+
+  **⚠ AND THE SETTINGS SCREENS OFFERED TEN EMOJI while the composer offered a
+  hundred and sixty**, for what is the same choice. A shortlist is defensible
+  for the one-tap reply itself and indefensible as the only thing you may pick
+  it from. `QUICK_EMOJI_CHOICES` is deleted; `EmojiGrid` is split out of
+  `EmojiPicker` — the grid, the tabs and the recents row with no positioning,
+  no Escape handler and no click-outside — and all three surfaces render it.
+
+  ⚠ The split is what makes "the same catalogue everywhere" structural rather
+  than a promise: there is now one component, so a screen cannot come to offer a
+  different set. A test asserts both settings pages use it and neither mentions
+  a shortlist.
+
 - **2026-09-13** — **The quick button is PER CONVERSATION, not one setting for
   everywhere.**
 

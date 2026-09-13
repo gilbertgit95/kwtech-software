@@ -25,7 +25,10 @@ export {
   CHAT_TONE_CHOICES,
   type ChatSettings,
   DEFAULT_CHAT_SETTINGS,
+  MAX_QUICK_OVERRIDES,
   readChatSettings,
+  resolveQuickEmoji,
+  withQuickEmojiFor,
   writeChatSettings,
 } from './chat-settings.js';
 export {
@@ -40,7 +43,7 @@ export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.
 export { AvailabilityPicker } from './components/availability-picker.js';
 export { ChatSubPage } from './components/chat-sub-page.js';
 export { ConversationList } from './components/conversation-list.js';
-export { EmojiPicker } from './components/emoji-picker.js';
+export { EmojiGrid, EmojiPicker } from './components/emoji-picker.js';
 export { MessageComposer } from './components/message-composer.js';
 export { MessageThread } from './components/message-thread.js';
 export { NewConversation } from './components/new-conversation.js';
