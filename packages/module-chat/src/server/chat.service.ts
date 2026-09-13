@@ -5,7 +5,7 @@ import { countsAsUnread, MAX_CATCH_UP, pageSize } from '../domain/messages.js';
 import { canAccessConversation, isLiveParticipant } from '../domain/participation.js';
 import type { Availability, BlockView } from '../types.js';
 import { ChatWriteError } from './chat.errors.js';
-import type { ChatPrismaClient, ConversationRow, MessageRow, ParticipantRow } from './chat.repository.js';
+import type { ChatPrismaClient, ConversationRow, KeysetClause, MessageRow, ParticipantRow } from './chat.repository.js';
 import { CHAT_PRISMA, CHAT_USER_DIRECTORY } from './chat.tokens.js';
 import type { DirectoryUser, UserDirectory } from './user-directory.js';
 
@@ -39,9 +39,14 @@ export class ChatService {
   /**
    * Everything this person is in or has been invited to, most recent first.
    *
-   * ⚠ ONE GROUPED PASS, never a count per conversation per render — which is how
-   * the panel becomes the slowest thing in the app. Three queries total,
-   * whatever the number of conversations.
+   * ⚠ A CONSTANT NUMBER OF QUERIES, never a count per conversation per render —
+   * which is how the panel becomes the slowest thing in the app. Five: the
+   * viewer's own rows, the conversations, everybody in them, the unread marks,
+   * and one grouped count. Five for one conversation and five for two hundred.
+   *
+   * ⚠ This comment CLAIMED that before it was true — unread was a `findUnique`
+   * plus a `count` per conversation underneath it, so the real figure was
+   * `3 + 2n`. See `unreadByConversation`.
    */
   async listConversations(actorId: string): Promise<ConversationSummary[]> {
     const mine = await this.prisma.chatParticipant.findMany({
@@ -65,25 +70,25 @@ export class ChatService {
       byConversation.set(row.conversationId, list);
     }
 
-    const summaries = await Promise.all(
-      conversations.map(async (conversation) => {
-        const me = mine.find((row) => row.conversationId === conversation.id);
-        if (!me) return null;
-        return {
-          conversation,
-          me,
-          /*
-           * ⚠ Only people who are STILL THERE. A `left` or `removed` row is
-           * history, and listing it would tell everybody who walked out and
-           * when — which is not the participant list's job.
-           */
-          participants: (byConversation.get(conversation.id) ?? []).filter(
-            (row) => row.status === 'active' || row.status === 'invited',
-          ),
-          unread: canAccessConversation(me) ? await this.unreadCount(actorId, me) : 0,
-        };
-      }),
-    );
+    const unread = await this.unreadByConversation(actorId, mine);
+
+    const summaries = conversations.map((conversation) => {
+      const me = mine.find((row) => row.conversationId === conversation.id);
+      if (!me) return null;
+      return {
+        conversation,
+        me,
+        /*
+         * ⚠ Only people who are STILL THERE. A `left` or `removed` row is
+         * history, and listing it would tell everybody who walked out and
+         * when — which is not the participant list's job.
+         */
+        participants: (byConversation.get(conversation.id) ?? []).filter(
+          (row) => row.status === 'active' || row.status === 'invited',
+        ),
+        unread: unread.get(conversation.id) ?? 0,
+      };
+    });
 
     return summaries.filter((summary): summary is ConversationSummary => summary !== null);
   }
@@ -113,7 +118,14 @@ export class ChatService {
       conversation,
       me,
       participants: participants.filter((row) => row.status === 'active' || row.status === 'invited'),
-      unread: canAccessConversation(me) ? await this.unreadCount(actorId, me) : 0,
+      /*
+       * ⚠ THE SAME FUNCTION THE LIST USES, called with one row. A second
+       * implementation for the single case is how a detail view and the list
+       * beside it come to disagree about the same number — and the rule it
+       * would have to restate (three exclusions and a keyset boundary) is
+       * exactly the kind that gets restated slightly wrong.
+       */
+      unread: (await this.unreadByConversation(actorId, [me])).get(conversationId) ?? 0,
     };
   }
 
@@ -188,26 +200,81 @@ export class ChatService {
     return { messages, truncated: false };
   }
 
-  /** The viewer's unread count for one conversation, from their own mark. */
-  async unreadCount(actorId: string, me: ParticipantRow): Promise<number> {
-    const mark = me.lastReadMessageId
-      ? await this.prisma.chatMessage.findUnique({ where: { id: me.lastReadMessageId } })
-      : null;
+  /**
+   * HOW MUCH IS WAITING, per conversation, in two queries for all of them.
+   *
+   * ## ⚠ Why this is not a count per conversation
+   *
+   * It was, and the cost was quadratic in the wrong place. Every render of the
+   * list, and every re-read the nav badge does when ANYBODY sends this person a
+   * message, ran a `findUnique` for the mark plus a `count` for the tail — per
+   * conversation. A person in twenty conversations paid forty round trips to
+   * answer one number, on the hottest path in the product. The plan called this
+   * out before it was built ("ONE GROUPED QUERY, never a COUNT per conversation
+   * per render, which is how the panel becomes the slowest thing in the app")
+   * and the comment above `listConversations` claimed it was already true.
+   *
+   * ## What makes it groupable
+   *
+   * The three exclusions are the same for every conversation; only the CUT-OFF
+   * differs, because each is counted from this viewer's own mark. So the marks
+   * are read in one query, the boundaries become one `OR` of per-conversation
+   * clauses, and the database groups.
+   *
+   * ⚠ THE KEYSET PAIR, not the id. `id: { gt }` alone would rely on ids
+   * sorting the way time does, and cuid only roughly does — one out-of-order id
+   * is a message that never clears or never counts.
+   *
+   * ⚠ A MARK THAT NO LONGER RESOLVES COUNTS EVERYTHING, which is the same
+   * reading the per-conversation version made: an unknown boundary must fail
+   * towards "there is something to read", because the other direction hides a
+   * message behind a badge that says nothing is waiting.
+   *
+   * @param mine the viewer's own participant rows. INVITED rows are dropped
+   *   here rather than by the caller: an invitation shows who sent it and not
+   *   one word of what was said (§12.51), so counting its messages would put a
+   *   number on a thread the viewer is refused.
+   * @returns conversation id to count. A conversation with nothing waiting is
+   *   ABSENT rather than zero — `groupBy` returns no row for an empty group,
+   *   and inventing one would mean walking the whole list to do it.
+   */
+  async unreadByConversation(actorId: string, mine: readonly ParticipantRow[]): Promise<Map<string, number>> {
+    const readable = mine.filter((row) => canAccessConversation(row));
+    if (readable.length === 0) return new Map();
 
-    return this.prisma.chatMessage.count({
+    const markIds = readable.map((row) => row.lastReadMessageId).filter((id): id is string => id !== null);
+    const marks = markIds.length ? await this.prisma.chatMessage.findMany({ where: { id: { in: markIds } } }) : [];
+    const markById = new Map(marks.map((row) => [row.id, row]));
+
+    /*
+     * One clause per conversation: everything in it, or everything in it after
+     * this viewer's mark. Built as an OR so a single `groupBy` can answer for
+     * all of them at once.
+     */
+    const clauses = readable.map((row) => {
+      const mark = row.lastReadMessageId ? markById.get(row.lastReadMessageId) : undefined;
+      if (!mark) return { conversationId: row.conversationId };
+      return {
+        conversationId: row.conversationId,
+        OR: [{ createdAt: { gt: mark.createdAt } }, { createdAt: mark.createdAt, id: { gt: mark.id } }] as const,
+      };
+    });
+
+    const groups = await this.prisma.chatMessage.groupBy({
+      by: ['conversationId'],
       where: {
-        conversationId: me.conversationId,
-        // The per-message half of the rule lives in the domain; this is the same
-        // three exclusions expressed as a query. `countsAsUnread` is what the
-        // tests assert against, and it is asserted to agree with this.
+        // The per-message half of the rule lives in the domain; these are the
+        // same three exclusions expressed as a query. `countsAsUnread` is what
+        // the tests assert against, and it is asserted to agree with this.
         kind: 'user',
         deletedAt: null,
         authorId: { not: actorId },
-        ...(mark
-          ? { OR: [{ createdAt: { gt: mark.createdAt } }, { createdAt: mark.createdAt, id: { gt: mark.id } }] }
-          : {}),
+        OR: clauses as { conversationId: string; OR?: KeysetClause<'gt'> }[],
       },
+      _count: { _all: true },
     });
+
+    return new Map(groups.map((group) => [group.conversationId, group._count._all]));
   }
 
   /**

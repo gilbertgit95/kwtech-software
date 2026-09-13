@@ -536,6 +536,67 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **STEP 9, the server half: the grouped unread query, which
+  two comments already claimed existed.**
+
+  `listConversations` said "ONE GROUPED PASS — three queries total, whatever
+  the number of conversations", and `chat-unread-badge.tsx` told the reader
+  "the server already computes unread per conversation in one grouped pass, so
+  the whole badge is one query rather than arithmetic that can drift". Neither
+  was true. `unreadCount` ran a `findUnique` for the mark and a `count` for the
+  tail, PER CONVERSATION, so the real cost was `3 + 2n` — forty round trips for
+  somebody in twenty conversations.
+
+  ⚠ **And it is the hottest path in the product**, which is what makes it worth
+  its own commit rather than a line in step 9. The badge re-reads on EVERY event
+  the socket delivers, coalesced but not counted locally on purpose, so the
+  quadratic read runs again every time anybody sends this person a message — in
+  every open tab.
+
+  **What makes it groupable:** the three exclusions (`kind: 'user'`, no
+  tombstone, not your own) are the same for every conversation; only the
+  CUT-OFF differs, because each is counted from that viewer's own mark. So the
+  marks are read in one `findMany` by id, the per-conversation boundaries become
+  one `OR` of clauses, and the database groups. **Five queries now, for one
+  conversation or two hundred** — and the comment says five rather than three,
+  because a comment that rounds in its own favour is how this started.
+
+  ⚠ **The keyset pair survived the rewrite, and it is the whole correctness of
+  the badge.** `id: { gt }` alone would rely on ids sorting the way time does,
+  and cuid only roughly does. A clause is `conversationId` AND (later timestamp
+  OR same timestamp with a greater id) — the order the thread is paged in.
+
+  ⚠ **The fake's `count` ignored the keyset clause entirely**, which is the
+  same criticism its own `findMany` carries in a comment: a fake that cannot
+  fail the way the database can. So the boundary could have been wrong in either
+  direction with every test passing. `groupBy` in the fake honours the pair, and
+  a test now forces a timestamp COLLISION — two messages at the same instant,
+  which the database produces on its own inside a burst — and asserts the id
+  breaks the tie.
+
+  **`conversationFor` calls the same function with a single row.** A second
+  implementation for the single case is how a detail view and the list beside it
+  come to disagree about one number, and the rule it would restate — three
+  exclusions and a keyset boundary — is exactly the kind that gets restated
+  slightly wrong.
+
+  ⚠ **An INVITED row is dropped inside the counter, not by its callers.** An
+  invitation shows who sent it and not one word of what was said (§12.51), so
+  counting its messages would put a number on a thread the viewer is refused.
+  Doing it in one place means a third caller cannot forget.
+
+  ⚠ **A mark that no longer resolves counts EVERYTHING.** An unknown boundary
+  has to fail towards "there is something to read"; the other direction hides a
+  message behind a badge saying nothing is waiting. That was the old behaviour
+  too, and it is now asserted rather than incidental.
+
+  **Eight tests, and the one that matters is the cost.** Every other assertion
+  here passes just as well against the quadratic version — it returns the right
+  numbers, it is simply slow, and nothing about the output says so. So a
+  counting proxy wraps the client and asserts that six conversations cost the
+  same five queries as two. That is the regression that is otherwise invisible
+  in review.
+
 - **2026-09-12** — **THE THIRD DECLARATION: a module can now say what happens
   when nobody said, and the screen stopped owning the list of moments.**
 

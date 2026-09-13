@@ -148,7 +148,16 @@ export interface ChatPrismaClient {
     findUnique(args: { where: { id: string } }): Promise<MessageRow | null>;
     findMany(args: {
       where: {
-        conversationId: string | { in: string[] };
+        conversationId?: string | { in: string[] };
+        /**
+         * ⚠ The MARKS, fetched in one query rather than one per conversation.
+         *
+         * `lastReadMessageId` is a message id, and the unread count needs that
+         * message's `(createdAt, id)` pair to compare against. Read one at a
+         * time — which is what `findUnique` in a loop was — a viewer in
+         * twenty conversations costs twenty round trips to answer one badge.
+         */
+        id?: { in: string[] };
         OR?: KeysetClause<'lt'> | KeysetClause<'gt'>;
       };
       orderBy?: ({ createdAt: 'desc' | 'asc' } | { id: 'desc' | 'asc' })[];
@@ -172,6 +181,37 @@ export interface ChatPrismaClient {
         OR?: KeysetClause<'gt'>;
       };
     }): Promise<number>;
+    /**
+     * EVERY conversation's unread count, in ONE query.
+     *
+     * ## ⚠ Why a count per conversation could not stay
+     *
+     * The three exclusions are the same for everybody, but the CUT-OFF is not:
+     * each conversation is counted from that viewer's own mark, so there is a
+     * different `(createdAt, id)` boundary per group. Expressed as one `count`
+     * per conversation — which is what this replaced — a viewer in twenty
+     * conversations paid forty round trips (a mark, then a count, each) every
+     * time the list rendered or the badge re-read, and the badge re-reads on
+     * every message anybody sends them.
+     *
+     * So the per-conversation boundaries become one `OR` of per-conversation
+     * clauses, and the database groups. Two queries for the whole screen,
+     * whatever the number of conversations.
+     *
+     * ⚠ The keyset pair is still the whole correctness of it — see `count`.
+     * A clause is `conversationId` AND (later timestamp OR same timestamp with
+     * a greater id), never `id: { gt }` alone.
+     */
+    groupBy(args: {
+      by: ['conversationId'];
+      where: {
+        kind: MessageKind;
+        deletedAt: null;
+        authorId?: { not: string };
+        OR: { conversationId: string; OR?: KeysetClause<'gt'> }[];
+      };
+      _count: { _all: true };
+    }): Promise<{ conversationId: string; _count: { _all: number } }[]>;
   };
   chatBlock: {
     findMany(args: { where: { OR: ({ blockerId: string } | { blockedId: string })[] } }): Promise<BlockRow[]>;

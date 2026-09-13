@@ -201,17 +201,23 @@ export function fakeClient(state: FakeState = emptyState()) {
        */
       async findMany(args: {
         where: {
-          conversationId: string | { in: string[] };
+          conversationId?: string | { in: string[] };
+          id?: { in: string[] };
           OR?: ({ createdAt: { lt?: Date; gt?: Date } } | { createdAt: Date; id: { lt?: string; gt?: string } })[];
         };
         orderBy?: ({ createdAt: 'asc' | 'desc' } | { id: 'asc' | 'desc' })[];
         take?: number;
       }) {
         const where = args.where;
-        const inScope = (row: MessageRow) =>
-          typeof where.conversationId === 'string'
+        // ⚠ BY ID is how the unread marks are read — one query for all of them
+        // rather than a `findUnique` per conversation.
+        const inScope = (row: MessageRow) => {
+          if (where.id) return where.id.in.includes(row.id);
+          if (where.conversationId === undefined) return true;
+          return typeof where.conversationId === 'string'
             ? row.conversationId === where.conversationId
             : where.conversationId.in.includes(row.conversationId);
+        };
 
         // The pair, exactly as Prisma is asked for it: a timestamp comparison
         // OR the same timestamp with the id breaking the tie.
@@ -248,6 +254,59 @@ export function fakeClient(state: FakeState = emptyState()) {
             row.deletedAt === null &&
             (args.where.authorId ? row.authorId !== args.where.authorId.not : true),
         ).length;
+      },
+      /**
+       * ⚠ HONOURS THE KEYSET, unlike the `count` above it.
+       *
+       * That one ignores the `OR` clause entirely, which made it a fake that
+       * could not fail the way the database can — an unread count that counted
+       * from the wrong boundary passed here and would have been wrong in
+       * production. The whole correctness of a badge is the cut-off, so the
+       * grouped version compares the pair the way Prisma is asked to: a later
+       * timestamp, OR the same timestamp with a greater id.
+       *
+       * An empty group produces NO ROW, as `groupBy` does. A fake returning
+       * zeroes would hide a caller that assumed one.
+       */
+      async groupBy(args: {
+        by: ['conversationId'];
+        where: {
+          authorId?: { not: string };
+          OR: {
+            conversationId: string;
+            OR?: ({ createdAt: { gt: Date } } | { createdAt: Date; id: { gt: string } })[];
+          }[];
+        };
+        _count: { _all: true };
+      }) {
+        const counts = new Map<string, number>();
+
+        for (const clause of args.where.OR) {
+          const after = (row: MessageRow) => {
+            if (!clause.OR) return true;
+            return clause.OR.some((bound) =>
+              'id' in bound
+                ? row.createdAt.getTime() === bound.createdAt.getTime() && row.id > bound.id.gt
+                : row.createdAt.getTime() > bound.createdAt.gt.getTime(),
+            );
+          };
+
+          const matching = state.messages.filter(
+            (row) =>
+              row.conversationId === clause.conversationId &&
+              row.kind === 'user' &&
+              row.deletedAt === null &&
+              (args.where.authorId ? row.authorId !== args.where.authorId.not : true) &&
+              after(row),
+          ).length;
+
+          if (matching > 0) counts.set(clause.conversationId, matching);
+        }
+
+        return [...counts.entries()].map(([conversationId, total]) => ({
+          conversationId,
+          _count: { _all: total },
+        }));
       },
       async create(args: {
         data: {
