@@ -20,6 +20,22 @@ export {
   createChatClient,
   DEFAULT_GRAPHQL_PATH,
 } from './chat-client.js';
+export {
+  CHAT_SETTINGS_STORAGE_KEY,
+  CHAT_TONE_CHOICES,
+  type ChatSettings,
+  DEFAULT_CHAT_SETTINGS,
+  readChatSettings,
+  writeChatSettings,
+} from './chat-settings.js';
+export {
+  CHAT_TONES,
+  type ChatToneId,
+  DEFAULT_CHAT_TONE,
+  isChatToneId,
+  playChatTone,
+  unlockChatTones,
+} from './chat-tone.js';
 export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.js';
 export { AvailabilityPicker } from './components/availability-picker.js';
 export { ConversationList } from './components/conversation-list.js';
@@ -28,9 +44,11 @@ export { MessageThread } from './components/message-thread.js';
 export { NewConversation } from './components/new-conversation.js';
 export { PersonFinder } from './components/person-finder.js';
 export { PresenceDot } from './components/presence-dot.js';
-export { CHAT_HREF, type ChatWebModuleOptions, chatWebModule } from './module.js';
+export { type ChatWebModuleOptions, chatWebModule } from './module.js';
 export { ChatPage } from './pages/chat-page.js';
+export { ChatPreferencesPage } from './pages/chat-preferences-page.js';
 export { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';
+export { CHAT_HREF, CHAT_PREFERENCES_HREF } from './routes.js';
 export { type ChatState, type UseChatOptions, useChat } from './use-chat.js';
 export { useConversationSettings } from './use-conversation-settings.js';
 /*

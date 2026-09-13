@@ -127,6 +127,60 @@ in it, deciding who runs it — and **not one word of what was said in it**.
 seeds nothing; a host says who may use chat by adopting the `chat-user` preset
 into one of its own roles.
 
+## The tone, and the settings that are not on the server
+
+A short sound when a message arrives — and **the whole of what `dnd` can
+honestly claim** until a notification system exists. Availability ships as a
+coloured dot, and a dot that lies is worse than no dot.
+
+**The rule lives in `shouldPlayTone`**, in the domain, because each of its four
+refusals is a complaint somebody would otherwise make:
+
+| Silent when | Because |
+|---|---|
+| the setting is off | somebody asked for silence |
+| it is your own message | ⚠ otherwise it beeps when you press send, in every open tab |
+| it is a system message | "X left" is addressed to nobody — the same rule keeps it out of the unread count |
+| the conversation is open **and** the window focused | it would beep at you while you watch it arrive |
+| availability is `dnd` | §12.44 |
+
+⚠ **Both halves of the fourth are required.** An open thread in a BACKGROUND
+tab must still sound: you are not looking at it, which is exactly when being
+told matters.
+
+### ⚠ The preview button is the unlock, not a nicety
+
+Browsers refuse to start audio until the page has been interacted with, and a
+tone played into a context that was never unlocked is dropped **silently** — no
+error, nothing in the console worth reading, just a chat that never makes a
+sound. Pressing Play on `/chat/preferences` is a real user gesture, so it is
+what switches the feature on for real.
+
+### Synthesised, not fetched
+
+No audio file ships. The tones are built from an oscillator, described in
+`chat-tone.ts` as a couple of notes each. A file has to arrive before it can
+play — so the first message after a load would race the download, and the fix
+is preloading every tone on every page. ⚠ What this gives up: a designer cannot
+replace a sound without writing code. If that becomes the point, `play` takes a
+URL and the catalogue grows a `src`; the seam is one function wide.
+
+### Stored per DEVICE
+
+`localStorage`, under `kwtech_chat_settings`, holding `{ enabled, tone }`. Not
+the database, and that is the honest scope: somebody muting chat at a shared
+desk means *here*, not on their phone.
+
+⚠ The two values are kept apart rather than collapsed into a tone called "off",
+so muting and unmuting gives you back the sound you chose. ⚠ Every read
+validates — storage that throws, unparseable JSON, the wrong shape, a tone this
+build no longer ships — because every one of those failures otherwise lands at
+the moment a message arrives.
+
+⚠ Sound is **off by default**. Chat is one page inside a back-office
+application, and a tab that starts making noise because somebody navigated to
+the product is a setting people hunt for angrily rather than discover.
+
 ## Unread
 
 `lastReadMessageId` on `ChatParticipant`, monotonic with the keyset ordering

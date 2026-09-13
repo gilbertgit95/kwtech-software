@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { composeNav, composeRoutes } from '@kwtech/module-kit';
 import { chatIsEnabled } from '../src/enabled.js';
 import { CHAT_FEATURE } from '../src/feature-keys.js';
-import { CHAT_HREF, chatWebModule } from '../src/react/module.js';
+import { CHAT_HREF, CHAT_PREFERENCES_HREF, chatWebModule } from '../src/react/module.js';
 
 /**
  * What adopting chat on the web actually contributes — and what switching it
@@ -22,14 +22,17 @@ describe('chatWebModule', () => {
 
     expect(composeRoutes([module]).map((route) => route.path)).toEqual([
       CHAT_HREF,
+      CHAT_PREFERENCES_HREF,
       `${CHAT_HREF}/:conversationId/settings`,
     ]);
 
     /*
-     * ⚠ ONE drawer entry from two routes. The settings page is UNLISTED — no
-     * `nav` at all — because a settings screen for one conversation has nothing
-     * to offer somebody who has not opened that conversation, and the drawer is
-     * for places rather than for things.
+     * ⚠ ONE drawer entry from THREE routes. Both sub-pages are UNLISTED — no
+     * `nav` at all. A settings screen for one conversation has nothing to offer
+     * somebody who has not opened that conversation, and the preferences page
+     * is a preference rather than a place: people look for it when a sound
+     * annoys them, which is while they are already on /chat. The drawer is for
+     * places.
      */
     const [entry] = composeNav([module], [CHAT_FEATURE.read]);
     expect(composeNav([module], [CHAT_FEATURE.read])).toHaveLength(1);
@@ -39,6 +42,22 @@ describe('chatWebModule', () => {
     // doors to one place is how somebody learns to wonder which is the real
     // one.
     expect(entry?.Badge).toBeDefined();
+  });
+
+  /**
+   * ⚠ `/chat/preferences` AND `/chat/:conversationId/settings` MUST NOT
+   * COLLIDE, and the reason they do not is worth an assertion rather than a
+   * glance: they are different LENGTHS. A `/chat/:conversationId` route would
+   * make `preferences` ambiguous with a conversation id the moment somebody
+   * added one — this is the test that would notice.
+   */
+  it('⚠ keeps the static preferences path unambiguous against the dynamic one', () => {
+    const routes = composeRoutes([chatWebModule()]);
+    const dynamic = routes.filter((route) => route.path.includes(':'));
+
+    for (const route of dynamic) {
+      expect(route.path.split('/').length).not.toBe(CHAT_PREFERENCES_HREF.split('/').length);
+    }
   });
 
   it('⚠ contributes NOTHING to the app header', () => {

@@ -536,6 +536,92 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-13** — **STEP 9, the rest: the tone, and settings deliberately not
+  on the server.**
+
+  **⚠ SYNTHESISED, NOT FETCHED — a departure from the plan, recorded as one.**
+  §9 said "three to five short self-hosted files, mp3 (Safari does not take
+  ogg), mono, tiny". No audio file ships. The tones are an oscillator and a
+  couple of notes each. Three reasons, in order: **a file has to arrive before
+  it can play**, so the first message after a load races the download and the
+  fix is preloading four files on every page so one might be used; the repo has
+  no binary assets and `apps/web-app` has no `public/`, so this would add an
+  asset pipeline — and a second one for any app adopting the module — to ship
+  four blips; and a two-note blip is exactly describable in code, where four
+  opaque binaries are not.
+  ⚠ What it gives up, plainly: a designer cannot replace a sound without writing
+  code, and nothing richer than a blip is available this way. The seam is one
+  function wide if that changes — `play` takes a URL and the catalogue grows a
+  `src`. (There is also no encoder on this machine, which is a reason to notice
+  the question, not the reason for the answer.)
+  ⚠ It does NOT dodge the autoplay problem: an `AudioContext` is created
+  `suspended` in exactly the browsers that block `play()`.
+
+  **⚠ THE PREVIEW BUTTON IS THE UNLOCK, exactly as the plan said.** A tone
+  played into a context that was never unlocked is dropped SILENTLY — no error,
+  nothing in the console worth reading, just a chat that never makes a sound and
+  somebody concluding the setting is broken. Every control on the preferences
+  page calls `unlockChatTones()`, from the event handler and never an effect: in
+  an effect it runs outside the gesture and the browser refuses again. ⚠ And
+  Play stays LIVE when sound is switched off — auditioning is how somebody
+  decides whether to turn it on, and disabling it would mean the only way to
+  unlock audio is to first enable a sound you have never heard.
+
+  **The rule is a pure function in the DOMAIN**, not four conditions in a socket
+  handler. `shouldPlayTone` refuses for: the setting being off, your own
+  message, a system message, `dnd`, and the conversation being open AND the
+  window focused. ⚠ Both halves of that last one are required — an open thread
+  in a BACKGROUND tab must still sound, because you are not looking at it, which
+  is exactly when being told matters. ⚠ `dnd` is checked PER ARRIVAL rather
+  than by hiding the setting, because availability changes while the setting
+  stays put.
+
+  **⚠ Two stale-closure hazards, both real.** The subscription is built once and
+  captures what it sees. Read from state, somebody who set themselves to `dnd`
+  would keep hearing tones until the socket happened to be rebuilt — reported as
+  "do not disturb does not work" and unreproducible for whoever picks it up. So
+  availability and the viewer's id go through refs, as `selectedRef` already
+  did. ⚠ The settings are read from localStorage PER ARRIVAL rather than held
+  in state: muting in one tab means muted, not "muted in that tab".
+
+  **⚠ The tone is decided for EVERY conversation, not the open one.** It sits
+  outside the `selectedRef` check, which exists only to decide whether the
+  thread on screen redraws. A message in a thread you are not looking at is
+  precisely the one you need to hear about.
+
+  **`localStorage`, one key, `{ enabled, tone }`.** The honest scope of "mute
+  chat" is this machine. ⚠ The two values are kept APART rather than collapsed
+  into a tone called "off", so muting and unmuting returns the sound you chose —
+  a single field cannot remember that. ⚠ Every read validates: storage that
+  THROWS (Safari private mode, blocked site data), absent, unparseable,
+  parseable but wrong-shaped, and a tone id this build no longer ships. All five
+  resolve to the default, because all five otherwise land at the moment a
+  message arrives. ⚠ Sound is OFF by default: chat is one page inside a
+  back-office application, and a tab that starts making noise because somebody
+  navigated to the product is a setting people hunt for angrily rather than
+  discover.
+
+  **⚠ `/chat/preferences`, NOT `/chat/settings`.**
+  `/chat/:conversationId/settings` already exists and means something else —
+  what a group is called and who runs it. Two pages a segment apart, both called
+  settings, one about a conversation and one about a browser, is a collision
+  people resolve by opening the wrong one. A test asserts the static path cannot
+  become ambiguous with the dynamic one (different lengths), which is what would
+  break the day somebody adds `/chat/:id`.
+
+  `CHAT_HREF` moved to its own `routes.ts`: the chat page needed it to link to
+  preferences, and `module.tsx` imports the page, so that would have been a
+  cycle — across a `'use client'` boundary, where the module is a
+  client-reference proxy and initialisation order stops being something to
+  reason about. Re-exported, so the public surface is unchanged.
+
+  ⚠ **`shouldPlayTone` and the settings have tests; the PLAYER does not.**
+  Nothing here runs a browser, so the oscillator graph, the fade envelope that
+  stops the click at each end, and the suspended-context path are typed and
+  reasoned about rather than exercised. The catalogue IS asserted — three to
+  five tones, unique ids, every one under a third of a second — because that
+  much is data rather than audio.
+
 - **2026-09-13** — **STEP 10: Redis is a CONFIGURATION, not a migration — and
   that is the operator's call, not the plan's.**
 
@@ -2456,9 +2542,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
      folded into step 9: the list is the honest account of what was built, and
      a step that appeared because something earlier had a consequence is the
      most useful kind to write down. See §12.54 and the 2026-09-12 entries.
-  9. Tone, chat settings in `localStorage`, and the grouped unread query.
-  10. Redis (§12.28) — which by then gates PRESENCE, not merely a second
-     replica — or single-replica recorded as a deliberate choice.
+  9. ✅ **DONE 2026-09-13**, in two commits. Tone, chat settings in
+     `localStorage`, and the grouped unread query — which was the bigger half,
+     because two comments already claimed it existed.
+  10. ✅ **DONE 2026-09-13.** Redis (§12.28), shipped as a CONFIGURATION rather
+     than the planned code swap, at the operator's request: `REDIS_URL` alone
+     chooses the engine, and nothing else changes.
 
   ⚠ Steps 8 and 9 are last for a reason: every one of them is a nicety over a
   conversation that has to work first, and each is cheap to add and expensive to

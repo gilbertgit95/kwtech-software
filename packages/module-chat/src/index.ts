@@ -18,6 +18,7 @@ export * from './domain/conversations.js';
 export * from './domain/messages.js';
 export * from './domain/participant-roles.js';
 export * from './domain/participation.js';
+export * from './domain/tone.js';
 export * from './enabled.js';
 export * from './feature-keys.js';
 export * from './operations.js';

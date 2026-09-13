@@ -6,6 +6,7 @@ import type { ChatClient } from '../chat-client.js';
 import { ConversationList } from '../components/conversation-list.js';
 import { MessageThread } from '../components/message-thread.js';
 import { NewConversation } from '../components/new-conversation.js';
+import { CHAT_PREFERENCES_HREF } from '../routes.js';
 import { useChat } from '../use-chat.js';
 
 /**
@@ -70,10 +71,30 @@ export function ChatPage({ client }: { client?: ChatClient } = {}) {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Chat</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Conversations with anybody whose email address you know. Messages arrive as they are sent.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Chat</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Conversations with anybody whose email address you know. Messages arrive as they are sent.
+          </p>
+        </div>
+        {/*
+          ⚠ A PLAIN ANCHOR, not next/link. This package declares React as an
+          optional peer and Next as nothing at all — the routes are data, and
+          the app's catch-all renders them. Importing `next/link` here would
+          make every consumer a Next app.
+
+          Reached from here rather than the drawer because it is a preference,
+          not a place: somebody looks for it when a sound annoys them, which is
+          while they are on this page.
+        */}
+        <a
+          href={CHAT_PREFERENCES_HREF}
+          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+        >
+          Preferences
+        </a>
+      </div>
 
       {/*
         `min-h-0` alongside `flex-1`: a flex child's default `min-height: auto`

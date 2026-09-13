@@ -3,7 +3,9 @@ import { chatIsEnabled } from '../enabled.js';
 import { CHAT_FEATURE, CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '../feature-keys.js';
 import { ChatUnreadBadge } from './chat-unread-badge.js';
 import { ChatPage } from './pages/chat-page.js';
+import { ChatPreferencesPage } from './pages/chat-preferences-page.js';
 import { ChatSettingsPage } from './pages/chat-settings-page.js';
+import { CHAT_HREF, CHAT_PREFERENCES_HREF } from './routes.js';
 
 /**
  * Chat's web descriptor — the route, its drawer entry and the feature
@@ -24,8 +26,11 @@ import { ChatSettingsPage } from './pages/chat-settings-page.js';
  * ChatPage() from the server".
  */
 
-/** Where chat's own pages live. One constant, so the route and every link to it agree. */
-export const CHAT_HREF = '/chat';
+/*
+ * Re-exported so `@kwtech/module-chat/react`'s public surface is unchanged. The
+ * declaration moved to `routes.ts` to break a cycle — see that file.
+ */
+export { CHAT_HREF, CHAT_PREFERENCES_HREF } from './routes.js';
 
 /**
  * One conversation's settings.
@@ -117,6 +122,26 @@ export function chatWebModule(options: ChatWebModuleOptions = {}): WebModuleDesc
          * right until somebody else sends a message.
          */
         nav: { group: 'Overview', order: 20, icon: 'message', badge: ChatUnreadBadge },
+      },
+      {
+        /*
+         * ⚠ UNLISTED, and `/chat/preferences` rather than `/chat/settings`.
+         *
+         * `/chat/:conversationId/settings` below means something else entirely
+         * — what a GROUP is called and who runs it. Two pages a segment apart,
+         * both called settings, one about a conversation and one about a
+         * browser, is a collision people resolve by opening the wrong one.
+         *
+         * ⚠ It takes NO feature key beyond `chat:read`, and could arguably take
+         * none at all: everything on it is stored in this browser and the page
+         * makes no request. `chat:read` is here so it is not reachable by
+         * somebody who cannot use chat — a preferences page for a feature you
+         * do not have is a dead end with controls on it.
+         */
+        path: CHAT_PREFERENCES_HREF,
+        component: ChatPreferencesPage,
+        title: 'Chat preferences',
+        feature: CHAT_FEATURE.read,
       },
       {
         /*

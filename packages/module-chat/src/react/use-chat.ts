@@ -2,6 +2,7 @@
 
 import { useRealtime } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { shouldPlayTone } from '../domain/tone.js';
 import {
   type ChatClient,
   type ChatConversationView,
@@ -9,6 +10,8 @@ import {
   type ChatPresenceView,
   createChatClient,
 } from './chat-client.js';
+import { readChatSettings } from './chat-settings.js';
+import { playChatTone } from './chat-tone.js';
 import { CHAT_EVENTS, type ChatEventView } from './realtime-documents.js';
 import { applyMessage, dropPending, optimisticMessage, readMarkFor, type ThreadMessage } from './view/message-view.js';
 
@@ -72,6 +75,26 @@ export function useChat(options: UseChatOptions = {}) {
    */
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
+
+  /*
+   * ⚠ The same stale-closure hazard, for the two things the TONE rule needs.
+   *
+   * The subscription is set up once and captures whatever these were at the
+   * time. Read from state directly, somebody who set themselves to `dnd` would
+   * keep hearing tones until the socket happened to be rebuilt — which is the
+   * kind of bug that gets reported as "do not disturb does not work" and is
+   * unreproducible for whoever picks it up.
+   *
+   * ⚠ The viewer's id comes off a CONVERSATION rather than from a session: this
+   * hook has no other source for it, every conversation carries `myUserId`, and
+   * they all agree. Null before the first load, which is also before any event
+   * can arrive.
+   */
+  const myUserIdRef = useRef<string | null>(null);
+  myUserIdRef.current = conversations?.[0]?.myUserId ?? myUserIdRef.current;
+
+  const availabilityRef = useRef<string | null>(null);
+  availabilityRef.current = myAvailability?.availability ?? null;
 
   const report = useCallback((cause: unknown) => {
     setError(cause instanceof Error ? cause.message : 'Something went wrong.');
@@ -214,17 +237,49 @@ export function useChat(options: UseChatOptions = {}) {
       const event = data.chatEvents;
 
       /*
-       * ⚠ THE MESSAGE IS APPLIED DIRECTLY, not fetched again. It is why the
-       * server carries a body on the wire at all: a thread that re-queried on
-       * every arrival would show each message a round trip late, which is what
-       * makes a chat feel broken.
-       *
-       * Only for the conversation on screen — ONE socket carries every
-       * conversation this person is in, so the rest is somebody else's thread.
+       * A message arrived. Two independent things follow: somebody may need to
+       * HEAR about it, and the thread on screen may need to redraw. They are
+       * not the same question — see inside.
        */
-      if (event.kind === 'message' && event.message && event.conversationId === selectedRef.current) {
+      if (event.kind === 'message' && event.message) {
         const arrived = event.message;
-        setMessages((current) => (current ? applyMessage(current, arrived) : current));
+
+        /*
+         * ⚠ THE TONE IS DECIDED FOR EVERY CONVERSATION, not just the open one.
+         *
+         * Being told is the entire point: a message in a thread you are not
+         * looking at is precisely the one you need to hear about. So this sits
+         * OUTSIDE the `selectedRef` check below, which exists only to decide
+         * whether the thread on screen has to redraw.
+         *
+         * ⚠ The settings are read HERE, per arrival, rather than held in state.
+         * localStorage is synchronous and this is a handful of bytes, and the
+         * alternative is a stale copy in a tab that did not do the changing —
+         * somebody muting chat in one tab means muted, not "muted in that tab".
+         */
+        const settings = readChatSettings();
+        if (
+          shouldPlayTone({
+            viewerId: myUserIdRef.current ?? '',
+            authorId: arrived.authorId,
+            conversationId: event.conversationId ?? '',
+            openConversationId: selectedRef.current,
+            windowFocused: typeof document === 'undefined' || document.hasFocus(),
+            availability: availabilityRef.current,
+            enabled: settings.enabled,
+          })
+        ) {
+          playChatTone(settings.tone);
+        }
+
+        /*
+         * ⚠ THE MESSAGE IS APPLIED DIRECTLY, not fetched again — and only for
+         * the conversation on screen. ONE socket carries every conversation this
+         * person is in, so the rest is somebody else's thread.
+         */
+        if (event.conversationId === selectedRef.current) {
+          setMessages((current) => (current ? applyMessage(current, arrived) : current));
+        }
       }
 
       /*
