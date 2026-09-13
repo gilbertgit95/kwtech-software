@@ -19,6 +19,8 @@ const conversation = (
   myUserId: 'ann',
   unread: 0,
   participants: [],
+  // §12.51: only an unanswered invitation ever carries one.
+  preview: null,
   ...over,
 });
 

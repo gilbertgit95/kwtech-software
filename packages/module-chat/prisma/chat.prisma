@@ -143,7 +143,21 @@ model ChatParticipant {
 
   /// Per-conversation mute, which is what people actually want — far more than a
   /// global do-not-disturb. Null means unmuted.
+  ///
+  /// ⚠ LOAD-BEARING AS OF 2026-09-13. It was a convenience while the only thing
+  /// it could suppress was a tone in an open tab; now it stops a notification
+  /// reaching somebody who is not looking, which is the thing they muted it for.
   mutedUntil DateTime?
+
+  /// When this person was last told about THIS conversation outside the browser.
+  ///
+  /// ⚠ THE COOLDOWN'S ONLY STATE, and it is a COLUMN rather than a map in
+  /// memory for two reasons: a process restart would otherwise re-notify
+  /// everybody mid-conversation, and two replicas would each keep their own
+  /// idea of who had been told — which is one mail per replica.
+  ///
+  /// Null means never. See `shouldNotify` for what it gates.
+  lastNotifiedAt DateTime?
 
   joinedAt  DateTime  @default(now())
   /// When they left, were removed, or declined. Null while the row is live.

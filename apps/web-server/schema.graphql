@@ -55,6 +55,7 @@ type ChatConversation {
   myStatus: String!
   myUserId: String!
   participants: [ChatParticipant!]!
+  preview: ChatMessage
   title: String
   unread: Int!
 }

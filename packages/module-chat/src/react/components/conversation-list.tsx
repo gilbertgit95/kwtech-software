@@ -90,6 +90,26 @@ export function ConversationList({
                 <li key={conversation.id} className="rounded-lg border border-border px-2 py-2">
                   <p className="truncate text-sm font-medium text-foreground">{conversationTitle(conversation)}</p>
                   <p className="truncate text-xs text-muted-foreground">{invitedBy(conversation)}</p>
+                  {/*
+                    ⚠ THE FIRST THING SAID — §12.51, and the only message content
+                    this application shows to somebody who is not a participant.
+
+                    An invitation used to show who sent it and nothing else,
+                    which made accept-or-decline close to a coin flip. It is ONE
+                    message, the oldest, never the thread — anything more would
+                    make an unanswered invitation a live feed of a conversation
+                    the viewer has not joined.
+
+                    Absent when nobody has written yet, and — because it is
+                    rendered through the same rule the thread uses — absent for a
+                    message that was deleted, rather than showing a tombstone to
+                    somebody with no way to ask what it was.
+                  */}
+                  {previewOf(conversation) ? (
+                    <p className="mt-1 line-clamp-2 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">
+                      {previewOf(conversation)}
+                    </p>
+                  ) : null}
                   <div className="mt-2 flex gap-2">
                     <button
                       type="button"
@@ -159,6 +179,24 @@ export function ConversationList({
       </div>
     </div>
   );
+}
+
+/**
+ * The first thing said in a conversation somebody has been invited to.
+ *
+ * ⚠ §12.51. Null unless the server sent one, which it does only for an
+ * unanswered invitation — this function never decides whether the viewer MAY
+ * see it, because that decision is the server's and a second copy of it here
+ * would be the thing `canAccessConversation` exists to prevent.
+ *
+ * A DELETED message shows nothing rather than a tombstone: the thread renders a
+ * removed message as a placeholder because its reader can see the conversation
+ * and ask, and somebody holding an unanswered invitation can do neither.
+ */
+function previewOf(conversation: ChatConversationView): string | null {
+  const preview = conversation.preview;
+  if (!preview || preview.deleted) return null;
+  return preview.body?.trim() || null;
 }
 
 /**

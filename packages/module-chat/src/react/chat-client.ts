@@ -103,6 +103,24 @@ export interface ChatConversationView {
   myUserId: string;
   unread: number;
   participants: ChatParticipantView[];
+  /**
+   * The first thing said, for an invitation the viewer has not answered.
+   *
+   * ⚠ §12.51. Null for an active conversation — its thread is read directly —
+   * and null for an invitation nobody has written in yet. This is the only
+   * message content the API sends to a non-participant.
+   */
+  preview: ChatMessagePreview | null;
+}
+
+/** Just enough of a message to decide whether to accept an invitation. */
+export interface ChatMessagePreview {
+  id: string;
+  authorId: string | null;
+  body: string | null;
+  createdAt: string;
+  kind: string;
+  deleted: boolean;
 }
 
 export interface ChatClient {

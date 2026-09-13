@@ -111,6 +111,16 @@ const envSchema = z
     PERMISSIONS_INVITE_URL_BASE: z.url().default('http://localhost:8081/invitations/accept'),
 
     /**
+     * Where a chat notification sends somebody.
+     *
+     * ⚠ The CHAT PAGE, not a conversation: there is no per-conversation route —
+     * the thread is selected inside the page — so a link carrying an id would
+     * 404. It is also the safer default, since a conversation id in a mailbox
+     * is a conversation id in a mailbox.
+     */
+    CHAT_URL_BASE: z.url().default('http://localhost:8081/chat'),
+
+    /**
      * ── realtime ──────────────────────────────────────────────────────────────
      *
      * How many replicas of this service the deployment runs. DECLARED, because

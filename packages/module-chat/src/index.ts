@@ -16,6 +16,7 @@ export * from './domain/availability.js';
 export * from './domain/blocking.js';
 export * from './domain/conversations.js';
 export * from './domain/messages.js';
+export * from './domain/notify.js';
 export * from './domain/participant-roles.js';
 export * from './domain/participation.js';
 export * from './domain/tone.js';

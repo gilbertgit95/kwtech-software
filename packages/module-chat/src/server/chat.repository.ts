@@ -38,6 +38,8 @@ export interface ParticipantRow {
   invitedById: string | null;
   lastReadMessageId: string | null;
   mutedUntil: Date | null;
+  /** When they were last told about this conversation outside the browser. */
+  lastNotifiedAt: Date | null;
   joinedAt: Date;
   exitedAt: Date | null;
 }
@@ -158,6 +160,12 @@ export interface ChatPrismaClient {
          * twenty conversations costs twenty round trips to answer one badge.
          */
         id?: { in: string[] };
+        /**
+         * ⚠ The INVITATION PREVIEW (§12.51) asks for `user` only — a system
+         * message is from nobody and tells an invited person nothing about
+         * whether to accept.
+         */
+        kind?: MessageKind;
         OR?: KeysetClause<'lt'> | KeysetClause<'gt'>;
       };
       orderBy?: ({ createdAt: 'desc' | 'asc' } | { id: 'desc' | 'asc' })[];
@@ -262,8 +270,22 @@ export interface ChatWriteClient extends ChatPrismaClient {
         invitedById?: string | null;
         exitedAt?: Date | null;
         lastReadMessageId?: string;
+        /** Stamped when a notification goes out — see `shouldNotify`. */
+        lastNotifiedAt?: Date;
       };
     }): Promise<ParticipantRow>;
+    /**
+     * ⚠ MANY ROWS AT ONCE, for the notification cooldown.
+     *
+     * A `send` into a group of twelve may notify several people, and stamping
+     * them one at a time is one round trip each on the path a message just
+     * committed on. They all get the same timestamp, which is correct: it is
+     * when the notification decision was made.
+     */
+    updateMany(args: {
+      where: { conversationId: string; userId: { in: string[] } };
+      data: { lastNotifiedAt: Date };
+    }): Promise<{ count: number }>;
   };
   chatMessage: ChatPrismaClient['chatMessage'] & {
     create(args: {

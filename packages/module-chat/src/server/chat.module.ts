@@ -7,6 +7,7 @@ import { ChatService } from './chat.service.js';
 import {
   CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
+  CHAT_NOTIFIER,
   CHAT_OPTIONS,
   CHAT_PLATFORM_ADMIN,
   CHAT_PRISMA,
@@ -95,6 +96,14 @@ export class ChatModule {
      */
     if (options.defaultsProvider) providers.push(options.defaultsProvider as Provider);
     else providers.push({ provide: CHAT_DEFAULTS, useValue: undefined });
+    /*
+     * ⚠ Unbound means a message reaches an OPEN TAB and nowhere else. The tone
+     * and the badge still work; somebody whose laptop is shut hears about it
+     * when they next open the app. See §12.50 for why that is recorded as a
+     * gap rather than a design.
+     */
+    if (options.notifierProvider) providers.push(options.notifierProvider as Provider);
+    else providers.push({ provide: CHAT_NOTIFIER, useValue: undefined });
 
     if (exposeGraphql) providers.push(ChatResolver);
 
@@ -110,6 +119,7 @@ export class ChatModule {
 export {
   CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
+  CHAT_NOTIFIER,
   CHAT_OPTIONS,
   CHAT_PLATFORM_ADMIN,
   CHAT_PRISMA,

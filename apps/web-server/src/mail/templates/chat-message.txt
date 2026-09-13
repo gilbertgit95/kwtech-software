@@ -1,0 +1,18 @@
+Subject: <%= it.senderName %> sent you a message
+
+<% if (it.displayName) { %>Hi <%= it.displayName %>,<% } else { %>Hi,<% } %>
+
+<%= it.senderName %> sent you a message<% if (it.isGroup) { %> in a group<% } %> on
+<%= it.brand %>.
+
+<%= it.url %>
+
+We are not including what was said — messages stay in <%= it.brand %>, not in
+your inbox. Open the conversation to read it.
+
+You will not get another email about this conversation for a little while, even
+if more messages arrive. You can mute a conversation, or set yourself to Do not
+disturb, to stop these entirely.
+
+--
+Sent by <%= it.brand %>. This is an automated message — replies to it are not read.

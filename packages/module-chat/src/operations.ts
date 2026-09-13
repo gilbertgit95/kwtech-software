@@ -24,6 +24,13 @@
  * `authorId` and nothing else says which of them is yours, so without it a
  * thread cannot align its own messages or know which it may edit.
  */
+/*
+ * ⚠ `preview` IS THE ONLY MESSAGE CONTENT IN THIS DOCUMENT that a
+ * NON-PARTICIPANT can receive — §12.51. The server sends it for an unanswered
+ * invitation and nulls it everywhere else; it is the first `kind: user` message
+ * and never the thread. Requested with the fields a one-line preview needs and
+ * no more.
+ */
 const CONVERSATION_FIELDS = `
   id
   title
@@ -36,6 +43,7 @@ const CONVERSATION_FIELDS = `
   myUserId
   unread
   participants { userId displayName status role }
+  preview { id authorId body createdAt kind deleted }
 `;
 
 /**

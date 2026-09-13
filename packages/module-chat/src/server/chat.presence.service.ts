@@ -127,6 +127,26 @@ export class ChatPresenceService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * Does this person hold a live socket right now?
+   *
+   * ⚠ UNFILTERED, unlike `presenceFor` above — and that is safe only because
+   * of who asks. `presenceFor` answers a VIEWER about other people, so it drops
+   * anybody they share no conversation with, or it becomes the enumeration
+   * oracle this class exists to avoid. This answers the SERVER about somebody it
+   * is already about to act on: it is called from `notifyAbsent`, for a
+   * participant of a conversation a message was just written into, and its
+   * answer reaches nobody — it decides whether to send an email.
+   *
+   * ⚠ It says nothing about `invisible`. Somebody appearing offline still holds
+   * a socket, so they are still reading, and mailing them would both waste the
+   * mail and leak their presence by the side door — an email that arrives only
+   * when you are away tells the sender when you were away.
+   */
+  isOnline(userId: string): boolean {
+    return this.presence.isOnline(userId, Date.now());
+  }
+
   /** Who is writing in this conversation right now. The caller checks participation. */
   whoIsTyping(conversationId: string): string[] {
     return this.typing.typingIn(conversationId, Date.now());

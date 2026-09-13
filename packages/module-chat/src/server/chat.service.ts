@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { effectiveAvailability } from '../domain/availability.js';
 import { isContactBlocked } from '../domain/blocking.js';
 import { countsAsUnread, MAX_CATCH_UP, pageSize } from '../domain/messages.js';
-import { canAccessConversation, isLiveParticipant } from '../domain/participation.js';
+import { canAccessConversation, canSeeInvitation, isLiveParticipant } from '../domain/participation.js';
 import type { Availability, BlockView } from '../types.js';
 import { ChatWriteError } from './chat.errors.js';
 import type { ChatPrismaClient, ConversationRow, KeysetClause, MessageRow, ParticipantRow } from './chat.repository.js';
@@ -27,7 +27,30 @@ export interface ConversationSummary {
   /** Everybody currently in it, the viewer included. Invited people are included. */
   participants: ParticipantRow[];
   unread: number;
+  /**
+   * THE FIRST THING SAID, for an invitation the viewer has not answered yet.
+   *
+   * ⚠ §12.51, decided 2026-09-13: an invited person sees the FIRST `kind: user`
+   * message and never the thread. Before this an invitation showed who sent it
+   * and nothing else, which made accept-or-decline close to a coin flip.
+   *
+   * ⚠ Null for every ACTIVE conversation — they read the thread itself, and a
+   * second copy of one message travelling beside it is a second thing to keep
+   * in step. Null too for an invitation nobody has written in yet.
+   */
+  preview: MessageRow | null;
 }
+
+/**
+ * How many unanswered invitations get a preview on one list render.
+ *
+ * ⚠ A CAP rather than a promise. Each preview is a `take: 1` down an index and
+ * the realistic number is small, but "somebody else creates them one at a time"
+ * is not a bound — it is an assumption about how people behave. Past this the
+ * remaining invitations simply show who sent them, which is exactly what every
+ * invitation showed before §12.51.
+ */
+const MAX_PREVIEWS = 20;
 
 @Injectable()
 export class ChatService {
@@ -71,6 +94,7 @@ export class ChatService {
     }
 
     const unread = await this.unreadByConversation(actorId, mine);
+    const previews = await this.previewsForInvitations(mine);
 
     const summaries = conversations.map((conversation) => {
       const me = mine.find((row) => row.conversationId === conversation.id);
@@ -87,6 +111,7 @@ export class ChatService {
           (row) => row.status === 'active' || row.status === 'invited',
         ),
         unread: unread.get(conversation.id) ?? 0,
+        preview: previews.get(conversation.id) ?? null,
       };
     });
 
@@ -126,7 +151,61 @@ export class ChatService {
        * exactly the kind that gets restated slightly wrong.
        */
       unread: (await this.unreadByConversation(actorId, [me])).get(conversationId) ?? 0,
+      preview: (await this.previewsForInvitations([me])).get(conversationId) ?? null,
     };
+  }
+
+  /**
+   * THE FIRST MESSAGE OF EACH UNANSWERED INVITATION — §12.51.
+   *
+   * ## ⚠ What this deliberately does NOT do
+   *
+   * It does not widen `canAccessConversation`, which stays ACTIVE ONLY. That
+   * helper is what C1 was missing and it is not being loosened to make a screen
+   * nicer; this is a separate, narrow read with its own name, so anybody
+   * auditing "who can see message content" finds two call sites rather than one
+   * helper that quietly means two things.
+   *
+   * ## ⚠ ONE message, the OLDEST, and `kind: 'user'`
+   *
+   * The first thing a person said, which is what an invitation is about. Not
+   * the latest — that would turn an unanswered invitation into a live feed of
+   * a conversation the viewer has not joined. Not a system message, which is
+   * from nobody.
+   *
+   * ## ⚠ It must not leak DIFFERENTLY for a blocked sender
+   *
+   * §12.51 states that requirement, and it is met by this function containing
+   * no block check at all. A preview that was absent for a blocked inviter and
+   * present otherwise would answer "has this person blocked you" to anybody who
+   * could get themselves invited — the exact oracle the blocking design refuses
+   * elsewhere. Blocking is enforced where invitations are CREATED.
+   *
+   * ## Why a query per invitation is acceptable here
+   *
+   * It is the shape `unreadByConversation` exists to avoid, and the difference
+   * is what N counts. There, N was every conversation a person is in, which
+   * grows without bound, and each was a COUNT over a whole conversation. Here N
+   * is their UNANSWERED INVITATIONS — a small set somebody else has to create
+   * one at a time — and each is a `take: 1` down an index. Capped anyway, so a
+   * pathological inbox cannot turn a list render into a hundred queries.
+   */
+  private async previewsForInvitations(mine: readonly ParticipantRow[]): Promise<Map<string, MessageRow>> {
+    const invitations = mine.filter((row) => canSeeInvitation(row)).slice(0, MAX_PREVIEWS);
+    if (invitations.length === 0) return new Map();
+
+    const found = await Promise.all(
+      invitations.map(async (row) => {
+        const [first] = await this.prisma.chatMessage.findMany({
+          where: { conversationId: row.conversationId, kind: 'user' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: 1,
+        });
+        return first ? ([row.conversationId, first] as const) : null;
+      }),
+    );
+
+    return new Map(found.filter((entry): entry is readonly [string, MessageRow] => entry !== null));
   }
 
   /**

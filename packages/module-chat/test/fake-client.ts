@@ -160,6 +160,7 @@ export function fakeClient(state: FakeState = emptyState()) {
           invitedById: args.data.invitedById ?? null,
           lastReadMessageId: null,
           mutedUntil: null,
+          lastNotifiedAt: null,
           joinedAt: now(),
           exitedAt: null,
         };
@@ -175,6 +176,17 @@ export function fakeClient(state: FakeState = emptyState()) {
         if (!row) throw new Error('no participant');
         Object.assign(row, args.data);
         return row;
+      },
+      /** The notification cooldown stamps several rows at once. */
+      async updateMany(args: {
+        where: { conversationId: string; userId: { in: string[] } };
+        data: { lastNotifiedAt: Date };
+      }) {
+        const rows = state.participants.filter(
+          (row) => row.conversationId === args.where.conversationId && args.where.userId.in.includes(row.userId),
+        );
+        for (const row of rows) Object.assign(row, args.data);
+        return { count: rows.length };
       },
     },
 
@@ -203,6 +215,7 @@ export function fakeClient(state: FakeState = emptyState()) {
         where: {
           conversationId?: string | { in: string[] };
           id?: { in: string[] };
+          kind?: 'user' | 'system';
           OR?: ({ createdAt: { lt?: Date; gt?: Date } } | { createdAt: Date; id: { lt?: string; gt?: string } })[];
         };
         orderBy?: ({ createdAt: 'asc' | 'desc' } | { id: 'asc' | 'desc' })[];
@@ -235,11 +248,15 @@ export function fakeClient(state: FakeState = emptyState()) {
           });
         };
 
+        // ⚠ The invitation preview filters on kind; a fake that ignored it would
+        // let a system message stand in for "the first thing somebody said".
+        const matchesKind = (row: MessageRow) => (where.kind ? row.kind === where.kind : true);
+
         const direction = (args.orderBy?.[0] as { createdAt?: 'asc' | 'desc' } | undefined)?.createdAt ?? 'desc';
         const sign = direction === 'asc' ? 1 : -1;
 
         return state.messages
-          .filter((row) => inScope(row) && matchesKeyset(row))
+          .filter((row) => inScope(row) && matchesKind(row) && matchesKeyset(row))
           .sort((a, b) => {
             const byTime = a.createdAt.getTime() - b.createdAt.getTime();
             return sign * (byTime !== 0 ? byTime : a.id.localeCompare(b.id));

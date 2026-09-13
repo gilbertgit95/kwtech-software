@@ -2,6 +2,7 @@ import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-aut
 import {
   CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
+  CHAT_NOTIFIER,
   CHAT_PLATFORM_ADMIN,
   CHAT_PUBSUB,
   CHAT_USER_DIRECTORY,
@@ -25,6 +26,7 @@ import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
 import { ChatDefaults } from './chat/defaults-reader.js';
+import { ChatMailNotifier } from './chat/notify-mail.js';
 import { ChatPlatformAdmin } from './chat/platform-admin.js';
 import { ChatUserDirectory } from './chat/user-directory.js';
 import { env } from './config/env.js';
@@ -164,6 +166,20 @@ const CHAT_SERVER_MODULE: ServerModuleDescriptor = chatServerModule({
    * The same split as the cap: chat declares `chat:group_chats` and calls a
    * `LimitChecker` to find out the number.
    */
+  /*
+   * ⚠ HOW SOMEBODY WITH A CLOSED TAB IS TOLD — §12.50, answered with email.
+   *
+   * The module decides WHO is owed a nudge and cannot send one: it has no mail
+   * server and no idea what an email address is. Same seam as module-auth's
+   * reset mail, and it is what keeps Web Push open — a push implementation
+   * replaces this provider and changes nothing in the module.
+   */
+  notifierProvider: {
+    provide: CHAT_NOTIFIER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService) => new ChatMailNotifier(prisma),
+  },
+
   defaultsProvider: {
     provide: CHAT_DEFAULTS,
     inject: [PermissionsService],

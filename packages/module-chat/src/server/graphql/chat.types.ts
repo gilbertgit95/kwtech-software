@@ -138,6 +138,22 @@ export class ChatConversationType {
 
   @Field(() => [ChatParticipantType])
   participants!: ChatParticipantType[];
+
+  /**
+   * THE FIRST THING SAID, for an invitation the viewer has not answered.
+   *
+   * ⚠ §12.51, decided 2026-09-13. An invitation used to show who sent it and
+   * nothing else, which made accept-or-decline close to a coin flip. It is the
+   * FIRST `kind: user` message and never the thread — the latest would turn an
+   * unanswered invitation into a live feed of a conversation nobody joined.
+   *
+   * ⚠ NULL for an active conversation, whose thread is read directly. This is
+   * the only place message content reaches a non-participant, and it is
+   * deliberately one message, resolved by its own named function on the server
+   * rather than by widening `canAccessConversation`.
+   */
+  @Field(() => ChatMessageType, { nullable: true })
+  preview!: ChatMessageType | null;
 }
 
 @ObjectType('ChatMessagePage')

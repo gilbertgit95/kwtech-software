@@ -91,6 +91,16 @@ export interface ChatModuleOptions {
    * documented fallback.
    */
   defaultsProvider?: unknown;
+
+  /**
+   * A `ChatNotifier` provider — how somebody with no open tab is told.
+   *
+   * ⚠ Unbound means NOBODY IS TOLD unless their tab is open. That is the
+   * behaviour that existed before this port and is a working product; it is
+   * also, per §12.50, not enough to meet "people are told on time". A host
+   * that wants chat to mean anything binds it.
+   */
+  notifierProvider?: unknown;
 }
 
 /** What the module falls back to when the host says nothing. */

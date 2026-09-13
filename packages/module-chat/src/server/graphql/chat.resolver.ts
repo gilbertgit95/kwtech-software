@@ -573,7 +573,7 @@ export class ChatResolver {
 }
 
 function renderConversation(summary: ConversationSummary, people: ReadonlyMap<string, string>): ChatConversationType {
-  const { conversation, me, participants, unread } = summary;
+  const { conversation, me, participants, unread, preview } = summary;
   return {
     id: conversation.id,
     title: conversation.title,
@@ -588,6 +588,9 @@ function renderConversation(summary: ConversationSummary, people: ReadonlyMap<st
     // somebody else.
     myUserId: me.userId,
     unread,
+    // ⚠ Rendered through the SAME function the thread uses, so a tombstone or an
+    // edit reads identically in a preview and in a conversation — see §12.51.
+    preview: preview ? renderMessage(preview) : null,
     participants: participants.map((row) => renderParticipant(row, people)),
   };
 }

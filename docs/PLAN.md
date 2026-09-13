@@ -518,15 +518,15 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 42 | Does anyone get to read a conversation they are not in? | before a compliance or abuse report arrives | Shipping with NO such key: `platform:support_access` is the single exemption in the permission model and must not quietly become "read everyone's private messages". `chat:moderate` deletes a message in a conversation the actor is a PARTICIPANT of, which is a different act. The pressure will come from abuse reports and legal holds, and the honest answer when it does is a separate, `isPrivileged`, audited key — not widening support access, and not an unlogged database console |
 | 43 | Message retention, edit history and attachments | after `/chat` ships | v1 stores `body` text with `editedAt`/`deletedAt` tombstones and no prior-version table, so an edit destroys what was said and a delete is soft with no purge. Fine while chat is internal; none of it survives a retention policy or a deletion request. Attachments were part of this entry and are now §12.45, which is a bigger question than retention |
 
-| 44 | What `dnd` suppresses beyond the local tone | when a notification system exists | Availability ships as a coloured dot, and a dot that lies is worse than no dot. The one thing it CAN do today it does: `dnd` mutes the receive tone locally. Everything else people assume it means — no email, no push, no badge — needs a notification system, and this repo has none. ⚠ The availability picker must SAY so, in the picker, the way `/admin/defaults` says what it hands over. When notifications arrive, `dnd` is the first consumer and the question becomes whether it suppresses delivery or only presentation |
+| 44 | What `dnd` suppresses beyond the local tone | ⚠ PARTLY CLOSED 2026-09-13 | Availability ships as a coloured dot, and a dot that lies is worse than no dot. The one thing it CAN do today it does: `dnd` mutes the receive tone locally. Everything else people assume it means — no email, no push, no badge — needs a notification system, and this repo has none. ⚠ The availability picker must SAY so, in the picker, the way `/admin/defaults` says what it hands over. When notifications arrive, `dnd` is the first consumer and the question becomes whether it suppresses delivery or only presentation. **⚠ ANSWERED 2026-09-13: DELIVERY.** Email notifications shipped, and `shouldNotify` refuses outright for `dnd` — so it now means no tone AND no mail. What is still unclaimed is push and any badge, neither of which exists; the picker's wording must be re-read the day either does |
 | 45 | Attachments: the blob store, and the signed URL that is a bearer token | before files are promised to anyone | v1 is text and emoji, and the schema is shaped so files need NO migration: `body` is nullable (an image-only message with `body: ''` is a lie), `ChatMessage.kind` already exists for system messages, and there are deliberately no `fileUrl`/`fileName` COLUMNS — attachments will be a child table, because the columns are the shortcut that breaks on the second file. ⚠ **No `ChatAttachment` table is created.** An empty table is a claim to have thought it through, and this repo already carries `PermMembershipStatus.invited` as the scar. What actually gates files is not schema: there is no blob store anywhere in the monorepo, so it needs storage, a size cap, a virus-scan decision, and a per-plan storage limit that lands back on the `LimitContribution` work. ⚠ And it CHANGES THE PRIVACY MODEL: a signed URL is a BEARER TOKEN — anyone holding the link reads the file, with no `canAccessConversation` on it. Decide that before the first upload, not after |
 | 46 | Typing pings ride HTTP, not the socket | if they show up in metrics | A typing signal is the highest-frequency write in the product: one per user per conversation every few seconds. It goes over HTTP with every other mutation, which is the §12.29 bargain — `ThrottlerGuard` bounds it for free, where a socket-borne ping is cheaper and completely unthrottled. A deliberate trade of bytes for a limit that already exists. Reverse it if typing traffic ever registers, and take §12.29 seriously in the same change |
 
 | 47 | Read receipts — "seen by" | before the thread UI is final | `lastReadMessageId` already exists for the unread badge, so who has read past message X is nearly FREE to expose, which is exactly why it needs a decision rather than a default. It is a privacy change, not a feature toggle: it tells a sender when a specific person read a specific line, and in a workplace tool that is a management surface. If it ships it must respect `invisible` — somebody appearing offline who silently marks read has been leaked by the side door §12 already closed for typing |
 | 48 | Message search | when a conversation outgrows one screen | Nothing finds anything today. Postgres full-text or `pg_trgm`, scoped by `canAccessConversation` — search is the easiest place to accidentally return a message from a conversation the searcher is not in, because the natural query starts from the message table rather than from participation. Start from participation |
 | 49 | Abuse has no path, which is §12.42's cost | when the first report arrives | `chat:moderate` acts only inside a conversation the actor PARTICIPATES in, and §12.42 deliberately ships no read-any-conversation key. Consistent, and it means a platform-wide abuse report can be received and acted on by nobody. The blocking added in v1 is the USER's remedy; the PLATFORM has none. The honest fill is a report flow that escalates a specific conversation with the reporter's consent — narrow, audited, and not a general read key |
-| 50 | Web Push, and what `dnd` gates once it exists | ⚠ with `/chat` v1 | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience. **⚠ IN SCOPE 2026-09-11:** the operator's requirement is that people are TOLD on time, and a tone in an open tab satisfies that only for somebody already looking. Either this comes forward, or `sendChatNotification` is wired at v1 to something that reaches a closed tab — email being the cheapest. Shipping neither does not meet the requirement |
-| 51 | Does an INVITED person see the first message before they accept? | before the requests inbox ships (step 7) | `canAccessConversation` is ACTIVE ONLY (2026-09-11), so an invitation shows who sent it and nothing else. ⚠ That makes accept-or-decline close to a coin flip, and every product that has solved this shows the first message — which is the honest argument for changing it. The argument against is the one the helper exists to make: rendering somebody's message content to a NON-PARTICIPANT is what C1 was. A middle exists — the first `kind: user` message only, never the thread — and it is a PRIVACY decision rather than a UI one, so it is not being made by default. ⚠ Whatever is chosen, it must not leak differently for a blocked sender than an unknown one |
+| 50 | ~~Web Push, and what `dnd` gates once it exists~~ **CLOSED 2026-09-13 — by EMAIL, not push** | — | The tone only plays in an open tab. Everything people expect from a chat notification when the tab is closed needs Web Push — a service worker, a permission prompt, VAPID keys and a delivery path — and it is the moment §12.44 stops being theoretical: `dnd` starts suppressing DELIVERY rather than presentation, and per-conversation `mutedUntil` becomes load-bearing rather than a convenience. **⚠ IN SCOPE 2026-09-11:** the operator's requirement is that people are TOLD on time, and a tone in an open tab satisfies that only for somebody already looking. Either this comes forward, or `sendChatNotification` is wired at v1 to something that reaches a closed tab — email being the cheapest. Shipping neither does not meet the requirement. **✅ CLOSED 2026-09-13 with the second option**, chosen by the operator: `ChatNotifier` is a port in the module, `shouldNotify` is a pure rule in the domain, and the app fills it with email through the mail path that already existed. ⚠ **The notification carries NO MESSAGE TEXT** — who wrote, whether it was a group, and a link. ⚠ `dnd` now suppresses DELIVERY, which closes the live half of §12.44, and `mutedUntil` became load-bearing exactly as this entry predicted. Web Push stays open and is now CHEAP: the port carries ids and a group flag, so a push implementation replaces one provider in the app and changes nothing in the module |
+| 51 | ~~Does an INVITED person see the first message before they accept?~~ **CLOSED 2026-09-13: yes, the first only** | — | `canAccessConversation` is ACTIVE ONLY (2026-09-11), so an invitation shows who sent it and nothing else. ⚠ That makes accept-or-decline close to a coin flip, and every product that has solved this shows the first message — which is the honest argument for changing it. The argument against is the one the helper exists to make: rendering somebody's message content to a NON-PARTICIPANT is what C1 was. A middle exists — the first `kind: user` message only, never the thread — and it is a PRIVACY decision rather than a UI one, so it is not being made by default. ⚠ Whatever is chosen, it must not leak differently for a blocked sender than an unknown one. **✅ CLOSED 2026-09-13: the middle, chosen by the operator.** The first `kind: user` message, never the thread. ⚠ `canAccessConversation` was NOT widened — it stays ACTIVE ONLY, and the preview is a separate narrow read with its own name (`previewsForInvitations`), so an audit of "who can see message content" finds two call sites rather than one helper that quietly means two things. ⚠ The blocked-sender requirement is met by the function containing NO block check at all, with a test that fails if somebody adds one |
 | 52 | ~~Where the chat PANEL opens from~~ **CLOSED 2026-09-11: there is no panel** | — | **✅ CLOSED.** `/chat` is the only home. The panel was a shortcut to this data hanging off a header icon that no longer exists, and building a shortcut before the place it shortcuts to is how the shortcut becomes the only home — permanently cramped. It can return the day something exists to anchor it to, against a page that already works. Original entry: | The anchored popover was anchored to the icon in the main header, and that icon was removed on 2026-09-11 because the drawer already leads to `/chat` — a second door to one place. Three honest answers: `/chat` is the only home and the panel is dropped, which is the smallest and loses the read-without-leaving-the-page property the panel existed for; the panel re-anchors to the drawer entry, which is a popover hanging off a navigation list and is unusual for a reason; or it opens from somewhere new that has to be designed. ⚠ Not guessed at — the panel is most of step 7's UI, and building it against the wrong anchor is the expensive mistake |
 | 53 | There is no longer a genuinely EMPTY app-level role | when a denial needs proving again | `normal-user` was the control case for the whole access-checking chain — route guard, page gate, component gate, API guard — and it held nothing on purpose, because a role that grants nothing is the only one that proves a denial is real rather than incidental. It now carries `chat:*`, on the operator's direct request (2026-09-12), and that was the right call: messaging a colleague is not an administrative power, and a product whose ordinary person cannot use its chat has a chat nobody uses. What is left is weaker — it proves ADMIN denials, since it still holds no `admin:*`, `roles:*` or `members:*` and nothing at organization or workspace level. `app-roles.ts` has always named the replacement: `restricted-user`, the account whose identity is managed elsewhere, which withholds even the `account:*` keys. ⚠ NOT created, because inventing a role nobody asked for is the other way to get this wrong — an operator's role catalogue is theirs. Create it the day a test needs a true zero |
 | 54 | ~~⚠ Chat has two default-shaped decisions and no way to declare them~~ **CLOSED 2026-09-12** | — | Group roles created exactly the pair `workspace.*` already has: the role a group's CREATOR gets (hardcoded `owner`) and the role somebody ADDED gets (hardcoded `member`). §12's earlier "chat needs no platform default" was about ACCOUNT creation and predates roles entirely — it is not an answer to this. ⚠ But `APP_DEFAULT_REGISTRY` is a FIXED CONSTANT in `module-permissions`: features are contributed through `FeatureContribution` and limits through `LimitContribution`, and defaults have no equivalent, so chat cannot declare one without permissions importing chat (§9 forbids). Closing it needs the same treatment limits got in step 1 — a `DefaultContribution` port in `module-kit`, `composeDefaults`, and `listDefaults` reading the composed registry through options rather than its own constant — PLUS a new `kind` whose target is an ENUM VALUE rather than a `perm_role` row, which every existing default resolves to. Four parts, one of them new machinery. **✅ CLOSED 2026-09-12 — and it was FIVE parts.** `DefaultContribution` and `composeDefaults` in `module-kit`; `AppDefaultSpec` widened (`key` and `moment` become strings, `module` becomes required) with a `choice` kind and `isValidDefaultFor`; `defaultRegistry` on the options, read by BOTH `listDefaults` and `setDefault`; chat declares its two and reads them back through a `ChatDefaultReader` port. The fifth was found by looking rather than by planning: **the screen groups by MOMENT and owned the list of moments**, so a contributed default had no section and never rendered — declared, composed, settable through the API, invisible on the only screen it can be set from. `DefaultMomentContribution` + `composeDefaultMoments` fix that, and an undeclared moment now renders an unnamed section rather than nothing |
@@ -535,6 +535,117 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-13** — **§12.50 and §12.51 closed: people are told with the tab
+  shut, and an invitation is no longer a coin flip.**
+
+  Both were operator decisions rather than defaults, and both were asked rather
+  than assumed. Email over Web Push; sender only, no message text; the first
+  message shown to an invitee.
+
+  ## §12.50 — being told with the tab closed
+
+  **⚠ `sendChatNotification` was described in this document as "the optional
+  hook already in the design". It did not exist.** The third thing in this repo
+  found to be documented and unbuilt, after the grouped unread query and the
+  Redis swap. Written down because the pattern is now a pattern: a plan that
+  describes a seam in the present tense is a plan somebody will believe.
+
+  **THREE PIECES, and the split is the point.** `shouldNotify` is a pure rule in
+  the DOMAIN — seven refusals, testable with no mail server. `ChatNotifier` is a
+  port in the module. `ChatMailNotifier` is in the APP, the only layer that
+  knows what an email address is. The same seam `module-auth` sits on, where the
+  module hands over a raw reset token and `reset-mail.ts` owns delivery.
+
+  ⚠ **Which is what keeps Web Push cheap rather than closed.** The port carries
+  ids and a group flag; a push implementation replaces one provider in the app
+  and changes nothing in the module. The expensive half — deciding who is owed a
+  nudge — is already built and transport-blind.
+
+  **⚠ NO MESSAGE TEXT, decided deliberately.** The email says who wrote, whether
+  it was a group, and links to `/chat`. An inbox is a copy of the conversation
+  outside anything `canAccessConversation` can reach: in a mail provider's logs,
+  on a lock screen, and outliving the account. The port does not CARRY the body
+  rather than carrying-and-not-using it, so a future template cannot quietly
+  start including it — that would take a change in three files.
+  ⚠ Not the group TITLE either. A group's name is content its members chose and
+  travels exactly as a message body would.
+
+  **⚠ THE SEVEN REFUSALS**, each an email somebody would otherwise have received
+  and been annoyed by — which is the failure mode that gets a notification
+  system switched off entirely, after which nobody is told anything. Your own
+  message; a system message; not an active participant; **online**, because they
+  hold a socket so the badge moved and the tone played; **`dnd`**; **muted**;
+  and **inside the cooldown**.
+
+  **⚠ `dnd` NOW SUPPRESSES DELIVERY**, which is the question §12.44 said would
+  arrive with the first notification system. It has. And `mutedUntil` became
+  load-bearing exactly as §12.50 predicted — it was a convenience while the only
+  thing it could suppress was a tone in an open tab.
+
+  **⚠ THE COOLDOWN IS A COLUMN, not a map.** `ChatParticipant.lastNotifiedAt`,
+  fifteen minutes, per person per conversation. In memory it would re-notify
+  everybody after a restart and keep a separate idea per replica — one mail per
+  replica. ⚠ **Stamped BEFORE sending, not after:** a slow or retrying transport
+  is exactly when the bound matters, and stamping after would let a second
+  message read a stale mark. The cost is that a notification which then fails
+  still consumes the window — one missed nudge against an unbounded flood, which
+  is not a close call.
+  ⚠ **Not a digest.** A digest needs a scheduler and there is none (§12.40);
+  promising one would be promising something nothing keeps. A cooldown is read
+  at the moment a message arrives, which is the only moment anything here runs.
+
+  **⚠ Presence being UNBOUND must not read as "everybody is online"** — that
+  would silence every notification in a host with no ephemeral tier, which looks
+  exactly like the feature not working. Unbound means nobody holds a socket, so
+  everybody is reachable: the safe direction.
+
+  **⚠ IT CANNOT BREAK A SEND.** The message is committed and already on every
+  open socket by the time this runs. The whole body is inside one try/catch that
+  swallows, the app adapter swallows again, and a test asserts the send succeeds
+  with a notifier that throws. Awaited rather than floated — a floating promise
+  is an unhandled rejection in Node — which costs nothing because it cannot
+  reject.
+
+  ## §12.51 — the first message, and nothing else
+
+  **⚠ `canAccessConversation` WAS NOT WIDENED.** It stays ACTIVE ONLY. The
+  preview is a separate, narrow read with its own name, so anybody auditing
+  "who can see message content" finds two call sites rather than one helper that
+  quietly means two things. That helper is what C1 was missing and it is not
+  being loosened to make a screen nicer.
+
+  **The FIRST `kind: user` message, never the latest.** The latest would turn an
+  unanswered invitation into a live feed of a conversation the viewer never
+  joined. A system message is from nobody and tells an invitee nothing.
+
+  **⚠ THE BLOCKED-SENDER REQUIREMENT, which this entry stated in advance**, is
+  met by `previewsForInvitations` containing NO BLOCK CHECK AT ALL. A preview
+  absent for a blocked inviter and present otherwise would answer "has this
+  person blocked you" to anybody who could get themselves invited — the exact
+  oracle the blocking design refuses everywhere else. A test asserts the two
+  cases are byte-identical, and it is what fails if somebody adds a check.
+
+  **⚠ A query per invitation, which is the shape the unread work just removed.**
+  The difference is what N counts: there it was every conversation a person is
+  in, growing without bound, each a COUNT over a whole conversation. Here it is
+  their UNANSWERED INVITATIONS — a small set somebody else creates one at a
+  time — each a `take: 1` down an index. Capped at twenty anyway, because
+  "somebody else creates them one at a time" is an assumption about behaviour
+  rather than a bound.
+
+  A DELETED first message resolves and the UI drops it, rather than falling
+  through to the second: the tombstone holds its place in the ordering, and the
+  invitation is about the first message. The thread renders a removed message as
+  a placeholder because its reader can ask what it was; somebody holding an
+  unanswered invitation cannot.
+
+  **Verified:** 1 478 tests, typecheck and lint green; the migration is one
+  additive nullable column; `schema.graphql` regenerated by booting rather than
+  hand-edited. ⚠ **No email was actually sent** — there is no SMTP server on
+  this machine, so the template renders and the transport call is typed and
+  unexercised. The module-operations test caught the stale schema, and the
+  structural Prisma client caught the stale generated types, both before I did.
 
 - **2026-09-13** — **STEP 9, the rest: the tone, and settings deliberately not
   on the server.**

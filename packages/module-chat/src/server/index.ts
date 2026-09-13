@@ -11,6 +11,7 @@ export * from './chat.ephemeral.js';
 export * from './chat.errors.js';
 export * from './chat.events.js';
 export * from './chat.module.js';
+export * from './chat.notifier.js';
 export * from './chat.options.js';
 export * from './chat.presence.service.js';
 export * from './chat.pubsub.js';

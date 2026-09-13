@@ -71,3 +71,13 @@ export const CHAT_PLATFORM_ADMIN = 'kwtech:chat-platform-admin';
  * member, exactly as they did before the settings existed.
  */
 export const CHAT_DEFAULTS = 'kwtech:chat-defaults';
+
+/**
+ * A `ChatNotifier` — how somebody with no open tab is told a message arrived.
+ *
+ * ⚠ Unbound means NOBODY IS TOLD unless their tab is open, which is the
+ * behaviour that existed before this port and is a working product rather than
+ * a broken one. It is also the state §12.50 says does not meet the operator's
+ * requirement, so a host that wants chat to mean anything binds it.
+ */
+export const CHAT_NOTIFIER = 'kwtech:chat-notifier';

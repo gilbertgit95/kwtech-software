@@ -80,6 +80,24 @@ export interface EmailData {
     /** Rendered as a phrase — "one hour" — because a reader is not parsing seconds. */
     expiresIn: string;
   };
+  'chat-message': {
+    /** The recipient's own name. Free text they chose; escaped by the template. */
+    displayName: string | null;
+    /** Who wrote. Free text THEY chose — exactly as untrustworthy. */
+    senderName: string;
+    /** Whether to say "in a group". ⚠ Never the group's TITLE, which is content. */
+    isGroup: boolean;
+    /** Where to open it. */
+    url: string;
+    /*
+     * ⚠ THERE IS NO `body` FIELD, and there must not be one. What was said
+     * stays in the product — an inbox is a copy outside anything
+     * `canAccessConversation` reaches, in a mail provider's logs, on a lock
+     * screen, and it outlives the account. The notifier port does not carry the
+     * message either, so adding it here would take a deliberate change in three
+     * files rather than one.
+     */
+  };
   'organization-invitation': {
     /**
      * Free text somebody typed when the tenant was created. Escaped by the

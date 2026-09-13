@@ -1,10 +1,11 @@
 import type { LimitChecker } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { CHAT_DEFAULT, type ChatDefaultReader } from '../defaults.js';
-import { clearAtFrom, isAvailability } from '../domain/availability.js';
+import { clearAtFrom, effectiveAvailability, isAvailability } from '../domain/availability.js';
 import { isContactBlocked } from '../domain/blocking.js';
 import { directKeyFor } from '../domain/conversations.js';
 import { canEditMessage, editPatch, prepareBody, refuseDelete } from '../domain/messages.js';
+import { shouldNotify } from '../domain/notify.js';
 import {
   type ActorAuthority,
   canArchiveConversation,
@@ -22,6 +23,7 @@ import { CHAT_LIMIT } from '../feature-keys.js';
 import type { ChatParticipantRole } from '../types.js';
 import { ChatWriteError } from './chat.errors.js';
 import { ChatEventPublisher } from './chat.events.js';
+import type { ChatNotifier } from './chat.notifier.js';
 import { CHAT_DEFAULT_LIMIT_CHECKER } from './chat.options.js';
 import { ChatPresenceService } from './chat.presence.service.js';
 import type {
@@ -32,7 +34,7 @@ import type {
   MessageRow,
   ParticipantRow,
 } from './chat.repository.js';
-import { CHAT_DEFAULTS, CHAT_LIMIT_CHECKER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
+import { CHAT_DEFAULTS, CHAT_LIMIT_CHECKER, CHAT_NOTIFIER, CHAT_PRISMA_WRITE } from './chat.tokens.js';
 
 /**
  * Every write chat makes, and the one rule they all share.
@@ -84,6 +86,12 @@ export class ChatWriteService {
      * everybody else joins as a member, exactly as before the settings existed.
      */
     @Optional() @Inject(CHAT_DEFAULTS) private readonly defaults?: ChatDefaultReader,
+    /**
+     * ⚠ Absent means NOBODY IS TOLD unless their tab is open — the behaviour
+     * that existed before this port, and a working product rather than a broken
+     * one. §12.50 is the entry that says it does not meet the requirement.
+     */
+    @Optional() @Inject(CHAT_NOTIFIER) private readonly notifier?: ChatNotifier,
   ) {}
 
   /**
@@ -457,7 +465,121 @@ export class ChatWriteService {
      * reason the other screens cannot.
      */
     if (isNew) await this.events?.messageSent(message);
+
+    /*
+     * ⚠ AFTER THE PUBLISH, AND AWAITED RATHER THAN FLOATED.
+     *
+     * After, because the socket is the fast path and a mail transport must
+     * never sit in front of it. Awaited, because a floating promise here is an
+     * unhandled rejection in a Node process — `notifyAbsent` swallows
+     * everything internally, so this costs nothing and keeps the failure
+     * inside a function that is allowed to have one.
+     *
+     * ⚠ And only for a NEW message: a retry already notified whoever was owed
+     * a notification the first time.
+     */
+    if (isNew) await this.notifyAbsent(message);
     return message;
+  }
+
+  /**
+   * Tell whoever is not looking, and never let it break the send.
+   *
+   * ## ⚠ Everything in here is best-effort, deliberately
+   *
+   * The message is already committed and already on every open socket by the
+   * time this runs. A mail server that is down, a port that throws, a presence
+   * service that is not bound — none of them may turn a delivered message into
+   * a failed `send`, because the message WAS delivered. So the whole body is
+   * inside one try/catch that swallows, which is a shape worth justifying
+   * exactly once rather than apologising for at each call.
+   *
+   * ## ⚠ The decision is the DOMAIN's, per recipient
+   *
+   * `shouldNotify` is pure and holds all seven refusals. This function's job is
+   * only to gather what it asks for: who is in the room, who holds a socket,
+   * what each of them declared, and when each was last told.
+   */
+  private async notifyAbsent(message: MessageRow): Promise<void> {
+    if (!this.notifier) return;
+
+    try {
+      const conversation = await this.prisma.chatConversation.findUnique({ where: { id: message.conversationId } });
+      if (!conversation) return;
+
+      const participants = await this.prisma.chatParticipant.findMany({
+        where: { conversationId: message.conversationId },
+      });
+
+      const now = new Date();
+
+      /*
+       * ⚠ Presence is OPTIONAL, and its absence must not read as "everybody is
+       * online" — that would silence every notification in a host that binds no
+       * ephemeral tier, which is the failure that looks like the feature simply
+       * not working. Unbound means nobody holds a socket, so everybody is
+       * reachable, which is the safe direction.
+       */
+      const online = (userId: string) => this.presence?.isOnline(userId) ?? false;
+
+      /*
+       * ⚠ DECLARED AVAILABILITY, read here rather than through
+       * `presenceFor` — that one filters to the VIEWER's partners, which is
+       * the right answer to a different question and would drop people this
+       * one has to decide about.
+       *
+       * §12.44 said `dnd` would stop being presentation and start being
+       * delivery the day a notification system existed. This is that line.
+       */
+      const declared = await this.prisma.chatAvailability.findMany({
+        where: { userId: { in: participants.map((row) => row.userId) } },
+      });
+      const availabilityOf = new Map(declared.map((row) => [row.userId, effectiveAvailability(row, now)]));
+
+      const owed = participants.filter((row) =>
+        shouldNotify({
+          recipientId: row.userId,
+          authorId: message.authorId,
+          status: row.status,
+          recipientOnline: online(row.userId),
+          availability: availabilityOf.get(row.userId) ?? 'available',
+          mutedUntil: row.mutedUntil,
+          lastNotifiedAt: row.lastNotifiedAt,
+          now,
+        }),
+      );
+      if (owed.length === 0) return;
+
+      /*
+       * ⚠ STAMPED BEFORE SENDING, not after.
+       *
+       * The cooldown exists to bound how much mail one conversation can
+       * generate, and a transport that is slow or retries is exactly when that
+       * matters most. Stamping after would let a second message arriving
+       * mid-send read a stale mark and notify again. The cost of this order is
+       * that a notification which then fails to send still consumes the
+       * window — one missed nudge, against an unbounded flood, which is not a
+       * close call.
+       */
+      await this.prisma.chatParticipant.updateMany({
+        where: { conversationId: message.conversationId, userId: { in: owed.map((row) => row.userId) } },
+        data: { lastNotifiedAt: now },
+      });
+
+      await Promise.all(
+        owed.map((row) =>
+          this.notifier?.notify({
+            recipientId: row.userId,
+            senderId: message.authorId as string,
+            conversationId: message.conversationId,
+            isGroup: conversation.directKey === null,
+          }),
+        ),
+      );
+    } catch {
+      // See above. A message that was delivered must not report a failure
+      // because the thing that tells people about it is unwell.
+    }
   }
 
   /** Edit your own message. Never touches `createdAt`. */

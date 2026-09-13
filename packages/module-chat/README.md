@@ -51,6 +51,7 @@ permission model at all.
 | `pubsubProvider` | chat works over HTTP alone. It is simply not live |
 | `platformAdminProvider` | **nobody** administers a conversation they are not in |
 | `defaultsProvider` | every default is unset: the creator owns the group, everybody else joins as a member |
+| `notifierProvider` | **nobody is told unless their tab is open** — see below |
 
 None of them may be a direct import of another module. `module-chat` declares
 `chat:manage_all`, `chat:group_chats` and its two defaults; it cannot CHECK a
@@ -180,6 +181,71 @@ the moment a message arrives.
 ⚠ Sound is **off by default**. Chat is one page inside a back-office
 application, and a tab that starts making noise because somebody navigated to
 the product is a setting people hunt for angrily rather than discover.
+
+## Being told with the tab closed
+
+The tone only plays in an open tab, which satisfies "people are told on time"
+only for somebody already looking. So a message that lands for somebody with no
+live socket produces a notification.
+
+**Three pieces, and the split is the point:**
+
+| Piece | Where | Knows about |
+|---|---|---|
+| `shouldNotify` | the domain | chat — pure, seven refusals, no transport |
+| `ChatNotifier` | the module | ids and a group flag |
+| the adapter | **the app** | email, push, whatever reaches a person |
+
+⚠ **The port carries no message text and no group title.** The notification
+says *who* wrote and links to chat. An inbox is a copy of the conversation
+outside anything `canAccessConversation` can reach — in a mail provider's logs,
+on a lock screen, outliving the account. The body is not passed rather than
+passed-and-ignored, so a template cannot start including it by accident.
+
+⚠ **Which is what keeps Web Push cheap.** The port is transport-blind: a push
+implementation replaces the app's provider and changes nothing here.
+
+### The seven refusals
+
+Each is a notification somebody would otherwise have received and been annoyed
+by — which is the failure mode that gets the whole system switched off, after
+which nobody is told anything.
+
+your own · a system message · not an active participant · **online**, because the
+badge already moved and the tone already played · **`dnd`** · **muted** · **inside
+the cooldown**.
+
+⚠ `dnd` suppresses DELIVERY here, not presentation — it means no tone *and* no
+mail. `mutedUntil` is load-bearing for the same reason.
+
+### The cooldown is a column
+
+`ChatParticipant.lastNotifiedAt`, fifteen minutes, per person per conversation.
+A burst is one conversation, not ten things worth telling somebody about
+separately. ⚠ A column rather than a map in memory: a restart would re-notify
+everybody mid-conversation, and two replicas would each keep their own idea of
+who had been told. ⚠ Stamped BEFORE sending, so a slow transport cannot let a
+second message read a stale mark.
+
+⚠ **It cannot break a send.** The message is committed and already on every
+open socket by the time the notifier runs; a mail server that is down must not
+turn a delivered message into a failed send.
+
+## What an invited person sees
+
+The **first** `kind: user` message of the conversation, and never the thread.
+An invitation used to show who sent it and nothing else, which made
+accept-or-decline close to a coin flip.
+
+⚠ **`canAccessConversation` is NOT widened for this.** It stays ACTIVE ONLY.
+The preview is a separate narrow read with its own name, so an audit of "who can
+see message content" finds two call sites rather than one helper that quietly
+means two things.
+
+⚠ **It does not leak differently for a blocked sender**, which it achieves by
+containing no block check at all — a preview absent for a blocked inviter and
+present otherwise would answer "has this person blocked you" to anybody who
+could get themselves invited. A test asserts the two cases are identical.
 
 ## Unread
 
