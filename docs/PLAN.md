@@ -555,6 +555,28 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-14** — **The queue on the existing workspace roles.**
+
+  A user decision, after a member could not see the queue and nobody could be
+  assigned to a window. The cause was step 4's "role presets are exported, not
+  seeded": the plan sold the six `queue:*` keys, but no role except
+  `super-admin` granted them. So a workspace member had no `queue:read`, which
+  hides the Queue item. The assign picker lists only members holding
+  `queue:serve`, so it offered nobody.
+  - **`workspace-user`** gains the `queue-staff` preset: `queue:read`,
+    `queue:serve`. Any member of a workspace can staff a window there.
+  - **`workspace-admin`** gains the `queue-admin` preset: all six keys.
+  - **Read from `QUEUE_ROLE_PRESETS`, not restated.** This matches `CHAT_USER`,
+    and it throws if a preset disappears.
+  - **Rejected: separately assigned Queue staff / supervisor / admin roles.**
+    They are more precise, but every member would need a second role before the
+    queue works. The presets stay exported for a tenant that wants that split
+    later.
+  - Still gated by the plan. The organization's subscription must include the
+    keys, and on a free plan these grants do nothing.
+  - ⚠ Assignment is still per workspace: a person appears in a workspace's
+    picker only once they are a MEMBER of that workspace.
+
 - **2026-09-13** — **Browser tests: Playwright, against a stack you start.**
 
   `apps/web-app/e2e` (`pnpm --filter @kwtech/web-app test:e2e`) runs headless

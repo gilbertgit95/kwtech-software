@@ -2,6 +2,7 @@ import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
+import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
 import { ALL_FEATURES } from './registry.js';
 
 /**
@@ -324,6 +325,24 @@ const ORGANIZATION_USER: SystemRoleDefinition = {
 };
 
 /**
+ * The queue's own presets, read rather than restated — the same arrangement as
+ * `CHAT_USER` above, so the day the queue changes what staff or an admin need,
+ * these roles follow on the next sync. THROWS if a preset is gone, because a
+ * `find` returning undefined would otherwise seed a role that quietly lost its
+ * queue access.
+ *
+ * Granted to the EXISTING workspace roles (decided 2026-09-14): every member of
+ * a workspace can staff a window, and a workspace admin runs the queue. The
+ * separate "Queue staff / supervisor / admin" roles stay exported and unseeded.
+ */
+function queuePreset(key: string): QueueRolePreset {
+  const preset = QUEUE_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset)
+    throw new Error(`module-queuing-window no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * Runs one workspace.
  *
  * EMPTY, and the registry explains why: `workspaces:share` is the only
@@ -380,6 +399,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     FEATURE.workspaceMembersAdd,
     FEATURE.workspaceMembersRemove,
     FEATURE.workspaceAssignRole,
+    // The whole queue: serve, assign windows, manage lines and windows, start and stop.
+    ...queuePreset('queue-admin').features,
   ],
   limits: {},
 };
@@ -400,7 +421,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
    * mean a member who is in a workspace and cannot open it. Read is what "in
    * it, with no rights of their own" has to carry.
    */
-  features: [FEATURE.workspaceRead],
+  // Plus the queue's staff preset: see the queue and serve at a window they are assigned to.
+  features: [FEATURE.workspaceRead, ...queuePreset('queue-staff').features],
   limits: {},
 };
 
