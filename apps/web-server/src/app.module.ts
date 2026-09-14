@@ -451,7 +451,7 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
      * accounts. Neither is sufficient; both together are.
      */
     ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 120 },
+      { name: 'default', ttl: 60_000, limit: env.THROTTLE_DEFAULT_LIMIT },
       /*
        * The tight bucket for endpoints where somebody is GUESSING a secret —
        * sign-in, the 2FA challenge, forgot- and reset-password.
@@ -461,7 +461,7 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
        * package must not depend on @nestjs/throttler. The module publishes the
        * list; see ./auth/credential-throttler.guard.ts.
        */
-      { name: 'credential', ttl: 60_000, limit: 10 },
+      { name: 'credential', ttl: 60_000, limit: env.THROTTLE_CREDENTIAL_LIMIT },
     ]),
 
     /*

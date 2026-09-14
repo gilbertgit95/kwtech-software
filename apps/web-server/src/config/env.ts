@@ -103,6 +103,22 @@ const envSchema = z
      */
     TRUST_PROXY: z.string().optional().transform(parseTrustProxy),
 
+    /**
+     * Requests a minute per client address, for everything that is not a
+     * credential. ⚠ Until TRUST_PROXY names the proxies, every browser reaches
+     * the API through the Next server, so this is ONE allowance shared by every
+     * person, tab and TV — which is why it is 600 rather than the 120 it was: a
+     * few queue consoles re-reading on every call exhausted 120 (§12.69).
+     */
+    THROTTLE_DEFAULT_LIMIT: z.coerce.number().int().positive().default(600),
+
+    /**
+     * Requests a minute per client address where somebody is GUESSING a secret:
+     * sign-in, 2FA, password reset, a display code. Kept tight on purpose — it is
+     * what slows password guessing. Shared behind the proxy like the default.
+     */
+    THROTTLE_CREDENTIAL_LIMIT: z.coerce.number().int().positive().default(10),
+
     /** Where the emailed reset link points — a page in the Next app. */
     AUTH_RESET_URL_BASE: z.url().default('http://localhost:8081/auth/reset-password'),
 

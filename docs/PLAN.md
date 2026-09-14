@@ -555,6 +555,23 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-14** — **Rate limits raised and made configurable.**
+
+  A user hit `ThrottlerException: Too Many Requests`. The cause is §12.69: the
+  API sees one address for every browser, the Next server's, so the `default`
+  bucket (120 a minute) was shared by every person, tab and TV. The queue
+  console spends it quickly: every action re-reads two queries, and so does
+  every live event (debounced).
+  - `THROTTLE_DEFAULT_LIMIT`, **default raised to 600**, and
+    `THROTTLE_CREDENTIAL_LIMIT`, **default kept at 10**, in `env.ts`.
+  - **The credential bucket stays tight on purpose.** It is what slows password
+    and display-code guessing. It is configurable, but raising it trades
+    directly against that.
+  - **Not done, and the real fix:** count signed-in requests per USER rather
+    than per address (JwtAuthGuard runs before the throttler, so the principal
+    is already on the request), and set `TRUST_PROXY` where an edge proxy
+    rewrites `X-Forwarded-For`. A higher shared limit only moves the ceiling.
+
 - **2026-09-14** — **The TV board, redesigned, with a theme selector of its own.**
 
   A user request: a more modern and friendly display, plus the app's theme
