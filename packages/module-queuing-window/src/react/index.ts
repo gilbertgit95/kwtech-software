@@ -38,6 +38,7 @@ export {
   WORKSPACE_NAV_GROUP,
 } from './routes.js';
 export { primeSpeech, speakAnnouncement } from './speech.js';
+export { type DisplayThemeState, useDisplayTheme } from './use-display-theme.js';
 export { type QueueConsoleState, useQueueConsole } from './use-queue-console.js';
 export {
   type DisplayNotice,
@@ -71,4 +72,11 @@ export {
   sessionAge,
   spaceLine,
 } from './view/console-view.js';
+export {
+  DISPLAY_THEME_STORAGE_KEY,
+  type DisplayTheme,
+  type DisplayThemeMode,
+  isDarkDisplay,
+  parseDisplayTheme,
+} from './view/display-theme.js';
 export { FALLBACK_PITCH_SHIFT, pickVoice, type SpeechPlan, speechPlan, type VoiceLike } from './view/voice-view.js';

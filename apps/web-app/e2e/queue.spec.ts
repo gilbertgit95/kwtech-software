@@ -239,16 +239,18 @@ test.describe('the queue, console to TV', () => {
       await Promise.all([saved(), page.getByRole('combobox', { name: 'Pitch', exact: true }).selectOption(original)]);
     }
   });
+});
 
-  test('a TV given a wrong code is told nothing but that it is not valid', async ({ browser }) => {
-    const tvContext = await browser.newContext();
-    const tv = await tvContext.newPage();
-    await tv.goto('/queue-display/no-such-organization/no-such-workspace');
+/** Needs no account, so it runs whether or not the E2E_* variables are set. */
+test('a TV given a wrong code is told nothing but that it is not valid', async ({ browser }) => {
+  const tvContext = await browser.newContext();
+  const tv = await tvContext.newPage();
+  await tv.goto('/queue-display/no-such-organization/no-such-workspace');
 
-    await tv.getByLabel('Display code').fill('ZZZZ-ZZZZ');
-    await tv.getByRole('button', { name: 'Open' }).click();
-    // ⚠ The same sentence for an unknown organization, a wrong code, or a stopped queue.
-    await expect(tv.getByText('That code is not valid here right now')).toBeVisible();
-    await tvContext.close();
-  });
+  await tv.getByLabel('Display code').fill('ZZZZ-ZZZZ');
+  // Exact: under `next dev` the page also carries "Open Next.js Dev Tools".
+  await tv.getByRole('button', { name: 'Open', exact: true }).click();
+  // ⚠ The same sentence for an unknown organization, a wrong code, or a stopped queue.
+  await expect(tv.getByText('That code is not valid here right now')).toBeVisible();
+  await tvContext.close();
 });

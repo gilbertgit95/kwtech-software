@@ -33,6 +33,12 @@ works once the queue is on its organization's plan.
 `next start` the session cookie is `Secure`. The browser sends it to 127.0.0.1;
 Playwright's separate request context does not, so its calls arrive signed out.
 
+⚠ **Against `pnpm dev`, use `E2E_BASE_URL=http://localhost:8081`.** The Next dev
+server answers its own script bundles with 403 for an origin it does not allow,
+which includes `127.0.0.1`. The page then renders without JavaScript. The TV
+never leaves its loading frame, and the sign-in form submits as a plain GET. The
+default `127.0.0.1` is right for `next start`.
+
 ## What the account needs
 
 The queue test signs in as `E2E_EMAIL` and uses the queue in `E2E_WORKSPACE_ID`, so

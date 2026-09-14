@@ -3,7 +3,7 @@
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { applyPalette, readStoredPalette } from '../palette-runtime.js';
-import { DEFAULT_PALETTE, PALETTES } from '../palettes.js';
+import { DEFAULT_PALETTE, isPalette, PALETTES } from '../palettes.js';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,20 +55,32 @@ export interface ThemeSwitcherProps {
    */
   mode?: ThemeMode | undefined;
   onModeChange: (mode: ThemeMode) => void;
+  /**
+   * The active palette, for a caller that keeps its OWN choice instead of the
+   * app's — a public TV screen, whose look belongs to that screen and must not
+   * change the app for whoever next signs in on that browser.
+   *
+   * Give it together with `onPaletteChange`. Without them the switcher applies
+   * and saves the palette itself, which is what every app page wants. Undefined
+   * checks nothing, for the reason `mode` gives.
+   */
+  palette?: string | undefined;
+  onPaletteChange?: (palette: string) => void;
   /** Merged onto the trigger, for ring-offset colours that depend on the surface behind it. */
   className?: string;
 }
 
-export function ThemeSwitcher({ mode, onModeChange, className }: ThemeSwitcherProps) {
+export function ThemeSwitcher({ mode, onModeChange, palette, onPaletteChange, className }: ThemeSwitcherProps) {
   const [mounted, setMounted] = useState(false);
-  const [palette, setPalette] = useState<string>(DEFAULT_PALETTE);
+  const [ownPalette, setOwnPalette] = useState<string>(DEFAULT_PALETTE);
+  const controlled = onPaletteChange !== undefined;
 
   useEffect(() => {
     setMounted(true);
     // After mount, never during render: localStorage does not exist on the
     // server, so reading it while rendering would be a hydration mismatch.
     const stored = readStoredPalette();
-    if (stored) setPalette(stored);
+    if (stored) setOwnPalette(stored);
   }, []);
 
   /*
@@ -79,12 +91,18 @@ export function ThemeSwitcher({ mode, onModeChange, className }: ThemeSwitcherPr
    * wait for mount; the menu is not open before then anyway.
    */
   const activeMode = mounted ? mode : undefined;
+  const activePalette = mounted ? (controlled ? palette : ownPalette) : undefined;
 
   function choosePalette(id: string) {
     // The attribute IS the switch: every palette is already in the stylesheet,
     // scoped to its own selector, so this repaints instantly — no reload, no
     // re-render of anything below this component.
-    if (applyPalette(id)) setPalette(id);
+    if (onPaletteChange) {
+      // Controlled: the caller applies and keeps it. Never written to the app's key.
+      if (isPalette(id)) onPaletteChange(id);
+      return;
+    }
+    if (applyPalette(id)) setOwnPalette(id);
   }
 
   return (
@@ -117,10 +135,10 @@ export function ThemeSwitcher({ mode, onModeChange, className }: ThemeSwitcherPr
             // and adding RadioGroup to it for two menus would be a wider change
             // than this needs.
             role="menuitemradio"
-            aria-checked={mounted && palette === option.id}
+            aria-checked={activePalette === option.id}
             className={cn(
               'gap-2.5 rounded-lg px-2 py-2 text-sm',
-              mounted && palette === option.id ? 'font-medium text-foreground' : 'text-muted-foreground',
+              activePalette === option.id ? 'font-medium text-foreground' : 'text-muted-foreground',
             )}
           >
             {/*
@@ -138,7 +156,7 @@ export function ThemeSwitcher({ mode, onModeChange, className }: ThemeSwitcherPr
               className="size-3.5 shrink-0 rounded-full border border-border bg-primary"
             />
             <span className="flex-1">{option.label}</span>
-            {mounted && palette === option.id ? <Check className="size-3.5 text-primary" aria-hidden /> : null}
+            {activePalette === option.id ? <Check className="size-3.5 text-primary" aria-hidden /> : null}
           </DropdownMenuItem>
         ))}
 

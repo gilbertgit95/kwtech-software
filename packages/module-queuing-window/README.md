@@ -124,6 +124,24 @@ unlisted.
    TV that missed the event — the TV deletes its pass and returns to the code
    prompt. Its line filter stays.
 
+### The screen's look
+
+Every screen of the display has a top bar: the workspace (once a code has been
+accepted), a **Live / Connecting / Reconnecting** badge on the board, the time,
+and the theme selector. The selector offers the same colour schemes and
+Light / Dark / System as the app.
+
+⚠ **The choice belongs to the screen, and stays in that browser.** It is saved
+in localStorage under `kwtech_queue_display_theme`: nothing is sent to the
+server, and the next visit on that TV opens in the same theme. It is kept apart
+from the app's own `kwtech_theme` / `kwtech_palette`, so a theme picked for a
+waiting room does not repaint the app for whoever signs in on that browser.
+While the display is open, `useDisplayTheme` holds its theme on `<html>`, and
+restores the app's theme when you leave the page.
+
+On load the screen briefly shows the browser's app theme before its own,
+because localStorage can only be read in the browser.
+
 ### What a display says
 
 After the chime, a display reads the call aloud with the browser's own speech

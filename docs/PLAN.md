@@ -555,6 +555,43 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-14** — **The TV board, redesigned, with a theme selector of its own.**
+
+  A user request: a more modern and friendly display, plus the app's theme
+  selector on top, remembered per TV in the browser only.
+  - **Every phase shares one frame.** A top bar shows the workspace (only after a
+    pass, so the prompt still reveals nothing), a Live / Connecting /
+    Reconnecting badge, the clock and the selector. A soft backdrop is tinted by
+    the palette's own primary. The code prompt, start screen and board are
+    cards. The code prompt gains a three-step hint and tone-coloured notices
+    ("stopped" is a warning, not an error). The start screen names the three
+    things the tap unlocks. On the board, each window is a card that lights up
+    in the primary colour while calling, sized to how many windows there are.
+    Recent calls show their time. Sound and the line filter are pill buttons.
+  - **Kept on purpose:** stable window order (the lit card marks the newest
+    call, rather than moving it — the step 8 rule). Every accessible name the
+    browser tests use is unchanged. Inline SVG icons, so no icon dependency is
+    added to the module.
+  - **The theme is the SCREEN'S, under its own localStorage key**
+    (`kwtech_queue_display_theme`, mode and palette). It is never sent to the
+    server, and it is not the app's `kwtech_theme` / `kwtech_palette`: a TV is
+    often a browser somebody also signs in on, and neither choice should
+    repaint the other.
+  - ⚠ **Applied to `<html>` and held there.** Palette tokens hang off the root's
+    `data-palette`, and dark tokens off a `.dark` ancestor, so a wrapper cannot
+    force light inside a dark app. `next-themes` owns the root. A nested
+    provider is a no-op, and next-themes rewrites the class on a system-scheme
+    change or another tab's storage event. So `useDisplayTheme` sets the root,
+    re-asserts it with a MutationObserver (writing only on a difference, so it
+    cannot loop), and restores what it found on unmount. **Accepted:** a brief
+    flash of the browser's app theme on load, because localStorage is
+    client-only.
+  - **`@kwtech/web-ui`'s `ThemeSwitcher` gained an optional CONTROLLED
+    palette** (`palette` + `onPaletteChange`), the way `mode` always was.
+    Uncontrolled behaviour, used by every app page, is unchanged.
+    **Rejected: a second switcher component in the queue module.** It would
+    re-draw the same menu and drift from it.
+
 - **2026-09-14** — **The queue on the existing workspace roles.**
 
   A user decision, after a member could not see the queue and nobody could be

@@ -159,6 +159,15 @@ correction reads as a flicker.
 Give each swatch `data-palette={id}` so it previews with the real tokens rather
 than a hard-coded colour.
 
+### A screen that keeps its own palette
+
+Pass `palette` and `onPaletteChange` to make the palette controlled, the same
+way `mode` always is. The switcher then applies and saves nothing; the caller
+does. This is for a surface whose look belongs to it rather than to the app —
+`module-queuing-window`'s public TV board keeps its theme under its own
+localStorage key, so choosing Ocean on a waiting-room TV does not repaint the
+app for the next person who signs in on that browser.
+
 ### The API
 
 | Export | What it does |
