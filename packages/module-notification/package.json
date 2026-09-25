@@ -1,0 +1,84 @@
+{
+  "name": "@kwtech/module-notification",
+  "version": "0.0.0",
+  "private": true,
+  "description": "System notifications for a person, across every organization and workspace: realtime, with toasts, a bell and a paginated inbox",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./prisma": "./prisma/notification.prisma",
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "prisma"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput --tsBuildInfoFile dist/.tsbuildinfo.dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@kwtech/web-ui": "workspace:*",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/graphql": "catalog:",
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "@types/node": "catalog:",
+    "@types/react": "^19.2.18",
+    "graphql": "catalog:",
+    "jest": "^30.4.2",
+    "react": "^19.2.8",
+    "reflect-metadata": "catalog:",
+    "typescript": "catalog:",
+    "@types/react-dom": "^19.2.4",
+    "react-dom": "19.2.8"
+  },
+  "dependencies": {
+    "@kwtech/module-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@kwtech/web-ui": "workspace:*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/graphql": "^13.0.0",
+    "react": "^19.0.0",
+    "reflect-metadata": "^0.2.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@kwtech/web-ui": {
+      "optional": true
+    },
+    "@nestjs/common": {
+      "optional": true
+    },
+    "@nestjs/graphql": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "reflect-metadata": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  }
+}

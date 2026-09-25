@@ -7,6 +7,12 @@ import {
   type ChatWriteClient,
 } from '@kwtech/module-chat/server';
 import {
+  NOTIFICATION_PRISMA,
+  NOTIFICATION_PRISMA_WRITE,
+  type NotificationTransaction,
+  type NotificationWriteClient,
+} from '@kwtech/module-notification/server';
+import {
   PERMISSIONS_PRISMA,
   PERMISSIONS_PRISMA_WRITE,
   type PermissionsPrismaClient,
@@ -20,6 +26,7 @@ import {
   type QueueWriteClient,
 } from '@kwtech/module-queuing-window/server';
 import type { Provider } from '@nestjs/common';
+import type { PrismaClient } from '../generated/client.js';
 import { PrismaService } from './prisma.service.js';
 
 /**
@@ -45,7 +52,7 @@ import { PrismaService } from './prisma.service.js';
 
 /** Everything except the dispatcher is a straight pass-through of the delegate. */
 function withTransaction<Tx, Client extends { $transaction: unknown }>(
-  prisma: PrismaService,
+  prisma: PrismaClient,
   delegates: Omit<Client, '$transaction'>,
 ): Client {
   return {
@@ -185,6 +192,34 @@ export const queueWritePrismaProvider: Provider = {
       queueTicket: prisma.queueTicket,
       queueStaffNickname: prisma.queueStaffNickname,
     }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const notificationPrismaProvider: Provider = {
+  provide: NOTIFICATION_PRISMA,
+  useExisting: PrismaService,
+};
+
+/**
+ * The notification write client over any client of this app's schema — the
+ * Nest provider below, and the dev-only demo script, which runs outside Nest.
+ */
+export function notificationWriteClient(prisma: PrismaClient): NotificationWriteClient {
+  return withTransaction<NotificationTransaction, NotificationWriteClient>(prisma, {
+    /*
+     * ⚠ A send writes its batch, its rows and its group folds in ONE
+     * transaction dispatched through here, so a failed send leaves no batch
+     * claiming recipients it never reached.
+     */
+    notificationItem: prisma.notificationItem,
+    notificationBatch: prisma.notificationBatch,
+  });
+}
+
+export const notificationWritePrismaProvider: Provider = {
+  provide: NOTIFICATION_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): NotificationWriteClient => notificationWriteClient(prisma),
 };
 
 export type { ChatPrismaClient, PermissionsPrismaClient };

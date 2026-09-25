@@ -1,5 +1,6 @@
 import type { AuthTransaction } from '@kwtech/module-auth/server';
 import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
+import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
 import type { PermissionsPrismaClient, PermissionsTransaction } from '@kwtech/module-permissions/server';
 import type { QueuePrismaClient, QueueTransaction } from '@kwtech/module-queuing-window/server';
 import type { PrismaService } from './prisma.service.js';
@@ -47,3 +48,6 @@ export const _chatWriteDelegatesFit: ChatTransaction = client;
 
 export const _queueReadClientFits: QueuePrismaClient = client;
 export const _queueWriteDelegatesFit: QueueTransaction = client;
+
+export const _notificationReadClientFits: NotificationPrismaClient = client;
+export const _notificationWriteDelegatesFit: NotificationTransaction = client;

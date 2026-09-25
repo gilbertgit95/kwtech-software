@@ -1,0 +1,107 @@
+// @kwtech/module-notification — schema fragment.
+//
+// Composed into apps/web-server/prisma/_modules/ by the app's compose script,
+// like every module's. This module opens no connection: the app hands its client
+// back through NOTIFICATION_PRISMA / NOTIFICATION_PRISMA_WRITE.
+//
+// ⚠ `recipientId`, `organizationId` and `workspaceId` are BARE STRINGS with no
+// foreign key (PLAN §9 rule 10). People and tenants belong to other modules, and
+// a notification outlives the organization it mentions: it is the person's.
+
+/// How loud a notification is. What it is ABOUT is `source`, never this.
+/// ⚠ A new value is a schema change on purpose — the toast, the icon and the
+/// live region all switch on it, and a value nothing draws would render blank.
+enum NotificationSeverity {
+  info
+  success
+  warning
+  alert
+}
+
+/// One notification, for ONE person.
+///
+/// One row per recipient because read state is per person. A send to 500 people
+/// is 500 rows in one `createMany`, and the send itself is one `NotificationBatch`.
+model NotificationItem {
+  id          String               @id @default(cuid())
+  recipientId String
+  severity    NotificationSeverity @default(info)
+  title       String               @db.VarChar(160)
+  /// Plain text, never HTML. Links belong in `actions`, which are validated.
+  body        String?              @db.VarChar(2000)
+  /// A source the app DECLARED (`sources` on the module's options). `send`
+  /// refuses one it did not, so a raw key never reaches a screen.
+  source      String               @db.VarChar(64)
+
+  /// Where it came from. Both null = GLOBAL. `workspaceId` is set only together
+  /// with `organizationId` — the domain's `NotificationContext` makes the other
+  /// shape unrepresentable, and a row that has it anyway is dropped on read.
+  /// ⚠ Context, never access: only `recipientId` decides who sees a row.
+  organizationId String?
+  workspaceId    String?
+  /// "Acme · Front desk", snapshotted at send: the module cannot look names up,
+  /// and history should say what the place was called at the time.
+  contextLabel   String? @db.VarChar(160)
+
+  /// Links and downloads, at most three. Validated by `domain/actions.ts` on
+  /// write AND on read, so a bad row renders with no buttons, never a crash.
+  actions   Json    @default("[]")
+  /// A producer re-sending the same thing does not make a second row. Cleared
+  /// on recall, so the corrected re-send is not swallowed by this constraint.
+  dedupeKey String? @db.VarChar(200)
+  /// The send this row came from — the unit a recall acts on.
+  batchId   String
+
+  /// Folding (§6): an unread row with the same key absorbs the next one.
+  groupKey   String? @db.VarChar(128)
+  groupCount Int     @default(1)
+
+  createdAt  DateTime  @default(now())
+  /// = createdAt, bumped when a group folds in. The list orders by THIS, so a
+  /// group that grows moves back to the top.
+  occurredAt DateTime  @default(now())
+  readAt     DateTime?
+  archivedAt DateTime?
+  /// Recalled rows are never returned — a soft delete, so the Sent list keeps
+  /// the record of what was taken back.
+  recalledAt DateTime?
+  /// After this the buttons are hidden and the item says so. The item stays.
+  expiresAt  DateTime?
+
+  batch NotificationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientId, dedupeKey])
+  // The inbox, keyset, unread first: both runs (unread, then read) are ranges
+  // of this one index.
+  @@index([recipientId, archivedAt, readAt, occurredAt, id])
+  @@index([recipientId, organizationId, occurredAt])
+  // Finding the open group to fold into.
+  @@index([recipientId, groupKey, readAt])
+  // The flood rule counts one person's recent rows from one source.
+  @@index([recipientId, source, createdAt])
+  @@index([batchId])
+  @@map("notification_item")
+}
+
+/// One call to `send`, whoever made it. What a Sent list shows and a recall
+/// acts on, so an admin screen lists sends rather than thousands of rows.
+model NotificationBatch {
+  id             String    @id @default(cuid())
+  /// Who pressed send on a screen. Null = a producer (the system). Audit only:
+  /// recipients always see the SOURCE, never a person.
+  senderId       String?
+  source         String    @db.VarChar(64)
+  /// How loud the send was — what the Sent list draws beside it.
+  severity       NotificationSeverity @default(info)
+  title          String    @db.VarChar(160)
+  recipientCount Int
+  createdAt      DateTime  @default(now())
+  recalledAt     DateTime?
+  recalledById   String?
+
+  items NotificationItem[]
+
+  @@index([createdAt, id])
+  @@index([senderId, createdAt])
+  @@map("notification_batch")
+}

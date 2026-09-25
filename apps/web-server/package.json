@@ -20,6 +20,7 @@
     "db:seed:build": "tsc -p tsconfig.build.json",
     "db:sync": "pnpm db:seed:build && node dist/seed/run.js --phase=sync",
     "db:seed": "pnpm db:seed:build && node dist/seed/run.js --phase=seed",
+    "notify:demo": "node ../../scripts/env.mjs --require=local && pnpm db:seed:build && node dist/notifications/demo.js",
     "db:seed:list": "pnpm db:seed:build && node dist/seed/run.js --list",
     "db:snapshot": "pnpm db:seed:build && node dist/seed/snapshot.js --export",
     "db:restore": "pnpm db:seed:build && node dist/seed/snapshot.js --restore"
@@ -30,6 +31,7 @@
     "@kwtech/module-auth": "workspace:*",
     "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
+    "@kwtech/module-notification": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
     "@kwtech/module-queuing-window": "workspace:*",
     "@nestjs/apollo": "catalog:",

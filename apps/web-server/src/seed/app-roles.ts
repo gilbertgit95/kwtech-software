@@ -1,5 +1,6 @@
 import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
+import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
@@ -96,7 +97,25 @@ const CHAT_USER = (() => {
 })();
 
 /**
- * An ordinary signed-in person: their own account, and chat.
+ * Receiving your own notifications — read from the module's preset, like chat's,
+ * and for the same reasons: the list lives in one place, and a preset that
+ * vanished must fail the seed loudly rather than seed a role that grants
+ * nothing.
+ *
+ * ⚠ RECEIVING only. Sending as the platform (`notification:send`) and recalling
+ * (`notification:manage`) are in no preset and no role: `super-admin` bypasses
+ * the check, and nobody else has been decided (docs/NOTIFICATIONS-PLAN.md §18).
+ */
+const NOTIFICATION_USER = (() => {
+  const preset = NOTIFICATION_ROLE_PRESETS.find((one) => one.key === 'notification-user');
+  if (!preset) {
+    throw new Error("module-notification no longer ships a 'notification-user' preset; app-roles.ts must be updated.");
+  }
+  return preset;
+})();
+
+/**
+ * An ordinary signed-in person: their own account, chat, and notifications.
  *
  * ## ⚠ IT USED TO HOLD NOTHING, AND THAT CHANGED ON 2026-09-12
  *
@@ -161,7 +180,11 @@ const NORMAL_USER: SystemRoleDefinition = {
    * are powers over other people, which is exactly the kind of thing this role
    * is defined by not having.
    */
-  features: [...OWN_ACCOUNT, ...CHAT_USER.features],
+  /*
+   * Notifications too, since 2026-09-25: a system that must tell people when
+   * something happens cannot leave out the ordinary person it is telling.
+   */
+  features: [...OWN_ACCOUNT, ...CHAT_USER.features, ...NOTIFICATION_USER.features],
   /*
    * The group-chat cap comes with the keys. It matches the registry's own
    * default, restated rather than inherited for the reason the preset restates

@@ -15,6 +15,7 @@
     "@kwtech/module-auth": "workspace:*",
     "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
+    "@kwtech/module-notification": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
     "@kwtech/module-queuing-window": "workspace:*",
     "@kwtech/web-ui": "workspace:*",

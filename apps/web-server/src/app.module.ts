@@ -11,6 +11,11 @@ import {
 } from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
 import {
+  NOTIFICATION_PUBSUB,
+  NOTIFICATION_USER_DIRECTORY,
+  notificationServerModule,
+} from '@kwtech/module-notification/server';
+import {
   FeatureGuard,
   PERMISSIONS_PUBSUB,
   PermissionsLimitChecker,
@@ -43,11 +48,15 @@ import { env } from './config/env.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
+import { NOTIFICATION_SOURCES } from './notifications/sources.js';
+import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import {
   authPrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
+  notificationPrismaProvider,
+  notificationWritePrismaProvider,
   permissionsPrismaProvider,
   permissionsWritePrismaProvider,
   queuePrismaProvider,
@@ -251,6 +260,48 @@ const QUEUE_SERVER_MODULE: ServerModuleDescriptor = queueServerModule({
   pubsubProvider: { provide: QUEUE_PUBSUB, useValue: realtimePubSub() },
 });
 
+/**
+ * System notifications — a person's inbox across every organization and
+ * workspace, live over the socket.
+ *
+ * A PEER of chat, not a part of it: neither module imports or needs the other,
+ * and nothing below reads anything of chat's. The one engine they share is the
+ * app's pub/sub, which every module shares.
+ *
+ * Producers reach it through `NotificationSender`, which this module exports:
+ * a module that wants to tell somebody something declares its own port, and
+ * this file binds that port to the sender (PLAN §9).
+ */
+const NOTIFICATION_SERVER_MODULE: ServerModuleDescriptor = notificationServerModule({
+  prismaProvider: notificationPrismaProvider,
+  prismaWriteProvider: notificationWritePrismaProvider,
+
+  /*
+   * ⚠ THE SAME ENGINE every other module publishes into. A second engine would
+   * never see these publishes, and a toast would never arrive — with no error,
+   * which for a module whose whole job is "you will know immediately" is the
+   * worst possible failure.
+   */
+  pubsubProvider: { provide: NOTIFICATION_PUBSUB, useValue: realtimePubSub() },
+
+  // People for the compose screen, from `auth_user` — see ./notifications/user-directory.ts.
+  userDirectoryProvider: {
+    provide: NOTIFICATION_USER_DIRECTORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService) => new NotificationUserDirectoryAdapter(prisma),
+  },
+
+  resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+  sources: NOTIFICATION_SOURCES,
+
+  /*
+   * Plain-http links only where there is no TLS to begin with. The module's
+   * default is off, and production never turns it on.
+   */
+  allowHttpLinks: env.NODE_ENV === 'development',
+});
+
 const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   /*
    * Three things, and every one of them is genuinely this app's:
@@ -440,6 +491,8 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   CHAT_SERVER_MODULE,
 
   QUEUE_SERVER_MODULE,
+
+  NOTIFICATION_SERVER_MODULE,
 ];
 
 /**

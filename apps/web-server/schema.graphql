@@ -162,6 +162,7 @@ type Mutation {
   adminSendPasswordReset(userId: String!): AdminUserWriteResult!
   adminSetUserStatus(suspended: Boolean!, userId: String!): AdminUserWriteResult!
   adminUpdateUserProfile(displayName: String, userId: String!, username: String): AdminUser!
+  archiveNotifications(ids: [String!]!): Int!
   archiveWorkspace(organizationId: String!, workspaceId: String!): PermissionWriteResult!
   assignAppRole(roleId: String!, userId: String!): PermissionWriteResult!
   assignQueueWindow(confirmReplace: Boolean, organizationId: String!, userId: String!, windowId: String!, workspaceId: String!): QueueSeat
@@ -189,12 +190,16 @@ type Mutation {
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
   leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
+  markAllNotificationsRead(before: String!): Int!
   markChatRead(conversationId: String!, messageId: String!): Boolean!
+  markNotificationsRead(ids: [String!]!): Int!
+  markNotificationsUnread(ids: [String!]!): Int!
   markQueueTicketNoShow(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   moderateChatMessage(messageId: String!): ChatMessage!
   openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
+  recallNotificationBatch(batchId: String!): NotificationBatch!
   recallQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
   removeChatParticipant(conversationId: String!, userId: String!): Boolean!
@@ -207,6 +212,7 @@ type Mutation {
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
+  sendNotification(input: NotificationSendInput!): NotificationBatch!
   setChatArchived(archived: Boolean!, conversationId: String!): Boolean!
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
@@ -227,6 +233,7 @@ type Mutation {
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
   stopQueue(organizationId: String!, workspaceId: String!): Boolean!
+  unarchiveNotifications(ids: [String!]!): Int!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
@@ -246,6 +253,97 @@ type MyWorkspace {
   roleIcon: String
   roleKey: String
   roleLabel: String
+}
+
+type Notification {
+  actions: [NotificationAction!]!
+  archivedAt: String
+  body: String
+  contextLabel: String
+  createdAt: String!
+  expiresAt: String
+  groupCount: Int!
+  id: String!
+  occurredAt: String!
+  organizationId: String
+  readAt: String
+  severity: String!
+  source: String!
+  sourceLabel: String!
+  title: String!
+  workspaceId: String
+}
+
+type NotificationAction {
+  filename: String
+  href: String!
+  key: String!
+  kind: String!
+  label: String!
+  target: String
+}
+
+type NotificationBatch {
+  createdAt: String!
+  id: String!
+  readCount: Int!
+  recalledAt: String
+  recalledById: String
+  recipientCount: Int!
+  senderId: String
+  senderName: String
+  severity: String!
+  source: String!
+  sourceLabel: String!
+  title: String!
+}
+
+type NotificationBatchPage {
+  items: [NotificationBatch!]!
+  nextCursor: String
+}
+
+type NotificationEvent {
+  batchId: String
+  ids: [String!]!
+  kind: String!
+  notification: Notification
+}
+
+type NotificationPage {
+  endCursor: String
+  hasNext: Boolean!
+  hasPrevious: Boolean!
+  items: [Notification!]!
+  startCursor: String
+  totalCount: Int!
+  unreadCount: Int!
+}
+
+type NotificationRecipient {
+  displayName: String!
+  email: String!
+  userId: String!
+}
+
+input NotificationSendInput {
+  body: String
+  linkHref: String
+  linkLabel: String
+  recipientIds: [String!]!
+  severity: String
+  title: String!
+}
+
+type NotificationSource {
+  key: String!
+  label: String!
+  mutable: Boolean!
+}
+
+type NotificationsMissed {
+  items: [Notification!]!
+  total: Int!
 }
 
 type PermissionContext {
@@ -504,6 +602,12 @@ type Query {
   myPermissions(organizationId: String, workspaceId: String): PermissionContext
   myWorkspace(organizationId: String!, workspaceId: String!): PermissionMyWorkspace
   myWorkspaces(organizationId: String!): [MyWorkspace!]!
+  notificationBatches(after: String, first: Int, mineOnly: Boolean): NotificationBatchPage!
+  notificationRecipientSearch(query: String!): [NotificationRecipient!]!
+  notificationSources: [NotificationSource!]!
+  notificationUnreadCount: Int!
+  notifications(after: String, archived: Boolean, before: String, first: Int, globalOnly: Boolean, order: String, organizationId: String, severity: String, source: String, unreadOnly: Boolean): NotificationPage!
+  notificationsSince(since: String!): NotificationsMissed!
   permissionDefaults: [PermissionDefault!]!
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
   permissionLimits: [PermissionLimitSpec!]!
@@ -696,6 +800,7 @@ type SessionInfo {
 
 type Subscription {
   chatEvents(since: String): ChatEvent!
+  notificationEvents: NotificationEvent!
   planChanged: PermissionPlanChanged!
   queueDisplay: QueueDisplayEvent!
   queueEvents(organizationId: String!, workspaceId: String!): QueueEvent!

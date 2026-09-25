@@ -1,6 +1,7 @@
 import { authWebModule } from '@kwtech/module-auth/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import type { WebModuleDescriptor } from '@kwtech/module-kit';
+import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
 
@@ -31,4 +32,6 @@ export const WEB_MODULES: readonly WebModuleDescriptor[] = [
   chatWebModule(),
   // The public display opens its own socket, so it needs to know where the API is.
   queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
+  // The bell, right of chat's inbox in the header (header-tool order 20).
+  notificationWebModule(),
 ];
