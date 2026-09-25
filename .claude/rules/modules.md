@@ -84,6 +84,11 @@ test/                   fake-client.ts, surface-coverage, feature-keys, web-modu
 
 ## Cross-module boundaries
 
+The whole map, and every port in use, is in `docs/DEPENDENCIES.md`.
+`pnpm check:boundaries` (the last step of `pnpm lint`) fails the build on a
+violation of the import rules below.
+
+
 - **Every question about another module's data is a port:** a structural interface
   in `server/ports.ts` plus a string token in `x.tokens.ts`.
 - **The JSDoc on each token says what UNBOUND means, and unbound fails closed**

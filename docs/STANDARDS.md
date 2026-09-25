@@ -17,6 +17,10 @@ ask for them. They are written to be read by people too.
 
 [`CLAUDE.md`](../CLAUDE.md) keeps the commands and the add-a-feature checklist.
 
+Most of these rules are checked by review. The package boundaries are the
+exception: [`DEPENDENCIES.md`](DEPENDENCIES.md) maps them, and
+`pnpm check:boundaries` (the last step of `pnpm lint`) fails on a violation.
+
 ## Where the rules came from
 
 They were extracted from the code on 2026-09-25, not adopted from an outside
