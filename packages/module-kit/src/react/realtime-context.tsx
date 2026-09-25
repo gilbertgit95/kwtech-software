@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
-import type { RealtimeConnection } from '../realtime.js';
+import type { RealtimeConnection, RealtimeStatusSnapshot } from '../realtime.js';
 
 /**
  * ONE socket per tab, owned by the app, read by every module.
@@ -86,4 +86,33 @@ export function RealtimeProvider({ children, connect }: RealtimeProviderProps) {
  */
 export function useRealtime(): RealtimeConnection | null {
   return useContext(RealtimeContext);
+}
+
+/**
+ * Where the app's socket stands, or null when there is no socket to ask about.
+ *
+ * Null covers three ordinary cases, and a caller treats them alike — "nothing
+ * to report": before mount, an app that wires no socket, and a connection that
+ * does not report status (a hand-written one; see `RealtimeConnection.status`).
+ *
+ * ⚠ One answer for every module. A module that decided "live" from whether its
+ * own events were arriving could not tell a quiet stream from a dead one; the
+ * connection knows, because it sees the socket's own lifecycle.
+ */
+export function useRealtimeStatus(): RealtimeStatusSnapshot | null {
+  const connection = useRealtime();
+  const [snapshot, setSnapshot] = useState<RealtimeStatusSnapshot | null>(() => connection?.status?.() ?? null);
+
+  useEffect(() => {
+    if (!connection?.status || !connection.onStatus) {
+      setSnapshot(null);
+      return;
+    }
+    // Read once on (re)subscribe: the status may have moved between render and
+    // this effect, and a listener only hears about changes after it is added.
+    setSnapshot(connection.status());
+    return connection.onStatus(setSnapshot);
+  }, [connection]);
+
+  return snapshot;
 }

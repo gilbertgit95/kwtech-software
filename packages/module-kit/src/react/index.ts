@@ -12,7 +12,7 @@ export {
   useHoldsAllFeatures,
   useHoldsFeature,
 } from './feature-access.js';
-export { RealtimeProvider, type RealtimeProviderProps, useRealtime } from './realtime-context.js';
+export { RealtimeProvider, type RealtimeProviderProps, useRealtime, useRealtimeStatus } from './realtime-context.js';
 export {
   PublishStatus,
   type PublishStatusProps,

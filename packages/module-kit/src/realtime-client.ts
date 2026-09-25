@@ -1,7 +1,18 @@
 'use client';
 
 import { type Client, createClient } from 'graphql-ws';
-import { DEFAULT_WS_TICKET_PATH, type RealtimeConnection, type RealtimeOptions, reconnectDelay } from './realtime.js';
+import {
+  closeEvent,
+  DEFAULT_WS_TICKET_PATH,
+  nextRealtimeStatus,
+  REALTIME_PONG_TIMEOUT_MS,
+  REALTIME_REFUSED_CODE,
+  type RealtimeConnection,
+  type RealtimeOptions,
+  type RealtimeStatusEvent,
+  type RealtimeStatusSnapshot,
+  reconnectDelay,
+} from './realtime.js';
 
 /**
  * The app's realtime half: ONE WebSocket, opened with a short-lived ticket.
@@ -69,6 +80,74 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
     return { ticket: body.ticket };
   };
 
+  /*
+   * ── status ──────────────────────────────────────────────────────────────
+   *
+   * Kept here, fed by the client's own lifecycle callbacks, so every module
+   * reads ONE answer to "is this tab live" rather than each inferring it from
+   * whether its own events happen to be arriving — which on a quiet stream is
+   * indistinguishable from a dead one.
+   */
+  let snapshot: RealtimeStatusSnapshot = { status: 'idle', since: Date.now() };
+  const listeners = new Set<(next: RealtimeStatusSnapshot) => void>();
+  const move = (event: RealtimeStatusEvent) => {
+    const status = nextRealtimeStatus(snapshot.status, event);
+    if (status === snapshot.status) return;
+    snapshot = { status, since: Date.now() };
+    for (const listener of listeners) listener(snapshot);
+  };
+
+  /*
+   * ── an interruptible backoff ────────────────────────────────────────────
+   *
+   * `retryWait` resolves on its timer OR when `reconnectNow` wakes it. Without
+   * the second, a socket that has backed off to fifteen seconds sits out the
+   * rest of that wait after the network is already back — and fifteen seconds
+   * is long enough for a person to decide the app has stopped working.
+   */
+  const waking = new Set<() => void>();
+  const wait = (retries: number) =>
+    new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        waking.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, reconnectDelay(retries));
+      waking.add(done);
+    });
+  const reconnectNow = () => {
+    if (snapshot.status !== 'reconnecting') return;
+    for (const wake of [...waking]) wake();
+  };
+
+  /*
+   * The two moments a retry is most likely to succeed. Only for a connection
+   * that retries at all: one that gives up after five attempts has nothing
+   * waiting to wake.
+   */
+  const onOnline = () => reconnectNow();
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') reconnectNow();
+  };
+  const watchBrowser = Boolean(options.retryForever) && typeof window !== 'undefined';
+  if (watchBrowser) {
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
+  }
+
+  /*
+   * ── a socket that stopped answering ─────────────────────────────────────
+   *
+   * `keepAlive` SENDS a ping every twenty seconds; on its own it never notices
+   * that no pong came back. A half-open socket — a laptop that slept, a network
+   * that changed under it — then reports `live` while delivering nothing, which
+   * is the one state a notification bell must never show. So a ping with no
+   * pong inside `REALTIME_PONG_TIMEOUT_MS` terminates the socket, and the retry
+   * above takes over.
+   */
+  let pongTimer: ReturnType<typeof setTimeout> | undefined;
+
   let client: Client | null = createClient({
     url: options.wsUrl,
     /*
@@ -94,15 +173,26 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
     connectionParams: options.connectionParams ?? mintTicket,
     on: {
       error: (error) => options.onError?.(error instanceof Error ? error : new Error(String(error))),
-      connected: () => options.onConnected?.(),
-      closed: (event) => options.onClosed?.((event as { code?: number } | undefined)?.code),
+      connecting: () => move('connecting'),
+      ping: (received) => {
+        if (received) return;
+        clearTimeout(pongTimer);
+        pongTimer = setTimeout(() => client?.terminate(), REALTIME_PONG_TIMEOUT_MS);
+      },
+      pong: (received) => {
+        if (received) clearTimeout(pongTimer);
+      },
+      connected: () => {
+        move('connected');
+        options.onConnected?.();
+      },
+      closed: (event) => {
+        const code = (event as { code?: number } | undefined)?.code;
+        move(closeEvent(code));
+        options.onClosed?.(code);
+      },
     },
-    ...(options.retryForever
-      ? {
-          retryAttempts: Number.POSITIVE_INFINITY,
-          retryWait: (retries: number) => new Promise<void>((resolve) => setTimeout(resolve, reconnectDelay(retries))),
-        }
-      : {}),
+    ...(options.retryForever ? { retryAttempts: Number.POSITIVE_INFINITY, retryWait: wait } : {}),
     /**
      * Do not retry a REFUSAL.
      *
@@ -113,7 +203,7 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
      * tab keeps a server busy. Every other close, including the 4499 the server
      * sends when the authorization expires, is worth retrying.
      */
-    shouldRetry: (event) => (event as { code?: number })?.code !== 4403,
+    shouldRetry: (event) => (event as { code?: number })?.code !== REALTIME_REFUSED_CODE,
   });
 
   return {
@@ -134,8 +224,25 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
       );
     },
     close() {
+      if (watchBrowser) {
+        window.removeEventListener('online', onOnline);
+        document.removeEventListener('visibilitychange', onVisible);
+      }
+      clearTimeout(pongTimer);
+      for (const wake of [...waking]) wake();
+      listeners.clear();
       client?.dispose();
       client = null;
     },
+    status() {
+      return snapshot;
+    },
+    onStatus(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    reconnectNow,
   };
 }

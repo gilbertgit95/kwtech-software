@@ -346,6 +346,38 @@ principal.
 handshake. Re-check it on every publish, because the socket's twelve-hour
 maximum lifetime is only a backstop.
 
+## Realtime: one socket per tab, and whether it is live
+
+The app opens ONE connection (`createRealtimeConnection` from
+`@kwtech/module-kit/realtime`) and puts it in `RealtimeProvider`. Every module
+subscribes through `useRealtime()`; none opens its own.
+
+```ts
+createRealtimeConnection({ wsUrl, retryForever: true });
+```
+
+- **`retryForever`** keeps retrying with `reconnectDelay` (1 s doubling to
+  15 s, with jitter). ⚠ Without it `graphql-ws` stops after five attempts —
+  about thirty seconds of outage — and nothing in the tab is live again until a
+  reload, with nothing on screen to say so. The web app sets it since
+  2026-09-25. A refusal (4403: signed out) is never retried.
+- **A ping with no pong** within `REALTIME_PONG_TIMEOUT_MS` terminates the
+  socket so the retry takes over. Without it a half-open socket (a laptop that
+  slept) reports `live` while delivering nothing.
+- **`reconnectNow()`** skips the rest of the backoff. The connection calls it
+  itself on the browser's `online` event and when a tab becomes visible, and a
+  screen can offer it as "Retry now".
+- **`useRealtimeStatus()`** from `@kwtech/module-kit/react` returns
+  `{ status, since }`: `idle | connecting | live | reconnecting | refused`, and
+  when it began. There is no "down": how long `reconnecting` may last before a
+  screen calls it a problem is that screen's decision (the notification bell
+  waits 3 s, then 30 s). `null` means there is no socket to ask about.
+  `nextRealtimeStatus` is the pure transition rule, tested in `realtime.test.ts`.
+
+The three members are optional on `RealtimeConnection`, so a hand-written
+connection (a test's fake) still fits; a consumer that finds none treats the
+connection as live.
+
 ## The status channel
 
 The global status bar's vocabulary lives here for the same reason

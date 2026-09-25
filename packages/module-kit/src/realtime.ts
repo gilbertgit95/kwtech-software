@@ -142,4 +142,102 @@ export interface RealtimeConnection {
   subscribe<T>(document: string, onNext: (data: T) => void, variables?: Record<string, unknown>): () => void;
   /** Closes the socket. Safe to call twice. The APP calls this, not a module. */
   close(): void;
+  /**
+   * Where the socket stands right now. See `RealtimeStatus`.
+   *
+   * OPTIONAL, like the two below, so a hand-written connection (a test's fake,
+   * an app's own transport) still satisfies the interface. A consumer that
+   * finds none of them treats the connection as live, which is what every
+   * screen assumed before these existed.
+   */
+  status?(): RealtimeStatusSnapshot;
+  /** Called on every status change. Returns the unsubscribe. */
+  onStatus?(listener: (snapshot: RealtimeStatusSnapshot) => void): () => void;
+  /**
+   * Stop waiting out the backoff and try NOW. A no-op while live or idle.
+   *
+   * For a person pressing "Retry now", and for the moments a reconnect is
+   * likely to work — the network came back, a laptop woke up. Without it a
+   * socket that has backed off to fifteen seconds sits out the rest of that
+   * wait while the network is already fine.
+   */
+  reconnectNow?(): void;
+}
+
+/**
+ * The socket's state, as a screen needs it.
+ *
+ *   idle          nothing is subscribed, so no socket is open. Lazy by design —
+ *                 NOT a failure, and never shown as one.
+ *   connecting    the first attempt of this connection is in flight.
+ *   live          acknowledged; events are arriving.
+ *   reconnecting  it was live, or tried to be, and is retrying.
+ *   refused       the server declined it (4403: signed out, a pass withdrawn).
+ *                 Never retried — see `shouldRetry` — so this one is final.
+ *
+ * ⚠ There is no "down". Down is `reconnecting` that has lasted too long, and
+ * how long is too long is a SCREEN's decision (a bell waits thirty seconds, a
+ * TV may wait less), so the connection reports the state and when it began, and
+ * each screen draws its own line.
+ */
+export type RealtimeStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'refused';
+
+export interface RealtimeStatusSnapshot {
+  status: RealtimeStatus;
+  /** Epoch milliseconds when this status began. A screen measures "how long" from it. */
+  since: number;
+}
+
+/** What the socket client reports, narrowed to what moves the status. */
+export type RealtimeStatusEvent = 'connecting' | 'connected' | 'closed' | 'closed_normally' | 'refused';
+
+/**
+ * The status after `event`. Pure, so the transitions are tested without a
+ * WebSocket.
+ *
+ * ⚠ A `connecting` after the socket was ever live is `reconnecting`, not
+ * `connecting`: to a screen, "trying for the first time" and "lost it and
+ * trying again" are different sentences, and only the second is a problem.
+ *
+ * ⚠ `closed_normally` (code 1000) is the lazy client closing because nothing is
+ * subscribed. That is `idle`, and reporting it as a loss would flash a warning
+ * on every page that stops listening.
+ */
+export function nextRealtimeStatus(current: RealtimeStatus, event: RealtimeStatusEvent): RealtimeStatus {
+  switch (event) {
+    case 'connecting':
+      return current === 'idle' ? 'connecting' : 'reconnecting';
+    case 'connected':
+      return 'live';
+    case 'closed':
+      return current === 'refused' ? 'refused' : 'reconnecting';
+    case 'closed_normally':
+      return current === 'refused' ? 'refused' : 'idle';
+    case 'refused':
+      return 'refused';
+  }
+}
+
+/**
+ * How long a sent ping may go unanswered before the socket is treated as dead.
+ *
+ * Five seconds on top of the twenty-second keepalive: a dead socket is noticed
+ * within about twenty-five seconds, and a slow-but-alive one is not killed by a
+ * busy server taking a moment to answer.
+ */
+export const REALTIME_PONG_TIMEOUT_MS = 5_000;
+
+/** The close code that means "refused, do not retry". Shared with `shouldRetry`. */
+export const REALTIME_REFUSED_CODE = 4403;
+
+/**
+ * Which status event a close with `code` is.
+ *
+ * `undefined` is an abnormal close that carried no code — a dropped network —
+ * and is retried like any other loss.
+ */
+export function closeEvent(code: number | undefined): RealtimeStatusEvent {
+  if (code === REALTIME_REFUSED_CODE) return 'refused';
+  if (code === 1000) return 'closed_normally';
+  return 'closed';
 }
