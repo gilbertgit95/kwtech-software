@@ -54,6 +54,8 @@ const EXCLUDED_TABLES: Record<string, string> = {
   auth_identity: 'federated sign-in subjects',
   auth_session: 'live refresh tokens',
   auth_password_reset: 'live reset tokens',
+  // Six-digit codes: a hash of one is brute-forced offline in seconds.
+  auth_mfa_email_code: 'second-factor email code hashes',
   queue_display_pass: 'live TV display credentials',
 };
 
