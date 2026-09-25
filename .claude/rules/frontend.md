@@ -35,7 +35,7 @@ Client, no codegen, no react-query and no redux. Do not add them.**
 - **Modules never import `next/*`.** Navigate with `<a href>` or
   `window.location.assign`. `next/link` and `next/navigation` live only in
   `apps/web-app/src/components/layout/`.
-- **`middleware.ts` renews the session; it is not a guard.**
+- **`proxy.ts` (Next 16's name for middleware) renews the session; it is not a guard.**
 - **`transpilePackages` is derived from package.json.** Never hand-list packages.
 
 ## Components

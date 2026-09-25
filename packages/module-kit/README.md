@@ -68,7 +68,7 @@ same declaration — which is what stops a menu linking somewhere the guard refu
 
 ```ts
 const nav = composeNav(WEB_MODULES, grants?.features);   // filtered, grouped, sorted
-const route = matchRoute(ROUTES, request.nextUrl.pathname);  // in middleware.ts
+const route = matchRoute(ROUTES, request.nextUrl.pathname);  // in proxy.ts
 if (route?.feature && !held.includes(route.feature)) return forbid();
 ```
 
