@@ -520,7 +520,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 42 | Does anyone get to read a conversation they are not in? | before a compliance or abuse report arrives | Shipping with NO such key: `platform:support_access` is the single exemption in the permission model and must not quietly become "read everyone's private messages". `chat:moderate` deletes a message in a conversation the actor is a PARTICIPANT of, which is a different act. The pressure will come from abuse reports and legal holds, and the honest answer when it does is a separate, `isPrivileged`, audited key — not widening support access, and not an unlogged database console |
 | 43 | Message retention, edit history and attachments | after `/chat` ships | v1 stores `body` text with `editedAt`/`deletedAt` tombstones and no prior-version table, so an edit destroys what was said and a delete is soft with no purge. Fine while chat is internal; none of it survives a retention policy or a deletion request. Attachments were part of this entry and are now §12.45, which is a bigger question than retention |
 
-| 44 | What `dnd` suppresses beyond the local tone | ⚠ PARTLY CLOSED 2026-09-13 | Availability ships as a coloured dot, and a dot that lies is worse than no dot. The one thing it CAN do today it does: `dnd` mutes the receive tone locally. Everything else people assume it means — no email, no push, no badge — needs a notification system, and this repo has none. ⚠ The availability picker must SAY so, in the picker, the way `/admin/defaults` says what it hands over. When notifications arrive, `dnd` is the first consumer and the question becomes whether it suppresses delivery or only presentation. **⚠ ANSWERED 2026-09-13: DELIVERY.** Email notifications shipped, and `shouldNotify` refuses outright for `dnd` — so it now means no tone AND no mail. What is still unclaimed is push and any badge, neither of which exists; the picker's wording must be re-read the day either does |
+| 44 | What `dnd` suppresses beyond the local tone | ⚠ PARTLY CLOSED 2026-09-13 | Availability ships as a coloured dot, and a dot that lies is worse than no dot. The one thing it CAN do today it does: `dnd` mutes the receive tone locally. Everything else people assume it means — no email, no push, no badge — needs a notification system, and this repo has none. ⚠ The availability picker must SAY so, in the picker, the way `/admin/defaults` says what it hands over. When notifications arrive, `dnd` is the first consumer and the question becomes whether it suppresses delivery or only presentation. **⚠ ANSWERED 2026-09-13: DELIVERY.** Email notifications shipped, and `shouldNotify` refuses outright for `dnd` — so it now means no tone AND no mail. What is still unclaimed is push and any badge, neither of which exists; the picker's wording must be re-read the day either does **⚠ RE-READ 2026-09-25, as this entry asked:** `module-notification` added a badge, a bell and toasts. `dnd` stays CHAT's — it covers chat's tone and chat's email and nothing in `module-notification`, whose toasts are quieted by that module's own per-device settings. The two modules are peers and neither reads the other. |
 | 45 | Attachments: the blob store, and the signed URL that is a bearer token | before files are promised to anyone | v1 is text and emoji, and the schema is shaped so files need NO migration: `body` is nullable (an image-only message with `body: ''` is a lie), `ChatMessage.kind` already exists for system messages, and there are deliberately no `fileUrl`/`fileName` COLUMNS — attachments will be a child table, because the columns are the shortcut that breaks on the second file. ⚠ **No `ChatAttachment` table is created.** An empty table is a claim to have thought it through, and this repo already carries `PermMembershipStatus.invited` as the scar. What actually gates files is not schema: there is no blob store anywhere in the monorepo, so it needs storage, a size cap, a virus-scan decision, and a per-plan storage limit that lands back on the `LimitContribution` work. ⚠ And it CHANGES THE PRIVACY MODEL: a signed URL is a BEARER TOKEN — anyone holding the link reads the file, with no `canAccessConversation` on it. Decide that before the first upload, not after |
 | 46 | Typing pings ride HTTP, not the socket | if they show up in metrics | A typing signal is the highest-frequency write in the product: one per user per conversation every few seconds. It goes over HTTP with every other mutation, which is the §12.29 bargain — `ThrottlerGuard` bounds it for free, where a socket-borne ping is cheaper and completely unthrottled. A deliberate trade of bytes for a limit that already exists. Reverse it if typing traffic ever registers, and take §12.29 seriously in the same change |
 
@@ -552,11 +552,52 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 70 | Google-only accounts: accepting an invitation with Google | when invited people ask to skip choosing a password | Google sign-in (2026-09-25) reaches only accounts that already exist, which today always have a password. An invitation accepted with Google would create one WITHOUT a password — and every step-up in `AuthService` (`requirePassword`: enrol or remove a factor, new recovery codes, change password) would then refuse that person with `no_password_credential`. Building it means a second step-up proof (a fresh Google round trip with `prompt=login` and `max_age`) before the invitation path can use Google |
 | 71 | No screen shows or unlinks a linked Google account | before someone asks why a Google account they lost still signs them in | `auth_identity` is written on first link and read by sign-in only. Needed: a Security card listing the identity with an Unlink (password-confirmed), an admin view of it, and the rule that unlinking may never remove the account's last way in |
 | 72 | Email as a second factor is only as strong as the mailbox | if a policy ever REQUIRES a second factor | Offered because it needs no phone app, and labelled weaker in the UI. A policy that counts "any factor" as compliance would accept it; one that means phishing resistance must exclude `email` (and `totp`) and wait for WebAuthn (§12.18) |
+| 73 | Notification history is kept forever | when one person's inbox reaches the hundreds of thousands, or the table's size is noticed | **Decided 2026-09-25 by the operator: keep everything.** `notification_item` is never pruned — archive and recall only hide rows — and there is no job runner to prune it anyway (§12.40). Every index leads with `recipientId`, so the cost of a long history is one person's own rows, not the table's, and keyset pagination keeps pages cheap however deep. What would change it: a real storage problem, answered by partitioning or an archive table, not by deleting what somebody was told. A flooding producer is already capped at one overflow row per person per minute (`floodLimitPerMinute`). |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-25** — **`module-notification`: system notifications, live, in a
+  bell beside chat's inbox. The app's socket now never gives up.**
+
+  A user request: realtime notifications with a toast, an unread count on a
+  header icon, a notifications page, severities, and optional buttons that open
+  a link or a download — global, across every organization and workspace. The
+  plan and every decision behind it are in `docs/NOTIFICATIONS-PLAN.md`.
+  - **A module of its own, and a peer of chat.** Neither imports or needs the
+    other; the bell is a header tool at order 20, right of chat's 10, and knows
+    nothing about it. `dnd` stays chat's (§12.44 re-read).
+  - **The system is the sender.** Producers call `NotificationSender` through
+    ports their own modules declare; the admin compose screen (super-admin only)
+    sends AS "Platform" and records the sender on the batch for audit only.
+    Person-to-person is chat's job.
+  - **Global inbox, optional context.** `organizationId` / `workspaceId` are
+    nullable and describe where a notification came from, never who may see it;
+    a person who leaves an organization keeps what it sent them.
+  - **Realtime is the point.** One trigger, filtered per publish by recipient,
+    carrying the notification; published after the commit; `sync` on every
+    reconnect with a catch-up read that gives each missed ALERT its own toast
+    and summarises the rest. Measured locally at about 40 ms send-to-event.
+  - **The socket fix, in module-kit and the web app.** The app's connection had
+    no `retryForever`, so `graphql-ws` stopped after five attempts — about
+    thirty seconds of outage — and every live screen, chat's included, went
+    quiet until a reload with only a console warning. It now retries forever,
+    terminates a socket whose ping goes unanswered, reconnects at once on
+    `online` and on a tab becoming visible (`reconnectNow`), and reports
+    `useRealtimeStatus()`, which the bell draws as a dot and "Live updates
+    paused since …" with Retry now.
+  - **Unread first, keyset pages both ways, nothing deleted** (§12.73). Grouping,
+    a per-source flood rule that folds a loop into one row, dedupe, recall with
+    realtime removal, bulk marks, the unread count in the tab title, and the
+    browser's own pop-ups when every tab is hidden.
+  - **Not done:** per-person source mutes and announcements to everyone (plan
+    phases 3 and 4, not yet built); email and Web Push (dropped, plan §15);
+    server-side action buttons such as "Accept invitation" (dropped with
+    invitations, plan §16). The UI was verified by build, API and socket tests
+    against the running stack, but not by screenshot: no browser could run in
+    this environment.
 
 - **2026-09-25** — **Header tools: modules can put a control in the app header.
   Chat moves there, with a floating, draggable mini window. Reverses 2026-09-11

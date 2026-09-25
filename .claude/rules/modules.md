@@ -94,6 +94,12 @@ test/                   fake-client.ts, surface-coverage, feature-keys, web-modu
   (`options.resolveActorId(req)`). A module never resolves identity itself.
 - **If two modules need the same shape, copy it structurally**, and say so in a
   comment. It moves to `module-kit` only when a second consumer exists.
+- **Telling people something is `module-notification`'s job, reached by a
+  port.** A module declares `X_NOTIFIER` (its own words: "session stopped"),
+  calls it after the commit without letting it fail the write, and the app's
+  adapter turns that into `NotificationSender.sendSafely(...)` with a declared
+  source. Never import `module-notification`, and never build a module's own
+  toast or badge. See its README, "Notifying people from another module".
 
 ## Realtime
 

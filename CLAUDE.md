@@ -31,6 +31,7 @@ packages/module-auth/       sign-in, sessions, MFA, password reset
 packages/module-permissions/ organizations, workspaces, roles, features, plans, limits
 packages/module-chat/       conversations and messages
 packages/module-queuing-window/ walk-in queue: windows, lines, a live TV board
+packages/module-notification/ system notifications: bell, toasts, a paginated inbox
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 
@@ -145,6 +146,14 @@ only when it is a feature of its own (PLAN §9 rule 8).
 - [ ] A **tool** people use from anywhere (like chat) goes in the app header,
       not the drawer: declare `headerTools` on the descriptor (see
       `packages/module-kit/README.md`, "Header tools"). One way in, not both.
+- [ ] **Telling a person something happened** (a job finished, a session
+      stopped, something needs attention)? Don't build a banner, badge or
+      toast of your own: declare a port in the module (`X_NOTIFIER`), call it
+      after the commit, and have the app bind it to `module-notification`'s
+      `NotificationSender` (`sendSafely`), declaring the source in
+      `apps/web-server/src/notifications/sources.ts`. Recipe:
+      `packages/module-notification/README.md`, "Notifying people from another
+      module". Person-to-person messages are chat, not notifications.
 - [ ] Use `@kwtech/web-ui` components and theme tokens rather than raw colours.
 
 **In the apps (only for a new module, or a new port or option)**
