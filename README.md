@@ -41,12 +41,9 @@ contract and [docs/PLAN.md](docs/PLAN.md) §9 before adding a module.
 ```bash
 pnpm install
 
-# once: create the database, then apply migrations and seed the first user
-createdb kwtech                       # or: sudo -u postgres createdb kwtech
-cp apps/web-server/.env.example apps/web-server/.env      # set AUTH_JWT_SECRET
+# once: env files (set AUTH_JWT_SECRET in the first)
+cp apps/web-server/.env.example apps/web-server/.env
 cp apps/web-app/.env.example    apps/web-app/.env.local
-pnpm --filter @kwtech/web-server db:migrate
-pnpm --filter @kwtech/web-server db:seed
 
 pnpm dev
 ```
@@ -88,9 +85,25 @@ pnpm --filter @kwtech/web-server db:seed       # idempotent first user
 pnpm --filter @kwtech/web-server db:studio
 ```
 
-**Postgres** is expected on `localhost:5432`. On WSL2, `apt install postgresql`
-is the simplest route — check `/etc/wsl.conf` has `systemd=true` first, or the
-service will not survive a restart.
+**Postgres** is expected where `DATABASE_URL` points, `localhost:5432` by
+default. `pnpm dev` and `pnpm dev:api` run `scripts/dev-db.mjs` first: if
+nothing answers on that port it starts a `kwtech-postgres` Docker container
+(creating it the first time, with its data in the `kwtech-pgdata` volume), and
+on a brand-new volume applies the migrations and seeds. A native Postgres
+already on the port is used as-is.
+
+```bash
+pnpm db:up            # start (or create) the container without starting the apps
+pnpm db:down          # stop it; the data stays in the volume
+```
+
+Docker Engine inside WSL2, once (`/etc/wsl.conf` needs `systemd=true`):
+
+```bash
+sudo apt update && sudo apt install -y docker.io
+sudo usermod -aG docker $USER && sudo systemctl enable --now docker
+# then open a new terminal so the group membership applies
+```
 
 ## Conventions
 
