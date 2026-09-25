@@ -63,12 +63,14 @@ Then:
 
 ```bash
 pnpm install
-pnpm dev             # creates envs/local/ from the templates, with fresh secrets
+pnpm env:new local   # creates envs/local/ from the templates, with fresh secrets
 ```
 
-Fill in `SEED_USER_*` in `envs/local/web-server.env` (your sign-in), then stop
-and start `pnpm dev`. On a new database the data snapshot is restored for you.
-See the root README.
+Fill in `SEED_USER_*` in `envs/local/web-server.env` (your sign-in) BEFORE the
+first `pnpm dev`: on a new database it restores the data snapshot and runs the
+seeders, and the first-user seeder refuses to run without them. If you already
+started without them, fill them in and run `pnpm db:seed`. The full walkthrough
+is [docs/SETUP.md](../docs/SETUP.md).
 
 ### C. A fresh clone that should match your other machine exactly
 

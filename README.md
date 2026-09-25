@@ -12,6 +12,12 @@ Code also loads on its own.
 - pnpm >= 11 — `corepack enable` picks it up from the `packageManager` field.
   `.npmrc` sets `engine-strict=true`, so an older pnpm fails the install rather
   than producing a subtly different one.
+- Docker — `pnpm dev` runs the local Postgres in a container.
+- On Windows, WSL2.
+
+**New computer?** Follow **[docs/SETUP.md](docs/SETUP.md)**, from `git clone`
+to signed in, with the database, seeding, optional services and
+troubleshooting.
 
 ## Layout
 
@@ -20,11 +26,18 @@ apps/
   web-server/         NestJS — REST today, GraphQL + WS in Phase 3   :8080
   web-app/            Next.js — web frontend                         :8081
 packages/
-  web-ui/             React + Tailwind 4 + AG Grid Community
-  module-kit/         the module contract every app composes
-  module-auth/        the authentication feature, whole
-  module-permissions/ the permissions feature, whole
+  web-ui/                 React + Tailwind 4 + AG Grid Community
+  module-kit/             the module contract every app composes
+  module-auth/            sign-in, sessions, MFA, password reset
+  module-permissions/     organizations, workspaces, roles, features, plans, limits
+  module-chat/            conversations and messages
+  module-queuing-window/  walk-in queue: windows, lines, a live TV board
+  module-notification/    system notifications: bell, toasts, an inbox
 ```
+
+No module imports another; only the apps depend on them. The map, and the
+ports modules use instead, are in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md),
+enforced by `pnpm check:boundaries`.
 
 Feature modules ship as one package with a dependency-free core plus adapters
 behind subpath exports — `@kwtech/module-permissions`, `.../server`, `.../react`.
@@ -42,10 +55,12 @@ contract and [docs/PLAN.md](docs/PLAN.md) §9 before adding a module.
 
 ```bash
 pnpm install
-pnpm dev     # first run creates the `local` env profile, with fresh secrets
+pnpm env:new local   # envs/local/, with fresh secrets
+# fill in SEED_USER_* (your sign-in) in envs/local/web-server.env — BEFORE the first start
+pnpm dev             # database created, migrated, filled and seeded; both apps running
 ```
 
-Then fill in `SEED_USER_*` (your sign-in) in `envs/local/web-server.env`.
+Every step, and what each one does, is in [docs/SETUP.md](docs/SETUP.md).
 
 ### Environments: local, staging, production
 

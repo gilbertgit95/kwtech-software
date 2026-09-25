@@ -7,7 +7,8 @@ link to the longer documents rather than copying them.
 
 | Read | For |
 |---|---|
-| [README.md](README.md) | setup, commands, the dev database |
+| [README.md](README.md) | overview, commands, the dev database |
+| [docs/SETUP.md](docs/SETUP.md) | a new computer, from `git clone` to signed in; database tasks; troubleshooting |
 | [docs/PLAN.md](docs/PLAN.md) | the plan. §9 module rules, §10 layout, §12 open decisions, §13 dated decision log |
 | [docs/DESIGN-NOTES.md](docs/DESIGN-NOTES.md) | why it is built this way. Part 7 is the principles that recur |
 | [packages/module-kit/README.md](packages/module-kit/README.md) | the module contract: descriptors, routes, nav, features, limits, defaults, scope |
@@ -15,6 +16,7 @@ link to the longer documents rather than copying them.
 | [packages/web-ui/README.md](packages/web-ui/README.md) | themes, tokens, layout components |
 | [apps/web-server/src/seed/README.md](apps/web-server/src/seed/README.md) | seeders, sync versus seed, the snapshot |
 | [docs/STANDARDS.md](docs/STANDARDS.md) | the coding standards: what is in `.claude/rules/`, and the known inconsistencies |
+| [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | what may import what, and the ports modules use instead. Enforced by `pnpm check:boundaries` |
 
 `docs/PLAN.md` is over 9,000 lines. Search it (`grep -n "§12.40" docs/PLAN.md`)
 rather than reading it whole.
@@ -45,7 +47,7 @@ pnpm dev                 # dev database + every package watcher + both apps
 pnpm dev:api | dev:web   # one side only
 pnpm typecheck
 pnpm test                # jest in packages and web-server
-pnpm lint                # biome; pnpm check:fix writes the fixes
+pnpm lint                # biome, then the package boundary check; pnpm check:fix writes the fixes
 pnpm --filter @kwtech/web-app test:e2e     # playwright, see apps/web-app/e2e/README.md
 
 pnpm --filter @kwtech/web-server db:migrate    # compose module fragments + prisma migrate dev
