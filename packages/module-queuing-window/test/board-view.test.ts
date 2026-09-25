@@ -1,3 +1,4 @@
+import { DEFAULT_VOICE } from '../src/domain/voice.js';
 import { CALL_CHIME_MS, CALL_CHIME_PEAK, QUEUE_CALL_CHIME } from '../src/react/call-chime.js';
 import {
   codeFromFragment,
@@ -35,6 +36,8 @@ const call = (over: Partial<QueueBoardCallView>): QueueBoardCallView => ({
 
 const board = (serving: QueueBoardCallView[], recent: QueueBoardCallView[] = serving): QueueBoardView => ({
   showStaffNames: false,
+  // Not under test here; the voice rules have their own suite (voice.test.ts).
+  voice: DEFAULT_VOICE,
   lines: [
     { id: 'c', prefix: 'C', name: 'Cashier' },
     { id: 'e', prefix: 'E', name: 'Enrollment' },
