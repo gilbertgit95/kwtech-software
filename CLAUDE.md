@@ -201,7 +201,8 @@ answer *how many*. The details are in DESIGN-NOTES Part 4 and
 - `apps/web-server/seed-data/snapshot.json` is public. Never put real customer
   data or credentials in the dev database.
 - Secrets live in env profiles, `envs/<name>/*.env` (gitignored), which
-  `pnpm env:use` links to `apps/web-server/.env` and `apps/web-app/.env.local`.
+  `pnpm env:use` links to `.env.local` in each app (`apps/web-server/.env.local`,
+  `apps/web-app/.env.local`).
   Document a new variable in the matching `.env.example` with an EMPTY value if
   it is secret (a pre-commit check enforces it), and validate it in that app's
   `src/config/env.ts`. Never read or print a profile's secrets unless asked.

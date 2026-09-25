@@ -1,8 +1,6 @@
-// Loads apps/web-server/.env relative to the working directory, and must be the
-// first import here so the file is on process.env before the schema below
-// parses it. In deployment, where these are real environment variables, a
-// missing .env is simply a no-op — and an exported variable always wins.
-import 'dotenv/config';
+// Loads apps/web-server/.env.local, and must be the first import here so the
+// file is on process.env before the schema below parses it. See load-env.ts.
+import './load-env.js';
 import { z } from 'zod';
 import { parseTrustProxy } from './trust-proxy.js';
 

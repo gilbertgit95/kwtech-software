@@ -4,7 +4,7 @@
  *
  * WHAT IT DOES, IN ORDER
  *
- *   1. DATABASE_URL (apps/web-server/.env, else the .env.example default) points
+ *   1. DATABASE_URL (apps/web-server/.env.local, else the .env.example default) points
  *      somewhere other than this machine → nothing to do here.
  *   2. Something already accepts connections on that port — a native Postgres,
  *      or the container from a previous run → done.
@@ -40,7 +40,7 @@ const IMAGE = 'postgres:17';
 const STOP = process.argv.includes('--stop');
 
 function readDatabaseUrl() {
-  for (const file of ['.env', '.env.example']) {
+  for (const file of ['.env.local', '.env', '.env.example']) {
     const path = resolve(SERVER_DIR, file);
     if (!existsSync(path)) continue;
     const match = readFileSync(path, 'utf8').match(/^\s*DATABASE_URL\s*=\s*["']?([^"'\n]+)/m);
@@ -97,7 +97,7 @@ if (STOP) {
 }
 
 const config = readDatabaseUrl();
-if (!config) fail(['✗ no DATABASE_URL in apps/web-server/.env or .env.example']);
+if (!config) fail(['✗ no DATABASE_URL in apps/web-server/.env.local or .env.example']);
 
 const { url, fromExample } = config;
 const host = url.hostname;
@@ -180,7 +180,9 @@ if (freshVolume) {
   // the bare seeders otherwise.
   const fill = existsSync(resolve(SERVER_DIR, 'seed-data/snapshot.json')) ? 'db:restore' : 'db:seed';
   if (fromExample) {
-    console.log('  ! new database, but apps/web-server/.env does not exist yet — create it, then run:');
+    console.log(
+      '  ! new database, but apps/web-server/.env.local does not exist yet — run `pnpm env:new local`, then:',
+    );
     console.log(`      pnpm --filter @kwtech/web-server db:deploy && pnpm --filter @kwtech/web-server ${fill}`);
     process.exit(0);
   }

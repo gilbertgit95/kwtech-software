@@ -555,6 +555,23 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-25** — **The API reads `.env.local`, the same file name as the web
+  app.**
+
+  A user request, for uniformity: both apps now read `.env.local`, and
+  `pnpm env:use` links each profile to that name in both.
+  - **One loader:** `apps/web-server/src/config/load-env.ts`, imported first by
+    `env.ts`. `prisma.config.ts` does the same in one line, because it is loaded
+    by Prisma rather than by the app.
+  - **Migrated, not broken:** `env.mjs` renames an old `apps/web-server/.env`
+    (plain file or profile link) to `.env.local` on any `pnpm env:*` or
+    `pnpm dev`. Until then the API still boots from `.env` and prints a warning
+    naming the fix, so pulling this change breaks no machine. If both files
+    exist, `.env.local` wins and the old file is reported, never deleted.
+  - **Verified:** a real boot (`/health` reports the database up), `prisma
+    migrate status`, the seed runner, 177 tests, and the migration from both a
+    pre-profile machine and a post-profile one.
+
 - **2026-09-25** — **Environment profiles: one command switches local, staging
   and production, and development defaults to local.**
 

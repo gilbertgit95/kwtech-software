@@ -51,7 +51,8 @@ Then fill in `SEED_USER_*` (your sign-in) in `envs/local/web-server.env`.
 
 Each environment is a **profile**: `envs/<name>/web-server.env` and
 `envs/<name>/web-app.env`, gitignored. The active one is symlinked to
-`apps/web-server/.env` and `apps/web-app/.env.local`, so switching is one
+`apps/web-server/.env.local` and `apps/web-app/.env.local` (both apps use the
+same file name), so switching is one
 command and every tool (Nest, Next, Prisma, the seeders) follows it.
 
 ```bash

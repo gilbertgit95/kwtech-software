@@ -4,7 +4,7 @@ Everything in this folder except this README is gitignored. It holds real
 secrets.
 
 ```
-envs/local/web-server.env        linked to apps/web-server/.env
+envs/local/web-server.env        linked to apps/web-server/.env.local
 envs/local/web-app.env           linked to apps/web-app/.env.local
 envs/staging/…
 envs/production/…
@@ -33,17 +33,22 @@ pnpm env:check           # templates hold no secrets; profiles lack no variable
 
 Pick the case that matches the machine.
 
-### A. It already has `apps/web-server/.env` from before profiles existed
+### A. It already has `apps/web-server/.env`
+
+This covers both a plain `.env` from before profiles and a `.env` link from
+before the rename to `.env.local`.
 
 ```bash
 git pull
 pnpm install
-pnpm env:show        # moves the old files into envs/local/ and links them back
+pnpm env:show        # renames .env → .env.local, moves the files into envs/local/, links them back
 pnpm env:check       # lists variables added since that .env was written
 ```
 
-Nothing is lost. The old `.env` and `.env.local` are moved, not copied, into
-`envs/local/`, and the apps read them through the links exactly as before.
+Nothing is lost. The server's old `.env` is renamed to `.env.local`, the name
+the web app already uses. Plain files are then moved, not copied, into
+`envs/local/`, and the apps read them through the links. Until you run this,
+the API still boots from the old `.env` and prints a warning that says so.
 Then:
 
 1. Add `APP_ENV="local"` to `envs/local/web-server.env` and

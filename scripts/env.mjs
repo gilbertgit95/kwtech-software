@@ -12,13 +12,14 @@
  *
  * LAYOUT
  *
- *   envs/<name>/web-server.env   ← apps/web-server/.env      (a symlink)
- *   envs/<name>/web-app.env      ← apps/web-app/.env.local   (a symlink)
+ *   envs/<name>/web-server.env   ← apps/web-server/.env.local   (a symlink)
+ *   envs/<name>/web-app.env      ← apps/web-app/.env.local      (a symlink)
  *
- * The apps keep reading the files they always read — dotenv's `.env`, Next's
- * `.env.local` — so Nest, Next, Prisma, the seeders and scripts/dev-db.mjs all
- * follow a switch without knowing profiles exist. A symlink rather than a copy
- * so an edit to apps/web-server/.env IS an edit to the profile: a copy would
+ * Both apps read `.env.local`: Next by its own convention, the API through
+ * apps/web-server/src/config/load-env.ts. So Nest, Next, Prisma, the seeders
+ * and scripts/dev-db.mjs all follow a switch without knowing profiles exist. A
+ * symlink rather than a copy so an edit to apps/web-server/.env.local IS an
+ * edit to the profile: a copy would
  * drift from its source the first time somebody changed a value in the IDE.
  *
  * `envs/` is gitignored except its README. A deployed staging or production
@@ -54,7 +55,8 @@ const ENVS = resolve(ROOT, 'envs');
 const ACTIVE_MARKER = resolve(ENVS, '.active');
 
 const APPS = [
-  { key: 'web-server', dir: 'apps/web-server', target: '.env' },
+  // `.env` is where the API's file lived before it matched the web app's name.
+  { key: 'web-server', dir: 'apps/web-server', target: '.env.local', legacy: '.env' },
   { key: 'web-app', dir: 'apps/web-app', target: '.env.local' },
 ];
 
@@ -113,19 +115,53 @@ function activeProfile() {
 }
 
 /**
+ * `apps/web-server/.env` → `.env.local`, whichever form it takes: a profile
+ * link from before the rename is re-pointed under the new name, and a plain
+ * file is renamed, so the step below adopts it into envs/local/. When both
+ * exist the new name wins and the old one is left for a person to delete.
+ */
+function migrateLegacyNames() {
+  for (const app of APPS) {
+    if (!app.legacy) continue;
+    const old = resolve(ROOT, app.dir, app.legacy);
+    const target = targetPath(app);
+    const oldExists = isSymlink(old) || existsSync(old);
+    if (!oldExists) continue;
+    const targetExists = isSymlink(target) || existsSync(target);
+
+    if (isSymlink(old)) {
+      if (!targetExists) link(resolve(dirname(old), readlinkSync(old)), target);
+      rmSync(old);
+      console.log(`  ${relative(ROOT, old)} is now ${relative(ROOT, target)}`);
+    } else if (!targetExists) {
+      renameSync(old, target);
+      console.log(`  renamed ${relative(ROOT, old)} → ${relative(ROOT, target)}`);
+    } else {
+      console.warn(
+        yellow(`  ! ${relative(ROOT, old)} is no longer read (${app.target} is). Delete it once you have checked it.`),
+      );
+    }
+  }
+}
+
+/**
  * A checkout from before profiles has plain files where the symlinks go. They
  * become the `local` profile — moved, not copied, so nothing is lost and there
  * is one source afterwards. Refuses rather than guesses when `local` already
  * holds something different.
  */
 function adoptPlainFiles() {
+  migrateLegacyNames();
   for (const app of APPS) {
     const target = targetPath(app);
     if (!existsSync(target) || isSymlink(target)) continue;
 
     const destination = profilePath('local', app);
     if (existsSync(destination)) {
-      if (readFileSync(destination, 'utf8') === readFileSync(target, 'utf8')) continue;
+      if (readFileSync(destination, 'utf8') === readFileSync(target, 'utf8')) {
+        link(destination, target);
+        continue;
+      }
       fail(
         `${relative(ROOT, target)} is a plain file and envs/local/${app.key}.env already exists with different ` +
           'content. Keep the one you want, delete the other, and run this again.',

@@ -42,7 +42,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Where each of these is configured, so this list has somewhere to be kept
- * honest from: 8080 is `PORT` in apps/web-server/.env, 8081 is the `-p` flag in
+ * honest from: 8080 is `PORT` in apps/web-server/.env.local, 8081 is the `-p` flag in
  * apps/web-app's dev script.
  */
 const DEFAULT_PORTS = [8080, 8081];

@@ -131,7 +131,8 @@ Reference: `packages/module-queuing-window/src/server/` and
   - Use `.refine` for production-only requirements and `z.coerce.number()` for
     numbers.
   - Document every variable in `.env.example`.
-- **Env files are profiles:** `envs/<name>/web-server.env`, linked to `.env` by
+- **Env files are profiles:** `envs/<name>/web-server.env`, linked to `.env.local` (the same name as the web
+  app's) by
   `pnpm env:use`. A new variable goes into `.env.example`, EMPTY if it is a
   secret or personal (`*_PASSWORD|*_SECRET|*_KEY|*_EMAIL`; the pre-commit check
   refuses a value), and into `env.ts`. New profiles pick it up from the

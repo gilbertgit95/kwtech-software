@@ -4,16 +4,21 @@
 // review in isolation, and why the module fragments composed into it need know
 // nothing about where the database is.
 //
-// `dotenv/config` loads apps/web-server/.env relative to the working directory,
-// so every `pnpm db:*` script picks it up. In deployment, where DATABASE_URL is
-// a real environment variable, the missing .env is simply a no-op.
+// dotenv loads apps/web-server/.env.local (the file src/config/load-env.ts
+// reads, and the name the Next app uses) relative to the working directory, so
+// every `pnpm db:*` script picks it up. An unmigrated checkout's `.env` still
+// works. In deployment, where DATABASE_URL is a real environment variable, the
+// missing file is simply a no-op.
 //
 // Note this resolves env('DATABASE_URL') EAGERLY, so `prisma generate` needs
 // the variable present even though it opens no connection — hence
 // `passThroughEnv: ["DATABASE_URL"]` on the build task in turbo.json rather
 // than `env`.
-import 'dotenv/config';
+import { existsSync } from 'node:fs';
+import { config } from 'dotenv';
 import { defineConfig, env } from 'prisma/config';
+
+config({ path: existsSync('.env.local') ? '.env.local' : '.env', quiet: true });
 
 export default defineConfig({
   migrations: {

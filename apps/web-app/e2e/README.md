@@ -26,7 +26,7 @@ What runs:
 
 Without the `E2E_*` variables the first two are **skipped** with that reason, not
 failed. The wrong-code test needs no account and always runs. Locally, the seed
-account from `apps/web-server/.env` (`SEED_USER_EMAIL`, `SEED_USER_PASSWORD`)
+account from `apps/web-server/.env.local` (`SEED_USER_EMAIL`, `SEED_USER_PASSWORD`)
 works once the queue is on its organization's plan.
 
 ⚠ Setup calls go through `page.evaluate(fetch)`, not `page.request`. Under
