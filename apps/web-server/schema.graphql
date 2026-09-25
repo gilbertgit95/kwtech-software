@@ -383,6 +383,7 @@ type PermissionDefaultChoice {
 }
 
 type PermissionFeature {
+  bindings: [PermissionFeatureBinding!]!
   description: String!
   isPrivileged: Boolean!
   key: String!
@@ -390,6 +391,11 @@ type PermissionFeature {
   level: String!
   module: String!
   tags: [String!]!
+}
+
+type PermissionFeatureBinding {
+  identifier: String!
+  surface: String!
 }
 
 type PermissionFeaturePage {

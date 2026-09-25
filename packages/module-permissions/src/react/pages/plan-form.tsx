@@ -12,7 +12,7 @@ import {
 } from '../../domain/plan-draft.js';
 import { canPlanEntitle } from '../../domain/plans.js';
 import type { RoleLevel } from '../../types.js';
-import type { FeatureView, PermissionsClient, PlanView } from '../permissions-client.js';
+import { type FeatureView, featureSpecOf, type PermissionsClient, type PlanView } from '../permissions-client.js';
 
 /** Features nobody filed under a tag. Sorted last, never hidden. */
 const UNTAGGED = 'untagged';
@@ -210,7 +210,7 @@ export function PlanForm({ client, plan, allPlans, features, onSaved, cancelHref
     const found = validatePlanDraft(draft, {
       // The same list the server validates against, so the form cannot refuse
       // something the API would accept, or offer something it would not.
-      registry: features.map((feature) => ({ ...feature, level: feature.level as RoleLevel })),
+      registry: features.map(featureSpecOf),
       ...(editing ? { originalKey: plan.key } : {}),
     });
     setErrors(found);

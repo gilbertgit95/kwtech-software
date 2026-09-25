@@ -6,7 +6,13 @@ import { LIMIT_REGISTRY, type LimitSpec } from '../../domain/limits.js';
 import { type RoleDraft, type RoleDraftErrors, roleLimitFields, validateRoleDraft } from '../../domain/role-draft.js';
 import { canRoleGrant } from '../../domain/roles.js';
 import { ROLE_LEVELS, type RoleLevel } from '../../types.js';
-import type { FeatureView, LimitView, PermissionsClient, RoleView } from '../permissions-client.js';
+import {
+  type FeatureView,
+  featureSpecOf,
+  type LimitView,
+  type PermissionsClient,
+  type RoleView,
+} from '../permissions-client.js';
 import { usePermissions } from '../use-permissions.js';
 
 /** Features nobody filed under a tag. Sorted last, never hidden. */
@@ -316,7 +322,7 @@ export function RoleForm({
     const found = validateRoleDraft(draft, {
       // The same list the server validates against, so the form cannot refuse
       // something the API would accept, or offer something it would not.
-      registry: features.map((feature) => ({ ...feature, level: feature.level as RoleLevel })),
+      registry: features.map(featureSpecOf),
       // The same composed list the server validates against, for the reason the
       // feature registry is passed: a cap this form does not know about would be
       // reported as "not declared by any module" on a draft the API accepts.

@@ -63,6 +63,10 @@ function DefaultsRoute(_props: ModuleRouteProps) {
   return <DefaultsPage />;
 }
 
+function FeaturesRoute(_props: ModuleRouteProps) {
+  return <FeaturesPage />;
+}
+
 function RolesRoute(_props: ModuleRouteProps) {
   return <RolesPage />;
 }
@@ -502,7 +506,7 @@ export const permissionsWebModule: WebModuleDescriptor = {
     },
     {
       path: '/admin/features',
-      component: FeaturesPage,
+      component: FeaturesRoute,
       title: 'Features',
       /*
        * Its own key, not `roles:manage`. Reading the vocabulary and defining

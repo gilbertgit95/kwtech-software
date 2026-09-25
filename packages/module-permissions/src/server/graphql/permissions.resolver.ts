@@ -141,6 +141,10 @@ export class PermissionsResolver {
         // the tag path it groups by.
         level: spec.level,
         tags: [...(spec.tags ?? [])],
+        bindings: (spec.bindings ?? []).map((binding) => ({
+          surface: binding.surface,
+          identifier: binding.identifier,
+        })),
       })),
     };
   }

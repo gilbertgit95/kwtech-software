@@ -1,25 +1,28 @@
 'use client';
 
 import { ConfirmDialog, DataGrid, type DataGridColumn, MultiSelect, useDebouncedValue } from '@kwtech/web-ui/react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type FeatureFilter, featureFacets, filterFeatures, isEmptyFilter } from '../../domain/feature-filter.js';
-import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
+import { FEATURE } from '../../feature-keys.js';
 import { tagsInUse } from '../../feature-tags.js';
-import type { RoleLevel } from '../../types.js';
+import type { FeatureSpec, RoleLevel } from '../../types.js';
 import { FeatureGate } from '../feature-gate.js';
+import { createPermissionsClient, featureSpecOf, type PermissionsClient } from '../permissions-client.js';
 import { usePermissions } from '../use-permissions.js';
 import { AdminPage } from './admin-page.js';
 
 /**
- * The grantable vocabulary — every key a role can contain, where it is
- * enforced, and which of them the viewer holds.
+ * The grantable vocabulary — every key a role can contain, from EVERY module,
+ * where it is enforced, and which of them the viewer holds.
  *
- * ## Why this one has a real screen and its siblings do not
+ * ## Fetched, not compiled in (changed 2026-09-25)
  *
- * `FEATURE_REGISTRY` is a constant compiled into this package. The list is
- * already here, so the page needs no query, no resolver and no loading state —
- * unlike Organizations and Subscriptions, whose rows live in tables no API
- * exposes yet.
+ * It read `FEATURE_REGISTRY`, the constant compiled into THIS package — which
+ * holds permissions' own keys and nobody else's. Chat's, the queue's and
+ * notifications' keys were in the database, grantable in the role editor, and
+ * absent from the one page that claims to list "every right a role can grant".
+ * It now reads `permissionFeatures`, the same composed registry the role editor
+ * and the write path use, so the three can no longer disagree.
  *
  * ## Read-only, permanently
  *
@@ -68,8 +71,28 @@ const LEVEL_LABEL: Record<RoleLevel, string> = {
   app: 'Platform',
 };
 
-export function FeaturesPage() {
+export function FeaturesPage({ client }: { client?: PermissionsClient } = {}) {
   const context = usePermissions();
+  const api = useMemo(() => client ?? createPermissionsClient(), [client]);
+
+  /** Every module's keys, from the API. Null while loading. */
+  const [registry, setRegistry] = useState<FeatureSpec[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listFeatures()
+      .then((features) => {
+        if (!cancelled) setRegistry(features.map(featureSpecOf));
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setLoadError(cause instanceof Error ? cause.message : 'Could not load the features.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+  const specs = useMemo(() => registry ?? [], [registry]);
 
   /*
    * `effective` and not `granted`: what the viewer can actually use here, after
@@ -123,7 +146,7 @@ export function FeaturesPage() {
 
   const rows = useMemo<FeatureRow[]>(
     () =>
-      FEATURE_REGISTRY.map((spec) => ({
+      specs.map((spec) => ({
         key: spec.key,
         label: spec.label,
         description: spec.description,
@@ -136,29 +159,27 @@ export function FeaturesPage() {
         tagText: (spec.tags ?? []).join(' '),
         held: held.has(spec.key),
       })),
-    [held],
+    [held, specs],
   );
 
   /**
    * The SAME `filterFeatures` the API applies, over the same registry.
    *
-   * The page reads a compiled constant rather than fetching, so there is no
-   * query here to push a WHERE clause into — but the SEMANTICS are the query's,
-   * not a second implementation. When this list becomes database-backed, the
-   * page swaps a constant for a fetch and every rule already matches, because
-   * it is literally the same function.
+   * The whole registry is fetched once and filtered here, so every keystroke
+   * does not cost a request — and the SEMANTICS are the query's, not a second
+   * implementation, because it is literally the same function.
    */
   const effectiveFilter = useMemo<FeatureFilter>(
     () => ({ ...filter, search: debouncedSearch }),
     [filter, debouncedSearch],
   );
 
-  const matching = useMemo(() => filterFeatures(FEATURE_REGISTRY, effectiveFilter), [effectiveFilter]);
+  const matching = useMemo(() => filterFeatures(specs, effectiveFilter), [specs, effectiveFilter]);
   const visible = useMemo(() => rows.filter((row) => matching.some((spec) => spec.key === row.key)), [rows, matching]);
 
   /* Built from the data, so a module or level nobody uses never becomes an empty option. */
-  const facets = useMemo(() => featureFacets(FEATURE_REGISTRY), []);
-  const availableTags = useMemo(() => tagsInUse(FEATURE_REGISTRY), []);
+  const facets = useMemo(() => featureFacets(specs), [specs]);
+  const availableTags = useMemo(() => tagsInUse(specs), [specs]);
 
   /** Toggling one value inside a multi-select facet. */
   const toggleIn = useCallback((field: 'modules' | 'levels' | 'tags', value: string) => {
@@ -212,6 +233,14 @@ export function FeaturesPage() {
           showing={visible.length}
           total={rows.length}
         />
+
+        {loadError ? (
+          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {loadError}
+          </p>
+        ) : registry === null ? (
+          <p className="text-sm text-muted-foreground">Loading features…</p>
+        ) : null}
 
         <DataGrid<FeatureRow>
           rows={visible}
@@ -299,10 +328,10 @@ export function FeaturesPage() {
         description={
           <>
             <p>
-              {selected.length === 1 ? 'This feature is ' : 'These features are '}defined in code, in{' '}
-              <code className="font-mono text-xs">FEATURE_REGISTRY</code>. Deleting the database row does not remove{' '}
-              {selected.length === 1 ? 'it' : 'them'} — the next <code className="font-mono text-xs">pnpm db:sync</code>{' '}
-              writes {selected.length === 1 ? 'it' : 'them'} back.
+              {selected.length === 1 ? 'This feature is ' : 'These features are '}defined in code, in its module&apos;s
+              feature registry. Deleting the database row does not remove {selected.length === 1 ? 'it' : 'them'} — the
+              next <code className="font-mono text-xs">pnpm db:sync</code> writes{' '}
+              {selected.length === 1 ? 'it' : 'them'} back.
             </p>
             <ul className="mt-2 flex flex-col gap-0.5">
               {selected.map((row) => (

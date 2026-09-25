@@ -83,6 +83,18 @@ export class PermissionContextType {
   appRoles!: PermissionRoleType[];
 }
 
+/** Where a feature is enforced: a GraphQL operation, a route, a UI control. */
+@ObjectType('PermissionFeatureBinding')
+export class PermissionFeatureBindingType {
+  /** 'graphql_operation' | 'graphql_subscription' | 'rest_endpoint' | 'ui_route' | 'ui_component'. */
+  @Field()
+  surface!: string;
+
+  /** `Mutation.sendNotification`, `/admin/roles`, `FeaturesPage.EditButton`. */
+  @Field()
+  identifier!: string;
+}
+
 @ObjectType('PermissionFeature')
 export class PermissionFeatureType {
   @Field()
@@ -120,6 +132,14 @@ export class PermissionFeatureType {
    */
   @Field(() => [String])
   tags!: string[];
+
+  /**
+   * Where the key is enforced. Registry-only, like `level`: the Features page
+   * shows it for EVERY module's keys, which this package cannot import, so the
+   * API is its only source.
+   */
+  @Field(() => [PermissionFeatureBindingType])
+  bindings!: PermissionFeatureBindingType[];
 }
 
 /**

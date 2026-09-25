@@ -1,6 +1,7 @@
 'use client';
 
 import type { CloneMode } from '../domain/role-draft.js';
+import type { FeatureBinding, FeatureSpec, RoleLevel } from '../types.js';
 
 /**
  * How this module's screens reach the API.
@@ -130,6 +131,30 @@ export interface FeatureView {
   isPrivileged: boolean;
   level: string;
   tags: string[];
+  /** Where it is enforced. The Features page lists them; the role editor ignores them. */
+  bindings: { surface: string; identifier: string }[];
+}
+
+/**
+ * A feature from the API as the registry's own shape, so the same domain rules
+ * (`filterFeatures`, `validateRoleDraft`, `validatePlanDraft`) run over EVERY
+ * module's keys. The wire's strings are cast back to the unions the server
+ * built them from; it only sends a level and a surface it validated at boot.
+ */
+export function featureSpecOf(view: FeatureView): FeatureSpec {
+  return {
+    key: view.key,
+    module: view.module,
+    label: view.label,
+    description: view.description,
+    isPrivileged: view.isPrivileged,
+    level: view.level as RoleLevel,
+    tags: view.tags,
+    bindings: view.bindings.map((binding) => ({
+      surface: binding.surface as FeatureBinding['surface'],
+      identifier: binding.identifier,
+    })),
+  };
 }
 
 export interface ClonePreview {
@@ -613,20 +638,26 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
   return {
     async listFeatures() {
       /*
-       * `limit` is the server's own cap, and it can only ever narrow — asking
-       * for more returns the cap, not an error. The registry is 19 keys today;
-       * if it outgrows a page this needs to follow `hasMore`, and the count
-       * below is what will make that obvious rather than silent.
+       * EVERY page, not the first. The server caps a page at its own maximum,
+       * and the registry — every module's keys together — is past half of that
+       * already. Reading one page would silently drop whatever did not fit, and
+       * a key missing here is a key no role editor can grant.
        */
-      const data = await graphql<{ permissionFeatures: { items: FeatureView[]; total: number } }>(
-        `query PermissionFeatures {
-           permissionFeatures {
-             total
-             items { key module label description isPrivileged level tags }
-           }
-         }`,
-      );
-      return data.permissionFeatures.items;
+      const all: FeatureView[] = [];
+      for (let page = 0; page < 50; page += 1) {
+        const data = await graphql<{ permissionFeatures: { items: FeatureView[]; total: number } }>(
+          `query PermissionFeatures($offset: Int) {
+             permissionFeatures(offset: $offset) {
+               total
+               items { key module label description isPrivileged level tags bindings { surface identifier } }
+             }
+           }`,
+          { offset: all.length },
+        );
+        all.push(...data.permissionFeatures.items);
+        if (data.permissionFeatures.items.length === 0 || all.length >= data.permissionFeatures.total) break;
+      }
+      return all;
     },
 
     async listLimits() {
