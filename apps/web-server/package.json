@@ -7,7 +7,7 @@
   "scripts": {
     "db:compose": "node scripts/compose-schema.mjs",
     "db:generate": "pnpm db:compose && prisma generate",
-    "db:migrate": "pnpm db:compose && prisma migrate dev",
+    "db:migrate": "node ../../scripts/env.mjs --require=local && pnpm db:compose && prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "build": "pnpm db:generate && nest build",

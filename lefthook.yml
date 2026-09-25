@@ -5,6 +5,11 @@ pre-commit:
       glob: '*.{js,jsx,ts,tsx,json,jsonc,css}'
       run: pnpm biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
       stage_fixed: true
+    # The repository is public: a password or secret in a committed template
+    # is a published one. scripts/env.mjs names the offending key.
+    - name: env-examples
+      glob: '**/.env.example'
+      run: node scripts/env.mjs check --examples-only
 
 commit-msg:
   jobs:

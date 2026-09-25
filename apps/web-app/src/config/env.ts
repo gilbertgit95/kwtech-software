@@ -49,6 +49,15 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   /**
+   * WHICH environment this is, as in apps/web-server: `local`, `staging` or
+   * `production`. Separate from NODE_ENV, because staging runs a production
+   * build. Written into each profile by `pnpm env:new`. Unset means `local`, so
+   * development needs nothing; a production build must say, or the check in
+   * `assertEnv` stops the boot.
+   */
+  APP_ENV: z.enum(['local', 'staging', 'production']).optional(),
+
+  /**
    * THE PRODUCT NAME — the wordmark in the side drawer and the browser tab.
    *
    * Deliberately NOT `NEXT_PUBLIC_`. That prefix inlines a value at BUILD time,
@@ -70,11 +79,18 @@ const envSchema = z.object({
   APP_TAGLINE: optionalText,
 });
 
-export type Env = z.infer<typeof envSchema>;
+const validated = envSchema
+  .refine((env) => env.NODE_ENV !== 'production' || env.APP_ENV !== undefined, {
+    path: ['APP_ENV'],
+    message: "APP_ENV is required in a production build: 'staging' or 'production' (or 'local' to run one here).",
+  })
+  .transform((env) => ({ ...env, APP_ENV: env.APP_ENV ?? 'local' }));
+
+export type Env = z.infer<typeof validated>;
 
 /** Throws on a malformed environment, so the process dies at boot rather than at first sign-in. */
 export function assertEnv(): Env {
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = validated.safeParse(process.env);
   if (!parsed.success) {
     console.error('Invalid environment:', z.flattenError(parsed.error).fieldErrors);
     throw new Error('Invalid environment. See the logged field errors.');

@@ -14,6 +14,7 @@ link to the longer documents rather than copying them.
 | `packages/module-*/README.md` | each feature module's own contract and options |
 | [packages/web-ui/README.md](packages/web-ui/README.md) | themes, tokens, layout components |
 | [apps/web-server/src/seed/README.md](apps/web-server/src/seed/README.md) | seeders, sync versus seed, the snapshot |
+| [docs/STANDARDS.md](docs/STANDARDS.md) | the coding standards: what is in `.claude/rules/`, and the known inconsistencies |
 
 `docs/PLAN.md` is over 9,000 lines. Search it (`grep -n "§12.40" docs/PLAN.md`)
 rather than reading it whole.
@@ -51,6 +52,7 @@ pnpm --filter @kwtech/web-server db:generate   # compose + generate the client
 pnpm --filter @kwtech/web-server db:sync       # reference data (features, roles, defaults)
 pnpm --filter @kwtech/web-server db:seed       # sync + first user, plans, demo user
 pnpm db:restore [--force]                      # load seed-data/snapshot.json
+pnpm env:show | env:use <name> | env:new <name> | env:check   # env profiles in envs/ (local by default)
 pnpm db:up | db:down                           # the kwtech-postgres Docker container
 ```
 
@@ -58,6 +60,15 @@ Before calling work done, run `pnpm typecheck`, `pnpm test` and `pnpm lint`.
 When the change can be seen, run the app too: several bugs in this repo
 (duplicate Nest instances, GraphQL schema errors at boot) passed `tsc` and only
 failed at runtime.
+
+## Coding standards
+
+The coding standards are in `.claude/rules/`. `00-principles.md` loads in every
+session, and each topic file (TypeScript, modules, backend, database, frontend,
+testing) loads when you touch files its `paths:` match. Follow them without
+being asked. Where the code does something two ways, the newest module wins
+(`module-queuing-window`, then `module-chat`). Don't copy anything marked
+**Legacy**. See [docs/STANDARDS.md](docs/STANDARDS.md).
 
 ## The one architectural idea: a feature is a `module-*` package
 
@@ -189,6 +200,8 @@ answer *how many*. The details are in DESIGN-NOTES Part 4 and
   reference rows; they deprecate them instead.
 - `apps/web-server/seed-data/snapshot.json` is public. Never put real customer
   data or credentials in the dev database.
-- Secrets live in `apps/web-server/.env` and `apps/web-app/.env.local`, both
-  gitignored. Document new variables in the matching `.env.example`, and
-  validate server ones in `apps/web-server/src/config/env.ts`.
+- Secrets live in env profiles, `envs/<name>/*.env` (gitignored), which
+  `pnpm env:use` links to `apps/web-server/.env` and `apps/web-app/.env.local`.
+  Document a new variable in the matching `.env.example` with an EMPTY value if
+  it is secret (a pre-commit check enforces it), and validate it in that app's
+  `src/config/env.ts`. Never read or print a profile's secrets unless asked.

@@ -555,6 +555,78 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-25** — **Environment profiles: one command switches local, staging
+  and production, and development defaults to local.**
+
+  A user request: an easy way to handle `.env` files across local, staging and
+  production, fast to switch, defaulting to local in development for both the
+  frontend and the backend. Found on the way: the committed
+  `apps/web-server/.env.example` carried the real seed account's email and
+  password, public since `7208b0d`. The values were removed; the password must
+  be CHANGED, because removal does not unpublish history.
+  - **Profiles:** `envs/<name>/{web-server,web-app}.env`, gitignored.
+    `pnpm env:use <name>` symlinks them to `apps/web-server/.env` and
+    `apps/web-app/.env.local`, the files each tool already reads, so Nest, Next,
+    Prisma, the seeders and `dev-db.mjs` needed no change. Symlinks rather than
+    copies, so an edit in the IDE edits the profile instead of drifting from it.
+    Existing plain files are adopted into `envs/local/` on first run, and moved
+    rather than copied.
+  - **Local by default:** `pnpm dev` runs `env.mjs ensure`, which activates
+    `local` and creates it from the templates, with fresh `AUTH_JWT_SECRET` and
+    `AUTH_MFA_SECRET_KEY`, when none exists. A profile somebody chose is left
+    alone, with a loud banner off local.
+  - **`APP_ENV` (`local | staging | production`) in both apps' env schemas,**
+    separate from `NODE_ENV` because staging runs a production build. Unset means
+    local, EXCEPT in a production build, which refuses to boot without it. A
+    deployed host that forgot it would otherwise call itself local and pass the
+    local-only guards.
+  - **Guards:** `db:migrate` (which can reset a database) and `db:snapshot`
+    (which writes a PUBLIC file) run only on local. `db:restore` never runs on
+    production.
+  - **turbo:** the web-app build's inputs include `.env*` (Next inlines them,
+    and turbo hashes only shell env), and `APP_ENV` is a `globalEnv`. Verified
+    that the build hash changes on a switch and returns on switching back.
+  - **Pre-commit:** `env:check --examples-only` fails a commit whose
+    `.env.example` sets any `*_PASSWORD|*_SECRET|*_KEY|*_EMAIL`.
+  - **Fixed:** the root `db:migrate`, `db:deploy` and `db:studio` scripts
+    filtered `@kwtech/db`, which does not exist. They now target
+    `@kwtech/web-server`, and `db:sync` / `db:seed` were added at the root.
+  - **Not done:** no secret manager integration (Doppler, 1Password CLI,
+    Infisical). Profiles plus a password-manager copy are enough for one
+    developer. Revisit when a second person or CI needs the staging secrets.
+    Deployed hosts keep their variables in the host's own settings.
+
+- **2026-09-25** — **Coding standards, extracted from the code, loaded by Claude
+  Code on their own.**
+
+  A user request: standards for everything from conditions and loops up to
+  React, GraphQL, Next.js, NestJS, modules and features, followed during
+  development without being asked, and based on this repository's own
+  structure. They live in `.claude/rules/`, and `docs/STANDARDS.md` indexes them.
+  - **Path-scoped, not one file.** `00-principles.md` is the only file loaded in
+    every session. The TypeScript, modules, backend, database, frontend and
+    testing rules load when a matching file is read (`paths:` frontmatter). One
+    large document in `CLAUDE.md` would cost context in every session, and long
+    instructions are followed less reliably.
+  - **Descriptive, not aspirational.** Every rule is what most of the code
+    already does, found by reading and counting (early return vs `else` about
+    1165:4; JSX `&&` 0 vs `? … : null` 250; zero `enum`, zero `any`). Adopting an
+    outside guide would have made most of the repo non-compliant on day one.
+  - **When the code disagrees with itself, the newest module wins**
+    (`module-queuing-window`, then `module-chat`). The older pattern is marked
+    **Legacy — do not copy** and listed as a backlog of 16 items in
+    `docs/STANDARDS.md`. Converging it is deliberate work, never a side effect.
+  - **Corrected on the way:** the frontend does NOT use Apollo Client or codegen.
+    It uses hand-written `create*Client()` fetch clients and graphql-ws through
+    module-kit. PLAN §9's `src/graphql/*.graphql` layout is superseded by
+    `src/operations.ts`.
+  - **Not done:** none of the legacy code was changed. Two findings look like
+    bugs rather than style and are recorded in `docs/STANDARDS.md` for a
+    decision:
+    - `formatError` drops the refusal `reason` in production.
+    - The public invitation mutations take a token but carry no credential
+      throttle marker.
+
 - **2026-09-25** — **A committed snapshot of the dev data.**
 
   A user request: set up local dev on another machine and continue with the

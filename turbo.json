@@ -7,7 +7,7 @@
   // invalidate the entire cache universe. DATABASE_URL is likewise not global;
   // it is passed to the tasks that genuinely need it.
   "globalDependencies": ["pnpm-workspace.yaml"],
-  "globalEnv": ["NODE_ENV"],
+  "globalEnv": ["NODE_ENV", "APP_ENV"],
 
   "tasks": {
     "build": {
@@ -131,6 +131,11 @@
       // No `codegen` yet: that task appears with the GraphQL layer in Phase 3.
       // Listing a script no package has makes turbo fail the graph, not skip.
       "dependsOn": ["^build"],
+      // .env* because Next inlines values from .env.local into the build, and
+      // turbo only hashes env it finds in the SHELL. Without this, `pnpm env:use
+      // staging` then `pnpm build` replays the cached local build, with the
+      // local WebSocket URL baked in.
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "!.next/cache/**"],
       // API_URL and SESSION_COOKIE are SERVER-side — read by the route handlers
       // in src/app/api/auth, never inlined into the client bundle, which is the

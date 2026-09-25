@@ -17,6 +17,10 @@ out
 coverage
 
 # env
+# envs/ holds every environment profile (scripts/env.mjs) — real secrets for
+# local, staging and production. Only its README is committed.
+envs/*
+!envs/README.md
 .env
 .env.local
 .env.*.local

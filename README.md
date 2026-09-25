@@ -42,13 +42,45 @@ contract and [docs/PLAN.md](docs/PLAN.md) §9 before adding a module.
 
 ```bash
 pnpm install
-
-# once: env files (set AUTH_JWT_SECRET in the first)
-cp apps/web-server/.env.example apps/web-server/.env
-cp apps/web-app/.env.example    apps/web-app/.env.local
-
-pnpm dev
+pnpm dev     # first run creates the `local` env profile, with fresh secrets
 ```
+
+Then fill in `SEED_USER_*` (your sign-in) in `envs/local/web-server.env`.
+
+### Environments: local, staging, production
+
+Each environment is a **profile**: `envs/<name>/web-server.env` and
+`envs/<name>/web-app.env`, gitignored. The active one is symlinked to
+`apps/web-server/.env` and `apps/web-app/.env.local`, so switching is one
+command and every tool (Nest, Next, Prisma, the seeders) follows it.
+
+```bash
+pnpm env:show            # active profile, its database and API (no secrets printed)
+pnpm env:new staging     # create a profile from the templates, with fresh secrets
+pnpm env:use staging     # switch both apps
+pnpm db:deploy           # …now runs against staging
+pnpm env:use local       # back
+pnpm env:check           # templates hold no secrets; profiles lack no variable
+```
+
+- **Development defaults to `local`.** `pnpm dev` activates it and creates it the
+  first time. A non-local profile prints a warning banner on every `pnpm dev`.
+- **`APP_ENV` in each profile says what it is, and the guards trust it:**
+  `db:migrate` and `db:snapshot` run only on local, and `db:restore` never
+  touches production.
+- **Deployed hosts don't use profile files.** Set the same variables in the host
+  (Vercel, the container host), including `APP_ENV`. A production build refuses
+  to boot without it.
+- **`.env.example` files are templates committed to a public repo.** A value
+  for any `*_PASSWORD`, `*_SECRET`, `*_KEY` or `*_EMAIL` fails the commit.
+- Keep each profile in a password manager too. That's how a new machine gets
+  them.
+
+**On another machine**, including one with an old `apps/web-server/.env`: `git
+pull && pnpm install && pnpm env:show` moves the old files into `envs/local/`
+without losing anything, and `pnpm env:check` lists what's new. The full steps
+for each case are in
+[envs/README.md → Setting up another machine](envs/README.md#setting-up-another-machine).
 
 `pnpm dev` starts **everything** — every package in watch mode plus both apps:
 

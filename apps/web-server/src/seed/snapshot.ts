@@ -282,6 +282,21 @@ async function main() {
   const mode = argv.includes('--export') ? 'export' : argv.includes('--restore') ? 'restore' : null;
   if (!mode) throw new Error('Pass --export or --restore.');
 
+  /*
+   * ⚠ Guarded by environment, before a connection is opened.
+   *
+   * Export writes a file that is committed to a PUBLIC repository, so it reads
+   * only a local database: staging and production hold real people's data.
+   * Restore replaces data wholesale, so it never touches production. Both read
+   * APP_ENV, which the active profile sets (scripts/env.mjs).
+   */
+  if (mode === 'export' && env.APP_ENV !== 'local') {
+    throw new Error(`db:snapshot reads only a local database; the active environment is ${env.APP_ENV}.`);
+  }
+  if (mode === 'restore' && env.APP_ENV === 'production') {
+    throw new Error('db:restore never runs against production.');
+  }
+
   const client = new pg.Client({ connectionString: env.DATABASE_URL });
   await client.connect();
   try {

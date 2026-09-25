@@ -47,6 +47,22 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
     /**
+     * WHICH environment this is — `local`, `staging` or `production` — and a
+     * different question from NODE_ENV, which says how the code was built.
+     * Staging runs a production build; only this tells it apart.
+     *
+     * Written into each profile by `pnpm env:new` (scripts/env.mjs), and read by
+     * the guards: `db:migrate` and `db:snapshot` run only on local, and
+     * `db:restore` refuses production.
+     *
+     * Unset means `local`, so development needs nothing — EXCEPT in a
+     * production build, where the refine below demands it. A deployed host that
+     * forgot it would otherwise call itself local and let the local-only
+     * commands through.
+     */
+    APP_ENV: z.enum(['local', 'staging', 'production']).optional(),
+
+    /**
      * THE PRODUCT NAME, and the single source for every place one is shown: the
      * email header and subject line, and the entry an authenticator app lists
      * above the code.
@@ -260,6 +276,10 @@ const envSchema = z
    * or an enrolment that refuses after the QR code is already on screen. A
    * deployment that is missing them should never start.
    */
+  .refine((env) => env.NODE_ENV !== 'production' || env.APP_ENV !== undefined, {
+    path: ['APP_ENV'],
+    message: "APP_ENV is required in a production build: 'staging' or 'production' (or 'local' to run one here).",
+  })
   .refine((env) => env.NODE_ENV !== 'production' || Boolean(env.SMTP_URL), {
     path: ['SMTP_URL'],
     message:
@@ -277,6 +297,7 @@ const envSchema = z
    */
   .transform((env) => ({
     ...env,
+    APP_ENV: env.APP_ENV ?? 'local',
     MAIL_BRAND: env.MAIL_BRAND ?? env.APP_NAME,
     AUTH_MFA_ISSUER_LABEL: env.AUTH_MFA_ISSUER_LABEL ?? env.APP_NAME,
     /*
