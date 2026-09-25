@@ -69,6 +69,15 @@ export function Providers({ children }: { children: ReactNode }) {
             createRealtimeConnection({
               wsUrl,
               /*
+               * ⚠ NEVER GIVE UP. Without this, `graphql-ws` stops after five
+               * attempts — about thirty seconds of outage — and nothing in the
+               * tab is live again until a reload, with nothing on screen to
+               * say so. Chat's messages and every notification would silently
+               * stop arriving. A refusal (signed out) is still never retried;
+               * see `shouldRetry` in module-kit.
+               */
+              retryForever: true,
+              /*
                * Reported, never thrown. A failed upgrade — a proxy that blocks
                * them, a server restart — must not take a page down; it means
                * the screens stop updating by themselves, which is exactly what
