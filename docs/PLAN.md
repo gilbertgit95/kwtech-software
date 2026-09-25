@@ -558,6 +558,35 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-25** — **Header tools: modules can put a control in the app header.
+  Chat moves there, with a floating, draggable mini window. Reverses 2026-09-11
+  ("no icon in the main header").**
+
+  A user request: a Messenger-style chat box in the bottom-right corner that can
+  be dragged, minimised and expanded, with chat reached from the top bar beside
+  the profile name, and the slot usable by future tools.
+  - **`WebModuleDescriptor.headerTools`** in module-kit, composed by
+    `composeHeaderTools` (filtered by APP-level grants, ordered, throws on a
+    duplicate key). A tool is a prop-less client component, the rule `nav.badge`
+    already follows. The app's header draws them left of the account menu
+    (`buildHeaderTools` in `nav.ts`).
+  - **Still one door.** The 2026-09-11 reason for removing the header icon was
+    two ways into one place. `chatWebModule({ placement })` keeps it one:
+    `'header'` (default) lists no drawer entry, and `'drawer'` restores the old
+    entry and contributes no tool.
+  - **The window is a shortcut and `/chat` stays the home.** The header tool
+    runs its own `useChat`. While `/chat` is mounted it is silent (`playTones`),
+    hides the window, and hands a picked conversation to the page
+    (`chat-surface.ts`, a module-level store, because the app mounts no provider
+    for this module). Position, minimised state and the open conversation are
+    kept in localStorage; pure rules in `view/dock-view.ts`, tested.
+  - **`module-chat` gains `react-dom`** as an optional peer, for the window's
+    portal to `document.body` (a transformed ancestor would otherwise capture
+    `position: fixed`).
+  - **Not done:** one window at a time, not a row of chat heads. Dragging is
+    pointer-only, with no keyboard move. Nothing is rendered on the server for
+    the window; it appears after hydration.
+
 - **2026-09-25** — **Sub-apps get their own drawer section, "Apps", directly
   under Workspace. An app always lives under a workspace.**
 

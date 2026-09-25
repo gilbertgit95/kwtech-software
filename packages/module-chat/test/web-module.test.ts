@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { composeNav, composeRoutes } from '@kwtech/module-kit';
+import { composeHeaderTools, composeNav, composeRoutes } from '@kwtech/module-kit';
 import { chatIsEnabled } from '../src/enabled.js';
 import { CHAT_FEATURE } from '../src/feature-keys.js';
 import { CHAT_HREF, CHAT_PREFERENCES_HREF, chatWebModule } from '../src/react/module.js';
@@ -17,7 +17,7 @@ import { CHAT_HREF, CHAT_PREFERENCES_HREF, chatWebModule } from '../src/react/mo
  */
 
 describe('chatWebModule', () => {
-  it('contributes the route and its drawer entry, with the unread badge on it', () => {
+  it('contributes the routes, and by default reaches them from the HEADER, not the drawer', () => {
     const module = chatWebModule();
 
     expect(composeRoutes([module]).map((route) => route.path)).toEqual([
@@ -27,21 +27,26 @@ describe('chatWebModule', () => {
     ]);
 
     /*
-     * ⚠ ONE drawer entry from THREE routes. Both sub-pages are UNLISTED — no
-     * `nav` at all. A settings screen for one conversation has nothing to offer
-     * somebody who has not opened that conversation, and the preferences page
-     * is a preference rather than a place: people look for it when a sound
-     * annoys them, which is while they are already on /chat. The drawer is for
-     * places.
+     * ⚠ ONE door. The inbox button in the header is the way in, so `/chat` is
+     * unlisted — a drawer entry as well would be two doors to one place, the
+     * reason §12.52 once took the header icon away.
      */
+    expect(composeNav([module], [CHAT_FEATURE.read])).toEqual([]);
+    expect(composeHeaderTools([module], [CHAT_FEATURE.read]).map((tool) => tool.key)).toEqual(['chat']);
+  });
+
+  it('⚠ lists the header tool only for somebody holding chat:read — it subscribes, like the badge', () => {
+    expect(composeHeaderTools([chatWebModule()], [])).toEqual([]);
+  });
+
+  it("with placement: 'drawer', goes back to the drawer entry with its badge, and leaves the header alone", () => {
+    const module = chatWebModule({ placement: 'drawer' });
+
     const [entry] = composeNav([module], [CHAT_FEATURE.read]);
     expect(composeNav([module], [CHAT_FEATURE.read])).toHaveLength(1);
     expect(entry?.href).toBe(CHAT_HREF);
-    // The count lives on the drawer entry and nowhere else: chat puts nothing
-    // in the app's main header, because the drawer already leads there and two
-    // doors to one place is how somebody learns to wonder which is the real
-    // one.
     expect(entry?.Badge).toBeDefined();
+    expect(module.headerTools).toBeUndefined();
   });
 
   /**
@@ -60,11 +65,6 @@ describe('chatWebModule', () => {
     }
   });
 
-  it('⚠ contributes NOTHING to the app header', () => {
-    // A regression guard with a product decision behind it, not a style one.
-    expect(chatWebModule()).not.toHaveProperty('headerSlots');
-  });
-
   it('⚠ guards the settings sub-page with the same key as the page', () => {
     // Which controls appear on it is decided by the participant's ROLE, inside
     // the page and again at the API. A narrower key here would be a third
@@ -77,7 +77,7 @@ describe('chatWebModule', () => {
   it('⚠ takes the badge away with the entry when the key is not held', () => {
     // The badge SUBSCRIBES. One that outlived its entry's filter would be a
     // live query running for somebody the API refuses.
-    const module = chatWebModule();
+    const module = chatWebModule({ placement: 'drawer' });
 
     expect(composeRoutes([module])[0]?.feature).toBe(CHAT_FEATURE.read);
     expect(composeNav([module], [])).toEqual([]);
@@ -94,9 +94,10 @@ describe('chatWebModule', () => {
 describe('chatWebModule({ enabled: false })', () => {
   const off = chatWebModule({ enabled: false });
 
-  it('contributes no route and no drawer entry', () => {
+  it('contributes no route, no drawer entry and no header tool', () => {
     expect(composeRoutes([off])).toEqual([]);
     expect(composeNav([off])).toEqual([]);
+    expect(composeHeaderTools([off])).toEqual([]);
   });
 
   it('⚠ KEEPS the feature registry, so a disable does not deprecate the keys', () => {

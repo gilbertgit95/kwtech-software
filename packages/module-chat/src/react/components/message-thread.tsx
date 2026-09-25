@@ -28,6 +28,7 @@ export function MessageThread({
   presence,
   typing,
   onTyping,
+  compact = false,
 }: {
   conversation: ChatConversationView;
   messages: ThreadMessage[] | null;
@@ -43,6 +44,12 @@ export function MessageThread({
   /** Who is writing here right now. Already pruned of stale signals. */
   typing: readonly string[];
   onTyping: () => void;
+  /**
+   * For the floating window, whose own title bar already names the
+   * conversation: the heading here would say it twice in 360px. The actions
+   * stay — they are the only way to them from the window.
+   */
+  compact?: boolean;
 }) {
   const [inviting, setInviting] = useState(false);
   /*
@@ -58,8 +65,13 @@ export function MessageThread({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <div className="min-w-0">
+      <header
+        className={cn(
+          'flex items-center gap-2 border-b border-border',
+          compact ? 'justify-end px-2 py-1' : 'justify-between px-4 py-2',
+        )}
+      >
+        <div className={cn('min-w-0', compact && 'sr-only')}>
           <h2 className="flex items-center gap-1.5 truncate text-sm font-medium text-foreground">
             {conversation.isDirect ? <PresenceDot presence={presence.get(others[0]?.userId ?? '')} /> : null}
             {conversationTitle(conversation)}

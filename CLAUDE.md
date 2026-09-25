@@ -142,6 +142,9 @@ only when it is a feature of its own (PLAN §9 rule 8).
       spelling pinned in a test, as `module-queuing-window` does). Hide
       controls inside a page with `useHoldsFeature` from
       `@kwtech/module-kit/react`. That only hides them: the API authorises again.
+- [ ] A **tool** people use from anywhere (like chat) goes in the app header,
+      not the drawer: declare `headerTools` on the descriptor (see
+      `packages/module-kit/README.md`, "Header tools"). One way in, not both.
 - [ ] Use `@kwtech/web-ui` components and theme tokens rather than raw colours.
 
 **In the apps (only for a new module, or a new port or option)**

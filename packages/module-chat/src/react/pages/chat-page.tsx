@@ -1,8 +1,9 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatClient } from '../chat-client.js';
+import { useRegisterFullChat } from '../chat-surface.js';
 import { ConversationList } from '../components/conversation-list.js';
 import { MessageThread } from '../components/message-thread.js';
 import { NewConversation } from '../components/new-conversation.js';
@@ -12,16 +13,16 @@ import { useChat } from '../use-chat.js';
 /**
  * `/chat` — the whole of chat, on one page.
  *
- * ## Why this is the only home, and there is no floating panel
+ * ## The full page, beside the header tool's window
  *
- * The design carried an anchored popover hanging off an icon in the app's main
- * header. That icon is gone: chat is in the side drawer, which already leads
- * here, and a second door to one place is how somebody learns to wonder which
- * one is real. The panel had nothing left to anchor to (§12.52).
+ * Chat is also reachable from the app header (`ChatHeaderTool`): an inbox
+ * panel and a small floating window, for answering without leaving a page.
+ * That window is the SHORTCUT and this is still the home — the only place with
+ * room for a long thread, a group's settings and the preferences link. The
+ * window's own "Open in full chat" lands here on the same conversation.
  *
- * It is not a loss worth undoing carelessly. A panel is a shortcut to this
- * data, and building the shortcut first makes it the only home — permanently
- * cramped, with no room for a conversation anybody actually reads.
+ * The earlier worry about a header icon was two doors to one place (§12.52).
+ * It is still one door: with the header tool on, chat has no drawer entry.
  *
  * ## Two columns, one on a phone
  *
@@ -49,9 +50,37 @@ import { useChat } from '../use-chat.js';
  * them has to be visible — while the fill was what made it float. A data grid
  * on any other page is delineated the same way.
  */
-export function ChatPage({ client }: { client?: ChatClient } = {}) {
+export function ChatPage({
+  client,
+  initialConversationId,
+}: {
+  client?: ChatClient;
+  /**
+   * Opened once the list has loaded, if the viewer is still in it — how the
+   * floating window's "Open in full chat" lands on the same conversation.
+   */
+  initialConversationId?: string | undefined;
+} = {}) {
   const chat = useChat(client ? { client } : {});
   const [starting, setStarting] = useState(false);
+
+  /*
+   * Tells the header tool this page is on screen, so it stays silent and hands
+   * over the conversations picked from its panel. `chat.open` is stable (a
+   * `useCallback`), so the registration is made once.
+   */
+  const { open } = chat;
+  useRegisterFullChat(open);
+
+  const openedInitial = useRef(false);
+  useEffect(() => {
+    if (openedInitial.current || !initialConversationId || !chat.conversations) return;
+    openedInitial.current = true;
+    // An id from the address bar is untrusted: open it only if it is one of ours.
+    if (chat.conversations.some((conversation) => conversation.id === initialConversationId)) {
+      open(initialConversationId);
+    }
+  }, [chat.conversations, initialConversationId, open]);
 
   /*
    * Captured once, so the thread's callbacks close over a conversation that is

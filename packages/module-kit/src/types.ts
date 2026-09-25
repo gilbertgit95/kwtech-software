@@ -221,9 +221,45 @@ export interface NavGroupContribution {
   order: number;
 }
 
+/**
+ * A control a module puts in the app's HEADER, beside the account menu — chat's
+ * inbox, and the next tool after it.
+ *
+ * A slot rather than a route because a tool is not a place: it is something
+ * you reach for from wherever you are, and opening it must not take you away
+ * from the page you were on. The drawer answers "where can I go"; the header
+ * tools answer "what can I use here without leaving".
+ *
+ * ⚠ `component` is a COMPONENT REFERENCE that takes NO PROPS — the rule
+ * `nav.badge` follows, for the same reason: the composing layer is a server
+ * component and a function cannot cross into the client. The component draws
+ * its own trigger button and whatever that opens.
+ */
+export interface HeaderToolContribution {
+  /** Unique across the app. Composition throws on a duplicate, like a route path. */
+  key: string;
+  /** What the tool is called — for the app's own use (a tooltip, a settings list). */
+  label: string;
+  /** Lower sits further LEFT, i.e. further from the account menu. Space them — 10, 20. */
+  order?: number;
+  /**
+   * The key that lists it, filtered with the viewer's APP-level grants — the
+   * header belongs to no organization or workspace. Omit only for a tool that
+   * every signed-in person may use.
+   */
+  feature?: string;
+  component: ComponentType;
+}
+
 export interface WebModuleDescriptor {
   key: string;
   routes?: readonly ModuleRoute[];
+  /**
+   * Controls for the app header. An app that has no header slot ignores them;
+   * a module that wants to be reachable there AND in the drawer declares both,
+   * which is the module's call to make and usually the wrong one.
+   */
+  headerTools?: readonly HeaderToolContribution[];
   /**
    * Where this module's nav groups belong, so adopting it stays a one-line edit.
    *

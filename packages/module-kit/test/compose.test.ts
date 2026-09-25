@@ -2,6 +2,7 @@ import {
   composeDefaultMoments,
   composeDefaults,
   composeFeatures,
+  composeHeaderTools,
   composeNav,
   composeNavGroups,
   composeRoutes,
@@ -568,5 +569,31 @@ describe('matchRouteWithParams', () => {
 
   it('matchRoute returns just the route', () => {
     expect(matchRoute(ROUTES, '/admin/features/x/edit')?.path).toBe('/admin/features/:featureId/edit');
+  });
+});
+
+describe('composeHeaderTools', () => {
+  const Inbox = () => null;
+  const Notes = () => null;
+  const inbox = { key: 'chat', label: 'Chat', order: 10, feature: 'chat:read', component: Inbox };
+  const chat: WebModuleDescriptor = { key: 'chat', headerTools: [inbox] };
+  const notes: WebModuleDescriptor = {
+    key: 'notes',
+    headerTools: [{ key: 'notes', label: 'Notes', order: 5, component: Notes }],
+  };
+
+  it('orders by `order`, so the app decides nothing per module', () => {
+    expect(composeHeaderTools([chat, notes]).map((tool) => tool.key)).toEqual(['notes', 'chat']);
+  });
+
+  it('drops a tool whose key the viewer does not hold, and keeps one with no key', () => {
+    expect(composeHeaderTools([chat, notes], []).map((tool) => tool.key)).toEqual(['notes']);
+    expect(composeHeaderTools([chat, notes], ['chat:read']).map((tool) => tool.key)).toEqual(['notes', 'chat']);
+  });
+
+  it('throws on a duplicate key — even when the viewer could see neither', () => {
+    // The check runs before the filter: a wiring bug must not hide behind a grant.
+    const twin: WebModuleDescriptor = { key: 'other', headerTools: [{ ...inbox }] };
+    expect(() => composeHeaderTools([chat, twin], [])).toThrow(ModuleCompositionError);
   });
 });

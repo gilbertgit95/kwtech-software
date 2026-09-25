@@ -2,6 +2,7 @@ import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { chatIsEnabled } from '../enabled.js';
 import { CHAT_FEATURE, CHAT_FEATURE_REGISTRY, CHAT_LIMIT_REGISTRY } from '../feature-keys.js';
 import { ChatUnreadBadge } from './chat-unread-badge.js';
+import { ChatHeaderTool } from './components/chat-header-tool.js';
 import { ChatPage } from './pages/chat-page.js';
 import { ChatPreferencesPage } from './pages/chat-preferences-page.js';
 import { ChatSettingsPage } from './pages/chat-settings-page.js';
@@ -50,7 +51,7 @@ function ChatSettingsRoute({ params }: ModuleRouteProps) {
   return <ChatSettingsPage params={params ?? {}} />;
 }
 
-function ChatRoute() {
+function ChatRoute({ searchParams }: ModuleRouteProps) {
   /*
    * ⚠ RENDERED, never called — the reason this file is `.tsx`. `ChatPage` is a
    * client component, so across that boundary Next replaces it with a
@@ -59,12 +60,34 @@ function ChatRoute() {
    * No props: the page builds its own client, and an app that wants to supply
    * one imports `ChatPage` directly rather than going through the route.
    */
-  return <ChatPage />;
+  // `?conversation=` — where the floating window's "Open in full chat" points.
+  // A repeated parameter is a malformed link, not a choice to make.
+  const raw = searchParams?.conversation;
+  return <ChatPage initialConversationId={typeof raw === 'string' && raw.length > 0 ? raw : undefined} />;
+}
+
+/**
+ * The header tool, as a prop-less component — the only shape that crosses from
+ * the app's server-rendered header into the client.
+ */
+function ChatHeaderToolSlot() {
+  return <ChatHeaderTool />;
 }
 
 export interface ChatWebModuleOptions {
   /** ⚠ `false` contributes nothing at all — see `chatIsEnabled`. */
   enabled?: boolean;
+  /**
+   * Where the way into chat lives. ONE of the two, never both — two doors to one
+   * place is how somebody learns to wonder which one is real (§12.52).
+   *
+   *   'header'  (default) an inbox button in the app header, with a panel of
+   *             conversations and a floating, draggable window for one of them.
+   *             `/chat` stays, unlisted, as the full page.
+   *   'drawer'  the side drawer's 'Overview' group, with the unread badge on
+   *             the entry — the arrangement before the header tool existed.
+   */
+  placement?: 'header' | 'drawer';
 }
 
 export function chatWebModule(options: ChatWebModuleOptions = {}): WebModuleDescriptor {
@@ -79,10 +102,24 @@ export function chatWebModule(options: ChatWebModuleOptions = {}): WebModuleDesc
     return { key: 'chat', features: CHAT_FEATURE_REGISTRY, limits: CHAT_LIMIT_REGISTRY };
   }
 
+  const inHeader = (options.placement ?? 'header') === 'header';
+
   return {
     key: 'chat',
     features: CHAT_FEATURE_REGISTRY,
     limits: CHAT_LIMIT_REGISTRY,
+    /*
+     * Filtered by `chat:read`, the key every chat query checks — so the button
+     * is absent for exactly the people the API would refuse. Order 10 leaves
+     * room on both sides for the next tool.
+     */
+    ...(inHeader
+      ? {
+          headerTools: [
+            { key: 'chat', label: 'Chat', order: 10, feature: CHAT_FEATURE.read, component: ChatHeaderToolSlot },
+          ],
+        }
+      : {}),
     /*
      * ⚠ NOT IN 'Administration', and not in a group of its own either.
      *
@@ -108,20 +145,16 @@ export function chatWebModule(options: ChatWebModuleOptions = {}): WebModuleDesc
          */
         feature: CHAT_FEATURE.read,
         /*
-         * ⚠ THE COUNT HANGS OFF THE DRAWER ENTRY, and there is no icon in the
-         * app's main header.
+         * ⚠ A DRAWER ENTRY ONLY WHEN THE HEADER TOOL IS OFF. The page itself
+         * is always here; what moves is the door to it. With `placement:
+         * 'header'` the inbox button is the way in and the route is unlisted;
+         * with 'drawer' the entry carries the unread count instead. Never both
+         * (§12.52, reversed for the header 2026-09-25).
          *
-         * The first design put it there — a header slot left of the account
-         * menu — and that was a second door to a place the drawer already
-         * leads. Two controls for one destination is how a person learns to
-         * wonder which one is the real one, and the drawer is where this
-         * application says where you can go. Reversed 2026-09-11.
-         *
-         * The badge is still a COMPONENT rather than a number, because the
-         * reason it existed has not changed: a count resolved on the server is
-         * right until somebody else sends a message.
+         * The count is a COMPONENT in either place, because a number resolved
+         * on the server is right only until somebody else sends a message.
          */
-        nav: { group: 'Overview', order: 20, icon: 'message', badge: ChatUnreadBadge },
+        ...(inHeader ? {} : { nav: { group: 'Overview', order: 20, icon: 'message', badge: ChatUnreadBadge } }),
       },
       {
         /*

@@ -2,6 +2,7 @@ import type { DefaultContribution, DefaultMomentContribution } from './defaults.
 import type { LimitContribution } from './limits.js';
 import type {
   FeatureContribution,
+  HeaderToolContribution,
   ModuleRoute,
   NavEntry,
   NavGroupContribution,
@@ -35,6 +36,39 @@ export function composeRoutes(modules: readonly WebModuleDescriptor[]): ModuleRo
     }
   }
   return routes;
+}
+
+/**
+ * The header tools the viewer may use, in the order the header draws them.
+ *
+ * Filtered the way `composeNav` filters: an entry whose `feature` is not held is
+ * absent, and `heldFeatures` omitted means "do not filter". ⚠ Pass `[]`, never
+ * `undefined`, when the viewer's grants could not be resolved — a header that
+ * fails open offers a tool the API will refuse.
+ *
+ * Throws on a duplicate key, as `composeRoutes` does on a duplicate path: two
+ * modules claiming one tool is a wiring bug, not a merge.
+ */
+export function composeHeaderTools(
+  modules: readonly WebModuleDescriptor[],
+  heldFeatures?: readonly string[],
+): HeaderToolContribution[] {
+  const byKey = new Map<string, string>();
+  const tools: HeaderToolContribution[] = [];
+
+  for (const mod of modules) {
+    for (const tool of mod.headerTools ?? []) {
+      const owner = byKey.get(tool.key);
+      if (owner) {
+        throw new ModuleCompositionError(`Header tool '${tool.key}' declared by both '${owner}' and '${mod.key}'`);
+      }
+      byKey.set(tool.key, mod.key);
+      if (heldFeatures && tool.feature && !heldFeatures.includes(tool.feature)) continue;
+      tools.push(tool);
+    }
+  }
+
+  return tools.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.key.localeCompare(b.key));
 }
 
 export interface ComposeNavOptions {

@@ -1,6 +1,8 @@
 import {
+  composeHeaderTools,
   composeNav,
   composeNavGroups,
+  type HeaderToolContribution,
   type NavEntry,
   navGroupRank,
   type WebModuleDescriptor,
@@ -218,4 +220,20 @@ export function buildAccountNav(heldFeatures: readonly string[] | undefined): Na
   return composeNav(WEB_MODULES, heldFeatures ?? [])
     .filter((entry) => entry.group === ACCOUNT_GROUP)
     .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+}
+
+/**
+ * The tools the header draws left of the account menu — chat's inbox today.
+ *
+ * Contributed by modules (`WebModuleDescriptor.headerTools`), so adding the
+ * next tool is a module change, not an edit here. Filtered with APP-level
+ * grants: the header belongs to no organization or workspace, and a tool
+ * listed for somebody the API refuses would open onto an error.
+ *
+ * ⚠ `[]` when the grants are unknown, never `undefined` — undefined means "do
+ * not filter" to `composeHeaderTools`, and a header that fails open offers
+ * every tool to everybody.
+ */
+export function buildHeaderTools(heldFeatures: readonly string[] | undefined): HeaderToolContribution[] {
+  return composeHeaderTools(WEB_MODULES, heldFeatures ?? []);
 }

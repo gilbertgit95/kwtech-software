@@ -27,6 +27,7 @@ export function ConversationList({
   presence,
   myAvailability,
   onAvailabilityChange,
+  compact = false,
 }: {
   conversations: ChatConversationView[] | null;
   selectedId: string | null;
@@ -40,6 +41,11 @@ export function ConversationList({
   presence: ReadonlyMap<string, ChatPresenceView>;
   myAvailability: ChatMyAvailabilityView | null;
   onAvailabilityChange: (availability: string, forMinutes: number | null) => void;
+  /**
+   * Fills whatever holds it — the header tool's panel — instead of taking the
+   * page's fixed left column with a seam on its right.
+   */
+  compact?: boolean;
 }) {
   const { active, requests } = splitConversations(conversations ?? []);
   /*
@@ -62,7 +68,7 @@ export function ConversationList({
       : undefined;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col border-border sm:w-72 sm:border-r">
+    <div className={cn('flex h-full min-h-0 w-full flex-col border-border', compact ? null : 'sm:w-72 sm:border-r')}>
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h2 className="text-sm font-medium text-foreground">Conversations</h2>
         {/*

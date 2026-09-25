@@ -30,6 +30,12 @@ import { applyMessage, dropPending, optimisticMessage, readMarkFor, type ThreadM
 
 export interface UseChatOptions {
   client?: ChatClient;
+  /**
+   * `false` keeps this instance silent. For a second surface on the same page —
+   * the header tool while `/chat` is open — so one message is not two tones.
+   * Read through a ref, so changing it takes effect without a new subscription.
+   */
+  playTones?: boolean;
 }
 
 export interface ChatState {
@@ -95,6 +101,10 @@ export function useChat(options: UseChatOptions = {}) {
 
   const availabilityRef = useRef<string | null>(null);
   availabilityRef.current = myAvailability?.availability ?? null;
+
+  // The same stale-closure hazard: the handler below outlives the render that set it up.
+  const playTonesRef = useRef(true);
+  playTonesRef.current = options.playTones ?? true;
 
   const report = useCallback((cause: unknown) => {
     setError(cause instanceof Error ? cause.message : 'Something went wrong.');
@@ -259,6 +269,7 @@ export function useChat(options: UseChatOptions = {}) {
          */
         const settings = readChatSettings();
         if (
+          playTonesRef.current &&
           shouldPlayTone({
             viewerId: myUserIdRef.current ?? '',
             authorId: arrived.authorId,

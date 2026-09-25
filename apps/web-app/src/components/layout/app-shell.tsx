@@ -13,7 +13,7 @@ import {
 import { BareShell } from '@/components/layout/bare-shell';
 import { Header } from '@/components/layout/header';
 import { AppIconSet } from '@/components/layout/icon-set';
-import { buildAccountNav, buildNav } from '@/components/layout/nav';
+import { buildAccountNav, buildHeaderTools, buildNav } from '@/components/layout/nav';
 import { RememberOrganization } from '@/components/layout/remember-organization';
 import { Sidebar } from '@/components/layout/sidebar';
 import { isCollapsedValue, SIDEBAR_COOKIE } from '@/components/layout/sidebar-state';
@@ -446,6 +446,7 @@ export async function AppShell({
                * happens to be selected.
                */
               accountNav={buildAccountNav(appGrants)}
+              tools={buildHeaderTools(appGrants)}
               /*
                * `?? []` for the same reason the nav filter fails closed: a
                * permission context that could not be resolved means "holds

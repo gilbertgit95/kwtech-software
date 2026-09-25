@@ -41,6 +41,8 @@ export {
 } from './chat-tone.js';
 export { ChatUnreadBadge, type ChatUnreadBadgeProps } from './chat-unread-badge.js';
 export { AvailabilityPicker } from './components/availability-picker.js';
+export { ChatDock } from './components/chat-dock.js';
+export { ChatHeaderTool } from './components/chat-header-tool.js';
 export { ChatSubPage } from './components/chat-sub-page.js';
 export { ConversationList } from './components/conversation-list.js';
 export { EmojiGrid, EmojiPicker } from './components/emoji-picker.js';

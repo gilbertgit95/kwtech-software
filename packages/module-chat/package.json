@@ -42,9 +42,11 @@
     "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "graphql": "catalog:",
     "jest": "^30.4.2",
     "react": "^19.2.8",
+    "react-dom": "19.2.8",
     "reflect-metadata": "catalog:",
     "typescript": "catalog:"
   },
@@ -52,11 +54,12 @@
     "@kwtech/module-kit": "workspace:*"
   },
   "peerDependencies": {
+    "@kwtech/web-ui": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/graphql": "^13.0.0",
-    "reflect-metadata": "^0.2.0",
     "react": "^19.0.0",
-    "@kwtech/web-ui": "workspace:*"
+    "reflect-metadata": "^0.2.0",
+    "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -72,6 +75,9 @@
       "optional": true
     },
     "@kwtech/web-ui": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     }
   }

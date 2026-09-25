@@ -146,6 +146,31 @@ A module says *what* it contributes and roughly where. It never says which
 chrome draws it: `module-auth` places `Account` at 90, and this app lifts that
 group out of the drawer entirely and renders it in the header's account menu.
 
+## Header tools
+
+The drawer answers "where can I go". A **header tool** answers "what can I use
+here without leaving": a control the app draws in its header, left of the
+account menu. Chat's inbox is the first; the next tool is a module change, not
+an app edit.
+
+```ts
+headerTools: [{ key: 'chat', label: 'Chat', order: 10, feature: CHAT_FEATURE.read, component: ChatHeaderToolSlot }],
+```
+
+- **`component` takes no props**, like `nav.badge`: the app's header is a server
+  component and only a client component *reference* crosses into the client.
+  It draws its own trigger and whatever that opens.
+- **`feature` is checked at APP level.** The header belongs to no organization
+  or workspace. Omit it only for a tool every signed-in person may use.
+- **`order`** sorts left to right; space them (10, 20) like group orders.
+- **`composeHeaderTools(modules, heldFeatures)`** filters and sorts, and throws on
+  a duplicate `key`. Pass `[]` when the grants are unknown: `undefined` means
+  "do not filter".
+
+A module should reach a place from the header OR the drawer, not both — two
+doors to one place is how somebody learns to wonder which one is real. Chat
+takes `placement: 'header' | 'drawer'` for exactly that.
+
 ## Three declarations: features, limits, defaults
 
 A module declares three kinds of thing that a *different* module resolves. All

@@ -16,8 +16,23 @@ import { chatWebModule } from '@kwtech/module-chat/react';
 export const WEB_MODULES = [chatWebModule()];
 ```
 
-That contributes `/chat`, its drawer entry with the live unread badge, and the
-unlisted `/chat/:conversationId/settings` page.
+That contributes `/chat`, the unlisted `/chat/preferences` and
+`/chat/:conversationId/settings` pages, and ONE way in, chosen by `placement`:
+
+| `placement` | The way in |
+|---|---|
+| `'header'` (default) | A **header tool**: an inbox button with the live unread count; a panel of conversations under it; and a **floating window** for the one you pick — bottom-right, draggable by its title bar, minimisable to the bar, closable, and "Open in full chat" lands on `/chat?conversation=…`. `/chat` has no drawer entry. |
+| `'drawer'` | The drawer's `Overview` group, with the unread badge on the entry. No header tool. |
+
+The floating window remembers its position, whether it was minimised and which
+conversation it held, in this browser (`kwtech:chat-dock` in localStorage), so a
+full navigation does not close it. While `/chat` itself is open the window hides
+and the header tool stays silent, so one message is one tone, not two
+(`chat-surface.ts`).
+
+One window at a time: picking another conversation replaces it. Moving the
+window is pointer-only (mouse, pen, touch); everything in it works by keyboard
+without moving it.
 
 ## In a NestJS app
 
