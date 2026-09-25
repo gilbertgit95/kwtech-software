@@ -2,7 +2,9 @@
 
 Turborepo monorepo, pnpm workspaces. Toolchain and conventions follow
 `../masterdb-mgt-tool`; the full plan lives in **[docs/PLAN.md](docs/PLAN.md)**, and the reasoning behind
-it in **[docs/DESIGN-NOTES.md](docs/DESIGN-NOTES.md)**.
+it in **[docs/DESIGN-NOTES.md](docs/DESIGN-NOTES.md)**. Building a feature? Start
+with **[CLAUDE.md](CLAUDE.md)**: the working guide and checklist, which Claude
+Code also loads on its own.
 
 ## Requirements
 
