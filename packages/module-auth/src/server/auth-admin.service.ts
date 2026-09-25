@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { normaliseEmail, normaliseUsername } from '../domain/policy.js';
+import { normaliseEmail, normaliseUsername, VERIFIABLE_MFA_TYPES } from '../domain/policy.js';
 import { EMPTY_USER_DRAFT, validateUserDraft } from '../domain/user-draft.js';
 import {
   AUTH_PRISMA,
@@ -165,7 +165,7 @@ export class AuthAdminService {
     const user = await this.requireUser(userId);
 
     const [factors, sessions] = await Promise.all([
-      db.authMfaFactor.findMany({ where: { userId, type: 'totp', confirmedAt: { not: null } } }),
+      db.authMfaFactor.findMany({ where: { userId, type: { in: VERIFIABLE_MFA_TYPES }, confirmedAt: { not: null } } }),
       db.authSession.findMany({ where: { userId, revokedAt: null }, select: SESSION_SUMMARY_SELECT }),
     ]);
 

@@ -4,10 +4,14 @@ import { create as createQr } from 'qrcode';
 import { useMemo } from 'react';
 
 /**
- * A QR code for the display link, drawn in the browser.
+ * A QR code, drawn in the browser.
  *
- * ⚠ NEVER A QR WEB SERVICE. A hosted QR API receives the URL it draws, and this
- * URL carries a live display code.
+ * Moved here from module-queuing-window when module-auth became the second
+ * user: the queue draws a display link with it, and two-step verification an
+ * `otpauth://` URI. Both carry a secret — a live display code, a TOTP seed.
+ *
+ * ⚠ NEVER A QR WEB SERVICE. A hosted QR API receives the value it draws, and
+ * for both callers that value is a credential.
  *
  * ⚠ Built from the MATRIX `qrcode` computes, as one SVG path — not from its
  * SVG-string output injected as markup. Nothing here is HTML from a string.

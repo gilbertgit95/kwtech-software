@@ -34,8 +34,7 @@ export function ProfilePage({
   client?: AuthClient;
   /**
    * Where the Back link points. Overridable because a consuming app may mount
-   * these pages under a different prefix — the same reason `SecurityPage`
-   * takes `twoFactorHref` rather than hard-coding it.
+   * these pages under a different prefix.
    */
   backTo?: { href: string; label: string };
 }) {

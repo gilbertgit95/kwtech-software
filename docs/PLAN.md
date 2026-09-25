@@ -514,7 +514,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 38 | Deleting an account orphans its permission rows | if an erasure path is ever built | `perm_membership.userId` has no FK to `auth_user` by design (§12.12), so `DELETE FROM auth_user` leaves memberships and role grants pointing at nobody — verified by hand three times on 2026-09-08 removing test accounts, each needing an explicit membership and `perm_user_role` delete first. `findUsersByIds` and `listAppRolesForUsers` both tolerate the orphan by returning fewer rows than asked for. **No longer urgent: `users:delete` was removed the same day and the product has no delete at all** — an account is suspended, which keeps every row and is reversible. This stays open because the hazard returns the moment somebody builds an erasure path for a legal request, and because deleting by hand in a console hits it today. The composed delete belongs in the APP, the only layer allowed to touch both modules' tables |
 | 39 | ~~Nothing in `apps/web-app` opens the realtime socket~~ **CLOSED 2026-09-11** | — | The API half is complete and running — `graphql-ws` subscriptions on the same URL as HTTP, a ticket verified at `onConnect`, `planChanged` published, `NEXT_PUBLIC_WS_URL` set in both env files — and the app never calls `createRealtimeConnection`, so `PlansPage` receives no `realtime` prop and nothing listens. **Decided 2026-09-08: leave it.** `module-auth` and `module-permissions` stay on HTTP; realtime arrives as its OWN module, which is what the seam was built for — `onConnect` shapes the socket into the same `{ req }` an HTTP request produces, so `FeatureGuard` and `resolvePrincipal` are transport-blind and a new module's subscriptions are guarded like its queries. When it lands: the APP owns the one connection and passes it in (a `createRealtimeConnection` per module means a socket per module per tab), the `graphql-ws` import sits behind a subpath, the ticket path is an option rather than a hardcoded reference to module-auth's URL, and the subscription gets its own `graphql_subscription` binding. §12.28 and §12.29 become live the day it does. **⚠ That day is scheduled: `module-chat` (2026-09-10) is the own-module realtime was waiting for.** It also adds a requirement the plan half of this entry did not state — events must be filtered PER PUBLISH, re-checking participation, because a subscription is authorised once at subscribe and `planChanged` fans out to every subscriber unfiltered | **✅ CLOSED 2026-09-11.** The app opens exactly one connection, in `providers.tsx`, and hands it to every module through `RealtimeProvider` / `useRealtime()` in `@kwtech/module-kit/react`. The contract and `createRealtimeConnection` moved OUT of `module-permissions` into `module-kit` — a socket is a resource of the application, and with two subscribing modules the old arrangement would have given a tab one socket per module, each with its own ticket and reconnect, failing in no visible way and costing N times what it should. `PlansPage` now receives live `planChanged` events through that connection, so the half of this entry that was built and unused is running. What is NOT done is the rest of the list: a `graphql_subscription` binding exists for both modules now, and the ticket path was already an option.
 | 40 | Billing is unbuilt: nothing charges, and `currentPeriodEnd` is informational | when a payment provider is chosen | **Not to be built before the provider is.** Stripe, Paddle and manual invoicing imply genuinely different tables — Paddle is a merchant of record and handles tax, Stripe is not and does not — and guessing that shape is how a schema ends up fighting the integration. What IS decidable now, and was, on 2026-09-08: billing gets its OWN module, referencing `organizationId` and `planKey` as bare values with no foreign key, exactly as `perm_membership.userId` references an account. Roughly `BillingCustomer` (organization ↔ provider customer), `BillingPrice` (planKey → amount, currency, interval), `BillingInvoice`/`BillingPayment`. **Price does NOT go on `PermPlan`:** a plan is a bundle of entitlements and its price is commercial — currency, regional pricing, per-seat vs flat, promotions — so merging them makes every price change a permissions migration, puts "what Pro entitles" and "what Pro costs" in one row two teams edit, and makes a grandfathered customer paying last year's price for today's entitlements inexpressible. **No FK into `perm_subscription` either:** §12.24 already settled that a provider RECONCILES against those rows rather than owning them, so the seam is a webhook landing in the APP, which reads its billing rows and calls `PermissionsWriteService.updateSubscription` — the composition `resolve-principal` and the invitation resolvers already use. ⚠ Until it exists, a lapsed subscription KEEPS ENTITLING: `currentPeriodEnd` is written and rendered and never compared to `now`, because `status` decides entitlement so a clock cannot revoke a tenant with no row saying why. Nothing writes that status on a lapse — there is no scheduler in `web-server` — so the renewal date on the organization screens promises an enforcement that does not exist, and saying so on those screens is a cheap fix available before the module is |
-| 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins `type: 'totp'`, so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
+| 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins the type to `VERIFIABLE_MFA_TYPES` (`totp`, `email` since 2026-09-25), so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
 | 41 | Can chat ever be sold in a plan? | before chat is priced | `module-chat` is APP level (§12.13 gives it that free: `/chat/*` is not `/organizations/*`), and a plan may only sell organization- and workspace-level features — an app key in a plan entitles nobody. So "group chat is a Pro feature" is unexpressible today, and the ROLE-sourced cap is the only commercial lever. Accepted on 2026-09-10 as the price of chat being person-to-person rather than tenant-scoped: two users with no organization in common must be able to reach each other, which is the whole point. Reversing it later re-levels every `chat:*` key and every role holding one |
 | 42 | Does anyone get to read a conversation they are not in? | before a compliance or abuse report arrives | Shipping with NO such key: `platform:support_access` is the single exemption in the permission model and must not quietly become "read everyone's private messages". `chat:moderate` deletes a message in a conversation the actor is a PARTICIPANT of, which is a different act. The pressure will come from abuse reports and legal holds, and the honest answer when it does is a separate, `isPrivileged`, audited key — not widening support access, and not an unlogged database console |
@@ -549,11 +549,104 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 67 | A new display code without stopping the queue | if a code leaks mid-session | Per the operator, a new code comes only with a new session. So the remedy for a code seen by the wrong person is Stop and Start — which, unless Continue numbering is ticked, restarts the numbers. A "new code" button that also invalidated every existing pass would be gentler. It is not built, because nobody asked for it and because a leaked code exposes a board that is already on a public wall |
 | 68 | A session nobody stops | before the first site forgets | There is no job runner (§12.40), so nothing ends a session at closing time. Numbers keep counting into the next morning and TVs stay admitted. v1: the console shows "Running since yesterday, 8:02 am", in warning colour, to holders of `queue:stop`. An automatic stop at a set hour needs a scheduler AND a time zone — the very setting this design just removed |
 | 69 | The API cannot see a browser's own IP address, so rate limits are shared | before a display, or sign-in, is used by more than a handful of people | **⚙ CONFIGURABLE 2026-09-13, default OFF:** `TRUST_PROXY` (hop count or address list; `true` refused at boot) sets Express's `trust proxy`. Still OPEN as a deployment decision: set it only where an edge proxy REWRITES `X-Forwarded-For`, because the Next route handlers pass on whatever the browser sent. Every browser request reaches the API through the Next server's proxy. `module-auth`'s route handlers forward `X-Forwarded-For`, but `web-server` does not set Express's `trust proxy`, so `ThrottlerGuard` tracks the Next server's address for every request. **The tight `credential` bucket (10 a minute) is therefore shared by every person and every TV behind that server** — sign-in, the 2FA challenge, password reset, and now `openQueueDisplay`. One waiting room setting up four TVs while staff sign in can exhaust it. This predates the queue and is a DEPLOYMENT decision: `trust proxy` must name exactly the proxies in front of the API, or a client sets its own `X-Forwarded-For` and escapes every limit. §12.59's note about proxies is the same problem one layer out |
+| 70 | Google-only accounts: accepting an invitation with Google | when invited people ask to skip choosing a password | Google sign-in (2026-09-25) reaches only accounts that already exist, which today always have a password. An invitation accepted with Google would create one WITHOUT a password — and every step-up in `AuthService` (`requirePassword`: enrol or remove a factor, new recovery codes, change password) would then refuse that person with `no_password_credential`. Building it means a second step-up proof (a fresh Google round trip with `prompt=login` and `max_age`) before the invitation path can use Google |
+| 71 | No screen shows or unlinks a linked Google account | before someone asks why a Google account they lost still signs them in | `auth_identity` is written on first link and read by sign-in only. Needed: a Security card listing the identity with an Unlink (password-confirmed), an admin view of it, and the rule that unlinking may never remove the account's last way in |
+| 72 | Email as a second factor is only as strong as the mailbox | if a policy ever REQUIRES a second factor | Offered because it needs no phone app, and labelled weaker in the UI. A policy that counts "any factor" as compliance would accept it; one that means phishing resistance must exclude `email` (and `totp`) and wait for WebAuthn (§12.18) |
 
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-25** — **Two-step verification is managed inline on Security;
+  `/settings/two-factor` now renders the Security page.**
+
+  A user request: make it easy to see whether two-step verification is on. The
+  Security page answered that nowhere — its card said "Manage two-step
+  verification" and linked to a separate screen.
+  - **A summary at the top** (`summariseSecurity`, `src/react/view/security-view.ts`,
+    tested): basic / good (email codes only) / strong (authenticator app), with a
+    checklist. A failed or pending load is `unknown`, never "off" — the wrong
+    direction to be wrong in.
+  - **`TwoFactorSettings`** is the whole two-step flow as one card: each method a
+    row with its own Set up / Remove, recovery codes regenerated inline and
+    offered for copy and download. One inline panel at a time, because every
+    panel has a `password` field and `AuthField` derives its id from the name.
+  - **The password form is folded** behind "Change password", so the answer is
+    above the fold rather than three empty boxes.
+  - **Not done:** the route was kept rather than removed, so old links still
+    land on the controls. `TwoFactorPage` remains exported as a thin wrapper for
+    an app that wants it apart. `SecurityPage` lost `twoFactorHref` (nothing
+    passed it) and gained `renderQr`. The `ui_component` bindings were renamed
+    to `TwoFactorSettings.*`.
+
+- **2026-09-25** — **Two-step verification draws its QR code; `QrCode` moves
+  to `@kwtech/web-ui`.** Reverses 2026-08-26 ("draws no QR code").
+
+  A user report: enrolment said "Scan this, then enter the code" above no QR
+  code. The 2026-08-26 seam, `TwoFactorPage`'s `renderQr` prop, was never
+  reachable — the route renders the page with no props, and a function cannot
+  travel through the route table — so no app could ever have passed one.
+  - **Drawn by default** with `QrCode`, the component module-queuing-window
+    already used for its display link: the `qrcode` library's matrix as one SVG
+    path, in the browser, never a QR web service. `renderQr` stays as an override.
+  - **Moved to `web-ui`, not copied**, because auth is its second user (the
+    rule in `frontend.md`). `qrcode` is now web-ui's dependency, and the queue
+    module imports the component from there. module-auth gains `@kwtech/web-ui`
+    as an optional peer, like the queue module.
+  - **No new exposure:** the page already shows the TOTP secret as text for
+    manual entry, so the secret was in the browser either way.
+
+- **2026-09-25** — **"Sign in with Google" for existing accounts, and emailed
+  codes as a second factor beside TOTP.**
+
+  A user request: multi-factor authentication by TOTP or email, and sign-in with
+  Google, in addition to email and password. Google was schema-only since
+  2026-08-25; this implements it on the two properties fixed then.
+  - **Google: authorization code + PKCE, no library.** The Next handler
+    (`GET /api/auth/google`, `/callback`) holds `state`, `nonce` and the PKCE
+    verifier in an httpOnly, `SameSite=Lax` cookie scoped to `/api/auth/google`
+    for ten minutes and checks `state` on return. The API holds the client
+    secret, exchanges the code and checks `iss`, `aud`, `exp` and `nonce`
+    (`prepareGoogleIdentity`). No JWKS: the ID token comes only from the token
+    endpoint over TLS, which OIDC Core §3.1.3.7 accepts in place of a signature.
+  - **Existing accounts only — the user's choice.** Matched by `(google, sub)`;
+    otherwise LINKED once to the account with the same address when Google says
+    `email_verified`, never matched by address after that. An unknown Google
+    account is refused: sign-up stays invitation-only (§12.36). One message for
+    every refusal; the `federated_*` reason goes to `onAuthFailure`.
+  - **Google is not a way around MFA.** It ends in the same
+    `startSession(… mfaOwed ? 'mfa' : 'full')` as a password, and locked or
+    suspended accounts are refused the same way.
+  - **Email codes: a factor type, not a flag.** `AuthMfaFactorType.email`, and
+    each code a row in `auth_mfa_email_code`, **bound to the session that asked
+    for it**, so a code requested by one sign-in cannot be spent by another.
+    scrypt-hashed (a million values: a fast hash would fall in a second), ten
+    minutes, single use, a new code retires the old, one send per 30 s per
+    session. Wrong codes draw on the account lockout like TOTP ones.
+  - **One list, `VERIFIABLE_MFA_TYPES`**, read by "owes a factor", by the
+    challenge, by confirmation and by the admin view, so they cannot disagree.
+  - **Enrolment proves the mailbox** through the existing `confirmMfa`, and needs
+    the password like TOTP enrolment; the endpoint is bound to
+    `account:two_factor_enrol`. `send` and `enrol` join the credential throttle.
+  - **Config:** `AUTH_GOOGLE_CLIENT_ID` and `AUTH_GOOGLE_CLIENT_SECRET`, both or
+    neither (the boot refuses one); the redirect URI defaults to
+    `FRONTEND_URL/api/auth/google/callback`. The sign-in page asks the API whether
+    to draw the button, so the web app has no setting of its own.
+  - **Verified:** 83 new tests (claims, matching, the service, the Next legs);
+    against the live API, email enrol → confirm → a half-admitted sign-in →
+    send → resend refused → wrong code → verify → replay refused; with a
+    placeholder Google client, the authorization URL (S256, no verifier in it)
+    and a refused exchange; the boot refusing a half-configured client.
+  - **Found by running it:** a mail hook that throws before its own logger
+    reached the user as a bare 503 with nothing logged. The hook now logs every
+    failure, render included, and the 503 carries the cause. The trigger was a
+    new template the running watcher had not copied, which is now in the mail
+    README.
+  - **Not done:** Google-only accounts and accepting an invitation with Google
+    (§12.70), a screen to see or unlink a linked Google account (§12.71), and a
+    per-code attempt counter (the lockout covers it). A running `next dev` did
+    not pick up the rebuilt module's new `GET` export; restart it after pulling.
 
 - **2026-09-25** — **The API reads `.env.local`, the same file name as the web
   app.**

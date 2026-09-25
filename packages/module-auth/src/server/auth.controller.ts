@@ -1,5 +1,16 @@
 import { Body, Controller, Delete, Get, HttpCode, Post, Req } from '@nestjs/common';
-import type { AuthResult, MfaEnrolment, MfaFactorSummary, MfaRecoveryCodes, Principal, SessionUser } from '../types.js';
+import type {
+  AuthResult,
+  GoogleSignInStart,
+  MfaEmailCodeSent,
+  MfaEmailEnrolment,
+  MfaEnrolment,
+  MfaFactorSummary,
+  MfaRecoveryCodes,
+  Principal,
+  SessionUser,
+  SignInProviders,
+} from '../types.js';
 import { AllowScopes, CurrentPrincipal, Public } from './auth.decorators.js';
 import { AuthService, type RequestContext } from './auth.service.js';
 import type { IssuedWsTicket } from './token.service.js';
@@ -48,6 +59,15 @@ export const CREDENTIAL_ENDPOINTS = [
   // caller already holds a session — a stolen cookie plus an unthrottled
   // endpoint is a password oracle.
   'changePassword',
+  // An authorization code is the credential here. It is not guessable, but the
+  // endpoint makes an outbound call to Google per request, and an unthrottled
+  // one is a way to make this server hammer somebody else's.
+  'signInWithGoogle',
+  // Not a guess — a MAILING. Each call sends an email, so the tight bucket is
+  // what stops a session holding the password filling its victim's inbox.
+  'sendMfaEmailCode',
+  // Takes the current password AND sends mail: both reasons above at once.
+  'enrolEmailMfa',
 ] as const;
 
 @Controller('auth')
@@ -59,6 +79,48 @@ export class AuthController {
   @HttpCode(200)
   signIn(@Body() body: { identifier: string; password: string }, @Req() request: unknown): Promise<AuthResult> {
     return this.auth.signIn(body, contextOf(request));
+  }
+
+  // ── sign in with Google ──────────────────────────────────────────────────
+
+  /**
+   * Which sign-in buttons to draw. A GET with no body and no account data:
+   * the answer is the same for everyone and changes only with configuration.
+   */
+  @Public('lists the sign-in methods this deployment offers, the same answer for everyone')
+  @Get('providers')
+  providers(): SignInProviders {
+    return this.auth.signInProviders();
+  }
+
+  /**
+   * The first leg of Google sign-in: the authorization URL, with the state,
+   * nonce and PKCE verifier its return must match.
+   *
+   * Called by the Next route handler, SERVER to server, which keeps those three
+   * values in an httpOnly cookie. Public because the caller is by definition
+   * not signed in; nothing is created or stored, so there is nothing to throttle.
+   */
+  @Public('the caller is starting a sign-in and has no token yet')
+  @Post('google/start')
+  @HttpCode(200)
+  startGoogleSignIn(): GoogleSignInStart {
+    return this.auth.startGoogleSignIn();
+  }
+
+  /**
+   * The second leg: the authorization code Google returned, with the verifier
+   * and nonce the first leg minted. Answers exactly like /auth/signin — the
+   * same `AuthResult`, the same `mfa` scope when a second factor is owed.
+   */
+  @Public('the authorization code in the body is the credential')
+  @Post('google')
+  @HttpCode(200)
+  signInWithGoogle(
+    @Body() body: { code: string; codeVerifier: string; nonce: string },
+    @Req() request: unknown,
+  ): Promise<AuthResult> {
+    return this.auth.signInWithGoogle(body, contextOf(request));
   }
 
   /**
@@ -177,6 +239,34 @@ export class AuthController {
     @Req() request: unknown,
   ): Promise<AuthResult> {
     return this.auth.verifyMfa(principal, body, contextOf(request));
+  }
+
+  /**
+   * "Email me a code", from the sign-in challenge.
+   *
+   * `@AllowScopes('mfa')` like verify-mfa, and for the same reason: the code is
+   * bound to the half-admitted session that asks for it, and only that token
+   * proves which session that is.
+   */
+  @AllowScopes('mfa')
+  @Post('mfa/email/send')
+  @HttpCode(200)
+  sendMfaEmailCode(@CurrentPrincipal() principal: Principal, @Req() request: unknown): Promise<MfaEmailCodeSent> {
+    return this.auth.sendMfaEmailCode(principal, contextOf(request));
+  }
+
+  /**
+   * Starts turning on email codes: sends one to the account's address. The
+   * factor turns on when that code comes back through /auth/mfa/confirm.
+   * Password required, as for every change to how the account is secured.
+   */
+  @Post('mfa/email/enrol')
+  @HttpCode(200)
+  enrolEmailMfa(
+    @CurrentPrincipal() principal: Principal,
+    @Body() body: { password: string },
+  ): Promise<MfaEmailEnrolment> {
+    return this.auth.enrolEmailMfa(principal, body);
   }
 
   /** What the caller has enrolled. Never a secret — no endpoint returns one twice. */

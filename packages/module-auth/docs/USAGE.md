@@ -122,6 +122,8 @@ is protected rather than anonymous.
 | `prismaProvider` | in practice | the database client is the app's; no default is possible |
 | `sendPasswordResetEmail` | to enable forgot-password | the obvious fallback — log it — writes a working credential into the app's log aggregator. Absent, the endpoint refuses rather than minting a token nobody receives. **Your implementation must not await delivery** — see §6 |
 | `mfaSecretKey` | to enable 2FA | encrypts TOTP secrets at rest. Same shape of refusal: absent, enrolment fails rather than storing a symmetric secret in the clear. See §6a |
+| `sendMfaEmailCode` | to enable email codes | delivers an emailed second-factor code. Awaited — there is nothing to enumerate once the password is proved, and "could not send" beats a silent success. Absent, enrolling an email factor refuses. See §6a |
+| `google` | to enable Google sign-in | `{ clientId, clientSecret, redirectUri }`, or the three `AUTH_GOOGLE_*` variables — all or none. See §6b |
 | `mfaIssuerLabel` | optional | the name an authenticator app shows above the code — "KWTech", not "kwtech-api". Defaults to `issuer` |
 | `onAuthFailure` | optional | the endpoint tells the caller nothing; an operator still needs to tell an unknown address from a locked account |
 | everything else | no | read from the environment (§4) |
@@ -307,9 +309,31 @@ outcome.
 
 ## 6a. Two-factor authentication
 
-TOTP only. `AuthMfaFactorType.webauthn` exists as a value so adding it later is
-code and not a migration, and every query pins `type: 'totp'` so a webauthn row
-could never make an account owe a factor no endpoint can satisfy.
+TOTP and emailed codes. `AuthMfaFactorType.webauthn` exists as a value so
+adding it later is code and not a migration, and every query pins the type to
+`VERIFIABLE_MFA_TYPES` (`['totp', 'email']`) so a webauthn row could never make
+an account owe a factor no endpoint can satisfy.
+
+### Emailed codes
+
+An `email` factor row holds no secret. Each code is a row in
+`auth_mfa_email_code`: a scrypt hash, ten minutes, single use, and **bound to
+the session that asked for it** — a code requested by one sign-in cannot be
+spent by another, including an attacker's who holds the password. Sending a
+new code consumes the live ones; one send per 30 seconds per session.
+
+```
+POST /auth/mfa/email/enrol   { password }            full session; sends a code
+POST /auth/mfa/confirm       { factorId, code }      the same confirm as TOTP
+POST /auth/mfa/email/send                            mfa session; → { sent, expiresAt }
+POST /auth/verify-mfa        { code }                a TOTP code OR an emailed one
+```
+
+`sent: false` means the account has no email factor. At the challenge the page
+offers "Email me a code" beside the one code field; the server tries a six-digit
+code as TOTP first, then as the session's emailed code. Wrong codes count towards
+the same lockout as everything else. Email is weaker than TOTP — it is only as
+safe as the mailbox — and the settings page says so.
 
 ### The sign-in flow
 
@@ -397,6 +421,26 @@ Password reset does **not** bypass the second factor, and must not start to:
 control of an inbox would otherwise be enough to defeat it.
 
 ---
+
+## 6b. Sign in with Google
+
+OpenID Connect, authorization code + PKCE, for accounts that **already exist**.
+The step-by-step flow is in the README; the properties not to regress are these:
+
+- **The match key is `sub`.** An address only LINKS, once, and only when Google
+  says `email_verified`. After that the address Google reports is ignored.
+- **No account is created.** `planFederatedSignIn` has no create outcome.
+- **The second factor is still owed.** Google sign-in ends in the same
+  `startSession(user, ctx, mfaOwed ? 'mfa' : 'full')` as a password.
+- **`state` is checked by the Next handler** against an httpOnly,
+  `SameSite=Lax`, path-scoped cookie, and the cookie is cleared on every
+  outcome. `Lax` is required: Google's redirect back is a cross-site GET.
+- **`nonce` and `aud` are checked by the API** (`prepareGoogleIdentity`).
+- **One refusal message** — "Could not sign in with Google" — for every reason;
+  the reason goes to `onAuthFailure` as a `federated_*` value.
+- The ID token's signature is not verified, because it is read only from the
+  token endpoint over TLS (OIDC Core §3.1.3.7). Never pass `decodeJwtPayload` a
+  token that arrived any other way.
 
 ## 7. The pure core
 

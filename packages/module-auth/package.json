@@ -44,7 +44,8 @@
     "next": "^16.0.0",
     "react": "^19.0.0",
     "reflect-metadata": "^0.2.0",
-    "@nestjs/graphql": "^13.0.0"
+    "@nestjs/graphql": "^13.0.0",
+    "@kwtech/web-ui": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@nestjs/common": {
@@ -64,26 +65,30 @@
     },
     "@nestjs/graphql": {
       "optional": true
+    },
+    "@kwtech/web-ui": {
+      "optional": true
     }
   },
   "dependencies": {
     "@kwtech/module-kit": "workspace:*"
   },
   "devDependencies": {
+    "@kwtech/web-ui": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
+    "@nestjs/graphql": "catalog:",
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
+    "graphql": "catalog:",
     "jest": "^30.4.2",
     "jsonwebtoken": "^9.0.3",
     "next": "16.3.1",
     "reflect-metadata": "catalog:",
-    "typescript": "catalog:",
-    "@nestjs/graphql": "catalog:",
-    "graphql": "catalog:"
+    "typescript": "catalog:"
   }
 }

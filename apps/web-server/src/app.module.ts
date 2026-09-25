@@ -32,6 +32,7 @@ import { APP_GUARD, RouterModule } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
+import { sendMfaEmailCode } from './auth/mfa-code-mail.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
 import { ChatDefaults } from './chat/defaults-reader.js';
@@ -266,6 +267,23 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   authServerModule({
     prismaProvider: authPrismaProvider,
     sendPasswordResetEmail,
+    sendMfaEmailCode,
+
+    /*
+     * Passed EXPLICITLY, for the reason `mfaIssuerLabel` is below: the
+     * redirect URI's fallback to FRONTEND_URL happens in this app's zod schema,
+     * and a zod default never reaches `process.env` for the module to read.
+     * Absent — no client id — Google sign-in is off.
+     */
+    ...(env.AUTH_GOOGLE_CLIENT_ID && env.AUTH_GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: env.AUTH_GOOGLE_CLIENT_ID,
+            clientSecret: env.AUTH_GOOGLE_CLIENT_SECRET,
+            redirectUri: env.AUTH_GOOGLE_REDIRECT_URI,
+          },
+        }
+      : {}),
 
     /*
      * THE SAME FUNCTION the permissions module is given below.

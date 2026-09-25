@@ -8,6 +8,7 @@ templates/
   layout.html          the shell every email shares
   password-reset.html  the body
   password-reset.txt   the plain-text twin, and the source of the subject
+  mfa-code.html/.txt   an emailed two-step verification code (../auth/mfa-code-mail.ts)
 render.ts              renderEmail(name, data) → { subject, html, text }
 ```
 
@@ -16,6 +17,9 @@ render.ts              renderEmail(name, data) → { subject, html, text }
 1. Write `templates/<name>.html` and `templates/<name>.txt`.
 2. Add `'<name>'` to `EmailData` in `render.ts` with the values it needs.
 3. Call `renderEmail('<name>', { … })` and hand the result to nodemailer.
+4. Restart `pnpm dev`. Nest copies `templates/` when the watcher STARTS, and a
+   file added afterwards is not picked up — the send fails with ENOENT on a
+   template that is plainly in `src/`.
 
 The `EmailData` entry is what makes the compiler complain if a template and its
 caller drift apart — and adding it is the reminder to write the `.txt` twin.

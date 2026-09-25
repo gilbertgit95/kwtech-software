@@ -39,6 +39,7 @@ export {
   useIconSet,
 } from './icon-picker.js';
 export { MultiSelect, type MultiSelectProps } from './multi-select.js';
+export { QrCode } from './qr-code.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
 export { type ThemeMode, ThemeSwitcher, type ThemeSwitcherProps } from './theme-switcher.js';
 export { TreeSelect, type TreeSelectNode, type TreeSelectProps } from './tree-select.js';

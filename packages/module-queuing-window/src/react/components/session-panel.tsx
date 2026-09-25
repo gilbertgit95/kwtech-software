@@ -1,12 +1,11 @@
 'use client';
 
 import { useHoldsFeature } from '@kwtech/module-kit/react';
-import { ConfirmDialog } from '@kwtech/web-ui/react';
+import { ConfirmDialog, QrCode } from '@kwtech/web-ui/react';
 import { useEffect, useState } from 'react';
 import { QUEUE_FEATURE } from '../../feature-keys.js';
 import type { QueueConsoleState } from '../use-queue-console.js';
 import { clockTime, displayLink, sessionAge } from '../view/console-view.js';
-import { QrCode } from './qr-code.js';
 import { buttonClass, Section } from './ui.js';
 
 /**

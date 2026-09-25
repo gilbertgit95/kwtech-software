@@ -13,6 +13,7 @@ export * from './auth.options.js';
 export * from './auth.repository.js';
 export * from './auth.service.js';
 export * from './auth-admin.service.js';
+export * from './google-oidc.js';
 export * from './graphql/auth.inputs.js';
 export * from './graphql/auth.resolver.js';
 export * from './graphql/auth.types.js';

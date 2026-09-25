@@ -1,0 +1,41 @@
+<%
+/*
+  The BODY of the two-step verification code email. The shell around it is
+  layout.html.
+
+  The code is the only thing that matters in this message, so it is set large
+  and on its own, in a monospace face where 0/O and 1/l cannot be confused.
+
+  `<%= %>` escapes; `<%~ %>` does not. Nothing in here uses `<%~ %>`: the intro
+  and warning are the caller's sentences, and displayName is free text the
+  account holder chose.
+
+  ⚠️ COMMENTS IN HERE MUST BE ETA COMMENTS, never `<!-- -->` — an HTML comment
+  is delivered to the reader. See password-reset.html.
+*/
+%>
+<h1 class="ink" style="margin:0 0 14px 0;font-size:21px;line-height:1.3;font-weight:600;letter-spacing:-0.015em;color:#18181b;mso-line-height-rule:exactly;">
+  Your verification code
+</h1>
+
+<p style="margin:0 0 10px 0;">
+  <% if (it.displayName) { %>Hi <%= it.displayName %>,<% } else { %>Hi,<% } %>
+</p>
+
+<p style="margin:0 0 22px 0;">
+  <%= it.intro %>
+</p>
+
+<div class="well" style="margin:0 0 22px 0;padding:16px 13px;background:#fafafa;border:1px solid #e4e4e7;border-radius:8px;text-align:center;">
+  <span class="ink" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:30px;line-height:1.2;font-weight:600;letter-spacing:0.25em;color:#18181b;mso-line-height-rule:exactly;"><%= it.code %></span>
+</div>
+
+<div class="hair" style="border-top:1px solid #e4e4e7;margin:0 0 20px 0;font-size:0;line-height:0;">&nbsp;</div>
+
+<p class="muted" style="margin:0 0 10px 0;font-size:13px;line-height:1.55;color:#71717a;mso-line-height-rule:exactly;">
+  <strong style="font-weight:600;">This code expires in <%= it.expiresIn %></strong> and can only be used once.
+</p>
+
+<p class="muted" style="margin:0;font-size:13px;line-height:1.55;color:#71717a;mso-line-height-rule:exactly;">
+  <%= it.notYou %>
+</p>

@@ -265,6 +265,23 @@ const envSchema = z
      * baked into the QR code at enrolment.
      */
     AUTH_MFA_ISSUER_LABEL: optionalText,
+
+    /**
+     * "Sign in with Google" — an OAuth client of type "Web application" from
+     * the Google Cloud console (APIs & Services → Credentials).
+     *
+     * All three or none: with none, Google sign-in is off and the sign-in page
+     * shows no button. The refine below refuses two of three, which would look
+     * configured and fail at the first person to press the button.
+     *
+     * The redirect URI is the WEB APP's callback, not this API's — the browser
+     * comes back to the origin that holds the session cookies. It defaults to
+     * `${FRONTEND_URL}/api/auth/google/callback`, and must be registered on the
+     * client character for character.
+     */
+    AUTH_GOOGLE_CLIENT_ID: optionalText,
+    AUTH_GOOGLE_CLIENT_SECRET: optionalText,
+    AUTH_GOOGLE_REDIRECT_URI: optionalText.pipe(z.url().optional()),
   })
   /**
    * Production must not fall back to the developer conveniences.
@@ -285,6 +302,11 @@ const envSchema = z
       'cannot be delivered, and the development fallback (logging the link) would write a working ' +
       'credential into the logs.',
   })
+  .refine((env) => Boolean(env.AUTH_GOOGLE_CLIENT_ID) === Boolean(env.AUTH_GOOGLE_CLIENT_SECRET), {
+    path: ['AUTH_GOOGLE_CLIENT_SECRET'],
+    message:
+      'Google sign-in needs AUTH_GOOGLE_CLIENT_ID and AUTH_GOOGLE_CLIENT_SECRET together — set both, or neither.',
+  })
   /**
    * Resolves the two display names down to APP_NAME.
    *
@@ -298,6 +320,8 @@ const envSchema = z
     APP_ENV: env.APP_ENV ?? 'local',
     MAIL_BRAND: env.MAIL_BRAND ?? env.APP_NAME,
     AUTH_MFA_ISSUER_LABEL: env.AUTH_MFA_ISSUER_LABEL ?? env.APP_NAME,
+    AUTH_GOOGLE_REDIRECT_URI:
+      env.AUTH_GOOGLE_REDIRECT_URI ?? `${env.FRONTEND_URL.replace(/\/+$/, '')}/api/auth/google/callback`,
     /*
      * A bare address gets the product name attached; one that already carries a
      * display name is left exactly as configured.

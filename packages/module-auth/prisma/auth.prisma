@@ -6,7 +6,9 @@
 //
 //   AuthUser ──credential──▶ how they prove it (a password today)
 //       │
-//       ├──mfa factor──▶ a SECOND thing they prove, TOTP today
+//       ├──identity──▶ a provider that vouches for them (Google)
+//       ├──mfa factor──▶ a SECOND thing they prove: TOTP, or a code by email
+//       │      └──email code──▶ one emailed code, bound to one session
 //       ├──recovery code──▶ the way back in when that second thing is lost
 //       ├──session──▶ a live sign-in, revocable, refresh-token addressed
 //       └──password reset──▶ a one-shot, hashed, expiring token
@@ -42,11 +44,11 @@ enum AuthCredentialType {
 
 /// ─── second factors ───────────────────────────────────────────────────────
 ///
-/// `totp` is IMPLEMENTED (2026-08-26): enrol, confirm, and a sign-in challenge.
-/// `webauthn` is not — it is a value, not a table, precisely so that adding it
-/// is a code change rather than a migration. Every query in the module pins
-/// `type: 'totp'`, so a webauthn row could never make an account owe a factor
-/// no endpoint can satisfy.
+/// `totp` is IMPLEMENTED (2026-08-26) and `email` (2026-09-25): enrol, confirm,
+/// and a sign-in challenge. `webauthn` is not — it is a value, not a table,
+/// precisely so that adding it is a code change rather than a migration. Every
+/// query in the module pins the type to `VERIFIABLE_MFA_TYPES`, so a webauthn
+/// row could never make an account owe a factor no endpoint can satisfy.
 enum AuthMfaFactorType {
   /// RFC 6238 authenticator app. The secret is symmetric — see the note on
   /// AuthMfaFactor.secret.
@@ -54,14 +56,20 @@ enum AuthMfaFactorType {
   /// A security key or platform authenticator. Stores a PUBLIC key, so it
   /// carries none of totp's storage risk. NOT IMPLEMENTED.
   webauthn
+  /// A six-digit code sent to the account's address when it is asked for. The
+  /// factor row holds NO secret — each code is its own row in
+  /// AuthMfaEmailCode, bound to the session that asked for it. Weaker than
+  /// totp (it is only as strong as the mailbox), and offered because it needs
+  /// no app on a phone.
+  email
 }
 
-/// ─── federated identity: schema now, implementation later ──────────────────
+/// ─── federated identity ────────────────────────────────────────────────────
 ///
-/// Not yet wired to any endpoint. It is here because the two decisions below
-/// are the ones that cannot be taken later without a data migration and a
-/// security review, and because a user who signs up with Google must be
-/// representable before the sign-in path can be honest about them.
+/// `google` is IMPLEMENTED (2026-09-25) for sign-in to an account that already
+/// exists; `microsoft` is a value only. The two decisions on AuthIdentity were
+/// fixed before any code used them, because they cannot be changed later
+/// without a data migration and a security review.
 enum AuthIdentityProvider {
   google
   microsoft
@@ -118,6 +126,7 @@ model AuthUser {
   credentials    AuthCredential[]
   identities     AuthIdentity[]
   mfaFactors     AuthMfaFactor[]
+  mfaEmailCodes  AuthMfaEmailCode[]
   recoveryCodes  AuthRecoveryCode[]
   sessions       AuthSession[]
   passwordResets AuthPasswordReset[]
@@ -125,7 +134,7 @@ model AuthUser {
   @@map("auth_user")
 }
 
-/// A second factor. IN USE for `totp`.
+/// A second factor. IN USE for `totp` and `email`.
 ///
 /// **`confirmedAt` is the load-bearing column.** A factor is inert until its
 /// owner has proved once that it works. Without that, enrolling a
@@ -155,6 +164,7 @@ model AuthMfaFactor {
   label String
 
   /// TOTP: the shared secret, ENCRYPTED (see the warning above).
+  /// Email: EMPTY. The codes live in AuthMfaEmailCode, one row per code sent.
   /// WebAuthn: the credential's public key. Never a secret in that case.
   secret String
 
@@ -204,10 +214,45 @@ model AuthRecoveryCode {
   @@map("auth_recovery_code")
 }
 
+/// One emailed second-factor code.
+///
+/// **Bound to a SESSION, not only to a user.** The code is sent because one
+/// half-admitted session asked for it, and only that session may spend it. A
+/// code bound to the user alone could be requested by one sign-in and spent by
+/// another — including an attacker's, who by then holds the password and is
+/// waiting for exactly that.
+///
+/// Hashed with scrypt, like a recovery code. Six digits is a million values, so
+/// no hash makes a stolen row safe for long — but at ~100ms a guess, working
+/// one back takes about a day, and the row is dead in ten minutes. A fast hash
+/// would fall in under a second.
+///
+/// Single use by `consumedAt`, and a new code consumes the old ones, so a
+/// person who presses "send" three times has one live code rather than three.
+/// Rows are kept after use for the same reason AuthPasswordReset keeps them.
+model AuthMfaEmailCode {
+  id        String @id @default(cuid())
+  userId    String
+  sessionId String
+
+  codeHash String
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  user    AuthUser    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, consumedAt])
+  @@index([userId])
+  @@map("auth_mfa_email_code")
+}
+
 /// A sign-in method someone ELSE vouches for: "Sign in with Google/Microsoft".
 ///
-/// SCHEMA ONLY for now — nothing reads or writes this table yet. Two properties
-/// of it are load-bearing and are the reason it exists this early:
+/// Written by the Google sign-in path (AuthService.signInWithGoogle). Two
+/// properties of it are load-bearing and were fixed before any code used it:
 ///
 /// **1. The match key is `subject`, never email.** `subject` is the provider's
 /// stable `sub` claim for that account. Email addresses change, get reassigned
@@ -325,6 +370,8 @@ model AuthSession {
   userAgent String?
 
   user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mfaEmailCodes AuthMfaEmailCode[]
 
   @@index([userId, revokedAt])
   @@map("auth_session")

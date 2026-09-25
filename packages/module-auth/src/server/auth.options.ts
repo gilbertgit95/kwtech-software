@@ -194,6 +194,48 @@ export interface AuthModuleOptions {
   }) => Promise<void>;
 
   /**
+   * How an emailed second-factor code reaches its owner.
+   *
+   * REQUIRED before anyone can turn on email codes, with no default for the
+   * same reason `sendPasswordResetEmail` has none: the obvious fallback, log
+   * it, writes a working second factor into the app's logs. Absent, enrolling
+   * an email factor refuses with a configuration error.
+   *
+   * AWAITED, unlike a reset link. There is no enumeration to hide here — the
+   * caller already proved the password — and a person staring at an empty inbox
+   * is better served by "could not send" than by a silent success.
+   *
+   * Called with the RAW code once. It is stored only as a scrypt hash.
+   */
+  sendMfaEmailCode?: (input: {
+    user: SessionUser;
+    /** Six digits. Put it in the message; do not log it outside development. */
+    code: string;
+    expiresAt: Date;
+    /** 'sign_in' at the challenge, 'enrolment' when turning the factor on. The words differ. */
+    purpose: 'sign_in' | 'enrolment';
+  }) => Promise<void>;
+
+  /**
+   * "Sign in with Google" — the OAuth client from the Google Cloud console.
+   *
+   * Omit it and the module reads `AUTH_GOOGLE_CLIENT_ID`,
+   * `AUTH_GOOGLE_CLIENT_SECRET` and `AUTH_GOOGLE_REDIRECT_URI`. With none of
+   * them set, Google sign-in is OFF: the endpoints refuse and the sign-in page
+   * shows no button. Setting some but not all fails the boot, because a
+   * half-configured client fails at the first sign-in instead.
+   *
+   *   redirectUri  the WEB APP's callback, `<frontend>/api/auth/google/callback`
+   *                — not the API's. The browser comes back to the origin that
+   *                holds the cookies. It must match one of the URIs registered
+   *                on the client, character for character.
+   *
+   * Sign-in only, to accounts that already exist (PLAN §13, 2026-09-25). A
+   * Google account with no local account is refused.
+   */
+  google?: GoogleClientOptions;
+
+  /**
    * Observability for a path that deliberately tells the caller nothing.
    *
    * Every sign-in failure returns one message; an operator still needs to tell
@@ -201,6 +243,13 @@ export interface AuthModuleOptions {
    * goes — a log, a metric, an alert on a spike of `wrong_password`.
    */
   onAuthFailure?: (event: { reason: AuthFailureReason; email?: string; userId?: string; ip?: string | null }) => void;
+}
+
+export interface GoogleClientOptions {
+  clientId: string;
+  /** A secret. Never defaulted, never logged. */
+  clientSecret: string;
+  redirectUri: string;
 }
 
 export const DEFAULT_TOKEN_ISSUER = 'kwtech-web-server';
@@ -316,13 +365,54 @@ export function resolveAuthOptions(options: AuthModuleOptions): ResolvedAuthModu
   const mfa: Pick<AuthModuleOptions, 'mfaSecretKey'> = {};
   if (mfaSecretKey !== undefined) mfa.mfaSecretKey = mfaSecretKey;
 
+  const google = resolveGoogle(options.google);
+
   return {
     ...options,
     ...ttls,
     ...mfa,
+    ...(google ? { google } : {}),
     jwtSecret,
     issuer,
     audience: options.audience ?? process.env.AUTH_TOKEN_AUDIENCE ?? DEFAULT_TOKEN_AUDIENCE,
     mfaIssuerLabel: options.mfaIssuerLabel ?? process.env.AUTH_MFA_ISSUER_LABEL ?? issuer,
   };
+}
+
+/**
+ * The Google client, from the options or the environment, or undefined for off.
+ *
+ * All three or none. Two of three is a deployment that looks configured and
+ * fails at the first person to press the button — the redirect URI missing
+ * sends them to a Google error page, the secret missing fails the exchange —
+ * so it stops the boot instead, naming what is absent.
+ *
+ * Empty strings count as unset, the way the app's `optionalText` treats them:
+ * `AUTH_GOOGLE_CLIENT_ID=` in a profile means "not configured", not "an empty id".
+ */
+function resolveGoogle(explicit: GoogleClientOptions | undefined): GoogleClientOptions | undefined {
+  if (explicit) return explicit;
+
+  const read = (name: string) => {
+    const value = process.env[name]?.trim();
+    return value ? value : undefined;
+  };
+  const clientId = read('AUTH_GOOGLE_CLIENT_ID');
+  const clientSecret = read('AUTH_GOOGLE_CLIENT_SECRET');
+  const redirectUri = read('AUTH_GOOGLE_REDIRECT_URI');
+  if (clientId && clientSecret && redirectUri) return { clientId, clientSecret, redirectUri };
+
+  const missing = [
+    ['AUTH_GOOGLE_CLIENT_ID', clientId],
+    ['AUTH_GOOGLE_CLIENT_SECRET', clientSecret],
+    ['AUTH_GOOGLE_REDIRECT_URI', redirectUri],
+  ]
+    .filter(([, value]) => value === undefined)
+    .map(([name]) => name);
+  if (missing.length === 3) return undefined;
+
+  throw new Error(
+    `AuthModule.forRoot: Google sign-in is half configured — missing ${missing.join(', ')}. ` +
+      'Set all three, or none to turn it off.',
+  );
 }

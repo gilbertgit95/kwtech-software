@@ -287,6 +287,9 @@ importers:
         specifier: ^19.0.0
         version: 19.2.8
     devDependencies:
+      '@kwtech/web-ui':
+        specifier: workspace:*
+        version: link:../web-ui
       '@nestjs/common':
         specifier: 'catalog:'
         version: 11.1.29(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1)
@@ -470,9 +473,6 @@ importers:
       '@kwtech/module-kit':
         specifier: workspace:*
         version: link:../module-kit
-      qrcode:
-        specifier: ^1.5.4
-        version: 1.5.4
     devDependencies:
       '@kwtech/web-ui':
         specifier: workspace:*
@@ -498,9 +498,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.1
-      '@types/qrcode':
-        specifier: ^1.5.6
-        version: 1.5.6
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
@@ -522,6 +519,9 @@ importers:
 
   packages/web-ui:
     dependencies:
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react-dom:
         specifier: ^19.0.0
         version: 19.2.8(react@19.2.8)
@@ -544,6 +544,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.1
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18

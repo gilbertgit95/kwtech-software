@@ -44,11 +44,19 @@ export { ProfilePage } from './settings/profile-page.js';
 export { ProfileRouteInner } from './settings/profile-route.js';
 export { SecurityPage } from './settings/security-page.js';
 export {
+  IconTile,
   SettingsButton,
   SettingsCard,
+  SettingsLinkButton,
   SettingsPage,
   SettingsResult,
+  StatusBadge,
 } from './settings/settings-shell.js';
 export { TwoFactorPage } from './settings/two-factor-page.js';
+export {
+  TwoFactorSettings,
+  type TwoFactorSettingsProps,
+  useMfaFactors,
+} from './settings/two-factor-settings.js';
 export { SignInPage } from './sign-in-page.js';
 export { type AuthFormState, useAuthForm } from './use-auth-form.js';

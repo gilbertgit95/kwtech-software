@@ -89,21 +89,31 @@ export type AuthFailureReason =
   | 'mfa_code_replayed'
   | 'mfa_already_satisfied'
   | 'recovery_code_unknown'
-  | 'recovery_code_used';
+  | 'recovery_code_used'
+  /** Google sign-in was asked for and no client is configured. */
+  | 'federated_not_configured'
+  /** The provider refused the authorization code, or could not be reached. */
+  | 'federated_exchange_failed'
+  /** The ID token failed a claim check: issuer, audience, expiry, nonce, subject. */
+  | 'federated_token_invalid'
+  /** A genuine Google account, and no local account for it. There is no sign-up. */
+  | 'federated_no_account'
+  /** A local account has the address, but Google has not verified it — no linking. */
+  | 'federated_email_unverified'
+  /** The account is already linked to a DIFFERENT Google account. */
+  | 'federated_already_linked'
+  /** An emailed code was asked for too soon after the last one. */
+  | 'mfa_email_resend_too_soon';
 
 /**
- * Federated sign-in providers — VOCABULARY ONLY, nothing implements these yet.
- *
- * Declared here rather than waiting because the sign-in path already has to be
- * honest about a user who has no password: someone who signed up with Google
- * holds an AuthIdentity and no AuthCredential, and `no_password_credential`
- * exists for exactly that person. The type mirrors `AuthIdentityProvider` in
+ * Federated sign-in providers. `google` is implemented; `microsoft` is
+ * vocabulary only. The type mirrors `AuthIdentityProvider` in
  * prisma/auth.prisma.
  */
 export type IdentityProvider = 'google' | 'microsoft';
 
 /**
- * How a provider account maps to a local user. Not used yet; written down
+ * How a provider account maps to a local user. Written down before it was used
  * because the choice is not reversible once accounts exist.
  *
  *   subject  the provider's stable `sub` claim. The ONLY safe match key.
@@ -159,8 +169,8 @@ export interface AuthResult {
 /** What a user has enrolled, as anything outside the module may see it. */
 export interface MfaFactorSummary {
   id: string;
-  /** Mirrors the column. Only `totp` can be enrolled or verified today. */
-  type: 'totp' | 'webauthn';
+  /** Mirrors the column. `totp` and `email` can be enrolled and verified; `webauthn` cannot. */
+  type: 'totp' | 'webauthn' | 'email';
   /** The user's own name for it — "iPhone", "1Password". */
   label: string;
   /** Null until proved once; an unconfirmed factor grants and blocks nothing. */
@@ -196,4 +206,54 @@ export interface MfaEnrolment {
  */
 export interface MfaRecoveryCodes {
   codes: string[];
+}
+
+/**
+ * An email factor mid-enrolment. A code has been sent to the account's address,
+ * and `confirmMfa` with that code and this factor id turns it on.
+ *
+ * Carries no secret, unlike `MfaEnrolment`: the proof is in the mailbox.
+ */
+export interface MfaEmailEnrolment {
+  factorId: string;
+  /** Where the code went — the account's own address, shown so the user knows where to look. */
+  sentTo: string;
+  /** ISO-8601. The code is refused after this. */
+  expiresAt: string;
+}
+
+/**
+ * The answer to "email me a code" at the sign-in challenge.
+ *
+ * `sent: false` means this account has no email factor, and the caller has to
+ * use its authenticator or a recovery code. Saying so is safe here: the caller
+ * already proved the password to reach the challenge at all.
+ */
+export interface MfaEmailCodeSent {
+  sent: boolean;
+  /** ISO-8601, when `sent`. */
+  expiresAt: string | null;
+}
+
+/** Which sign-in methods beyond a password this deployment offers. Drives the buttons. */
+export interface SignInProviders {
+  google: boolean;
+}
+
+/**
+ * Starting a Google sign-in: where to send the browser, and the three values
+ * the browser's round trip must bring back.
+ *
+ * Read by a SERVER — the Next route handler — and kept there in an httpOnly
+ * cookie. None of it reaches page JavaScript:
+ *
+ *   state         ties the callback to this browser (CSRF on the redirect).
+ *   nonce         ties the ID token to this attempt (replay).
+ *   codeVerifier  PKCE: a stolen authorization code is useless without it.
+ */
+export interface GoogleSignInStart {
+  authorizationUrl: string;
+  state: string;
+  nonce: string;
+  codeVerifier: string;
 }

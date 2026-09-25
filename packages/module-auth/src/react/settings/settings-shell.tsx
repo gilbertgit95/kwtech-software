@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { SettingsIcon, type SettingsIconName } from './icons.js';
 
 /**
  * The frame the settings pages share.
@@ -42,7 +43,7 @@ export function SettingsPage({
       {backTo ? <BackLink {...backTo} /> : null}
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
       {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-      <div className="mt-8 flex flex-col gap-6">{children}</div>
+      <div className="mt-8 flex flex-col gap-5">{children}</div>
     </div>
   );
 }
@@ -53,29 +54,106 @@ export function SettingsPage({
  * `danger` shifts the border rather than the whole card: a section that is
  * entirely red reads as broken, while a red edge reads as a warning. Used for
  * the two actions that sign people out.
+ *
+ * `icon` and `badge` are what make a page scannable: the icon says WHICH kind of
+ * thing a card is before the title is read, and the badge answers the question
+ * most people came to ask — "is this on?" — without reading the description.
  */
 export function SettingsCard({
   title,
   description,
   danger,
+  icon,
+  badge,
   children,
   footer,
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   danger?: boolean;
+  icon?: SettingsIconName;
+  badge?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
 }) {
   return (
-    <section className={`rounded-lg border bg-card p-6 ${danger ? 'border-destructive/40' : 'border-border'}`}>
-      <h2 className="text-sm font-medium text-card-foreground">{title}</h2>
-      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-      {children ? <div className="mt-4">{children}</div> : null}
-      {footer ? <div className="mt-4 flex items-center gap-3">{footer}</div> : null}
+    <section
+      className={`rounded-xl border bg-card p-5 shadow-sm sm:p-6 ${danger ? 'border-destructive/40' : 'border-border'}`}
+    >
+      <div className="flex items-start gap-4">
+        {icon ? <IconTile name={icon} tone={danger ? 'danger' : 'neutral'} /> : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 className="text-base font-semibold text-card-foreground">{title}</h2>
+            {badge ?? null}
+          </div>
+          {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+        </div>
+      </div>
+      {children ? <div className="mt-5">{children}</div> : null}
+      {footer ? <div className="mt-5 flex flex-wrap items-center gap-3">{footer}</div> : null}
     </section>
   );
 }
+
+/** The rounded square an icon sits in, tinted by what it stands for. */
+export type IconTone = 'neutral' | 'success' | 'warning' | 'danger';
+
+export function IconTile({
+  name,
+  tone = 'neutral',
+  size = 'md',
+}: {
+  name: SettingsIconName;
+  tone?: IconTone;
+  size?: 'md' | 'lg';
+}) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg ${ICON_TONE[tone]} ${
+        size === 'lg' ? 'size-12' : 'size-10'
+      }`}
+    >
+      <SettingsIcon name={name} className={size === 'lg' ? 'size-6' : 'size-5'} />
+    </span>
+  );
+}
+
+/*
+ * Theme tokens only: the status colours flip with the theme, so none of these
+ * needs a `dark:` twin. The tint is the token at low alpha and the glyph the
+ * token itself — a solid block would shout louder than the text beside it.
+ */
+const ICON_TONE: Record<IconTone, string> = {
+  neutral: 'bg-muted text-foreground',
+  success: 'bg-status-success/15 text-status-success',
+  warning: 'bg-status-warning/15 text-status-warning',
+  danger: 'bg-destructive/10 text-destructive',
+};
+
+/**
+ * A short state label — "On", "Off", "Recommended".
+ *
+ * Text, never colour alone: someone who cannot tell the green from the amber
+ * still reads the word.
+ */
+export function StatusBadge({ tone = 'neutral', children }: { tone?: IconTone; children: ReactNode }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_TONE[tone]}`}>
+      {tone === 'success' || tone === 'warning' || tone === 'danger' ? (
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+      ) : null}
+      {children}
+    </span>
+  );
+}
+
+const BADGE_TONE: Record<IconTone, string> = {
+  neutral: 'bg-muted text-muted-foreground',
+  success: 'bg-status-success/15 text-status-success',
+  warning: 'bg-status-warning/15 text-status-warning',
+  danger: 'bg-destructive/10 text-destructive',
+};
 
 /**
  * The result line under a form.
@@ -102,7 +180,8 @@ export function SettingsResult({
   }
   if (done) {
     return (
-      <p role="status" className="text-sm text-muted-foreground">
+      <p role="status" className="inline-flex items-center gap-1.5 text-sm text-status-success">
+        <SettingsIcon name="check" />
         {children ?? 'Saved.'}
       </p>
     );
@@ -110,15 +189,21 @@ export function SettingsResult({
   return null;
 }
 
+/**
+ * The settings pages' button. `secondary` is for the action beside the main
+ * one — Cancel, Copy — which must not compete with it for the eye.
+ */
 export function SettingsButton({
   pending,
   danger,
+  secondary,
   children,
   onClick,
   type = 'submit',
 }: {
   pending?: boolean;
   danger?: boolean;
+  secondary?: boolean;
   children: ReactNode;
   onClick?: () => void;
   type?: 'submit' | 'button';
@@ -128,14 +213,52 @@ export function SettingsButton({
       type={type === 'submit' ? 'submit' : 'button'}
       onClick={onClick}
       disabled={pending}
-      className={`rounded-md px-3 py-2 text-sm font-medium disabled:opacity-60 ${
-        danger ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground'
-      }`}
+      className={buttonClass(buttonVariant(danger, secondary))}
     >
       {pending ? 'Working…' : children}
     </button>
   );
 }
+
+/**
+ * A link that looks like a button — for an action that is really navigation,
+ * such as "Manage" on a card whose management lives on another page. An `<a>`,
+ * so it opens in a new tab and reads as a link to a screen reader.
+ */
+export function SettingsLinkButton({
+  href,
+  secondary,
+  children,
+}: {
+  href: string;
+  secondary?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <a href={href} className={buttonClass(secondary ? 'secondary' : 'primary')}>
+      {children}
+    </a>
+  );
+}
+
+type ButtonVariant = 'primary' | 'secondary' | 'danger';
+
+// Danger wins over secondary: a destructive action is never made quieter.
+function buttonVariant(danger: boolean | undefined, secondary: boolean | undefined): ButtonVariant {
+  if (danger) return 'danger';
+  if (secondary) return 'secondary';
+  return 'primary';
+}
+
+function buttonClass(variant: ButtonVariant): string {
+  return `inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60 ${BUTTON_VARIANT[variant]}`;
+}
+
+const BUTTON_VARIANT: Record<ButtonVariant, string> = {
+  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+  secondary: 'border border-border bg-background text-foreground hover:bg-muted',
+  danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+};
 
 /**
  * The way back out of a settings page.

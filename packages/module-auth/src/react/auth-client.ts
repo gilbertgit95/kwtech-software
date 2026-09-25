@@ -1,6 +1,14 @@
 'use client';
 
-import type { MfaEnrolment, MfaFactorSummary, MfaRecoveryCodes, Viewer } from '../types.js';
+import type {
+  MfaEmailCodeSent,
+  MfaEmailEnrolment,
+  MfaEnrolment,
+  MfaFactorSummary,
+  MfaRecoveryCodes,
+  SignInProviders,
+  Viewer,
+} from '../types.js';
 
 /**
  * What a credential call gives back to a PAGE.
@@ -39,6 +47,13 @@ export interface AuthClient {
    * nothing here for a page to hold, which is the point.
    */
   verifyMfa(input: { code: string }): Promise<AuthActionResult>;
+  /**
+   * "Email me a code" at the challenge. Like verifyMfa, it carries nothing: the
+   * half-admitted session in the cookie says which sign-in the code is for.
+   */
+  sendMfaEmailCode(): Promise<MfaEmailCodeSent>;
+  /** Which sign-in buttons beyond the password form this deployment offers. */
+  signInProviders(): Promise<SignInProviders>;
   requestPasswordReset(input: { email: string }): Promise<void>;
   resetPassword(input: { token: string; password: string }): Promise<void>;
 
@@ -69,6 +84,8 @@ export interface AuthClient {
 
   listMfaFactors(): Promise<MfaFactorSummary[]>;
   enrolMfa(input: { password: string; label: string }): Promise<MfaEnrolment>;
+  /** Sends a code to the account's address; `confirmMfa` with it turns email codes on. */
+  enrolEmailMfa(input: { password: string }): Promise<MfaEmailEnrolment>;
   confirmMfa(input: { factorId: string; code: string }): Promise<MfaRecoveryCodes>;
   removeMfaFactor(input: { factorId: string; password: string }): Promise<{ removed: boolean }>;
   regenerateRecoveryCodes(input: { password: string }): Promise<MfaRecoveryCodes>;
@@ -120,6 +137,8 @@ export function createAuthClient(basePath = '/api/auth'): AuthClient {
   return {
     signIn: (input) => post('/signin', input) as Promise<AuthActionResult>,
     verifyMfa: (input) => post('/verify-mfa', input) as Promise<AuthActionResult>,
+    sendMfaEmailCode: () => post('/mfa-email-send', {}) as Promise<MfaEmailCodeSent>,
+    signInProviders: () => post('/providers', {}) as Promise<SignInProviders>,
     graphql,
 
     updateProfile: async (input) => {
@@ -144,6 +163,7 @@ export function createAuthClient(basePath = '/api/auth'): AuthClient {
     },
     signOutEverywhere: () => post('/signout-all', {}) as Promise<{ revoked: number }>,
     enrolMfa: (input) => post('/mfa-enrol', input) as Promise<MfaEnrolment>,
+    enrolEmailMfa: (input) => post('/mfa-email-enrol', input) as Promise<MfaEmailEnrolment>,
     confirmMfa: (input) => post('/mfa-confirm', input) as Promise<MfaRecoveryCodes>,
     removeMfaFactor: (input) => post('/mfa-remove', input) as Promise<{ removed: boolean }>,
     regenerateRecoveryCodes: (input) => post('/mfa-recovery-codes', input) as Promise<MfaRecoveryCodes>,

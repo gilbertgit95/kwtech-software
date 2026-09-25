@@ -80,6 +80,22 @@ export interface EmailData {
     /** Rendered as a phrase — "one hour" — because a reader is not parsing seconds. */
     expiresIn: string;
   };
+  'mfa-code': {
+    /** Free text the user chose. Escaped by the template; never trust it. */
+    displayName: string | null;
+    /** Six digits. The whole point of the message, and a live credential for ten minutes. */
+    code: string;
+    /** "10 minutes", for the reason `expiresIn` is a phrase everywhere. */
+    expiresIn: string;
+    /**
+     * Whole SENTENCES, composed by the caller, for the same reason the
+     * invitation's are: a code at sign-in and a code to turn the feature on
+     * are different messages, and the second sentence — what to do if this
+     * was not you — differs most of all.
+     */
+    intro: string;
+    notYou: string;
+  };
   'chat-message': {
     /** The recipient's own name. Free text they chose; escaped by the template. */
     displayName: string | null;

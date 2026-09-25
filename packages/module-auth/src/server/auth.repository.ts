@@ -59,15 +59,15 @@ export interface AuthMfaFactorRow {
   /**
    * Widened to match the COLUMN, not what this module implements.
    *
-   * `AuthMfaFactorType` in the schema is `totp | webauthn`, and narrowing the
-   * row to 'totp' would be this interface asserting something about the
-   * database that is not true — a structural client has to describe what Prisma
-   * actually returns or it stops being a safe stand-in. Nothing enrols a
-   * webauthn factor today; every QUERY below pins `type: 'totp'` so that
-   * "owes a factor" and "can satisfy a factor" stay the same set by
-   * construction rather than by remembering.
+   * `AuthMfaFactorType` in the schema is `totp | webauthn | email`, and
+   * narrowing the row to what is implemented would be this interface asserting
+   * something about the database that is not true — a structural client has to
+   * describe what Prisma actually returns or it stops being a safe stand-in.
+   * Nothing enrols a webauthn factor today; every QUERY below pins the type to
+   * `VERIFIABLE_MFA_TYPES` so that "owes a factor" and "can satisfy a factor"
+   * stay the same set by construction rather than by remembering.
    */
-  type: 'totp' | 'webauthn';
+  type: 'totp' | 'webauthn' | 'email';
   label: string;
   /** Ciphertext, always. See server/secret-box.ts for why it cannot be a hash. */
   secret: string;
@@ -79,6 +79,26 @@ export interface AuthMfaFactorRow {
    * instead of silently at every read.
    */
   lastUsedStep: bigint | null;
+}
+
+export interface AuthMfaEmailCodeRow {
+  id: string;
+  userId: string;
+  sessionId: string;
+  /** scrypt, like a recovery code. See AuthMfaEmailCode in the schema for why. */
+  codeHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+  consumedAt: Date | null;
+}
+
+export interface AuthIdentityRow {
+  id: string;
+  userId: string;
+  provider: 'google' | 'microsoft';
+  subject: string;
+  email: string | null;
+  emailVerifiedByProvider: boolean;
 }
 
 export interface AuthRecoveryCodeRow {
@@ -146,6 +166,13 @@ export interface AuthUserFilter {
 }
 
 export type AuthTransaction = Omit<AuthPrismaClient, '$transaction'>;
+
+/**
+ * How every factor query names the types it means: one type, or the set this
+ * module can verify (`VERIFIABLE_MFA_TYPES`). Prisma accepts both shapes for an
+ * enum column.
+ */
+export type MfaTypeFilter = 'totp' | 'email' | { in: ('totp' | 'email')[] };
 
 /**
  * The one projection every session read uses.
@@ -300,14 +327,14 @@ export interface AuthPrismaClient {
    */
   authMfaFactor: {
     findFirst(args: {
-      where: { userId: string; id?: string; type?: 'totp'; confirmedAt?: null | { not: null } };
+      where: { userId: string; id?: string; type?: MfaTypeFilter; confirmedAt?: null | { not: null } };
     }): Promise<AuthMfaFactorRow | null>;
     findMany(args: {
-      where: { userId: string; type?: 'totp'; confirmedAt?: null | { not: null } };
+      where: { userId: string; type?: MfaTypeFilter; confirmedAt?: null | { not: null } };
       orderBy?: { createdAt: 'asc' | 'desc' };
     }): Promise<AuthMfaFactorRow[]>;
     create(args: {
-      data: { userId: string; type: 'totp'; label: string; secret: string };
+      data: { userId: string; type: 'totp' | 'email'; label: string; secret: string };
       select: { id: true };
     }): Promise<{ id: string }>;
     /**
@@ -328,6 +355,58 @@ export interface AuthPrismaClient {
       data: { confirmedAt?: Date; lastUsedAt?: Date; lastUsedStep?: bigint };
     }): Promise<{ count: number }>;
     deleteMany(args: { where: { id?: string; userId: string; confirmedAt?: null } }): Promise<{ count: number }>;
+  };
+
+  /**
+   * Emailed codes. Every read names the SESSION, because a code is spendable
+   * only by the sign-in that asked for it — see AuthMfaEmailCode.
+   */
+  authMfaEmailCode: {
+    /** The newest live code for a session: the one to check, and the resend clock. */
+    findFirst(args: {
+      where: { userId: string; sessionId: string; consumedAt: null };
+      orderBy: { createdAt: 'desc' };
+    }): Promise<AuthMfaEmailCodeRow | null>;
+    create(args: {
+      data: { userId: string; sessionId: string; codeHash: string; expiresAt: Date };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    /**
+     * Conditional on `consumedAt: null`, so the same code presented twice at
+     * once is spent once — the database decides, not the read before it.
+     */
+    updateMany(args: {
+      where: { id?: string; sessionId?: string; consumedAt: null };
+      data: { consumedAt: Date };
+    }): Promise<{ count: number }>;
+  };
+
+  /**
+   * Federated identities. The sign-in lookup is by `(provider, subject)` and
+   * nothing else — see AuthIdentity in the schema for why email never is.
+   */
+  authIdentity: {
+    findUnique(args: {
+      where: { provider_subject: { provider: 'google' | 'microsoft'; subject: string } };
+    }): Promise<AuthIdentityRow | null>;
+    /** Whether a user already holds an identity from this provider. */
+    findFirst(args: { where: { userId: string; provider: 'google' | 'microsoft' } }): Promise<AuthIdentityRow | null>;
+    create(args: {
+      data: {
+        userId: string;
+        provider: 'google' | 'microsoft';
+        subject: string;
+        email: string | null;
+        emailVerifiedByProvider: boolean;
+        displayName: string | null;
+        lastLoginAt: Date;
+      };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+    update(args: {
+      where: { id: string };
+      data: { lastLoginAt: Date; email?: string | null; emailVerifiedByProvider?: boolean };
+    }): Promise<unknown>;
   };
 
   /**

@@ -21,13 +21,15 @@ export const WEB_MODULES = [authWebModule];
 
 ```ts
 // src/app/api/auth/[...action]/route.ts — the whole API surface
-export { POST } from '@kwtech/module-auth/next';
+export { GET, POST } from '@kwtech/module-auth/next';
 ```
 
 That gives you `/auth/signin`, `/auth/verify`, `/auth/forgot-password` and
 `/auth/reset-password` as rendered pages, and `signin`, `verify-mfa`,
 `forgot-password`, `reset-password` and `signout` as endpoints that keep the
-tokens in httpOnly cookies the page's JavaScript cannot read.
+tokens in httpOnly cookies the page's JavaScript cannot read. `GET` serves the
+two legs of Google sign-in (`/api/auth/google` and `/api/auth/google/callback`);
+leave it out and there is simply no working Google button.
 
 Reading the session, anywhere on the server:
 
@@ -60,16 +62,61 @@ rather than half-working without it:
 - `mfaSecretKey` (or `AUTH_MFA_SECRET_KEY`) — two-factor authentication. A TOTP
   secret is symmetric and cannot be hashed, so without a key there is no safe
   way to store one.
+- `sendMfaEmailCode` — emailed codes as a second factor. Same reason as the
+  reset hook: the fallback, logging the code, puts a live factor in the logs.
+- `google` (or `AUTH_GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`, all three
+  or none) — "Sign in with Google". Two of three fails the boot.
 
 Rate limiting is yours too: the module exports `CREDENTIAL_ENDPOINTS` so a
 throttler can be pointed at the guessing endpoints without matching URLs.
 
 ## Two-factor authentication
 
-TOTP, with recovery codes. Sign-in returns `mfaRequired` and a token scoped to
-one endpoint; `refresh()` **re-derives** that scope from the session row, so
-waiting out the access token is not a way past the second factor. Enrolling or
-removing a factor needs the current password, not just a session.
+TOTP or an emailed code, with recovery codes. Sign-in returns `mfaRequired`
+and a token scoped to the challenge; `refresh()` **re-derives** that scope from
+the session row, so waiting out the access token is not a way past the second
+factor. Enrolling or removing a factor needs the current password, not just a
+session.
+
+- **Email codes** (`type: 'email'`): turned on with `POST /auth/mfa/email/enrol`
+  (sends a code) and `POST /auth/mfa/confirm` (proves it arrived). At the
+  challenge, `POST /auth/mfa/email/send` mails a six-digit code **bound to that
+  half-admitted session** — no other sign-in can spend it — and it goes in the
+  same field as a TOTP code. Stored as a scrypt hash, ten minutes, single use, a
+  new code retires the old one, one send per 30 seconds per session. Wrong codes
+  count towards the account lockout like any other.
+- `VERIFIABLE_MFA_TYPES` is the one list that both "does this account owe a
+  factor" and "which factors satisfy it" read, so the two cannot disagree.
+
+## Sign in with Google
+
+OpenID Connect, authorization code flow with PKCE, for accounts that **already
+exist**. Google never creates an account (PLAN §13, 2026-09-25).
+
+1. The button links to `/api/auth/google`. The Next handler asks the API
+   (`POST /auth/google/start`) for the authorization URL plus a `state`, `nonce`
+   and PKCE verifier, keeps those in an httpOnly cookie scoped to
+   `/api/auth/google` for ten minutes, and redirects to Google.
+2. Google redirects to `/api/auth/google/callback`. The handler checks `state`
+   against the cookie (the CSRF defence), forgets the cookie, and posts the code,
+   verifier and nonce to `POST /auth/google`.
+3. The API exchanges the code with the client secret, checks the ID token's
+   `iss`, `aud`, `exp` and `nonce`, then picks the account:
+   - an identity already linked by `(google, sub)` → that user;
+   - otherwise a user with the same address **and** `email_verified` from Google
+     → link it, then sign in;
+   - anything else → refused, with one message for every reason.
+4. The rest is the password path's rules: locked and suspended accounts are
+   refused, and **a confirmed second factor is still owed** — Google is not a
+   way around MFA. The handler sets the same cookies as `/signin` and lands on
+   `next`, or on `/auth/verify`.
+
+No signature check on the ID token, deliberately: it is read only from the
+token endpoint's TLS response, which OpenID Connect Core §3.1.3.7 accepts in its
+place (see `decodeJwtPayload`). No provider access or refresh token is kept.
+
+The sign-in page asks `POST /api/auth/providers` whether to draw the button, so
+the web app needs no configuration of its own.
 
 See [docs/USAGE.md §6a](docs/USAGE.md) for the flow, the storage decision and
 what is deliberately not enforced.
@@ -88,6 +135,9 @@ is configured; pass values explicitly and none of them is read.
 | `AUTH_TOKEN_AUDIENCE` | `/server` | `kwtech-api` |
 | `AUTH_MFA_SECRET_KEY` | `/server` | **none — enrolment refuses** |
 | `AUTH_MFA_ISSUER_LABEL` | `/server` | falls back to `AUTH_TOKEN_ISSUER` |
+| `AUTH_GOOGLE_CLIENT_ID` | `/server` | none — Google sign-in off |
+| `AUTH_GOOGLE_CLIENT_SECRET` | `/server` | none — Google sign-in off |
+| `AUTH_GOOGLE_REDIRECT_URI` | `/server` | none — all three or none, else `forRoot` throws |
 
 The secret is the deliberate exception. A module-supplied fallback would be the
 same secret in every deployment that forgot to set one — worse than a failed
@@ -103,6 +153,25 @@ export const { POST } = createAuthRouteHandlers({ apiUrl, cookieName, secure });
 
 `getViewer` and `getSessionToken` take the same overrides.
 
+### Two-step verification lives on the Security page
+
+`SecurityPage` opens with a summary of how protected the account is, then
+manages two-step verification inline through `TwoFactorSettings`: each method
+(authenticator app, email codes) is a row with its own Set up or Remove, and
+recovery codes are regenerated in place and offered for copy and download.
+`/settings/two-factor` renders the Security page, so older links still work.
+
+To put the card somewhere else, compose it with the hook that loads the factors:
+
+```tsx
+const api = createAuthClient();
+const { factors, error, reload } = useMfaFactors(api);
+<TwoFactorSettings api={api} factors={factors} loadError={error} reload={reload} />
+```
+
+`TwoFactorPage` is that card on a page of its own. Both `SecurityPage` and
+`TwoFactorPage` take `renderQr` to replace the default QR code.
+
 ### The settings pages' Back link
 
 `ProfilePage`, `SecurityPage` and `TwoFactorPage` render a "Back to …" link
@@ -113,8 +182,7 @@ above the heading, and each takes `backTo` to move it:
 ```
 
 The defaults assume these routes are mounted where the descriptor puts them.
-`TwoFactorPage` points at `/settings/security`, which is its real parent — it is
-unlisted in the navigation and reached only from Security. Profile and Security
+`TwoFactorPage` points at `/settings/security`, its real parent. Profile and Security
 are PEERS rather than children of one another, so they point at the app's home
 (`/`, labelled "Dashboard"); override `backTo` if yours lives elsewhere or if
 you mount these under a prefix.

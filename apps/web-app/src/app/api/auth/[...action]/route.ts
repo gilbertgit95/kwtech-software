@@ -32,6 +32,13 @@ import { ACTIVE_ORGANIZATION_COOKIE, ACTIVE_WORKSPACE_COOKIE, expiredPreferenceC
 const handlers = createAuthRouteHandlers();
 
 /**
+ * The two legs of "Sign in with Google" — both browser navigations, so both
+ * GETs. Passed straight through: neither one ends a session, so there is no
+ * tenant selection to clear.
+ */
+export const GET = handlers.GET;
+
+/**
  * The actions that END a session, and must therefore drop the selection.
  *
  * `signout-all` is here as well as `signout`, and forgetting it would be the

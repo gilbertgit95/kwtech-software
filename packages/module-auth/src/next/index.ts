@@ -21,7 +21,10 @@
  * Adopting it is one file:
  *
  *   // app/api/auth/[...action]/route.ts
- *   export { POST } from '@kwtech/module-auth/next';
+ *   export { GET, POST } from '@kwtech/module-auth/next';
+ *
+ * GET serves the two legs of Google sign-in; an app that leaves it out simply
+ * has no working Google button.
  *
  * NAMED re-exports, never `export *` — see the note in ../react/index.ts.
  */
@@ -36,7 +39,7 @@ export {
 } from './config.js';
 export { type CookieAttributes, readCookie, serializeCookie } from './cookies.js';
 export { type RenewalDecision, renewSessionIfNeeded } from './renew.js';
-export { createAuthRouteHandlers } from './route-handlers.js';
+export { createAuthRouteHandlers, safeLocalPath } from './route-handlers.js';
 export { getSessionToken, getViewer } from './session.js';
 
 /**
@@ -47,4 +50,4 @@ export { getSessionToken, getViewer } from './session.js';
  * Apps needing different cookie names or a non-environment source call
  * `createAuthRouteHandlers({ ... })` and export that instead.
  */
-export const { POST } = createAuthRouteHandlers();
+export const { POST, GET } = createAuthRouteHandlers();

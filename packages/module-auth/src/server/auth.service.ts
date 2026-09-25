@@ -1,18 +1,27 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
   Optional,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { planFederatedSignIn, prepareGoogleIdentity } from '../domain/federated.js';
 import {
   ACCESS_TOKEN_TTL,
+  canSendEmailMfaCode,
   checkPassword,
+  EMAIL_MFA_CODE_DIGITS,
+  EMAIL_MFA_CODE_TTL,
+  EMAIL_MFA_RESEND_SECONDS,
+  expiryFrom,
   isExpired,
   isLockedOut,
   isPlausibleEmail,
+  isPlausibleEmailMfaCode,
   isPlausibleRecoveryCode,
   isPlausibleTotpCode,
   isPlausibleUsername,
@@ -27,18 +36,23 @@ import {
   PASSWORD_RESET_TTL,
   RECOVERY_CODE_BYTES,
   RECOVERY_CODE_COUNT,
+  VERIFIABLE_MFA_TYPES,
 } from '../domain/policy.js';
 import type {
   AuthFailureReason,
   AuthResult,
+  GoogleSignInStart,
+  MfaEmailCodeSent,
+  MfaEmailEnrolment,
   MfaEnrolment,
   MfaFactorSummary,
   MfaRecoveryCodes,
   Principal,
   SessionUser,
+  SignInProviders,
   TokenScope,
 } from '../types.js';
-import { AUTH_OPTIONS, type ResolvedAuthModuleOptions } from './auth.options.js';
+import { AUTH_OPTIONS, type GoogleClientOptions, type ResolvedAuthModuleOptions } from './auth.options.js';
 import {
   AUTH_PRISMA,
   type AuthMfaFactorRow,
@@ -46,6 +60,7 @@ import {
   type AuthUserRow,
   SESSION_SUMMARY_SELECT,
 } from './auth.repository.js';
+import { exchangeGoogleCode, startGoogleSignIn } from './google-oidc.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { SESSION_REVOCATION_STORE, type SessionRevocationStore } from './revocation.js';
 import { open, readSecretKey, seal } from './secret-box.js';
@@ -68,6 +83,17 @@ import { generateTotpSecret, otpauthUri, toBase32, verifyTotp } from './totp.js'
 
 /** One message, one status, for every failure on the credential path. */
 const REFUSAL = 'Invalid email or password';
+
+/**
+ * The same rule for Google: one message for every failure, whether the code was
+ * bad, the token did not check out, or no account exists for that Google
+ * account. "No account for that address" would make the button an enumeration
+ * oracle for anyone holding a Google account at the address they want to test.
+ */
+const GOOGLE_REFUSAL = 'Could not sign in with Google';
+
+/** The label an email factor is listed under. There is at most one per account. */
+const EMAIL_FACTOR_LABEL = 'Email';
 
 /**
  * Shape checks, in the service rather than in a transport-level pipe.
@@ -287,6 +313,141 @@ export class AuthService {
     });
 
     return { id: user.id, email: user.email, displayName: user.displayName };
+  }
+
+  // ── sign in with Google ──────────────────────────────────────────────────
+
+  /** Which buttons the sign-in page should draw. No account data — safe to answer anyone. */
+  signInProviders(): SignInProviders {
+    return { google: this.options.google !== undefined };
+  }
+
+  /**
+   * The first leg: the URL to send the browser to, and the values its return
+   * must match. Stateless here — the caller (the Next route handler) holds them
+   * in an httpOnly cookie until the browser comes back.
+   *
+   * 404 when Google is not configured, rather than a 401: nothing was refused,
+   * the feature is simply not there.
+   */
+  startGoogleSignIn(): GoogleSignInStart {
+    const google = this.options.google;
+    if (!google) throw new NotFoundException('Google sign-in is not enabled.');
+    return startGoogleSignIn(google);
+  }
+
+  /**
+   * The second leg: an authorization code in, a session out.
+   *
+   * Everything after the exchange is the password path's rules applied to a
+   * different proof. The account must exist, be active and not locked — and a
+   * confirmed second factor is STILL owed. Google proves who the person is to
+   * Google; it does not stand in for the factor this account chose, and letting
+   * it would make "sign in with Google" the way around two-step verification.
+   *
+   * ## Which account
+   *
+   * By `(google, sub)` when the Google account is already linked. Otherwise by
+   * address, and then only when Google says it verified that address — at
+   * which point the identity is linked, so the next sign-in matches by `sub`.
+   * See planFederatedSignIn and AuthIdentity in the schema for why email is
+   * never a match key on its own.
+   *
+   * No account is ever CREATED here. There is no public sign-up, and a Google
+   * button must not become one (PLAN §13, 2026-09-25).
+   */
+  async signInWithGoogle(
+    input: { code: string; codeVerifier: string; nonce: string },
+    context: RequestContext,
+  ): Promise<AuthResult> {
+    const google = this.options.google;
+    if (!google) throw this.refuseGoogle('federated_not_configured', { ip: context.ipAddress });
+
+    const code = requireString(input.code, 'code');
+    const codeVerifier = requireString(input.codeVerifier, 'codeVerifier');
+    const nonce = requireString(input.nonce, 'nonce');
+    const db = this.client();
+    const now = this.now();
+
+    const claims = await this.exchangeGoogleCode(google, { code, codeVerifier });
+    if (!claims) throw this.refuseGoogle('federated_exchange_failed', { ip: context.ipAddress });
+
+    const prepared = prepareGoogleIdentity(claims, { clientId: google.clientId, nonce, now });
+    if ('refused' in prepared) throw this.refuseGoogle(prepared.refused, { ip: context.ipAddress });
+    const identity = prepared.identity;
+
+    const linked = await db.authIdentity.findUnique({
+      where: { provider_subject: { provider: 'google', subject: identity.subject } },
+    });
+    // The address is only consulted when the subject is NOT linked. Once it is,
+    // what the address says no longer matters — which is the whole point.
+    const email = identity.email ? normaliseEmail(identity.email) : null;
+    const userWithEmail = !linked && email ? await db.authUser.findUnique({ where: { email } }) : null;
+    const existingGoogle = userWithEmail
+      ? await db.authIdentity.findFirst({ where: { userId: userWithEmail.id, provider: 'google' } })
+      : null;
+
+    const plan = planFederatedSignIn({
+      linkedUserId: linked?.userId ?? null,
+      userWithEmail,
+      userHasProviderIdentity: existingGoogle !== null,
+      identity,
+    });
+    if (plan.kind === 'refuse') {
+      throw this.refuseGoogle(plan.reason, { ...(email ? { email } : {}), ip: context.ipAddress });
+    }
+
+    const user = plan.kind === 'link' ? userWithEmail : await db.authUser.findUnique({ where: { id: plan.userId } });
+    if (!user) throw this.refuseGoogle('federated_no_account', { ip: context.ipAddress });
+
+    // The password path's order, for the password path's reason: a locked or
+    // suspended account is refused however good the proof.
+    if (isLockedOut(user.lockedUntil, now)) {
+      throw this.refuseGoogle('account_locked', { userId: user.id, ip: context.ipAddress });
+    }
+    if (user.status !== 'active') {
+      throw this.refuseGoogle('account_suspended', { userId: user.id, ip: context.ipAddress });
+    }
+
+    if (plan.kind === 'link') {
+      try {
+        await db.authIdentity.create({
+          data: {
+            userId: user.id,
+            provider: 'google',
+            subject: identity.subject,
+            email,
+            emailVerifiedByProvider: identity.emailVerifiedByProvider,
+            displayName: identity.displayName,
+            lastLoginAt: now,
+          },
+          select: { id: true },
+        });
+      } catch (error) {
+        // Two first sign-ins racing, or the same account linked a moment ago
+        // from another tab. The constraint is the authority; this is its refusal.
+        if (isUniqueViolation(error)) {
+          throw this.refuseGoogle('federated_already_linked', { userId: user.id, ip: context.ipAddress });
+        }
+        throw error;
+      }
+    }
+    if (linked) await db.authIdentity.update({ where: { id: linked.id }, data: { lastLoginAt: now } });
+
+    return this.startSession(user, context, (await this.mfaOwed(user.id)) ? 'mfa' : 'full');
+  }
+
+  /**
+   * The HTTP exchange with Google, as a method so a test can replace it.
+   *
+   * The same seam as `now()`: the service's decisions are what the tests are
+   * about, and they should not need a network or a fake Google to reach them.
+   */
+  protected exchangeGoogleCode(
+    google: GoogleClientOptions,
+    input: { code: string; codeVerifier: string },
+  ): Promise<Record<string, unknown> | null> {
+    return exchangeGoogleCode(google, input);
   }
 
   // ── refresh ───────────────────────────────────────────────────────────────
@@ -680,10 +841,11 @@ export class AuthService {
    * for a `full` one. Rotating retires it at the moment the session changes
    * what it is worth.
    *
-   * Accepts a TOTP code or a recovery code in the same field. One field because
-   * that is what the form has, and unambiguous because the two have different
-   * shapes — and because telling the user which of the two they got wrong tells
-   * an attacker which one they are closer to.
+   * Accepts a TOTP code, an emailed code or a recovery code in the same field.
+   * One field because that is what the form has. A recovery code has its own
+   * shape; the two six-digit kinds are tried in turn — and the caller is never
+   * told which of them it got wrong, because that tells an attacker which one
+   * they are closer to.
    */
   async verifyMfa(principal: Principal, input: { code: string }, context: RequestContext): Promise<AuthResult> {
     const db = this.client();
@@ -705,7 +867,7 @@ export class AuthService {
     }
 
     const factors = await db.authMfaFactor.findMany({
-      where: { userId: user.id, type: 'totp', confirmedAt: { not: null } },
+      where: { userId: user.id, type: { in: VERIFIABLE_MFA_TYPES }, confirmedAt: { not: null } },
     });
     if (factors.length === 0) {
       // Every factor was revoked between sign-in and now. There is nothing this
@@ -715,7 +877,7 @@ export class AuthService {
 
     const satisfied = isPlausibleRecoveryCode(code)
       ? await this.spendRecoveryCode(user.id, code, now)
-      : await this.spendTotpCode(factors, code, now, user.id);
+      : await this.spendSixDigitCode(factors, code, now, user.id, session.id);
 
     if (!satisfied) {
       // MFA failures count towards the SAME lockout as password failures.
@@ -756,6 +918,89 @@ export class AuthService {
       mustChangePassword: false,
       mfaRequired: false,
     };
+  }
+
+  /**
+   * "Email me a code" at the sign-in challenge.
+   *
+   * Reached with the same `mfa`-scoped token as verifyMfa, and bound to its
+   * session: the code it sends can be spent by this sign-in and no other. See
+   * AuthMfaEmailCode in the schema for why that binding is the point.
+   *
+   * `sent: false` when the account has no email factor. Nothing is hidden by
+   * saying so: the caller proved the password to hold this token at all.
+   */
+  async sendMfaEmailCode(principal: Principal, context: RequestContext): Promise<MfaEmailCodeSent> {
+    const db = this.client();
+    const now = this.now();
+
+    const session = await db.authSession.findUnique({ where: { id: principal.sessionId }, include: { user: true } });
+    if (!session) throw this.refuse('session_unknown', { userId: principal.userId, ip: context.ipAddress });
+    if (session.revokedAt !== null) throw this.refuse('session_revoked', { userId: session.userId });
+    if (isExpired(session.expiresAt, now)) throw this.refuse('session_expired', { userId: session.userId });
+    if (session.user.status !== 'active') throw this.refuse('account_suspended', { userId: session.userId });
+    // A locked account gets no mail: sending a code it cannot spend would read
+    // as a broken code rather than a locked door.
+    if (isLockedOut(session.user.lockedUntil, now)) {
+      throw this.refuse('account_locked', { userId: session.userId, ip: context.ipAddress });
+    }
+
+    const factor = await db.authMfaFactor.findFirst({
+      where: { userId: session.userId, type: 'email', confirmedAt: { not: null } },
+    });
+    if (!factor) return { sent: false, expiresAt: null };
+
+    const expiresAt = await this.issueEmailCode(session.user, session.id, now, 'sign_in');
+    return { sent: true, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * Turns on email codes: creates the factor UNCONFIRMED and sends a code.
+   * `confirmMfa` with that code turns it on — the same two steps as TOTP, and
+   * for the same reason. A factor that has never been proved is a factor that
+   * might not work, and an email factor that cannot reach its owner is a
+   * lockout.
+   *
+   * Password required, exactly as for enrolMfa: a stolen session must not be
+   * enough to change how the account is secured.
+   */
+  async enrolEmailMfa(principal: Principal, input: { password: string }): Promise<MfaEmailEnrolment> {
+    const db = this.client();
+    const now = this.now();
+    // Before the password is checked, so a deployment with no mailer says so
+    // rather than asking for a password it can do nothing with.
+    this.mfaMailer();
+
+    const user = await this.requireActiveUser(principal.userId);
+    await this.requirePassword(user.id, input.password);
+
+    const existing = await db.authMfaFactor.findFirst({
+      where: { userId: user.id, type: 'email', confirmedAt: { not: null } },
+    });
+    if (existing) throw new BadRequestException('Email codes are already on for this account.');
+
+    // The same sweep enrolMfa does: an abandoned enrolment of either kind is
+    // rubbish, and would collide with @@unique([userId, label]) on a retry.
+    await db.authMfaFactor.deleteMany({ where: { userId: user.id, confirmedAt: null } });
+
+    let created: { id: string };
+    try {
+      created = await db.authMfaFactor.create({
+        data: { userId: user.id, type: 'email', label: EMAIL_FACTOR_LABEL, secret: '' },
+        select: { id: true },
+      });
+    } catch (error) {
+      // An authenticator the user named "Email". Rare, and theirs to rename.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(
+          `You already have an authenticator named "${EMAIL_FACTOR_LABEL}". Rename it first.`,
+        );
+      }
+      throw error;
+    }
+
+    const expiresAt = await this.issueEmailCode(user, principal.sessionId, now, 'enrolment');
+    return { factorId: created.id, sentTo: user.email, expiresAt: expiresAt.toISOString() };
   }
 
   // ── second factor: enrolment ──────────────────────────────────────────────
@@ -838,7 +1083,6 @@ export class AuthService {
    */
   async confirmMfa(principal: Principal, input: { factorId: string; code: string }): Promise<MfaRecoveryCodes> {
     const db = this.client();
-    const key = this.mfaKey();
     const now = this.now();
     const factorId = requireString(input.factorId, 'factorId');
     const code = normaliseMfaCode(requireString(input.code, 'code'));
@@ -846,22 +1090,17 @@ export class AuthService {
     const user = await this.requireActiveUser(principal.userId);
 
     const factor = await db.authMfaFactor.findFirst({
-      where: { userId: user.id, id: factorId, type: 'totp', confirmedAt: null },
+      where: { userId: user.id, id: factorId, type: { in: VERIFIABLE_MFA_TYPES }, confirmedAt: null },
     });
     // Scoped by userId in the query itself, so a factor id belonging to someone
     // else is simply not found rather than checked-and-refused.
     if (!factor) throw new BadRequestException('No enrolment is in progress for that factor');
 
-    const secret = open(factor.secret, key);
-    if (!secret) {
-      // The key rotated between enrolling and confirming, or the row is corrupt.
-      // Not a credential failure and not the user's fault.
-      throw new BadRequestException('That enrolment can no longer be read. Start again.');
-    }
-
-    const verdict = verifyTotp({ secretBase32: secret, code, now, lastUsedStep: null });
-    if (!verdict.ok || verdict.step === null) {
-      throw this.refuse(verdict.replayed ? 'mfa_code_replayed' : 'mfa_code_invalid', { userId: user.id });
+    const step = factor.type === 'email' ? null : this.proveNewTotpFactor(factor, code, now, user.id);
+    // An email factor is proved by the code it sent to THIS session — the one
+    // that asked to enrol it — and the code is spent doing so.
+    if (factor.type === 'email' && !(await this.spendEmailCode(factor, principal.sessionId, code, now))) {
+      throw this.refuse('mfa_code_invalid', { userId: user.id });
     }
 
     const codes = Array.from({ length: RECOVERY_CODE_COUNT }, () => toBase32(randomBytes(RECOVERY_CODE_BYTES)));
@@ -873,7 +1112,7 @@ export class AuthService {
     await db.$transaction(async (tx) => {
       const confirmed = await tx.authMfaFactor.updateMany({
         where: { id: factor.id, userId: user.id, confirmedAt: null },
-        data: { confirmedAt: now, lastUsedAt: now, lastUsedStep: BigInt(verdict.step as number) },
+        data: { confirmedAt: now, lastUsedAt: now, ...(step === null ? {} : { lastUsedStep: step }) },
       });
       // Confirmed by a concurrent request. Generating a second set of recovery
       // codes for the same factor would invalidate the set the other caller has
@@ -1042,11 +1281,158 @@ export class AuthService {
     const factor = await this.client().authMfaFactor.findFirst({
       // `type` is pinned, not incidental: a confirmed factor this module cannot
       // verify would make the account owe a second factor that no endpoint can
-      // satisfy — a lockout, delivered by a feature nobody has finished. When
-      // webauthn is implemented, this query and the challenge widen together.
-      where: { userId, type: 'totp', confirmedAt: { not: null } },
+      // satisfy — a lockout, delivered by a feature nobody has finished. This
+      // query and verifyMfa read the same list, VERIFIABLE_MFA_TYPES, so they
+      // cannot disagree.
+      where: { userId, type: { in: VERIFIABLE_MFA_TYPES }, confirmedAt: { not: null } },
     });
     return factor !== null;
+  }
+
+  /**
+   * A six-digit code at the challenge: an authenticator's, or an emailed one.
+   *
+   * TOTP first, then email. The order changes nothing a caller can observe —
+   * both are tried whenever the first fails, and a wrong code is refused the
+   * same way whichever it was meant to be.
+   */
+  private async spendSixDigitCode(
+    factors: AuthMfaFactorRow[],
+    code: string,
+    now: Date,
+    userId: string,
+    sessionId: string,
+  ): Promise<boolean> {
+    const totp = factors.filter((factor) => factor.type === 'totp');
+    if (totp.length > 0 && (await this.spendTotpCode(totp, code, now, userId))) return true;
+
+    const email = factors.find((factor) => factor.type === 'email');
+    return email ? this.spendEmailCode(email, sessionId, code, now) : false;
+  }
+
+  /**
+   * Checks an emailed code and spends it.
+   *
+   * Only the NEWEST live code for this session is considered: sending a code
+   * consumes the ones before it, so there is exactly one to try. Spending is
+   * conditional on it still being unconsumed, so the same code presented twice
+   * at once is spent once.
+   *
+   * No per-code attempt counter. A wrong code counts towards the account's
+   * lockout in verifyMfa, the same budget a wrong TOTP code draws on — ten
+   * guesses at a million values.
+   */
+  private async spendEmailCode(factor: AuthMfaFactorRow, sessionId: string, code: string, now: Date): Promise<boolean> {
+    if (!isPlausibleEmailMfaCode(code)) return false;
+    const db = this.client();
+
+    const issued = await db.authMfaEmailCode.findFirst({
+      where: { userId: factor.userId, sessionId, consumedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!issued || isExpired(issued.expiresAt, now)) return false;
+    if (!(await verifyPassword(code, issued.codeHash))) return false;
+
+    const { count } = await db.authMfaEmailCode.updateMany({
+      where: { id: issued.id, consumedAt: null },
+      data: { consumedAt: now },
+    });
+    if (count === 0) {
+      this.options.onAuthFailure?.({ reason: 'mfa_code_replayed', userId: factor.userId });
+      return false;
+    }
+    await db.authMfaFactor.updateMany({ where: { id: factor.id, userId: factor.userId }, data: { lastUsedAt: now } });
+    return true;
+  }
+
+  /**
+   * Mints a code for one session, stores its hash, and sends it.
+   *
+   * The earlier live codes for the session are consumed first, in the same
+   * transaction as the new one is written, so there is never more than one to
+   * guess at.
+   *
+   * The send happens AFTER the commit: mail is never sent from inside a
+   * transaction. If it fails, the code exists and nobody has it — the person
+   * asks again once the resend window has passed.
+   */
+  private async issueEmailCode(
+    user: AuthUserRow,
+    sessionId: string,
+    now: Date,
+    purpose: 'sign_in' | 'enrolment',
+  ): Promise<Date> {
+    const send = this.mfaMailer();
+    const db = this.client();
+
+    const last = await db.authMfaEmailCode.findFirst({
+      where: { userId: user.id, sessionId, consumedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!canSendEmailMfaCode(last?.createdAt ?? null, now)) {
+      this.options.onAuthFailure?.({ reason: 'mfa_email_resend_too_soon', userId: user.id });
+      throw new BadRequestException(
+        `A code was sent moments ago. Wait ${EMAIL_MFA_RESEND_SECONDS} seconds and try again.`,
+      );
+    }
+
+    const code = String(randomInt(0, 10 ** EMAIL_MFA_CODE_DIGITS)).padStart(EMAIL_MFA_CODE_DIGITS, '0');
+    // Hashed before the transaction opens, for the reason confirmMfa gives:
+    // scrypt must not hold a connection.
+    const codeHash = await hashPassword(code);
+    const expiresAt = expiryFrom(now, EMAIL_MFA_CODE_TTL);
+
+    await db.$transaction(async (tx) => {
+      await tx.authMfaEmailCode.updateMany({ where: { sessionId, consumedAt: null }, data: { consumedAt: now } });
+      await tx.authMfaEmailCode.create({
+        data: { userId: user.id, sessionId, codeHash, expiresAt },
+        select: { id: true },
+      });
+    });
+
+    try {
+      await send({ user: toSessionUser(user), code, expiresAt, purpose });
+    } catch (error) {
+      // The caller gets a sentence it can act on; the cause rides along for the
+      // app's exception filter and its own hook's log, never to the response.
+      throw new ServiceUnavailableException('Could not send the code. Try again in a moment.', { cause: error });
+    }
+    return expiresAt;
+  }
+
+  /**
+   * Proves a NEW TOTP factor with its first code, and returns the step to record.
+   *
+   * Separate from spendTotpCode because nothing is spent yet: the factor is
+   * unconfirmed, and the step is written in confirmMfa's transaction along with
+   * the confirmation itself.
+   */
+  private proveNewTotpFactor(factor: AuthMfaFactorRow, code: string, now: Date, userId: string): bigint {
+    const secret = open(factor.secret, this.mfaKey());
+    if (!secret) {
+      // The key rotated between enrolling and confirming, or the row is corrupt.
+      // Not a credential failure and not the user's fault.
+      throw new BadRequestException('That enrolment can no longer be read. Start again.');
+    }
+
+    const verdict = verifyTotp({ secretBase32: secret, code, now, lastUsedStep: null });
+    if (!verdict.ok || verdict.step === null) {
+      throw this.refuse(verdict.replayed ? 'mfa_code_replayed' : 'mfa_code_invalid', { userId });
+    }
+    return BigInt(verdict.step);
+  }
+
+  /**
+   * The hook that sends emailed codes, or a configuration error — the same
+   * shape as the `sendPasswordResetEmail` refusal. The feature is off rather
+   * than half-on, and a code is never logged as a fallback.
+   */
+  private mfaMailer(): NonNullable<ResolvedAuthModuleOptions['sendMfaEmailCode']> {
+    const send = this.options.sendMfaEmailCode;
+    if (!send) {
+      throw new Error('AuthModule.forRoot requires sendMfaEmailCode to offer email codes as a second factor.');
+    }
+    return send;
   }
 
   /**
@@ -1239,6 +1625,15 @@ export class AuthService {
   ): UnauthorizedException {
     this.options.onAuthFailure?.({ reason, ...detail });
     return new UnauthorizedException(REFUSAL);
+  }
+
+  /** `refuse`, with the Google path's one message. */
+  private refuseGoogle(
+    reason: AuthFailureReason,
+    detail: { email?: string; userId?: string; ip?: string | null } = {},
+  ): UnauthorizedException {
+    this.options.onAuthFailure?.({ reason, ...detail });
+    return new UnauthorizedException(GOOGLE_REFUSAL);
   }
 
   private client(): AuthPrismaClient {

@@ -1,4 +1,4 @@
-import type { AuthResult } from '../types.js';
+import type { AuthResult, GoogleSignInStart } from '../types.js';
 import { type AuthNextConfig, refreshCookieName, resolveConfig } from './config.js';
 import { json, readCookie, serializeCookie } from './cookies.js';
 
@@ -56,8 +56,11 @@ interface ProxiedAction {
    * the guards on the far side.
    */
   optionalSession?: boolean;
-  /** Upstream method, when it is not POST. The browser always POSTs to us. */
-  method?: 'POST' | 'DELETE';
+  /**
+   * Upstream method, when it is not POST. The browser always POSTs to us.
+   * A GET is sent without the body, which fetch refuses to carry.
+   */
+  method?: 'POST' | 'DELETE' | 'GET';
   /**
    * Clear this browser's cookies once the action succeeds.
    *
@@ -75,6 +78,12 @@ const PROXIED: Record<string, ProxiedAction> = {
   'verify-mfa': { path: '/auth/verify-mfa', setsSession: true, sendsSession: true },
   'forgot-password': { path: '/auth/forgot-password', setsSession: false },
   'reset-password': { path: '/auth/reset-password', setsSession: false },
+  // Which sign-in buttons to draw. Configuration, not a credential — the same
+  // answer for everyone.
+  providers: { path: '/auth/providers', setsSession: false, method: 'GET' },
+  // "Email me a code" at the challenge. Needs the half-admitted `mfa` token for
+  // the same reason verify-mfa does: the code is bound to that session.
+  'mfa-email-send': { path: '/auth/mfa/email/send', setsSession: false, sendsSession: true },
 
   /*
    * ── the settings surface ────────────────────────────────────────────────
@@ -88,6 +97,7 @@ const PROXIED: Record<string, ProxiedAction> = {
   'mfa-enrol': { path: '/auth/mfa/enrol', setsSession: false, sendsSession: true },
   'mfa-confirm': { path: '/auth/mfa/confirm', setsSession: false, sendsSession: true },
   'mfa-recovery-codes': { path: '/auth/mfa/recovery-codes', setsSession: false, sendsSession: true },
+  'mfa-email-enrol': { path: '/auth/mfa/email/enrol', setsSession: false, sendsSession: true },
   // Removal is a DELETE upstream; this handler only speaks POST, so the method
   // is overridden per-action rather than inferred from the browser's request.
   'mfa-remove': { path: '/auth/mfa/factors', setsSession: false, sendsSession: true, method: 'DELETE' },
@@ -238,11 +248,20 @@ const SIGNED_OUT_DESTINATION = '/auth/signin';
  * query parameter would be the worse outcome.
  */
 export function safeSignOutDestination(next: string | null): string {
-  if (!next?.startsWith('/')) return SIGNED_OUT_DESTINATION;
-  if (next.startsWith('//') || next.startsWith('/\\')) return SIGNED_OUT_DESTINATION;
+  return safeLocalPath(next, SIGNED_OUT_DESTINATION);
+}
+
+/**
+ * `next` if it is a path on this origin, else `fallback`. The rules are the
+ * ones listed on safeSignOutDestination; Google sign-in carries a `?next=`
+ * across its round trip and needs exactly the same protection.
+ */
+export function safeLocalPath(next: string | null | undefined, fallback: string): string {
+  if (!next?.startsWith('/')) return fallback;
+  if (next.startsWith('//') || next.startsWith('/\\')) return fallback;
   // A control character in a Location header is header injection, not a path.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: that is the point.
-  if (/[\u0000-\u001f\u007f]/.test(next)) return SIGNED_OUT_DESTINATION;
+  if (/[\u0000-\u001f\u007f]/.test(next)) return fallback;
   return next;
 }
 
@@ -343,12 +362,13 @@ async function handleProxied(request: Request, action: ProxiedAction, config: Au
     if (token) headers.authorization = `Bearer ${token}`;
   }
 
+  const method = action.method ?? 'POST';
   let upstream: Response;
   try {
     upstream = await fetch(`${config.apiUrl}${action.path}`, {
-      method: action.method ?? 'POST',
+      method,
       headers,
-      body: JSON.stringify(body),
+      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
       cache: 'no-store',
     });
   } catch {
@@ -421,6 +441,192 @@ async function handleProxied(request: Request, action: ProxiedAction, config: Au
   return json({ ok: true, mfaRequired }, { cookies });
 }
 
+// ─── sign in with Google ────────────────────────────────────────────────────
+//
+// Two GETs, because both are top-level browser navigations: the button is a
+// link to the first, and Google redirects the browser to the second.
+//
+//   /api/auth/google            ask the API for the authorization URL and the
+//                               three values the return must match; keep them
+//                               in an httpOnly cookie; send the browser to Google.
+//   /api/auth/google/callback   check `state` against that cookie; hand the code,
+//                               verifier and nonce to the API; set the session
+//                               cookies exactly as /signin does.
+//
+// The API holds the client secret and does the exchange. This side holds only
+// the per-attempt values, and only for the ten minutes a person might spend on
+// Google's account chooser.
+
+/** Where a failed Google sign-in lands. The page turns `?error=` into a sentence. */
+const GOOGLE_FAILED = '/auth/signin?error=google';
+const GOOGLE_UNAVAILABLE = '/auth/signin?error=google_unavailable';
+/** Where a Google sign-in that still owes a second factor continues. The same page password sign-in uses. */
+const MFA_CHALLENGE = '/auth/verify';
+
+/**
+ * Seconds the attempt cookie lives. Ten minutes: time to pick an account and
+ * approve, and short enough that an abandoned attempt is gone by the next one.
+ */
+const GOOGLE_ATTEMPT_MAX_AGE = 10 * 60;
+
+/**
+ * Scoped to the Google routes, so the cookie is sent to the callback and to
+ * nothing else. It carries a PKCE verifier; no other handler has a use for it.
+ */
+const GOOGLE_ATTEMPT_PATH = '/api/auth/google';
+
+function googleAttemptCookieName(config: AuthNextConfig): string {
+  return `${config.cookieName}_google`;
+}
+
+/** What the attempt cookie holds between the two legs. */
+interface GoogleAttempt {
+  state: string;
+  nonce: string;
+  codeVerifier: string;
+  /** Where to land afterwards, already sanitised. */
+  next: string;
+}
+
+/*
+ * base64url over UTF-8, with Web-standard APIs only — not Buffer — so this file
+ * keeps the promise cookies.ts makes: it runs unchanged in any Web runtime.
+ * UTF-8 because `next` is a path, and a path may hold any character.
+ */
+function encodeAttempt(attempt: GoogleAttempt): string {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(JSON.stringify(attempt))) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeAttempt(raw: string | null): GoogleAttempt | null {
+  if (!raw) return null;
+  try {
+    const binary = atob(raw.replace(/-/g, '+').replace(/_/g, '/'));
+    const text = new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+    const parsed = JSON.parse(text) as Partial<GoogleAttempt>;
+    if (
+      typeof parsed.state !== 'string' ||
+      typeof parsed.nonce !== 'string' ||
+      typeof parsed.codeVerifier !== 'string' ||
+      typeof parsed.next !== 'string'
+    ) {
+      return null;
+    }
+    return { state: parsed.state, nonce: parsed.nonce, codeVerifier: parsed.codeVerifier, next: parsed.next };
+  } catch {
+    return null;
+  }
+}
+
+/** A redirect carrying cookies. 303, so whatever follows is a GET. */
+function redirectTo(request: Request, location: string, cookies: string[] = []): Response {
+  const headers = new Headers({ location: new URL(location, request.url).toString() });
+  for (const cookie of cookies) headers.append('set-cookie', cookie);
+  return new Response(null, { status: 303, headers });
+}
+
+function forwardedHeaders(request: Request): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    'x-forwarded-for': request.headers.get('x-forwarded-for') ?? '',
+    'user-agent': request.headers.get('user-agent') ?? '',
+  };
+}
+
+async function handleGoogleStart(request: Request, config: AuthNextConfig): Promise<Response> {
+  const next = safeLocalPath(new URL(request.url).searchParams.get('next'), '/');
+
+  let start: GoogleSignInStart;
+  try {
+    const upstream = await fetch(`${config.apiUrl}/auth/google/start`, {
+      method: 'POST',
+      headers: forwardedHeaders(request),
+      body: '{}',
+      cache: 'no-store',
+    });
+    // 404 is "not configured". Any failure lands on the same sentence: the
+    // button should not have been there, or the API is down.
+    if (!upstream.ok) return redirectTo(request, GOOGLE_UNAVAILABLE);
+    start = (await upstream.json()) as GoogleSignInStart;
+  } catch {
+    return redirectTo(request, GOOGLE_UNAVAILABLE);
+  }
+
+  const attempt = encodeAttempt({ state: start.state, nonce: start.nonce, codeVerifier: start.codeVerifier, next });
+  const cookie = serializeCookie(googleAttemptCookieName(config), attempt, {
+    httpOnly: true,
+    secure: config.secure,
+    // 'lax' is REQUIRED here, not merely preferred: Google's redirect back is a
+    // cross-site top-level GET, which is exactly what Lax still sends a cookie
+    // on. 'strict' would drop it and every sign-in would fail the state check.
+    sameSite: 'lax',
+    path: GOOGLE_ATTEMPT_PATH,
+    maxAge: GOOGLE_ATTEMPT_MAX_AGE,
+  });
+
+  const headers = new Headers({ location: start.authorizationUrl });
+  headers.append('set-cookie', cookie);
+  return new Response(null, { status: 303, headers });
+}
+
+async function handleGoogleCallback(request: Request, config: AuthNextConfig): Promise<Response> {
+  // Forgotten whatever happens next: an attempt is single use, and a cookie
+  // left behind after a failure would let the same verifier be tried again.
+  const forget = serializeCookie(googleAttemptCookieName(config), '', {
+    httpOnly: true,
+    path: GOOGLE_ATTEMPT_PATH,
+    maxAge: 0,
+  });
+
+  const params = new URL(request.url).searchParams;
+  const attempt = decodeAttempt(readCookie(request, googleAttemptCookieName(config)));
+  const code = params.get('code');
+
+  /*
+   * THE CSRF CHECK. Without it, an attacker could start a Google sign-in as
+   * THEMSELVES, stop at the callback, and send the victim the URL — signing the
+   * victim in to the attacker's account, where anything they type is the
+   * attacker's to read. `state` ties the callback to the browser that started it.
+   *
+   * `error` is Google's own refusal — the person pressed Cancel, most often.
+   */
+  if (params.get('error') || !attempt || !code || params.get('state') !== attempt.state) {
+    return redirectTo(request, GOOGLE_FAILED, [forget]);
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${config.apiUrl}/auth/google`, {
+      method: 'POST',
+      headers: forwardedHeaders(request),
+      body: JSON.stringify({ code, codeVerifier: attempt.codeVerifier, nonce: attempt.nonce }),
+      cache: 'no-store',
+    });
+  } catch {
+    return redirectTo(request, GOOGLE_UNAVAILABLE, [forget]);
+  }
+
+  const payload = (await upstream.json().catch(() => ({}))) as Partial<AuthResult>;
+  if (!upstream.ok || !payload.accessToken || !payload.refreshToken) {
+    return redirectTo(request, GOOGLE_FAILED, [forget]);
+  }
+
+  const cookies = [
+    forget,
+    serializeCookie(config.cookieName, payload.accessToken, sessionCookieOptions(config)),
+    serializeCookie(refreshCookieName(config), payload.refreshToken, sessionCookieOptions(config)),
+  ];
+
+  // The same handover SignInPage makes for a password: a half-admitted session
+  // continues at the challenge, carrying where it was going.
+  if (payload.mfaRequired === true) {
+    const next = attempt.next === '/' ? '' : `?next=${encodeURIComponent(attempt.next)}`;
+    return redirectTo(request, `${MFA_CHALLENGE}${next}`, cookies);
+  }
+  return redirectTo(request, attempt.next, cookies);
+}
+
 /**
  * The POST handler for `app/api/auth/[...action]/route.ts`.
  *
@@ -447,6 +653,21 @@ export function createAuthRouteHandlers(overrides?: Partial<AuthNextConfig>) {
       if (!proxied) return json({ message: 'Not found' }, { status: 404 });
 
       return handleProxied(request, proxied, config);
+    },
+
+    /**
+     * The GET handler, for the two legs of Google sign-in and nothing else.
+     * Both are browser navigations, which is why they are GETs at all; every
+     * other action stays a POST so a link or an <img> cannot trigger it.
+     */
+    async GET(request: Request, context: { params: Promise<{ action: string[] }> }): Promise<Response> {
+      const config = resolveConfig(overrides);
+      const { action } = await context.params;
+      const path = action.join('/');
+
+      if (path === 'google') return handleGoogleStart(request, config);
+      if (path === 'google/callback') return handleGoogleCallback(request, config);
+      return json({ message: 'Not found' }, { status: 404 });
     },
   };
 }

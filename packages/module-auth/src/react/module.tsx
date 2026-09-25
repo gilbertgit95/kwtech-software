@@ -8,7 +8,6 @@ import { MfaChallengePage } from './mfa-challenge-page.js';
 import { ResetPasswordPage } from './reset-password-page.js';
 import { ProfileRouteInner } from './settings/profile-route.js';
 import { SecurityPage } from './settings/security-page.js';
-import { TwoFactorPage } from './settings/two-factor-page.js';
 import { SignInPage } from './sign-in-page.js';
 
 /**
@@ -49,7 +48,8 @@ function safeNext(next: string | string[] | undefined): string {
 
 function SignInRoute({ searchParams }: ModuleRouteProps) {
   // ?next=/somewhere, so a guard that bounced someone here can send them back.
-  return <SignInPage redirectTo={safeNext(searchParams?.next)} />;
+  const error = typeof searchParams?.error === 'string' ? searchParams.error : undefined;
+  return <SignInPage redirectTo={safeNext(searchParams?.next)} {...(error ? { errorCode: error } : {})} />;
 }
 
 function MfaChallengeRoute({ searchParams }: ModuleRouteProps) {
@@ -95,8 +95,13 @@ function SecurityRoute(_props: ModuleRouteProps) {
   return <SecurityPage />;
 }
 
+/*
+ * The Security page, not a page of its own: two-step verification is managed
+ * inline there now. The path stays so a bookmark or an older link still lands
+ * on the controls rather than on a 404.
+ */
 function TwoFactorRoute(_props: ModuleRouteProps) {
-  return <TwoFactorPage />;
+  return <SecurityPage />;
 }
 
 /**
@@ -184,9 +189,9 @@ export const authWebModule: WebModuleDescriptor = {
       nav: { group: 'Account', order: 1, icon: 'shield' },
     },
     {
-      // Reachable but UNLISTED: the security page links to it, and a second
-      // entry beside "Security" would suggest two places to look for the same
-      // concern.
+      // UNLISTED, and the Security page under an older address: two-step
+      // verification lives inline on Security, and a second nav entry would
+      // suggest two places to look for the same concern.
       path: '/settings/two-factor',
       title: 'Two-step verification',
       component: TwoFactorRoute,

@@ -9,7 +9,6 @@
  */
 
 export { QUEUE_CALL_CHIME } from './call-chime.js';
-export { QrCode } from './components/qr-code.js';
 export { type QueueWebModuleOptions, queueWebModule } from './module.js';
 export { QueueConsolePage } from './pages/queue-console-page.js';
 export { QueueDisplayPage } from './pages/queue-display-page.js';

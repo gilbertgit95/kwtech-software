@@ -262,8 +262,11 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description: 'Enrol a second factor on your own account.',
     bindings: [
       { surface: 'rest_endpoint', identifier: 'POST /auth/mfa/enrol' },
+      // Email codes are a second factor like any other: turning them on is
+      // enrolment, and confirming them goes through the same /confirm.
+      { surface: 'rest_endpoint', identifier: 'POST /auth/mfa/email/enrol' },
       { surface: 'rest_endpoint', identifier: 'POST /auth/mfa/confirm' },
-      { surface: 'ui_component', identifier: 'TwoFactorPage.EnrolButton' },
+      { surface: 'ui_component', identifier: 'TwoFactorSettings.EnrolButton' },
     ],
   },
   {
@@ -276,7 +279,7 @@ export const AUTH_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     isPrivileged: true,
     bindings: [
       { surface: 'rest_endpoint', identifier: 'DELETE /auth/mfa/factors' },
-      { surface: 'ui_component', identifier: 'TwoFactorPage.RemoveButton' },
+      { surface: 'ui_component', identifier: 'TwoFactorSettings.RemoveButton' },
     ],
   },
   {

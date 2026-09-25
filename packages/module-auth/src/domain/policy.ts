@@ -268,3 +268,54 @@ export function isPlausibleTotpCode(code: string): boolean {
 export function isPlausibleRecoveryCode(code: string): boolean {
   return new RegExp(`^[A-Z2-7]{${Math.ceil((RECOVERY_CODE_BYTES * 8) / 5)}}$`).test(code);
 }
+
+// ─── the emailed second factor ──────────────────────────────────────────────
+
+/**
+ * The factor types this module can VERIFY, and therefore the only ones that may
+ * make an account owe a second factor.
+ *
+ * One list, read by every query that asks "does this account owe a factor" and
+ * "which factors can satisfy it". Those two questions must always get the same
+ * answer: a confirmed factor of a type nothing can verify would hold its owner
+ * at a challenge no code can pass. `webauthn` joins this list when its
+ * challenge exists, and not before.
+ *
+ * A mutable array, not `as const`: it is handed to Prisma as `{ in: [...] }`,
+ * whose filter type does not accept a readonly tuple.
+ */
+export type VerifiableMfaType = 'totp' | 'email';
+export const VERIFIABLE_MFA_TYPES: VerifiableMfaType[] = ['totp', 'email'];
+
+/**
+ * Seconds an emailed code stays usable. Ten minutes: long enough for slow mail
+ * to arrive, short enough that a code found later in an inbox is dead.
+ */
+export const EMAIL_MFA_CODE_TTL = 10 * 60;
+
+/**
+ * Seconds before another code may be sent to the same sign-in.
+ *
+ * Sending is not a guessing surface, but it IS a way to fill somebody's inbox
+ * from a session that holds their password. The throttler bounds it per IP;
+ * this bounds it per session, which is where the mail actually goes.
+ */
+export const EMAIL_MFA_RESEND_SECONDS = 30;
+
+/** Same length as a TOTP code, so one field and one keypad fit both. */
+export const EMAIL_MFA_CODE_DIGITS = TOTP_DIGITS;
+
+/**
+ * Whether a new code may be sent, given when the last one for this session was.
+ *
+ * `null` means none has been sent, which is always allowed.
+ */
+export function canSendEmailMfaCode(lastSentAt: Date | null, now: Date): boolean {
+  if (lastSentAt === null) return true;
+  return now.getTime() - lastSentAt.getTime() >= EMAIL_MFA_RESEND_SECONDS * 1000;
+}
+
+/** Structural check for an emailed code — the same shape as a TOTP code, so the challenge field fits both. */
+export function isPlausibleEmailMfaCode(code: string): boolean {
+  return new RegExp(`^\\d{${EMAIL_MFA_CODE_DIGITS}}$`).test(code);
+}

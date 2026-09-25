@@ -1,0 +1,14 @@
+Subject: Your <%= it.brand %> verification code
+
+<% if (it.displayName) { %>Hi <%= it.displayName %>,<% } else { %>Hi,<% } %>
+
+<%= it.intro %>
+
+<%= it.code %>
+
+This code expires in <%= it.expiresIn %> and can only be used once.
+
+<%= it.notYou %>
+
+--
+Sent by <%= it.brand %>. This is an automated message — replies to it are not read.
