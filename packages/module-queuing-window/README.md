@@ -19,7 +19,7 @@ export const WEB_MODULES = [/* … */ queueWebModule({ wsUrl: process.env.NEXT_P
 ```
 
 That contributes `…/workspaces/:workspaceId/queue` (the console, in the
-Workspace drawer group) and the unlisted `…/queue/settings`, both gated on
+**Apps** drawer group, directly under Workspace) and the unlisted `…/queue/settings`, both gated on
 `queue:read`. Controls inside each page show only to the key that may use them;
 the API refuses again regardless. It also contributes the public display — see
 below.

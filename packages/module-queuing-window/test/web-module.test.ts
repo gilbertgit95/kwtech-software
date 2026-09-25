@@ -1,12 +1,7 @@
 import { composeNav, composeRoutes } from '@kwtech/module-kit';
 import { QUEUE_FEATURE } from '../src/feature-keys.js';
 import { queueWebModule } from '../src/react/module.js';
-import {
-  QUEUE_CONSOLE_PATH,
-  QUEUE_DISPLAY_PATH,
-  QUEUE_SETTINGS_PATH,
-  WORKSPACE_NAV_GROUP,
-} from '../src/react/routes.js';
+import { APPS_NAV_GROUP, QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH } from '../src/react/routes.js';
 
 /** What adopting the queue on the web contributes. */
 describe('queueWebModule', () => {
@@ -40,7 +35,7 @@ describe('queueWebModule', () => {
     const entries = composeNav([module], [QUEUE_FEATURE.read], { params });
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      group: 'Workspace',
+      group: 'Apps',
       label: 'Queue',
       href: '/organizations/org-1/workspaces/ws-1/queue',
     });
@@ -55,8 +50,22 @@ describe('queueWebModule', () => {
     expect(composeNav([module], [], { params })).toEqual([]);
   });
 
-  it('⚠ spells the Workspace group exactly as module-permissions does, since it cannot import it', () => {
-    expect(WORKSPACE_NAV_GROUP).toBe('Workspace');
+  it('⚠ spells the Apps group exactly as module-permissions does, since it cannot import it', () => {
+    expect(APPS_NAV_GROUP).toBe('Apps');
+  });
+
+  it('⚠ lists only workspace routes under Apps — an app always lives under a workspace', () => {
+    // The app's drawer filters Apps with the WORKSPACE's grants. A route here
+    // without :workspaceId would be filtered at the wrong level.
+    const listed = composeRoutes([module]).filter((route) => route.nav?.group === APPS_NAV_GROUP);
+    expect(listed.length).toBeGreaterThan(0);
+    for (const route of listed) {
+      expect(route.path.startsWith('/organizations/:organizationId/workspaces/:workspaceId/')).toBe(true);
+    }
+  });
+
+  it('places the Apps group directly under Workspace (30)', () => {
+    expect(module.navGroups).toEqual([{ group: APPS_NAV_GROUP, order: 35 }]);
   });
 
   it('carries its keys and caps, so an app composing descriptors sees them', () => {

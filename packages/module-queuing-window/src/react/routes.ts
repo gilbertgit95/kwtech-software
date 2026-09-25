@@ -5,13 +5,17 @@
  */
 
 /**
- * The drawer group every workspace page sits in.
+ * The drawer section the queue is listed in: the workspace's apps.
  *
- * ⚠ A DELIBERATE DUPLICATE of `module-permissions`' `WORKSPACE_NAV_GROUP`, which
+ * ⚠ A DELIBERATE DUPLICATE of `module-permissions`' `APPS_NAV_GROUP`, which
  * this module may not import (PLAN §9). A group is a shared NAME, so the two
  * only have to spell it the same; `web-module.test.ts` pins the spelling.
+ *
+ * An app always lives under a workspace — its path, its rows and its keys — so
+ * every listed route here carries `:organizationId` and `:workspaceId`, and the
+ * same test holds it to that.
  */
-export const WORKSPACE_NAV_GROUP = 'Workspace';
+export const APPS_NAV_GROUP = 'Apps';
 
 /**
  * ⚠ Under `/organizations/:organizationId/workspaces/:workspaceId`, which is

@@ -29,12 +29,12 @@ export {
   type QueueWindowView,
 } from './queue-client.js';
 export {
+  APPS_NAV_GROUP,
   QUEUE_CONSOLE_PATH,
   QUEUE_DISPLAY_PATH,
   QUEUE_SETTINGS_PATH,
   queueConsoleHref,
   queueSettingsHref,
-  WORKSPACE_NAV_GROUP,
 } from './routes.js';
 export { primeSpeech, speakAnnouncement } from './speech.js';
 export { type DisplayThemeState, useDisplayTheme } from './use-display-theme.js';

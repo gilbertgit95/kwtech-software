@@ -193,18 +193,21 @@ export function Sidebar({
         />
       </div>
 
-      <div id="main-nav" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-        {groups.map((group) => (
-          <div key={group.group} className="flex flex-col gap-1">
-            {/*
-             * The heading becomes a rule when the panel narrows. Removing it
-             * would let two groups run together into one undifferentiated
-             * column of icons; a 1px line keeps the boundary the label was
-             * carrying, in the width that is left.
-             */}
-            {collapsed ? (
-              <span aria-hidden className="mx-auto my-1 h-px w-6 bg-border" />
-            ) : (
+      <div id="main-nav" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {groups.map((group, index) => (
+          <div
+            key={group.group}
+            /*
+             * A DIVIDER between sections, not just white space. Tightening the
+             * rows (below) took away most of the gap that used to separate one
+             * section from the next, and a gap is the weakest cue there is: at
+             * a glance a long drawer read as one list. A full-width rule reads
+             * as a boundary in both widths, so the collapsed drawer no longer
+             * needs a stand-in line of its own.
+             */
+            className={cn('flex flex-col', index > 0 && 'mt-2.5 border-t border-border pt-2.5')}
+          >
+            {collapsed ? null : (
               /*
                * The group's own name, which for the tenant section is the
                * static word "Organization" rather than the company's.
@@ -215,13 +218,17 @@ export function Sidebar({
                * space of two rows and the second one carried nothing the first
                * had not. A static word beside a live name reads as a label for
                * it, which is what a section heading is for.
+               *
+               * Semibold and at foreground contrast rather than muted: it has
+               * to read as a heading OVER the muted link labels beneath it, not
+               * as one more of them.
                */
-              <p className="px-2.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="mb-1 px-2.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-foreground/70">
                 {group.group}
               </p>
             )}
 
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-0.5">
               {group.items.map((item) => {
                 const active = isActive(pathname, item.href);
                 const Icon = iconFor(item.icon);
@@ -240,7 +247,9 @@ export function Sidebar({
                        */
                       title={collapsed ? item.label : undefined}
                       className={cn(
-                        'relative flex items-center rounded-lg py-2 text-sm transition-colors',
+                        // py-1.5, not py-2: a drawer with four sections outgrew a
+                        // laptop screen, and the rows are still a 32px target.
+                        'relative flex items-center rounded-md py-1.5 text-sm transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         collapsed ? 'justify-center gap-0 px-0' : 'gap-2.5 px-2.5',
                         active

@@ -120,6 +120,7 @@ export {
  * the server, not a string. See that file.
  */
 export {
+  APPS_NAV_GROUP,
   ORGANIZATION_NAV_GROUP,
   ORGANIZATION_NEW_HREF,
   ORGANIZATIONS_HREF,

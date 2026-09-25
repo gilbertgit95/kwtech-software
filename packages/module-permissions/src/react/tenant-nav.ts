@@ -85,6 +85,26 @@ export const ORGANIZATION_NAV_GROUP = 'Organization';
  */
 export const WORKSPACE_NAV_GROUP = 'Workspace';
 
+/**
+ * The drawer section for the workspace's APPS — the queue today, and every
+ * sub-app after it.
+ *
+ * ⚠ An app ALWAYS lives under a workspace, in the navigation and in its data:
+ * its routes are under `/organizations/:organizationId/workspaces/:workspaceId`,
+ * its rows carry a `workspaceId`, and its keys are workspace level. So this
+ * section, like the Workspace one above it, appears only once a workspace is
+ * selected, and the app's drawer filters it with that workspace's grants.
+ *
+ * Separate from 'Workspace' because the two answer different questions: that
+ * section is the workspace itself (its overview, its settings), this one is
+ * what the workspace has switched on. Mixed, a growing list of apps would bury
+ * the workspace's own settings.
+ *
+ * Apps modules cannot import this (PLAN §9), so each spells it structurally and
+ * pins the spelling in a test — the arrangement `WORKSPACE_NAV_GROUP` already has.
+ */
+export const APPS_NAV_GROUP = 'Apps';
+
 /** `/organizations` — the picker. Not scoped to anything; app level by design. */
 export const ORGANIZATIONS_HREF = '/organizations';
 

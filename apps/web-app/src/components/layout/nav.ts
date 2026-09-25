@@ -5,7 +5,7 @@ import {
   navGroupRank,
   type WebModuleDescriptor,
 } from '@kwtech/module-kit';
-import { ORGANIZATION_NAV_GROUP, WORKSPACE_NAV_GROUP } from '@kwtech/module-permissions/react';
+import { APPS_NAV_GROUP, ORGANIZATION_NAV_GROUP, WORKSPACE_NAV_GROUP } from '@kwtech/module-permissions/react';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -154,7 +154,14 @@ export function buildNav(scopes: NavScopes): NavGroup[] {
    * module-permissions' own suite asserts that every entry in each carries the
    * parameters that section needs, so the two cannot drift apart silently.
    */
-  const scoped = new Set<string>([ORGANIZATION_NAV_GROUP, WORKSPACE_NAV_GROUP]);
+  const scoped = new Set<string>([ORGANIZATION_NAV_GROUP, WORKSPACE_NAV_GROUP, APPS_NAV_GROUP]);
+
+  /*
+   * Apps are filtered with the WORKSPACE's grants, like the Workspace section:
+   * an app always lives under a workspace — its path, its data and its keys —
+   * so a workspace-level `queue:read` is what decides whether it is listed.
+   */
+  const workspaceGroups = new Set<string>([WORKSPACE_NAV_GROUP, APPS_NAV_GROUP]);
 
   const appEntries = composeNav(WEB_MODULES, appFeatures ?? []).filter((entry) => !scoped.has(entry.group));
 
@@ -170,7 +177,7 @@ export function buildNav(scopes: NavScopes): NavGroup[] {
     : [];
 
   const workspaceEntries = workspaceFeatures
-    ? composeNav(WEB_MODULES, workspaceFeatures, { params }).filter((entry) => entry.group === WORKSPACE_NAV_GROUP)
+    ? composeNav(WEB_MODULES, workspaceFeatures, { params }).filter((entry) => workspaceGroups.has(entry.group))
     : [];
 
   const entries = [...APP_NAV, ...appEntries, ...organizationEntries, ...workspaceEntries].filter(

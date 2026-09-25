@@ -134,7 +134,13 @@ only when it is a feature of its own (PLAN §9 rule 8).
       them against the served schema.
 - [ ] UI: pages in `src/react/pages/`, and routes and nav entries declared in
       the `WebModuleDescriptor` (`src/react/module.tsx`), each with its required
-      `feature`. Hide controls inside a page with `useHoldsFeature` from
+      `feature`. **A sub-app** (the queue, and every app after it) always lives
+      under a workspace: its routes under
+      `/organizations/:organizationId/workspaces/:workspaceId/…`, its rows keyed
+      by `workspaceId`, its keys workspace level, and its nav entry in the
+      `'Apps'` group (placed with `navGroups: [{ group: 'Apps', order: 35 }]`,
+      spelling pinned in a test, as `module-queuing-window` does). Hide
+      controls inside a page with `useHoldsFeature` from
       `@kwtech/module-kit/react`. That only hides them: the API authorises again.
 - [ ] Use `@kwtech/web-ui` components and theme tokens rather than raw colours.
 

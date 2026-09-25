@@ -558,6 +558,25 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-25** — **Sub-apps get their own drawer section, "Apps", directly
+  under Workspace. An app always lives under a workspace.**
+
+  The queue sat in the Workspace section beside the workspace's own Overview and
+  Settings. More apps are coming, and a growing list there would bury the
+  workspace's settings.
+  - **Under a workspace, always.** An app's routes are under
+    `/organizations/:organizationId/workspaces/:workspaceId/…`, its rows carry a
+    `workspaceId`, and its keys are workspace level, so the section appears only
+    once a workspace is selected. The drawer filters it with the workspace's
+    grants, the same pass as the Workspace section.
+  - **The name is `APPS_NAV_GROUP`** in module-permissions' `tenant-nav.ts`,
+    beside the other tenant sections, placed at 35 (Workspace is 30,
+    Administration 50). Apps modules cannot import it, so each spells `'Apps'`
+    and pins it in a test, as the queue did with `'Workspace'`. The queue's
+    test also checks that every route it lists under Apps has a workspace path.
+  - **Not done:** no shared "apps" registry or launcher page. The drawer section
+    is the whole feature until there is a second app to list.
+
 - **2026-09-25** — **Two-step verification is managed inline on Security;
   `/settings/two-factor` now renders the Security page.**
 

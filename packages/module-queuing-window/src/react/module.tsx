@@ -3,7 +3,7 @@ import { QUEUE_FEATURE, QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '../
 import { QueueConsolePage } from './pages/queue-console-page.js';
 import { QueueDisplayPage } from './pages/queue-display-page.js';
 import { QueueSettingsPage } from './pages/queue-settings-page.js';
-import { QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH, WORKSPACE_NAV_GROUP } from './routes.js';
+import { APPS_NAV_GROUP, QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH } from './routes.js';
 
 /**
  * The queue's web descriptor — its routes, its drawer entry and its
@@ -42,6 +42,12 @@ export function queueWebModule(options: QueueWebModuleOptions = {}): WebModuleDe
 
   return {
     key: 'queue',
+    /*
+     * Placed as module-permissions places it, so an app composing the queue
+     * without that module still puts Apps right under the workspace rather
+     * than at the bottom. The lower order wins, and they agree.
+     */
+    navGroups: [{ group: APPS_NAV_GROUP, order: 35 }],
     features: QUEUE_FEATURE_REGISTRY,
     limits: QUEUE_LIMIT_REGISTRY,
     routes: [
@@ -55,8 +61,7 @@ export function queueWebModule(options: QueueWebModuleOptions = {}): WebModuleDe
          * `not_entitled` here, before the page renders.
          */
         feature: QUEUE_FEATURE.read,
-        // Between the workspace's Overview (10) and its Settings (20).
-        nav: { group: WORKSPACE_NAV_GROUP, order: 15, icon: 'megaphone' },
+        nav: { group: APPS_NAV_GROUP, order: 10, icon: 'megaphone' },
       },
       {
         // UNLISTED — reached from the console. Each section inside checks its own key.

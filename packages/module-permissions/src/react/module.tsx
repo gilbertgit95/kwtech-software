@@ -28,7 +28,7 @@ import { SubscriptionNewPage } from './pages/subscription-new-page.js';
 import { SubscriptionsPage } from './pages/subscriptions-page.js';
 import { WorkspaceDetailPage } from './pages/workspace-detail-page.js';
 import { WorkspaceNewPage } from './pages/workspace-new-page.js';
-import { ORGANIZATION_NAV_GROUP, ORGANIZATIONS_HREF, WORKSPACE_NAV_GROUP } from './tenant-nav.js';
+import { APPS_NAV_GROUP, ORGANIZATION_NAV_GROUP, ORGANIZATIONS_HREF, WORKSPACE_NAV_GROUP } from './tenant-nav.js';
 
 /**
  * The module's web descriptor — routes, navigation and feature contributions as
@@ -251,6 +251,12 @@ export const permissionsWebModule: WebModuleDescriptor = {
      * top of the drawer read the same way round.
      */
     { group: WORKSPACE_NAV_GROUP, order: 30 },
+    /*
+     * Directly below the workspace, and placed HERE although no route of this
+     * module is in it: this module names the tenant sections, and apps are the
+     * third one — what the selected workspace has switched on.
+     */
+    { group: APPS_NAV_GROUP, order: 35 },
     { group: 'Administration', order: 50 },
   ],
   /*
