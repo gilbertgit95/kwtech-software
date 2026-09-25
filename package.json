@@ -30,6 +30,8 @@
     "db:migrate": "pnpm --filter @kwtech/db db:migrate",
     "db:deploy": "pnpm --filter @kwtech/db db:deploy",
     "db:studio": "pnpm --filter @kwtech/db db:studio",
+    "db:snapshot": "pnpm --filter @kwtech/web-server db:snapshot",
+    "db:restore": "pnpm --filter @kwtech/web-server db:restore",
     "prepare": "lefthook install"
   },
   "devDependencies": {

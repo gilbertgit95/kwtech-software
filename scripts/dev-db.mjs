@@ -11,8 +11,10 @@
  *   3. Docker is available → start the `kwtech-postgres` container, creating it
  *      (and its `kwtech-pgdata` volume) the first time, then wait until it
  *      accepts TCP connections.
- *   4. The volume was new → apply the committed migrations and seed, so a fresh
- *      checkout goes from nothing to a sign-in-able app in one `pnpm dev`.
+ *   4. The volume was new → apply the committed migrations, then restore the
+ *      committed data snapshot (apps/web-server/seed-data/snapshot.json, which
+ *      runs the seeders too) or, without one, just seed — so a fresh checkout
+ *      goes from nothing to a sign-in-able app in one `pnpm dev`.
  *
  * Anything else — no Docker, daemon down, no permission on the socket — fails
  * with the fix spelled out, rather than letting the API die later on a
@@ -174,13 +176,16 @@ while (!(await portOpen('127.0.0.1', port)) || docker('exec', CONTAINER, 'pg_isr
 console.log(`  ✓ postgres ready on localhost:${port}`);
 
 if (freshVolume) {
+  // The committed dev data when there is some (restore runs the seeders too);
+  // the bare seeders otherwise.
+  const fill = existsSync(resolve(SERVER_DIR, 'seed-data/snapshot.json')) ? 'db:restore' : 'db:seed';
   if (fromExample) {
     console.log('  ! new database, but apps/web-server/.env does not exist yet — create it, then run:');
-    console.log('      pnpm --filter @kwtech/web-server db:deploy && pnpm --filter @kwtech/web-server db:seed');
+    console.log(`      pnpm --filter @kwtech/web-server db:deploy && pnpm --filter @kwtech/web-server ${fill}`);
     process.exit(0);
   }
-  console.log('  + new database: applying migrations and seeding');
-  for (const task of ['db:deploy', 'db:seed']) {
+  console.log(`  + new database: applying migrations, then ${fill}`);
+  for (const task of ['db:deploy', fill]) {
     const result = spawnSync('pnpm', ['--filter', '@kwtech/web-server', task], { cwd: REPO_ROOT, stdio: 'inherit' });
     if (result.status !== 0) fail([`✗ ${task} failed on the new database`]);
   }

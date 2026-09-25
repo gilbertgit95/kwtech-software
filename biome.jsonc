@@ -26,6 +26,10 @@
       // shows up in review. But formatting it is churn the next boot reverses,
       // exactly like next-env.d.ts above.
       "!apps/web-server/schema.graphql",
+      // Written by `pnpm db:snapshot`, one row per line so a re-export diffs as
+      // the rows that changed. Biome would expand every row into a block of
+      // lines, and the next export would reverse it.
+      "!apps/web-server/seed-data/snapshot.json",
       // Email templates. The .html files carry Eta tags (`<%= %>`), which Biome
       // reads as an unescaped `<` and rejects as a parse error — and a file it
       // cannot parse is a file it silently stops checking, so excluding them is

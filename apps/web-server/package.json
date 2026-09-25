@@ -20,7 +20,9 @@
     "db:seed:build": "tsc -p tsconfig.build.json",
     "db:sync": "pnpm db:seed:build && node dist/seed/run.js --phase=sync",
     "db:seed": "pnpm db:seed:build && node dist/seed/run.js --phase=seed",
-    "db:seed:list": "pnpm db:seed:build && node dist/seed/run.js --list"
+    "db:seed:list": "pnpm db:seed:build && node dist/seed/run.js --list",
+    "db:snapshot": "pnpm db:seed:build && node dist/seed/snapshot.js --export",
+    "db:restore": "pnpm db:seed:build && node dist/seed/snapshot.js --restore"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",

@@ -82,6 +82,8 @@ pnpm --filter @kwtech/web-server db:compose    # copy module prisma fragments in
 pnpm --filter @kwtech/web-server db:generate   # compose + generate the client
 pnpm --filter @kwtech/web-server db:migrate    # compose + migrate dev
 pnpm --filter @kwtech/web-server db:seed       # idempotent first user
+pnpm --filter @kwtech/web-server db:snapshot   # dev data → seed-data/snapshot.json
+pnpm --filter @kwtech/web-server db:restore    # seed-data/snapshot.json → empty database
 pnpm --filter @kwtech/web-server db:studio
 ```
 
@@ -96,6 +98,24 @@ already on the port is used as-is.
 pnpm db:up            # start (or create) the container without starting the apps
 pnpm db:down          # stop it; the data stays in the volume
 ```
+
+**Shared dev data.** `apps/web-server/seed-data/snapshot.json` is a committed
+copy of a dev database's rows, so a second machine starts where the first left
+off. A brand-new container restores it automatically; against a native
+Postgres, or to catch up with a newer snapshot, run it yourself:
+
+```bash
+pnpm db:snapshot          # this database → snapshot.json (commit it)
+pnpm db:restore           # snapshot.json → an empty, migrated database, then db:seed
+pnpm db:restore --force   # the same, emptying the database first
+```
+
+The repository is public, so the snapshot carries **no credentials**: no
+password hashes, MFA secrets, sessions or reset tokens. After a restore the
+`SEED_USER_*` and `SEED_DEMO_USER_*` accounts sign in with the passwords in your
+`.env`; any other account uses forgot-password, whose link is printed in the
+API console while `SMTP_URL` is unset. Everything else in it — names, emails,
+chat messages — is readable by anyone, so keep real customer data out of dev.
 
 Docker Engine inside WSL2, once (`/etc/wsl.conf` needs `systemd=true`):
 

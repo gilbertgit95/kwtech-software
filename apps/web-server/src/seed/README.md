@@ -32,6 +32,22 @@ node dist/seed/run.js --phase=seed --only=demo:tenant
 `prisma.config.ts` registers `pnpm db:seed` as the migration seed command, so
 `prisma migrate reset` re-seeds on its own.
 
+## Dev data snapshot
+
+`pnpm db:snapshot` / `pnpm db:restore` ([`snapshot.ts`](./snapshot.ts)) copy a
+dev database's rows through `seed-data/snapshot.json`, so another machine can
+continue from the same data. It is **not a seeder**, on purpose: a seeder
+converges on any database, while a snapshot's rows carry their own ids that
+other rows point at. If the sync seeders ran first and created `super-admin`
+under a fresh id, the snapshot's copy would be skipped and every grant that
+references it would fail its foreign key. So a restore needs an empty, migrated
+database, and it runs `--phase=seed` itself afterwards. That also gives the
+`SEED_USER_*` accounts back the passwords the snapshot leaves out.
+
+Tables and columns come from the database, so a new module's tables are
+included without any change here. Credentials never are; the list is
+`EXCLUDED_TABLES` in that file.
+
 ## Writing one
 
 ```ts

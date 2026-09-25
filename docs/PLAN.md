@@ -555,6 +555,35 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-25** — **A committed snapshot of the dev data.**
+
+  A user request: set up local dev on another machine and continue with the
+  same data. `pnpm db:snapshot` writes every table's rows to
+  `apps/web-server/seed-data/snapshot.json`. `pnpm db:restore` loads them into an
+  empty, migrated database and then runs the seeders. `scripts/dev-db.mjs` does
+  the restore itself on a brand-new container when the file exists.
+  - **Not a Seeder.** Snapshot rows keep their ids, and grants and memberships
+    point at them. Running sync first would create roles under new ids, and the
+    snapshot's rows would then fail their foreign keys. So the restore needs an
+    empty database, refuses a non-empty one unless `--force` (which truncates),
+    and the seeders run after it, where they converge as usual.
+  - **No credentials, because the repository is public.** The user chose
+    "commit, credentials stripped" over a gitignored file they would copy by
+    hand. Left out: `auth_credential`, `auth_mfa_factor`, `auth_recovery_code`,
+    `auth_identity`, `auth_session`, `auth_password_reset`,
+    `queue_display_pass`. Invitation token hashes are replaced with random ones.
+    Names, emails and chat messages ARE published. That was accepted for dev
+    data, and is the reason real customer data must never reach a dev database.
+  - **Schema-agnostic.** Tables come from `pg_tables` and are ordered by their
+    foreign keys. Rows go through `row_to_json` and back through
+    `json_populate_recordset`, so Postgres handles every type conversion
+    (enums, jsonb, timestamps). A restore writes only the columns the snapshot
+    and the current table share. The snapshot records its migration, and a
+    database that has not applied it is refused.
+  - **One row per line, never re-serialised in JS on export.** Re-exports diff
+    by row, and a bigint keeps every digit (the restore keeps integers past
+    2^53 as their source text). Biome ignores the file so it keeps that layout.
+
 - **2026-09-14** — **Rate limits raised and made configurable.**
 
   A user hit `ThrottlerException: Too Many Requests`. The cause is §12.69: the
