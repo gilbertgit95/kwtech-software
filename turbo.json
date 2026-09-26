@@ -9,6 +9,13 @@
   "globalDependencies": ["pnpm-workspace.yaml"],
   "globalEnv": ["NODE_ENV", "APP_ENV"],
 
+  // Above the number of PERSISTENT tasks `pnpm dev` starts: one watcher per
+  // package plus both apps (10 once module-app-hub landed). Turbo's default is
+  // 10 and it refuses to start at all when the persistent tasks reach it
+  // ("You have 10 persistent tasks but turbo is configured for concurrency of
+  // 10"). Headroom for the next few modules; raise it when adding one fails.
+  "concurrency": "20",
+
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
