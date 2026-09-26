@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
 import type { PermissionsClient, SubscriptionView } from '../permissions-client.js';
 import { createPermissionsClient } from '../permissions-client.js';
-import { organizationHref } from '../tenant-nav.js';
+import { organizationOverviewHref } from '../tenant-nav.js';
 import { usePermissions } from '../use-permissions.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { when } from './organization-sections.js';
@@ -97,7 +97,7 @@ export function OrganizationSubscriptionPage({
     <TenantPage
       title="Subscription"
       feature={FEATURE.subscriptionsRead}
-      backTo={{ href: organizationHref(organizationId ?? ''), label: 'Organization' }}
+      backTo={{ href: organizationOverviewHref(organizationId ?? ''), label: 'Organization' }}
     >
       {error ? (
         <p role="alert" className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">

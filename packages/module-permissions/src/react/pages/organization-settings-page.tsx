@@ -6,7 +6,7 @@ import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
 import type { PermissionsClient } from '../permissions-client.js';
 import { createPermissionsClient } from '../permissions-client.js';
-import { ORGANIZATIONS_HREF, organizationHref } from '../tenant-nav.js';
+import { ORGANIZATIONS_HREF, organizationOverviewHref } from '../tenant-nav.js';
 import { usePermissions } from '../use-permissions.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { OrganizationNotices } from './organization-notices.js';
@@ -87,7 +87,7 @@ export function OrganizationSettingsPage({
       organizationId={detail?.id}
       title="Settings"
       feature={FEATURE.organizationRead}
-      backTo={{ href: organizationHref(organizationId ?? ''), label: detail?.name ?? 'Organization' }}
+      backTo={{ href: organizationOverviewHref(organizationId ?? ''), label: detail?.name ?? 'Organization' }}
     >
       <OrganizationNotices error={error} notice={notice} />
 

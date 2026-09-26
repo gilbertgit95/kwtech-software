@@ -1,5 +1,6 @@
 'use client';
 
+import { organizationOverviewHref } from '@kwtech/module-permissions/react';
 import {
   cn,
   DropdownMenu,
@@ -537,7 +538,7 @@ export function OrganizationSwitcher({
                 wrong one — the home page makes the switch visible before
                 anything else happens.
               */}
-              <Link href={`/organizations/${encodeURIComponent(organization.id)}`}>
+              <Link href={organizationOverviewHref(organization.id)}>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{organization.name}</span>
                   {/*

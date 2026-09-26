@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import type { InvitationView, MemberView, PermissionsClient, RoleView } from '../permissions-client.js';
 import { createPermissionsClient } from '../permissions-client.js';
-import { organizationHref } from '../tenant-nav.js';
+import { organizationOverviewHref } from '../tenant-nav.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { OrganizationNotices } from './organization-notices.js';
 import { InvitationsSection, MembersSection } from './organization-sections.js';
@@ -91,7 +91,7 @@ export function OrganizationMembersPage({
       organizationId={detail?.id}
       title="Members"
       feature={FEATURE.membersRead}
-      backTo={{ href: organizationHref(organizationId ?? ''), label: detail?.name ?? 'Organization' }}
+      backTo={{ href: organizationOverviewHref(organizationId ?? ''), label: detail?.name ?? 'Organization' }}
     >
       <OrganizationNotices error={error} notice={notice} />
 

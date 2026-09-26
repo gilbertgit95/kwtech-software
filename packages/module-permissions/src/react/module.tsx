@@ -341,11 +341,30 @@ export const permissionsWebModule: WebModuleDescriptor = {
        */
     },
     {
-      path: '/organizations/:organizationId',
+      /*
+       * The overview at `/overview`, NOT at the organization's root. The
+       * drawer marks an entry current for its href and everything beneath it,
+       * and the root is beneath nothing — so an Overview entry there stayed lit
+       * on every page of the organization, beside the entry that was current.
+       */
+      path: '/organizations/:organizationId/overview',
       component: OrganizationHomeRoute,
       title: 'Overview',
       feature: FEATURE.organizationRead,
       nav: { group: ORGANIZATION_NAV_GROUP, order: 20, icon: 'dashboard' },
+    },
+    {
+      /*
+       * The old address, kept working for bookmarks and for the links other
+       * code still builds from `organizationHref` (the root). The app
+       * redirects it; `component` is the overview so a renderer that did not
+       * would still show the right page.
+       */
+      path: '/organizations/:organizationId',
+      redirectTo: '/organizations/:organizationId/overview',
+      component: OrganizationHomeRoute,
+      title: 'Overview',
+      feature: FEATURE.organizationRead,
     },
     {
       path: '/organizations/:organizationId/members',
@@ -419,7 +438,7 @@ export const permissionsWebModule: WebModuleDescriptor = {
        * described. `organization:read` gates the page; the controls inside take
        * `workspaces:manage` and `workspaces:share`.
        */
-      path: '/organizations/:organizationId/workspaces/:workspaceId',
+      path: '/organizations/:organizationId/workspaces/:workspaceId/overview',
       component: OrganizationWorkspaceRoute,
       /*
        * 'Overview' — and it is one now, which it was not when this label was
@@ -435,6 +454,18 @@ export const permissionsWebModule: WebModuleDescriptor = {
       title: 'Overview',
       feature: FEATURE.organizationRead,
       nav: { group: WORKSPACE_NAV_GROUP, order: 10, icon: 'workspace' },
+    },
+    {
+      /*
+       * The workspace's old address, redirected to `/overview` for the same
+       * reason as the organization's: at the root, the Overview entry was lit
+       * on Members, Settings and every app inside the workspace.
+       */
+      path: '/organizations/:organizationId/workspaces/:workspaceId',
+      redirectTo: '/organizations/:organizationId/workspaces/:workspaceId/overview',
+      component: OrganizationWorkspaceRoute,
+      title: 'Overview',
+      feature: FEATURE.organizationRead,
     },
     {
       /*

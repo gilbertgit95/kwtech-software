@@ -125,11 +125,14 @@ export {
   ORGANIZATION_NAV_GROUP,
   ORGANIZATION_NEW_HREF,
   ORGANIZATIONS_HREF,
+  OVERVIEW_SECTION,
   organizationHref,
+  organizationOverviewHref,
   organizationSectionHref,
   WORKSPACE_NAV_GROUP,
   workspaceHref,
   workspaceNewHref,
+  workspaceOverviewHref,
 } from './tenant-nav.js';
 export {
   useCanAccessWorkspace,

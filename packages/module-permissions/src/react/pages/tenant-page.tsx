@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import type { FeatureKey } from '../../types.js';
-import { organizationHref } from '../tenant-nav.js';
+import { organizationOverviewHref } from '../tenant-nav.js';
 import { AdminPage } from './admin-page.js';
 
 /**
@@ -73,7 +73,7 @@ export function TenantPage({
       {organizationName ? (
         <p className="-mt-4 mb-6 text-sm text-muted-foreground">
           {organizationId ? (
-            <a href={organizationHref(organizationId)} className="hover:text-foreground hover:underline">
+            <a href={organizationOverviewHref(organizationId)} className="hover:text-foreground hover:underline">
               {organizationName}
             </a>
           ) : (

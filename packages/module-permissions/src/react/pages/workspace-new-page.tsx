@@ -3,7 +3,7 @@
 import { useCallback, useId, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import { createPermissionsClient, type PermissionsClient } from '../permissions-client.js';
-import { organizationSectionHref, workspaceHref } from '../tenant-nav.js';
+import { organizationSectionHref, workspaceOverviewHref } from '../tenant-nav.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { TenantPage } from './tenant-page.js';
 import { useMyOrganization } from './use-my-organization.js';
@@ -110,7 +110,7 @@ export function WorkspaceNewPage({
        * leave the workspace selector naming the old selection until something
        * else forced a server render.
        */
-      window.location.assign(result.id ? workspaceHref(organizationId, result.id) : listHref);
+      window.location.assign(result.id ? workspaceOverviewHref(organizationId, result.id) : listHref);
     } catch (cause) {
       /*
        * The cap and the duplicate key both land here, and both are the server's

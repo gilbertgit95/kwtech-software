@@ -124,6 +124,29 @@ export function workspaceHref(organizationId: string, workspaceId: string): stri
 }
 
 /**
+ * The overview pages' OWN addresses, one segment below the scope roots above.
+ *
+ * Why the overview is not the root itself: the drawer marks an entry current
+ * when the URL is its href or anything beneath it, and the root is beneath
+ * nothing — it is the prefix of EVERY page in its scope. So an Overview entry
+ * pointing at the root stayed lit on Members, Settings and every workspace
+ * page, beside the entry that was actually current.
+ *
+ * `organizationHref` and `workspaceHref` stay the scope ROOT, which is what a
+ * caller appending a section wants; the root itself redirects here (see the
+ * route's `redirectTo`). Link to THESE when you mean "the overview".
+ */
+export const OVERVIEW_SECTION = 'overview';
+
+export function organizationOverviewHref(organizationId: string): string {
+  return scopePath({ organizationId }, OVERVIEW_SECTION);
+}
+
+export function workspaceOverviewHref(organizationId: string, workspaceId: string): string {
+  return scopePath({ organizationId, workspaceId }, OVERVIEW_SECTION);
+}
+
+/**
  * `/organizations/:organizationId/workspaces/new` — create a workspace IN a tenant.
  *
  * ⚠ Built by `scopePath` like every other link here, and the reason matters

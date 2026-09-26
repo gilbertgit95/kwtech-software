@@ -4,7 +4,7 @@ import { useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MyOrganizationView, PermissionsClient } from '../permissions-client.js';
 import { createPermissionsClient } from '../permissions-client.js';
-import { ORGANIZATION_NEW_HREF, organizationHref } from '../tenant-nav.js';
+import { ORGANIZATION_NEW_HREF, organizationOverviewHref } from '../tenant-nav.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { TenantPage } from './tenant-page.js';
 
@@ -97,7 +97,7 @@ export function MyOrganizationsPage({ client }: { client?: PermissionsClient }) 
             return (
               <li key={row.organizationId}>
                 <a
-                  href={organizationHref(row.organizationId)}
+                  href={organizationOverviewHref(row.organizationId)}
                   className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition-colors hover:border-primary/50 hover:bg-accent"
                 >
                   <span className="min-w-0">

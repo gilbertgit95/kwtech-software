@@ -1,7 +1,7 @@
-import { composeRoutes, matchRouteWithParams } from '@kwtech/module-kit';
+import { composeRoutes, matchRouteWithParams, routeRedirect } from '@kwtech/module-kit';
 import { denialReason } from '@kwtech/module-permissions';
 import { FeatureDenied } from '@kwtech/module-permissions/react';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { BareShell } from '@/components/layout/bare-shell';
 import { getSessionSnapshot, type SessionScope } from '@/lib/session-query';
@@ -42,6 +42,16 @@ export default async function ModuleRoutePage({
   // A path no module claims is a 404, not a blank page — and notFound() is what
   // makes it one Next actually renders.
   if (!match) notFound();
+
+  /*
+   * A MOVED address, sent on before anything else is decided — see
+   * `ModuleRoute.redirectTo`. Before the feature check on purpose: the target
+   * runs its own, and refusing at the old address would describe a page the
+   * reader is not going to see. The query string travels with it, so a
+   * bookmarked `?tab=` survives the move.
+   */
+  const moved = routeRedirect(match);
+  if (moved) redirect(`${moved}${queryString(await searchParams)}`);
 
   const { route, params: routeParams } = match;
 
@@ -179,4 +189,16 @@ async function routeDenial(feature: string | undefined, scope: SessionScope) {
   if (permissions?.effective.includes(feature)) return undefined;
 
   return denialReason(permissions ?? undefined, [feature]) ?? 'not_granted';
+}
+
+/** `?a=1&b=2` from Next's parsed search params, or '' when there are none. */
+function queryString(searchParams: Record<string, string | string[] | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      if (item !== undefined) query.append(key, item);
+    }
+  }
+  const text = query.toString();
+  return text ? `?${text}` : '';
 }

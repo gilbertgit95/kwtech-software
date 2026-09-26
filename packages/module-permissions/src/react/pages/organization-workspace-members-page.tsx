@@ -5,7 +5,7 @@ import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
 import type { PermissionsClient } from '../permissions-client.js';
 import { createPermissionsClient } from '../permissions-client.js';
-import { workspaceHref } from '../tenant-nav.js';
+import { workspaceOverviewHref } from '../tenant-nav.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { OrganizationNotices } from './organization-notices.js';
 import { TenantPage } from './tenant-page.js';
@@ -64,7 +64,7 @@ export function OrganizationWorkspaceMembersPage({
       description={workspace?.name}
       feature={FEATURE.organizationRead}
       backTo={{
-        href: workspaceHref(organizationId ?? '', workspaceId ?? ''),
+        href: workspaceOverviewHref(organizationId ?? '', workspaceId ?? ''),
         label: workspace?.name ?? 'Workspace',
       }}
     >

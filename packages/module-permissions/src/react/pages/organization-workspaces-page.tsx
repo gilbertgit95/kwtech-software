@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import type { PermissionsClient } from '../permissions-client.js';
 import { createPermissionsClient } from '../permissions-client.js';
-import { organizationHref, workspaceHref } from '../tenant-nav.js';
+import { organizationOverviewHref, workspaceOverviewHref } from '../tenant-nav.js';
 import { AdminPlaceholder } from './admin-page.js';
 import { OrganizationNotices } from './organization-notices.js';
 import { WorkspacesSection } from './organization-sections.js';
@@ -50,7 +50,7 @@ export function OrganizationWorkspacesPage({
       title="Workspaces"
       feature={FEATURE.workspacesRead}
       layout="fill"
-      backTo={{ href: organizationHref(organizationId ?? ''), label: detail?.name ?? 'Organization' }}
+      backTo={{ href: organizationOverviewHref(organizationId ?? ''), label: detail?.name ?? 'Organization' }}
     >
       <OrganizationNotices error={error} notice={notice} />
 
@@ -59,7 +59,7 @@ export function OrganizationWorkspacesPage({
       ) : !detail ? (
         <AdminPlaceholder>No organization with that id, or you are not a member of it.</AdminPlaceholder>
       ) : (
-        <WorkspacesSection detail={detail} busy={busy} api={api} onRun={run} workspaceHref={workspaceHref} />
+        <WorkspacesSection detail={detail} busy={busy} api={api} onRun={run} workspaceHref={workspaceOverviewHref} />
       )}
     </TenantPage>
   );

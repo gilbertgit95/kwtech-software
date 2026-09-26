@@ -1,5 +1,6 @@
 'use client';
 
+import { workspaceOverviewHref } from '@kwtech/module-permissions/react';
 import {
   cn,
   DropdownMenu,
@@ -242,9 +243,7 @@ export function WorkspaceSwitcher({
                   hidden preference would be a control with no visible effect,
                   and nobody would trust it.
                 */}
-                <Link
-                  href={`/organizations/${encodeURIComponent(organizationId ?? '')}/workspaces/${encodeURIComponent(workspace.id)}`}
-                >
+                <Link href={workspaceOverviewHref(organizationId ?? '', workspace.id)}>
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate">{workspace.name}</span>
                     {/*
