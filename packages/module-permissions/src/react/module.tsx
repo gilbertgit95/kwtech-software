@@ -29,7 +29,7 @@ import { SubscriptionNewPage } from './pages/subscription-new-page.js';
 import { SubscriptionsPage } from './pages/subscriptions-page.js';
 import { WorkspaceDetailPage } from './pages/workspace-detail-page.js';
 import { WorkspaceNewPage } from './pages/workspace-new-page.js';
-import { APPS_NAV_GROUP, ORGANIZATION_NAV_GROUP, ORGANIZATIONS_HREF, WORKSPACE_NAV_GROUP } from './tenant-nav.js';
+import { ORGANIZATION_NAV_GROUP, ORGANIZATIONS_HREF, WORKSPACE_NAV_GROUP } from './tenant-nav.js';
 
 /**
  * The module's web descriptor — routes, navigation and feature contributions as
@@ -261,11 +261,9 @@ export const permissionsWebModule: WebModuleDescriptor = {
      */
     { group: WORKSPACE_NAV_GROUP, order: 30 },
     /*
-     * Directly below the workspace, and placed HERE although no route of this
-     * module is in it: this module names the tenant sections, and apps are the
-     * third one — what the selected workspace has switched on.
+     * ⚠ No 'Apps' section any more. Sub-apps are reached from the workspace's
+     * Apps page (`module-app-hub`), whose single entry sits in Workspace above.
      */
-    { group: APPS_NAV_GROUP, order: 35 },
     { group: 'Administration', order: 50 },
   ],
   /*
