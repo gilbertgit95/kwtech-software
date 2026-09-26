@@ -45,6 +45,7 @@ export {
 } from './pages/organization-sections.js';
 export { OrganizationSettingsPage } from './pages/organization-settings-page.js';
 export { OrganizationSubscriptionPage } from './pages/organization-subscription-page.js';
+export { OrganizationWorkspaceMembersPage } from './pages/organization-workspace-members-page.js';
 export { OrganizationWorkspacePage } from './pages/organization-workspace-page.js';
 export { OrganizationWorkspaceSettingsPage } from './pages/organization-workspace-settings-page.js';
 export { OrganizationWorkspacesPage } from './pages/organization-workspaces-page.js';

@@ -7,11 +7,11 @@ import type { FoundUser, MyWorkspaceView, PermissionsClient, RoleView } from '..
  * Loading one workspace, and running a write against it.
  *
  * The workspace-level twin of `useMyOrganization`, extracted for the same
- * reason and at the same moment: a second screen started needing it. Overview
- * and Settings both load the whole workspace — one to show who is in it, the
- * other to edit its name — and two copies of this loader would eventually
- * disagree about the part that is easy to get wrong, which is what
- * `changed: false` means.
+ * reason and at the same moment: a second screen started needing it. Overview,
+ * Members and Settings all load the whole workspace — to count who is in it,
+ * to list and change them, and to edit its name — and copies of this loader
+ * would eventually disagree about the part that is easy to get wrong, which is
+ * what `changed: false` means.
  *
  * ## `changed: false` is a SUCCESS
  *

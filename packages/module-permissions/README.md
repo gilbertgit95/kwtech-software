@@ -526,7 +526,8 @@ customer holds. The same facts, two audiences, two levels.
 | `/organizations/:organizationId` | `organization:read` | the overview: counts, your role, the way in to each area |
 | `/organizations/:organizationId/members` | `members:manage` | who is here, their roles, and who has been invited |
 | `/organizations/:organizationId/workspaces` | `workspaces:manage` | the workspaces, and creating one — *unlisted; reached from the overview* |
-| `/organizations/:organizationId/workspaces/:workspaceId` | `organization:read` | one workspace: what it is and who is in it — **workspace level**, so membership is checked first |
+| `/organizations/:organizationId/workspaces/:workspaceId` | `organization:read` | one workspace's overview: what it is, its member count, the way in to each area — **workspace level**, so membership is checked first |
+| `/organizations/:organizationId/workspaces/:workspaceId/members` | `organization:read` | who is in the workspace and their roles there (`workspace:members_add` / `_remove` to change) |
 | `/organizations/:organizationId/workspaces/:workspaceId/settings` | `organization:read` | its name, key and description, and archiving it |
 | `/organizations/:organizationId/subscription` | `subscriptions:read` | the plan, what it entitles, and what your roles cannot use |
 | `/organizations/:organizationId/settings` | `organization:read` | the name and key (`organization:manage` to change), and leaving |

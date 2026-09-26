@@ -86,6 +86,7 @@ describe('the /organizations area', () => {
     ['/organizations/:organizationId/subscription', 'organization'],
     ['/organizations/:organizationId/settings', 'organization'],
     ['/organizations/:organizationId/workspaces/:workspaceId', 'workspace'],
+    ['/organizations/:organizationId/workspaces/:workspaceId/members', 'workspace'],
     ['/organizations/:organizationId/workspaces/:workspaceId/settings', 'workspace'],
   ])('%s resolves at %s level', (path, level) => {
     expect(routes.some((route) => route.path === path)).toBe(true);

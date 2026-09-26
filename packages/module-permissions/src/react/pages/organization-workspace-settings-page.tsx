@@ -24,9 +24,8 @@ import { WorkspaceSettings } from './workspace-sections.js';
  * which is an overview. The split mirrors the organization area: a landing page
  * that answers "where am I and who is here", and this, for editing.
  *
- * Members stayed on the Overview rather than coming here with the rest.
- * Members are not settings, and "who is in this workspace" is the first thing
- * somebody opening one wants to see.
+ * Members did not come here with the rest: they have a page of their own,
+ * `/members`, as the organization's do. Members are not settings.
  *
  * ## Two keys, and the page takes the weaker one
  *

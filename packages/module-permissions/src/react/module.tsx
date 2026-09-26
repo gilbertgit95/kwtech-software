@@ -13,6 +13,7 @@ import { OrganizationMembersPage } from './pages/organization-members-page.js';
 import { OrganizationNewPage } from './pages/organization-new-page.js';
 import { OrganizationSettingsPage } from './pages/organization-settings-page.js';
 import { OrganizationSubscriptionPage } from './pages/organization-subscription-page.js';
+import { OrganizationWorkspaceMembersPage } from './pages/organization-workspace-members-page.js';
 import { OrganizationWorkspacePage } from './pages/organization-workspace-page.js';
 import { OrganizationWorkspaceSettingsPage } from './pages/organization-workspace-settings-page.js';
 import { OrganizationWorkspacesPage } from './pages/organization-workspaces-page.js';
@@ -178,6 +179,10 @@ function OrganizationWorkspaceNewRoute({ params }: ModuleRouteProps) {
 
 function OrganizationWorkspaceRoute({ params }: ModuleRouteProps) {
   return <OrganizationWorkspacePage organizationId={params?.organizationId} workspaceId={params?.workspaceId} />;
+}
+
+function OrganizationWorkspaceMembersRoute({ params }: ModuleRouteProps) {
+  return <OrganizationWorkspaceMembersPage organizationId={params?.organizationId} workspaceId={params?.workspaceId} />;
 }
 
 function OrganizationWorkspaceSettingsRoute({ params }: ModuleRouteProps) {
@@ -420,8 +425,9 @@ export const permissionsWebModule: WebModuleDescriptor = {
        * 'Overview' — and it is one now, which it was not when this label was
        * first written. The single page held a rename form, the member list and
        * an archive control, so the name promised a landing page that did not
-       * exist; the editing moved to Settings below and this kept what an
-       * overview is for: what the workspace is, and who is in it.
+       * exist; the editing moved to Settings and the list to Members below, and
+       * this kept what an overview is for: what the workspace is, a count, and
+       * the way in to each area — the organization's overview, one level down.
        *
        * The page is headed by the workspace's NAME, which is the thing worth
        * reading there; this label is the drawer's and the header's.
@@ -432,9 +438,26 @@ export const permissionsWebModule: WebModuleDescriptor = {
     },
     {
       /*
+       * The workspace's members, on a page of their own as the organization's
+       * are, so the two drawer sections read the same: Overview, Members,
+       * Settings.
+       *
+       * `organization:read` like the Overview, NOT the organization's
+       * `members:read`: the list lived on the Overview under that key, and
+       * moving it must not take it away from anybody. The controls inside keep
+       * their own keys (`workspace:members_add`, `workspace:members_remove`).
+       */
+      path: '/organizations/:organizationId/workspaces/:workspaceId/members',
+      component: OrganizationWorkspaceMembersRoute,
+      title: 'Members',
+      feature: FEATURE.organizationRead,
+      nav: { group: WORKSPACE_NAV_GROUP, order: 20, icon: 'users' },
+    },
+    {
+      /*
        * The workspace's own Settings, mirroring the organization's — rename,
-       * description and archive, with the member list deliberately left on the
-       * Overview. Members are not settings.
+       * description and archive. Members have their own page above; members
+       * are not settings.
        *
        * Gated on `organization:read` like the Overview, with
        * `workspaces:manage` on the controls INSIDE, so following a bookmark
@@ -445,7 +468,7 @@ export const permissionsWebModule: WebModuleDescriptor = {
       component: OrganizationWorkspaceSettingsRoute,
       title: 'Settings',
       feature: FEATURE.organizationRead,
-      nav: { group: WORKSPACE_NAV_GROUP, order: 20, icon: 'settings' },
+      nav: { group: WORKSPACE_NAV_GROUP, order: 30, icon: 'settings' },
     },
     {
       path: '/organizations/:organizationId/subscription',

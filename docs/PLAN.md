@@ -559,6 +559,25 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-26** — **A workspace's members get a page of their own:
+  Overview, Members, Settings, as the organization's area reads.**
+
+  A user request: split the workspace Overview so members sit on a separate
+  page, as they do for an organization.
+  - **`/organizations/:organizationId/workspaces/:workspaceId/members`**, in the
+    workspace drawer group at order 20 (Settings moves to 30). It holds the
+    list, the role controls and Add member, unchanged.
+  - **Gated on `organization:read`, not `members:read`.** The list lived on the
+    Overview under that key; moving it must not take it from anybody. The
+    controls keep their own keys (`workspace:members_add` / `_remove`), and the
+    API authorises each again.
+  - **The Overview is now a count plus a way in**, like the organization's: the
+    description, your role here, a Members count, and cards to Members and (with
+    `workspaces:manage`) Settings. Nothing is edited on it.
+  - **Not done:** no new query. The pages share `useMyWorkspace`, so each loads
+    `myWorkspace` once; a lighter count-only query for the Overview was not
+    worth a second shape of the same data.
+
 - **2026-09-25** — **`module-notification`: system notifications, live, in a
   bell beside chat's inbox. The app's socket now never gives up.**
 

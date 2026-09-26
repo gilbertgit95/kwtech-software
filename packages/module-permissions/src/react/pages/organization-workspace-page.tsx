@@ -1,7 +1,7 @@
 'use client';
 
 import { useIconSet } from '@kwtech/web-ui/react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
 import type { PermissionsClient } from '../permissions-client.js';
@@ -12,11 +12,10 @@ import { AdminPlaceholder } from './admin-page.js';
 import { OrganizationNotices } from './organization-notices.js';
 import { TenantPage } from './tenant-page.js';
 import { useMyWorkspace } from './use-my-workspace.js';
-import { AddWorkspaceMemberDialog, WorkspaceMembers } from './workspace-sections.js';
 
 /**
  * `/organizations/:organizationId/workspaces/:workspaceId` — a workspace's
- * front door: what it is, and who is in it.
+ * front door: what it is, how many are in it, and the way in to each area.
  *
  * ## THE FIRST WORKSPACE-LEVEL SCREEN IN THIS CODEBASE
  *
@@ -38,26 +37,18 @@ import { AddWorkspaceMemberDialog, WorkspaceMembers } from './workspace-sections
  * is the right to manage a tenant's workspaces and renaming one is not entering
  * it.
  *
- * ## Why this is Overview and the editing lives next door
+ * ## Why this is Overview, and members and editing live next door
  *
  * It was ONE page holding a rename form, the member list and an archive
  * control, labelled "Overview" — which is not what an overview is, and the
- * label said something the page did not do. The split mirrors the organization
- * area: a landing page answering "where am I and who is here", and a Settings
- * page for the things that CHANGE the workspace.
+ * label said something the page did not do. The editing moved to Settings
+ * first, and then the member list moved to a Members page of its own, so the
+ * workspace area reads exactly as the organization's does: Overview, Members,
+ * Settings. Like the organization's, this page is a count plus a way in, and
+ * nothing is edited here.
  *
- * The member list stayed HERE rather than moving to Settings with the rest.
- * Members are not settings — "who is in this workspace" is the first thing
- * somebody opening one wants, and on the organization side it has a screen of
- * its own for exactly that reason. A workspace has too few people to earn a
- * third page, so it earns the first one instead.
- *
- * ## One query, not two
- *
- * `myWorkspace` returns the workspace AND the organization's member list,
- * because the add-member picker may only offer people already in the
- * organization. Loading them separately would be a second round trip and, worse,
- * two lists that can disagree about who is in what.
+ * Members are not settings, which is why they did not go to Settings with the
+ * rest: "who is in this workspace" is a question of its own, with its own page.
  */
 export function OrganizationWorkspacePage({
   organizationId,
@@ -69,15 +60,10 @@ export function OrganizationWorkspacePage({
   client?: PermissionsClient;
 }) {
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
-  const { view, workspace, grantable, people, error, notice, busy, run } = useMyWorkspace(
-    api,
-    organizationId,
-    workspaceId,
-  );
+  const { view, workspace, error, notice } = useMyWorkspace(api, organizationId, workspaceId);
   const permissions = usePermissions();
   const iconSet = useIconSet();
   const iconsByName = useMemo(() => new Map((iconSet ?? []).map((option) => [option.name, option.Icon])), [iconSet]);
-  const [adding, setAdding] = useState(false);
 
   /*
    * The viewer's own role IN THIS WORKSPACE, read off the member list rather
@@ -153,76 +139,54 @@ export function OrganizationWorkspacePage({
             </p>
           )}
 
-          <section>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-medium">Members ({workspace.members.length})</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Only people already in this organization can be added — a workspace membership hangs off an
-                  organization one. Membership is required to reach the workspace at all; a role says what they may do
-                  once there.
-                </p>
-              </div>
-              {workspace.archived ? null : (
-                <FeatureGate allOf={[FEATURE.workspaceMembersAdd]}>
-                  <button
-                    type="button"
-                    onClick={() => setAdding(true)}
-                    disabled={busy}
-                    className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                  >
-                    Add member
-                  </button>
-                </FeatureGate>
-              )}
-            </div>
-
-            <div className="rounded-lg border border-border">
-              <WorkspaceMembers
-                workspace={workspace}
-                organizationId={view.organizationId}
-                people={people}
-                roles={grantable}
-                busy={busy}
-                api={api}
-                onRun={run}
-              />
-            </div>
-          </section>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat label="Members" value={workspace.members.length} />
+          </div>
 
           {/*
-            The way through to the editing, offered only to somebody who can do
-            any of it. `workspaces:manage` is what Settings is for — renaming
-            and archiving — so a member without it is not sent to a page whose
-            every control would be hidden from them.
+            A count plus a way in, as on the organization's overview: nothing is
+            edited here. Members is offered to everybody who may open the
+            workspace, because its page takes the same key this one does;
+            Settings only to somebody holding `workspaces:manage`, so a member
+            without it is not sent to a page whose every control is hidden.
           */}
-          <FeatureGate allOf={[FEATURE.workspacesUpdate]}>
-            <a
-              href={`${workspaceHref(view.organizationId, workspace.id)}/settings`}
-              className="rounded-lg border border-border px-4 py-3 transition-colors hover:border-primary/50 hover:bg-accent"
-            >
-              <span className="block font-medium">Settings</span>
-              <span className="mt-0.5 block text-sm text-muted-foreground">
-                This workspace&rsquo;s name, key and description — and archiving it.
-              </span>
-            </a>
-          </FeatureGate>
+          <nav aria-label="This workspace" className="grid gap-3 sm:grid-cols-2">
+            <Card
+              href={`${workspaceHref(view.organizationId, workspace.id)}/members`}
+              title="Members"
+              description="Who is in this workspace, and what role each holds here."
+            />
+            <FeatureGate allOf={[FEATURE.workspacesUpdate]}>
+              <Card
+                href={`${workspaceHref(view.organizationId, workspace.id)}/settings`}
+                title="Settings"
+                description="This workspace’s name, key and description — and archiving it."
+              />
+            </FeatureGate>
+          </nav>
         </div>
       )}
-
-      {view ? (
-        <AddWorkspaceMemberDialog
-          workspace={adding ? (workspace ?? null) : null}
-          organizationId={view.organizationId}
-          organizationMembers={view.organizationMembers}
-          people={people}
-          roles={grantable}
-          busy={busy}
-          api={api}
-          onRun={run}
-          onClose={() => setAdding(false)}
-        />
-      ) : null}
     </TenantPage>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border px-4 py-3">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function Card({ href, title, description }: { href: string; title: string; description: string }) {
+  return (
+    <a
+      href={href}
+      className="rounded-lg border border-border px-4 py-3 transition-colors hover:border-primary/50 hover:bg-accent"
+    >
+      <span className="block font-medium">{title}</span>
+      <span className="mt-0.5 block text-sm text-muted-foreground">{description}</span>
+    </a>
   );
 }
