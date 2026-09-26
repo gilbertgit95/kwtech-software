@@ -11,6 +11,7 @@ import {
   matchRoute,
   matchRouteWithParams,
   navGroupRank,
+  routeRedirect,
   serverModuleImports,
   serverRoutePrefixes,
 } from '../src/compose.js';
@@ -255,6 +256,41 @@ describe('matchRoute', () => {
   it('returns undefined when nothing matches', () => {
     expect(matchRoute(routes, '/somewhere-else')).toBeUndefined();
     expect(matchRoute([], '/admin')).toBeUndefined();
+  });
+});
+
+/**
+ * A MOVED URL: `/organizations/:id` became `/organizations/:id/overview`, so
+ * the drawer's Overview entry stops prefixing every page beneath it. The old
+ * address must keep working, and a redirect that could only go wrong must not
+ * boot.
+ */
+describe('routeRedirect', () => {
+  const routes = composeRoutes([
+    web('m', [
+      route({ path: '/organizations/:organizationId', redirectTo: '/organizations/:organizationId/overview' }),
+      route({ path: '/organizations/:organizationId/overview' }),
+    ]),
+  ]);
+
+  it("fills the target from the matched route's params, encoded", () => {
+    const match = matchRouteWithParams(routes, '/organizations/org%201');
+    expect(match && routeRedirect(match)).toBe('/organizations/org%201/overview');
+  });
+
+  it('is undefined for a route that renders', () => {
+    const match = matchRouteWithParams(routes, '/organizations/org1/overview');
+    expect(match && routeRedirect(match)).toBeUndefined();
+  });
+
+  it('refuses a redirect route in the drawer — the entry would always navigate away', () => {
+    const listed = route({ path: '/a', redirectTo: '/b', nav: { group: 'G' } });
+    expect(() => composeRoutes([web('m', [listed])])).toThrow(ModuleCompositionError);
+  });
+
+  it('refuses a target naming a param the path does not capture', () => {
+    const unfillable = route({ path: '/organizations/:organizationId', redirectTo: '/w/:workspaceId' });
+    expect(() => composeRoutes([web('m', [unfillable])])).toThrow(/:workspaceId/);
   });
 });
 

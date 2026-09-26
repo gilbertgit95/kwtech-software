@@ -32,10 +32,35 @@ export function composeRoutes(modules: readonly WebModuleDescriptor[]): ModuleRo
         throw new ModuleCompositionError(`Route ${route.path} declared by both '${owner}' and '${mod.key}'`);
       }
       byPath.set(route.path, mod.key);
+      if (route.redirectTo !== undefined) checkRedirect(route, mod.key);
       routes.push(route);
     }
   }
   return routes;
+}
+
+/**
+ * Rejects a redirect route that could only misbehave — see `ModuleRoute.redirectTo`.
+ *
+ * At composition rather than at request time: both mistakes are in the
+ * descriptor, so they are found at boot instead of by the first person to
+ * follow an old bookmark.
+ */
+function checkRedirect(route: ModuleRoute, moduleKey: string): void {
+  if (route.nav) {
+    throw new ModuleCompositionError(
+      `Route ${route.path} in '${moduleKey}' redirects, so it cannot be a nav entry. Put the nav on ${route.redirectTo}.`,
+    );
+  }
+  const captured = new Set(route.path.split('/').filter((segment) => segment.startsWith(':')));
+  const missing = (route.redirectTo ?? '')
+    .split('/')
+    .filter((segment) => segment.startsWith(':') && !captured.has(segment));
+  if (missing.length > 0) {
+    throw new ModuleCompositionError(
+      `Route ${route.path} in '${moduleKey}' redirects to ${route.redirectTo}, which needs ${missing.join(', ')} that its path does not capture.`,
+    );
+  }
 }
 
 /**
@@ -329,6 +354,16 @@ export function matchRouteWithParams(routes: readonly ModuleRoute[], pathname: s
     .sort((a, b) => b.path.length - a.path.length)[0];
 
   return prefix ? { route: prefix, params: {} } : undefined;
+}
+
+/**
+ * Where a matched route redirects to, filled from its captured params — or
+ * undefined when it renders. The renderer calls this BEFORE the feature check;
+ * see `ModuleRoute.redirectTo`.
+ */
+export function routeRedirect(match: RouteMatch): string | undefined {
+  if (match.route.redirectTo === undefined) return undefined;
+  return fillPath(match.route.redirectTo, match.params);
 }
 
 /** The route alone, for callers that do not need the captured params — middleware, mostly. */

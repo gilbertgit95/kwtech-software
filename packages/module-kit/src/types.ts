@@ -93,6 +93,27 @@ export interface ModuleRoute {
   component: ComponentType<ModuleRouteProps>;
   title: string;
   /**
+   * Sends this path somewhere else instead of rendering it: a path pattern
+   * whose `:params` are filled from THIS route's match —
+   * `'/organizations/:organizationId/overview'` on
+   * `'/organizations/:organizationId'`. Resolve it with `routeRedirect`.
+   *
+   * For a URL that has MOVED and must keep working: bookmarks, links in
+   * e-mails, and the other packages that still build the old one. The renderer
+   * redirects before any feature check, so the target's own check is the one
+   * that applies.
+   *
+   * `component` is still required and should render what the target renders.
+   * A renderer that ignores this field then shows the right page at the old
+   * address rather than a blank one — degraded, not broken.
+   *
+   * ⚠ Such a route may not carry `nav`, and its pattern may only name params
+   * its own path captures. `composeRoutes` throws on either: a drawer entry
+   * that always navigates away is a link to the wrong place, and an unfilled
+   * `:param` would redirect to a literal colon.
+   */
+  redirectTo?: string;
+  /**
    * Feature key required to reach it.
    *
    * Read by the navigation filter (`composeNav`) AND by whatever renders the
