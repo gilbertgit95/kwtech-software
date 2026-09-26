@@ -94,7 +94,10 @@ export function notificationWebModule(options: NotificationWebModuleOptions = {}
         component: AdminNotificationsRoute,
         title: 'Send notifications',
         feature: NOTIFICATION_FEATURE.send,
-        nav: { group: ADMINISTRATION_NAV_GROUP, order: 40, icon: 'megaphone' },
+        // Second to last in Administration: after every other admin screen,
+        // above only Defaults (module-permissions, order 90). At 40 it tied
+        // with Organizations and the drawer order fell to composition order.
+        nav: { group: ADMINISTRATION_NAV_GROUP, order: 80, icon: 'megaphone' },
       },
     ],
   };
