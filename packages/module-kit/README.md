@@ -171,6 +171,28 @@ A module should reach a place from the header OR the drawer, not both — two
 doors to one place is how somebody learns to wonder which one is real. Chat
 takes `placement: 'header' | 'drawer'` for exactly that.
 
+## Sub-apps: the workspace's Apps page
+
+A **sub-app** (the queue, and every app after it) is not in the drawer. It runs
+on the workspace's Apps page (`module-app-hub`), in tabs or side by side in a
+grid, and a module declares it:
+
+```ts
+apps: [{ key: 'queue', label: 'Queue', icon: 'megaphone', feature: QUEUE_FEATURE.read, order: 10, component: QueueApp }],
+```
+
+- **`component` gets `{ organizationId, workspaceId }`** (`AppProps`) and must
+  work in a box of any size: lay out with container queries (`@container`,
+  `@xl:`), not `sm:` / `lg:`, because a grid cell is narrow on a wide screen.
+- **It must not navigate.** A link away closes every app on the page, so move
+  between your own screens with state (`QueueApp` opens settings in place).
+- **`feature` is REQUIRED** and workspace level: the page offers only apps the
+  viewer holds. The app's API still authorises every request.
+- **`key` is saved in people's layouts.** Never rename one.
+- **`composeApps(modules)`** collects them in `order` and throws on a duplicate
+  `key`. The web app hands the result to `appHubWebModule({ apps })`, so the Apps
+  page never imports a sub-app.
+
 ## Three declarations: features, limits, defaults
 
 A module declares three kinds of thing that a *different* module resolves. All

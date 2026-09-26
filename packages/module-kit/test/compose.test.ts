@@ -1,4 +1,5 @@
 import {
+  composeApps,
   composeDefaultMoments,
   composeDefaults,
   composeFeatures,
@@ -631,5 +632,36 @@ describe('composeHeaderTools', () => {
     // The check runs before the filter: a wiring bug must not hide behind a grant.
     const twin: WebModuleDescriptor = { key: 'other', headerTools: [{ ...inbox }] };
     expect(() => composeHeaderTools([chat, twin], [])).toThrow(ModuleCompositionError);
+  });
+});
+
+/**
+ * Sub-apps for the workspace Apps page. Their keys are SAVED in people's
+ * layouts, so a duplicate would put the wrong app in somebody's grid.
+ */
+describe('composeApps', () => {
+  const App = () => null;
+  const app = (key: string, order?: number) => ({
+    key,
+    label: key,
+    feature: `${key}:read`,
+    component: App,
+    ...(order === undefined ? {} : { order }),
+  });
+
+  it('collects every module’s apps, ordered by `order`, then key', () => {
+    const queue: WebModuleDescriptor = { key: 'queue', apps: [app('queue', 10)] };
+    const booking: WebModuleDescriptor = { key: 'booking', apps: [app('booking', 5), app('audit', 10)] };
+    expect(composeApps([queue, booking]).map((one) => one.key)).toEqual(['booking', 'audit', 'queue']);
+  });
+
+  it('is empty for modules that declare no apps', () => {
+    expect(composeApps([web('a', [route({ path: '/a' })])])).toEqual([]);
+  });
+
+  it('throws on a duplicate key, naming both owners', () => {
+    const one: WebModuleDescriptor = { key: 'one', apps: [app('queue')] };
+    const two: WebModuleDescriptor = { key: 'two', apps: [app('queue')] };
+    expect(() => composeApps([one, two])).toThrow(/App 'queue' declared by both 'one' and 'two'/);
   });
 });

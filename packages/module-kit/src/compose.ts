@@ -1,6 +1,7 @@
 import type { DefaultContribution, DefaultMomentContribution } from './defaults.js';
 import type { LimitContribution } from './limits.js';
 import type {
+  AppContribution,
   FeatureContribution,
   HeaderToolContribution,
   ModuleRoute,
@@ -94,6 +95,35 @@ export function composeHeaderTools(
   }
 
   return tools.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.key.localeCompare(b.key));
+}
+
+/**
+ * Every module's sub-apps, in their default order — see `AppContribution`.
+ *
+ * NOT filtered by grants, unlike `composeHeaderTools`: the Apps page is handed
+ * the whole list once, by the app, and filters it with the viewer's WORKSPACE
+ * grants, which only exist once a workspace is open.
+ *
+ * Throws on a duplicate key, as `composeRoutes` does on a duplicate path. Keys
+ * are saved in people's layouts, so two apps answering to one would put the
+ * wrong app in somebody's saved grid.
+ */
+export function composeApps(modules: readonly WebModuleDescriptor[]): AppContribution[] {
+  const byKey = new Map<string, string>();
+  const apps: AppContribution[] = [];
+
+  for (const mod of modules) {
+    for (const app of mod.apps ?? []) {
+      const owner = byKey.get(app.key);
+      if (owner) {
+        throw new ModuleCompositionError(`App '${app.key}' declared by both '${owner}' and '${mod.key}'`);
+      }
+      byKey.set(app.key, mod.key);
+      apps.push(app);
+    }
+  }
+
+  return apps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.key.localeCompare(b.key));
 }
 
 export interface ComposeNavOptions {

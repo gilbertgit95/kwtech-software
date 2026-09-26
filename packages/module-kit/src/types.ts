@@ -272,9 +272,56 @@ export interface HeaderToolContribution {
   component: ComponentType;
 }
 
+/**
+ * What a sub-app's component is handed when it runs inside the Apps page.
+ *
+ * The workspace only, as plain strings: an app always lives under a workspace
+ * (PLAN §13, 2026-09-25), and anything else it needs it reads itself, as its
+ * own full page does.
+ */
+export interface AppProps {
+  organizationId: string;
+  workspaceId: string;
+}
+
+/**
+ * A SUB-APP — the queue, and every app after it — offered on a workspace's Apps
+ * page, where several run side by side in tabs or in a grid.
+ *
+ * Declared by the module that owns the app and collected by `composeApps`, so a
+ * new sub-app never edits the page that hosts it. The hosting module receives
+ * the composed list from the app; it never imports a sub-app (PLAN §9 rule 5).
+ *
+ * ⚠ `component` MUST WORK IN A BOX OF ANY SIZE AND MUST NOT NAVIGATE. It shares
+ * the page with other apps, so it lays out by its container's width (container
+ * queries, not viewport breakpoints) and moves between its own screens in place.
+ * A link to another URL takes the person off the page and closes every app on it.
+ */
+export interface AppContribution {
+  /** Unique across the app; composition throws on a duplicate. Saved in layouts, so never rename one. */
+  key: string;
+  label: string;
+  /** One line, for the app picker. */
+  description?: string;
+  /** A name from the app's icon set, as `nav.icon` is. */
+  icon?: string;
+  /**
+   * The WORKSPACE-level key that offers the app. REQUIRED, unlike a route's:
+   * the page lists only apps the viewer holds, and an app nobody gated would be
+   * offered to every member of every workspace. The app's own API still
+   * authorises every request — hiding it is the affordance, not the check.
+   */
+  feature: string;
+  /** Where it sits before anybody reorders. Lower is first; space them — 10, 20. */
+  order?: number;
+  component: ComponentType<AppProps>;
+}
+
 export interface WebModuleDescriptor {
   key: string;
   routes?: readonly ModuleRoute[];
+  /** Sub-apps for the workspace's Apps page — see `AppContribution`. */
+  apps?: readonly AppContribution[];
   /**
    * Controls for the app header. An app that has no header slot ignores them;
    * a module that wants to be reachable there AND in the drawer declares both,
