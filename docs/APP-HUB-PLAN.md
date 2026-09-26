@@ -1,8 +1,24 @@
 # `module-app-hub` — plan
 
-Status: **planned, 2026-09-26. Nothing built.** When it ships, what was decided
-here moves into the module README and PLAN §13, and this file is deleted (as
-`NOTIFICATIONS-PLAN.md` will be).
+Status: **built, 2026-09-27** (phases 1–7; the browser check of the embedded
+queue is the operator's). The contract is in `packages/module-app-hub/README.md`
+and the decision in PLAN §13. This file stays until that check is done, then is
+deleted.
+
+## Built, and where it differs from this plan
+
+- **Keys are `app_hub:*`, not `app-hub:*`.** A feature key's area is
+  `[a-z][a-z0-9_.]*`; the role editor refuses a hyphen.
+- **A fifth operation, `resetWorkspaceAppHubLayout`**, so an admin can remove the
+  default as well as set it. Bound to `app_hub:layout_manage`.
+- **Both keys go to the organization admin role too** (not only
+  `layout_manage`), matching how that role already carries workspace keys.
+- **A lost app's cell names both possible reasons** rather than one (§12.74).
+- **The drawer icon is `blocks`**, already in the app's icon set.
+- **No Playwright test yet.** The seed account has two-step verification, which
+  the e2e harness does not support.
+- **With one sub-app the grid is 1×1.** The cap is the number of apps held, so
+  multi-cell grids appear once a second sub-app exists; the rules are unit tested.
 
 ## 1. What it is
 
@@ -36,8 +52,8 @@ keep working (links from notifications, the queue's public TV display).
 | 8 | Default grid | **2 cells, 1×2 (side by side)**, the first two apps in tab order. **1×1** when the viewer holds one app |
 | 9 | Shapes offered | Capped by the number of apps held: shapes with more cells than that are **disabled** |
 | 10 | A module of its own? | **Yes**: it has its own data, rules, API, keys and page (PLAN §9 rule 8) |
-| 11 | Name | `module-app-hub`: models `AppHub*`, tables `app_hub_*`, keys `app-hub:*` |
-| 12 | Who sets the workspace default | **Whoever holds `app-hub:layout_manage`**, a feature assignable to any role. For now it is granted to the admin roles (workspace admin, organization admin) |
+| 11 | Name | `module-app-hub`: models `AppHub*`, tables `app_hub_*`, keys `app_hub:*` |
+| 12 | Who sets the workspace default | **Whoever holds `app_hub:layout_manage`**, a feature assignable to any role. For now it is granted to the admin roles (workspace admin, organization admin) |
 
 ## 3. Tab view
 
@@ -158,10 +174,10 @@ and `workspaceId`.
 
 | Operation | Key | Does |
 |---|---|---|
-| `appHubLayout` | `app-hub:read` | The viewer's layout and the workspace default, both raw; the page computes the effective one (it knows which apps the viewer holds) |
-| `saveMyAppHubLayout` | `app-hub:read` | Upsert the viewer's layout. The page saves on change, debounced |
-| `resetMyAppHubLayout` | `app-hub:read` | Delete the viewer's layout, falling back to the default |
-| `saveWorkspaceAppHubLayout` | `app-hub:layout_manage` | "Save as workspace default", from the current layout |
+| `appHubLayout` | `app_hub:read` | The viewer's layout and the workspace default, both raw; the page computes the effective one (it knows which apps the viewer holds) |
+| `saveMyAppHubLayout` | `app_hub:read` | Upsert the viewer's layout. The page saves on change, debounced |
+| `resetMyAppHubLayout` | `app_hub:read` | Delete the viewer's layout, falling back to the default |
+| `saveWorkspaceAppHubLayout` | `app_hub:layout_manage` | "Save as workspace default", from the current layout |
 
 The server validates shape (cap of 6, sizes, cell count, no duplicate key). It
 does not check app keys against a list: it has no web descriptors, and unknown
@@ -173,11 +189,11 @@ apps.
 
 | Key | Level | Granted to | Plans |
 |---|---|---|---|
-| `app-hub:read` | workspace | `workspace-user`, `workspace-admin` | every plan, `free` included |
-| `app-hub:layout_manage` | workspace | `workspace-admin`, `organization-admin` | every plan |
+| `app_hub:read` | workspace | `workspace-user`, `workspace-admin` | every plan, `free` included |
+| `app_hub:layout_manage` | workspace | `workspace-admin`, `organization-admin` | every plan |
 
 - **The key is the rule, not the role.** Nothing in the module checks for
-  "admin". It asks for `app-hub:layout_manage`, so any custom workspace role can
+  "admin". It asks for `app_hub:layout_manage`, so any custom workspace role can
   be given the right in the role editor. The admin grants above are only the
   starting presets.
 - An organization-level role may carry a workspace-level key

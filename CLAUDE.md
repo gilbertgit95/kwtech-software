@@ -34,6 +34,7 @@ packages/module-permissions/ organizations, workspaces, roles, features, plans, 
 packages/module-chat/       conversations and messages
 packages/module-queuing-window/ walk-in queue: windows, lines, a live TV board
 packages/module-notification/ system notifications: bell, toasts, a paginated inbox
+packages/module-app-hub/    a workspace's Apps page: sub-apps in tabs or a resizable grid
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 
@@ -140,9 +141,11 @@ only when it is a feature of its own (PLAN §9 rule 8).
       `feature`. **A sub-app** (the queue, and every app after it) always lives
       under a workspace: its routes under
       `/organizations/:organizationId/workspaces/:workspaceId/…`, its rows keyed
-      by `workspaceId`, its keys workspace level, and its nav entry in the
-      `'Apps'` group (placed with `navGroups: [{ group: 'Apps', order: 35 }]`,
-      spelling pinned in a test, as `module-queuing-window` does). Hide
+      by `workspaceId`, and its keys workspace level. It has **no drawer
+      entry**: declare it in `apps` on the descriptor (see
+      `packages/module-kit/README.md`, "Sub-apps") and it appears on the
+      workspace's Apps page (`module-app-hub`), laid out with container queries
+      and never navigating away, as `module-queuing-window`'s `QueueApp`. Hide
       controls inside a page with `useHoldsFeature` from
       `@kwtech/module-kit/react`. That only hides them: the API authorises again.
 - [ ] A **tool** people use from anywhere (like chat) goes in the app header,

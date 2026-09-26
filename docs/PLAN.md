@@ -553,11 +553,43 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 71 | No screen shows or unlinks a linked Google account | before someone asks why a Google account they lost still signs them in | `auth_identity` is written on first link and read by sign-in only. Needed: a Security card listing the identity with an Unlink (password-confirmed), an admin view of it, and the rule that unlinking may never remove the account's last way in |
 | 72 | Email as a second factor is only as strong as the mailbox | if a policy ever REQUIRES a second factor | Offered because it needs no phone app, and labelled weaker in the UI. A policy that counts "any factor" as compliance would accept it; one that means phishing resistance must exclude `email` (and `totp`) and wait for WebAuthn (§12.18) |
 | 73 | Notification history is kept forever | when one person's inbox reaches the hundreds of thousands, or the table's size is noticed | **Decided 2026-09-25 by the operator: keep everything.** `notification_item` is never pruned — archive and recall only hide rows — and there is no job runner to prune it anyway (§12.40). Every index leads with `recipientId`, so the cost of a long history is one person's own rows, not the table's, and keyset pagination keeps pages cheap however deep. What would change it: a real storage problem, answered by partitioning or an archive table, not by deleting what somebody was told. A flooding producer is already capped at one overflow row per person per minute (`floodLimitPerMinute`). |
-
+| 74 | A grid cell holding an app the viewer lost cannot say WHICH refusal | when somebody asks why an app vanished from their grid | The Apps page knows the viewer's held keys (`useHeldFeatures`) but not the permission context behind them, so a lost app's cell says "your roles here, or your organization's plan, do not include it" rather than naming one. The route-level `FeatureDenied` can, because the catch-all has the context. Fix: pass a `denialReason`-style answer to the page (the route adapter would need the context, which module routes do not receive today), or add the context to `module-kit/react` beside the held list |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-27** — **`module-app-hub`: a workspace's Apps page runs every
+  sub-app in tabs or a resizable grid of up to six cells. Sub-apps leave the
+  drawer. Supersedes the 2026-09-25 "Apps" drawer section.**
+
+  A user request: one page under a workspace housing every sub-app, with a tab
+  view and a grid view, so several apps are used at once without navigating.
+  The plan and the operator's twelve decisions are in `docs/APP-HUB-PLAN.md`.
+  - **A module of its own**, with its own tables, rules, API and keys. It
+    imports no sub-app: `module-kit` gained `apps` (`AppContribution`) and
+    `composeApps`, and the web app hands the composed list to
+    `appHubWebModule({ apps })`.
+  - **One drawer entry, Apps, in Workspace** (order 15). The 'Apps' group and
+    `APPS_NAV_GROUP` are gone; the queue has no nav entry, and its routes stay
+    for direct links.
+  - **Tabs are exactly the apps held**, reordered by drag. **The grid is rows ×
+    columns, capped at `min(6, apps held)`**; shapes over the cap are disabled.
+    Cells swap by drag, apps drop in from a list, borders resize. Default: a
+    1×2 grid of the first two apps (1×1 with one app).
+  - **Apps render once, in one CSS grid**, positioned by the view. Moving or
+    switching views never remounts an app, so the queue keeps its socket.
+  - **Layouts saved server-side**: a workspace default (`app_hub:layout_manage`,
+    granted to workspace and organization admins) and a per-person override
+    (`app_hub:read`). Two tables, so a workspace cannot hold two defaults. A
+    grid wider than a viewer's apps is narrowed for display only.
+  - **Free**: both keys in every plan. ⚠ Existing plans need an operator on
+    `/admin/plans`; the local database was updated by hand.
+  - **The queue runs embedded**: `QueueApp` opens its settings in place, and its
+    pages lay out with container queries (`@container`, `@xl:`, `@3xl:`).
+  - **Not done:** the same app twice (the layout would need cell ids); named or
+    multiple saved layouts; compact app views; a lost app's cell does not say
+    `not_granted` from `not_entitled` (§12.74).
 
 - **2026-09-26** — **A workspace's members get a page of their own:
   Overview, Members, Settings, as the organization's area reads.**
