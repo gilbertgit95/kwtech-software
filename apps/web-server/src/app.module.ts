@@ -1,3 +1,4 @@
+import { appHubServerModule } from '@kwtech/module-app-hub/server';
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
 import {
   CHAT_DEFAULTS,
@@ -52,6 +53,7 @@ import { NOTIFICATION_SOURCES } from './notifications/sources.js';
 import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import {
+  appHubPrismaProvider,
   authPrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
@@ -493,6 +495,15 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   QUEUE_SERVER_MODULE,
 
   NOTIFICATION_SERVER_MODULE,
+
+  /*
+   * The workspace's Apps page: saved layouts, nothing else. No ports — the
+   * guard has already answered who is asking and whether they are a member.
+   */
+  appHubServerModule({
+    prismaProvider: appHubPrismaProvider,
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+  }),
 ];
 
 /**

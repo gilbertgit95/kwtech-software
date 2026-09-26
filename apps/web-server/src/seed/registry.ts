@@ -1,3 +1,4 @@
+import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
 import {
   CHAT_DEFAULT_MOMENT_REGISTRY,
@@ -141,6 +142,11 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    * this out and anybody signed in could send to anybody.
    */
   { key: 'notification', features: NOTIFICATION_FEATURE_REGISTRY },
+  /*
+   * ⚠ And the Apps page's. Leave this out and anybody signed in could save a
+   * layout into, or reset the default of, any workspace they name.
+   */
+  { key: 'app_hub', features: APP_HUB_FEATURE_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

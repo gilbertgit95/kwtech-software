@@ -1,3 +1,4 @@
+import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
@@ -314,6 +315,9 @@ const ORGANIZATION_ADMIN: SystemRoleDefinition = {
     FEATURE.workspaceMembersAdd,
     FEATURE.workspaceMembersRemove,
     FEATURE.workspaceAssignRole,
+    // The Apps page, and setting its default layout — in those same workspaces only.
+    APP_HUB_FEATURE.read,
+    APP_HUB_FEATURE.layoutManage,
 
     FEATURE.subscriptionsRead,
   ],
@@ -424,6 +428,9 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     FEATURE.workspaceAssignRole,
     // The whole queue: serve, assign windows, manage lines and windows, start and stop.
     ...queuePreset('queue-admin').features,
+    // The Apps page, and its default layout for everybody here.
+    APP_HUB_FEATURE.read,
+    APP_HUB_FEATURE.layoutManage,
   ],
   limits: {},
 };
@@ -444,8 +451,9 @@ const WORKSPACE_USER: SystemRoleDefinition = {
    * mean a member who is in a workspace and cannot open it. Read is what "in
    * it, with no rights of their own" has to carry.
    */
-  // Plus the queue's staff preset: see the queue and serve at a window they are assigned to.
-  features: [FEATURE.workspaceRead, ...queuePreset('queue-staff').features],
+  // Plus the queue's staff preset: see the queue and serve at a window they are assigned to,
+  // and the Apps page the queue is reached from.
+  features: [FEATURE.workspaceRead, ...queuePreset('queue-staff').features, APP_HUB_FEATURE.read],
   limits: {},
 };
 

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
 import { QUEUE_OPERATIONS } from '@kwtech/module-queuing-window';
@@ -55,6 +56,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   chat: CHAT_OPERATIONS,
   queue: QUEUE_OPERATIONS,
   notification: NOTIFICATION_OPERATIONS,
+  app_hub: APP_HUB_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {

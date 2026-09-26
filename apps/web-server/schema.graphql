@@ -45,6 +45,11 @@ type AdminUserWriteResult {
   user: AdminUser
 }
 
+type AppHubLayouts {
+  mine: String
+  workspace: String
+}
+
 type ChatConversation {
   archived: Boolean!
   createdById: String!
@@ -206,10 +211,14 @@ type Mutation {
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
+  resetWorkspaceAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  saveMyAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
+  saveWorkspaceAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
   sendNotification(input: NotificationSendInput!): NotificationBatch!
@@ -591,6 +600,7 @@ type Query {
   adminUser(userId: String!): AdminUserDetail!
   adminUserSessions(userId: String!): [AdminUserSession!]!
   adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
+  appHubLayouts(organizationId: String!, workspaceId: String!): AppHubLayouts!
   chatConversation(conversationId: String!): ChatConversation
   chatConversations: [ChatConversation!]!
   chatDirectoryLookup(email: String!): ChatDirectoryMatch

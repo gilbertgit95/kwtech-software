@@ -1,3 +1,4 @@
+import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
 import { ALL_FEATURES } from './registry.js';
@@ -142,6 +143,18 @@ const TEAMWORK = [
  */
 const QUEUE = Object.values(QUEUE_FEATURE);
 
+/**
+ * The workspace's Apps page, in EVERY tier including free (APP-HUB-PLAN
+ * decision 6): the page is free, and what it shows is gated by each app's own
+ * keys. A tier without these would be refused the page that holds the apps it
+ * DID buy.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. Every environment
+ * seeded before the Apps page shipped needs an operator to add both keys to
+ * every plan on `/admin/plans`; until then the page answers `not_entitled`.
+ */
+const APPS_PAGE = Object.values(APP_HUB_FEATURE);
+
 /** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
 const QUEUE_CAPS = {
   [QUEUE_LIMIT.windows]: 10,
@@ -161,7 +174,7 @@ const FREE: PlanDefinition = {
   label: 'Free',
   isPublic: true,
   icon: 'sprout',
-  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING],
+  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...APPS_PAGE],
   limits: {
     [LIMIT.organizationMembers]: 3,
     [LIMIT.organizationWorkspaces]: 1,
@@ -181,7 +194,15 @@ const STARTER: PlanDefinition = {
   label: 'Starter',
   isPublic: true,
   icon: 'rocket',
-  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK, ...QUEUE],
+  features: [
+    ...OWN_ORGANIZATION,
+    ...SEEING_AROUND,
+    ...READ_ONLY_ADMIN,
+    ...OWN_BILLING,
+    ...TEAMWORK,
+    ...QUEUE,
+    ...APPS_PAGE,
+  ],
   limits: {
     [LIMIT.organizationMembers]: 10,
     [LIMIT.organizationWorkspaces]: 3,
@@ -208,7 +229,15 @@ const PRO: PlanDefinition = {
   label: 'Pro',
   isPublic: true,
   icon: 'zap',
-  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...TEAMWORK, ...QUEUE],
+  features: [
+    ...OWN_ORGANIZATION,
+    ...SEEING_AROUND,
+    ...READ_ONLY_ADMIN,
+    ...OWN_BILLING,
+    ...TEAMWORK,
+    ...QUEUE,
+    ...APPS_PAGE,
+  ],
   limits: {
     [LIMIT.organizationMembers]: 50,
     [LIMIT.organizationWorkspaces]: 25,

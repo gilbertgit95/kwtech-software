@@ -1,3 +1,4 @@
+import { APP_HUB_PRISMA } from '@kwtech/module-app-hub/server';
 import { AUTH_PRISMA, type AuthPrismaClient, type AuthTransaction } from '@kwtech/module-auth/server';
 import {
   CHAT_PRISMA,
@@ -223,3 +224,13 @@ export const notificationWritePrismaProvider: Provider = {
 };
 
 export type { ChatPrismaClient, PermissionsPrismaClient };
+
+/**
+ * The Apps page's one client. It writes, but only single upserts and deletes —
+ * no `$transaction` to dispatch — so the delegates fit outright, as a read
+ * client's do. Checked in ./satisfies-modules.ts.
+ */
+export const appHubPrismaProvider: Provider = {
+  provide: APP_HUB_PRISMA,
+  useExisting: PrismaService,
+};

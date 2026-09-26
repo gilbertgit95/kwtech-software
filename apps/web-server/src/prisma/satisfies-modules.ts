@@ -1,3 +1,4 @@
+import type { AppHubPrismaClient } from '@kwtech/module-app-hub/server';
 import type { AuthTransaction } from '@kwtech/module-auth/server';
 import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
 import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
@@ -51,3 +52,6 @@ export const _queueWriteDelegatesFit: QueueTransaction = client;
 
 export const _notificationReadClientFits: NotificationPrismaClient = client;
 export const _notificationWriteDelegatesFit: NotificationTransaction = client;
+
+/** One client, reads and single writes alike — see `appHubPrismaProvider`. */
+export const _appHubClientFits: AppHubPrismaClient = client;
