@@ -1,6 +1,7 @@
+import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
-import type { WebModuleDescriptor } from '@kwtech/module-kit';
+import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
 import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
@@ -26,7 +27,7 @@ import { queueWebModule } from '@kwtech/module-queuing-window/react';
  * contributes no route, no nav entry and no icon, while keeping its feature
  * registry so a disable does not strip `chat:*` from every role that holds it.
  */
-export const WEB_MODULES: readonly WebModuleDescriptor[] = [
+const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   authWebModule,
   permissionsWebModule,
   chatWebModule(),
@@ -34,4 +35,15 @@ export const WEB_MODULES: readonly WebModuleDescriptor[] = [
   queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
+];
+
+/*
+ * The workspace's Apps page, handed every sub-app the modules above declare
+ * (the queue today). Composed from the list rather than naming the queue, so a
+ * new sub-app module added above appears on the page with no edit here — and
+ * `composeApps` throws on two apps sharing a key, which saved layouts depend on.
+ */
+export const WEB_MODULES: readonly WebModuleDescriptor[] = [
+  ...FEATURE_MODULES,
+  appHubWebModule({ apps: composeApps(FEATURE_MODULES) }),
 ];

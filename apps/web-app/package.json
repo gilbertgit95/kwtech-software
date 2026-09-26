@@ -12,6 +12,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@kwtech/module-app-hub": "workspace:*",
     "@kwtech/module-auth": "workspace:*",
     "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
