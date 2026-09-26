@@ -3,11 +3,12 @@ import { QUEUE_FEATURE, QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '../
 import { QueueConsolePage } from './pages/queue-console-page.js';
 import { QueueDisplayPage } from './pages/queue-display-page.js';
 import { QueueSettingsPage } from './pages/queue-settings-page.js';
-import { APPS_NAV_GROUP, QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH } from './routes.js';
+import { QueueApp } from './queue-app.js';
+import { QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH } from './routes.js';
 
 /**
- * The queue's web descriptor — its routes, its drawer entry and its
- * contributions, as data the app composes:
+ * The queue's web descriptor — its routes, its app and its contributions, as
+ * data the app composes:
  *
  *   const WEB_MODULES = [..., queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL })];
  *
@@ -42,14 +43,24 @@ export function queueWebModule(options: QueueWebModuleOptions = {}): WebModuleDe
 
   return {
     key: 'queue',
-    /*
-     * Placed as module-permissions places it, so an app composing the queue
-     * without that module still puts Apps right under the workspace rather
-     * than at the bottom. The lower order wins, and they agree.
-     */
-    navGroups: [{ group: APPS_NAV_GROUP, order: 35 }],
     features: QUEUE_FEATURE_REGISTRY,
     limits: QUEUE_LIMIT_REGISTRY,
+    /*
+     * The queue on the workspace's Apps page, where it runs beside other apps in
+     * tabs or a grid. `queue:read`, the console's own key, offers it; the
+     * console's controls still check theirs.
+     */
+    apps: [
+      {
+        key: 'queue',
+        label: 'Queue',
+        description: 'Call numbers at your window and watch every window live.',
+        icon: 'megaphone',
+        feature: QUEUE_FEATURE.read,
+        order: 10,
+        component: QueueApp,
+      },
+    ],
     routes: [
       {
         path: QUEUE_CONSOLE_PATH,
@@ -61,7 +72,11 @@ export function queueWebModule(options: QueueWebModuleOptions = {}): WebModuleDe
          * `not_entitled` here, before the page renders.
          */
         feature: QUEUE_FEATURE.read,
-        nav: { group: APPS_NAV_GROUP, order: 10, icon: 'megaphone' },
+        /*
+         * ⚠ NO `nav`: a sub-app is reached from the workspace's Apps page, not
+         * from the drawer (APP-HUB-PLAN decision 5). The route stays for direct
+         * links — a notification, a bookmark — and renders the full page.
+         */
       },
       {
         // UNLISTED — reached from the console. Each section inside checks its own key.

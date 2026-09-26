@@ -72,7 +72,17 @@ export function ErrorBanner({ message, onDismiss }: { message: string | null; on
  * The frame both queue pages sit in: a title, what the page is for, and — on a
  * sub-page — a named way back. Chat learned that a sub-page without its back
  * link ships; see `ChatSubPage`.
+ *
+ * ⚠ A CONTAINER (`@container`), and the queue's layouts use `@…:` variants
+ * rather than `sm:` / `lg:`. The same pages run inside a cell of the Apps
+ * page's grid, where the screen is wide and the cell is not; laid out by the
+ * viewport, three columns would be squeezed into a sixth of it.
+ *
+ * `back` is a LINK on the full page and an ACTION inside the Apps page, where
+ * following a link would leave the page and close every app on it.
  */
+export type QueueBack = { href: string; label: string } | { onBack: () => void; label: string };
+
 export function QueuePage({
   title,
   description,
@@ -82,17 +92,22 @@ export function QueuePage({
 }: {
   title: string;
   description?: string;
-  back?: { href: string; label: string };
+  back?: QueueBack;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      {back ? (
+    <div className="@container mx-auto w-full max-w-5xl">
+      {back && 'href' in back ? (
         // A plain anchor: this package does not depend on Next.
         <a href={back.href} className="text-sm text-muted-foreground hover:text-foreground">
           ← {back.label}
         </a>
+      ) : null}
+      {back && 'onBack' in back ? (
+        <button type="button" onClick={back.onBack} className="text-sm text-muted-foreground hover:text-foreground">
+          ← {back.label}
+        </button>
       ) : null}
       <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
         <div>

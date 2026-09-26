@@ -13,6 +13,7 @@ export { type QueueWebModuleOptions, queueWebModule } from './module.js';
 export { QueueConsolePage } from './pages/queue-console-page.js';
 export { QueueDisplayPage } from './pages/queue-display-page.js';
 export { QueueSettingsPage } from './pages/queue-settings-page.js';
+export { QueueApp } from './queue-app.js';
 export {
   createQueueClient,
   DEFAULT_GRAPHQL_PATH,
@@ -29,7 +30,6 @@ export {
   type QueueWindowView,
 } from './queue-client.js';
 export {
-  APPS_NAV_GROUP,
   QUEUE_CONSOLE_PATH,
   QUEUE_DISPLAY_PATH,
   QUEUE_SETTINGS_PATH,

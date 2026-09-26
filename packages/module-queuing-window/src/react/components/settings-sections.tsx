@@ -540,7 +540,7 @@ export function AnnouncementSection({ state }: { state: QueueConsoleState }) {
           </span>
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 @xl:grid-cols-2 @3xl:grid-cols-3">
           <VoiceChoice
             label="Voice"
             value={voice.type}

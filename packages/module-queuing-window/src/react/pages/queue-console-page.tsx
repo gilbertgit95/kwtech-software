@@ -18,7 +18,14 @@ import { useQueueConsole } from '../use-queue-console.js';
  * and the recent calls. Every control is also refused at the API; hiding one
  * is an affordance, not the check.
  */
-export function QueueConsolePage({ params }: { params: Record<string, string> }) {
+export function QueueConsolePage({
+  params,
+  onOpenSettings,
+}: {
+  params: Record<string, string>;
+  /** Given inside the Apps page: open settings IN PLACE rather than navigate away. */
+  onOpenSettings?: () => void;
+}) {
   const organizationId = params.organizationId ?? '';
   const workspaceId = params.workspaceId ?? '';
   const state = useQueueConsole(organizationId, workspaceId);
@@ -38,11 +45,15 @@ export function QueueConsolePage({ params }: { params: Record<string, string> })
             description: 'Live updates are off in this browser — this page refreshes when you act, not when others do.',
           })}
       actions={
-        canConfigure ? (
+        !canConfigure ? null : onOpenSettings ? (
+          <button type="button" onClick={onOpenSettings} className={buttonClass('secondary')}>
+            Queue settings
+          </button>
+        ) : (
           <a href={queueSettingsHref(organizationId, workspaceId)} className={buttonClass('secondary')}>
             Queue settings
           </a>
-        ) : null
+        )
       }
     >
       <ErrorBanner message={state.error} onDismiss={state.dismissError} />

@@ -1,7 +1,8 @@
-import { composeNav, composeRoutes } from '@kwtech/module-kit';
+import { composeApps, composeNav, composeRoutes } from '@kwtech/module-kit';
 import { QUEUE_FEATURE } from '../src/feature-keys.js';
 import { queueWebModule } from '../src/react/module.js';
-import { APPS_NAV_GROUP, QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH } from '../src/react/routes.js';
+import { QueueApp } from '../src/react/queue-app.js';
+import { QUEUE_CONSOLE_PATH, QUEUE_DISPLAY_PATH, QUEUE_SETTINGS_PATH } from '../src/react/routes.js';
 
 /** What adopting the queue on the web contributes. */
 describe('queueWebModule', () => {
@@ -29,43 +30,21 @@ describe('queueWebModule', () => {
     expect(QUEUE_DISPLAY_PATH).toBe('/queue-display/:organizationKey/:workspaceKey');
   });
 
-  const params = { organizationId: 'org-1', workspaceId: 'ws-1' };
-
-  it('lists the console alone, in the Workspace group, with the workspace filled into its link', () => {
-    const entries = composeNav([module], [QUEUE_FEATURE.read], { params });
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      group: 'Apps',
-      label: 'Queue',
-      href: '/organizations/org-1/workspaces/ws-1/queue',
-    });
+  it('⚠ lists nothing in the drawer — a sub-app is reached from the Apps page (APP-HUB-PLAN decision 5)', () => {
+    const params = { organizationId: 'org-1', workspaceId: 'ws-1' };
+    expect(composeRoutes([module]).filter((route) => route.nav)).toEqual([]);
+    expect(composeNav([module], [QUEUE_FEATURE.read], { params })).toEqual([]);
+    expect(module.navGroups).toBeUndefined();
   });
 
-  it('lists nothing outside a workspace — there is no link to build', () => {
-    // composeNav omits a route whose :params it cannot fill, rather than ship half a URL.
-    expect(composeNav([module], [QUEUE_FEATURE.read])).toEqual([]);
+  it('offers the queue on the Apps page, gated on queue:read, running the in-place app', () => {
+    expect(composeApps([module])).toEqual([
+      expect.objectContaining({ key: 'queue', label: 'Queue', feature: QUEUE_FEATURE.read, component: QueueApp }),
+    ]);
   });
 
-  it('lists nothing for somebody without queue:read', () => {
-    expect(composeNav([module], [], { params })).toEqual([]);
-  });
-
-  it('⚠ spells the Apps group exactly as module-permissions does, since it cannot import it', () => {
-    expect(APPS_NAV_GROUP).toBe('Apps');
-  });
-
-  it('⚠ lists only workspace routes under Apps — an app always lives under a workspace', () => {
-    // The app's drawer filters Apps with the WORKSPACE's grants. A route here
-    // without :workspaceId would be filtered at the wrong level.
-    const listed = composeRoutes([module]).filter((route) => route.nav?.group === APPS_NAV_GROUP);
-    expect(listed.length).toBeGreaterThan(0);
-    for (const route of listed) {
-      expect(route.path.startsWith('/organizations/:organizationId/workspaces/:workspaceId/')).toBe(true);
-    }
-  });
-
-  it('places the Apps group directly under Workspace (30)', () => {
-    expect(module.navGroups).toEqual([{ group: APPS_NAV_GROUP, order: 35 }]);
+  it('⚠ keeps the app key stable — it is saved in people’s layouts', () => {
+    expect(module.apps?.map((app) => app.key)).toEqual(['queue']);
   });
 
   it('carries its keys and caps, so an app composing descriptors sees them', () => {

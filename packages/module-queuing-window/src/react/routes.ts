@@ -5,19 +5,6 @@
  */
 
 /**
- * The drawer section the queue is listed in: the workspace's apps.
- *
- * ⚠ A DELIBERATE DUPLICATE of `module-permissions`' `APPS_NAV_GROUP`, which
- * this module may not import (PLAN §9). A group is a shared NAME, so the two
- * only have to spell it the same; `web-module.test.ts` pins the spelling.
- *
- * An app always lives under a workspace — its path, its rows and its keys — so
- * every listed route here carries `:organizationId` and `:workspaceId`, and the
- * same test holds it to that.
- */
-export const APPS_NAV_GROUP = 'Apps';
-
-/**
  * ⚠ Under `/organizations/:organizationId/workspaces/:workspaceId`, which is
  * what makes the page WORKSPACE level (§12.13): the catch-all resolves the
  * route's key against that workspace, so `queue:read` is asked in the right

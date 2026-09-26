@@ -18,11 +18,17 @@ import { queueWebModule } from '@kwtech/module-queuing-window/react';
 export const WEB_MODULES = [/* … */ queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL })];
 ```
 
-That contributes `…/workspaces/:workspaceId/queue` (the console, in the
-**Apps** drawer group, directly under Workspace) and the unlisted `…/queue/settings`, both gated on
-`queue:read`. Controls inside each page show only to the key that may use them;
-the API refuses again regardless. It also contributes the public display — see
-below.
+That contributes the queue as a **sub-app** on the workspace's Apps page
+(`apps: [{ key: 'queue', … component: QueueApp }]`, gated on `queue:read`),
+where it runs in a tab or a grid cell with its settings opened in place. It is
+**not in the drawer**: the Apps page is the way in (`module-app-hub`). The
+routes `…/workspaces/:workspaceId/queue` and `…/queue/settings` stay, unlisted,
+for direct links, both gated on `queue:read`. Controls inside each page show
+only to the key that may use them; the API refuses again regardless. It also
+contributes the public display — see below.
+
+The pages lay out with **container queries** (`@container` on `QueuePage`,
+`@xl:` / `@3xl:` inside), so they fit a narrow grid cell on a wide screen.
 
 ## In a NestJS app
 

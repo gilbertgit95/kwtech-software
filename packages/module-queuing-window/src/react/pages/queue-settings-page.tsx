@@ -20,7 +20,14 @@ import { useQueueConsole } from '../use-queue-console.js';
  * with each section shown only to the key that may change it — following a
  * bookmark here without any of them explains itself instead of refusing.
  */
-export function QueueSettingsPage({ params }: { params: Record<string, string> }) {
+export function QueueSettingsPage({
+  params,
+  onBack,
+}: {
+  params: Record<string, string>;
+  /** Given inside the Apps page: back to the console IN PLACE rather than navigate away. */
+  onBack?: () => void;
+}) {
   const organizationId = params.organizationId ?? '';
   const workspaceId = params.workspaceId ?? '';
   const state = useQueueConsole(organizationId, workspaceId);
@@ -31,7 +38,11 @@ export function QueueSettingsPage({ params }: { params: Record<string, string> }
   return (
     <QueuePage
       title="Queue settings"
-      back={{ href: queueConsoleHref(organizationId, workspaceId), label: 'Back to the queue' }}
+      back={
+        onBack
+          ? { onBack, label: 'Back to the queue' }
+          : { href: queueConsoleHref(organizationId, workspaceId), label: 'Back to the queue' }
+      }
     >
       <ErrorBanner message={state.error} onDismiss={state.dismissError} />
       {state.view === null && state.error === null ? <p className="text-sm text-muted-foreground">Loading…</p> : null}

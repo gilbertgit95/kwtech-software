@@ -13,8 +13,8 @@ export function WindowsOverview({ state }: { state: QueueConsoleState }) {
   const windows = activeWindows(view);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Section title="Windows" className="lg:col-span-2">
+    <div className="grid gap-4 @3xl:grid-cols-3">
+      <Section title="Windows" className="@3xl:col-span-2">
         {windows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No windows yet.</p>
         ) : (
