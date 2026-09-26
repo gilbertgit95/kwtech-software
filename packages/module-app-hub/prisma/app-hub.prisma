@@ -1,0 +1,47 @@
+// The Apps page's slice of the data model: saved layouts, nothing else.
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `AppHub` and mapped to `app_hub_*`.
+//
+// ⚠ TWO TABLES, NOT ONE WITH A NULLABLE `userId`. Postgres treats nulls as
+// distinct in a unique index, so one table could hold two "workspace defaults"
+// for one workspace, and which one wins would be an accident of row order.
+// Here the default is keyed by the workspace alone, and cannot be doubled.
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key: `auth_user` belongs to
+// module-auth (PLAN §9). `organizationId` is carried, denormalised, as the
+// queue does, so a row can be checked against its tenant without reading
+// `perm_workspace`.
+//
+// `layout` is JSON validated by `validateLayout` before every write and read
+// leniently: a row that no longer validates (an older version) is treated as
+// absent, never as an error.
+
+/// A workspace's default layout — what every member without their own sees.
+/// Written by holders of `app_hub:layout_manage`.
+model AppHubWorkspaceLayout {
+  workspaceId    String @id
+  organizationId String
+
+  layout    Json
+  /// Who saved it last. Shown to nobody yet; kept so "who changed this" has an answer.
+  updatedBy String
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("app_hub_workspace_layout")
+}
+
+/// One person's own layout of one workspace's Apps page. Overrides the default.
+model AppHubUserLayout {
+  workspaceId    String
+  userId         String
+  organizationId String
+
+  layout    Json
+  updatedAt DateTime @updatedAt
+
+  @@id([workspaceId, userId])
+  @@index([organizationId])
+  @@map("app_hub_user_layout")
+}
