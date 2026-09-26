@@ -11,6 +11,7 @@ import {
 } from '@kwtech/web-ui/react';
 import { ChevronsUpDown, Plus } from 'lucide-react';
 import Link from 'next/link';
+import { BrandLogo } from '@/components/brand/brand-logo';
 import { iconFor } from '@/components/layout/nav-icons';
 
 /**
@@ -24,7 +25,7 @@ import { iconFor } from '@/components/layout/nav-icons';
  * link below now depends on, had nowhere to be shown.
  *
  * The brand is not gone: with no organization active this row draws the product
- * name and its mark, exactly as before, and the menu becomes the way in. So the
+ * name and its logo, and the menu becomes the way in. So the
  * strip says "where am I" in both states rather than "what is this app" in one
  * of them.
  *
@@ -354,10 +355,9 @@ export function OrganizationSwitcher({
   /*
    * The MARK's icon — the plan's, when there is a plan that chose one.
    *
-   * Null falls the square back to the initials, which is the honest answer for
-   * all three of the states that produce it: no organization selected (the
-   * brand's own mark, exactly as before), no plan, and a plan the viewer may
-   * not read. See the `plan` prop.
+   * Null falls the square back to the organization's initials when there is no
+   * plan or one the viewer may not read, and to the product's logo when no
+   * organization is selected at all. See the `plan` prop.
    */
   const PlanIcon = active?.planIcon ? iconFor(active.planIcon) : null;
   /*
@@ -426,7 +426,20 @@ export function OrganizationSwitcher({
                 'text-xs font-bold leading-none tracking-tight',
               )}
             >
-              {PlanIcon ? <PlanIcon className="size-4" /> : initials(title)}
+              {/*
+                No organization selected means the row is drawing the PRODUCT,
+                so the square carries the product's logo. Painted in
+                `primary-foreground`, the token made to be read on the
+                gradient's `primary`, so it holds up in every palette and in
+                light and dark alike.
+              */}
+              {PlanIcon ? (
+                <PlanIcon className="size-4" />
+              ) : active ? (
+                initials(title)
+              ) : (
+                <BrandLogo className="h-5 bg-primary-foreground" />
+              )}
             </span>
             {/*
               Only where there is a plan to describe. With none — no
