@@ -1,34 +1,55 @@
-import type { FeatureContribution } from '@kwtech/module-kit';
+import type { FeatureContribution, LimitContribution } from '@kwtech/module-kit';
 
 /**
- * What the notes app lets somebody do.
- *
- * ⚠ A PLACEHOLDER. One key, and all it does today is OFFER the app on the
- * workspace's Apps page — there is no API yet, so there is nothing else to
- * guard. When notes gain operations, split the keys by risk (reading notes vs
- * writing vs deleting other people's) as `QUEUE_FEATURE` does, and bind each
- * operation below.
+ * What the notes app lets somebody do, and how much of it (docs/NOTE-PLAN.md §3).
  *
  * ⚠ WORKSPACE LEVEL, like every sub-app's: an app always lives under a
  * workspace, and the Apps page asks the key of the workspace in the URL. A
  * workspace key is also FILTERED BY THE PLAN, so a key no plan entitles is a
  * key nobody can use.
+ *
+ * Keys are ATOMIC and split by RISK. Reading is one thing; writing your own
+ * notes and editing shared ones is another; throwing away SOMEBODY ELSE'S work
+ * is a third, and the only one that is privileged.
  */
 export const NOTE_FEATURE = {
-  /** Open the notes app on the Apps page. */
+  /** Open the app; read your own notes and shared ones; pin; your own appearance settings. */
   read: 'note:read',
+  /**
+   * Create notes; edit your own and shared ones; share or unshare your own;
+   * trash, restore and delete forever your own; restore a revision.
+   */
+  write: 'note:write',
+  /** Trash, restore and delete forever OTHER people's SHARED notes. Never their private ones. */
+  manageAll: 'note:manage_all',
 } as const;
 
 export type NoteFeatureKey = (typeof NOTE_FEATURE)[keyof typeof NOTE_FEATURE];
 
+/*
+ * ── no key that reads somebody else's private note ──────────────────────────
+ *
+ * Not `manage_all`, not a super admin's. "Private" is a promise made to the
+ * author, and a key that breaks it would make every private note shared with
+ * whoever an organization later hands that key to (NOTE-PLAN decision 12).
+ *
+ * ── no key for managing tags ────────────────────────────────────────────────
+ *
+ * A tag is a label on a note, not a row in a shared vocabulary. A vocabulary
+ * would list the tags on private notes to everybody who can see it — `#layoffs`
+ * says enough on its own (NOTE-PLAN decision 9).
+ */
+
 /**
  * Contributed to the app's composed registry (`seed/registry.ts`).
  *
- * ⚠ NO BINDINGS, because there are no operations to bind. The registry audit
- * reports the key as unbound, which is true: it gates a screen, not a request.
- * The first GraphQL operation this module ships must be bound here in the same
- * change, or it is reachable by anybody signed in — this module cannot use
- * `@RequireFeature`, so the bindings ARE its guard.
+ * ⚠ THE BINDINGS ARE THE GUARD. This module cannot use `@RequireFeature` — the
+ * decorator belongs to `module-permissions`, and a module may not import a
+ * module (§9) — so `FeatureGuard` enforces each operation through its binding.
+ * A binding is listed only once its operation exists: the server half binds
+ * them in the same change that adds them, and `surface-coverage.test.ts` fails
+ * on any operation that is neither bound nor named there as deliberately
+ * unbound.
  */
 export const NOTE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
@@ -36,9 +57,69 @@ export const NOTE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     module: 'note',
     level: 'workspace',
     label: 'See notes',
-    description: 'Open the notes app on the workspace’s Apps page.',
+    description: 'Open the notes app, read your own notes and the ones shared with the workspace.',
     tags: ['note'],
     bindings: [],
+  },
+  {
+    key: NOTE_FEATURE.write,
+    module: 'note',
+    level: 'workspace',
+    label: 'Write notes',
+    description:
+      'Create notes, edit your own and the ones shared with the workspace, share your own, and trash or restore them.',
+    tags: ['note'],
+    bindings: [],
+  },
+  {
+    key: NOTE_FEATURE.manageAll,
+    module: 'note',
+    /*
+     * ⚠ PRIVILEGED because it throws away work that is not the holder's. It has
+     * NO BINDINGS OF ITS OWN: trashing is one operation whoever does it, bound
+     * to `note:write`, and the service asks the `NoteAccessCheck` port whether
+     * the actor holds this key only when the note is somebody else's.
+     */
+    isPrivileged: true,
+    level: 'workspace',
+    label: 'Manage everyone’s shared notes',
+    description:
+      'Trash, restore and permanently delete notes other people shared with the workspace. Private notes stay private.',
+    tags: ['note'],
+    bindings: [],
+  },
+];
+
+export const NOTE_LIMIT = {
+  /** How many notes one person may have in a workspace, trashed ones included. */
+  notes: 'note:notes',
+} as const;
+
+/**
+ * The cap, PLAN-SOURCED — every `note:*` key is workspace level, so an
+ * organization's subscription is there to read — and COUNTED PER PERSON.
+ *
+ * ⚠ PER PERSON, NOT PER WORKSPACE. Nobody may read another member's private
+ * notes, so nobody could clear them: a workspace-wide cap would let one person,
+ * or one departed person, fill everybody's quota with notes no admin can see or
+ * delete (NOTE-PLAN §9).
+ *
+ * ⚠ TRASHED NOTES COUNT. Otherwise trash-then-create is unlimited storage.
+ * Deleting forever is what frees a place.
+ *
+ * The module counts, in the transaction that inserts; the host's `LimitChecker`
+ * only resolves the number (`LimitCheckInput.current`).
+ */
+export const NOTE_LIMIT_REGISTRY: readonly LimitContribution[] = [
+  {
+    key: NOTE_LIMIT.notes,
+    module: 'note',
+    label: 'Notes per person',
+    description: 'How many notes one person may keep in a workspace, counting the ones in the trash.',
+    source: 'plan',
+    countedOver: 'user',
+    required: false,
+    defaultValue: 500,
   },
 ];
 
@@ -60,6 +141,13 @@ export const NOTE_ROLE_PRESETS: readonly NoteRolePreset[] = [
     label: 'Notes user',
     icon: 'pen',
     level: 'workspace',
-    features: [NOTE_FEATURE.read],
+    features: [NOTE_FEATURE.read, NOTE_FEATURE.write],
+  },
+  {
+    key: 'note-admin',
+    label: 'Notes admin',
+    icon: 'pen',
+    level: 'workspace',
+    features: [NOTE_FEATURE.read, NOTE_FEATURE.write, NOTE_FEATURE.manageAll],
   },
 ];

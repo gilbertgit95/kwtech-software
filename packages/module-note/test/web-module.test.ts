@@ -23,6 +23,6 @@ describe('noteWebModule', () => {
   });
 
   it('carries its keys, so an app composing descriptors sees them', () => {
-    expect(module.features?.map((spec) => spec.key)).toEqual([NOTE_FEATURE.read]);
+    expect(module.features?.map((spec) => spec.key)).toEqual(Object.values(NOTE_FEATURE));
   });
 });
