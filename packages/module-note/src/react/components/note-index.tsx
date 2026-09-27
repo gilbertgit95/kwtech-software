@@ -7,7 +7,7 @@ import type { NoteLook } from '../../domain/appearance.js';
 import { normalizeNoteColor } from '../../domain/appearance.js';
 import type { NoteSummaryView } from '../note-client.js';
 import type { NotesState } from '../use-notes.js';
-import { notePaperColor } from '../view/appearance.js';
+import { notePaperColor, stickyTilt } from '../view/appearance.js';
 import { noteLinesStyle } from './paper.js';
 
 /**
@@ -79,10 +79,19 @@ export function NoteIndex({
             {list === null ? 'Opening your notes…' : emptyMessage(state)}
           </p>
         ) : (
-          <ul aria-label="Notes">
+          <ul
+            aria-label="Notes"
+            className={
+              look === 'sticky' ? 'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3 p-3' : undefined
+            }
+          >
             {ordered.map((note) => (
               <li key={note.id}>
-                <IndexRow note={note} open={note.id === openId} onOpen={onOpen} />
+                {look === 'sticky' ? (
+                  <StickyCard note={note} open={note.id === openId} onOpen={onOpen} />
+                ) : (
+                  <IndexRow note={note} open={note.id === openId} onOpen={onOpen} />
+                )}
               </li>
             ))}
           </ul>
@@ -127,6 +136,38 @@ function IndexRow({ note, open, onOpen }: { note: NoteSummaryView; open: boolean
       <span className="block truncate text-[0.85em] text-muted-foreground">
         {note.preview || (note.mine ? 'Nothing written yet' : `By ${note.authorName ?? 'a member'}`)}
       </span>
+    </button>
+  );
+}
+
+/**
+ * The Sticky notes look's index: a board of squares, each in its note's colour
+ * at full strength and leaning a little (`stickyTilt`) — straightened while
+ * open or focused, so the one you are on reads square.
+ */
+function StickyCard({ note, open, onOpen }: { note: NoteSummaryView; open: boolean; onOpen: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(note.id)}
+      aria-current={open ? 'true' : undefined}
+      className={cn(
+        'flex aspect-square w-full flex-col overflow-hidden p-2 text-left leading-snug shadow-md shadow-foreground/15 transition-transform focus-visible:rotate-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none',
+        open && 'ring-2 ring-primary',
+      )}
+      style={{
+        backgroundColor: notePaperColor(normalizeNoteColor(note.color), 'strong'),
+        transform: open ? undefined : `rotate(${stickyTilt(note.id)}deg)`,
+      }}
+    >
+      <span className="flex items-center gap-1 font-semibold">
+        <span className="line-clamp-2">{note.displayTitle}</span>
+        {note.pinned ? <Pin aria-label="Pinned" className="size-3.5 shrink-0 text-primary" /> : null}
+        {note.visibility === 'workspace' ? (
+          <Users aria-label="Shared with the workspace" className="size-3.5 shrink-0 text-muted-foreground" />
+        ) : null}
+      </span>
+      <span className="mt-1 line-clamp-4 text-[0.85em] text-muted-foreground">{note.preview}</span>
     </button>
   );
 }

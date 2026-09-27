@@ -187,6 +187,27 @@ export const NOTE_PROSE_RHYTHM = {
   tableRow: { lines: 1, after: 0 },
 } as const satisfies Record<string, { lines: number; after: number }>;
 
+/** The most a sticky note leans, in degrees, either way. */
+export const STICKY_TILT_MAX = 1.5;
+
+/**
+ * How far one sticky note leans on the board — decided by its id, so a note
+ * keeps its tilt across reads instead of wobbling on every re-render, and
+ * neighbours differ. Never more than `STICKY_TILT_MAX`.
+ */
+export function stickyTilt(noteId: string): number {
+  // FNV-1a, then a finaliser. ⚠ The mixing matters: ids are cuids that differ in
+  // their last characters, and a plain `hash * 31 + c` puts those neighbours a
+  // hair apart — every note on the board leaned the same way.
+  let hash = 2166136261;
+  for (let i = 0; i < noteId.length; i += 1) hash = Math.imul(hash ^ noteId.charCodeAt(i), 16777619);
+  hash = Math.imul(hash ^ (hash >>> 15), 2246822507);
+  hash ^= hash >>> 13;
+  // 0…1 from the hash, then onto −max…max, in tenths of a degree.
+  const unit = (hash >>> 0) / 0xffffffff;
+  return Math.round((unit * 2 - 1) * STICKY_TILT_MAX * 10) / 10;
+}
+
 function round(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }

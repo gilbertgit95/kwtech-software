@@ -1,4 +1,5 @@
 import { NOTE_CONFLICT_MESSAGE, NOTE_NOT_FOUND_MESSAGE } from '../src/domain/notes.js';
+import { STICKY_TILT_MAX, stickyTilt } from '../src/react/view/appearance.js';
 import {
   AUTOSAVE_IDLE_MS,
   AUTOSAVE_MAX_WAIT_MS,
@@ -109,6 +110,20 @@ describe('saveFailure', () => {
     expect(saveFailure(new Error(NOTE_NOT_FOUND_MESSAGE))).toBe('gone');
     expect(saveFailure(new Error('Cannot reach the server.'))).toBe('other');
     expect(saveFailure('not an error')).toBe('other');
+  });
+});
+
+describe('stickyTilt', () => {
+  it('leans each note the same way every time, within the limit', () => {
+    for (const id of ['a', 'note-1', 'cmg1x9z0000', '']) {
+      expect(stickyTilt(id)).toBe(stickyTilt(id));
+      expect(Math.abs(stickyTilt(id))).toBeLessThanOrEqual(STICKY_TILT_MAX);
+    }
+  });
+
+  it('does not lean every note alike', () => {
+    const tilts = new Set(['n1', 'n2', 'n3', 'n4', 'n5', 'n6'].map(stickyTilt));
+    expect(tilts.size).toBeGreaterThan(1);
   });
 });
 
