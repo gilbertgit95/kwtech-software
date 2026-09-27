@@ -31,10 +31,11 @@ export function prepareNoteSearch(raw: string | null | undefined): string | null
  * the escapes added for the other two would be escaped again. The backslash is
  * Postgres' default `LIKE` escape character.
  *
- * ⚠ FOR A RAW `ILIKE` ONLY. Whether Prisma's `contains` already escapes is a
- * driver detail; the repository uses whichever the server phase proves against
- * Postgres with `100%` and `a_b`, and never both — escaping twice searches for
- * the backslashes.
+ * ⚠ PRISMA'S `contains` DOES NOT ESCAPE. Checked against Postgres through the
+ * app's client (Prisma 7.9, 2026-09-28): `contains: '100%'` matched "100 apples"
+ * and `contains: 'a_b'` matched "axb"; the escaped terms matched only the right
+ * rows. So the repository passes THIS to `contains`, exactly once — escaping
+ * twice would search for the backslashes.
  */
 export function escapeLikePattern(term: string): string {
   return term.replace(/[\\%_]/gu, (character) => `\\${character}`);

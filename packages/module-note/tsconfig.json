@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // DOM for the React half. `src/index.ts` still exports no React.
+    // DOM for the React half. `src/index.ts` still exports no React, and the
+    // server half no DOM.
     "lib": ["ES2023", "DOM"],
     "jsx": "react-jsx",
     "outDir": "dist",
@@ -10,9 +11,10 @@
     // after which tsc concludes nothing changed and emits NOTHING. See
     // module-chat's tsconfig for the incident.
     "tsBuildInfoFile": "dist/.tsbuildinfo",
-    "rootDir": "src"
-    // No decorators yet: there is no Nest half. Turn them on with `src/server/`,
-    // as module-queuing-window's tsconfig does.
+    "rootDir": "src",
+    // The Nest adapter uses parameter and class decorators.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

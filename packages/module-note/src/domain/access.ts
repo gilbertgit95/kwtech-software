@@ -1,4 +1,4 @@
-import type { NoteAccessFacts, NoteRefusal } from '../types.js';
+import type { NoteAccessFacts, NoteRefusal, NoteVisibility } from '../types.js';
 
 /**
  * Who may do what to a note (NOTE-PLAN decisions 1, 11, 12 and §3).
@@ -11,6 +11,13 @@ import type { NoteAccessFacts, NoteRefusal } from '../types.js';
  * but `not_found` tells the caller the note exists, so no other reason may be
  * given for a note they cannot see.
  */
+
+export const NOTE_VISIBILITIES = ['private', 'workspace'] as const satisfies readonly NoteVisibility[];
+
+/** A visibility as it arrives over the wire — a string — narrowed. */
+export function isNoteVisibility(value: unknown): value is NoteVisibility {
+  return (NOTE_VISIBILITIES as readonly unknown[]).includes(value);
+}
 
 /**
  * Whether this person may see the note at all.

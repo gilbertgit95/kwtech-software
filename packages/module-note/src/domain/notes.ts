@@ -5,6 +5,17 @@ import type { NoteRefusal } from '../types.js';
  * stale save overwriting a newer one.
  */
 
+/**
+ * ⚠ THE TWO MESSAGES THE APP MATCHES ON. `formatError` strips `extensions` in
+ * production, so a client never sees a refusal's reason — only its message
+ * (backend rules, "Known gap"). These two change what the app DOES, so they are
+ * exported from here and compared exactly; every other refusal is only shown.
+ */
+export const NOTE_NOT_FOUND_MESSAGE = 'That note does not exist, or it is not shared with you';
+
+/** A save based on an older version. The app reads the note again and offers reload, overwrite or a copy. */
+export const NOTE_CONFLICT_MESSAGE = 'Somebody else saved this note while you were editing it';
+
 /** In code points. A title is a line in the index, not a paragraph. */
 export const NOTE_TITLE_MAX = 200;
 
@@ -75,6 +86,32 @@ export function noteDisplayTitle(note: { title: string; body: string }): string 
   const points = [...firstLine];
   if (points.length <= DISPLAY_TITLE_MAX) return firstLine;
   return `${points.slice(0, DISPLAY_TITLE_MAX - 1).join('')}…`;
+}
+
+/** In code points: enough for a few lines on a sticky note, never the whole body. */
+export const NOTE_PREVIEW_MAX = 240;
+
+/**
+ * The start of a body as PLAIN text, stored beside it so the index never reads
+ * the body itself: Markdown markers dropped, whitespace (newlines included)
+ * collapsed, cut at `NOTE_PREVIEW_MAX` with an ellipsis.
+ *
+ * ⚠ A PREVIEW, NOT A RENDERING. It only has to read sensibly in two or three
+ * lines; links keep their text and lose their address, and anything subtler is
+ * left as typed.
+ */
+export function notePreview(body: string): string {
+  const text = body
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|>\s*|\d+[.)]\s+|```.*$)/u, ''))
+    .join(' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, '$1')
+    .replace(/\*\*|__|~~|[*`]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const points = [...text];
+  if (points.length <= NOTE_PREVIEW_MAX) return text;
+  return `${points.slice(0, NOTE_PREVIEW_MAX - 1).join('')}…`;
 }
 
 /**

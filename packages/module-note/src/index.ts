@@ -9,8 +9,10 @@
 
 export * from './domain/access.js';
 export * from './domain/appearance.js';
+export * from './domain/events.js';
 export * from './domain/notes.js';
 export * from './domain/search.js';
 export * from './domain/tags.js';
 export * from './feature-keys.js';
+export * from './operations.js';
 export * from './types.js';

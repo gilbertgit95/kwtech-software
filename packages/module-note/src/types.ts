@@ -39,4 +39,5 @@ export type NoteRefusal =
   | 'invalid_body'
   | 'invalid_tags'
   | 'invalid_color'
+  | 'invalid_visibility'
   | 'invalid_settings';

@@ -40,16 +40,16 @@ export type NoteFeatureKey = (typeof NOTE_FEATURE)[keyof typeof NOTE_FEATURE];
  * says enough on its own (NOTE-PLAN decision 9).
  */
 
+const op = (identifier: string) => ({ surface: 'graphql_operation', identifier });
+
 /**
  * Contributed to the app's composed registry (`seed/registry.ts`).
  *
  * ⚠ THE BINDINGS ARE THE GUARD. This module cannot use `@RequireFeature` — the
  * decorator belongs to `module-permissions`, and a module may not import a
  * module (§9) — so `FeatureGuard` enforces each operation through its binding.
- * A binding is listed only once its operation exists: the server half binds
- * them in the same change that adds them, and `surface-coverage.test.ts` fails
- * on any operation that is neither bound nor named there as deliberately
- * unbound.
+ * A missing binding is an UNGUARDED OPERATION, which is why
+ * `surface-coverage.test.ts` fails on any operation that is not bound here.
  */
 export const NOTE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
@@ -59,7 +59,26 @@ export const NOTE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'See notes',
     description: 'Open the notes app, read your own notes and the ones shared with the workspace.',
     tags: ['note'],
-    bindings: [],
+    bindings: [
+      op('Query.notes'),
+      op('Query.note'),
+      op('Query.noteRevisions'),
+      op('Query.myNoteSettings'),
+      /*
+       * ⚠ The person's OWN pin and settings, and still bound. An unbound
+       * operation skips the guard's workspace-membership check entirely, and
+       * both WRITE a row into the workspace named in the request. The key is
+       * what makes "a member of this workspace" true before the row is written.
+       */
+      op('Mutation.setNotePinned'),
+      op('Mutation.setMyNoteSettings'),
+      /*
+       * ⚠ ITS OWN SURFACE. A subscription is authorised ONCE, here, and then
+       * streams — filtered per subscriber, so a private note's changes reach
+       * its author alone.
+       */
+      { surface: 'graphql_subscription', identifier: 'Subscription.noteEvents' },
+    ],
   },
   {
     key: NOTE_FEATURE.write,
@@ -69,7 +88,21 @@ export const NOTE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description:
       'Create notes, edit your own and the ones shared with the workspace, share your own, and trash or restore them.',
     tags: ['note'],
-    bindings: [],
+    bindings: [
+      op('Mutation.createNote'),
+      op('Mutation.updateNote'),
+      op('Mutation.restoreNoteRevision'),
+      op('Mutation.setNoteVisibility'),
+      /*
+       * Trashing, restoring and deleting forever are ONE operation each,
+       * whoever does it: `note:write` lets you bin your own notes, and the
+       * service asks `NoteAccessCheck` for `note:manage_all` only when the note
+       * is somebody else's shared one.
+       */
+      op('Mutation.trashNote'),
+      op('Mutation.restoreNote'),
+      op('Mutation.deleteNoteForever'),
+    ],
   },
   {
     key: NOTE_FEATURE.manageAll,

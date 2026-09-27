@@ -39,6 +39,11 @@ model Note {
   body       String         @default("")
   visibility NoteVisibility @default(private)
 
+  /// The start of the body as plain text (`notePreview`), written with every
+  /// save. The index reads THIS and never `body`: a page of notes would
+  /// otherwise carry up to 100k characters each to show two lines.
+  preview String @default("")
+
   /// One of `NOTE_COLORS`. A TINT of the app's theme, never a fixed colour.
   color String @default("default")
 

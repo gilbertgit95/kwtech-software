@@ -40,6 +40,13 @@ describe('NOTE_FEATURE_REGISTRY', () => {
     expect(NOTE_FEATURE_REGISTRY.some((spec) => /private|read_any|tag/i.test(spec.key))).toBe(false);
   });
 
+  it('⚠ binds read and write — a key with no binding guards nothing while reading as coverage', () => {
+    for (const key of [NOTE_FEATURE.read, NOTE_FEATURE.write]) {
+      const spec = NOTE_FEATURE_REGISTRY.find((candidate) => candidate.key === key);
+      expect([key, (spec?.bindings ?? []).length > 0]).toEqual([key, true]);
+    }
+  });
+
   it('composes with another module without collision', () => {
     const composed = composeFeatures([
       { key: 'note', features: NOTE_FEATURE_REGISTRY },
