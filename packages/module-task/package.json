@@ -1,0 +1,55 @@
+{
+  "name": "@kwtech/module-task",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tasks per workspace, run as a sub-app on the Apps page. A placeholder for now: one key and a static screen",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput --tsBuildInfoFile dist/.tsbuildinfo.dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@kwtech/web-ui": "workspace:*",
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "@types/node": "catalog:",
+    "@types/react": "^19.2.18",
+    "jest": "^30.4.2",
+    "react": "^19.2.8",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@kwtech/module-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@kwtech/web-ui": "workspace:*",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@kwtech/web-ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  }
+}
