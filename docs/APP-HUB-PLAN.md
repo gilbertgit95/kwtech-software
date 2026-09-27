@@ -116,6 +116,11 @@ keep working (links from notifications, the queue's public TV display).
 
 ## 6. The layout
 
+> **Superseded in part (2026-09-27, PLAN §13):** the grid is now version 2,
+> column by column, picked from presets that each have a main view in the first
+> column. The rows × columns model below is version 1, which is converted on
+> read. See `packages/module-app-hub/README.md`.
+
 One JSON document, versioned, validated on write and read leniently:
 
 ```ts

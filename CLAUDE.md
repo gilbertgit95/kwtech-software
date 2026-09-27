@@ -35,6 +35,9 @@ packages/module-chat/       conversations and messages
 packages/module-queuing-window/ walk-in queue: windows, lines, a live TV board
 packages/module-notification/ system notifications: bell, toasts, a paginated inbox
 packages/module-app-hub/    a workspace's Apps page: sub-apps in tabs or a resizable grid
+packages/module-note/       notes sub-app (placeholder: one key, a static screen)
+packages/module-task/       tasks sub-app (placeholder)
+packages/module-pos/        point-of-sale sub-app (placeholder)
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 

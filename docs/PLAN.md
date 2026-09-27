@@ -559,6 +559,50 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-27** — **The Apps page grid is picked from PRESETS, each a main
+  view with secondary views beside it, instead of set as rows × columns.
+  Layout version 2.**
+
+  A user request: no rows and columns to set; preset layouts ("one column of
+  one, the next of two, of three…", at most six cells), shown as icons that
+  look like the layout — and every layout has a main working window, the other
+  cells being extensions of it.
+  - **The grid is column by column**: `columns` holds each column's cell count
+    (`[1, 2]`), with per-column row heights. A rows × columns grid cannot say
+    "one tall cell beside two".
+  - **Every preset's first column is one cell, the main view** (cell 0), and
+    starts wider: 2/3 beside one column, 1/2 beside two. Eight presets, up to
+    main + five. The main cell is marked "Main", and a secondary view can be
+    made main (a swap).
+  - **The default grid is `[1, 2]`** — the main view with two stacked beside it
+    (`DEFAULT_GRID_COLUMNS`), replacing two side by side. The cap still
+    applies: two apps get `[1, 1]`, one app `[1]`.
+  - **Cells are positioned absolutely** in the one stage, not by CSS grid
+    tracks, so apps are still rendered once and never remount.
+  - **Version 1 layouts are converted on read**, not dropped; storage is
+    validated structurally, so a converted two-by-two still renders.
+  - **Not done:** mirrored presets (main view on the right) and uniform grids
+    without a main view. Both are one line in `GRID_PRESETS` if wanted.
+
+- **2026-09-27** — **`module-note`, `module-task` and `module-pos` ship as
+  PLACEHOLDER sub-apps: one workspace key and a static screen each, no schema,
+  no server half.**
+
+  A user request: more than one app on the Apps page, to test `module-app-hub`
+  and the module wiring before the apps do anything.
+  - **Real modules, not fixtures**, so each grows in place: the package, the
+    `apps` entry, the key and the app key (`note`, `task`, `pos`, saved in
+    layouts) are the ones the finished apps keep.
+  - **One key each** (`note:read`, `task:read`, `pos:read`), workspace level,
+    with **no bindings** because there is no API. The registry audit lists them
+    as unbound, which is true. They are in `MODULE_DECLARATIONS` already, so the
+    first operation's binding has somewhere to land.
+  - **Granted to `workspace-admin` and `workspace-user`, sold in Starter and
+    Pro** (Enterprise derives it), where the queue is. ⚠ Existing plans need an
+    operator on `/admin/plans`; a super admin sees them regardless.
+  - **Not done:** routes, a Nest half, Prisma fragments, role presets beyond one
+    each. Screens use sample data held in component state; nothing persists.
+
 - **2026-09-27** — **`module-app-hub`: a workspace's Apps page runs every
   sub-app in tabs or a resizable grid of up to six cells. Sub-apps leave the
   drawer. Supersedes the 2026-09-25 "Apps" drawer section.**

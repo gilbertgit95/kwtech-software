@@ -16,6 +16,7 @@ each other still work together. The rules come from PLAN §9 and `CLAUDE.md`;
    ┌────────────────────┴─────────────────────┴───────────────────┐
    │  module-auth   module-permissions   module-chat               │
    │  module-queuing-window   module-notification   module-app-hub │
+   │  module-note   module-task   module-pos                       │
    │                                                               │
    │  Each depends on module-kit ONLY, with web-ui, React and      │
    │  Nest as OPTIONAL peers. None imports another module.         │
@@ -38,6 +39,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-queuing-window` | module-kit | web-ui, Nest, React | both apps |
 | `module-notification` | module-kit | web-ui, Nest, React, react-dom | both apps |
 | `module-app-hub` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
+| `module-note`, `module-task`, `module-pos` | module-kit | web-ui, React (no Nest half yet) | both apps (web-server for the registry only) |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
