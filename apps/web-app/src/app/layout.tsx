@@ -1,6 +1,6 @@
 import { DEFAULT_PALETTE, palettePreloadScript } from '@kwtech/web-ui';
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Caveat, Geist, Geist_Mono, Literata, Shantell_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { appBrand } from '@/config/env';
 import { Providers } from './providers';
@@ -14,6 +14,21 @@ import './globals.css';
  */
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+
+/**
+ * The notes app's writing faces (`@kwtech/module-note`, "Fonts"): the module
+ * reads these three variables and cannot load a font itself — its React half
+ * may not depend on Next. Handwritten (Shantell Sans) is its default.
+ *
+ * ⚠ `preload: false`. Every page gets the variables, but a face is only
+ * DOWNLOADED when something on the page uses it — the notes app. Preloaded,
+ * three faces nobody outside notes ever sees would ride along on every first
+ * paint. The cost is one visible swap when notes first opens; the lines do not
+ * move, because the notebook's line height is fixed rather than measured.
+ */
+const noteHand = Shantell_Sans({ variable: '--note-font-hand', subsets: ['latin'], preload: false });
+const noteScript = Caveat({ variable: '--note-font-script', subsets: ['latin'], preload: false });
+const noteSerif = Literata({ variable: '--note-font-serif', subsets: ['latin'], preload: false });
 
 /**
  * `generateMetadata`, not a static `metadata` export.
@@ -54,7 +69,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="en"
       data-palette={DEFAULT_PALETTE}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${noteHand.variable} ${noteScript.variable} ${noteSerif.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full">
