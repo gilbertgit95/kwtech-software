@@ -189,6 +189,9 @@ apps: [{ key: 'queue', label: 'Queue', icon: 'megaphone', feature: QUEUE_FEATURE
 - **`component` gets `{ organizationId, workspaceId }`** (`AppProps`) and must
   work in a box of any size: lay out with container queries (`@container`,
   `@xl:`), not `sm:` / `lg:`, because a grid cell is narrow on a wide screen.
+- **It fills its box and pads itself.** The frame adds no padding, and a
+  full-page reading column (`mx-auto max-w-*`) wastes a wide tab: drop it when
+  embedded (`QueuePage`'s `fill`). Root at `h-full w-full`; the frame scrolls.
 - **It must not navigate.** A link away closes every app on the page, so move
   between your own screens with state (`QueueApp` opens settings in place).
 - **`feature` is REQUIRED** and workspace level: the page offers only apps the

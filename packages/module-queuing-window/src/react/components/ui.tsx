@@ -88,16 +88,23 @@ export function QueuePage({
   description,
   back,
   actions,
+  fill = false,
   children,
 }: {
   title: string;
   description?: string;
   back?: QueueBack;
   actions?: React.ReactNode;
+  /**
+   * Inside the Apps page: fill the app's box edge to edge and pad itself,
+   * rather than sit in the full page's centred reading column. A `max-w-5xl`
+   * column in a wide tab left the sides of the screen empty.
+   */
+  fill?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="@container mx-auto w-full max-w-5xl">
+    <div className={fill ? '@container h-full w-full p-4' : '@container mx-auto w-full max-w-5xl'}>
       {back && 'href' in back ? (
         // A plain anchor: this package does not depend on Next.
         <a href={back.href} className="text-sm text-muted-foreground hover:text-foreground">

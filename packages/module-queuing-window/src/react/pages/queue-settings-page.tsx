@@ -23,10 +23,13 @@ import { useQueueConsole } from '../use-queue-console.js';
 export function QueueSettingsPage({
   params,
   onBack,
+  fill = false,
 }: {
   params: Record<string, string>;
   /** Given inside the Apps page: back to the console IN PLACE rather than navigate away. */
   onBack?: () => void;
+  /** Given inside the Apps page: fill the app's box rather than the page's reading column. */
+  fill?: boolean;
 }) {
   const organizationId = params.organizationId ?? '';
   const workspaceId = params.workspaceId ?? '';
@@ -37,6 +40,7 @@ export function QueueSettingsPage({
 
   return (
     <QueuePage
+      fill={fill}
       title="Queue settings"
       back={
         onBack

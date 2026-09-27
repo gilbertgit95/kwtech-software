@@ -21,10 +21,13 @@ import { useQueueConsole } from '../use-queue-console.js';
 export function QueueConsolePage({
   params,
   onOpenSettings,
+  fill = false,
 }: {
   params: Record<string, string>;
   /** Given inside the Apps page: open settings IN PLACE rather than navigate away. */
   onOpenSettings?: () => void;
+  /** Given inside the Apps page: fill the app's box rather than the page's reading column. */
+  fill?: boolean;
 }) {
   const organizationId = params.organizationId ?? '';
   const workspaceId = params.workspaceId ?? '';
@@ -38,6 +41,7 @@ export function QueueConsolePage({
 
   return (
     <QueuePage
+      fill={fill}
       title="Queue"
       {...(state.live
         ? {}

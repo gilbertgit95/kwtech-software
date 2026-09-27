@@ -18,8 +18,8 @@ export function QueueApp({ organizationId, workspaceId }: AppProps) {
   const [screen, setScreen] = useState<'console' | 'settings'>('console');
   const params = { organizationId, workspaceId };
   return screen === 'console' ? (
-    <QueueConsolePage params={params} onOpenSettings={() => setScreen('settings')} />
+    <QueueConsolePage params={params} fill onOpenSettings={() => setScreen('settings')} />
   ) : (
-    <QueueSettingsPage params={params} onBack={() => setScreen('console')} />
+    <QueueSettingsPage params={params} fill onBack={() => setScreen('console')} />
   );
 }
