@@ -240,6 +240,16 @@ describe('shared notes and their revisions', () => {
     expect(prisma.state.noteRevision.map((row) => row.body)).toEqual(['Lights', '']);
   });
 
+  it('⚠ keeps the current text when restoring, even over the restorer’s own latest edit', async () => {
+    const { writes, prisma, note } = await shared();
+    const benEdit = await writes.update(SCOPE, BEN, note.id, note.version, { body: 'ben' });
+    const benAgain = await writes.update(SCOPE, BEN, note.id, benEdit.version, { body: 'ben, later' });
+    const revisionId = prisma.state.noteRevision[0]?.id as string;
+
+    await writes.restoreRevision(SCOPE, BEN, note.id, revisionId, benAgain.version);
+    expect(prisma.state.noteRevision.map((row) => row.body)).toContain('ben, later');
+  });
+
   it('⚠ lets only the author unshare, and tells everyone else it went', async () => {
     const { writes, pubsub, note } = await shared();
     await expect(writes.setVisibility(SCOPE, BEN, note.id, 'private')).rejects.toMatchObject({ reason: 'not_author' });

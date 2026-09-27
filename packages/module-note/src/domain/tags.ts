@@ -35,14 +35,24 @@ export function normalizeNoteTag(raw: string): string | null {
  * different from the one on screen without saying so.
  */
 export function prepareNoteTags(raw: readonly string[]): { tags: readonly string[] } | { refused: NoteRefusal } {
-  const tags: string[] = [];
-  for (const entry of raw) {
-    const tag = normalizeNoteTag(entry);
-    if (tag === null) continue;
-    if (CONTROL_OR_INVISIBLE.test(tag)) return { refused: 'invalid_tags' };
-    if ([...tag].length > NOTE_TAG_MAX) return { refused: 'invalid_tags' };
-    if (!tags.includes(tag)) tags.push(tag);
+  const tags = normalizeNoteTags(raw);
+  if (tags.some((tag) => CONTROL_OR_INVISIBLE.test(tag) || [...tag].length > NOTE_TAG_MAX)) {
+    return { refused: 'invalid_tags' };
   }
   if (tags.length > NOTE_TAGS_MAX) return { refused: 'invalid_tags' };
   return { tags };
+}
+
+/**
+ * A list of tags as it is stored and compared: each normalised, empties and
+ * duplicates dropped, order kept. The editor compares by this, as it does
+ * titles by `normalizeNoteTitle`.
+ */
+export function normalizeNoteTags(raw: readonly string[]): string[] {
+  const tags: string[] = [];
+  for (const entry of raw) {
+    const tag = normalizeNoteTag(entry);
+    if (tag !== null && !tags.includes(tag)) tags.push(tag);
+  }
+  return tags;
 }

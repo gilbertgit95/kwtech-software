@@ -153,7 +153,10 @@ export class NoteWriteService {
 
     const revision = await this.prisma.noteRevision.findFirst({ where: { ...scope, id: revisionId, noteId } });
     if (!revision) throw new NoteWriteError('not_found', 'That earlier version is no longer kept');
-    return this.saveEdit(scope, actorId, note, prepareEdit(note, { title: revision.title, body: revision.body }));
+    // ⚠ ALWAYS keeps the text it replaces, whoever saved last: restoring over
+    // your own latest edit must be undoable too, or "restore" is a delete.
+    const data = prepareEdit(note, { title: revision.title, body: revision.body });
+    return this.saveEdit(scope, actorId, note, data, { keepRevision: true });
   }
 
   // ── sharing ───────────────────────────────────────────────────────────────
@@ -243,7 +246,13 @@ export class NoteWriteService {
    * Land an edit decided against `note.version`, keeping a revision when the
    * text being replaced is somebody else's shared work.
    */
-  private async saveEdit(scope: NoteScope, actorId: string, note: NoteRow, data: NoteUpdate | null): Promise<NoteRow> {
+  private async saveEdit(
+    scope: NoteScope,
+    actorId: string,
+    note: NoteRow,
+    data: NoteUpdate | null,
+    options: { keepRevision?: boolean } = {},
+  ): Promise<NoteRow> {
     // Nothing changed: no version bump, no event, no revision.
     if (!data) return note;
     const textChanges = data.title !== undefined || data.body !== undefined;
@@ -251,7 +260,8 @@ export class NoteWriteService {
     let saved: NoteRow;
     try {
       saved = await this.prisma.$transaction(async (tx) => {
-        if (textChanges && shouldKeepRevision(note, actorId)) {
+        const keep = options.keepRevision ? note.visibility === 'workspace' : shouldKeepRevision(note, actorId);
+        if (textChanges && keep) {
           await tx.noteRevision.create({
             data: { ...scope, noteId: note.id, title: note.title, body: note.body, editedById: note.updatedById },
           });

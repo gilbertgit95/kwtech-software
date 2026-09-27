@@ -36,6 +36,16 @@ export const NOTE_BODY_MAX = 100_000;
 const CONTROL_OR_INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
 /**
+ * A title as it is stored and compared: NFC, whitespace runs as one space,
+ * trimmed. Exported because the editor must compare what it would SEND by the
+ * same rule — typing "Hello " is not an unsaved change once "Hello" is stored,
+ * or autosave would resend it forever.
+ */
+export function normalizeNoteTitle(raw: string): string {
+  return raw.normalize('NFC').replace(/\s+/gu, ' ').trim();
+}
+
+/**
  * The title as it will be stored, or why it is refused.
  *
  * NFC-normalised, whitespace runs collapsed to one space, trimmed — the collapse
@@ -44,7 +54,7 @@ const CONTROL_OR_INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
  * line instead (`noteDisplayTitle`).
  */
 export function prepareNoteTitle(raw: string): { title: string } | { refused: NoteRefusal } {
-  const title = raw.normalize('NFC').replace(/\s+/gu, ' ').trim();
+  const title = normalizeNoteTitle(raw);
   if (CONTROL_OR_INVISIBLE.test(title)) return { refused: 'invalid_title' };
   if ([...title].length > NOTE_TITLE_MAX) return { refused: 'invalid_title' };
   return { title };
