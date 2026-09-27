@@ -116,6 +116,14 @@ type ChatPresence {
   userId: String!
 }
 
+input CreateNoteInput {
+  body: String
+  color: String
+  tags: [String!]
+  title: String
+  visibility: String
+}
+
 input FeatureFilterInput {
   isPrivileged: Boolean
   levels: [String!]
@@ -178,6 +186,7 @@ type Mutation {
   clearMyQueueNickname(organizationId: String!, workspaceId: String!): Boolean!
   clearQueueNickname(organizationId: String!, userId: String!, workspaceId: String!): Boolean!
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
+  createNote(input: CreateNoteInput!, organizationId: String!, workspaceId: String!): Note!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
   createPlan(input: PlanDraftInput!): PermissionPlanDetail!
   createQueueLine(endNumber: Int, name: String!, organizationId: String!, padTo: Int, prefix: String!, startNumber: Int, workspaceId: String!): QueueLine!
@@ -187,6 +196,7 @@ type Mutation {
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   declineInvitation(token: String!): InvitationDeclineResult!
   deleteChatMessage(messageId: String!): ChatMessage!
+  deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
@@ -214,6 +224,8 @@ type Mutation {
   resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   resetWorkspaceAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
+  restoreNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
+  restoreNoteRevision(expectedVersion: Int!, noteId: String!, organizationId: String!, revisionId: String!, workspaceId: String!): Note!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
@@ -226,7 +238,10 @@ type Mutation {
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
   setChatParticipantRole(conversationId: String!, role: String!, userId: String!): Boolean!
+  setMyNoteSettings(organizationId: String!, settings: NoteSettingsInput!, workspaceId: String!): NoteSettings!
   setMyQueueNickname(nickname: String!, organizationId: String!, workspaceId: String!): String!
+  setNotePinned(noteId: String!, organizationId: String!, pinned: Boolean!, workspaceId: String!): Boolean!
+  setNoteVisibility(noteId: String!, organizationId: String!, visibility: String!, workspaceId: String!): Note!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
@@ -242,8 +257,10 @@ type Mutation {
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
   stopQueue(organizationId: String!, workspaceId: String!): Boolean!
+  trashNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
   unarchiveNotifications(ids: [String!]!): Int!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  updateNote(expectedVersion: Int!, input: UpdateNoteInput!, noteId: String!, organizationId: String!, workspaceId: String!): Note!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
   updateProfile(input: UpdateProfileInput!): Viewer!
@@ -262,6 +279,90 @@ type MyWorkspace {
   roleIcon: String
   roleKey: String
   roleLabel: String
+}
+
+type Note {
+  authorId: String!
+  authorName: String
+  body: String!
+  color: String!
+  createdAt: String!
+  displayTitle: String!
+  id: String!
+  mine: Boolean!
+  pinned: Boolean!
+  preview: String!
+  tags: [String!]!
+  title: String!
+  trashedAt: String
+  updatedAt: String!
+  updatedById: String!
+  updatedByName: String
+  version: Int!
+  visibility: String!
+}
+
+type NoteEvent {
+  actorId: String
+  kind: String!
+  noteId: String
+  version: Int
+}
+
+input NoteFilterInput {
+  cursor: String
+  limit: Int
+  search: String
+  tag: String
+  view: String
+}
+
+type NoteList {
+  nextCursor: String
+  notes: [NoteSummary!]!
+  pinned: [NoteSummary!]!
+  tags: [String!]
+}
+
+type NoteRevision {
+  body: String!
+  createdAt: String!
+  editedById: String!
+  editedByName: String
+  id: String!
+  title: String!
+}
+
+type NoteSettings {
+  defaultColor: String!
+  font: String!
+  look: String!
+}
+
+input NoteSettingsInput {
+  defaultColor: String!
+  font: String!
+  look: String!
+}
+
+type NoteSummary {
+  authorId: String!
+  authorName: String
+  color: String!
+  createdAt: String!
+  displayTitle: String!
+  id: String!
+  mine: Boolean!
+  pinned: Boolean!
+  preview: String!
+  tags: [String!]!
+  title: String!
+  trashedAt: String
+  updatedAt: String!
+  updatedById: String!
+  updatedByName: String
+  version: Int!
+  visibility: String!
 }
 
 type Notification {
@@ -611,6 +712,7 @@ type Query {
   findUsersByIds(ids: [String!]!, organizationId: String!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview
   mfaFactors: [MfaFactor!]!
+  myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!
   myOrganization(organizationId: String!): PermissionOrganizationDetail
   myOrganizationRoles(level: String, organizationId: String!): [PermissionRoleDetail!]!
   myOrganizationSubscriptions(organizationId: String!): [PermissionSubscription!]!
@@ -618,6 +720,9 @@ type Query {
   myPermissions(organizationId: String, workspaceId: String): PermissionContext
   myWorkspace(organizationId: String!, workspaceId: String!): PermissionMyWorkspace
   myWorkspaces(organizationId: String!): [MyWorkspace!]!
+  note(noteId: String!, organizationId: String!, workspaceId: String!): Note
+  noteRevisions(noteId: String!, organizationId: String!, workspaceId: String!): [NoteRevision!]
+  notes(filter: NoteFilterInput, organizationId: String!, workspaceId: String!): NoteList!
   notificationBatches(after: String, first: Int, mineOnly: Boolean): NotificationBatchPage!
   notificationRecipientSearch(query: String!): [NotificationRecipient!]!
   notificationSources: [NotificationSource!]!
@@ -816,6 +921,7 @@ type SessionInfo {
 
 type Subscription {
   chatEvents(since: String): ChatEvent!
+  noteEvents(organizationId: String!, workspaceId: String!): NoteEvent!
   notificationEvents: NotificationEvent!
   planChanged: PermissionPlanChanged!
   queueDisplay: QueueDisplayEvent!
@@ -828,6 +934,13 @@ input SubscriptionDraftInput {
   planKey: String!
   status: String!
   workspaceId: String
+}
+
+input UpdateNoteInput {
+  body: String
+  color: String
+  tags: [String!]
+  title: String
 }
 
 input UpdateProfileInput {

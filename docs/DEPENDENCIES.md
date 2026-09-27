@@ -39,7 +39,8 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-queuing-window` | module-kit | web-ui, Nest, React | both apps |
 | `module-notification` | module-kit | web-ui, Nest, React, react-dom | both apps |
 | `module-app-hub` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
-| `module-note`, `module-task`, `module-pos` | module-kit | web-ui, React (no Nest half yet) | both apps (web-server for the registry only) |
+| `module-note` | module-kit | web-ui, Nest, React | both apps |
+| `module-task`, `module-pos` | module-kit | web-ui, React (no Nest half yet) | both apps (web-server for the registry only) |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -70,10 +71,11 @@ has a documented, fail-closed meaning — see each module's README.
 |---|---|---|
 | Who is calling | `resolveActorId` / `resolvePrincipal` option | `auth/resolve-principal.ts` — where auth and permissions meet |
 | May this caller do it (feature keys) | the registry's `bindings` | `FeatureGuard` from module-permissions, fed by `seed/registry.ts` |
-| How many may there be (caps) | `CHAT_LIMIT_CHECKER`, `QUEUE_LIMIT_CHECKER` | `PermissionsLimitChecker` |
-| People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY` | adapters reading `auth_user` |
+| How many may there be (caps) | `CHAT_LIMIT_CHECKER`, `QUEUE_LIMIT_CHECKER`, `NOTE_LIMIT_CHECKER` | `PermissionsLimitChecker` |
+| People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY`, `NOTE_AUTHOR_DIRECTORY` | adapters reading `auth_user` |
 | Is this person staff here | `QUEUE_STAFF_CHECK` | `queue/staff-check.ts` (permissions) |
-| Live events | `CHAT_PUBSUB`, `QUEUE_PUBSUB`, `PERMISSIONS_PUBSUB`, `NOTIFICATION_PUBSUB` | ONE `realtimePubSub()` engine for all |
+| Does this person hold a key the module checks itself | `NOTE_ACCESS_CHECK` (`note:manage_all`) | `note/access-check.ts` (permissions) |
+| Live events | `CHAT_PUBSUB`, `QUEUE_PUBSUB`, `PERMISSIONS_PUBSUB`, `NOTIFICATION_PUBSUB`, `NOTE_PUBSUB` | ONE `realtimePubSub()` engine for all |
 | A database | `X_PRISMA`, `X_PRISMA_WRITE` | `prisma/module-clients.ts`, checked by `satisfies-modules.ts` |
 | Email a person | `CHAT_NOTIFIER`, auth's and permissions' mail callbacks | `chat/notify-mail.ts`, `auth/*-mail.ts`, `permissions/invitation-mail.ts` |
 | Tell a person something (in the app) | `X_NOTIFIER` declared by the producing module | an adapter calling module-notification's `NotificationSender` — see its README |

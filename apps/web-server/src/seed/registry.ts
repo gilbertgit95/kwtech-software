@@ -15,7 +15,7 @@ import {
   type LimitContribution,
   type WebModuleDescriptor,
 } from '@kwtech/module-kit';
-import { NOTE_FEATURE_REGISTRY } from '@kwtech/module-note';
+import { NOTE_FEATURE_REGISTRY, NOTE_LIMIT_REGISTRY } from '@kwtech/module-note';
 import { NOTIFICATION_FEATURE_REGISTRY } from '@kwtech/module-notification';
 import type { AppDefaultSpec, FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
 import {
@@ -141,11 +141,16 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    */
   { key: 'queue', features: QUEUE_FEATURE_REGISTRY, limits: QUEUE_LIMIT_REGISTRY },
   /*
+   * ⚠ THE BINDINGS ARE NOTES' GUARD, as the queue's are. Leaving this line out
+   * would leave every note operation reachable by anybody signed in, and the
+   * per-person cap never mirrored for plans.
+   */
+  { key: 'note', features: NOTE_FEATURE_REGISTRY, limits: NOTE_LIMIT_REGISTRY },
+  /*
    * PLACEHOLDER sub-apps: one key each, which only offers the app on the Apps
    * page. No API yet, so nothing to bind — but the line must be here BEFORE
    * their first operation ships, because their bindings will be their guard.
    */
-  { key: 'note', features: NOTE_FEATURE_REGISTRY },
   { key: 'task', features: TASK_FEATURE_REGISTRY },
   { key: 'pos', features: POS_FEATURE_REGISTRY },
   /*

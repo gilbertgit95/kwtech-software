@@ -1,7 +1,7 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
-import { NOTE_FEATURE } from '@kwtech/module-note';
+import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
@@ -373,12 +373,25 @@ function queuePreset(key: string): QueueRolePreset {
 }
 
 /**
- * The PLACEHOLDER sub-apps — notes, tasks, the point of sale — each offered by
- * one key and doing nothing else yet. Granted to both workspace roles so every
- * member sees them on the Apps page. When a module grows real keys, replace its
- * entry here with its presets, read as `queuePreset` reads the queue's.
+ * Notes' own presets, read as `queuePreset` reads the queue's, and granted to
+ * the EXISTING workspace roles (NOTE-PLAN §3): every member reads and writes
+ * notes (`note-user`), and a workspace admin can also bin other people's SHARED
+ * notes (`note-admin`, which adds `note:manage_all`). THROWS if a preset is
+ * gone, for the same reason.
  */
-const PLACEHOLDER_APPS = [NOTE_FEATURE.read, TASK_FEATURE.read, POS_FEATURE.read];
+function notePreset(key: string): NoteRolePreset {
+  const preset = NOTE_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-note no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
+ * The PLACEHOLDER sub-apps — tasks, the point of sale — each offered by one key
+ * and doing nothing else yet. Granted to both workspace roles so every member
+ * sees them on the Apps page. When a module grows real keys, replace its entry
+ * here with its presets, as notes did.
+ */
+const PLACEHOLDER_APPS = [TASK_FEATURE.read, POS_FEATURE.read];
 
 /**
  * Runs one workspace.
@@ -442,6 +455,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     // The Apps page, and its default layout for everybody here.
     APP_HUB_FEATURE.read,
     APP_HUB_FEATURE.layoutManage,
+    // Notes, and binning anybody's shared note.
+    ...notePreset('note-admin').features,
     ...PLACEHOLDER_APPS,
   ],
   limits: {},
@@ -465,8 +480,14 @@ const WORKSPACE_USER: SystemRoleDefinition = {
    */
   // Plus the queue's staff preset: see the queue and serve at a window they are assigned to,
   // and the Apps page the queue is reached from.
-  // Plus the placeholder apps on that page.
-  features: [FEATURE.workspaceRead, ...queuePreset('queue-staff').features, APP_HUB_FEATURE.read, ...PLACEHOLDER_APPS],
+  // Plus notes (read and write their own and shared ones), and the placeholder apps on that page.
+  features: [
+    FEATURE.workspaceRead,
+    ...queuePreset('queue-staff').features,
+    APP_HUB_FEATURE.read,
+    ...notePreset('note-user').features,
+    ...PLACEHOLDER_APPS,
+  ],
   limits: {},
 };
 

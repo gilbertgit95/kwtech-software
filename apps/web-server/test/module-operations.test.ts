@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
+import { NOTE_OPERATIONS } from '@kwtech/module-note';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
 import { QUEUE_OPERATIONS } from '@kwtech/module-queuing-window';
 import { buildSchema, type GraphQLSchema, parse, validate } from 'graphql';
@@ -57,6 +58,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   queue: QUEUE_OPERATIONS,
   notification: NOTIFICATION_OPERATIONS,
   app_hub: APP_HUB_OPERATIONS,
+  note: NOTE_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {

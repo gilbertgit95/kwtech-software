@@ -12,6 +12,13 @@ import {
 } from '@kwtech/module-chat/server';
 import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
 import {
+  NOTE_ACCESS_CHECK,
+  NOTE_AUTHOR_DIRECTORY,
+  NOTE_LIMIT_CHECKER,
+  NOTE_PUBSUB,
+  noteServerModule,
+} from '@kwtech/module-note/server';
+import {
   NOTIFICATION_PUBSUB,
   NOTIFICATION_USER_DIRECTORY,
   notificationServerModule,
@@ -49,6 +56,8 @@ import { env } from './config/env.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
+import { NoteManageAllAccess } from './note/access-check.js';
+import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
 import { NOTIFICATION_SOURCES } from './notifications/sources.js';
 import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
@@ -57,6 +66,8 @@ import {
   authPrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
+  notePrismaProvider,
+  noteWritePrismaProvider,
   notificationPrismaProvider,
   notificationWritePrismaProvider,
   permissionsPrismaProvider,
@@ -493,6 +504,36 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   CHAT_SERVER_MODULE,
 
   QUEUE_SERVER_MODULE,
+
+  /*
+   * Notes — a workspace sub-app. Every port reads another module's tables:
+   * grants for `note:manage_all`, `auth_user` for names. The adapters are in
+   * ./note/.
+   */
+  noteServerModule({
+    prismaProvider: notePrismaProvider,
+    prismaWriteProvider: noteWritePrismaProvider,
+
+    // The per-person cap from the plan. Omitted, the module holds its declared default.
+    limitCheckerProvider: { provide: NOTE_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    // ⚠ Without it, nobody may bin somebody else's shared note — fail closed.
+    accessCheckProvider: {
+      provide: NOTE_ACCESS_CHECK,
+      inject: [PermissionsService],
+      useFactory: (permissions: PermissionsService) => new NoteManageAllAccess(permissions),
+    },
+    authorDirectoryProvider: {
+      provide: NOTE_AUTHOR_DIRECTORY,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new NoteAuthorDirectoryAdapter(prisma),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent index.
+    pubsubProvider: { provide: NOTE_PUBSUB, useValue: realtimePubSub() },
+  }),
 
   NOTIFICATION_SERVER_MODULE,
 

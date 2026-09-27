@@ -7,6 +7,7 @@ import {
   type ChatTransaction,
   type ChatWriteClient,
 } from '@kwtech/module-chat/server';
+import { NOTE_PRISMA, NOTE_PRISMA_WRITE, type NoteTransaction, type NoteWriteClient } from '@kwtech/module-note/server';
 import {
   NOTIFICATION_PRISMA,
   NOTIFICATION_PRISMA_WRITE,
@@ -192,6 +193,28 @@ export const queueWritePrismaProvider: Provider = {
       queueSequence: prisma.queueSequence,
       queueTicket: prisma.queueTicket,
       queueStaffNickname: prisma.queueStaffNickname,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const notePrismaProvider: Provider = {
+  provide: NOTE_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const noteWritePrismaProvider: Provider = {
+  provide: NOTE_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): NoteWriteClient =>
+    withTransaction<NoteTransaction, NoteWriteClient>(prisma, {
+      /*
+       * ⚠ Every note write is a compare-and-set on `version`, and a save with a
+       * revision runs both inside the transaction `withTransaction` dispatches.
+       */
+      note: prisma.note,
+      notePin: prisma.notePin,
+      noteRevision: prisma.noteRevision,
+      notePreference: prisma.notePreference,
     }),
 };
 
