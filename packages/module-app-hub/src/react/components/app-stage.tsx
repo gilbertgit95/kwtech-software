@@ -11,7 +11,15 @@ import {
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useRef } from 'react';
-import { type AppHubGrid, assignCell, resizeTracks, swapCells } from '../../domain/layout.js';
+import {
+  type AppHubGrid,
+  assignCell,
+  cellPosition,
+  hasMainView,
+  MAIN_CELL_INDEX,
+  resizeTracks,
+  swapCells,
+} from '../../domain/layout.js';
 import type { AppHubEntry } from '../types.js';
 import { AppIcon, buttonClass } from './ui.js';
 
@@ -35,13 +43,51 @@ export const appId = (key: string) => `app:${key}`;
 type Placement = { kind: 'tab'; visible: boolean } | { kind: 'cell'; index: number } | { kind: 'off' };
 
 /**
- * THE STAGE: every app the viewer has opened, rendered ONCE, in one CSS grid.
+ * Where one track sits along an axis, as CSS: `sizes` share what is left of the
+ * length after the gaps between them, and track `index` starts after the ones
+ * before it and their gaps.
+ */
+function track(sizes: readonly number[], index: number): { start: string; length: string } {
+  const gaps = GAP_PX * (sizes.length - 1);
+  const before = sizes.slice(0, index).reduce((sum, size) => sum + size, 0);
+  return {
+    start: `calc((100% - ${gaps}px) * ${before} + ${index * GAP_PX}px)`,
+    length: `calc((100% - ${gaps}px) * ${sizes[index] ?? 0})`,
+  };
+}
+
+/**
+ * Cell `index`'s box inside the stage. Absolute rather than a CSS grid track,
+ * because each column stacks its own number of cells: a column of one (the main
+ * view) beside a column of three shares no rows with it.
+ */
+function cellBox(grid: AppHubGrid, index: number): CSSProperties {
+  const at = cellPosition(grid, index);
+  if (!at) return { display: 'none' };
+  const across = track(grid.columnSizes, at.column);
+  const down = track(grid.rowSizes[at.column] ?? [1], at.row);
+  return { position: 'absolute', left: across.start, width: across.length, top: down.start, height: down.length };
+}
+
+/**
+ * How a cell is named in menus and to screen readers. With a main view, cell 0
+ * is it and the rest are numbered secondary views; a grid without one (saved
+ * before the presets) is named by column and position.
+ */
+function cellName(grid: AppHubGrid, index: number): string {
+  if (hasMainView(grid)) return index === MAIN_CELL_INDEX ? 'Main view' : `Secondary view ${index}`;
+  const at = cellPosition(grid, index);
+  return at ? `Column ${at.column + 1}, cell ${at.row + 1}` : `Cell ${index + 1}`;
+}
+
+/**
+ * THE STAGE: every app the viewer has opened, rendered ONCE, in one container.
  *
  * ⚠ The app elements are children of this one container in a fixed order,
- * keyed by app, and the view only changes their `grid-row` / `grid-column` —
- * or hides them. Switching between tabs and grid, swapping two cells or
- * reordering tabs therefore never remounts an app: the queue console keeps its
- * state and its socket. Rendering each view with its own containers would look
+ * keyed by app, and the view only changes their position — or hides them.
+ * Switching between tabs and grid, swapping two cells or reordering tabs
+ * therefore never remounts an app: the queue console keeps its state and its
+ * socket. Rendering each view with its own containers would look
  * the same and quietly reload every app on every move.
  *
  * An app mounts the first time it is shown and stays mounted after (hidden),
@@ -75,25 +121,20 @@ export function AppStage({
     return index === -1 ? { kind: 'off' } : { kind: 'cell', index };
   };
 
-  const style: CSSProperties =
-    mode === 'grid'
-      ? {
-          gridTemplateRows: grid.rowSizes.map((size) => `minmax(0, ${size}fr)`).join(' '),
-          gridTemplateColumns: grid.columnSizes.map((size) => `minmax(0, ${size}fr)`).join(' '),
-          gap: GAP_PX,
-        }
-      : { gridTemplateRows: 'minmax(0, 1fr)', gridTemplateColumns: 'minmax(0, 1fr)' };
-
   // Apps not yet in the grid — what an empty cell's picker offers.
   const unplaced = apps.filter((app) => !grid.cells.includes(app.key));
+  const main = hasMainView(grid);
   const describe = (index: number) => {
     const key = grid.cells[index];
-    const where = `Row ${Math.floor(index / grid.columns) + 1}, column ${(index % grid.columns) + 1}`;
-    return key ? `${where} — ${labels.get(key) ?? key}` : `${where} — empty`;
+    return `${cellName(grid, index)} — ${key ? (labels.get(key) ?? key) : 'empty'}`;
   };
   const cellTools = (index: number): CellTools => ({
     index,
-    position: { gridRow: Math.floor(index / grid.columns) + 1, gridColumn: (index % grid.columns) + 1 },
+    name: cellName(grid, index),
+    isMain: main && index === MAIN_CELL_INDEX,
+    // A secondary view may be promoted; it swaps with whatever is in the main view.
+    makeMain: main && index !== MAIN_CELL_INDEX ? () => onGridChange(swapCells(grid, index, MAIN_CELL_INDEX)) : null,
+    box: cellBox(grid, index),
     unplaced,
     moveTargets: grid.cells
       .map((_, other) => ({ index: other, label: describe(other) }))
@@ -104,7 +145,7 @@ export function AppStage({
   });
 
   return (
-    <div ref={stage} className="relative grid h-full min-h-0 w-full" style={style}>
+    <div ref={stage} className="relative h-full min-h-0 w-full">
       {apps.map((app) => {
         if (!mounted.has(app.key)) return null;
         const placement = placementOf(app.key);
@@ -126,7 +167,7 @@ export function AppStage({
             if (key !== null && held.has(key)) return null;
             const tools = cellTools(index);
             // Keyed by POSITION: an empty cell has no app to be keyed by, and a cell is a place.
-            const place = `${tools.position.gridRow}-${tools.position.gridColumn}`;
+            const place = `${grid.columns.join('-')}:${index}`;
             return key === null ? (
               <EmptyCell key={`empty:${place}`} tools={tools} />
             ) : (
@@ -142,7 +183,12 @@ export function AppStage({
 
 interface CellTools {
   index: number;
-  position: { gridRow: number; gridColumn: number };
+  /** 'Main view', 'Secondary view 2'… */
+  name: string;
+  isMain: boolean;
+  /** Swap this secondary view into the main view; null for the main view itself. */
+  makeMain: (() => void) | null;
+  box: CSSProperties;
   unplaced: readonly AppHubEntry[];
   moveTargets: readonly { index: number; label: string }[];
   assign(key: string): void;
@@ -174,12 +220,14 @@ function AppFrame({
   return (
     <section
       ref={drop.setNodeRef}
-      aria-label={app.label}
-      style={tools ? tools.position : { gridRow: 1, gridColumn: 1 }}
+      aria-label={tools ? `${app.label} — ${tools.name}` : app.label}
+      style={tools ? tools.box : { position: 'absolute', inset: 0 }}
       className={cn(
         visible ? 'flex' : 'hidden',
         'min-h-0 min-w-0 flex-col overflow-hidden',
-        inCell && 'rounded-lg border border-border bg-background',
+        inCell && 'rounded-lg border bg-background',
+        // The main view reads as the working window; secondary views as extensions of it.
+        inCell && (tools?.isMain ? 'border-primary/50' : 'border-border'),
         inCell && drop.isOver && 'ring-2 ring-primary',
         inCell && drag.isDragging && 'opacity-50',
       )}
@@ -200,6 +248,11 @@ function AppFrame({
               </span>
               <AppIcon name={app.icon} />
               <span className="truncate text-sm font-medium text-foreground">{app.label}</span>
+              {tools.isMain ? (
+                <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                  Main
+                </span>
+              ) : null}
             </span>
           }
         />
@@ -250,6 +303,12 @@ function CellMenuItems({ tools, emptyCell = false }: { tools: CellTools; emptyCe
       ) : emptyCell ? (
         <DropdownMenuLabel>Every app you have is already in the grid.</DropdownMenuLabel>
       ) : null}
+      {tools.makeMain ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={tools.makeMain}>Make this the main view</DropdownMenuItem>
+        </>
+      ) : null}
       {!emptyCell && tools.moveTargets.length > 0 ? (
         <>
           <DropdownMenuSeparator />
@@ -274,12 +333,14 @@ function EmptyCell({ tools }: { tools: CellTools }) {
   return (
     <div
       ref={drop.setNodeRef}
-      style={tools.position}
+      style={tools.box}
       className={cn(
-        'flex min-h-0 min-w-0 items-center justify-center rounded-lg border border-dashed border-border',
+        'flex min-h-0 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed',
+        tools.isMain ? 'border-primary/50' : 'border-border',
         drop.isOver && 'border-primary bg-primary/5',
       )}
     >
+      <span className="text-xs text-muted-foreground">{tools.name}</span>
       <DropdownMenu>
         <DropdownMenuTrigger className={buttonClass('secondary')}>+ Choose an app</DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -299,7 +360,7 @@ function DeniedCell({ tools, label, appKey }: { tools: CellTools; label: string;
   return (
     <div
       ref={drop.setNodeRef}
-      style={tools.position}
+      style={tools.box}
       data-app={appKey}
       className={cn(
         'flex min-h-0 min-w-0 flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 p-4 text-center',
@@ -320,10 +381,26 @@ function DeniedCell({ tools, label, appKey }: { tools: CellTools; label: string;
 // ── resizing ────────────────────────────────────────────────────────────────
 
 /**
- * The draggable borders, laid over the gaps between tracks.
+ * Which sizes a border moves: the column widths, or the heights of the cells
+ * stacked in one column.
+ */
+type Axis = { kind: 'columns' } | { kind: 'rows'; column: number };
+
+function sizesOf(grid: AppHubGrid, axis: Axis): number[] {
+  return axis.kind === 'columns' ? grid.columnSizes : (grid.rowSizes[axis.column] ?? [1]);
+}
+
+function withSizes(grid: AppHubGrid, axis: Axis, sizes: number[]): AppHubGrid {
+  if (axis.kind === 'columns') return { ...grid, columnSizes: sizes };
+  return { ...grid, rowSizes: grid.rowSizes.map((column, index) => (index === axis.column ? sizes : column)) };
+}
+
+/**
+ * The draggable borders, laid over the gaps between cells.
  *
- * A vertical border resizes the two columns beside it across EVERY row, and a
- * horizontal one the two rows across every column, so the grid stays a grid.
+ * A vertical border resizes the two columns beside it, full height. A
+ * horizontal one resizes two cells stacked in ONE column and spans only that
+ * column — the main view's height is never tied to a secondary column's rows.
  * A drag shows every move and saves once, on release. Each border is also a
  * focusable separator: ← → (or ↑ ↓) move it from the keyboard.
  */
@@ -336,36 +413,33 @@ function TrackHandles({
   grid: AppHubGrid;
   onGridChange(grid: AppHubGrid, options?: { persist?: boolean }): void;
 }) {
-  const drag = useRef<{ axis: 'columns' | 'rows'; index: number; start: number; sizes: number[]; span: number } | null>(
-    null,
-  );
+  const drag = useRef<{ axis: Axis; index: number; start: number; sizes: number[]; span: number } | null>(null);
   const latest = useRef(grid);
   latest.current = grid;
 
-  const sizesKey = (axis: 'columns' | 'rows') => (axis === 'columns' ? 'columnSizes' : 'rowSizes');
-
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>, axis: 'columns' | 'rows', index: number) => {
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>, axis: Axis, index: number) => {
     const box = stage.current?.getBoundingClientRect();
     if (!box) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const count = axis === 'columns' ? grid.columns : grid.rows;
+    const sizes = sizesOf(grid, axis);
+    const vertical = axis.kind === 'columns';
     drag.current = {
       axis,
       index,
-      start: axis === 'columns' ? event.clientX : event.clientY,
-      sizes: [...grid[sizesKey(axis)]],
+      start: vertical ? event.clientX : event.clientY,
+      sizes: [...sizes],
       // The tracks share what is left after the gaps.
-      span: (axis === 'columns' ? box.width : box.height) - GAP_PX * (count - 1),
+      span: (vertical ? box.width : box.height) - GAP_PX * (sizes.length - 1),
     };
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = drag.current;
     if (!current || current.span <= 0) return;
-    const position = current.axis === 'columns' ? event.clientX : event.clientY;
+    const position = current.axis.kind === 'columns' ? event.clientX : event.clientY;
     const sizes = resizeTracks(current.sizes, current.index, (position - current.start) / current.span);
-    onGridChange({ ...latest.current, [sizesKey(current.axis)]: sizes }, { persist: false });
+    onGridChange(withSizes(latest.current, current.axis, sizes), { persist: false });
   };
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
@@ -375,51 +449,80 @@ function TrackHandles({
     onGridChange(latest.current);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, axis: 'columns' | 'rows', index: number) => {
-    const back = axis === 'columns' ? 'ArrowLeft' : 'ArrowUp';
-    const forward = axis === 'columns' ? 'ArrowRight' : 'ArrowDown';
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, axis: Axis, index: number) => {
+    const back = axis.kind === 'columns' ? 'ArrowLeft' : 'ArrowUp';
+    const forward = axis.kind === 'columns' ? 'ArrowRight' : 'ArrowDown';
     if (event.key !== back && event.key !== forward) return;
     event.preventDefault();
-    const sizes = resizeTracks(grid[sizesKey(axis)], index, event.key === forward ? KEYBOARD_STEP : -KEYBOARD_STEP);
-    onGridChange({ ...grid, [sizesKey(axis)]: sizes });
+    const step = event.key === forward ? KEYBOARD_STEP : -KEYBOARD_STEP;
+    onGridChange(withSizes(grid, axis, resizeTracks(sizesOf(grid, axis), index, step)));
+  };
+
+  const handle = (axis: Axis, index: number, place: CSSProperties, label: string) => {
+    const sizes = sizesOf(grid, axis);
+    const before = sizes.slice(0, index + 1).reduce((sum, size) => sum + size, 0);
+    const vertical = axis.kind === 'columns';
+    return (
+      // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be focused or dragged; this is the ARIA window-splitter pattern.
+      <div
+        key={vertical ? `columns:${index}` : `rows:${axis.column}:${index}`}
+        role="separator"
+        tabIndex={0}
+        aria-orientation={vertical ? 'vertical' : 'horizontal'}
+        aria-valuenow={Math.round(before * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+        onPointerDown={(event) => onPointerDown(event, axis, index)}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onKeyDown={(event) => onKeyDown(event, axis, index)}
+        style={place}
+        className={cn(
+          'absolute z-10 touch-none rounded-full transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none',
+          vertical ? 'cursor-col-resize' : 'cursor-row-resize',
+        )}
+      />
+    );
+  };
+
+  /** The middle of the gap after track `index`, along one axis. */
+  const gapMiddle = (sizes: readonly number[], index: number) => {
+    const next = track(sizes, index + 1).start;
+    return `calc(${next} - ${GAP_PX / 2}px)`;
   };
 
   const handles: ReactNode[] = [];
-  for (const axis of ['columns', 'rows'] as const) {
-    const sizes = grid[sizesKey(axis)];
-    let before = 0;
-    for (let index = 0; index < sizes.length - 1; index += 1) {
-      before += sizes[index] ?? 0;
-      const gaps = GAP_PX * (sizes.length - 1);
-      // The middle of the gap after track `index`.
-      const offset = `calc((100% - ${gaps}px) * ${before} + ${index * GAP_PX + GAP_PX / 2}px)`;
-      const vertical = axis === 'columns';
+  for (let index = 0; index < grid.columns.length - 1; index += 1) {
+    const left = gapMiddle(grid.columnSizes, index);
+    const label = index === 0 && hasMainView(grid) ? 'Border beside the main view' : `Border after column ${index + 1}`;
+    handles.push(
+      handle(
+        { kind: 'columns' },
+        index,
+        { left, top: 0, bottom: 0, width: GAP_PX, transform: 'translateX(-50%)' },
+        label,
+      ),
+    );
+  }
+  for (const [column, rows] of grid.columns.entries()) {
+    const across = track(grid.columnSizes, column);
+    const sizes = grid.rowSizes[column] ?? [1];
+    for (let index = 0; index < rows - 1; index += 1) {
       handles.push(
-        // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be focused or dragged; this is the ARIA window-splitter pattern.
-        <div
-          key={`${axis}:${index}`}
-          role="separator"
-          tabIndex={0}
-          aria-orientation={vertical ? 'vertical' : 'horizontal'}
-          aria-valuenow={Math.round(before * 100)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={vertical ? `Border after column ${index + 1}` : `Border after row ${index + 1}`}
-          onPointerDown={(event) => onPointerDown(event, axis, index)}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onKeyDown={(event) => onKeyDown(event, axis, index)}
-          style={
-            vertical
-              ? { left: offset, top: 0, bottom: 0, width: GAP_PX, transform: 'translateX(-50%)' }
-              : { top: offset, left: 0, right: 0, height: GAP_PX, transform: 'translateY(-50%)' }
-          }
-          className={cn(
-            'absolute z-10 touch-none rounded-full transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none',
-            vertical ? 'cursor-col-resize' : 'cursor-row-resize',
-          )}
-        />,
+        handle(
+          { kind: 'rows', column },
+          index,
+          {
+            top: gapMiddle(sizes, index),
+            left: across.start,
+            width: across.length,
+            height: GAP_PX,
+            transform: 'translateY(-50%)',
+          },
+          `Border after cell ${index + 1} in column ${column + 1}`,
+        ),
       );
     }
   }

@@ -66,9 +66,14 @@ describe('AppHubService', () => {
       'over six cells',
       JSON.stringify({
         ...mine,
-        grid: { ...mine.grid, rows: 1, columns: 7, columnSizes: evenSizes(7), cells: Array(7).fill(null) },
+        grid: {
+          columns: [1, 1, 1, 1, 1, 1, 1],
+          columnSizes: evenSizes(7),
+          rowSizes: Array(7).fill([1]),
+          cells: Array(7).fill(null),
+        },
       }),
-      'The grid may have at most 6 cells.',
+      'The grid needs at least one cell in every column, and may have at most 6 cells.',
     ],
     ['too large', `"${'x'.repeat(MAX_LAYOUT_TEXT_LENGTH)}"`, 'The layout is too large.'],
   ])('⚠ refuses a layout that is %s, and writes nothing', async (_, input, message) => {

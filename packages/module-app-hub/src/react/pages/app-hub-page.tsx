@@ -24,22 +24,21 @@ import {
 } from '@kwtech/web-ui/react';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  APP_HUB_MAX_CELLS,
   type AppHubGrid,
   type AppHubLayout,
   type AppHubLayoutSource,
   assignCell,
   cellCap,
-  type GridShape,
-  isShapeAllowed,
+  type GridPreset,
   reshape,
   swapCells,
 } from '../../domain/layout.js';
 import { APP_HUB_FEATURE } from '../../feature-keys.js';
 import { type AppHubClient, createAppHubClient } from '../app-hub-client.js';
 import { AppStage, appId } from '../components/app-stage.js';
+import { LayoutPicker } from '../components/layout-picker.js';
 import { TabBar } from '../components/tab-bar.js';
-import { AppIcon, buttonClass, selectClass, useWideScreen } from '../components/ui.js';
+import { AppIcon, buttonClass, useWideScreen } from '../components/ui.js';
 import type { AppHubEntry } from '../types.js';
 import { useAppHubLayout } from '../use-app-hub-layout.js';
 
@@ -128,8 +127,8 @@ export function AppHubPage({
   const change = (next: AppHubLayout, options?: { persist?: boolean }) => state.change(next, options);
   const setGrid = (grid: AppHubGrid, options?: { persist?: boolean }) => change({ ...layout, grid }, options);
 
-  const chooseShape = (shape: GridShape) => {
-    const result = reshape(layout.grid, shape);
+  const choosePreset = (preset: GridPreset) => {
+    const result = reshape(layout.grid, preset.columns);
     if (result.dropped.length > 0) setPendingShape(result);
     else setGrid(result.grid);
   };
@@ -141,7 +140,7 @@ export function AppHubPage({
         <>
           <ViewSwitch view={layout.view} onChange={(view) => change({ ...layout, view })} />
           {mode === 'grid' ? (
-            <ShapePicker grid={layout.grid} cap={cellCap(held.length)} onChoose={chooseShape} />
+            <LayoutPicker grid={layout.grid} cap={cellCap(held.length)} onChoose={choosePreset} />
           ) : null}
           {mode === 'grid' ? (
             <button type="button" className={buttonClass('secondary')} onClick={() => setShowList((open) => !open)}>
@@ -292,51 +291,6 @@ function ViewSwitch({ view, onChange }: { view: 'tabs' | 'grid'; onChange(view: 
         </button>
       ))}
     </fieldset>
-  );
-}
-
-/**
- * Rows and columns. A choice that would need more cells than `cap` — six, or
- * fewer when the viewer holds fewer apps — is DISABLED and says why, rather
- * than accepted and then refused.
- */
-function ShapePicker({ grid, cap, onChoose }: { grid: AppHubGrid; cap: number; onChoose(shape: GridShape): void }) {
-  const why =
-    cap < APP_HUB_MAX_CELLS ? `You have ${cap} app${cap === 1 ? '' : 's'}` : `At most ${APP_HUB_MAX_CELLS} cells`;
-  const options = Array.from({ length: APP_HUB_MAX_CELLS }, (_, index) => index + 1);
-  return (
-    <div className="flex items-center gap-1.5 text-sm text-muted-foreground" title={why}>
-      <label className="flex items-center gap-1.5">
-        Rows
-        <select
-          className={selectClass}
-          value={grid.rows}
-          onChange={(event) => onChoose({ rows: Number(event.target.value), columns: grid.columns })}
-        >
-          {options.map((rows) => (
-            <option key={rows} value={rows} disabled={!isShapeAllowed({ rows, columns: grid.columns }, cap)}>
-              {rows}
-            </option>
-          ))}
-        </select>
-      </label>
-      <span aria-hidden>×</span>
-      <label className="flex items-center gap-1.5">
-        Columns
-        <select
-          className={selectClass}
-          value={grid.columns}
-          onChange={(event) => onChoose({ rows: grid.rows, columns: Number(event.target.value) })}
-        >
-          {options.map((columns) => (
-            <option key={columns} value={columns} disabled={!isShapeAllowed({ rows: grid.rows, columns }, cap)}>
-              {columns}
-            </option>
-          ))}
-        </select>
-      </label>
-      <span className="text-xs">({why})</span>
-    </div>
   );
 }
 

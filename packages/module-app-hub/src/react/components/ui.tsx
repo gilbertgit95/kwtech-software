@@ -21,9 +21,6 @@ export function buttonClass(variant: ButtonVariant = 'secondary', size: 'sm' | '
   );
 }
 
-export const selectClass =
-  'h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';
-
 /** An app's icon from the app's icon set, or nothing — a missing name must not break a tab. */
 export function AppIcon({ name, className }: { name: string | null; className?: string }) {
   const icons = useIconSet();
