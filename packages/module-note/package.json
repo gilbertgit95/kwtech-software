@@ -2,20 +2,22 @@
   "name": "@kwtech/module-note",
   "version": "0.0.0",
   "private": true,
-  "description": "Notes per workspace, run as a sub-app on the Apps page. A placeholder for now: one key and a static screen",
+  "description": "Notes per workspace, run as a sub-app on the Apps page",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./prisma": "./prisma/note.prisma",
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "prisma"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

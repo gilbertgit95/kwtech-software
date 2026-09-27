@@ -1,0 +1,143 @@
+// The notes module's slice of the data model (docs/NOTE-PLAN.md §4).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Note` and mapped to `note_*`.
+//
+//   note ──▶ pin (one per person who pinned it)
+//     └────▶ revision (the text somebody else's save replaced)
+//
+//   preference (one per person per workspace: look, font, default colour)
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE. The guard proves the caller is a
+// member of the workspace in the request, not that the note is in it: a lookup
+// by id alone reads a note from any tenant (NOTE-PLAN §5).
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key. `auth_user` belongs to
+// module-auth (PLAN §9).
+//
+// ⚠ PRESETS ARE TEXT, validated by `src/domain/appearance.ts` — a new colour,
+// look or font is a code change, and a retired one reads back as its default.
+
+/// Who may see a note. `private`: its author, whatever keys anybody else holds.
+/// `workspace`: every member holding `note:read`.
+enum NoteVisibility {
+  private
+  workspace
+}
+
+/// One note.
+model Note {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  authorId       String
+
+  /// May be empty: the index then shows the body's first line.
+  title      String         @default("")
+  /// Markdown, stored as typed. At most `NOTE_BODY_MAX` code points.
+  body       String         @default("")
+  visibility NoteVisibility @default(private)
+
+  /// One of `NOTE_COLORS`. A TINT of the app's theme, never a fixed colour.
+  color String @default("default")
+
+  /// Normalised by `normalizeNoteTag`: labels on this note, NOT a shared
+  /// vocabulary. A tag table would list private notes' tags to everybody
+  /// (NOTE-PLAN decision 9).
+  tags String[] @default([])
+
+  /// ⚠ OPTIMISTIC CONCURRENCY. Every save names the version it was based on
+  /// and the update is conditional on it (`where: { id, version }`), so of two
+  /// saves from the same version exactly one lands and the other is told.
+  version Int @default(1)
+
+  /// In the trash since then. A trashed note still COUNTS toward `note:notes`;
+  /// only deleting forever frees a place.
+  trashedAt DateTime?
+
+  /// Who saved last — decides whether the next save by someone else keeps a
+  /// revision (`shouldKeepRevision`), and names them in a conflict.
+  updatedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pins      NotePin[]
+  revisions NoteRevision[]
+
+  /// The index: the notes a person can see, live or trashed, newest first.
+  @@index([workspaceId, visibility, trashedAt, updatedAt])
+  /// A person's own notes, and the per-person count behind `note:notes`.
+  @@index([workspaceId, authorId, trashedAt])
+  @@index([organizationId])
+  @@map("note_note")
+}
+
+/// A person pinned a note to the top of THEIR index. Nobody else's order moves.
+///
+/// ⚠ A pin on a note the person can no longer see (it was unshared) is left in
+/// place and never shown: the index only joins notes they can see, and the pin
+/// comes back if the note is shared again. Deleting forever cascades.
+model NotePin {
+  userId         String
+  noteId         String
+  organizationId String
+  workspaceId    String
+
+  createdAt DateTime @default(now())
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, noteId])
+  @@index([noteId])
+  @@index([workspaceId, userId])
+  @@index([organizationId])
+  @@map("note_pin")
+}
+
+/// The title and body a save REPLACED, kept when somebody other than the last
+/// editor saves a shared note. That is what makes "anyone with note:write may
+/// edit a shared note" safe: blanking it is recoverable.
+///
+/// At most `NOTE_REVISIONS_KEPT` per note; the oldest goes when one more is
+/// written, in the same transaction.
+model NoteRevision {
+  id             String @id @default(cuid())
+  noteId         String
+  organizationId String
+  workspaceId    String
+
+  title String
+  body  String
+
+  /// Who wrote THIS text — the editor whose work the save replaced.
+  editedById String
+
+  createdAt DateTime @default(now())
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt])
+  @@index([organizationId])
+  @@map("note_revision")
+}
+
+/// One person's appearance settings in one workspace. No row means
+/// `DEFAULT_NOTE_SETTINGS`: a notebook, the handwritten font, the theme's paper.
+model NotePreference {
+  userId         String
+  workspaceId    String
+  organizationId String
+
+  look         String @default("notebook")
+  font         String @default("hand")
+  defaultColor String @default("default")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, workspaceId])
+  @@index([organizationId])
+  @@map("note_preference")
+}
