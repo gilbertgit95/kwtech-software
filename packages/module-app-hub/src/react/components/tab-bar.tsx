@@ -13,6 +13,7 @@ import {
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@kwtech/web-ui/react';
+import { ChevronDown } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { moveTab, reorderTabs } from '../../domain/layout.js';
 import type { AppHubEntry } from '../types.js';
@@ -24,6 +25,9 @@ import { AppIcon, buttonClass } from './ui.js';
  * Tabs are REORDERED, never added or closed — the set of tabs is exactly the
  * set of apps held (APP-HUB-PLAN decision 7). Drag one to move it; from the
  * keyboard, Ctrl+Shift+← / → moves the focused tab.
+ *
+ * Drawn as pills inside the page's toolbar, so the tabs and the view controls
+ * share one row rather than stacking a header, a control row and a tab strip.
  */
 export function TabBar({
   order,
@@ -67,7 +71,7 @@ export function TabBar({
   const draggingApp = dragging ? apps.get(dragging) : undefined;
 
   return (
-    <div className="flex items-end gap-1 border-b border-border">
+    <div className="flex min-w-0 flex-1 items-center gap-1">
       <DndContext
         id="app-hub-tabs"
         sensors={sensors}
@@ -76,7 +80,7 @@ export function TabBar({
         onDragCancel={() => setDragging(null)}
       >
         <SortableContext items={[...order]} strategy={horizontalListSortingStrategy}>
-          <div role="tablist" aria-label="Apps" className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
+          <div role="tablist" aria-label="Apps" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {order.map((key) => {
               const app = apps.get(key);
               return app ? (
@@ -104,8 +108,12 @@ export function TabBar({
       {/* Every tab by name, for when there are more than fit and the bar scrolls. */}
       {order.length > 1 ? (
         <DropdownMenu>
-          <DropdownMenuTrigger className={cn(buttonClass('ghost', 'sm'), 'mb-1')} aria-label="All apps">
-            All ▾
+          <DropdownMenuTrigger
+            className={cn(buttonClass('ghost', 'sm'), 'size-8 shrink-0 px-0')}
+            aria-label="All apps"
+            title="All apps"
+          >
+            <ChevronDown aria-hidden className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {order.map((key) => {
@@ -144,11 +152,11 @@ function SortableTab({
       title={`${app.label} — drag to reorder, or Ctrl+Shift+← / →`}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        '-mb-px flex shrink-0 items-center gap-2 rounded-t-md border border-transparent px-3 py-2 text-sm transition-colors',
+        'flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-sm transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected
-          ? 'border-border border-b-background bg-background font-medium text-foreground'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'bg-background font-medium text-foreground shadow-sm'
+          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
         isDragging && 'opacity-40',
       )}
       {...attributes}

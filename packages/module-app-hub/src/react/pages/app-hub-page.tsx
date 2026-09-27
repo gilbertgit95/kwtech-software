@@ -19,9 +19,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
+import {
+  AppWindow,
+  EllipsisVertical,
+  GripVertical,
+  LayoutGrid,
+  LoaderCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   type AppHubGrid,
@@ -107,7 +117,7 @@ export function AppHubPage({
 
   if (held.length === 0 && layout) {
     return (
-      <Frame title="Apps">
+      <Frame>
         <p className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
           No apps are available to you in this workspace. Apps come with your role here and with your
           organization&apos;s plan — ask a workspace admin if you expected one.
@@ -118,7 +128,7 @@ export function AppHubPage({
 
   if (!layout) {
     return (
-      <Frame title="Apps">
+      <Frame>
         <p className="text-sm text-muted-foreground">Loading…</p>
       </Frame>
     );
@@ -133,41 +143,32 @@ export function AppHubPage({
     else setGrid(result.grid);
   };
 
+  const controls = (
+    <>
+      {state.saving ? (
+        <span role="status" className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+          <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+          Saving…
+        </span>
+      ) : null}
+      <ViewSwitch view={layout.view} onChange={(view) => change({ ...layout, view })} />
+      <LayoutMenu
+        source={state.source}
+        canManage={canManage}
+        hasWorkspaceDefault={state.hasWorkspaceDefault}
+        onResetMine={() => void state.resetMine()}
+        onSaveDefault={() => setConfirm('save-default')}
+        onRemoveDefault={() => setConfirm('remove-default')}
+      />
+    </>
+  );
+
   return (
-    <Frame
-      title="Apps"
-      actions={
-        <>
-          <ViewSwitch view={layout.view} onChange={(view) => change({ ...layout, view })} />
-          {mode === 'grid' ? (
-            <LayoutPicker grid={layout.grid} cap={cellCap(held.length)} onChoose={choosePreset} />
-          ) : null}
-          {mode === 'grid' ? (
-            <button type="button" className={buttonClass('secondary')} onClick={() => setShowList((open) => !open)}>
-              {showList ? 'Hide app list' : 'Show app list'}
-            </button>
-          ) : null}
-          <LayoutMenu
-            source={state.source}
-            canManage={canManage}
-            hasWorkspaceDefault={state.hasWorkspaceDefault}
-            onResetMine={() => void state.resetMine()}
-            onSaveDefault={() => setConfirm('save-default')}
-            onRemoveDefault={() => setConfirm('remove-default')}
-          />
-        </>
-      }
-      status={
-        <>
-          {state.saving ? 'Saving…' : SOURCE_LABEL[state.source]}
-          {layout.view === 'grid' && !wide ? ' · The grid needs a wider screen, so your apps are shown as tabs.' : ''}
-        </>
-      }
-    >
+    <Frame>
       {state.error ? (
         <div
           role="alert"
-          className="mb-3 flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
         >
           <span>{state.error}</span>
           <button type="button" className="shrink-0 underline" onClick={state.dismissError}>
@@ -177,17 +178,43 @@ export function AppHubPage({
       ) : null}
 
       <GridDnd grid={layout.grid} apps={byKey} onGridChange={setGrid}>
-        <div className="flex h-full min-h-0 flex-col gap-3">
-          {mode === 'tabs' ? (
-            <TabBar
-              order={layout.tabs.order}
-              active={layout.tabs.active}
-              apps={byKey}
-              onActivate={(key) => change({ ...layout, tabs: { ...layout.tabs, active: key } })}
-              onReorder={(order) => change({ ...layout, tabs: { ...layout.tabs, order } })}
-            />
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <Toolbar trailing={controls}>
+            {mode === 'tabs' ? (
+              <TabBar
+                order={layout.tabs.order}
+                active={layout.tabs.active}
+                apps={byKey}
+                onActivate={(key) => change({ ...layout, tabs: { ...layout.tabs, active: key } })}
+                onReorder={(order) => change({ ...layout, tabs: { ...layout.tabs, order } })}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  aria-pressed={showList}
+                  aria-label={showList ? 'Hide the app list' : 'Show the app list'}
+                  title={showList ? 'Hide the app list' : 'Show the app list'}
+                  className={toolbarButtonClass(showList)}
+                  onClick={() => setShowList((open) => !open)}
+                >
+                  {showList ? (
+                    <PanelLeftClose aria-hidden className="size-4" />
+                  ) : (
+                    <PanelLeftOpen aria-hidden className="size-4" />
+                  )}
+                </button>
+                <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />
+                <LayoutPicker grid={layout.grid} cap={cellCap(held.length)} onChoose={choosePreset} />
+              </>
+            )}
+          </Toolbar>
+          {layout.view === 'grid' && !wide ? (
+            <p className="px-1 text-xs text-muted-foreground">
+              The grid needs a wider screen, so your apps are shown as tabs.
+            </p>
           ) : null}
-          <div className="flex min-h-0 flex-1 gap-3">
+          <div className="flex min-h-0 flex-1 gap-2">
             {mode === 'grid' && showList ? <AppList apps={held} grid={layout.grid} onGridChange={setGrid} /> : null}
             <div className="min-h-0 min-w-0 flex-1">
               <AppStage
@@ -246,54 +273,86 @@ export function AppHubPage({
 
 // ── the page frame ──────────────────────────────────────────────────────────
 
-/** Title and controls on top, and a body that fills the rest of the shell's height. */
-function Frame({
-  title,
-  actions,
-  status,
-  children,
-}: {
-  title: string;
-  actions?: React.ReactNode;
-  status?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+/**
+ * A body that fills the shell's height. No visible title: the drawer already
+ * says where you are, and every pixel here belongs to the apps.
+ */
+function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          {status ? <p className="mt-1 text-sm text-muted-foreground">{status}</p> : null}
-        </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-      </div>
-      <div className="mt-4 min-h-0 flex-1">{children}</div>
+    <div className="flex h-full w-full flex-col gap-2">
+      {/* Still the page's heading for screen readers and tests, which navigate by headings. */}
+      <h1 className="sr-only">Apps</h1>
+      {children}
     </div>
   );
 }
 
+/**
+ * One row of controls above the apps: what the view is about on the left (the
+ * tabs, or the app list toggle and the grid presets), and the page's own
+ * controls — saving, the view switch, the layout menu — on the right, in the
+ * same place in both views.
+ */
+function Toolbar({ children, trailing }: { children: React.ReactNode; trailing: React.ReactNode }) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="Apps"
+      className="flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-border bg-muted/40 p-1"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-1">{children}</div>
+      <div className="flex shrink-0 items-center gap-1">{trailing}</div>
+    </div>
+  );
+}
+
+/** A square icon button in the toolbar; `on` draws it raised, as a pressed segment. */
+function toolbarButtonClass(on = false): string {
+  return cn(
+    'grid size-8 shrink-0 place-items-center rounded-md transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    on
+      ? 'bg-background text-foreground shadow-sm'
+      : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+  );
+}
+
+const VIEWS = [
+  { view: 'tabs', label: 'Tabs', Icon: AppWindow },
+  { view: 'grid', label: 'Grid', Icon: LayoutGrid },
+] as const;
+
 function ViewSwitch({ view, onChange }: { view: 'tabs' | 'grid'; onChange(view: 'tabs' | 'grid'): void }) {
   return (
-    <fieldset className="inline-flex rounded-md border border-border p-0.5">
+    <fieldset className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5">
       <legend className="sr-only">View</legend>
-      {(['tabs', 'grid'] as const).map((option) => (
+      {VIEWS.map(({ view: option, label, Icon }) => (
         <button
           key={option}
           type="button"
           aria-pressed={view === option}
+          title={`Show your apps as ${label.toLowerCase()}`}
           onClick={() => onChange(option)}
           className={cn(
-            'h-8 rounded px-3 text-sm transition-colors',
-            view === option ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+            'flex h-7 items-center gap-1.5 rounded px-2.5 text-sm transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            view === option
+              ? 'bg-background font-medium text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
           )}
         >
-          {option === 'tabs' ? 'Tabs' : 'Grid'}
+          <Icon aria-hidden className="size-4" />
+          <span className="hidden lg:inline">{label}</span>
         </button>
       ))}
     </fieldset>
   );
 }
 
+/**
+ * Whose layout this is, and what may be done about it. Always shown, so the
+ * source ("Your layout") has one place to be read, now that there is no header.
+ */
 function LayoutMenu({
   source,
   canManage,
@@ -309,22 +368,33 @@ function LayoutMenu({
   onSaveDefault(): void;
   onRemoveDefault(): void;
 }) {
-  if (source !== 'user' && !canManage) return null;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={buttonClass('secondary')}>Layout ▾</DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        className={toolbarButtonClass()}
+        aria-label={`Layout options — ${SOURCE_LABEL[source]}`}
+        title={`Layout options — ${SOURCE_LABEL[source]}`}
+      >
+        <EllipsisVertical aria-hidden className="size-4" />
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuLabel className="font-normal text-muted-foreground">{SOURCE_LABEL[source]}</DropdownMenuLabel>
         {source === 'user' ? (
-          <DropdownMenuItem onSelect={onResetMine}>
-            {hasWorkspaceDefault ? "Use the workspace's default layout" : 'Use the default layout'}
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onResetMine}>
+              {hasWorkspaceDefault ? "Use the workspace's default layout" : 'Use the default layout'}
+            </DropdownMenuItem>
+          </>
         ) : null}
-        {source === 'user' && canManage ? <DropdownMenuSeparator /> : null}
         {canManage ? (
-          <DropdownMenuItem onSelect={onSaveDefault}>Save as the workspace default…</DropdownMenuItem>
-        ) : null}
-        {canManage && hasWorkspaceDefault ? (
-          <DropdownMenuItem onSelect={onRemoveDefault}>Remove the workspace default…</DropdownMenuItem>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onSaveDefault}>Save as the workspace default…</DropdownMenuItem>
+            {hasWorkspaceDefault ? (
+              <DropdownMenuItem onSelect={onRemoveDefault}>Remove the workspace default…</DropdownMenuItem>
+            ) : null}
+          </>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -409,8 +479,11 @@ function AppList({
 }) {
   const firstEmpty = grid.cells.indexOf(null);
   return (
-    <aside aria-label="Your apps" className="flex w-52 shrink-0 flex-col gap-1 overflow-y-auto">
-      <p className="px-1 text-xs text-muted-foreground">Drag an app onto a cell.</p>
+    <aside
+      aria-label="Your apps"
+      className="flex w-52 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-muted/20 p-2"
+    >
+      <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">Drag an app onto a cell</p>
       {apps.map((app) => {
         const placed = grid.cells.includes(app.key);
         return (
@@ -431,7 +504,7 @@ function DraggableApp({ app, placed, onAdd }: { app: AppHubEntry; placed: boolea
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-md border border-border px-2 py-1.5',
+        'flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5',
         drag.isDragging && 'opacity-50',
       )}
     >
@@ -442,9 +515,7 @@ function DraggableApp({ app, placed, onAdd }: { app: AppHubEntry; placed: boolea
         title={app.description ?? app.label}
         className="flex min-w-0 flex-1 cursor-grab items-center gap-2 text-sm text-foreground active:cursor-grabbing"
       >
-        <span aria-hidden className="text-muted-foreground">
-          ⠿
-        </span>
+        <GripVertical aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <AppIcon name={app.icon} />
         <span className="truncate">{app.label}</span>
       </span>

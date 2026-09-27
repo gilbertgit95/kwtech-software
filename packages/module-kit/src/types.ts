@@ -184,6 +184,20 @@ export interface ModuleRoute {
    * the prefix would silently lose the distinction.
    */
   chrome?: 'app' | 'bare' | 'fullscreen';
+  /**
+   * How the 'app' shell lays out the page body. Defaults to 'padded': the
+   * shell's gutter around a page that scrolls in the shell.
+   *
+   * 'fill' is for a WORKSPACE of a page — the Apps page, where several apps sit
+   * side by side — that must use every pixel between the header and the drawer.
+   * The shell keeps only a thin gutter and stops scrolling, so the page's
+   * `h-full` is exactly the space left and its panes scroll themselves. A page
+   * that asks for it and then grows taller than the screen is cut off, not
+   * scrolled: only ask for it when the page manages its own overflow.
+   *
+   * Ignored by 'bare' and 'fullscreen', which have no shell body to lay out.
+   */
+  body?: 'padded' | 'fill';
 }
 
 export interface ServerModuleDescriptor {

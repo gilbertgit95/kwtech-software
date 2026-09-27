@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
+import { EllipsisVertical, GripVertical, X } from 'lucide-react';
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useRef } from 'react';
 import {
   type AppHubGrid,
@@ -243,9 +244,7 @@ function AppFrame({
               title="Drag to move this app to another cell"
               className="flex min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
             >
-              <span aria-hidden className="text-muted-foreground">
-                ⠿
-              </span>
+              <GripVertical aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <AppIcon name={app.icon} />
               <span className="truncate text-sm font-medium text-foreground">{app.label}</span>
               {tools.isMain ? (
@@ -257,8 +256,12 @@ function AppFrame({
           }
         />
       ) : null}
-      {/* The app scrolls inside its frame; the page around it never does. */}
-      <div className={cn('min-h-0 flex-1 overflow-auto', inCell ? 'p-3' : 'pt-4')}>{children}</div>
+      {/*
+        The app scrolls inside its frame; the page around it never does. No
+        padding here: an app fills its box edge to edge and pads itself (the
+        sub-app contract), so padding here too doubled the gutter in a cell.
+      */}
+      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
     </section>
   );
 }
@@ -272,15 +275,21 @@ function CellHeader({ tools, handle }: { tools: CellTools; handle: ReactNode }) 
     <header className="flex items-center gap-1 border-b border-border bg-muted/40 px-2 py-1">
       {handle}
       <DropdownMenu>
-        <DropdownMenuTrigger className={buttonClass('ghost', 'sm')} aria-label="Cell options">
-          ▾
+        <DropdownMenuTrigger className={cn(buttonClass('ghost', 'sm'), 'size-7 px-0')} aria-label="Cell options">
+          <EllipsisVertical aria-hidden className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <CellMenuItems tools={tools} />
         </DropdownMenuContent>
       </DropdownMenu>
-      <button type="button" className={buttonClass('ghost', 'sm')} aria-label="Empty this cell" onClick={tools.clear}>
-        ×
+      <button
+        type="button"
+        className={cn(buttonClass('ghost', 'sm'), 'size-7 px-0')}
+        aria-label="Empty this cell"
+        title="Empty this cell"
+        onClick={tools.clear}
+      >
+        <X aria-hidden className="size-4" />
       </button>
     </header>
   );
@@ -396,6 +405,25 @@ function withSizes(grid: AppHubGrid, axis: Axis, sizes: number[]): AppHubGrid {
 }
 
 /**
+ * An ellipsis at the middle of a border, so it reads as something to drag — a
+ * bare 8px gap looks like empty space. Three dots along the border (stacked on
+ * a vertical one, in a row on a horizontal one), sized to fit inside the gap.
+ * Decorative: the separator itself carries the role and label.
+ */
+function Grip({ vertical }: { vertical: boolean }) {
+  return (
+    <span aria-hidden className={cn('pointer-events-none flex gap-0.5', vertical ? 'flex-col' : 'flex-row')}>
+      {[0, 1, 2].map((dot) => (
+        <span
+          key={dot}
+          className="size-1 rounded-full bg-muted-foreground/60 transition-colors group-hover:bg-primary group-focus-visible:bg-primary-foreground"
+        />
+      ))}
+    </span>
+  );
+}
+
+/**
  * The draggable borders, laid over the gaps between cells.
  *
  * A vertical border resizes the two columns beside it, full height. A
@@ -480,10 +508,12 @@ function TrackHandles({
         onKeyDown={(event) => onKeyDown(event, axis, index)}
         style={place}
         className={cn(
-          'absolute z-10 touch-none rounded-full transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none',
+          'group absolute z-10 flex touch-none items-center justify-center rounded-full transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none',
           vertical ? 'cursor-col-resize' : 'cursor-row-resize',
         )}
-      />
+      >
+        <Grip vertical={vertical} />
+      </div>
     );
   };
 

@@ -112,6 +112,11 @@ Duplicate route paths and duplicate feature keys **throw at composition time**,
 not at first request: two modules quietly owning one path is exactly the failure
 this package exists to catch.
 
+A route may set **`body: 'fill'`** to get the space between the header and the
+drawer with only a thin gutter, and no page scrolling: the page's `h-full` is
+exactly what is left, and its own panes scroll. The Apps page uses it. Leave it
+unset (`'padded'`) for an ordinary page, which scrolls in the shell.
+
 ## Navigation groups
 
 `composeNav` can only sort group NAMES, alphabetically, so group placement used

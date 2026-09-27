@@ -145,7 +145,7 @@ export default async function ModuleRoutePage({
   return route.chrome === 'bare' ? (
     <BareShell>{page}</BareShell>
   ) : (
-    <AppShell title={route.title} scope={scope}>
+    <AppShell title={route.title} scope={scope} body={route.body ?? 'padded'}>
       {page}
     </AppShell>
   );

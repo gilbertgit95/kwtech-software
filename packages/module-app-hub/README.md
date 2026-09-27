@@ -74,6 +74,12 @@ the server alike: `GRID_PRESETS`, `presetOf`, `hasMainView`,
 
 ## The views
 
+- **One toolbar, no page header.** The page has no visible title (an `sr-only`
+  `h1` stays for screen readers). A single row holds the tabs, or in the grid
+  the app list toggle and the presets, on the left; saving, the Tabs / Grid
+  switch and the layout menu (⋮, which also says whose layout this is) are
+  always on the right. Grid borders show a centred ellipsis, so they read as
+  draggable.
 - **Tabs**: one tab per held app, reordered by dragging (or Ctrl+Shift+← / →).
   Never added or closed: the tabs are exactly the apps held.
 - **Grid**: pick a **preset** from a row of icons, each drawn as its layout

@@ -51,6 +51,8 @@ export function appHubWebModule(options: AppHubWebModuleOptions): WebModuleDescr
         path: APP_HUB_PATH,
         component: AppHubRoute,
         title: 'Apps',
+        // Every pixel goes to the apps; the tabs and cells scroll themselves.
+        body: 'fill',
         /*
          * A WORKSPACE-level key under a workspace path, so the catch-all asks it
          * of this workspace. Every plan carries it (the page is free), so a

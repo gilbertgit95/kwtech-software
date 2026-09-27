@@ -50,9 +50,16 @@ import {
 export async function AppShell({
   title,
   scope = {},
+  body = 'padded',
   children,
 }: {
   title: string;
+  /**
+   * The route's `body` (see `ModuleRoute.body`): 'fill' drops the page gutter
+   * and the shell's scrolling, for a page that fills the screen and scrolls its
+   * own panes. The denial screen never passes it — it is an ordinary page.
+   */
+  body?: 'padded' | 'fill';
   /**
    * Which organization (and workspace) this page is inside, from the URL.
    *
@@ -458,7 +465,15 @@ export async function AppShell({
               roles={permissions?.appRoles ?? []}
             />
             {/* `min-h-0` for the same reason as the column. */}
-            <main className="min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6">{children}</main>
+            <main
+              className={
+                body === 'fill'
+                  ? 'min-h-0 flex-1 overflow-hidden p-2'
+                  : 'min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6'
+              }
+            >
+              {children}
+            </main>
             {/*
             A flex ITEM after the scrolling main, not a fixed overlay.
             `main` already owns its own scrollbar, so the bar sits below it and

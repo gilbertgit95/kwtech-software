@@ -73,7 +73,7 @@ export function LayoutPicker({
       : `A layout has at most ${APP_HUB_MAX_CELLS} cells.`;
 
   return (
-    <fieldset className="inline-flex flex-wrap items-center gap-0.5 rounded-md border border-border p-0.5">
+    <fieldset className="inline-flex min-w-0 items-center gap-0.5 overflow-x-auto">
       <legend className="sr-only">Grid layout</legend>
       {GRID_PRESETS.map((preset) => {
         const allowed = isColumnsAllowed(preset.columns, cap);
@@ -89,8 +89,10 @@ export function LayoutPicker({
             disabled={!allowed}
             onClick={() => onChoose(preset)}
             className={cn(
-              'grid h-8 w-11 place-items-center rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-              chosen ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+              'grid h-8 w-11 shrink-0 place-items-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+              chosen
+                ? 'bg-background text-primary shadow-sm'
+                : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
               'disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
             )}
           >
