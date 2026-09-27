@@ -11,8 +11,8 @@ import { NoteApp } from './note-app.js';
  * the call site.
  *
  * ⚠ NO ROUTES and NO DRAWER ENTRY. A sub-app is reached from the workspace's
- * Apps page. A full-page route for direct links (a notification, a bookmark)
- * comes with the real screens, as the queue's console route did.
+ * Apps page. A full-page route for direct links to one note (a notification, a
+ * bookmark) is not built — PLAN §12.80.
  */
 export function noteWebModule(): WebModuleDescriptor {
   return {

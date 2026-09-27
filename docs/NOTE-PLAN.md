@@ -1,10 +1,33 @@
 # `module-note` — plan
 
-Status: **planned, 2026-09-28.** Grows the placeholder (`note:read`, a static
-screen; PLAN §13, 2026-09-27) into the real notes app, in place. The package,
-the key `note:read` and the app key `note` (saved in people's layouts) are kept.
-When it is built, the contract moves to `packages/module-note/README.md`, the
-decision to PLAN §13, and this file is deleted.
+Status: **built, 2026-09-28** (phases 1–8; the browser check is the
+operator's). The contract is in `packages/module-note/README.md` and the
+decision in PLAN §13. This file stays until that check is done, then is deleted.
+
+## Built, and where it differs from this plan
+
+- **A `preview` column** (a second migration): the index reads the start of the
+  body as plain text and never the body itself, which may be 100k characters.
+- **A stale save is THROWN, not returned** — the backend rules forbid result
+  wrappers. The message is exported (`NOTE_CONFLICT_MESSAGE`) and the app
+  compares it exactly, since production strips error reasons; it then reads
+  the note again for "changed by …".
+- **`myNoteSettings` is its own query**, bound to `note:read`, rather than a
+  field on `notes`.
+- **Restoring a revision ALWAYS keeps the text it replaces**, not only when the
+  last editor was somebody else: restoring over your own latest edit must be
+  undoable too.
+- **Looks are one `Paper` frame and a spec per look** (`NOTE_LOOK_SPECS`), not
+  a component each; only Sticky notes has its own index (a board). Phase 6
+  (live updates) landed with phase 5.
+- **Colours use CSS relative colour syntax** (`oklch(from var(--card) …)`). A
+  browser without it shows the theme's card untinted.
+- **The tag list reads the 1,000 most recent visible notes**
+  (`NOTE_TAG_SCAN_MAX`): a tag only on older notes still matches a search.
+- **Prisma's `contains` does not escape `%` or `_`** — proved against Postgres,
+  so search escapes exactly once.
+- **No Playwright test**: the seed account has two-step verification, which the
+  harness does not support (as for the Apps page).
 
 ## 1. What it is
 

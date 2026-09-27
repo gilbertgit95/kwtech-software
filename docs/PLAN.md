@@ -554,10 +554,62 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 72 | Email as a second factor is only as strong as the mailbox | if a policy ever REQUIRES a second factor | Offered because it needs no phone app, and labelled weaker in the UI. A policy that counts "any factor" as compliance would accept it; one that means phishing resistance must exclude `email` (and `totp`) and wait for WebAuthn (§12.18) |
 | 73 | Notification history is kept forever | when one person's inbox reaches the hundreds of thousands, or the table's size is noticed | **Decided 2026-09-25 by the operator: keep everything.** `notification_item` is never pruned — archive and recall only hide rows — and there is no job runner to prune it anyway (§12.40). Every index leads with `recipientId`, so the cost of a long history is one person's own rows, not the table's, and keyset pagination keeps pages cheap however deep. What would change it: a real storage problem, answered by partitioning or an archive table, not by deleting what somebody was told. A flooding producer is already capped at one overflow row per person per minute (`floodLimitPerMinute`). |
 | 74 | A grid cell holding an app the viewer lost cannot say WHICH refusal | when somebody asks why an app vanished from their grid | The Apps page knows the viewer's held keys (`useHeldFeatures`) but not the permission context behind them, so a lost app's cell says "your roles here, or your organization's plan, do not include it" rather than naming one. The route-level `FeatureDenied` can, because the catch-all has the context. Fix: pass a `denialReason`-style answer to the page (the route adapter would need the context, which module routes do not receive today), or add the context to `module-kit/react` beside the held list |
+| 75 | Notes have tags but no folders | when somebody asks to file notes | A folder needs a tree, moves and cycle checks, and a shared folder raises the question tags were designed away from: whether its name tells others about the private notes inside. Tags are labels on one note, with no shared list (NOTE-PLAN decision 9) |
+| 76 | Notes search is `ILIKE` over title and body | when a person's notes number in the thousands, or someone wants ranked results | Fine at the per-person cap (500). `tsvector` or `pg_trgm` is a migration and an index; the escaping rule (`escapeLikePattern`) goes away with it |
+| 77 | The notes trash never empties itself | when the trash fills people's caps | Trashed notes count toward `note:notes`, so a full trash is a person's own reason to empty it. An automatic purge after N days is a retention policy, and a destructive default |
+| 78 | A former member's private notes stay, and nobody can delete them | when an organization asks for a leaver's data to be removed | Private means private, from admins too, so no key reaches them. The per-person cap keeps them from filling anybody else's quota. Removal needs a membership port ("is this author still a member?") and a policy on who may purge unread notes |
+| 79 | Two people typing in one shared note see a conflict, not each other | when shared notes are written together in real time | The second save is refused and offers keep-mine-as-a-copy, use theirs or overwrite; revisions keep what an overwrite replaces. Live co-editing (a CRDT) is a different design, not a setting |
+| 80 | There is no link to one note | when a notification or a bookmark should open a note | Notes live on the Apps page, where a URL change closes every other app. A full-page route (as the queue's console has) would need its own frame and a way back |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-28** — **`module-note` becomes the real notes app: private notes a
+  person may share with the workspace, Markdown, a live index, refused stale
+  saves, revisions of shared notes, and per-person looks and fonts that tint
+  the app's theme. Supersedes the 2026-09-27 placeholder for notes.**
+
+  A user request, planned and reviewed in `docs/NOTE-PLAN.md` before any code.
+  - **Keys split by risk**: `note:read`, `note:write`, and a privileged
+    `note:manage_all` that bins other people's SHARED notes, checked through a
+    port (`NoteAccessCheck`) since one bin operation serves both cases. **No
+    key reads another person's private note**, super admins included.
+  - **One answer for "not found"**: a missing note, another workspace's and
+    somebody else's private one are the same message, before any other check;
+    every lookup names its workspace. Found in review as an existence oracle
+    and a cross-tenant id.
+  - **Every write is a compare-and-set on `version`**; a stale save is refused
+    with an exported message the app matches (production strips reasons). The
+    app offers **Keep mine as a copy** on a conflict or a vanished note.
+  - **Revisions** are kept when somebody other than the last editor saves a
+    shared note (20 per note), and restoring always keeps what it replaces —
+    otherwise "anyone may edit a shared note" is "anyone may blank one".
+  - **The cap is per person and counts the trash** (`note:notes`, 500): a
+    workspace-wide cap would let private notes nobody can see or delete fill
+    everyone's quota. Unbound, the module holds its declared default, not
+    module-kit's allow-everything checker.
+  - **Tags are labels, not a vocabulary**: a shared tag list would show private
+    notes' tags to everybody.
+  - **Events are per subscriber and carry no content**, unlike the queue's
+    workspace-wide filter.
+  - **Appearance tints the theme** (the operator's rule): a note's paper is
+    `oklch(from var(--card) …)` and text stays `--card-foreground`; a test holds
+    every colour to 4.5:1 in every palette, light and dark. The web app loads
+    the three faces with `preload: false`.
+  - **Autosave is throttled** (2 s idle, at most every 5 s) because the throttle
+    bucket is shared (§12.69).
+  - **Prisma's `contains` does not escape `%` or `_`** — checked against
+    Postgres. Notes escape; `module-auth`'s admin user search does not, and is
+    left for its own change.
+  - ⚠ Existing plans are never rewritten: an operator adds `note:write`,
+    `note:manage_all` and the `note:notes` cap on `/admin/plans`.
+  - **Not done**: folders (§12.75), full-text search (§12.76), emptying the
+    trash (§12.77), removing a leaver's notes (§12.78), live co-editing
+    (§12.79), a link to one note (§12.80), attachments, per-note looks, font
+    size, notifications when a shared note changes, and a Playwright test (the
+    seed account has two-step verification, which the harness does not
+    support — as for the Apps page).
 
 - **2026-09-27** — **The Apps page grid is picked from PRESETS, each a main
   view with secondary views beside it, instead of set as rows × columns.
