@@ -1,10 +1,13 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
+import { NOTE_FEATURE } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
+import { POS_FEATURE } from '@kwtech/module-pos';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
+import { TASK_FEATURE } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
 
 /**
@@ -370,6 +373,14 @@ function queuePreset(key: string): QueueRolePreset {
 }
 
 /**
+ * The PLACEHOLDER sub-apps — notes, tasks, the point of sale — each offered by
+ * one key and doing nothing else yet. Granted to both workspace roles so every
+ * member sees them on the Apps page. When a module grows real keys, replace its
+ * entry here with its presets, read as `queuePreset` reads the queue's.
+ */
+const PLACEHOLDER_APPS = [NOTE_FEATURE.read, TASK_FEATURE.read, POS_FEATURE.read];
+
+/**
  * Runs one workspace.
  *
  * EMPTY, and the registry explains why: `workspaces:share` is the only
@@ -431,6 +442,7 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     // The Apps page, and its default layout for everybody here.
     APP_HUB_FEATURE.read,
     APP_HUB_FEATURE.layoutManage,
+    ...PLACEHOLDER_APPS,
   ],
   limits: {},
 };
@@ -453,7 +465,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
    */
   // Plus the queue's staff preset: see the queue and serve at a window they are assigned to,
   // and the Apps page the queue is reached from.
-  features: [FEATURE.workspaceRead, ...queuePreset('queue-staff').features, APP_HUB_FEATURE.read],
+  // Plus the placeholder apps on that page.
+  features: [FEATURE.workspaceRead, ...queuePreset('queue-staff').features, APP_HUB_FEATURE.read, ...PLACEHOLDER_APPS],
   limits: {},
 };
 

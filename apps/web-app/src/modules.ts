@@ -2,9 +2,12 @@ import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
+import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
+import { posWebModule } from '@kwtech/module-pos/react';
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
+import { taskWebModule } from '@kwtech/module-task/react';
 
 /**
  * Every module this app composes, listed once (PLAN §9).
@@ -33,14 +36,19 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   chatWebModule(),
   // The public display opens its own socket, so it needs to know where the API is.
   queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
+  // Placeholder sub-apps: a key and a static screen each, so the Apps page runs more than one app.
+  noteWebModule(),
+  taskWebModule(),
+  posWebModule(),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
 ];
 
 /*
  * The workspace's Apps page, handed every sub-app the modules above declare
- * (the queue today). Composed from the list rather than naming the queue, so a
- * new sub-app module added above appears on the page with no edit here — and
+ * (the queue, notes, tasks and the point of sale today). Composed from the list
+ * rather than naming them, so a new sub-app module added above appears on the
+ * page with no edit here — and
  * `composeApps` throws on two apps sharing a key, which saved layouts depend on.
  */
 export const WEB_MODULES: readonly WebModuleDescriptor[] = [

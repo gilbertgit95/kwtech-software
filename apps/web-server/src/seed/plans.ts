@@ -1,6 +1,9 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
+import { NOTE_FEATURE } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
+import { POS_FEATURE } from '@kwtech/module-pos';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
+import { TASK_FEATURE } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
 
 /**
@@ -155,6 +158,19 @@ const QUEUE = Object.values(QUEUE_FEATURE);
  */
 const APPS_PAGE = Object.values(APP_HUB_FEATURE);
 
+/**
+ * The PLACEHOLDER sub-apps — notes, tasks, the point of sale — sold where the
+ * queue is: every tier except free. Each is one workspace key that only offers
+ * the app on the Apps page; which tiers get them for real is a product decision
+ * for when they do something.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment seeded
+ * before these shipped needs an operator to add the three keys on
+ * `/admin/plans`; until then the Apps page does not offer them (a super admin,
+ * whose grants skip the plan filter, still sees them).
+ */
+const PLACEHOLDER_APPS = [NOTE_FEATURE.read, TASK_FEATURE.read, POS_FEATURE.read];
+
 /** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
 const QUEUE_CAPS = {
   [QUEUE_LIMIT.windows]: 10,
@@ -201,6 +217,7 @@ const STARTER: PlanDefinition = {
     ...OWN_BILLING,
     ...TEAMWORK,
     ...QUEUE,
+    ...PLACEHOLDER_APPS,
     ...APPS_PAGE,
   ],
   limits: {
@@ -236,6 +253,7 @@ const PRO: PlanDefinition = {
     ...OWN_BILLING,
     ...TEAMWORK,
     ...QUEUE,
+    ...PLACEHOLDER_APPS,
     ...APPS_PAGE,
   ],
   limits: {

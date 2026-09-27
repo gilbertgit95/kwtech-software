@@ -15,6 +15,7 @@ import {
   type LimitContribution,
   type WebModuleDescriptor,
 } from '@kwtech/module-kit';
+import { NOTE_FEATURE_REGISTRY } from '@kwtech/module-note';
 import { NOTIFICATION_FEATURE_REGISTRY } from '@kwtech/module-notification';
 import type { AppDefaultSpec, FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
 import {
@@ -25,7 +26,9 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
+import { POS_FEATURE_REGISTRY } from '@kwtech/module-pos';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
+import { TASK_FEATURE_REGISTRY } from '@kwtech/module-task';
 
 /**
  * EVERY module's features, composed. ← add a module's registry here
@@ -137,6 +140,14 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    * reachable by anybody signed in, and both caps unlimited.
    */
   { key: 'queue', features: QUEUE_FEATURE_REGISTRY, limits: QUEUE_LIMIT_REGISTRY },
+  /*
+   * PLACEHOLDER sub-apps: one key each, which only offers the app on the Apps
+   * page. No API yet, so nothing to bind — but the line must be here BEFORE
+   * their first operation ships, because their bindings will be their guard.
+   */
+  { key: 'note', features: NOTE_FEATURE_REGISTRY },
+  { key: 'task', features: TASK_FEATURE_REGISTRY },
+  { key: 'pos', features: POS_FEATURE_REGISTRY },
   /*
    * ⚠ And notifications' — including the key that sends AS THE PLATFORM. Leave
    * this out and anybody signed in could send to anybody.
