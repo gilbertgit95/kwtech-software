@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
-import { ChevronLeft, Eye, History, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, Users } from 'lucide-react';
+import { Eye, History, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, Users } from 'lucide-react';
 import { lazy, Suspense, useEffect, useId, useState } from 'react';
 import { NOTE_APPEARANCE_LABELS, NOTE_COLORS, type NoteLook, normalizeNoteColor } from '../../domain/appearance.js';
 import type { NoteRevisionView } from '../note-client.js';
@@ -30,16 +30,7 @@ const NoteMarkdown = lazy(async () => ({ default: (await import('./note-markdown
  * `note:write`. The API would refuse the edit anyway; this only stops the
  * screen from offering it.
  */
-export function NotePage({
-  state,
-  look,
-  onBack,
-}: {
-  state: NotesState;
-  look: NoteLook;
-  /** Only when the page replaces the index (a narrow box). */
-  onBack?: (() => void) | undefined;
-}) {
+export function NotePage({ state, look }: { state: NotesState; look: NoteLook }) {
   const { editor } = state;
   const note = editor.note;
   const draft = editor.draft;
@@ -83,19 +74,6 @@ export function NotePage({
   return (
     <article aria-labelledby={titleId} className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 px-3 pt-2 font-sans">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={() => {
-              void editor.flush();
-              onBack();
-            }}
-            // Only while the page replaces the index: wide, both are on screen.
-            className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-sm text-muted-foreground hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none @2xl:hidden"
-          >
-            <ChevronLeft aria-hidden="true" className="size-4" /> Index
-          </button>
-        ) : null}
         <div className="ml-auto flex items-center gap-1">
           {editable ? (
             <button

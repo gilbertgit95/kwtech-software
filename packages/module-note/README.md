@@ -23,6 +23,12 @@ const FEATURE_MODULES = [..., noteWebModule()];
 It contributes one sub-app (key `note`, "Notes", icon `pen`, order 20), no
 routes and nothing in the drawer.
 
+It lays out by the width of its BOX, not the screen. A thin bar between the
+notes list and the open note hides and shows the list at any width
+(`noteIndexLayout`): beside the note when there is room, slid over it when
+narrow (it steps aside again once a note is picked, or on Escape), and filling
+the box when narrow with no note open.
+
 ### Fonts — the app loads them
 
 The module reads three CSS variables and cannot load a font itself (its React

@@ -49,12 +49,14 @@ export function noteLinesStyle(look: NoteLook): CSSProperties {
  * operator's call (2026-09-28): the index and the note read as one surface.
  */
 export function Paper({
+  id,
   look,
   color,
   side,
   className,
   children,
 }: {
+  id?: string;
   look: NoteLook;
   color: string;
   side: 'single' | 'left' | 'right';
@@ -66,7 +68,10 @@ export function Paper({
   const style = { '--note-paper': notePaperColor(tint, spec.tint) } as CSSProperties;
 
   return (
-    <div className={cn('relative min-h-0 overflow-hidden bg-card text-card-foreground', frameClass(look), className)}>
+    <div
+      id={id}
+      className={cn('relative min-h-0 overflow-hidden bg-card text-card-foreground', frameClass(look), className)}
+    >
       <div className="absolute inset-0 bg-(--note-paper)" style={style} aria-hidden="true" />
       {look === 'notebook' ? <Binding side={side} /> : null}
       <div className={cn('relative flex h-full min-h-0 flex-col', look === 'notebook' && side !== 'left' && 'pl-8')}>

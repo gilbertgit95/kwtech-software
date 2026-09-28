@@ -2,7 +2,8 @@
 
 import type { AppProps } from '@kwtech/module-kit';
 import { cn } from '@kwtech/web-ui/react';
-import { Plus } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, Plus } from 'lucide-react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { AppearanceMenu } from './components/appearance-menu.js';
 import { NoteIndex } from './components/note-index.js';
 import { NotePage } from './components/note-page.js';
@@ -10,6 +11,7 @@ import { noteRootStyle, Paper } from './components/paper.js';
 import type { NoteClient, NoteTab } from './note-client.js';
 import { useNotes } from './use-notes.js';
 import { NOTE_LOOK_SPECS } from './view/appearance.js';
+import { choiceAfterOpening, NOTE_NARROW_REM, type NoteIndexLayout, noteIndexLayout } from './view/layout.js';
 
 const TABS: readonly { tab: NoteTab; label: string }[] = [
   { tab: 'all', label: 'All' },
@@ -21,10 +23,10 @@ const TABS: readonly { tab: NoteTab; label: string }[] = [
 /**
  * Notes as a SUB-APP on the workspace's Apps page.
  *
- * - `@container`, and `@…:` variants rather than `sm:` / `lg:`, because a grid
- *   cell is narrow on a wide screen. Wide, the index and the open note sit side
- *   by side — in the Notebook look as an open notebook, two pages side by side.
- *   Narrow, one page at a time: the index, or the note with a way back.
+ * - Laid out by the BOX's width, never the viewport's, because a grid cell is
+ *   narrow on a wide screen. A bar between the list and the note collapses and
+ *   expands the list at every width (`noteIndexLayout`); in the Notebook look
+ *   the two side by side are an open notebook.
  * - Which note is open is this component's own state, never a URL: a link would
  *   leave the Apps page and close every other app running on it.
  * - ⚠ Everything is drawn from the app's theme (`view/appearance.ts`); the
@@ -38,10 +40,38 @@ export function NoteApp({ organizationId, workspaceId, client }: AppProps & { cl
   const open = editor.note !== null;
   const pageColor = editor.draft?.color ?? 'default';
 
-  const openNote = (noteId: string) => void editor.open(noteId);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const narrow = useIsNarrow(rootRef);
+  const indexId = useId();
+  // What the person chose with the bar; null is automatic (see `noteIndexLayout`).
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const layout = noteIndexLayout({ narrow, noteOpen: open, choice });
+  // The notebook's two-page spread: only while both pages are side by side.
+  const joined = spread && layout === 'beside';
+
+  // Escape puts the slid-out list away — only while focus is inside it, so it
+  // never steals Escape from the editor or a menu on the note.
+  useEffect(() => {
+    if (layout !== 'overlay') return;
+    const onKey = (event: KeyboardEvent) => {
+      const list = document.getElementById(indexId);
+      if (event.key === 'Escape' && list?.contains(event.target as Node)) setChoice(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [layout, indexId]);
+
+  const openNote = (noteId: string) => {
+    setChoice((current) => choiceAfterOpening(narrow, current));
+    void editor.open(noteId);
+  };
 
   return (
-    <div className="@container flex h-full w-full min-h-0 flex-col gap-2 p-3" style={noteRootStyle(settings.font)}>
+    <div
+      ref={rootRef}
+      className="@container flex h-full w-full min-h-0 flex-col gap-2 p-3"
+      style={noteRootStyle(settings.font)}
+    >
       <header className="flex flex-wrap items-center gap-2 font-sans">
         <h1 className="sr-only">Notes</h1>
         <div role="tablist" aria-label="Which notes" className="flex items-end gap-0.5">
@@ -103,30 +133,126 @@ export function NoteApp({ organizationId, workspaceId, client }: AppProps & { cl
         </div>
       ) : null}
 
-      {/* Wide: index and page side by side. Narrow: one at a time. */}
-      <div
-        className={cn(
-          'grid min-h-0 flex-1 grid-cols-1 @2xl:grid-cols-[minmax(14rem,2fr)_5fr]',
-          spread ? 'gap-0' : 'gap-3',
-        )}
-      >
-        <Paper
-          look={look}
-          color="default"
-          side={spread ? 'left' : 'single'}
-          className={cn(open ? 'hidden @2xl:block' : 'block', spread && '@2xl:rounded-r-none @2xl:border-r-0')}
-        >
-          <NoteIndex state={state} look={look} onOpen={openNote} />
-        </Paper>
-        <Paper
-          look={look}
-          color={pageColor}
-          side={spread ? 'right' : 'single'}
-          className={cn(open ? 'block' : 'hidden @2xl:block', spread && '@2xl:rounded-l-none')}
-        >
-          <NotePage state={state} look={look} onBack={open ? () => void editor.open(null) : undefined} />
-        </Paper>
+      {/*
+       * The list and the note. The bar between them hides and shows the list at
+       * any width (`noteIndexLayout`): beside the note when wide, slid over it
+       * when narrow, the whole box when narrow with no note open.
+       */}
+      <div className="relative flex min-h-0 flex-1">
+        <div className={cn('flex min-h-0', WRAPPER[layout])}>
+          {layout !== 'hidden' ? (
+            <Paper
+              id={indexId}
+              look={look}
+              color="default"
+              side={joined ? 'left' : 'single'}
+              className={cn(INDEX_WIDTH[layout], joined && 'rounded-r-none border-r-0')}
+            >
+              <NoteIndex state={state} look={look} onOpen={openNote} />
+            </Paper>
+          ) : null}
+          <CollapseBar
+            expanded={layout !== 'hidden'}
+            controls={indexId}
+            joined={joined}
+            onToggle={() => setChoice(layout === 'hidden')}
+          />
+        </div>
+        {layout !== 'full' ? (
+          <Paper
+            look={look}
+            color={pageColor}
+            side={joined ? 'right' : 'single'}
+            className={cn('min-w-0 flex-1', joined && 'rounded-l-none')}
+          >
+            <NotePage state={state} look={look} />
+          </Paper>
+        ) : null}
       </div>
     </div>
   );
+}
+
+/** The list-and-bar group, per layout. */
+const WRAPPER: Record<NoteIndexLayout, string> = {
+  beside: 'shrink-0',
+  // Over the note, on the left, above it — and wide enough to read, never the whole box.
+  overlay: 'absolute inset-y-0 left-0 z-10',
+  full: 'min-w-0 flex-1',
+  hidden: 'shrink-0',
+};
+
+const INDEX_WIDTH: Record<NoteIndexLayout, string> = {
+  beside: 'w-[clamp(14rem,30cqw,22rem)]',
+  overlay: 'w-[min(20rem,80cqw)] shadow-lg shadow-foreground/15',
+  full: 'min-w-0 flex-1',
+  hidden: '',
+};
+
+/**
+ * The thin bar that collapses and expands the notes list. A real button, with
+ * the list's id in `aria-controls` and its state in `aria-expanded`; collapsed,
+ * it reads "Notes" down its length so the way back is never an unlabelled
+ * sliver.
+ */
+function CollapseBar({
+  expanded,
+  controls,
+  joined,
+  onToggle,
+}: {
+  expanded: boolean;
+  controls: string;
+  joined: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      aria-label={expanded ? 'Hide the notes list' : 'Show the notes list'}
+      title={expanded ? 'Hide the notes list' : 'Show the notes list'}
+      className={cn(
+        'flex w-5 shrink-0 flex-col items-center justify-center gap-2 font-sans text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+        // Between the two halves of a spread it IS the join, so it takes the paper's border.
+        joined ? 'border-y border-border bg-card' : 'mx-1 rounded-md',
+      )}
+    >
+      {expanded ? (
+        <ChevronsLeft aria-hidden="true" className="size-4" />
+      ) : (
+        <>
+          <ChevronsRight aria-hidden="true" className="size-4" />
+          <span aria-hidden="true" className="text-xs [writing-mode:vertical-rl]">
+            Notes
+          </span>
+        </>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Whether the box is narrower than `NOTE_NARROW_REM`. Measured, not a media
+ * query: it is the CELL on the Apps page that matters, and the list's layout
+ * changes behaviour here (it gets out of the way once a note is picked), not
+ * only its styling.
+ */
+function useIsNarrow(ref: RefObject<HTMLElement | null>): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => {
+      const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setNarrow(element.clientWidth < NOTE_NARROW_REM * rem);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return narrow;
 }
