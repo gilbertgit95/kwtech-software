@@ -40,48 +40,84 @@ export function AppearanceMenu({
         <Palette aria-hidden="true" className="size-4" />
         <span className="hidden @md:inline">Appearance</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Look</DropdownMenuLabel>
-        {NOTE_LOOKS.map((look) => (
-          <Choice key={look} chosen={settings.look === look} onSelect={() => onChange({ ...settings, look })}>
-            {NOTE_APPEARANCE_LABELS.look[look]}
-          </Choice>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Font</DropdownMenuLabel>
-        {NOTE_FONTS.map((font) => (
-          <Choice key={font} chosen={settings.font === font} onSelect={() => onChange({ ...settings, font })}>
-            {/* The label in its own face, so the menu is the sample. */}
-            <span style={{ fontFamily: NOTE_FONT_FACES[font].family, fontSize: `${NOTE_FONT_FACES[font].scale}em` }}>
-              {NOTE_APPEARANCE_LABELS.font[font]}
-            </span>
-          </Choice>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>New notes start in</DropdownMenuLabel>
-        {NOTE_COLORS.map((color) => (
-          <Choice
-            key={color}
-            chosen={settings.defaultColor === color}
-            onSelect={() => onChange({ ...settings, defaultColor: color })}
-          >
-            <span
-              aria-hidden="true"
-              className="size-3 rounded-full border border-border"
+      {/*
+       * Sections as WRAPPING ROWS of chips, not one option per line: stacked,
+       * the 17 choices ran off the bottom of a short screen (the operator,
+       * 2026-09-28). The height cap is the safety net for a very short window —
+       * Radix measures the room below the trigger into that variable.
+       */}
+      <DropdownMenuContent
+        align="end"
+        collisionPadding={8}
+        className="w-[min(20rem,calc(100vw-1rem))] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-2"
+      >
+        <Section label="Look">
+          {NOTE_LOOKS.map((look) => (
+            <Chip key={look} chosen={settings.look === look} onSelect={() => onChange({ ...settings, look })}>
+              {NOTE_APPEARANCE_LABELS.look[look]}
+            </Chip>
+          ))}
+        </Section>
+        <DropdownMenuSeparator className="my-2" />
+        <Section label="Font">
+          {NOTE_FONTS.map((font) => (
+            <Chip key={font} chosen={settings.font === font} onSelect={() => onChange({ ...settings, font })}>
+              {/* The label in its own face, so the menu is the sample. */}
+              <span style={{ fontFamily: NOTE_FONT_FACES[font].family, fontSize: `${NOTE_FONT_FACES[font].scale}em` }}>
+                {NOTE_APPEARANCE_LABELS.font[font]}
+              </span>
+            </Chip>
+          ))}
+        </Section>
+        <DropdownMenuSeparator className="my-2" />
+        <Section label="New notes start in">
+          {NOTE_COLORS.map((color) => (
+            <DropdownMenuItem
+              key={color}
+              role="menuitemradio"
+              aria-checked={settings.defaultColor === color}
+              // A swatch has no words on it, so its name is its label — and its tooltip.
+              aria-label={NOTE_APPEARANCE_LABELS.color[color]}
+              title={NOTE_APPEARANCE_LABELS.color[color]}
+              onSelect={() => onChange({ ...settings, defaultColor: color })}
+              className={cn(
+                'size-8 justify-center rounded-full border border-border p-0',
+                settings.defaultColor === color && 'ring-2 ring-primary ring-offset-1 ring-offset-popover',
+              )}
               style={{ backgroundColor: notePaperColor(color, 'strong') }}
-            />
-            {NOTE_APPEARANCE_LABELS.color[color]}
-          </Choice>
-        ))}
+            >
+              {settings.defaultColor === color ? <Check aria-hidden="true" className="size-4 text-foreground" /> : null}
+            </DropdownMenuItem>
+          ))}
+        </Section>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function Choice({ chosen, onSelect, children }: { chosen: boolean; onSelect: () => void; children: React.ReactNode }) {
+/** A labelled row of choices that wraps, so a section is as short as the menu is wide. */
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <DropdownMenuItem onSelect={onSelect} aria-checked={chosen} role="menuitemradio" className="gap-2">
-      <Check aria-hidden="true" className={cn('size-3.5', chosen ? 'opacity-100' : 'opacity-0')} />
+    <div className="flex flex-col gap-1.5">
+      <DropdownMenuLabel className="px-0.5 py-0 text-xs font-medium text-muted-foreground">{label}</DropdownMenuLabel>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+/** One choice as a chip; the chosen one is outlined and ticked. */
+function Chip({ chosen, onSelect, children }: { chosen: boolean; onSelect: () => void; children: React.ReactNode }) {
+  return (
+    <DropdownMenuItem
+      onSelect={onSelect}
+      aria-checked={chosen}
+      role="menuitemradio"
+      className={cn(
+        'gap-1 rounded-full border px-2.5 py-1',
+        chosen ? 'border-primary bg-primary/10 font-medium text-foreground' : 'border-border',
+      )}
+    >
+      {chosen ? <Check aria-hidden="true" className="size-3.5" /> : null}
       {children}
     </DropdownMenuItem>
   );
