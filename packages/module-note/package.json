@@ -50,6 +50,9 @@
     "typescript": "catalog:"
   },
   "dependencies": {
+    "@dnd-kit/core": "catalog:",
+    "@dnd-kit/sortable": "catalog:",
+    "@dnd-kit/utilities": "catalog:",
     "@kwtech/module-kit": "workspace:*",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"

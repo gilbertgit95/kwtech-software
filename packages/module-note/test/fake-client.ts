@@ -58,6 +58,7 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     look: 'notebook',
     font: 'hand',
     defaultColor: 'default',
+    noteOrder: [],
     createdAt: now,
     updatedAt: now,
   }),

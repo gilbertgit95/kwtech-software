@@ -119,9 +119,9 @@ describe('paging', () => {
     for (let i = 0; i < 7; i += 1) await writes.create(SCOPE, ANA, { title: `n${i}` });
 
     const seen: string[] = [];
-    let cursor: { updatedAt: Date; id: string } | undefined;
+    let cursor: string | undefined;
     for (let page = 0; page < 10; page += 1) {
-      const result = await reads.list(SCOPE, ANA, { view: 'all', limit: 3, cursor });
+      const result = await reads.list(SCOPE, ANA, { view: 'all', limit: 3, after: cursor });
       seen.push(...result.notes.map((note) => note.title));
       if (page > 0) expect(result.tags).toBeNull();
       if (!result.next) break;
@@ -160,5 +160,76 @@ describe('settings and names', () => {
     expect((await harness().reads.names([ANA])).size).toBe(0);
     const { reads } = harness({ directory: { describe: async () => [{ userId: ANA, displayName: 'Ana' }] } });
     expect([...(await reads.names([ANA, BEN, ANA]))]).toEqual([[ANA, 'Ana']]);
+  });
+});
+
+describe('the viewer’s own order', () => {
+  async function three() {
+    const h = harness();
+    const a = await h.writes.create(SCOPE, ANA, { title: 'a', visibility: 'workspace' });
+    const b = await h.writes.create(SCOPE, ANA, { title: 'b', visibility: 'workspace' });
+    const c = await h.writes.create(SCOPE, ANA, { title: 'c', visibility: 'workspace' });
+    const titles = async (viewer: string) =>
+      (await h.reads.list(SCOPE, viewer, { view: 'all' })).notes.map((n) => n.title);
+    return { ...h, a, b, c, titles };
+  }
+
+  it('starts newest first, and keeps a dragged order', async () => {
+    const { writes, a, b, c, titles } = await three();
+    expect(await titles(ANA)).toEqual(['c', 'b', 'a']);
+
+    await writes.moveNote(SCOPE, ANA, a.id, c.id);
+    expect(await titles(ANA)).toEqual(['c', 'a', 'b']);
+    await writes.moveNote(SCOPE, ANA, b.id, null);
+    expect(await titles(ANA)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('⚠ moves only the dragger’s list — shared notes stay in everyone else’s order', async () => {
+    const { writes, a, titles } = await three();
+    await writes.moveNote(SCOPE, ANA, a.id, null);
+    expect(await titles(ANA)).toEqual(['a', 'c', 'b']);
+    expect(await titles(BEN)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('⚠ does not re-sort on an edit — the list is always the person’s order', async () => {
+    const { writes, a, c, titles } = await three();
+    await writes.moveNote(SCOPE, ANA, c.id, a.id);
+    await writes.update(SCOPE, ANA, c.id, c.version, { body: 'edited' });
+    expect(await titles(ANA)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('puts a note not yet placed — new, or just shared — at the top', async () => {
+    const { writes, a, titles } = await three();
+    await writes.moveNote(SCOPE, ANA, a.id, null);
+    await writes.create(SCOPE, BEN, { title: 'from ben', visibility: 'workspace' });
+    expect((await titles(ANA))[0]).toBe('from ben');
+  });
+
+  it('pages through the order with the id cursor', async () => {
+    const { reads, writes, a } = await three();
+    await writes.moveNote(SCOPE, ANA, a.id, null);
+    const first = await reads.list(SCOPE, ANA, { view: 'all', limit: 2 });
+    expect(first.notes.map((n) => n.title)).toEqual(['a', 'c']);
+    const second = await reads.list(SCOPE, ANA, { view: 'all', limit: 2, after: first.next ?? undefined });
+    expect(second.notes.map((n) => n.title)).toEqual(['b']);
+    expect(second.next).toBeNull();
+  });
+
+  it('⚠ refuses a move next to somebody else’s private note as not found, and a trashed note as in the trash', async () => {
+    const { writes, a } = await three();
+    const secret = await writes.create(SCOPE, BEN, { title: 'secret' });
+    await expect(writes.moveNote(SCOPE, ANA, a.id, secret.id)).rejects.toMatchObject({ reason: 'not_found' });
+    await expect(writes.moveNote(SCOPE, ANA, secret.id, null)).rejects.toMatchObject({ reason: 'not_found' });
+    await writes.trash(SCOPE, ANA, a.id);
+    await expect(writes.moveNote(SCOPE, ANA, a.id, null)).rejects.toMatchObject({ reason: 'in_trash' });
+  });
+
+  it('never overwrites appearance settings when the order is saved, or the other way round', async () => {
+    const { writes, reads, a } = await three();
+    await writes.setSettings(SCOPE, ANA, { look: 'grid', font: 'serif', defaultColor: 'blue' });
+    await writes.moveNote(SCOPE, ANA, a.id, null);
+    expect(await reads.settings(SCOPE, ANA)).toEqual({ look: 'grid', font: 'serif', defaultColor: 'blue' });
+    await writes.setSettings(SCOPE, ANA, { look: 'plain', font: 'hand', defaultColor: 'default' });
+    expect((await reads.order(SCOPE, ANA))[0]).toBe(a.id);
   });
 });

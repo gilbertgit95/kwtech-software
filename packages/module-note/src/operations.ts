@@ -82,6 +82,11 @@ export const NOTE_OPERATIONS = {
     setNotePinned(${SCOPE_ARGS}, noteId: $noteId, pinned: $pinned)
   }`,
 
+  /** Omit `afterNoteId` to move the note to the top. Only the caller's own list moves. */
+  moveNote: `mutation MoveNote(${SCOPE_VARS}, $noteId: String!, $afterNoteId: String) {
+    moveNote(${SCOPE_ARGS}, noteId: $noteId, afterNoteId: $afterNoteId)
+  }`,
+
   setMyNoteSettings: `mutation SetMyNoteSettings(${SCOPE_VARS}, $settings: NoteSettingsInput!) {
     setMyNoteSettings(${SCOPE_ARGS}, settings: $settings) { ${SETTINGS} }
   }`,

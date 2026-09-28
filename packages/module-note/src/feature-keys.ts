@@ -65,12 +65,13 @@ export const NOTE_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Query.noteRevisions'),
       op('Query.myNoteSettings'),
       /*
-       * ⚠ The person's OWN pin and settings, and still bound. An unbound
+       * ⚠ The person's OWN pin, order and settings, and still bound. An unbound
        * operation skips the guard's workspace-membership check entirely, and
        * both WRITE a row into the workspace named in the request. The key is
        * what makes "a member of this workspace" true before the row is written.
        */
       op('Mutation.setNotePinned'),
+      op('Mutation.moveNote'),
       op('Mutation.setMyNoteSettings'),
       /*
        * ⚠ ITS OWN SURFACE. A subscription is authorised ONCE, here, and then

@@ -73,3 +73,34 @@ export function adjacentNote(
   if (after) return { id: after.id };
   return hasMore && at >= 0 ? 'load_more' : null;
 }
+
+/**
+ * A drag's result, for one section of the list (pinned, or the rest): the
+ * section's ids with `activeId` moved to where `overId` was, and the note it
+ * now follows — what `moveNote` is told. Null when nothing moved.
+ *
+ * ⚠ `afterId` is the neighbour WITHIN THE SECTION, or null at its top. Pinned
+ * notes are shown apart from the rest whatever the stored order, so "the top
+ * of the section" is safely "the top of the whole list".
+ */
+export function dropResult(
+  ids: readonly string[],
+  activeId: string,
+  overId: string,
+): { ids: string[]; afterId: string | null } | null {
+  const from = ids.indexOf(activeId);
+  const to = ids.indexOf(overId);
+  if (from < 0 || to < 0 || from === to) return null;
+  const next = [...ids];
+  next.splice(from, 1);
+  next.splice(to, 0, activeId);
+  const at = next.indexOf(activeId);
+  return { ids: next, afterId: at > 0 ? (next[at - 1] ?? null) : null };
+}
+
+/** Ctrl+Shift+↑ / ↓ (← / → on the sticky board) moves the focused note one place — the keyboard's drag. */
+export function keyboardMove(ids: readonly string[], noteId: string, step: -1 | 1): ReturnType<typeof dropResult> {
+  const at = ids.indexOf(noteId);
+  const over = ids[at + step];
+  return at < 0 || over === undefined ? null : dropResult(ids, noteId, over);
+}

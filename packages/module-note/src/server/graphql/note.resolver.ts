@@ -7,7 +7,7 @@ import { NoteWriteError } from '../note.errors.js';
 import type { NoteModuleOptions } from '../note.options.js';
 import { NOTE_EVENT, type NoteEvent, type NotePubSub, NULL_NOTE_PUBSUB } from '../note.pubsub.js';
 import type { NoteRevisionRow, NoteRow, NoteSummaryRow } from '../note.repository.js';
-import { NOTE_LIST_VIEWS, type NoteKeyset, type NoteListView, NoteService } from '../note.service.js';
+import { NOTE_LIST_VIEWS, type NoteListView, NoteService } from '../note.service.js';
 import { NOTE_OPTIONS, NOTE_PUBSUB } from '../note.tokens.js';
 import { NoteWriteService } from '../note-write.service.js';
 import {
@@ -72,7 +72,7 @@ export class NoteResolver {
       view: listView(filter?.view),
       search: filter?.search,
       tag: filter?.tag,
-      cursor: decodeCursor(filter?.cursor),
+      after: decodeCursor(filter?.cursor),
       limit: filter?.limit,
     });
 
@@ -276,6 +276,22 @@ export class NoteResolver {
     return pinned;
   }
 
+  /**
+   * Move a note to just after another in the caller's OWN list — or to the top
+   * when `afterNoteId` is omitted. Nobody else's list moves.
+   */
+  @Mutation(() => Boolean, { name: 'moveNote' })
+  async moveNote(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('noteId') noteId: string,
+    @Args('afterNoteId', { type: () => String, nullable: true }) afterNoteId?: string | null,
+  ): Promise<boolean> {
+    await this.writes.moveNote({ organizationId, workspaceId }, this.actor(gql.req), noteId, afterNoteId ?? null);
+    return true;
+  }
+
   @Mutation(() => NoteSettingsType, { name: 'setMyNoteSettings' })
   async setSettings(
     @Context() gql: { req?: unknown },
@@ -361,24 +377,18 @@ function renderRevision(row: NoteRevisionRow, names: ReadonlyMap<string, string>
 
 /**
  * Opaque so a client cannot build one — a hand-made cursor is a client that has
- * learned the keyset, and the next change to the ordering breaks it silently.
- * Base64 rather than a signature: it encodes nothing secret, and the query it
- * feeds still carries the viewer's visibility, so a forged one can only page
- * their own index oddly. Chat's shape.
+ * learned how paging works, and the next change to it breaks that silently.
+ * Base64 rather than a signature: it encodes nothing secret (a note id), and
+ * the list it pages is still the viewer's own visible notes.
  */
-function encodeCursor(keyset: NoteKeyset): string {
-  return Buffer.from(`${keyset.updatedAt.getTime()}:${keyset.id}`).toString('base64url');
+function encodeCursor(afterId: string): string {
+  return Buffer.from(afterId).toString('base64url');
 }
 
-function decodeCursor(cursor: string | null | undefined): NoteKeyset | undefined {
+function decodeCursor(cursor: string | null | undefined): string | undefined {
   if (!cursor) return undefined;
-  const raw = Buffer.from(cursor, 'base64url').toString('utf8');
-  const separator = raw.indexOf(':');
-  if (separator < 1) return undefined;
-  const at = Number(raw.slice(0, separator));
-  const id = raw.slice(separator + 1);
   // A malformed cursor pages from the START rather than throwing: a stale
   // cursor is not worth an error on the screen.
-  if (!Number.isFinite(at) || !id) return undefined;
-  return { updatedAt: new Date(at), id };
+  const id = Buffer.from(cursor, 'base64url').toString('utf8');
+  return /^[\w-]{1,64}$/u.test(id) ? id : undefined;
 }

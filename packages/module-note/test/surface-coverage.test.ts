@@ -49,7 +49,7 @@ function handlers(): Array<[string, object]> {
 
 describe('the notes resolver', () => {
   it('publishes operations — the reflection has to work for this suite to mean anything', () => {
-    expect(OPERATIONS.length).toBe(14);
+    expect(OPERATIONS.length).toBe(15);
   });
 
   it('⚠ declares WORKSPACE scope on the class, so no operation can forget it', () => {
@@ -69,7 +69,9 @@ describe('the notes resolver', () => {
 
   it('binds reads to note:read and writes to note:write', () => {
     for (const [identifier, key] of BOUND) {
-      const isOwnRow = identifier === 'Mutation.setNotePinned' || identifier === 'Mutation.setMyNoteSettings';
+      const isOwnRow = ['Mutation.setNotePinned', 'Mutation.moveNote', 'Mutation.setMyNoteSettings'].includes(
+        identifier,
+      );
       const isRead = identifier.startsWith('Query.') || identifier.startsWith('Subscription.') || isOwnRow;
       expect([identifier, key]).toEqual([identifier, isRead ? NOTE_FEATURE.read : NOTE_FEATURE.write]);
     }

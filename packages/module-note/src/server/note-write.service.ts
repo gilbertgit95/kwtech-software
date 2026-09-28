@@ -1,6 +1,7 @@
 import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
+  canSeeNote,
   checkEditNote,
   checkPinNote,
   checkShareNote,
@@ -13,6 +14,7 @@ import {
 import { isNoteColor, type NoteSettings, normalizeNoteSettings, noteSettingsRefusal } from '../domain/appearance.js';
 import type { NoteChange } from '../domain/events.js';
 import { checkNoteVersion, notePreview, prepareNoteBody, prepareNoteTitle } from '../domain/notes.js';
+import { moveInOrder, NOTE_ORDER_MAX, orderNotes } from '../domain/order.js';
 import { prepareNoteTags } from '../domain/tags.js';
 import { NOTE_LIMIT, NOTE_LIMIT_REGISTRY } from '../feature-keys.js';
 import type { NoteRefusal } from '../types.js';
@@ -210,6 +212,45 @@ export class NoteWriteService {
       where: { userId_noteId: { userId: actorId, noteId } },
       create: { ...scope, userId: actorId, noteId },
       update: {},
+    });
+  }
+
+  /**
+   * Move a note to just after another in THIS person's list — or to the top
+   * when `afterNoteId` is null. Nobody else's list moves.
+   *
+   * The whole list as the person sees it is written back (`moveInOrder`), so
+   * once they have arranged it, every note has its place; ids of notes they can
+   * no longer see are dropped on the way.
+   *
+   * ⚠ Both notes must be ones they can see — `not_found` otherwise, as every act
+   * answers — and a note in the trash has no place in the live list.
+   */
+  async moveNote(scope: NoteScope, actorId: string, noteId: string, afterNoteId: string | null): Promise<void> {
+    const note = await this.find(scope, noteId);
+    const refusal = checkPinNote(note, actorId) ?? (note.trashedAt ? 'in_trash' : null);
+    if (refusal) throw refusalError(refusal);
+    if (afterNoteId !== null) {
+      const after = await this.find(scope, afterNoteId);
+      if (!canSeeNote(after, actorId)) throw noteNotFound();
+    }
+
+    const where = { userId_workspaceId: { userId: actorId, workspaceId: scope.workspaceId } };
+    const [rows, preference] = await Promise.all([
+      this.prisma.note.findMany({
+        where: { ...scope, trashedAt: null, AND: [{ OR: [{ authorId: actorId }, { visibility: 'workspace' }] }] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: NOTE_ORDER_MAX,
+        omit: { body: true },
+      }),
+      this.prisma.notePreference.findUnique({ where }),
+    ]);
+    const current = orderNotes(rows, preference?.noteOrder ?? []).map((row) => row.id);
+    const noteOrder = moveInOrder(current, noteId, afterNoteId);
+    await this.prisma.notePreference.upsert({
+      where,
+      create: { ...scope, userId: actorId, noteOrder },
+      update: { noteOrder },
     });
   }
 

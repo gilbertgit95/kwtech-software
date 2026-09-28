@@ -97,6 +97,8 @@ export interface NoteClient {
   restore(scope: NoteScopeView, noteId: string): Promise<NoteView>;
   deleteForever(scope: NoteScopeView, noteId: string): Promise<void>;
   setPinned(scope: NoteScopeView, noteId: string, pinned: boolean): Promise<void>;
+  /** Only the caller's own list moves. Null `afterNoteId` is the top. */
+  move(scope: NoteScopeView, noteId: string, afterNoteId: string | null): Promise<void>;
   setSettings(scope: NoteScopeView, settings: NoteSettings): Promise<NoteSettings>;
 }
 
@@ -179,6 +181,9 @@ export function createNoteClient(options: { graphqlPath?: string } = {}): NoteCl
     },
     async setPinned(scope, noteId, pinned) {
       await graphql<{ setNotePinned: boolean }>(ops.setNotePinned, scoped(scope, { noteId, pinned }));
+    },
+    async move(scope, noteId, afterNoteId) {
+      await graphql<{ moveNote: boolean }>(ops.moveNote, scoped(scope, { noteId, afterNoteId }));
     },
     async setSettings(scope, settings) {
       return (await graphql<{ setMyNoteSettings: NoteSettings }>(ops.setMyNoteSettings, scoped(scope, { settings })))

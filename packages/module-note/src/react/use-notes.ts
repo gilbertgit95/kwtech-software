@@ -59,6 +59,16 @@ export interface NotesState {
   restore: () => Promise<void>;
   deleteForever: () => Promise<void>;
   setPinned: (noteId: string, pinned: boolean) => Promise<void>;
+  /**
+   * A drop in one section of the list: `ids` is the section as dropped, and the
+   * note now follows `afterId` (null: the top).
+   */
+  moveNote: (
+    section: 'pinned' | 'notes',
+    noteId: string,
+    ids: readonly string[],
+    afterId: string | null,
+  ) => Promise<void>;
   restoreRevision: (revisionId: string) => Promise<void>;
 }
 
@@ -282,6 +292,24 @@ export function useNotes(
           if (fresh) editor.show(fresh);
         }
       }),
+    moveNote: async (section, noteId, ids, afterId) => {
+      /*
+       * ⚠ THE ONE PLACE THE LIST CHANGES BEFORE THE SERVER ANSWERS. Every other
+       * act re-reads and shows the result; a dragged note must stay where it
+       * was dropped, or it snaps back for a round trip and then jumps. The
+       * re-read after `run` replaces this with the server's order either way.
+       */
+      setList((current) => {
+        if (!current) return current;
+        const byId = new Map([...current.pinned, ...current.notes].map((note) => [note.id, note]));
+        const reordered = ids.flatMap((id) => {
+          const note = byId.get(id);
+          return note ? [note] : [];
+        });
+        return section === 'pinned' ? { ...current, pinned: reordered } : { ...current, notes: reordered };
+      });
+      await run(() => client.move(scope, noteId, afterId));
+    },
     restoreRevision: (revisionId) =>
       act(async (noteId) => {
         const current = editor.note;

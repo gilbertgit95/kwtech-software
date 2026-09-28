@@ -42,6 +42,13 @@ catalog:
   '@nestjs/apollo': 13.4.5
   graphql: 17.0.2
 
+  # Drag and drop, in the catalog since its SECOND consumer: module-app-hub
+  # reorders tabs with it, and module-note reorders the notes list. One version
+  # for both, so a drag behaves the same on the Apps page and inside an app.
+  '@dnd-kit/core': ^6.3.1
+  '@dnd-kit/sortable': ^10.0.0
+  '@dnd-kit/utilities': ^3.2.2
+
 # pnpm 11 does not run dependency install scripts unless they are allowlisted
 # here. Keep it to packages that genuinely need a build step and no more.
 #

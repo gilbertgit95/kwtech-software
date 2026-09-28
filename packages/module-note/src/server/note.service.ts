@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { canSeeNote } from '../domain/access.js';
 import { type NoteSettings, normalizeNoteSettings } from '../domain/appearance.js';
+import { NOTE_ORDER_MAX, orderNotes } from '../domain/order.js';
 import { escapeLikePattern, prepareNoteSearch } from '../domain/search.js';
 import { normalizeNoteTag } from '../domain/tags.js';
 import type {
@@ -49,16 +50,12 @@ export const NOTE_PINNED_MAX = 50;
  */
 export const NOTE_TAG_SCAN_MAX = 1000;
 
-export interface NoteKeyset {
-  updatedAt: Date;
-  id: string;
-}
-
 export interface NoteListInput {
   view: NoteListView;
   search?: string | null | undefined;
   tag?: string | null | undefined;
-  cursor?: NoteKeyset | undefined;
+  /** The id of the last note of the previous page. */
+  after?: string | undefined;
   limit?: number | null | undefined;
 }
 
@@ -66,15 +63,15 @@ export interface NoteListResult {
   /** The viewer's pinned notes matching the filter. Only on the first page, and never in the trash. */
   pinned: readonly NoteSummaryRow[];
   notes: readonly NoteSummaryRow[];
-  /** Where the next page starts, or null at the end. */
-  next: NoteKeyset | null;
+  /** The id the next page starts after, or null at the end. */
+  next: string | null;
   /** The tags on notes the viewer can see. Only on the first page; null after it. */
   tags: readonly string[] | null;
   pinnedIds: ReadonlySet<string>;
 }
 
-/** Whichever way ties break must match the keyset condition: newest first, then id. */
-const ORDER = [{ updatedAt: 'desc' }, { id: 'desc' }] as const;
+/** Newest first, then by id — the order an unplaced note takes, and what the scan keeps when it truncates. */
+const NEWEST = [{ createdAt: 'desc' }, { id: 'desc' }] as const;
 
 /**
  * Reading notes. Every query here starts from WHO MAY SEE WHAT: the viewer's own
@@ -88,49 +85,62 @@ export class NoteService {
     @Optional() @Inject(NOTE_AUTHOR_DIRECTORY) private readonly directory?: NoteAuthorDirectory,
   ) {}
 
+  /**
+   * The index, in the VIEWER'S OWN ORDER (`orderNotes`) — or, in the trash, most
+   * recently binned first.
+   *
+   * ⚠ ORDERED IN MEMORY. The order lives on the viewer's `NotePreference` row and
+   * Prisma cannot sort notes by it, so this reads up to `NOTE_ORDER_MAX` visible
+   * notes that match, orders them, and pages by "after this id". Visibility is
+   * still in the query itself; nothing the viewer may not see is ever read.
+   */
   async list(scope: NoteScope, viewerId: string, input: NoteListInput): Promise<NoteListResult> {
     const limit = Math.min(Math.max(Math.trunc(input.limit ?? NOTE_PAGE_DEFAULT), 1), NOTE_PAGE_MAX);
-    const firstPage = !input.cursor;
-    const base = listWhere(scope, viewerId, input);
+    const firstPage = !input.after;
 
-    const pins = await this.prisma.notePin.findMany({ where: { workspaceId: scope.workspaceId, userId: viewerId } });
-    const pinnedIds = new Set(pins.map((pin) => pin.noteId));
-    // Pinned notes sit above the list on the first page and are left OUT of it,
-    // so paging never shows one twice. The trash has no pinned section.
-    const splitPinned = input.view !== 'trash' && pinnedIds.size > 0;
-
-    const [pinned, page, tags] = await Promise.all([
-      splitPinned && firstPage
-        ? this.prisma.note.findMany({
-            where: { ...base, id: { in: [...pinnedIds] } },
-            orderBy: [...ORDER],
-            take: NOTE_PINNED_MAX,
-            omit: { body: true },
-          })
-        : Promise.resolve([]),
+    const [rows, pins, order, tags] = await Promise.all([
       this.prisma.note.findMany({
-        where: {
-          ...base,
-          ...(splitPinned ? { id: { notIn: [...pinnedIds] } } : {}),
-          AND: [...base.AND, ...(input.cursor ? [afterKeyset(input.cursor)] : [])],
-        },
-        orderBy: [...ORDER],
-        // One more than asked, to know whether there is a next page without counting.
-        take: limit + 1,
+        where: listWhere(scope, viewerId, input),
+        orderBy: [...NEWEST],
+        take: NOTE_ORDER_MAX,
         omit: { body: true },
       }),
+      this.prisma.notePin.findMany({ where: { workspaceId: scope.workspaceId, userId: viewerId } }),
+      this.order(scope, viewerId),
       firstPage ? this.visibleTags(scope, viewerId) : Promise.resolve(null),
     ]);
 
-    const notes = page.slice(0, limit);
+    const pinnedIds = new Set(pins.map((pin) => pin.noteId));
+    const ordered =
+      input.view === 'trash'
+        ? [...rows].sort((a, b) => (b.trashedAt?.getTime() ?? 0) - (a.trashedAt?.getTime() ?? 0))
+        : orderNotes(rows, order);
+
+    // Pinned notes sit above the list on the first page and are left OUT of it,
+    // so paging never shows one twice. The trash has no pinned section.
+    const splitPinned = input.view !== 'trash';
+    const pinned = splitPinned ? ordered.filter((note) => pinnedIds.has(note.id)).slice(0, NOTE_PINNED_MAX) : [];
+    const rest = splitPinned ? ordered.filter((note) => !pinnedIds.has(note.id)) : ordered;
+
+    // A cursor for a note no longer in the list (deleted, filtered out) pages from the start.
+    const from = input.after ? rest.findIndex((note) => note.id === input.after) + 1 : 0;
+    const notes = rest.slice(from, from + limit);
     const last = notes[notes.length - 1];
     return {
-      pinned,
+      pinned: firstPage ? pinned : [],
       notes,
-      next: page.length > limit && last ? { updatedAt: last.updatedAt, id: last.id } : null,
+      next: from + limit < rest.length && last ? last.id : null,
       tags,
       pinnedIds,
     };
+  }
+
+  /** The viewer's own order of their list, as note ids. No row means none: newest first. */
+  async order(scope: NoteScope, viewerId: string): Promise<readonly string[]> {
+    const row = await this.prisma.notePreference.findUnique({
+      where: { userId_workspaceId: { userId: viewerId, workspaceId: scope.workspaceId } },
+    });
+    return row?.noteOrder ?? [];
   }
 
   /** One note with its body, or null — for one that does not exist AND for one the viewer may not see. */
@@ -175,7 +185,7 @@ export class NoteService {
   private async visibleTags(scope: NoteScope, viewerId: string): Promise<readonly string[]> {
     const rows = await this.prisma.note.findMany({
       where: { ...scope, trashedAt: null, AND: [visibleTo(viewerId)] },
-      orderBy: [...ORDER],
+      orderBy: [...NEWEST],
       take: NOTE_TAG_SCAN_MAX,
       omit: { body: true },
     });
@@ -221,11 +231,4 @@ function listWhere(scope: NoteScope, viewerId: string, input: NoteListInput): No
     case 'shared':
       return { ...where, visibility: 'workspace' };
   }
-}
-
-/** Strictly after the cursor in `ORDER`: older, or as old with a smaller id. */
-function afterKeyset(cursor: NoteKeyset): NoteListCondition {
-  return {
-    OR: [{ updatedAt: { lt: cursor.updatedAt } }, { updatedAt: cursor.updatedAt, id: { lt: cursor.id } }],
-  };
 }

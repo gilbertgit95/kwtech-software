@@ -560,10 +560,37 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 78 | A former member's private notes stay, and nobody can delete them | when an organization asks for a leaver's data to be removed | Private means private, from admins too, so no key reaches them. The per-person cap keeps them from filling anybody else's quota. Removal needs a membership port ("is this author still a member?") and a policy on who may purge unread notes |
 | 79 | Two people typing in one shared note see a conflict, not each other | when shared notes are written together in real time | The second save is refused and offers keep-mine-as-a-copy, use theirs or overwrite; revisions keep what an overwrite replaces. Live co-editing (a CRDT) is a different design, not a setting |
 | 80 | There is no link to one note | when a notification or a bookmark should open a note | Notes live on the Apps page, where a URL change closes every other app. A full-page route (as the queue's console has) would need its own frame and a way back |
+| 81 | The notes list is ordered in memory, over at most 2,000 notes | when one person sees more than `NOTE_ORDER_MAX` notes in a workspace | A per-person order lives on `NotePreference.noteOrder`, and Prisma cannot sort notes by another row, so `notes` reads up to 2,000 visible matching notes (newest first), orders them and pages by "after this id". Past that, the OLDEST unplaced notes drop off the end. Fine at the 500-per-person cap plus shared notes. Fix: a `note_order` table with a sortable position (fractional index) the query can join |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-28** — **The notes list is in each person's OWN order, which they
+  arrange by dragging; previous and next follow it.**
+
+  A user request: drag to arrange the notes list, so previous and next (while
+  the list is collapsed) go through notes in a useful order.
+  - **Per person, as pins are** (the operator's decision): a shared note is in
+    everybody's list, and one person's dragging must not reshuffle anybody
+    else's. Stored as note ids on `NotePreference.noteOrder`; `moveNote` is
+    bound to `note:read`, like `setNotePinned`, because it writes a row in the
+    named workspace.
+  - **The list never re-sorts itself by edits**: it was newest-EDITED first,
+    so saving a note moved it and an arranged list would not hold. Notes not
+    yet placed (new, or just shared) sit at the top, newest first, so nothing
+    new is lost at the bottom.
+  - **A move is "just after this neighbour"**, not "to position N", so a drop
+    in a filtered or searched list lands next to the note it was dropped
+    under. Pinned notes and the rest are reordered within their own section.
+  - **Paging changed from a keyset to "after this id"**, because the order is
+    applied in memory (§12.81). The cursor stays opaque.
+  - **`@dnd-kit` moved to the pnpm catalog** on its second consumer
+    (`module-app-hub` tabs, now the notes list).
+  - **Keyboard**: Ctrl+Shift+↑/↓ (←/→ on the sticky board) moves the focused
+    note one place.
+  - **Not done**: a shared, workspace-wide order (it would make one person's
+    drag everybody's), reordering the trash, and a positional table (§12.81).
 
 - **2026-09-28** — **`module-note` becomes the real notes app: private notes a
   person may share with the workspace, Markdown, a live index, refused stale

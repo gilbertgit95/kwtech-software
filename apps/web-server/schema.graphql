@@ -211,6 +211,7 @@ type Mutation {
   markNotificationsUnread(ids: [String!]!): Int!
   markQueueTicketNoShow(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   moderateChatMessage(messageId: String!): ChatMessage!
+  moveNote(afterNoteId: String, noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
   openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!

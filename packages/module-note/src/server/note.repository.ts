@@ -67,6 +67,7 @@ export interface NotePreferenceRow {
   look: string;
   font: string;
   defaultColor: string;
+  noteOrder: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -93,16 +94,14 @@ export interface NoteUpdate {
 type TextMatch = { contains: string; mode: 'insensitive' };
 
 /**
- * One condition inside the index's `AND`. Three kinds, each an `OR`:
+ * One condition inside the index's `AND`. Two kinds, each an `OR`:
  *
  *   who may see it   — `{ authorId: viewer }` or `{ visibility: 'workspace' }`
  *   the search term  — in the title or the body
- *   the keyset       — strictly after the cursor's (updatedAt, id)
  */
 export type NoteListCondition =
   | { OR: Array<{ authorId: string } | { visibility: NoteVisibility }> }
-  | { OR: Array<{ title: TextMatch } | { body: TextMatch }> }
-  | { OR: Array<{ updatedAt: { lt: Date } } | { updatedAt: Date; id: { lt: string } }> };
+  | { OR: Array<{ title: TextMatch } | { body: TextMatch }> };
 
 export interface NoteListWhere extends InScope {
   /** Live notes, or the trash. Never both in one list. */
@@ -110,7 +109,6 @@ export interface NoteListWhere extends InScope {
   authorId?: string;
   visibility?: NoteVisibility;
   tags?: { has: string };
-  id?: { in: string[] } | { notIn: string[] };
   /** ⚠ Visibility is ALWAYS the first entry — the index never runs without it. */
   AND: NoteListCondition[];
 }
@@ -122,7 +120,7 @@ export interface NoteTransaction {
     /** The index and the tag list. ⚠ `omit: { body }` — see `NoteRow.preview`. */
     findMany(args: {
       where: NoteListWhere;
-      orderBy: Array<{ updatedAt: SortOrder } | { id: SortOrder }>;
+      orderBy: Array<{ createdAt: SortOrder } | { id: SortOrder }>;
       take: number;
       omit: { body: true };
     }): Promise<NoteSummaryRow[]>;
@@ -180,10 +178,14 @@ export interface NoteTransaction {
     findUnique(args: {
       where: { userId_workspaceId: { userId: string; workspaceId: string } };
     }): Promise<NotePreferenceRow | null>;
+    /** Settings and the order are written separately, so neither save clobbers the other. */
     upsert(args: {
       where: { userId_workspaceId: { userId: string; workspaceId: string } };
-      create: InScope & { userId: string; look: string; font: string; defaultColor: string };
-      update: { look: string; font: string; defaultColor: string };
+      create: InScope & { userId: string } & (
+          | { look: string; font: string; defaultColor: string }
+          | { noteOrder: string[] }
+        );
+      update: { look: string; font: string; defaultColor: string } | { noteOrder: string[] };
     }): Promise<NotePreferenceRow>;
   };
 }

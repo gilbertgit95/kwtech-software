@@ -139,6 +139,12 @@ model NotePreference {
   font         String @default("hand")
   defaultColor String @default("default")
 
+  /// This person's order of their notes list, as note ids (`orderNotes`). Notes
+  /// not in it — new ones, ones just shared with them — show at the top, newest
+  /// first. Ids of notes they can no longer see are dropped on the next move.
+  /// Per person, as pins are: one person's dragging moves nobody else's list.
+  noteOrder String[] @default([])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

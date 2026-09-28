@@ -95,6 +95,7 @@ its version and who acted.
 | **Revision** | the text a save REPLACED, kept when somebody other than the last editor saves a shared note (last 20). Restoring one always keeps the text it replaces |
 | **Trash** | `trashedAt`. Read-only until restored. Delete forever only from here |
 | **Pin** | per person — nobody else's order moves |
+| **Order** | per person, `NotePreference.noteOrder`: the list shows YOUR order, arranged by dragging (or Ctrl+Shift+↑/↓; ←/→ on the sticky board), and never re-sorts itself by edits. Notes you have not placed — new ones, ones just shared with you — sit at the top, newest first (`orderNotes`). Previous and next walk this order. The trash is most recently binned first and cannot be reordered |
 | **Tag** | a label on one note. There is no shared tag list: it would show private notes' tags to everybody |
 | **Preview** | the start of the body as plain text, stored with every save. The index reads it, never the body |
 
@@ -110,6 +111,7 @@ its version and who acted.
   `checkNoteVersion`, and the two messages the app matches:
   `NOTE_NOT_FOUND_MESSAGE`, `NOTE_CONFLICT_MESSAGE` (production strips error
   reasons, so the app compares messages).
+- `order.ts` — `orderNotes`, `moveInOrder`, `NOTE_ORDER_MAX` (the list is ordered in memory over at most this many notes, §12.81).
 - `tags.ts`, `search.ts` (⚠ `escapeLikePattern` — Prisma's `contains` does not
   escape `%` or `_`), `events.ts`, `appearance.ts` (the presets, stored as text).
 - `NOTE_OPERATIONS` — every document the app sends.
@@ -170,7 +172,7 @@ not tickable.
 | | |
 |---|---|
 | Models | `Note`, `NotePin`, `NoteRevision`, `NotePreference` → `note_*` |
-| Operations | `notes`, `note`, `noteRevisions`, `myNoteSettings`, `noteEvents`; `createNote`, `updateNote`, `restoreNoteRevision`, `setNoteVisibility`, `trashNote`, `restoreNote`, `deleteNoteForever`, `setNotePinned`, `setMyNoteSettings` |
+| Operations | `notes`, `note`, `noteRevisions`, `myNoteSettings`, `noteEvents`; `createNote`, `updateNote`, `restoreNoteRevision`, `setNoteVisibility`, `trashNote`, `restoreNote`, `deleteNoteForever`, `setNotePinned`, `moveNote`, `setMyNoteSettings` |
 | Sub-app | `note` — ⚠ saved in people's layouts; never rename it |
 
 ## Entry points
