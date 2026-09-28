@@ -37,6 +37,7 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
   const titleId = useId();
   const tagsId = useId();
   const bodyId = useId();
+  const shareHintId = useId();
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [tagField, setTagField] = useState('');
   const [confirm, setConfirm] = useState<'unshare' | 'delete' | null>(null);
@@ -108,11 +109,18 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
               type="button"
               onClick={() => (shared ? setConfirm('unshare') : void state.setShared(true))}
               aria-pressed={shared}
+              // Shown on hover, and read out after the name: sharing is WORKSPACE-wide,
+              // not with chosen people, and anyone there can edit it.
+              title={shared ? SHARED_HINT : SHARE_HINT}
+              aria-describedby={shareHintId}
               disabled={state.busy}
               className={cn(iconButton, 'gap-1 px-2 text-sm', shared && 'text-primary')}
             >
               <Users aria-hidden="true" className="size-4" />
               {shared ? 'Shared' : 'Share'}
+              <span id={shareHintId} className="sr-only">
+                {shared ? SHARED_HINT : SHARE_HINT}
+              </span>
             </button>
           ) : null}
           <DropdownMenu>
@@ -270,6 +278,9 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
     </article>
   );
 }
+
+const SHARE_HINT = 'Share with everyone in this workspace. They can read and edit it.';
+const SHARED_HINT = 'Shared with everyone in this workspace. Click to make it private again.';
 
 const iconButton =
   'inline-flex h-7 min-w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60';
