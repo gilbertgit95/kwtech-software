@@ -23,7 +23,7 @@ const TABS: readonly { tab: NoteTab; label: string }[] = [
  *
  * - `@container`, and `@…:` variants rather than `sm:` / `lg:`, because a grid
  *   cell is narrow on a wide screen. Wide, the index and the open note sit side
- *   by side — in the Notebook look as an open notebook, two pages and a spine.
+ *   by side — in the Notebook look as an open notebook, two pages side by side.
  *   Narrow, one page at a time: the index, or the note with a way back.
  * - Which note is open is this component's own state, never a URL: a link would
  *   leave the Apps page and close every other app running on it.

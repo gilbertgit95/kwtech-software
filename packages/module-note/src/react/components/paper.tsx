@@ -44,8 +44,9 @@ export function noteLinesStyle(look: NoteLook): CSSProperties {
  * relative colour syntax computes the variable as invalid, the paper goes
  * transparent, and the theme's card shows through untinted rather than wrong.
  *
- * `side` places the Notebook's binding: spiral holes on a single page, and the
- * spine's shadow on the inner edge of each half of a two-page spread.
+ * `side` places the Notebook's binding: spiral holes on a single page. The two
+ * halves of a spread meet at a plain border, with no shadow between them — the
+ * operator's call (2026-09-28): the index and the note read as one surface.
  */
 export function Paper({
   look,
@@ -95,14 +96,13 @@ function frameClass(look: NoteLook): string {
  * The Notebook's binding and margin.
  *
  *   single — punched spiral holes down the left edge, and the red margin line
- *   left   — the index half of a spread: the spine's shadow on its right edge
- *   right  — the page half: the spine's shadow on its left edge, and the margin
+ *   left   — the index half of a spread: nothing; the halves meet at a border
+ *   right  — the page half: the margin
  *
  * The holes are the app's own `--background` showing through; the margin is the
  * theme's `--destructive`, faint, like the red line on school paper.
  */
 function Binding({ side }: { side: 'single' | 'left' | 'right' }) {
-  const spine = 'color-mix(in oklch, var(--foreground) 18%, transparent)';
   return (
     <>
       {side === 'single' ? (
@@ -114,20 +114,6 @@ function Binding({ side }: { side: 'single' | 'left' | 'right' }) {
             backgroundSize: `100% ${NOTE_RULE_REM}rem`,
             backgroundRepeat: 'repeat-y',
           }}
-        />
-      ) : null}
-      {side === 'left' ? (
-        <div
-          aria-hidden="true"
-          className="absolute inset-y-0 right-0 w-4"
-          style={{ backgroundImage: `linear-gradient(to left, ${spine}, transparent)` }}
-        />
-      ) : null}
-      {side === 'right' ? (
-        <div
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-4"
-          style={{ backgroundImage: `linear-gradient(to right, ${spine}, transparent)` }}
         />
       ) : null}
       {side !== 'left' ? (
