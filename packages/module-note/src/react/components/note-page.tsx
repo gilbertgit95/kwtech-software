@@ -9,7 +9,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
-import { Eye, History, MoreHorizontal, Pencil, Pin, PinOff, RotateCcw, Trash2, Users } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  History,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  RotateCcw,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { lazy, Suspense, useEffect, useId, useState } from 'react';
 import { NOTE_APPEARANCE_LABELS, NOTE_COLORS, type NoteLook, normalizeNoteColor } from '../../domain/appearance.js';
 import type { NoteRevisionView } from '../note-client.js';
@@ -31,7 +43,13 @@ const NoteMarkdown = lazy(async () => ({ default: (await import('./note-markdown
  * `note:write`. The API would refuse the edit anyway; this only stops the
  * screen from offering it.
  */
-export function NotePage({ state, look }: { state: NotesState; look: NoteLook }) {
+/** Page-turning, while the notes list is collapsed. Absent while the list is on screen. */
+export interface NotePager {
+  previous: (() => void) | null;
+  next: (() => void) | null;
+}
+
+export function NotePage({ state, look, pager }: { state: NotesState; look: NoteLook; pager?: NotePager | undefined }) {
   const { editor } = state;
   const note = editor.note;
   const draft = editor.draft;
@@ -245,9 +263,20 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
         ) : (
           <span className="flex-1 truncate">{note.tags.map((tag) => `#${tag}`).join(' ')}</span>
         )}
-        <span role="status" aria-live="polite" className="ml-auto whitespace-nowrap">
-          {statusLabel(editor.status, trashed)}
-          {position >= 0 ? ` · p. ${position + 1} of ${total}` : ''}
+        <span className="ml-auto flex items-center gap-1 whitespace-nowrap">
+          <span role="status" aria-live="polite">
+            {statusLabel(editor.status, trashed)}
+            {position >= 0 && !pager ? ` · p. ${position + 1} of ${total}` : ''}
+          </span>
+          {pager ? (
+            // Turning the page: the list is collapsed, so this is the way to the next note.
+            <>
+              <span aria-hidden="true">·</span>
+              <PageTurn direction="previous" onTurn={pager.previous} />
+              {position >= 0 ? <span>{`p. ${position + 1} of ${total}`}</span> : null}
+              <PageTurn direction="next" onTurn={pager.next} />
+            </>
+          ) : null}
         </span>
       </footer>
 
@@ -276,6 +305,31 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
         onCancel={() => setConfirm(null)}
       />
     </article>
+  );
+}
+
+/** One page-turn button, with the themed hint above it (the footer is at the page's bottom edge). */
+function PageTurn({ direction, onTurn }: { direction: 'previous' | 'next'; onTurn: (() => void) | null }) {
+  const label = direction === 'previous' ? 'Previous note' : 'Next note';
+  return (
+    <Tooltip text={label} side="top" align={direction === 'previous' ? 'start' : 'end'}>
+      {(tooltip) => (
+        <button
+          type="button"
+          onClick={() => onTurn?.()}
+          disabled={!onTurn}
+          aria-label={label}
+          className="inline-flex size-6 items-center justify-center rounded-md hover:bg-foreground/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+          {...tooltip}
+        >
+          {direction === 'previous' ? (
+            <ChevronLeft aria-hidden="true" className="size-4" />
+          ) : (
+            <ChevronRight aria-hidden="true" className="size-4" />
+          )}
+        </button>
+      )}
+    </Tooltip>
   );
 }
 

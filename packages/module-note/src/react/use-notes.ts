@@ -40,7 +40,8 @@ export interface NotesState {
   list: NoteListView | null;
   /** Pinned first, then the rest — the order the index shows. */
   ordered: readonly NoteSummaryView[];
-  loadMore: () => Promise<void>;
+  /** Load the next page; resolves the notes it added (none at the end, or on failure). */
+  loadMore: () => Promise<readonly NoteSummaryView[]>;
 
   settings: NoteSettings;
   saveSettings: (settings: NoteSettings) => Promise<void>;
@@ -160,15 +161,17 @@ export function useNotes(
     };
   }, [realtime, scope, scheduleReload, onEvent]);
 
-  const loadMore = useCallback(async () => {
-    if (!list?.nextCursor) return;
+  const loadMore = useCallback(async (): Promise<readonly NoteSummaryView[]> => {
+    if (!list?.nextCursor) return [];
     try {
       const next = await client.list(scope, { ...filter, cursor: list.nextCursor });
       setList((current) =>
         current ? { ...current, notes: [...current.notes, ...next.notes], nextCursor: next.nextCursor } : next,
       );
+      return next.notes;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load more notes.');
+      return [];
     }
   }, [client, scope, filter, list]);
 

@@ -30,16 +30,20 @@ export interface TooltipTriggerProps {
  *   the trigger.
  * - The text is always in the DOM, `role="tooltip"`, and the trigger's
  *   `aria-describedby` — a screen reader reads it whether or not it is shown.
- * - ⚠ It opens DOWNWARDS and aligns to the trigger's `align` edge, so it stays
- *   inside a clipped page: the triggers it serves sit in the page's top bar.
+ * - ⚠ It opens on the `side` with room — a note's page clips what overflows it:
+ *   downwards for the top bar, upwards for the footer — and lines up with the
+ *   trigger's `align` edge.
  */
 export function Tooltip({
   text,
   align = 'end',
+  side = 'bottom',
   children,
 }: {
   text: string;
   align?: 'start' | 'end';
+  /** Below the trigger, or above it for a trigger at the bottom of a clipped page (the footer). */
+  side?: 'bottom' | 'top';
   children: (trigger: TooltipTriggerProps) => ReactNode;
 }) {
   const id = useId();
@@ -90,16 +94,18 @@ export function Tooltip({
         id={id}
         role="tooltip"
         className={cn(
-          'pointer-events-none absolute top-full z-30 mt-2 w-max max-w-60 rounded-md border border-border bg-popover px-2.5 py-1.5 font-sans text-xs leading-snug text-popover-foreground shadow-md shadow-foreground/10 transition-opacity duration-150 motion-reduce:transition-none',
+          'pointer-events-none absolute z-30 w-max max-w-60 rounded-md border border-border bg-popover px-2.5 py-1.5 font-sans text-xs leading-snug text-popover-foreground shadow-md shadow-foreground/10 transition-opacity duration-150 motion-reduce:transition-none',
           align === 'end' ? 'right-0' : 'left-0',
+          side === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2',
           open ? 'visible opacity-100' : 'invisible opacity-0',
         )}
       >
-        {/* The arrow: the tooltip's own colours, a rotated square tucked under its top edge. */}
+        {/* The arrow: the tooltip's own colours, a rotated square tucked under the edge facing the trigger. */}
         <span
           aria-hidden="true"
           className={cn(
-            'absolute -top-1 size-2 rotate-45 border-t border-l border-border bg-popover',
+            'absolute size-2 rotate-45 border-border bg-popover',
+            side === 'bottom' ? '-top-1 border-t border-l' : '-bottom-1 border-r border-b',
             align === 'end' ? 'right-3' : 'left-3',
           )}
         />

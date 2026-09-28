@@ -11,7 +11,13 @@ import { noteRootStyle, Paper } from './components/paper.js';
 import type { NoteClient, NoteTab } from './note-client.js';
 import { useNotes } from './use-notes.js';
 import { NOTE_LOOK_SPECS } from './view/appearance.js';
-import { choiceAfterOpening, NOTE_NARROW_REM, type NoteIndexLayout, noteIndexLayout } from './view/layout.js';
+import {
+  adjacentNote,
+  choiceAfterOpening,
+  NOTE_NARROW_REM,
+  type NoteIndexLayout,
+  noteIndexLayout,
+} from './view/layout.js';
 
 const TABS: readonly { tab: NoteTab; label: string }[] = [
   { tab: 'all', label: 'All' },
@@ -48,6 +54,28 @@ export function NoteApp({ organizationId, workspaceId, client }: AppProps & { cl
   const layout = noteIndexLayout({ narrow, noteOpen: open, choice });
   // The notebook's two-page spread: only while both pages are side by side.
   const joined = spread && layout === 'beside';
+
+  /*
+   * Page-turning while the list is collapsed, so reaching the next note does not
+   * mean opening the list. Same order as the list: pinned first.
+   */
+  const hasMore = state.list?.nextCursor != null;
+  const openId = editor.note?.id ?? null;
+  const turn = async (direction: 'previous' | 'next') => {
+    let target = adjacentNote(state.ordered, openId, direction, hasMore);
+    if (target === 'load_more') {
+      const first = (await state.loadMore())[0];
+      target = first ? { id: first.id } : null;
+    }
+    if (target) openNote(target.id);
+  };
+  const pager =
+    layout === 'hidden' && open
+      ? {
+          previous: adjacentNote(state.ordered, openId, 'previous', hasMore) ? () => void turn('previous') : null,
+          next: adjacentNote(state.ordered, openId, 'next', hasMore) ? () => void turn('next') : null,
+        }
+      : undefined;
 
   // Escape puts the slid-out list away — only while focus is inside it, so it
   // never steals Escape from the editor or a menu on the note.
@@ -165,7 +193,7 @@ export function NoteApp({ organizationId, workspaceId, client }: AppProps & { cl
             side={joined ? 'right' : 'single'}
             className={cn('min-w-0 flex-1', joined && 'rounded-l-none')}
           >
-            <NotePage state={state} look={look} />
+            <NotePage state={state} look={look} pager={pager} />
           </Paper>
         ) : null}
       </div>
