@@ -27,6 +27,7 @@ import {
   type QueueTransaction,
   type QueueWriteClient,
 } from '@kwtech/module-queuing-window/server';
+import { TASK_PRISMA, TASK_PRISMA_WRITE, type TaskTransaction, type TaskWriteClient } from '@kwtech/module-task/server';
 import type { Provider } from '@nestjs/common';
 import type { PrismaClient } from '../generated/client.js';
 import { PrismaService } from './prisma.service.js';
@@ -215,6 +216,32 @@ export const noteWritePrismaProvider: Provider = {
       notePin: prisma.notePin,
       noteRevision: prisma.noteRevision,
       notePreference: prisma.notePreference,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const taskPrismaProvider: Provider = {
+  provide: TASK_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const taskWritePrismaProvider: Provider = {
+  provide: TASK_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): TaskWriteClient =>
+    withTransaction<TaskTransaction, TaskWriteClient>(prisma, {
+      /*
+       * ⚠ A board's columns, a removed column's tasks, the unassigning when a
+       * board goes private and a comment's count all move together, inside the
+       * transaction `withTransaction` dispatches.
+       */
+      taskBoard: prisma.taskBoard,
+      taskColumn: prisma.taskColumn,
+      task: prisma.task,
+      taskAssignee: prisma.taskAssignee,
+      taskChecklistItem: prisma.taskChecklistItem,
+      taskComment: prisma.taskComment,
+      taskPreference: prisma.taskPreference,
     }),
 };
 

@@ -28,7 +28,7 @@ import {
 } from '@kwtech/module-permissions';
 import { POS_FEATURE_REGISTRY } from '@kwtech/module-pos';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
-import { TASK_FEATURE_REGISTRY } from '@kwtech/module-task';
+import { TASK_FEATURE_REGISTRY, TASK_LIMIT_REGISTRY } from '@kwtech/module-task';
 
 /**
  * EVERY module's features, composed. ← add a module's registry here
@@ -151,7 +151,7 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    * page. No API yet, so nothing to bind — but the line must be here BEFORE
    * their first operation ships, because their bindings will be their guard.
    */
-  { key: 'task', features: TASK_FEATURE_REGISTRY },
+  { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY },
   { key: 'pos', features: POS_FEATURE_REGISTRY },
   /*
    * ⚠ And notifications' — including the key that sends AS THE PLATFORM. Leave

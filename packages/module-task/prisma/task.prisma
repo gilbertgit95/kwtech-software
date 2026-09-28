@@ -1,0 +1,243 @@
+// The tasks module's slice of the data model (docs/TASK-PLAN.md §4).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Task` and mapped to `task_*`.
+//
+//   board ──▶ column (the owner's own steps, in order)
+//     └─────▶ task ──▶ assignee (one by default, several allowed)
+//                ├───▶ checklist item
+//                └───▶ comment
+//
+//   preference (one per person per workspace: last board, board or list)
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE — or goes THROUGH its board. The
+// guard proves the caller is a member of the workspace in the request, not that
+// the board is in it: a lookup by id alone reads a board from any tenant.
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key. `auth_user` belongs to
+// module-auth (PLAN §9).
+//
+// ⚠ `rank` IS A DOUBLE, never text: Postgres sorts text by the database's
+// collation, so a text rank can read back in another order than it was
+// written (`src/domain/rank.ts`).
+
+/// Who may open a board. `private`: its owner, whatever keys anybody else holds.
+/// `workspace`: every member holding `task:read`. A task has no visibility of
+/// its own — a private task is a task on a private board.
+enum TaskBoardVisibility {
+  private
+  workspace
+}
+
+enum TaskPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+/// A board: its owner, its name, its kind. Its columns and tasks hang off it.
+model TaskBoard {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  /// The one person who configures it. Changes only by `transferTaskBoard`,
+  /// when the owner has left the workspace (TASK-PLAN §0 C).
+  ownerId        String
+
+  name       String
+  visibility TaskBoardVisibility @default(workspace)
+
+  /// Bumped by every change to the board itself (name, kind, columns), so a
+  /// settings screen knows it is stale.
+  version Int @default(1)
+
+  /// Archived since then: read-only, and still COUNTS toward `task:boards`.
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  columns TaskColumn[]
+  tasks   Task[]
+
+  /// The boards a person owns, and the per-person count behind `task:boards`.
+  @@index([workspaceId, ownerId])
+  /// The shared boards of a workspace.
+  @@index([workspaceId, visibility, archivedAt])
+  @@index([organizationId])
+  @@map("task_board")
+}
+
+/// One column (a step) of a board, made by its owner.
+model TaskColumn {
+  id             String @id @default(cuid())
+  boardId        String
+  organizationId String
+  workspaceId    String
+
+  name    String
+  /// `columnNameKey(name)`: what makes two names the same column, so "Done"
+  /// and "done " cannot both exist on one board.
+  nameKey String
+  rank    Float
+  /// A task entering a done column is finished (`completedAt` set).
+  done    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  board TaskBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([boardId, nameKey])
+  @@index([boardId, rank])
+  @@map("task_column")
+}
+
+/// One task, on one board, in one column.
+model Task {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  boardId        String
+  columnId       String
+  /// Its place within the column. Shared: the board's order is the team's.
+  rank           Float
+  creatorId      String
+
+  title       String
+  /// Plain text, as typed. At most `TASK_DESCRIPTION_MAX` code points.
+  description String       @default("")
+  priority    TaskPriority @default(normal)
+
+  /// Both optional DAYS, never instants (TASK-PLAN §0 E): the planned day and
+  /// the deadline. Scheduled after due is allowed, and shown as a warning.
+  scheduledOn DateTime? @db.Date
+  dueOn       DateTime? @db.Date
+
+  /// Normalised by `normalizeTaskLabel`: text on this task, NOT a vocabulary.
+  labels String[] @default([])
+
+  /// ⚠ OPTIMISTIC CONCURRENCY for the title and description ONLY. Moves,
+  /// dates, assignees and the rest are their own writes (decision 17), so a
+  /// drag never conflicts with somebody typing.
+  version Int @default(1)
+
+  /// How many comments it has, kept in the transaction that adds or removes
+  /// one: a board's cards show the count without reading every comment.
+  commentCount Int @default(0)
+
+  /// Set when it enters a done column, cleared when it leaves one.
+  completedAt DateTime?
+  /// Archived since then: read-only, and still COUNTS toward `task:tasks`.
+  archivedAt  DateTime?
+
+  updatedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  board     TaskBoard           @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  /// ⚠ NoAction, not Restrict: deleting a board cascades to its columns AND its
+  /// tasks in one statement, and Restrict is checked mid-statement. A column
+  /// with tasks still cannot be removed on its own — its tasks move first.
+  column    TaskColumn          @relation(fields: [columnId], references: [id], onDelete: NoAction)
+  assignees TaskAssignee[]
+  checklist TaskChecklistItem[]
+  comments  TaskComment[]
+
+  /// The board: live or archived, column by column, in order.
+  @@index([boardId, archivedAt, columnId, rank])
+  /// A person's own tasks, and the per-person count behind `task:tasks`.
+  @@index([workspaceId, creatorId])
+  @@index([columnId])
+  @@index([organizationId])
+  @@map("task_task")
+}
+
+/// A person assigned to a task. One by default; several allowed (up to 10).
+model TaskAssignee {
+  taskId         String
+  userId         String
+  organizationId String
+  workspaceId    String
+  /// The task's board, kept in step when the task moves. So making a board
+  /// private removes everyone else's assignments in ONE complete delete,
+  /// rather than over a capped list of task ids.
+  boardId        String
+
+  assignedById String
+  createdAt    DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  /// My tasks.
+  @@index([workspaceId, userId])
+  @@index([boardId, userId])
+  @@index([organizationId])
+  @@map("task_assignee")
+}
+
+/// One line of a task's checklist.
+model TaskChecklistItem {
+  id             String @id @default(cuid())
+  taskId         String
+  organizationId String
+  workspaceId    String
+
+  text     String
+  done     Boolean @default(false)
+  rank     Float
+  doneById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, rank])
+  @@index([organizationId])
+  @@map("task_checklist_item")
+}
+
+/// One comment on a task. Plain text; edited only by its author.
+model TaskComment {
+  id             String @id @default(cuid())
+  taskId         String
+  organizationId String
+  workspaceId    String
+  authorId       String
+
+  body     String
+  editedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([organizationId])
+  @@map("task_comment")
+}
+
+/// One person's view settings in one workspace. No row means the defaults:
+/// the board view, and whichever board comes first.
+model TaskPreference {
+  userId         String
+  workspaceId    String
+  organizationId String
+
+  /// `board` or `list`, validated by the domain.
+  view        String  @default("board")
+  lastBoardId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, workspaceId])
+  @@index([organizationId])
+  @@map("task_preference")
+}

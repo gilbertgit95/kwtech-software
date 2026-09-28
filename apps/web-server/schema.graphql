@@ -124,6 +124,23 @@ input CreateNoteInput {
   visibility: String
 }
 
+input CreateTaskBoardInput {
+  columns: [TaskColumnInput!]
+  name: String!
+  visibility: String
+}
+
+input CreateTaskInput {
+  assigneeIds: [String!]
+  columnId: String
+  description: String
+  dueOn: String
+  labels: [String!]
+  priority: String
+  scheduledOn: String
+  title: String!
+}
+
 input FeatureFilterInput {
   isPrivileged: Boolean
   levels: [String!]
@@ -170,12 +187,17 @@ type MfaFactor {
 type Mutation {
   acceptInvitation(token: String!): PermissionWriteResult!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  addTaskChecklistItem(organizationId: String!, taskId: String!, text: String!, workspaceId: String!): Task!
+  addTaskColumn(afterColumnId: String, boardId: String!, done: Boolean, name: String!, organizationId: String!, workspaceId: String!): TaskBoard!
+  addTaskComment(body: String!, organizationId: String!, taskId: String!, workspaceId: String!): TaskComment!
   adminRemoveUserTwoFactor(userId: String!): AdminUserWriteResult!
   adminRevokeUserSessions(userId: String!): AdminUserWriteResult!
   adminSendPasswordReset(userId: String!): AdminUserWriteResult!
   adminSetUserStatus(suspended: Boolean!, userId: String!): AdminUserWriteResult!
   adminUpdateUserProfile(displayName: String, userId: String!, username: String): AdminUser!
   archiveNotifications(ids: [String!]!): Int!
+  archiveTask(organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  archiveTaskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   archiveWorkspace(organizationId: String!, workspaceId: String!): PermissionWriteResult!
   assignAppRole(roleId: String!, userId: String!): PermissionWriteResult!
   assignQueueWindow(confirmReplace: Boolean, organizationId: String!, userId: String!, windowId: String!, workspaceId: String!): QueueSeat
@@ -193,10 +215,14 @@ type Mutation {
   createQueueWindow(name: String!, organizationId: String!, workspaceId: String!): QueueWindow!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
   createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
+  createTask(boardId: String!, input: CreateTaskInput!, organizationId: String!, workspaceId: String!): Task!
+  createTaskBoard(input: CreateTaskBoardInput!, organizationId: String!, workspaceId: String!): TaskBoard!
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   declineInvitation(token: String!): InvitationDeclineResult!
   deleteChatMessage(messageId: String!): ChatMessage!
   deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
+  deleteTaskBoardForever(boardId: String!, organizationId: String!, workspaceId: String!): Boolean!
+  deleteTaskForever(organizationId: String!, taskId: String!, workspaceId: String!): Boolean!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
@@ -212,6 +238,9 @@ type Mutation {
   markQueueTicketNoShow(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   moderateChatMessage(messageId: String!): ChatMessage!
   moveNote(afterNoteId: String, noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
+  moveTask(afterTaskId: String, boardId: String, columnId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  moveTaskChecklistItem(afterItemId: String, itemId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  moveTaskColumn(afterColumnId: String, boardId: String!, columnId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
@@ -220,6 +249,9 @@ type Mutation {
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
   removeChatParticipant(conversationId: String!, userId: String!): Boolean!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  removeTaskChecklistItem(itemId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  removeTaskColumn(boardId: String!, columnId: String!, destinationColumnId: String, organizationId: String!, workspaceId: String!): TaskBoard!
+  removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
@@ -227,6 +259,8 @@ type Mutation {
   respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
   restoreNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
   restoreNoteRevision(expectedVersion: Int!, noteId: String!, organizationId: String!, revisionId: String!, workspaceId: String!): Note!
+  restoreTask(organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  restoreTaskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
@@ -241,6 +275,7 @@ type Mutation {
   setChatParticipantRole(conversationId: String!, role: String!, userId: String!): Boolean!
   setMyNoteSettings(organizationId: String!, settings: NoteSettingsInput!, workspaceId: String!): NoteSettings!
   setMyQueueNickname(nickname: String!, organizationId: String!, workspaceId: String!): String!
+  setMyTaskSettings(organizationId: String!, settings: TaskSettingsInput!, workspaceId: String!): TaskSettings!
   setNotePinned(noteId: String!, organizationId: String!, pinned: Boolean!, workspaceId: String!): Boolean!
   setNoteVisibility(noteId: String!, organizationId: String!, visibility: String!, workspaceId: String!): Note!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
@@ -252,12 +287,18 @@ type Mutation {
   setQueueWindowArchived(archived: Boolean!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setQueueWindowLines(lineIds: [String!]!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
+  setTaskAssignees(organizationId: String!, taskId: String!, userIds: [String!]!, workspaceId: String!): Task!
+  setTaskBoardVisibility(boardId: String!, organizationId: String!, visibility: String!, workspaceId: String!): TaskBoard!
+  setTaskDates(dueOn: String, organizationId: String!, scheduledOn: String, taskId: String!, workspaceId: String!): Task!
+  setTaskLabels(labels: [String!]!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  setTaskPriority(organizationId: String!, priority: String!, taskId: String!, workspaceId: String!): Task!
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   startDirectChat(userId: String!): ChatConversation!
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
   stopQueue(organizationId: String!, workspaceId: String!): Boolean!
+  transferTaskBoard(boardId: String!, newOwnerId: String!, organizationId: String!, workspaceId: String!): Boolean!
   trashNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
   unarchiveNotifications(ids: [String!]!): Int!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
@@ -269,6 +310,11 @@ type Mutation {
   updateQueueWindow(name: String, organizationId: String!, sortOrder: Int, windowId: String!, workspaceId: String!): QueueWindow!
   updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
   updateSubscription(currentPeriodEnd: String!, status: String!, subscriptionId: String!): PermissionSubscription!
+  updateTask(expectedVersion: Int!, input: UpdateTaskInput!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
+  updateTaskBoard(boardId: String!, name: String!, organizationId: String!, workspaceId: String!): TaskBoard!
+  updateTaskChecklistItem(done: Boolean, itemId: String!, organizationId: String!, taskId: String!, text: String, workspaceId: String!): Task!
+  updateTaskColumn(boardId: String!, columnId: String!, input: UpdateTaskColumnInput!, organizationId: String!, workspaceId: String!): TaskBoard!
+  updateTaskComment(body: String!, commentId: String!, organizationId: String!, workspaceId: String!): TaskComment!
   updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
 }
 
@@ -455,6 +501,12 @@ type NotificationSource {
 type NotificationsMissed {
   items: [Notification!]!
   total: Int!
+}
+
+type OrphanedTaskBoard {
+  id: String!
+  name: String!
+  taskCount: Int!
 }
 
 type PermissionContext {
@@ -719,6 +771,8 @@ type Query {
   myOrganizationSubscriptions(organizationId: String!): [PermissionSubscription!]!
   myOrganizations: [UserOrganization!]!
   myPermissions(organizationId: String, workspaceId: String): PermissionContext
+  myTaskSettings(organizationId: String!, workspaceId: String!): TaskSettings!
+  myTasks(organizationId: String!, workspaceId: String!): [TaskCard!]!
   myWorkspace(organizationId: String!, workspaceId: String!): PermissionMyWorkspace
   myWorkspaces(organizationId: String!): [MyWorkspace!]!
   note(noteId: String!, organizationId: String!, workspaceId: String!): Note
@@ -730,6 +784,7 @@ type Query {
   notificationUnreadCount: Int!
   notifications(after: String, archived: Boolean, before: String, first: Int, globalOnly: Boolean, order: String, organizationId: String, severity: String, source: String, unreadOnly: Boolean): NotificationPage!
   notificationsSince(since: String!): NotificationsMissed!
+  orphanedTaskBoards(organizationId: String!, workspaceId: String!): [OrphanedTaskBoard!]!
   permissionDefaults: [PermissionDefault!]!
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
   permissionLimits: [PermissionLimitSpec!]!
@@ -744,6 +799,12 @@ type Query {
   queueDisplayCode(organizationId: String!, workspaceId: String!): QueueDisplayCode
   queueStaffCandidates(organizationId: String!, workspaceId: String!): [QueueStaffMember!]!
   session: SessionInfo
+  task(organizationId: String!, taskId: String!, workspaceId: String!): Task
+  taskAssignableMembers(boardId: String!, organizationId: String!, workspaceId: String!): [TaskPerson!]
+  taskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard
+  taskBoards(archived: Boolean, organizationId: String!, workspaceId: String!): [TaskBoardSummary!]!
+  taskComments(organizationId: String!, taskId: String!, workspaceId: String!): [TaskComment!]
+  tasks(boardId: String!, filter: TaskFilterInput, organizationId: String!, workspaceId: String!): TaskBoardTasks
   viewer: Viewer
 }
 
@@ -927,6 +988,7 @@ type Subscription {
   planChanged: PermissionPlanChanged!
   queueDisplay: QueueDisplayEvent!
   queueEvents(organizationId: String!, workspaceId: String!): QueueEvent!
+  taskEvents(organizationId: String!, workspaceId: String!): TaskEvent!
 }
 
 input SubscriptionDraftInput {
@@ -935,6 +997,143 @@ input SubscriptionDraftInput {
   planKey: String!
   status: String!
   workspaceId: String
+}
+
+type Task {
+  archivedAt: String
+  assignees: [TaskPerson!]!
+  boardId: String!
+  boardName: String!
+  checklist: [TaskChecklistItem!]!
+  checklistDone: Int!
+  checklistTotal: Int!
+  columnId: String!
+  commentCount: Int!
+  completedAt: String
+  createdAt: String!
+  creatorId: String!
+  creatorName: String
+  description: String!
+  dueOn: String
+  id: String!
+  labels: [String!]!
+  mine: Boolean!
+  priority: String!
+  scheduledOn: String
+  title: String!
+  updatedAt: String!
+  updatedById: String!
+  updatedByName: String
+  version: Int!
+}
+
+type TaskBoard {
+  archivedAt: String
+  assignmentsOfOthers: Int
+  columns: [TaskColumn!]!
+  id: String!
+  mine: Boolean!
+  name: String!
+  ownerId: String!
+  ownerName: String
+  version: Int!
+  visibility: String!
+}
+
+type TaskBoardSummary {
+  archivedAt: String
+  id: String!
+  mine: Boolean!
+  name: String!
+  ownerId: String!
+  ownerName: String
+  version: Int!
+  visibility: String!
+}
+
+type TaskBoardTasks {
+  board: TaskBoard!
+  labels: [String!]!
+  tasks: [TaskCard!]!
+  truncated: Boolean!
+}
+
+type TaskCard {
+  archivedAt: String
+  assignees: [TaskPerson!]!
+  boardId: String!
+  boardName: String!
+  checklistDone: Int!
+  checklistTotal: Int!
+  columnId: String!
+  commentCount: Int!
+  completedAt: String
+  dueOn: String
+  id: String!
+  labels: [String!]!
+  mine: Boolean!
+  priority: String!
+  scheduledOn: String
+  title: String!
+  version: Int!
+}
+
+type TaskChecklistItem {
+  done: Boolean!
+  id: String!
+  text: String!
+}
+
+type TaskColumn {
+  done: Boolean!
+  id: String!
+  name: String!
+}
+
+input TaskColumnInput {
+  done: Boolean
+  name: String!
+}
+
+type TaskComment {
+  authorId: String!
+  authorName: String
+  body: String!
+  createdAt: String!
+  editedAt: String
+  id: String!
+  mine: Boolean!
+  taskId: String!
+}
+
+type TaskEvent {
+  actorId: String
+  boardId: String
+  kind: String!
+  taskId: String
+}
+
+input TaskFilterInput {
+  archived: Boolean
+  assignedToMe: Boolean
+  label: String
+  priority: String
+  search: String
+}
+
+type TaskPerson {
+  displayName: String
+  userId: String!
+}
+
+type TaskSettings {
+  lastBoardId: String
+  view: String!
+}
+
+input TaskSettingsInput {
+  lastBoardId: String
+  view: String!
 }
 
 input UpdateNoteInput {
@@ -947,6 +1146,16 @@ input UpdateNoteInput {
 input UpdateProfileInput {
   displayName: String
   username: String
+}
+
+input UpdateTaskColumnInput {
+  done: Boolean
+  name: String
+}
+
+input UpdateTaskInput {
+  description: String
+  title: String
 }
 
 type UserAppRole {

@@ -5,6 +5,7 @@ import type { NotePrismaClient, NoteTransaction } from '@kwtech/module-note/serv
 import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
 import type { PermissionsPrismaClient, PermissionsTransaction } from '@kwtech/module-permissions/server';
 import type { QueuePrismaClient, QueueTransaction } from '@kwtech/module-queuing-window/server';
+import type { TaskPrismaClient, TaskTransaction } from '@kwtech/module-task/server';
 import type { PrismaService } from './prisma.service.js';
 
 /**
@@ -54,6 +55,8 @@ export const _queueWriteDelegatesFit: QueueTransaction = client;
 export const _noteReadClientFits: NotePrismaClient = client;
 export const _noteWriteDelegatesFit: NoteTransaction = client;
 
+export const _taskReadClientFits: TaskPrismaClient = client;
+export const _taskWriteDelegatesFit: TaskTransaction = client;
 export const _notificationReadClientFits: NotificationPrismaClient = client;
 export const _notificationWriteDelegatesFit: NotificationTransaction = client;
 

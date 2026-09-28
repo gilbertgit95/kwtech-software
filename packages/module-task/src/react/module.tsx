@@ -11,8 +11,8 @@ import { TaskApp } from './task-app.js';
  * the call site.
  *
  * ⚠ NO ROUTES and NO DRAWER ENTRY. A sub-app is reached from the workspace's
- * Apps page. A full-page route for direct links (a notification, a bookmark)
- * comes with the real screens, as the queue's console route did.
+ * Apps page. A full-page route for direct links to one task (a notification, a
+ * bookmark) is not built — the same gap as notes', PLAN §12.80.
  */
 export function taskWebModule(): WebModuleDescriptor {
   return {
@@ -23,7 +23,7 @@ export function taskWebModule(): WebModuleDescriptor {
         // ⚠ Saved in people's layouts. Never rename it.
         key: 'task',
         label: 'Tasks',
-        description: 'Track what needs doing in this workspace, and who is on it.',
+        description: 'Boards of tasks in columns you choose: who is on what, and when it is due.',
         icon: 'checklist',
         feature: TASK_FEATURE.read,
         // After the queue (10) and notes (20).

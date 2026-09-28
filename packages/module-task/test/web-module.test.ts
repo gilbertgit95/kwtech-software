@@ -23,6 +23,6 @@ describe('taskWebModule', () => {
   });
 
   it('carries its keys, so an app composing descriptors sees them', () => {
-    expect(module.features?.map((spec) => spec.key)).toEqual([TASK_FEATURE.read]);
+    expect(module.features?.map((spec) => spec.key)).toEqual(Object.values(TASK_FEATURE));
   });
 });

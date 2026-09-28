@@ -22,4 +22,13 @@ export const NOTIFICATION_SOURCES: readonly NotificationSource[] = [
    * nothing else sends under it.
    */
   { key: 'demo', label: 'Demo', mutable: true },
+
+  /*
+   * Task boards (`./task/notifier.ts`): somebody assigned you, and somebody
+   * commented on a task you are on. Two sources because they are two things a
+   * person may want to hear about differently — a busy thread is worth muting,
+   * being handed work rarely is.
+   */
+  { key: 'task.assigned', label: 'Tasks: assigned to you', mutable: true },
+  { key: 'task.comment', label: 'Tasks: comments', mutable: true },
 ];

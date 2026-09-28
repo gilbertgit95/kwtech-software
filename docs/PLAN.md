@@ -559,12 +559,119 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 77 | The notes trash never empties itself | when the trash fills people's caps | Trashed notes count toward `note:notes`, so a full trash is a person's own reason to empty it. An automatic purge after N days is a retention policy, and a destructive default |
 | 78 | A former member's private notes stay, and nobody can delete them | when an organization asks for a leaver's data to be removed | Private means private, from admins too, so no key reaches them. The per-person cap keeps them from filling anybody else's quota. Removal needs a membership port ("is this author still a member?") and a policy on who may purge unread notes |
 | 79 | Two people typing in one shared note see a conflict, not each other | when shared notes are written together in real time | The second save is refused and offers keep-mine-as-a-copy, use theirs or overwrite; revisions keep what an overwrite replaces. Live co-editing (a CRDT) is a different design, not a setting |
-| 80 | There is no link to one note | when a notification or a bookmark should open a note | Notes live on the Apps page, where a URL change closes every other app. A full-page route (as the queue's console has) would need its own frame and a way back |
+| 80 | There is no link to one note, or one task | when a notification or a bookmark should open a note or a task — a task notification opens the Apps page | Notes live on the Apps page, where a URL change closes every other app. A full-page route (as the queue's console has) would need its own frame and a way back |
 | 81 | The notes list is ordered in memory, over at most 2,000 notes | when one person sees more than `NOTE_ORDER_MAX` notes in a workspace | A per-person order lives on `NotePreference.noteOrder`, and Prisma cannot sort notes by another row, so `notes` reads up to 2,000 visible matching notes (newest first), orders them and pages by "after this id". Past that, the OLDEST unplaced notes drop off the end. Fine at the 500-per-person cap plus shared notes. Fix: a `note_order` table with a sortable position (fractional index) the query can join |
+| 82 | A board shows at most 1,000 tasks at once | when one board holds more live tasks than that | `tasks` reads up to `TASK_BOARD_READ_MAX` cards in one go and says the list was cut (`truncated`); search and filters reach the rest. Paging a board by column is the fix, and changes the drag model |
+| 83 | Nobody is reminded when a task is due | when somebody asks for a reminder on the scheduled or due day | Needs the job runner (§12.40) and, for times, a time zone per workspace. The dates are DAYS today; a time would be stored as a UTC instant and shown in the viewer's zone (TASK-PLAN §0 E) |
+| 84 | Who may be assigned is worked out one member at a time | when a workspace has hundreds of members | `listAssignable` loads a permission context per active member, capped at 200 — the queue's staff directory does the same. A grants query that answers "who holds `task:write` here" in one read is the fix |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-09-28** — **`module-task`: a chip in the Tasks header counts your
+  overdue, today and soon tasks, and opens My tasks.**
+
+  The operator asked for a visible sign of overdue, current and nearing work
+  without opening each board. Of three options (a chip inside the app; a badge
+  on the app's tab or cell on the Apps page; reminders through the bell) they
+  chose the chip: it stays inside `module-task` and reuses what exists.
+  - **One rule, `taskAttention`** (`domain/dates.ts`), built on `taskDayGroup`,
+    so the chip and My tasks' groups never disagree. *Soon* is planned OR due
+    within `TASK_SOON_DAYS` (3): either day counts, so a deadline nearing shows
+    even for a task planned after it. Finished tasks count for nothing.
+  - **My tasks is now always loaded** (and reread on every event and act), not
+    only while it is on screen: one more read per refresh, for a chip that is
+    always right.
+  - **Cards** mark a due day that is today or soon in amber (`isTaskDueSoon`),
+    beside the existing red for overdue.
+  - **Absent when all three are zero**, rather than showing "0".
+  - **Workspace-wide, and it says so**: every board you can open, whichever
+    is selected. The chip reads *All my tasks*, and its label and tooltip say
+    "on every board in this workspace", so it is not read as the board's count.
+  - **Not done:** the Apps page badge (apps cannot declare one; it needs a
+    `module-kit` contract and `module-app-hub` to show it) and reminders (need
+    the job runner, §12.40). The day is read at render, so a chip left open
+    past midnight is a day stale until the next reread.
+
+- **2026-09-28** — **`module-task`: the board scrolls sideways at every width,
+  and the task panel collapses behind a bar, as the notes list does.**
+
+  The operator, trying it in a small box: the panel REPLACED the board, so it
+  was unclear how to close it, whether anything was behind it, or whether the
+  changes had saved; and the one-column switcher hid the other columns.
+  - **The board** shows every column side by side at every width, each at most
+    `85cqw` wide so the next one peeks in; the column switcher is gone.
+  - **One scroll area for the board**, both ways. Columns grow with their
+    cards instead of each scrolling itself: a scroller inside a scroller showed
+    two scrollbars, and clipped a card dragged into the next column. The
+    dragged card is now drawn in a `DragOverlay` above every column,
+    portalled to `body`: the app root is an `@container`, which is the
+    containing block of `position: fixed`, so inside it the overlay landed off
+    to the side and the drag's auto-scroll scrolled the whole app cell.
+  - **Every scroller in the app is `relative`.** A scroller clips an
+    absolutely positioned descendant only when it is that descendant's
+    containing block, so the `sr-only` labels of columns scrolled out of view
+    escaped the board and widened the whole cell: a second, sideways scrollbar
+    in any cell narrower than the board (~870px).
+  - **The panel** sits beside the board from 64rem and slides OVER it below,
+    the board showing on its left. A bar on its edge (`aria-expanded`, reading
+    "Task" when collapsed) hides and shows it at every width, and Escape inside
+    the slid-out panel hides it (`taskPanelLayout`). Collapsed, the panel is
+    hidden, not unmounted, so its draft and autosave carry on.
+  - **Saved or not** moves to the panel's header, beside a labelled *Close*,
+    so it shows however far the panel is scrolled.
+  - **Every dialog has a visible way out.** Board settings closed only with
+    Escape; the module's `Modal` now has a *Close* button in its header and
+    closes on a backdrop click (`ConfirmDialog`'s rule), and Board settings
+    says its changes save as they are made.
+  - **Not done:** jump-to-column buttons for the scrolling board. Scrolling
+    reaches every column; add them if boards grow wide enough to need them.
+
+- **2026-09-28** — **`module-task` becomes the real tasks app: boards per
+  workspace, each owned by its creator, private or shared, with the owner's own
+  columns, one-or-more assignees who are notified, two optional dates, a
+  checklist, comments and labels. Supersedes the 2026-09-27 placeholder for
+  tasks.**
+
+  A user request, planned in `docs/TASK-PLAN.md` with the operator's answers
+  before any code.
+  - **A board is private or shared, nothing between** (the operator,
+    simplifying): no per-person access list, no viewer/editor roles. A private
+    task is a task on a private board, so there is ONE access rule,
+    `canOpenBoard`, used by every query, service and the event filter.
+  - **Keys say what, the board says where**: `task:read`, `task:write`,
+    `task:create_boards` (every owner act ALSO checks ownership), `task:assign`
+    (assigning others; yourself needs only write) and a privileged
+    `task:manage_all`, which deletes others' work and hands on an ORPHANED
+    board, seeing its name and size only. **No key opens a private board.**
+  - **Columns are the owner's own** — made at creation from To do · Doing ·
+    Done or blank, then added, renamed, reordered, marked done or removed
+    (with a destination for their tasks), each change its own small write.
+  - **The board's order is shared**, as a double `rank`, not text: Postgres
+    sorts text by collation. A move writes one row.
+  - **Making a board private unassigns everyone but the owner** in the same
+    transaction, after a confirm naming how many.
+  - **Title and description are versioned; everything else is its own small
+    write**, so dragging a card never conflicts with somebody typing.
+  - **Dates are DAYS** (`DATE`), never UTC midnight — 5 Oct 00:00 UTC is 4 Oct
+    in New York. Times, when they come, are UTC instants shown in the viewer's
+    zone (the operator's direction).
+  - **The first producer of in-app notifications**: `TASK_NOTIFIER`, bound to
+    `NotificationSender.sendSafely` with sources `task.assigned` and
+    `task.comment`, after the commit, never the actor.
+  - **`escapeLikePattern` moved to `module-kit`** on its second consumer.
+  - **Caps are per person** (`task:boards` 20, `task:tasks` 2,000, archived
+    included), as notes' are, because nobody can clear another person's
+    private board.
+  - ⚠ Existing plans are never rewritten: an operator adds `task:write`,
+    `task:create_boards`, `task:assign`, `task:manage_all` and the two caps on
+    `/admin/plans`.
+  - **Not done**: board templates, co-owners, sharing with chosen people,
+    viewer/editor roles, custom fields, subtasks as tasks, recurring tasks,
+    reminders (§12.83), attachments, @mentions, dependencies, a calendar view,
+    dragging column headers, a link to one task (§12.80), paging a huge board
+    (§12.82), and a Playwright test (two-step verification on the seed account).
 
 - **2026-09-28** — **The notes list is in each person's OWN order, which they
   arrange by dragging; previous and next follow it.**

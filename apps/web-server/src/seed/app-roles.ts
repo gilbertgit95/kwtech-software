@@ -7,7 +7,7 @@ import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
 import { POS_FEATURE } from '@kwtech/module-pos';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
-import { TASK_FEATURE } from '@kwtech/module-task';
+import { TASK_ROLE_PRESETS, type TaskRolePreset } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
 
 /**
@@ -386,12 +386,24 @@ function notePreset(key: string): NoteRolePreset {
 }
 
 /**
- * The PLACEHOLDER sub-apps — tasks, the point of sale — each offered by one key
- * and doing nothing else yet. Granted to both workspace roles so every member
- * sees them on the Apps page. When a module grows real keys, replace its entry
- * here with its presets, as notes did.
+ * Tasks' own presets, read as `notePreset` reads notes' (TASK-PLAN §3): every
+ * member works with tasks, owns boards and assigns others (`task-user`), and a
+ * workspace admin can also delete other people's tasks and comments and take
+ * over a board whose owner left (`task-admin`). THROWS if a preset is gone.
  */
-const PLACEHOLDER_APPS = [TASK_FEATURE.read, POS_FEATURE.read];
+function taskPreset(key: string): TaskRolePreset {
+  const preset = TASK_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-task no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
+ * The PLACEHOLDER sub-app — the point of sale — offered by one key and doing
+ * nothing else yet. Granted to both workspace roles so every member sees it on
+ * the Apps page. When it grows real keys, replace its entry here with its
+ * presets, as notes and tasks did.
+ */
+const PLACEHOLDER_APPS = [POS_FEATURE.read];
 
 /**
  * Runs one workspace.
@@ -457,6 +469,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     APP_HUB_FEATURE.layoutManage,
     // Notes, and binning anybody's shared note.
     ...notePreset('note-admin').features,
+    // Task boards, and deleting anybody's tasks or taking over an orphaned board.
+    ...taskPreset('task-admin').features,
     ...PLACEHOLDER_APPS,
   ],
   limits: {},
@@ -480,12 +494,13 @@ const WORKSPACE_USER: SystemRoleDefinition = {
    */
   // Plus the queue's staff preset: see the queue and serve at a window they are assigned to,
   // and the Apps page the queue is reached from.
-  // Plus notes (read and write their own and shared ones), and the placeholder apps on that page.
+  // Plus notes (read and write their own and shared ones), task boards, and the placeholder app on that page.
   features: [
     FEATURE.workspaceRead,
     ...queuePreset('queue-staff').features,
     APP_HUB_FEATURE.read,
     ...notePreset('note-user').features,
+    ...taskPreset('task-user').features,
     ...PLACEHOLDER_APPS,
   ],
   limits: {},

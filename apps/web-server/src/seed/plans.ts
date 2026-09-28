@@ -3,7 +3,7 @@ import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
 import { POS_FEATURE } from '@kwtech/module-pos';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
-import { TASK_FEATURE } from '@kwtech/module-task';
+import { TASK_FEATURE, TASK_LIMIT } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
 
 /**
@@ -174,17 +174,32 @@ const NOTES = Object.values(NOTE_FEATURE);
 const NOTE_CAPS = { [NOTE_LIMIT.notes]: 500 };
 
 /**
- * The PLACEHOLDER sub-apps — tasks, the point of sale — sold where the queue
- * is: every tier except free. Each is one workspace key that only offers the
- * app on the Apps page; which tiers get them for real is a product decision for
- * when they do something.
+ * Task boards, sold where notes are: every tier except free — the tiers the
+ * placeholder `task:read` was already in. All five keys are workspace level.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment
+ * seeded while tasks were a placeholder has `task:read` only: an operator adds
+ * `task:write`, `task:create_boards`, `task:assign` and `task:manage_all`, and
+ * the two caps, on `/admin/plans`. Until then people can open the app and do
+ * nothing in it, and the app says so (not_entitled).
+ */
+const TASKS = Object.values(TASK_FEATURE);
+
+/** Boards owned and tasks created per person per workspace, archived included. The same in every tier for now. */
+const TASK_CAPS = { [TASK_LIMIT.boards]: 20, [TASK_LIMIT.tasks]: 2000 };
+
+/**
+ * The PLACEHOLDER sub-app — the point of sale — sold where the queue is: every
+ * tier except free. One workspace key that only offers the app on the Apps
+ * page; which tiers get it for real is a product decision for when it does
+ * something.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment seeded
  * before these shipped needs an operator to add the keys on `/admin/plans`;
  * until then the Apps page does not offer them (a super admin, whose grants
  * skip the plan filter, still sees them).
  */
-const PLACEHOLDER_APPS = [TASK_FEATURE.read, POS_FEATURE.read];
+const PLACEHOLDER_APPS = [POS_FEATURE.read];
 
 /** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
 const QUEUE_CAPS = {
@@ -233,6 +248,7 @@ const STARTER: PlanDefinition = {
     ...TEAMWORK,
     ...QUEUE,
     ...NOTES,
+    ...TASKS,
     ...PLACEHOLDER_APPS,
     ...APPS_PAGE,
   ],
@@ -242,6 +258,7 @@ const STARTER: PlanDefinition = {
     [LIMIT.workspaceMembers]: 10,
     ...QUEUE_CAPS,
     ...NOTE_CAPS,
+    ...TASK_CAPS,
   },
 };
 
@@ -271,6 +288,7 @@ const PRO: PlanDefinition = {
     ...TEAMWORK,
     ...QUEUE,
     ...NOTES,
+    ...TASKS,
     ...PLACEHOLDER_APPS,
     ...APPS_PAGE,
   ],
@@ -280,6 +298,7 @@ const PRO: PlanDefinition = {
     [LIMIT.workspaceMembers]: 50,
     ...QUEUE_CAPS,
     ...NOTE_CAPS,
+    ...TASK_CAPS,
   },
 };
 
@@ -316,6 +335,7 @@ const ENTERPRISE: PlanDefinition = {
     // The queue's and notes' keys arrive through the derived feature list; their caps do not.
     ...QUEUE_CAPS,
     ...NOTE_CAPS,
+    ...TASK_CAPS,
   },
 };
 

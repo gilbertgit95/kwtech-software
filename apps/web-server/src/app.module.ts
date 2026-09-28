@@ -21,6 +21,7 @@ import {
 import {
   NOTIFICATION_PUBSUB,
   NOTIFICATION_USER_DIRECTORY,
+  NotificationSender,
   notificationServerModule,
 } from '@kwtech/module-notification/server';
 import {
@@ -39,6 +40,14 @@ import {
   QueueDisplayService,
   queueServerModule,
 } from '@kwtech/module-queuing-window/server';
+import {
+  TASK_ACCESS_CHECK,
+  TASK_LIMIT_CHECKER,
+  TASK_MEMBER_DIRECTORY,
+  TASK_NOTIFIER,
+  TASK_PUBSUB,
+  taskServerModule,
+} from '@kwtech/module-task/server';
 import type { ApolloDriverConfig } from '@nestjs/apollo';
 import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD, RouterModule } from '@nestjs/core';
@@ -74,6 +83,8 @@ import {
   permissionsWritePrismaProvider,
   queuePrismaProvider,
   queueWritePrismaProvider,
+  taskPrismaProvider,
+  taskWritePrismaProvider,
 } from './prisma/module-clients.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -83,6 +94,9 @@ import { QueueWorkspaceLocatorAdapter } from './queue/workspace-locator.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_DEFAULT_MOMENTS, ALL_DEFAULTS, ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
+import { TaskKeyAccess } from './task/access-check.js';
+import { TaskMemberDirectoryAdapter } from './task/member-directory.js';
+import { TaskNotifierAdapter } from './task/notifier.js';
 import { UsersResolver } from './users/users.resolver.js';
 
 /**
@@ -536,6 +550,51 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   }),
 
   NOTIFICATION_SERVER_MODULE,
+
+  /*
+   * Task boards — a workspace sub-app, and the first module to TELL people
+   * things through `module-notification`. Every port reads another module's
+   * tables: grants for `task:assign` / `task:manage_all`, membership and names
+   * for assigning, the sender for notices. The adapters are in ./task/.
+   */
+  taskServerModule({
+    prismaProvider: taskPrismaProvider,
+    prismaWriteProvider: taskWritePrismaProvider,
+
+    // The per-person caps from the plan. Omitted, the module holds its declared defaults.
+    limitCheckerProvider: { provide: TASK_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    // ⚠ Without it, nobody may assign anybody else or delete somebody else's work — fail closed.
+    accessCheckProvider: {
+      provide: TASK_ACCESS_CHECK,
+      inject: [PermissionsService],
+      useFactory: (permissions: PermissionsService) => new TaskKeyAccess(permissions),
+    },
+    // ⚠ Without it, people can assign only themselves, and no board is ever orphaned.
+    memberDirectoryProvider: {
+      provide: TASK_MEMBER_DIRECTORY,
+      inject: [PermissionsService, PrismaService],
+      useFactory: (permissions: PermissionsService, prisma: PrismaService) =>
+        new TaskMemberDirectoryAdapter(permissions, prisma),
+    },
+
+    /*
+     * ⚠ THE SAME notification module object, imported so `NotificationSender`
+     * can be injected: Nest dedupes by reference, and a second
+     * `notificationServerModule()` would build a second, disconnected sender.
+     */
+    imports: [NOTIFICATION_SERVER_MODULE.nestModule],
+    notifierProvider: {
+      provide: TASK_NOTIFIER,
+      inject: [NotificationSender],
+      useFactory: (sender: NotificationSender) => new TaskNotifierAdapter(sender),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent board.
+    pubsubProvider: { provide: TASK_PUBSUB, useValue: realtimePubSub() },
+  }),
 
   /*
    * The workspace's Apps page: saved layouts, nothing else. No ports — the

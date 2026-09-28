@@ -10,3 +10,4 @@
 
 export { taskWebModule } from './module.js';
 export { TaskApp } from './task-app.js';
+export { createTaskClient, DEFAULT_GRAPHQL_PATH, type TaskClient } from './task-client.js';

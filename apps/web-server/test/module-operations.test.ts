@@ -5,6 +5,7 @@ import { CHAT_OPERATIONS } from '@kwtech/module-chat';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
 import { QUEUE_OPERATIONS } from '@kwtech/module-queuing-window';
+import { TASK_OPERATIONS } from '@kwtech/module-task';
 import { buildSchema, type GraphQLSchema, parse, validate } from 'graphql';
 
 /**
@@ -59,6 +60,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   notification: NOTIFICATION_OPERATIONS,
   app_hub: APP_HUB_OPERATIONS,
   note: NOTE_OPERATIONS,
+  task: TASK_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {
