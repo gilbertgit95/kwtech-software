@@ -1,4 +1,4 @@
-import { escapeLikePattern, NOTE_SEARCH_MAX, prepareNoteSearch } from '../src/domain/search.js';
+import { NOTE_SEARCH_MAX, prepareNoteSearch } from '../src/domain/search.js';
 import { NOTE_TAG_MAX, NOTE_TAGS_MAX, normalizeNoteTag, prepareNoteTags } from '../src/domain/tags.js';
 
 describe('normalizeNoteTag', () => {
@@ -41,16 +41,5 @@ describe('prepareNoteSearch', () => {
   it('collapses whitespace and cuts, rather than refusing, a long term', () => {
     expect(prepareNoteSearch('  till   float ')).toBe('till float');
     expect([...(prepareNoteSearch('a'.repeat(500)) ?? '')]).toHaveLength(NOTE_SEARCH_MAX);
-  });
-});
-
-describe('escapeLikePattern', () => {
-  it('⚠ makes % and _ literal, so 100% does not match everything after 100', () => {
-    expect(escapeLikePattern('100%')).toBe('100\\%');
-    expect(escapeLikePattern('a_b')).toBe('a\\_b');
-  });
-
-  it('escapes the backslash first, so the added escapes are not escaped again', () => {
-    expect(escapeLikePattern('C:\\temp_1')).toBe('C:\\\\temp\\_1');
   });
 });

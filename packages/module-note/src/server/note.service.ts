@@ -1,8 +1,9 @@
+import { escapeLikePattern } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { canSeeNote } from '../domain/access.js';
 import { type NoteSettings, normalizeNoteSettings } from '../domain/appearance.js';
 import { NOTE_ORDER_MAX, orderNotes } from '../domain/order.js';
-import { escapeLikePattern, prepareNoteSearch } from '../domain/search.js';
+import { prepareNoteSearch } from '../domain/search.js';
 import { normalizeNoteTag } from '../domain/tags.js';
 import type {
   NoteListCondition,
