@@ -18,6 +18,7 @@ import { notePaperColor } from '../view/appearance.js';
 import { parseTagField } from '../view/editing.js';
 import { noteLinesStyle } from './paper.js';
 import { ProblemBanner } from './problem-banner.js';
+import { Tooltip } from './tooltip.js';
 
 /** The parser is only needed to preview, and it is ESM-only — loaded on demand. */
 const NoteMarkdown = lazy(async () => ({ default: (await import('./note-markdown.js')).NoteMarkdown }));
@@ -37,7 +38,6 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
   const titleId = useId();
   const tagsId = useId();
   const bodyId = useId();
-  const shareHintId = useId();
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [tagField, setTagField] = useState('');
   const [confirm, setConfirm] = useState<'unshare' | 'delete' | null>(null);
@@ -105,23 +105,23 @@ export function NotePage({ state, look }: { state: NotesState; look: NoteLook })
             <span className="sr-only">{note.pinned ? 'Unpin' : 'Pin to top'}</span>
           </button>
           {note.mine && editable ? (
-            <button
-              type="button"
-              onClick={() => (shared ? setConfirm('unshare') : void state.setShared(true))}
-              aria-pressed={shared}
-              // Shown on hover, and read out after the name: sharing is WORKSPACE-wide,
-              // not with chosen people, and anyone there can edit it.
-              title={shared ? SHARED_HINT : SHARE_HINT}
-              aria-describedby={shareHintId}
-              disabled={state.busy}
-              className={cn(iconButton, 'gap-1 px-2 text-sm', shared && 'text-primary')}
-            >
-              <Users aria-hidden="true" className="size-4" />
-              {shared ? 'Shared' : 'Share'}
-              <span id={shareHintId} className="sr-only">
-                {shared ? SHARED_HINT : SHARE_HINT}
-              </span>
-            </button>
+            // The hint says what sharing MEANS: everyone in this workspace, not chosen
+            // people — and they can edit it. Read out after the name, too.
+            <Tooltip text={shared ? SHARED_HINT : SHARE_HINT}>
+              {(tooltip) => (
+                <button
+                  type="button"
+                  onClick={() => (shared ? setConfirm('unshare') : void state.setShared(true))}
+                  aria-pressed={shared}
+                  disabled={state.busy}
+                  className={cn(iconButton, 'gap-1 px-2 text-sm', shared && 'text-primary')}
+                  {...tooltip}
+                >
+                  <Users aria-hidden="true" className="size-4" />
+                  {shared ? 'Shared' : 'Share'}
+                </button>
+              )}
+            </Tooltip>
           ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger className={iconButton} aria-label="More actions">
