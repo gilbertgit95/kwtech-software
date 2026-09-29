@@ -5,11 +5,13 @@
  * relative import carries a '.js' that does not exist before a build. Stripping
  * it lets the suite run against src/ directly.
  *
- * `tsx` because the web descriptor references its app component. No decorators
- * and no `reflect-metadata` until the module grows a Nest half — copy
- * module-queuing-window's config then.
+ * Decorators are on because the server adapter is Nest, and the surface-coverage
+ * suite reads the resolver's metadata back — which needs the polyfill loaded
+ * before a resolver class is evaluated. `tsx` because the web descriptor
+ * references its app component.
  */
 export default {
+  setupFiles: ['reflect-metadata'],
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/test'],
   moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
@@ -18,8 +20,8 @@ export default {
       '@swc/jest',
       {
         jsc: {
-          parser: { syntax: 'typescript', tsx: true },
-          transform: { react: { runtime: 'automatic' } },
+          parser: { syntax: 'typescript', tsx: true, decorators: true },
+          transform: { decoratorMetadata: true, legacyDecorator: true, react: { runtime: 'automatic' } },
           target: 'es2023',
         },
       },

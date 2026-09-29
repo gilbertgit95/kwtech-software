@@ -47,6 +47,7 @@ export type PosRefusal =
   | 'not_paid'
   | 'invalid_transition'
   | 'invalid_name'
+  | 'invalid_kind'
   | 'invalid_code'
   | 'duplicate_code'
   | 'invalid_price'

@@ -34,13 +34,16 @@ export const POS_FEATURE = {
 
 export type PosFeatureKey = (typeof POS_FEATURE)[keyof typeof POS_FEATURE];
 
+const op = (identifier: string) => ({ surface: 'graphql_operation', identifier });
+
 /**
  * Contributed to the app's composed registry (`seed/registry.ts`).
  *
- * ⚠ NO BINDINGS YET, because the module has no operations yet (phase 1 of
- * POS-PLAN §6). The server half binds each operation here in the same change
- * that adds it — this module cannot use `@RequireFeature`, so the bindings ARE
- * its guard, and an unbound operation is reachable by anybody signed in.
+ * ⚠ THE BINDINGS ARE THE GUARD. This module cannot use `@RequireFeature` — the
+ * decorator belongs to `module-permissions`, and a module may not import a
+ * module (§9) — so `FeatureGuard` enforces each operation through its binding.
+ * A missing binding is an UNGUARDED OPERATION, which is why
+ * `surface-coverage.test.ts` fails on any operation that is not bound here.
  */
 export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
@@ -50,7 +53,23 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Use the point of sale',
     description: 'Open the point-of-sale app, and see its items, orders and customers.',
     tags: ['pos'],
-    bindings: [],
+    bindings: [
+      /*
+       * ⚠ The catalogue CARRIES COSTS in its rows; the resolver strips them for
+       * anybody without `pos:manage_items` or `pos:reports`. The key opens the
+       * catalogue, not its costs.
+       */
+      op('Query.posCatalogue'),
+      op('Query.posCustomers'),
+      op('Query.posCustomer'),
+      /* Every till reads the keymap and time zone; only `manage_settings` writes them. */
+      op('Query.posSettings'),
+      /*
+       * ⚠ ITS OWN SURFACE. A subscription is authorised ONCE, here, and then
+       * streams — ids only, filtered to the workspace.
+       */
+      { surface: 'graphql_subscription', identifier: 'Subscription.posEvents' },
+    ],
   },
   {
     key: POS_FEATURE.sell,
@@ -60,7 +79,8 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description:
       'Ring up orders at the listed price, hold and resume them, take payment, let a customer pay later, and record customers.',
     tags: ['pos'],
-    bindings: [],
+    /* Customers are created where they are met: at the till (D5). */
+    bindings: [op('Mutation.savePosCustomer'), op('Mutation.setPosCustomerArchived')],
   },
   {
     key: POS_FEATURE.discount,
@@ -92,7 +112,12 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Manage items',
     description: 'Add, edit and archive items, their variants and categories, and see what each one costs.',
     tags: ['pos'],
-    bindings: [],
+    bindings: [
+      op('Mutation.savePosItem'),
+      op('Mutation.setPosItemArchived'),
+      op('Mutation.savePosCategory'),
+      op('Mutation.setPosCategoryArchived'),
+    ],
   },
   {
     key: POS_FEATURE.reports,
@@ -110,7 +135,7 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Change store settings',
     description: 'Set the store’s time zone, and the keyboard shortcuts every till in it uses.',
     tags: ['pos'],
-    bindings: [],
+    bindings: [op('Mutation.savePosSettings')],
   },
 ];
 

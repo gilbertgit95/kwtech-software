@@ -13,6 +13,10 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
     }
   },
   "files": [
@@ -30,13 +34,18 @@
   },
   "devDependencies": {
     "@kwtech/web-ui": "workspace:*",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/graphql": "catalog:",
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
     "@types/node": "catalog:",
     "@types/react": "^19.2.18",
+    "graphql": "catalog:",
     "jest": "^30.4.2",
     "react": "^19.2.8",
+    "reflect-metadata": "catalog:",
     "typescript": "catalog:"
   },
   "dependencies": {
@@ -44,13 +53,25 @@
   },
   "peerDependencies": {
     "@kwtech/web-ui": "workspace:*",
-    "react": "^19.0.0"
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/graphql": "^13.0.0",
+    "react": "^19.0.0",
+    "reflect-metadata": "^0.2.0"
   },
   "peerDependenciesMeta": {
     "@kwtech/web-ui": {
       "optional": true
     },
+    "@nestjs/common": {
+      "optional": true
+    },
+    "@nestjs/graphql": {
+      "optional": true
+    },
     "react": {
+      "optional": true
+    },
+    "reflect-metadata": {
       "optional": true
     }
   }

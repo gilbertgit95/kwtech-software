@@ -35,8 +35,9 @@ describe('POS_FEATURE_REGISTRY', () => {
     ]);
   });
 
-  it('⚠ binds nothing yet — there are no operations; the server half binds each one as it adds it', () => {
-    expect(POS_FEATURE_REGISTRY.flatMap((spec) => spec.bindings ?? [])).toEqual([]);
+  it('⚠ binds every key but those whose operations arrive with selling — discount, refund, reports', () => {
+    const unbound = POS_FEATURE_REGISTRY.filter((spec) => (spec.bindings ?? []).length === 0).map((spec) => spec.key);
+    expect(unbound.sort()).toEqual([POS_FEATURE.discount, POS_FEATURE.refund, POS_FEATURE.reports].sort());
   });
 
   it('⚠ no feature key shares a name with a limit key', () => {

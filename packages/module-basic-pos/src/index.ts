@@ -18,4 +18,5 @@ export * from './domain/search.js';
 export * from './domain/text.js';
 export * from './domain/time-zone.js';
 export * from './feature-keys.js';
+export * from './operations.js';
 export * from './types.js';
