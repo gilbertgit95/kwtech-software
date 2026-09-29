@@ -4,11 +4,16 @@ import { cn } from '@kwtech/web-ui/react';
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { type KeyboardEvent, type PointerEvent, useRef, useState } from 'react';
 import type { NavGroup } from '@/components/layout/nav';
 import { iconFor } from '@/components/layout/nav-icons';
 import { OrganizationSwitcher, type SwitcherOrganization } from '@/components/layout/organization-switcher';
-import { writeSidebarCookie } from '@/components/layout/sidebar-state';
+import {
+  clampSidebarWidth,
+  SIDEBAR_WIDTH,
+  writeSidebarCookie,
+  writeSidebarWidthCookie,
+} from '@/components/layout/sidebar-state';
 import { type SwitcherWorkspace, WorkspaceSwitcher } from '@/components/layout/workspace-switcher';
 
 interface SidebarProps {
@@ -20,6 +25,8 @@ interface SidebarProps {
   groups: NavGroup[];
   /** Read from the cookie by the shell, so the first paint is already correct. */
   defaultCollapsed: boolean;
+  /** The expanded width in pixels, from its cookie, already clamped. */
+  defaultWidth: number;
   /**
    * The product name and its second line, from APP_NAME / APP_TAGLINE.
    *
@@ -86,6 +93,7 @@ function isActive(pathname: string, href: string): boolean {
 export function Sidebar({
   groups,
   defaultCollapsed,
+  defaultWidth,
   brand,
   organizations,
   activeOrganizationId,
@@ -98,22 +106,125 @@ export function Sidebar({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
+  const [width, setWidth] = useState(defaultWidth);
+  const [resizing, setResizing] = useState(false);
+  const drag = useRef<{ pointerId: number; fromX: number; start: number } | null>(null);
+
   function toggle() {
     const next = !collapsed;
     setCollapsed(next);
     writeSidebarCookie(next);
   }
 
+  function resizeTo(next: number) {
+    const clamped = clampSidebarWidth(next);
+    setWidth(clamped);
+    writeSidebarWidthCookie(clamped);
+  }
+
+  /*
+   * The cookie is written once, on release, not on every move: a drag emits a
+   * pointer event per frame, and each write is a `document.cookie` assignment
+   * that nothing reads until the next server render anyway.
+   */
+  function onResizeStart(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    // Stops the press from starting a text selection across the page beside it.
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { pointerId: event.pointerId, fromX: event.clientX, start: width };
+    setResizing(true);
+  }
+
+  function onResizeMove(event: PointerEvent<HTMLDivElement>) {
+    const active = drag.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    setWidth(clampSidebarWidth(active.start + event.clientX - active.fromX));
+  }
+
+  function onResizeEnd(event: PointerEvent<HTMLDivElement>) {
+    const active = drag.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    drag.current = null;
+    setResizing(false);
+    resizeTo(active.start + event.clientX - active.fromX);
+  }
+
+  /*
+   * The keyboard half of the handle, so resizing is not a mouse-only feature:
+   * arrows step, Shift steps further, Home and End go to the bounds — the keys
+   * the WAI-ARIA window-splitter pattern names.
+   */
+  function onResizeKey(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 64 : 16;
+    const targets: Record<string, number> = {
+      ArrowLeft: width - step,
+      ArrowRight: width + step,
+      Home: SIDEBAR_WIDTH.min,
+      End: SIDEBAR_WIDTH.max,
+    };
+    const next = targets[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    resizeTo(next);
+  }
+
   return (
     <nav
       aria-label="Main"
       data-collapsed={collapsed ? '' : undefined}
+      /*
+       * Inline only while expanded: the collapsed width is the class below,
+       * and an inline width would override it.
+       */
+      style={collapsed ? undefined : { width }}
       className={cn(
-        'group/sidebar relative flex shrink-0 flex-col border-r border-border bg-card py-4',
-        'transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-        collapsed ? 'w-16 px-2' : 'w-56 px-3',
+        // max-w keeps a width chosen on a wide monitor from swallowing a laptop screen.
+        'group/sidebar relative flex max-w-[50vw] shrink-0 flex-col border-r border-border bg-card py-4',
+        /*
+         * No transition while dragging. The 300ms ease is for the collapse
+         * toggle; applied to a drag it makes the edge trail the pointer.
+         */
+        resizing ? 'select-none' : 'transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+        collapsed ? 'w-16 px-2' : 'px-3',
       )}
     >
+      {/*
+       * THE RESIZE HANDLE: the drawer's right border, widened to an 8px hit
+       * area that straddles it. Below the collapse button (z-10 against its
+       * z-20), so the button stays clickable where the two overlap.
+       *
+       * Not rendered while collapsed. The collapsed drawer is a fixed rail of
+       * icons, and a width you could drag it to would be a third state nobody
+       * asked for. Double-click puts the default back.
+       */}
+      {collapsed ? null : (
+        // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or pointer events; a focusable separator is the ARIA window-splitter pattern.
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize navigation"
+          aria-controls="main-nav"
+          aria-valuenow={width}
+          aria-valuemin={SIDEBAR_WIDTH.min}
+          aria-valuemax={SIDEBAR_WIDTH.max}
+          tabIndex={0}
+          title="Drag to resize · double-click to reset"
+          onPointerDown={onResizeStart}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeEnd}
+          onPointerCancel={onResizeEnd}
+          onKeyDown={onResizeKey}
+          onDoubleClick={() => resizeTo(SIDEBAR_WIDTH.default)}
+          className={cn(
+            // touch-none: a finger dragging the edge resizes instead of scrolling.
+            'absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none',
+            'after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:transition-colors',
+            'hover:after:bg-primary/40 focus-visible:outline-none focus-visible:after:bg-ring',
+            resizing && 'after:bg-primary/60',
+          )}
+        />
+      )}
       {/*
        * The handle sits ON the edge it moves, half outside the panel, rather
        * than tucked inside the header. It is the affordance for the border it
@@ -269,8 +380,8 @@ export function Sidebar({
                        */}
                       <span
                         className={cn(
-                          'overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-                          collapsed ? 'max-w-0 opacity-0' : 'max-w-40 opacity-100',
+                          'truncate transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                          collapsed ? 'max-w-0 opacity-0' : 'max-w-full opacity-100',
                         )}
                       >
                         {item.label}

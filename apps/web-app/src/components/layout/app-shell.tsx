@@ -16,7 +16,12 @@ import { AppIconSet } from '@/components/layout/icon-set';
 import { buildAccountNav, buildHeaderTools, buildNav } from '@/components/layout/nav';
 import { RememberOrganization } from '@/components/layout/remember-organization';
 import { Sidebar } from '@/components/layout/sidebar';
-import { isCollapsedValue, SIDEBAR_COOKIE } from '@/components/layout/sidebar-state';
+import {
+  isCollapsedValue,
+  parseSidebarWidth,
+  SIDEBAR_COOKIE,
+  SIDEBAR_WIDTH_COOKIE,
+} from '@/components/layout/sidebar-state';
 import { ConnectivityMonitor } from '@/components/status/connectivity-monitor';
 import { StatusBarHost } from '@/components/status/status-bar-host';
 import { appBrand } from '@/config/env';
@@ -44,8 +49,9 @@ import {
  * is authorised there. Treating a render-time check as protection is how a UI
  * ends up "guarded" by something an attacker never runs.
  *
- * The drawer's collapsed state is read here rather than in the client, so the
- * shell renders at the right width instead of snapping to it after hydration.
+ * The drawer's collapsed state and width are read here rather than in the
+ * client, so the shell renders at the right width instead of snapping to it
+ * after hydration.
  */
 export async function AppShell({
   title,
@@ -339,6 +345,7 @@ export async function AppShell({
               },
             })}
             defaultCollapsed={isCollapsedValue(cookieStore.get(SIDEBAR_COOKIE)?.value)}
+            defaultWidth={parseSidebarWidth(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value)}
             brand={appBrand()}
             /*
              * Plain data, like `groups` — the drawer is a client component and

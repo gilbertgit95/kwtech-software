@@ -469,7 +469,7 @@ export function OrganizationSwitcher({
           <span
             className={cn(
               'min-w-0 flex-1 overflow-hidden text-left transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-              collapsed ? 'max-w-0 opacity-0' : 'max-w-40 opacity-100',
+              collapsed ? 'max-w-0 opacity-0' : 'max-w-full opacity-100',
             )}
           >
             <span className="block truncate text-sm font-semibold leading-tight">{title}</span>

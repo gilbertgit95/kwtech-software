@@ -50,6 +50,16 @@ export const THEME_STORAGE_KEY = 'kwtech_theme';
 export const SIDEBAR_COOKIE = 'kwtech_sidebar_collapsed';
 
 /**
+ * Cookie. The drawer's EXPANDED width in pixels, set by dragging its edge.
+ *
+ * Separate from the collapsed flag rather than folded into one value, so
+ * collapsing and expanding again returns the drawer to the width somebody
+ * chose instead of to the default. A cookie for the same reason as that flag:
+ * read after hydration, every page would paint the default width and then jump.
+ */
+export const SIDEBAR_WIDTH_COOKIE = 'kwtech_sidebar_width';
+
+/**
  * Cookie. The organization the switcher has selected.
  *
  * A COOKIE for the same reason the sidebar's width is one, and the reason is
