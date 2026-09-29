@@ -35,9 +35,10 @@ describe('POS_FEATURE_REGISTRY', () => {
     ]);
   });
 
-  it('⚠ binds every key but those whose operations arrive with selling — discount, refund, reports', () => {
-    const unbound = POS_FEATURE_REGISTRY.filter((spec) => (spec.bindings ?? []).length === 0).map((spec) => spec.key);
-    expect(unbound.sort()).toEqual([POS_FEATURE.discount, POS_FEATURE.refund, POS_FEATURE.reports].sort());
+  it('⚠ binds every key — a key with no binding guards nothing while reading as coverage', () => {
+    for (const spec of POS_FEATURE_REGISTRY) {
+      expect([spec.key, (spec.bindings ?? []).length > 0]).toEqual([spec.key, true]);
+    }
   });
 
   it('⚠ no feature key shares a name with a limit key', () => {

@@ -215,7 +215,7 @@ export interface PosOrderListWhere extends InScope {
   number?: number;
   changeOwed?: { gt: number };
   changeSettledAt?: null;
-  paidAt?: { gte: Date; lt: Date };
+  paidAt?: { gte: Date; lt: Date } | { lt: Date };
   finalisedAt?: { gte: Date; lt: Date };
   cancelledAt?: { gte: Date; lt: Date };
   OR?: Array<

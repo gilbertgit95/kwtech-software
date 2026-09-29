@@ -81,6 +81,8 @@ function refusalMessage(reason: PosRefusal): string {
       return 'A discount is an amount above ₱0, or a percentage from 0.01% to 100%';
     case 'invalid_amount':
       return 'Those amounts do not add up: check what was received, the tip and the change';
+    case 'invalid_method':
+      return 'Payment is cash, e-wallet or card';
     case 'insufficient_payment':
       return 'That is less than the total';
     case 'change_not_allowed':
@@ -103,5 +105,7 @@ function refusalMessage(reason: PosRefusal): string {
       return 'Those shortcuts cannot be saved';
     case 'invalid_time_zone':
       return 'That is not a time zone this server knows, such as Asia/Manila';
+    case 'invalid_period':
+      return 'A report covers whole store days, from one day to a little over a year';
   }
 }

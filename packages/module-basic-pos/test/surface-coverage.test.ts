@@ -4,6 +4,7 @@ import { CREDENTIAL_SURFACE_METADATA, PUBLIC_SURFACE_METADATA, REQUIRED_SCOPE_ME
 import { POS_FEATURE, POS_FEATURE_REGISTRY } from '../src/feature-keys.js';
 import { POS_OPERATIONS } from '../src/operations.js';
 import { PosCatalogueResolver } from '../src/server/graphql/pos-catalogue.resolver.js';
+import { PosOrderResolver } from '../src/server/graphql/pos-order.resolver.js';
 
 /**
  * ⚠ THE §12.13 TRAP, TURNED INTO A RED BUILD — `module-task`'s suite, for the POS.
@@ -15,7 +16,7 @@ import { PosCatalogueResolver } from '../src/server/graphql/pos-catalogue.resolv
  */
 
 const GRAPHQL_DIR = join(__dirname, '..', 'src', 'server', 'graphql');
-const RESOLVERS = [PosCatalogueResolver];
+const RESOLVERS = [PosCatalogueResolver, PosOrderResolver];
 
 /** Every operation any resolver file publishes, read from the source. */
 function publishedOperations(): string[] {
@@ -77,6 +78,14 @@ describe('the POS resolvers', () => {
       expect(BOUND.get(`Mutation.${identifier}`)).toBe(POS_FEATURE.manageItems);
     }
     expect(BOUND.get('Mutation.savePosSettings')).toBe(POS_FEATURE.manageSettings);
+  });
+
+  it('⚠ keep lowering a price, giving money back and reading the takings off pos:sell', () => {
+    expect(BOUND.get('Mutation.setPosLineDiscount')).toBe(POS_FEATURE.discount);
+    expect(BOUND.get('Mutation.setPosOrderDiscount')).toBe(POS_FEATURE.discount);
+    expect(BOUND.get('Mutation.refundPosOrder')).toBe(POS_FEATURE.refund);
+    expect(BOUND.get('Mutation.voidPosOrder')).toBe(POS_FEATURE.refund);
+    expect(BOUND.get('Query.posReport')).toBe(POS_FEATURE.reports);
   });
 
   it('⚠ bind the catalogue read to pos:read — its costs are stripped in the resolver, not by the key', () => {

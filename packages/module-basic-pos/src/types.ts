@@ -59,6 +59,7 @@ export type PosRefusal =
   | 'invalid_reason'
   | 'invalid_discount'
   | 'invalid_amount'
+  | 'invalid_method'
   | 'insufficient_payment'
   | 'change_not_allowed'
   | 'customer_required'
@@ -69,4 +70,5 @@ export type PosRefusal =
   | 'exceeds_paid'
   | 'unknown_line'
   | 'invalid_keymap'
-  | 'invalid_time_zone';
+  | 'invalid_time_zone'
+  | 'invalid_period';

@@ -1,12 +1,17 @@
 import type { LimitChecker } from '@kwtech/module-kit';
 import type { PosFeatureKey } from '../src/feature-keys.js';
 import { PosCatalogueResolver } from '../src/server/graphql/pos-catalogue.resolver.js';
+import { PosOrderResolver } from '../src/server/graphql/pos-order.resolver.js';
 import type { PosAccessCheck } from '../src/server/ports.js';
 import { PosEventPublisher } from '../src/server/pos.events.js';
 import type { PosEvent, PosPubSub } from '../src/server/pos.pubsub.js';
 import { PosAccessService } from '../src/server/pos-access.service.js';
 import { PosCatalogueService } from '../src/server/pos-catalogue.service.js';
 import { PosCustomerService } from '../src/server/pos-customer.service.js';
+import { PosOrderService } from '../src/server/pos-order.service.js';
+import { PosOrderWriteService } from '../src/server/pos-order-write.service.js';
+import { PosRefundService } from '../src/server/pos-refund.service.js';
+import { PosReportService } from '../src/server/pos-report.service.js';
 import { PosSettingsService } from '../src/server/pos-settings.service.js';
 import { type FakeClient, fakeClient } from './fake-client.js';
 
@@ -48,15 +53,30 @@ export function harness(options: HarnessOptions = {}) {
   const catalogue = new PosCatalogueService(prisma, events, options.limits);
   const customers = new PosCustomerService(prisma, events);
   const settings = new PosSettingsService(prisma, events);
-  const resolver = new PosCatalogueResolver(
+  const moduleOptions = { resolveActorId: (request: unknown) => (request as { userId?: string } | undefined)?.userId };
+  const resolver = new PosCatalogueResolver(catalogue, customers, settings, access, moduleOptions, pubsub);
+  const orders = new PosOrderService(prisma, settings);
+  const writes = new PosOrderWriteService(prisma, events, access);
+  const refunds = new PosRefundService(prisma, events);
+  const reports = new PosReportService(prisma, settings, {
+    describe: async (ids) => ids.map((userId) => ({ userId, displayName: userId.replace('user-', '') })),
+  });
+  const orderResolver = new PosOrderResolver(orders, writes, refunds, reports, access, moduleOptions);
+  return {
+    prisma,
+    pubsub,
+    events,
+    access,
     catalogue,
     customers,
     settings,
-    access,
-    { resolveActorId: (request) => (request as { userId?: string } | undefined)?.userId },
-    pubsub,
-  );
-  return { prisma, pubsub, events, access, catalogue, customers, settings, resolver };
+    resolver,
+    orders,
+    writes,
+    refunds,
+    reports,
+    orderResolver,
+  };
 }
 
 /** A GraphQL context for `userId`. */

@@ -64,6 +64,9 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Query.posCustomer'),
       /* Every till reads the keymap and time zone; only `manage_settings` writes them. */
       op('Query.posSettings'),
+      op('Query.posOrders'),
+      /* ⚠ An order's lines carry unit costs; the resolver strips them as for the catalogue. */
+      op('Query.posOrder'),
       /*
        * ⚠ ITS OWN SURFACE. A subscription is authorised ONCE, here, and then
        * streams — ids only, filtered to the workspace.
@@ -79,8 +82,27 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description:
       'Ring up orders at the listed price, hold and resume them, take payment, let a customer pay later, and record customers.',
     tags: ['pos'],
-    /* Customers are created where they are met: at the till (D5). */
-    bindings: [op('Mutation.savePosCustomer'), op('Mutation.setPosCustomerArchived')],
+    bindings: [
+      op('Mutation.createPosOrder'),
+      /*
+       * ⚠ Changing a line's quantity, adding or removing one: the service asks
+       * the access port for `pos:discount` and DROPS FIXED DISCOUNTS when the
+       * editor lacks it (guard rules). The key sells at the listed price.
+       */
+      op('Mutation.addPosOrderLine'),
+      op('Mutation.updatePosOrderLine'),
+      op('Mutation.removePosOrderLine'),
+      op('Mutation.refreshPosOrderLine'),
+      op('Mutation.setPosOrderCustomer'),
+      op('Mutation.setPosOrderLabel'),
+      op('Mutation.payPosOrder'),
+      op('Mutation.payLaterPosOrder'),
+      op('Mutation.cancelPosOrder'),
+      op('Mutation.settlePosChangeOwed'),
+      /* Customers are created where they are met: at the till (D5). */
+      op('Mutation.savePosCustomer'),
+      op('Mutation.setPosCustomerArchived'),
+    ],
   },
   {
     key: POS_FEATURE.discount,
@@ -89,7 +111,7 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Give discounts',
     description: 'Take an amount or a percentage off a line or a whole order, with a reason.',
     tags: ['pos'],
-    bindings: [],
+    bindings: [op('Mutation.setPosLineDiscount'), op('Mutation.setPosOrderDiscount')],
   },
   {
     key: POS_FEATURE.refund,
@@ -103,7 +125,7 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Refund and void',
     description: 'Refund a paid order, whole or in part, and void an unpaid order whose items came back.',
     tags: ['pos'],
-    bindings: [],
+    bindings: [op('Mutation.refundPosOrder'), op('Mutation.voidPosOrder')],
   },
   {
     key: POS_FEATURE.manageItems,
@@ -126,7 +148,7 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'See sales reports',
     description: 'Open the dashboard and the sales reports, including profit, and export them.',
     tags: ['pos'],
-    bindings: [],
+    bindings: [op('Query.posReport')],
   },
   {
     key: POS_FEATURE.manageSettings,
