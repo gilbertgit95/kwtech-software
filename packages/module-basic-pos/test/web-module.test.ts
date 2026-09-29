@@ -23,6 +23,6 @@ describe('posWebModule', () => {
   });
 
   it('carries its keys, so an app composing descriptors sees them', () => {
-    expect(module.features?.map((spec) => spec.key)).toEqual([POS_FEATURE.read]);
+    expect(module.features?.map((spec) => spec.key)).toEqual(Object.values(POS_FEATURE));
   });
 });
