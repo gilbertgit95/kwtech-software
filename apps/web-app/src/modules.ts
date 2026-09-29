@@ -1,11 +1,11 @@
 import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
+import { posWebModule } from '@kwtech/module-basic-pos/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
 import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
-import { posWebModule } from '@kwtech/module-pos/react';
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
 import { taskWebModule } from '@kwtech/module-task/react';
 

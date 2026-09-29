@@ -1,5 +1,6 @@
 import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
+import { POS_FEATURE_REGISTRY } from '@kwtech/module-basic-pos';
 import {
   CHAT_DEFAULT_MOMENT_REGISTRY,
   CHAT_DEFAULT_REGISTRY,
@@ -26,7 +27,6 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
-import { POS_FEATURE_REGISTRY } from '@kwtech/module-pos';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE_REGISTRY, TASK_LIMIT_REGISTRY } from '@kwtech/module-task';
 

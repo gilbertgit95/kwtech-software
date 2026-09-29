@@ -1,7 +1,7 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
+import { POS_FEATURE } from '@kwtech/module-basic-pos';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
-import { POS_FEATURE } from '@kwtech/module-pos';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE, TASK_LIMIT } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';

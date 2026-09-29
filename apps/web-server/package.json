@@ -35,7 +35,7 @@
     "@kwtech/module-note": "workspace:*",
     "@kwtech/module-notification": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
-    "@kwtech/module-pos": "workspace:*",
+    "@kwtech/module-basic-pos": "workspace:*",
     "@kwtech/module-queuing-window": "workspace:*",
     "@kwtech/module-task": "workspace:*",
     "@nestjs/apollo": "catalog:",

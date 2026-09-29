@@ -1,5 +1,5 @@
 /**
- * `@kwtech/module-pos` — a point of sale per workspace.
+ * `@kwtech/module-basic-pos` — a point of sale per workspace.
  *
  * THIS ENTRY POINT IS PURE. No Prisma, no Nest, no React. Today it is only the
  * feature key that offers the app; domain rules, types and GraphQL operation

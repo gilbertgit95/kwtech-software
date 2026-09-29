@@ -1,5 +1,5 @@
 {
-  "name": "@kwtech/module-pos",
+  "name": "@kwtech/module-basic-pos",
   "version": "0.0.0",
   "private": true,
   "description": "A point of sale per workspace, run as a sub-app on the Apps page. A placeholder for now: one key and a static screen",

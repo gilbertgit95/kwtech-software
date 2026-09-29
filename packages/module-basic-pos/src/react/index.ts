@@ -1,5 +1,5 @@
 /**
- * `@kwtech/module-pos/react` — the web half.
+ * `@kwtech/module-basic-pos/react` — the web half.
  *
  * A SEPARATE entry point from '.', which stays framework-free. `react` and
  * `@kwtech/web-ui` are optional peers for that reason.

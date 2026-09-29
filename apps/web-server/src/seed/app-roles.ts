@@ -1,11 +1,11 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
+import { POS_FEATURE } from '@kwtech/module-basic-pos';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
-import { POS_FEATURE } from '@kwtech/module-pos';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
 import { TASK_ROLE_PRESETS, type TaskRolePreset } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
