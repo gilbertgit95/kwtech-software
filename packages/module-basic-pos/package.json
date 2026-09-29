@@ -2,20 +2,22 @@
   "name": "@kwtech/module-basic-pos",
   "version": "0.0.0",
   "private": true,
-  "description": "A point of sale per workspace, run as a sub-app on the Apps page. A placeholder for now: one key and a static screen",
+  "description": "A point of sale per workspace, run as a sub-app on the Apps page: items with variants, orders with hold, pay later, change owed, tips, discounts and refunds, hot keys and reports",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./prisma": "./prisma/pos.prisma",
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "prisma"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

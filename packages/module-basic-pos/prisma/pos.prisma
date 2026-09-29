@@ -1,0 +1,383 @@
+// The point of sale's slice of the data model (docs/POS-PLAN.md §5).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Pos` and mapped to `pos_*`.
+//
+//   category ◀── item ──▶ variant
+//   customer ◀── order ──▶ line (copies of the item as sold)
+//                  └────▶ refund ──▶ refund line
+//   counter (the next order number), settings (time zone, keymap): one per workspace
+//
+// ⚠ MONEY IS AN INTEGER NUMBER OF CENTAVOS in every `Int` below that holds an
+// amount: ₱12.50 is 1250. Never a float, never a decimal string.
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE. The guard proves the caller is a
+// member of the workspace in the request, not that the row is in it: a lookup
+// by id alone reads a row from any tenant.
+//
+// ⚠ NOTHING IS DELETED. Items, variants, categories and customers are
+// archived, because old orders point at them; orders are cancelled or voided;
+// a paid order is corrected by a refund row. The `userId`s are bare strings
+// with no foreign key — `auth_user` belongs to module-auth (PLAN §9).
+
+enum PosItemKind {
+  product
+  service
+}
+
+/// open → paid | unpaid | cancelled; unpaid → paid | voided (src/domain/orders.ts).
+enum PosOrderStatus {
+  open
+  unpaid
+  paid
+  cancelled
+  voided
+}
+
+/// Recorded, never processed (D6).
+enum PosPaymentMethod {
+  cash
+  ewallet
+  card
+}
+
+/// `amount`: the value is centavos. `percent`: the value is basis points (1000 = 10%).
+enum PosDiscountKind {
+  amount
+  percent
+}
+
+/// How owed change was settled (D14).
+enum PosChangeSettlement {
+  given
+  tip
+}
+
+/// A grouping of items, for the till's tabs and for reports.
+model PosCategory {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name      String
+  /// The name lower-cased: what makes two names the same category, so "Lamination"
+  /// and "lamination" cannot both exist.
+  nameKey   String
+  sortOrder Int    @default(0)
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  items PosItem[]
+
+  @@unique([workspaceId, nameKey])
+  @@index([organizationId])
+  @@map("pos_category")
+}
+
+/// Something the store sells (D4, D9, D15).
+model PosItem {
+  id             String  @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  categoryId     String?
+
+  kind PosItemKind @default(product)
+  name String
+  /// Upper case, no spaces (`preparePosCode`). ⚠ Unique per store ACROSS items
+  /// and variants: each table's `@@unique` holds its own half, and the service
+  /// checks the other table in the same transaction.
+  code String?
+
+  /// Centavos. Unused while the item has variants: the till asks for one.
+  price Int
+  /// Centavos, or null when not entered (D15). Never sent to anybody without
+  /// `pos:manage_items` or `pos:reports`.
+  cost  Int?
+
+  archivedAt  DateTime?
+  createdById String
+  updatedById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  category PosCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants PosItemVariant[]
+  lines    PosOrderLine[]
+
+  @@unique([workspaceId, code])
+  /// The catalogue the till loads, and the count behind `pos:items`.
+  @@index([workspaceId, archivedAt])
+  @@index([categoryId])
+  @@index([organizationId])
+  @@map("pos_item")
+}
+
+/// A size or type of an item, with its own price (D9): "250 mic · A4".
+model PosItemVariant {
+  id             String @id @default(cuid())
+  itemId         String
+  organizationId String
+  workspaceId    String
+
+  name      String
+  code      String?
+  price     Int
+  cost      Int?
+  sortOrder Int     @default(0)
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  item  PosItem        @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lines PosOrderLine[]
+
+  @@unique([workspaceId, code])
+  @@index([itemId, sortOrder])
+  @@index([workspaceId, archivedAt])
+  @@index([organizationId])
+  @@map("pos_item_variant")
+}
+
+/// A recorded customer (D5). A walk-in has no row: only free text on the order.
+model PosCustomer {
+  id             String  @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name    String
+  contact String?
+  note    String?
+
+  archivedAt  DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orders PosOrder[]
+
+  @@index([workspaceId, archivedAt])
+  @@index([organizationId])
+  @@map("pos_customer")
+}
+
+/// One order, from the first item to paid (or cancelled, or voided).
+model PosOrder {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  status  PosOrderStatus @default(open)
+  /// ⚠ OPTIMISTIC CONCURRENCY: bumped by every change, and every write is
+  /// conditional on it (`where: { id, version }`), so two cashiers on one held
+  /// order cannot both land a change or both take payment (guard rules).
+  version Int            @default(1)
+  /// Taken from `PosCounter` in the transaction that finalises (paid or unpaid).
+  /// Null while open, and forever for a cancelled order.
+  number  Int?
+  /// Tells held orders apart: "table 3".
+  label   String?
+
+  /// A recorded customer, if one was linked, and the COPIES shown on the
+  /// receipt — for a walk-in, the free text. Editing the customer never
+  /// changes an old receipt.
+  customerId      String?
+  customerName    String?
+  customerContact String?
+
+  /// `computeOrderTotals`, stored by the server on every change. The browser's
+  /// figures are never trusted.
+  gross         Int @default(0)
+  lineDiscounts Int @default(0)
+  subtotal      Int @default(0)
+  orderDiscount Int @default(0)
+  total         Int @default(0)
+
+  /// The order discount as given (D16), and who gave it (guard rules).
+  discountKind   PosDiscountKind?
+  discountValue  Int?
+  discountReason String?
+  discountById   String?
+  discountAt     DateTime?
+
+  /// The payment (D12–D14). One per order in v1.
+  paymentMethod    PosPaymentMethod?
+  received         Int?
+  /// Change handed back at payment.
+  change           Int?
+  tip              Int               @default(0)
+  paymentReference String?
+  /// The till's id for the payment, so a double click or a retry does not pay twice.
+  paymentClientId  String?
+
+  /// Change the store could not give yet, and how and when it was settled (D14).
+  changeOwed        Int                  @default(0)
+  changeSettlement  PosChangeSettlement?
+  changeSettledAt   DateTime?
+  changeSettledById String?
+
+  createdById    String
+  /// When it was numbered, and by whom: paid, or released unpaid.
+  finalisedAt    DateTime?
+  finalisedById  String?
+  /// Released by Pay later (D13), whether or not it has been paid since.
+  releasedUnpaid Boolean   @default(false)
+  paidAt         DateTime?
+  /// Who took payment: the person a sale is credited to ("by staff").
+  paidById       String?
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
+  voidedAt       DateTime?
+  voidedById     String?
+  voidReason     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer PosCustomer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lines    PosOrderLine[]
+  refunds  PosRefund[]
+
+  @@unique([workspaceId, number])
+  @@unique([workspaceId, paymentClientId])
+  /// Pending, unpaid, and the orders list by status.
+  @@index([workspaceId, status])
+  /// Sales of a period: a sale counts on the day it is paid.
+  @@index([workspaceId, paidAt])
+  @@index([workspaceId, finalisedAt])
+  @@index([customerId])
+  @@index([organizationId])
+  @@map("pos_order")
+}
+
+/// One line of an order: COPIES of the item as it was when added (§3), so a
+/// price change, a rename or a new category never rewrites an old receipt.
+model PosOrderLine {
+  id             String  @id @default(cuid())
+  orderId        String
+  organizationId String
+  workspaceId    String
+  /// Its place on the receipt.
+  position       Int
+  itemId         String
+  variantId      String?
+
+  name         String
+  kind         PosItemKind
+  variantName  String?
+  code         String?
+  categoryName String?
+  unitPrice    Int
+  unitCost     Int?
+  quantity     Int
+  note         String?
+
+  /// The line's own discount as given, what it came to, and who gave it.
+  discountKind   PosDiscountKind?
+  discountValue  Int?
+  discountAmount Int              @default(0)
+  discountReason String?
+  discountById   String?
+  discountAt     DateTime?
+
+  /// Unit price × quantity.
+  gross Int
+  /// Gross − its discount, as printed.
+  total Int
+  /// Total − its share of the order discount: what the customer actually paid
+  /// for it. What a refund of it gives back, and what reports count.
+  net   Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order       PosOrder        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  item        PosItem         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  variant     PosItemVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  refundLines PosRefundLine[]
+
+  @@index([orderId, position])
+  @@index([itemId])
+  @@index([variantId])
+  @@index([organizationId])
+  @@map("pos_order_line")
+}
+
+/// Money given back for a paid order (D17). Its own record: the order never changes.
+model PosRefund {
+  id             String @id @default(cuid())
+  orderId        String
+  organizationId String
+  workspaceId    String
+
+  amount       Int
+  method       PosPaymentMethod
+  reason       String
+  refundedById String
+  refundedAt   DateTime         @default(now())
+  /// The till's id for the refund, so a double click does not refund twice.
+  clientId     String
+
+  order PosOrder        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  lines PosRefundLine[]
+
+  @@unique([workspaceId, clientId])
+  @@index([orderId])
+  @@index([workspaceId, refundedAt])
+  @@index([organizationId])
+  @@map("pos_refund")
+}
+
+/// Which line a refund gave back, how many, and for how much. None for a refund by amount.
+model PosRefundLine {
+  id             String @id @default(cuid())
+  refundId       String
+  orderLineId    String
+  organizationId String
+  workspaceId    String
+
+  quantity Int
+  amount   Int
+
+  refund    PosRefund    @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  orderLine PosOrderLine @relation(fields: [orderLineId], references: [id], onDelete: Restrict)
+
+  @@index([refundId])
+  @@index([orderLineId])
+  @@index([organizationId])
+  @@map("pos_refund_line")
+}
+
+/// The next order number of a store. One row per workspace, incremented in the
+/// transaction that finalises an order, so numbers count up without gaps.
+model PosCounter {
+  workspaceId    String @id
+  organizationId String
+  nextNumber     Int    @default(1)
+
+  @@index([organizationId])
+  @@map("pos_counter")
+}
+
+/// A store's settings. One row per workspace; none means every default.
+model PosSettings {
+  workspaceId    String @id
+  organizationId String
+
+  /// IANA name. Decides which day a sale belongs to (D22).
+  timeZone String @default("Asia/Manila")
+  /// `PosKeymap`, checked by `validateKeymap` on write; null means the defaults.
+  keymap   Json?
+
+  version     Int      @default(1)
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("pos_settings")
+}
