@@ -475,6 +475,9 @@ importers:
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@24.10.1)(supports-color@8.1.1)
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
