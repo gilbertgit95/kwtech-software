@@ -178,7 +178,9 @@ only when it is a feature of its own (PLAN §9 rule 8).
 - [ ] `apps/web-server/src/seed/app-roles.ts` (and `plans.ts` for organization
       keys): grant the new keys to the roles and plans that should hold them.
       Read the module's presets (for example `QUEUE_ROLE_PRESETS`) rather than
-      restating them.
+      restating them. A member holds ONE workspace role, so a person working
+      in two sub-apps needs a combined role built from both presets. See
+      `.claude/rules/database.md`, "Combined workspace roles".
 - [ ] `apps/web-app/src/modules.ts`: add to `WEB_MODULES`. Pages render through
       the catch-all `app/(modules)/[...slug]/page.tsx`, so you don't add a
       page file.

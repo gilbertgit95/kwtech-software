@@ -77,7 +77,10 @@ test/                   fake-client.ts, surface-coverage, feature-keys, web-modu
   who is not configured, which is almost never right.
 - **Role presets** (`X_ROLE_PRESETS`) are exported as data. The module never seeds
   them. The app's `seed/app-roles.ts` and `seed/plans.ts` read them, so adopting a
-  module grants nobody anything until the app decides.
+  module grants nobody anything until the app decides. Presets are also the
+  building blocks of combined workspace roles (one person, several sub-apps).
+  Renaming or removing one breaks those combinations, so check `app-roles.ts`.
+  The rules for combining are in `database.md`, "Combined workspace roles".
 - **Defaults are keyed by the process they serve** (`chat.creator_role`), and
   `whenUnset` is required. Renaming a key is a data migration.
 - **Composition throws on a duplicate route path or key.** Never catch that.
