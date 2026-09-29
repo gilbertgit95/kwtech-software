@@ -1,6 +1,13 @@
 import { appHubServerModule } from '@kwtech/module-app-hub/server';
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
 import {
+  POS_ACCESS_CHECK,
+  POS_LIMIT_CHECKER,
+  POS_MEMBER_DIRECTORY,
+  POS_PUBSUB,
+  posServerModule,
+} from '@kwtech/module-basic-pos/server';
+import {
   CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
   CHAT_NOTIFIER,
@@ -70,6 +77,8 @@ import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
 import { NOTIFICATION_SOURCES } from './notifications/sources.js';
 import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
+import { PosKeyAccess } from './pos/access-check.js';
+import { PosMemberDirectoryAdapter } from './pos/member-directory.js';
 import {
   appHubPrismaProvider,
   authPrismaProvider,
@@ -81,6 +90,8 @@ import {
   notificationWritePrismaProvider,
   permissionsPrismaProvider,
   permissionsWritePrismaProvider,
+  posPrismaProvider,
+  posWritePrismaProvider,
   queuePrismaProvider,
   queueWritePrismaProvider,
   taskPrismaProvider,
@@ -594,6 +605,37 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
 
     // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent board.
     pubsubProvider: { provide: TASK_PUBSUB, useValue: realtimePubSub() },
+  }),
+
+  /*
+   * The point of sale — a workspace sub-app. Its ports read other modules'
+   * tables: grants (costs in an answer, fixed discounts kept on an edit) and
+   * names for "by staff". The adapters are in ./pos/.
+   */
+  posServerModule({
+    prismaProvider: posPrismaProvider,
+    prismaWriteProvider: posWritePrismaProvider,
+
+    // The `pos:items` cap from the plan. Omitted, the module holds its declared default.
+    limitCheckerProvider: { provide: POS_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    // ⚠ Without it, costs are never shown and fixed discounts drop on every edit — fail closed.
+    accessCheckProvider: {
+      provide: POS_ACCESS_CHECK,
+      inject: [PermissionsService],
+      useFactory: (permissions: PermissionsService) => new PosKeyAccess(permissions),
+    },
+    // Without it, reports name nobody.
+    memberDirectoryProvider: {
+      provide: POS_MEMBER_DIRECTORY,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new PosMemberDirectoryAdapter(prisma),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent till.
+    pubsubProvider: { provide: POS_PUBSUB, useValue: realtimePubSub() },
   }),
 
   /*

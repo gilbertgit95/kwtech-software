@@ -1,5 +1,6 @@
 import type { AppHubPrismaClient } from '@kwtech/module-app-hub/server';
 import type { AuthTransaction } from '@kwtech/module-auth/server';
+import type { PosPrismaClient, PosTransaction } from '@kwtech/module-basic-pos/server';
 import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
 import type { NotePrismaClient, NoteTransaction } from '@kwtech/module-note/server';
 import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
@@ -57,6 +58,8 @@ export const _noteWriteDelegatesFit: NoteTransaction = client;
 
 export const _taskReadClientFits: TaskPrismaClient = client;
 export const _taskWriteDelegatesFit: TaskTransaction = client;
+export const _posReadClientFits: PosPrismaClient = client;
+export const _posWriteDelegatesFit: PosTransaction = client;
 export const _notificationReadClientFits: NotificationPrismaClient = client;
 export const _notificationWriteDelegatesFit: NotificationTransaction = client;
 

@@ -1,5 +1,5 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
-import { POS_FEATURE } from '@kwtech/module-basic-pos';
+import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
@@ -189,17 +189,18 @@ const TASKS = Object.values(TASK_FEATURE);
 const TASK_CAPS = { [TASK_LIMIT.boards]: 20, [TASK_LIMIT.tasks]: 2000 };
 
 /**
- * The PLACEHOLDER sub-app — the point of sale — sold where the queue is: every
- * tier except free. One workspace key that only offers the app on the Apps
- * page; which tiers get it for real is a product decision for when it does
- * something.
+ * The point of sale, sold where it was as a placeholder: every tier except
+ * free. All seven keys are workspace level.
  *
- * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment seeded
- * before these shipped needs an operator to add the keys on `/admin/plans`;
- * until then the Apps page does not offer them (a super admin, whose grants
- * skip the plan filter, still sees them).
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment
+ * seeded while the POS was a placeholder has `pos:read` only: an operator adds
+ * the other six keys and the `pos:items` cap on `/admin/plans`. Until then
+ * people can open the app and do nothing in it — the till says why.
  */
-const PLACEHOLDER_APPS = [POS_FEATURE.read];
+const POS = Object.values(POS_FEATURE);
+
+/** Active items and variants per store. The same in every tier for now. */
+const POS_CAPS = { [POS_LIMIT.items]: 1000 };
 
 /** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
 const QUEUE_CAPS = {
@@ -249,7 +250,7 @@ const STARTER: PlanDefinition = {
     ...QUEUE,
     ...NOTES,
     ...TASKS,
-    ...PLACEHOLDER_APPS,
+    ...POS,
     ...APPS_PAGE,
   ],
   limits: {
@@ -259,6 +260,7 @@ const STARTER: PlanDefinition = {
     ...QUEUE_CAPS,
     ...NOTE_CAPS,
     ...TASK_CAPS,
+    ...POS_CAPS,
   },
 };
 
@@ -289,7 +291,7 @@ const PRO: PlanDefinition = {
     ...QUEUE,
     ...NOTES,
     ...TASKS,
-    ...PLACEHOLDER_APPS,
+    ...POS,
     ...APPS_PAGE,
   ],
   limits: {
@@ -299,6 +301,7 @@ const PRO: PlanDefinition = {
     ...QUEUE_CAPS,
     ...NOTE_CAPS,
     ...TASK_CAPS,
+    ...POS_CAPS,
   },
 };
 
@@ -336,6 +339,7 @@ const ENTERPRISE: PlanDefinition = {
     ...QUEUE_CAPS,
     ...NOTE_CAPS,
     ...TASK_CAPS,
+    ...POS_CAPS,
   },
 };
 

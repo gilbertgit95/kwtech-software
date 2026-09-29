@@ -1,6 +1,6 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
-import { POS_FEATURE } from '@kwtech/module-basic-pos';
+import { POS_ROLE_PRESETS, type PosRolePreset } from '@kwtech/module-basic-pos';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
@@ -398,12 +398,17 @@ function taskPreset(key: string): TaskRolePreset {
 }
 
 /**
- * The PLACEHOLDER sub-app — the point of sale — offered by one key and doing
- * nothing else yet. Granted to both workspace roles so every member sees it on
- * the Apps page. When it grows real keys, replace its entry here with its
- * presets, as notes and tasks did.
+ * A point-of-sale preset, read by key (POS-PLAN §4). The stores using the POS
+ * have no cashiers yet, so its keys fold into the two workspace roles rather
+ * than a combined role: a workspace admin is `pos-manager` (sells, discounts,
+ * refunds, items, reports, settings) and a workspace user `pos-cashier` (sells
+ * at the listed price). THROWS if a preset is gone.
  */
-const PLACEHOLDER_APPS = [POS_FEATURE.read];
+function posPreset(key: string): PosRolePreset {
+  const preset = POS_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-basic-pos no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
 
 /**
  * Runs one workspace.
@@ -471,7 +476,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...notePreset('note-admin').features,
     // Task boards, and deleting anybody's tasks or taking over an orphaned board.
     ...taskPreset('task-admin').features,
-    ...PLACEHOLDER_APPS,
+    // The point of sale: selling, discounts, refunds, items, reports and settings.
+    ...posPreset('pos-manager').features,
   ],
   limits: {},
 };
@@ -494,14 +500,15 @@ const WORKSPACE_USER: SystemRoleDefinition = {
    */
   // Plus the queue's staff preset: see the queue and serve at a window they are assigned to,
   // and the Apps page the queue is reached from.
-  // Plus notes (read and write their own and shared ones), task boards, and the placeholder app on that page.
+  // Plus notes (read and write their own and shared ones), task boards, and selling at the POS.
   features: [
     FEATURE.workspaceRead,
     ...queuePreset('queue-staff').features,
     APP_HUB_FEATURE.read,
     ...notePreset('note-user').features,
     ...taskPreset('task-user').features,
-    ...PLACEHOLDER_APPS,
+    // Sells at the listed price: no discounts, refunds, costs or reports.
+    ...posPreset('pos-cashier').features,
   ],
   limits: {},
 };

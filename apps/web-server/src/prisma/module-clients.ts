@@ -1,6 +1,12 @@
 import { APP_HUB_PRISMA } from '@kwtech/module-app-hub/server';
 import { AUTH_PRISMA, type AuthPrismaClient, type AuthTransaction } from '@kwtech/module-auth/server';
 import {
+  POS_PRISMA,
+  POS_PRISMA_WRITE,
+  type PosTransaction,
+  type PosWriteClient,
+} from '@kwtech/module-basic-pos/server';
+import {
   CHAT_PRISMA,
   CHAT_PRISMA_WRITE,
   type ChatPrismaClient,
@@ -242,6 +248,36 @@ export const taskWritePrismaProvider: Provider = {
       taskChecklistItem: prisma.taskChecklistItem,
       taskComment: prisma.taskComment,
       taskPreference: prisma.taskPreference,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const posPrismaProvider: Provider = {
+  provide: POS_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const posWritePrismaProvider: Provider = {
+  provide: POS_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): PosWriteClient =>
+    withTransaction<PosTransaction, PosWriteClient>(prisma, {
+      /*
+       * ⚠ An item and its variants, an order's lines and its totals, the order
+       * number and the payment, a refund and its lines — each moves together,
+       * inside the transaction `withTransaction` dispatches. A number taken
+       * outside it would skip when the payment rolled back.
+       */
+      posCategory: prisma.posCategory,
+      posItem: prisma.posItem,
+      posItemVariant: prisma.posItemVariant,
+      posCustomer: prisma.posCustomer,
+      posOrder: prisma.posOrder,
+      posOrderLine: prisma.posOrderLine,
+      posRefund: prisma.posRefund,
+      posRefundLine: prisma.posRefundLine,
+      posCounter: prisma.posCounter,
+      posSettings: prisma.posSettings,
     }),
 };
 

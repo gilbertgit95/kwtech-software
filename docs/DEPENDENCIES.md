@@ -41,7 +41,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-app-hub` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
 | `module-note` | module-kit | web-ui, Nest, React | both apps |
 | `module-task` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
-| `module-basic-pos` | module-kit | web-ui, React (no Nest half yet) | both apps (web-server for the registry only) |
+| `module-basic-pos` | module-kit | web-ui, Nest, React | both apps |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -72,11 +72,11 @@ has a documented, fail-closed meaning — see each module's README.
 |---|---|---|
 | Who is calling | `resolveActorId` / `resolvePrincipal` option | `auth/resolve-principal.ts` — where auth and permissions meet |
 | May this caller do it (feature keys) | the registry's `bindings` | `FeatureGuard` from module-permissions, fed by `seed/registry.ts` |
-| How many may there be (caps) | `CHAT_LIMIT_CHECKER`, `QUEUE_LIMIT_CHECKER`, `NOTE_LIMIT_CHECKER`, `TASK_LIMIT_CHECKER` | `PermissionsLimitChecker` |
-| People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY`, `NOTE_AUTHOR_DIRECTORY`, `TASK_MEMBER_DIRECTORY` (also who may be assigned, and who has left) | adapters reading `auth_user` (and permissions, for tasks' members) |
+| How many may there be (caps) | `CHAT_LIMIT_CHECKER`, `QUEUE_LIMIT_CHECKER`, `NOTE_LIMIT_CHECKER`, `TASK_LIMIT_CHECKER`, `POS_LIMIT_CHECKER` | `PermissionsLimitChecker` |
+| People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY`, `NOTE_AUTHOR_DIRECTORY`, `TASK_MEMBER_DIRECTORY` (also who may be assigned, and who has left), `POS_MEMBER_DIRECTORY` (names for "by staff") | adapters reading `auth_user` (and permissions, for tasks' members) |
 | Is this person staff here | `QUEUE_STAFF_CHECK` | `queue/staff-check.ts` (permissions) |
-| Does this person hold a key the module checks itself | `NOTE_ACCESS_CHECK` (`note:manage_all`), `TASK_ACCESS_CHECK` (`task:assign`, `task:manage_all`) | `note/access-check.ts`, `task/access-check.ts` (permissions) |
-| Live events | `CHAT_PUBSUB`, `QUEUE_PUBSUB`, `PERMISSIONS_PUBSUB`, `NOTIFICATION_PUBSUB`, `NOTE_PUBSUB`, `TASK_PUBSUB` | ONE `realtimePubSub()` engine for all |
+| Does this person hold a key the module checks itself | `NOTE_ACCESS_CHECK` (`note:manage_all`), `TASK_ACCESS_CHECK` (`task:assign`, `task:manage_all`), `POS_ACCESS_CHECK` (who sees costs; whose edit keeps a fixed discount) | `note/access-check.ts`, `task/access-check.ts`, `pos/access-check.ts` (permissions) |
+| Live events | `CHAT_PUBSUB`, `QUEUE_PUBSUB`, `PERMISSIONS_PUBSUB`, `NOTIFICATION_PUBSUB`, `NOTE_PUBSUB`, `TASK_PUBSUB`, `POS_PUBSUB` | ONE `realtimePubSub()` engine for all |
 | A database | `X_PRISMA`, `X_PRISMA_WRITE` | `prisma/module-clients.ts`, checked by `satisfies-modules.ts` |
 | Email a person | `CHAT_NOTIFIER`, auth's and permissions' mail callbacks | `chat/notify-mail.ts`, `auth/*-mail.ts`, `permissions/invitation-mail.ts` |
 | Tell a person something (in the app) | `X_NOTIFIER` declared by the producing module — the first is `TASK_NOTIFIER` (`task/notifier.ts`) | an adapter calling module-notification's `NotificationSender` — see its README |

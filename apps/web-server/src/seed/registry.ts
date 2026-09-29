@@ -1,6 +1,6 @@
 import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
-import { POS_FEATURE_REGISTRY } from '@kwtech/module-basic-pos';
+import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY } from '@kwtech/module-basic-pos';
 import {
   CHAT_DEFAULT_MOMENT_REGISTRY,
   CHAT_DEFAULT_REGISTRY,
@@ -147,12 +147,12 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    */
   { key: 'note', features: NOTE_FEATURE_REGISTRY, limits: NOTE_LIMIT_REGISTRY },
   /*
-   * PLACEHOLDER sub-apps: one key each, which only offers the app on the Apps
-   * page. No API yet, so nothing to bind — but the line must be here BEFORE
-   * their first operation ships, because their bindings will be their guard.
+   * ⚠ THE BINDINGS ARE THE GUARD of tasks and the point of sale, as the
+   * queue's are. Leaving a line out would leave that module's every operation
+   * reachable by anybody signed in, and its caps never mirrored for plans.
    */
   { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY },
-  { key: 'pos', features: POS_FEATURE_REGISTRY },
+  { key: 'pos', features: POS_FEATURE_REGISTRY, limits: POS_LIMIT_REGISTRY },
   /*
    * ⚠ And notifications' — including the key that sends AS THE PLATFORM. Leave
    * this out and anybody signed in could send to anybody.

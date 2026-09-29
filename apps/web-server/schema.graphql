@@ -187,6 +187,7 @@ type MfaFactor {
 type Mutation {
   acceptInvitation(token: String!): PermissionWriteResult!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  addPosOrderLine(itemId: String!, orderId: String!, organizationId: String!, quantity: Int!, variantId: String, version: Int!, workspaceId: String!): PosOrder!
   addTaskChecklistItem(organizationId: String!, taskId: String!, text: String!, workspaceId: String!): Task!
   addTaskColumn(afterColumnId: String, boardId: String!, done: Boolean, name: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   addTaskComment(body: String!, organizationId: String!, taskId: String!, workspaceId: String!): TaskComment!
@@ -205,12 +206,14 @@ type Mutation {
   assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   callNextQueueTicket(clientRequestId: String, lineId: String!, organizationId: String!, workspaceId: String!): QueueTicket!
   callQueueNumber(lineId: String!, number: Int!, organizationId: String!, workspaceId: String!): QueueTicket!
+  cancelPosOrder(orderId: String!, organizationId: String!, reason: String, version: Int!, workspaceId: String!): PosOrder!
   clearMyQueueNickname(organizationId: String!, workspaceId: String!): Boolean!
   clearQueueNickname(organizationId: String!, userId: String!, workspaceId: String!): Boolean!
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   createNote(input: CreateNoteInput!, organizationId: String!, workspaceId: String!): Note!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
   createPlan(input: PlanDraftInput!): PermissionPlanDetail!
+  createPosOrder(label: String, organizationId: String!, workspaceId: String!): PosOrder!
   createQueueLine(endNumber: Int, name: String!, organizationId: String!, padTo: Int, prefix: String!, startNumber: Int, workspaceId: String!): QueueLine!
   createQueueWindow(name: String!, organizationId: String!, workspaceId: String!): QueueWindow!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
@@ -242,13 +245,18 @@ type Mutation {
   moveTaskChecklistItem(afterItemId: String, itemId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   moveTaskColumn(afterColumnId: String, boardId: String!, columnId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
+  payLaterPosOrder(orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  payPosOrder(input: PayPosOrderInput!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
   recallNotificationBatch(batchId: String!): NotificationBatch!
   recallQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
+  refreshPosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  refundPosOrder(input: RefundPosOrderInput!, orderId: String!, organizationId: String!, workspaceId: String!): PosOrder!
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
   removeChatParticipant(conversationId: String!, userId: String!): Boolean!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
+  removePosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   removeTaskChecklistItem(itemId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   removeTaskColumn(boardId: String!, columnId: String!, destinationColumnId: String, organizationId: String!, workspaceId: String!): TaskBoard!
   removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -265,6 +273,10 @@ type Mutation {
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   saveMyAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
+  savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
+  savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
+  savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
+  savePosSettings(keymap: String, organizationId: String!, timeZone: String!, workspaceId: String!): PosSettings!
   saveWorkspaceAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
@@ -280,6 +292,13 @@ type Mutation {
   setNoteVisibility(noteId: String!, organizationId: String!, visibility: String!, workspaceId: String!): Note!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
+  setPosCategoryArchived(archived: Boolean!, categoryId: String!, organizationId: String!, workspaceId: String!): PosCategory!
+  setPosCustomerArchived(archived: Boolean!, customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer!
+  setPosItemArchived(archived: Boolean!, itemId: String!, organizationId: String!, workspaceId: String!): PosItem!
+  setPosLineDiscount(discount: PosDiscountInput, lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderCustomer(contact: String, customerId: String, name: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderDiscount(discount: PosDiscountInput, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderLabel(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
   setQueueLineNextNumber(lineId: String!, next: Int!, organizationId: String!, workspaceId: String!): Int!
   setQueueShowStaffNames(organizationId: String!, show: Boolean!, workspaceId: String!): QueueSettings!
@@ -292,6 +311,7 @@ type Mutation {
   setTaskDates(dueOn: String, organizationId: String!, scheduledOn: String, taskId: String!, workspaceId: String!): Task!
   setTaskLabels(labels: [String!]!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   setTaskPriority(organizationId: String!, priority: String!, taskId: String!, workspaceId: String!): Task!
+  settlePosChangeOwed(orderId: String!, organizationId: String!, settlement: String!, version: Int!, workspaceId: String!): PosOrder!
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   startDirectChat(userId: String!): ChatConversation!
@@ -305,6 +325,7 @@ type Mutation {
   updateNote(expectedVersion: Int!, input: UpdateNoteInput!, noteId: String!, organizationId: String!, workspaceId: String!): Note!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
+  updatePosOrderLine(lineId: String!, note: String, orderId: String!, organizationId: String!, quantity: Int, version: Int!, workspaceId: String!): PosOrder!
   updateProfile(input: UpdateProfileInput!): Viewer!
   updateQueueLine(endNumber: Int, lineId: String!, name: String, organizationId: String!, padTo: Int, sortOrder: Int, startNumber: Int, workspaceId: String!): QueueLine!
   updateQueueWindow(name: String, organizationId: String!, sortOrder: Int, windowId: String!, workspaceId: String!): QueueWindow!
@@ -316,6 +337,7 @@ type Mutation {
   updateTaskColumn(boardId: String!, columnId: String!, input: UpdateTaskColumnInput!, organizationId: String!, workspaceId: String!): TaskBoard!
   updateTaskComment(body: String!, commentId: String!, organizationId: String!, workspaceId: String!): TaskComment!
   updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
+  voidPosOrder(orderId: String!, organizationId: String!, reason: String!, version: Int!, workspaceId: String!): PosOrder!
 }
 
 type MyWorkspace {
@@ -507,6 +529,15 @@ type OrphanedTaskBoard {
   id: String!
   name: String!
   taskCount: Int!
+}
+
+input PayPosOrderInput {
+  changeOwed: Float
+  clientId: String!
+  method: String!
+  received: Float!
+  reference: String
+  tip: Float
 }
 
 type PermissionContext {
@@ -750,6 +781,243 @@ input PlanLimitInput {
   value: String!
 }
 
+type PosBreakdownRow {
+  cost: Float
+  key: String!
+  label: String!
+  net: Float!
+  profit: Float
+  quantity: Int!
+}
+
+type PosCatalogue {
+  categories: [PosCategory!]!
+  costsVisible: Boolean!
+  items: [PosItem!]!
+}
+
+type PosCategory {
+  archivedAt: String
+  id: String!
+  name: String!
+  sortOrder: Int!
+}
+
+type PosCountAmount {
+  amount: Float!
+  count: Int!
+}
+
+type PosCustomer {
+  archivedAt: String
+  contact: String
+  id: String!
+  name: String!
+  note: String
+}
+
+type PosDiscount {
+  givenAt: String
+  givenById: String
+  kind: String!
+  reason: String!
+  value: Float!
+}
+
+input PosDiscountInput {
+  kind: String!
+  reason: String!
+  value: Float!
+}
+
+type PosEvent {
+  actorId: String
+  kind: String!
+  orderId: String
+}
+
+type PosHourPoint {
+  hour: Int!
+  orders: Int!
+  sales: Float!
+}
+
+type PosItem {
+  archivedAt: String
+  categoryId: String
+  code: String
+  cost: Float
+  id: String!
+  kind: String!
+  name: String!
+  price: Float!
+  variants: [PosVariant!]!
+}
+
+type PosOrder {
+  cancelReason: String
+  cancelledAt: String
+  change: Float
+  changeOwed: Float!
+  changeSettledAt: String
+  changeSettlement: String
+  createdAt: String!
+  createdById: String!
+  customerContact: String
+  customerId: String
+  customerName: String
+  discount: PosDiscount
+  finalisedAt: String
+  finalisedById: String
+  gross: Float!
+  id: String!
+  label: String
+  lineDiscounts: Float!
+  lines: [PosOrderLine!]!
+  number: Int
+  orderDiscount: Float!
+  paidAt: String
+  paidById: String
+  paymentMethod: String
+  paymentReference: String
+  received: Float
+  refundState: String!
+  refunded: Float!
+  refunds: [PosRefund!]!
+  releasedUnpaid: Boolean!
+  status: String!
+  subtotal: Float!
+  tip: Float!
+  total: Float!
+  version: Int!
+  voidReason: String
+  voidedAt: String
+}
+
+type PosOrderLine {
+  categoryName: String
+  code: String
+  discount: PosDiscount
+  discountAmount: Float!
+  gross: Float!
+  id: String!
+  itemId: String!
+  kind: String!
+  name: String!
+  net: Float!
+  note: String
+  quantity: Int!
+  refundedQuantity: Int!
+  total: Float!
+  unitCost: Float
+  unitPrice: Float!
+  variantId: String
+  variantName: String
+}
+
+type PosOrderSummary {
+  cancelReason: String
+  changeOwed: Float!
+  createdAt: String!
+  customerName: String
+  finalisedAt: String
+  finalisedById: String
+  id: String!
+  itemCount: Int!
+  label: String
+  number: Int
+  paidAt: String
+  refunded: Float!
+  status: String!
+  total: Float!
+  version: Int!
+}
+
+type PosOwed {
+  amount: Float!
+  customerName: String
+  number: Int
+  orderId: String!
+  since: String!
+}
+
+type PosRefund {
+  amount: Float!
+  id: String!
+  method: String!
+  reason: String!
+  refundedAt: String!
+  refundedById: String!
+}
+
+input PosRefundLineInput {
+  lineId: String!
+  quantity: Int!
+}
+
+type PosReport {
+  byCategory: [PosBreakdownRow!]!
+  byHour: [PosHourPoint!]!
+  byItem: [PosBreakdownRow!]!
+  byStaff: [PosBreakdownRow!]!
+  changeOwed: [PosOwed!]!
+  fromDay: String!
+  granularity: String!
+  previous: PosSummary!
+  previousFromDay: String!
+  previousToDay: String!
+  series: [PosSeriesPoint!]!
+  summary: PosSummary!
+  timeZone: String!
+  toDay: String!
+  truncated: Boolean!
+  unpaid: [PosOwed!]!
+}
+
+type PosSeriesPoint {
+  key: String!
+  orders: Int!
+  refunds: Float!
+  sales: Float!
+}
+
+type PosSettings {
+  keymap: String!
+  timeZone: String!
+  version: Int!
+}
+
+type PosSummary {
+  averageOrder: Float!
+  cancelled: PosCountAmount!
+  card: Float!
+  cash: Float!
+  cashExpected: Float!
+  changeOwedOutstanding: PosCountAmount!
+  costCoverage: Int!
+  discounts: Float!
+  ewallet: Float!
+  gross: Float!
+  netSales: Float!
+  orders: Int!
+  profit: Float
+  refunds: Float!
+  tips: Float!
+  unpaidCollected: PosCountAmount!
+  unpaidReleased: PosCountAmount!
+}
+
+type PosVariant {
+  archivedAt: String
+  code: String
+  cost: Float
+  id: String!
+  itemId: String!
+  name: String!
+  price: Float!
+  sortOrder: Int!
+}
+
 type Query {
   adminUser(userId: String!): AdminUserDetail!
   adminUserSessions(userId: String!): [AdminUserSession!]!
@@ -795,6 +1063,13 @@ type Query {
   permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
   permissionUserAppRoles(userIds: [String!]!): [UserAppRole!]!
   permissionUserOrganizations(userIds: [String!]!): [UserOrganization!]!
+  posCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): PosCatalogue!
+  posCustomer(customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer
+  posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!
+  posOrder(orderId: String!, organizationId: String!, workspaceId: String!): PosOrder
+  posOrders(organizationId: String!, search: String, tab: String!, workspaceId: String!): [PosOrderSummary!]!
+  posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
+  posSettings(organizationId: String!, workspaceId: String!): PosSettings!
   queueConsole(organizationId: String!, workspaceId: String!): QueueConsole!
   queueDisplayCode(organizationId: String!, workspaceId: String!): QueueDisplayCode
   queueStaffCandidates(organizationId: String!, workspaceId: String!): [QueueStaffMember!]!
@@ -949,6 +1224,14 @@ type QueueWindow {
   sortOrder: Int!
 }
 
+input RefundPosOrderInput {
+  amount: Float
+  clientId: String!
+  lines: [PosRefundLineInput!]
+  method: String!
+  reason: String!
+}
+
 type RoleClonePreview {
   added: [String!]!
   features: [String!]!
@@ -974,6 +1257,32 @@ input RoleLimitInput {
   value: String!
 }
 
+input SavePosCustomerInput {
+  contact: String
+  id: String
+  name: String!
+  note: String
+}
+
+input SavePosItemInput {
+  categoryId: String
+  code: String
+  cost: Float
+  id: String
+  kind: String!
+  name: String!
+  price: Float!
+  variants: [SavePosVariantInput!]
+}
+
+input SavePosVariantInput {
+  code: String
+  cost: Float
+  id: String
+  name: String!
+  price: Float!
+}
+
 type SessionInfo {
   accessTokenTtl: Int!
   expiresAt: Int!
@@ -986,6 +1295,7 @@ type Subscription {
   noteEvents(organizationId: String!, workspaceId: String!): NoteEvent!
   notificationEvents: NotificationEvent!
   planChanged: PermissionPlanChanged!
+  posEvents(organizationId: String!, workspaceId: String!): PosEvent!
   queueDisplay: QueueDisplayEvent!
   queueEvents(organizationId: String!, workspaceId: String!): QueueEvent!
   taskEvents(organizationId: String!, workspaceId: String!): TaskEvent!
