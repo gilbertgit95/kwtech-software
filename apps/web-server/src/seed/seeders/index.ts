@@ -5,6 +5,7 @@ import { demoUserSeeder } from './demo-user.js';
 import { firstUserSeeder } from './first-user.js';
 import { permissionsRegistrySeeder } from './permissions-registry.js';
 import { plansSeeder } from './plans.js';
+import { posCatalogueSeeder } from './pos-catalogue.js';
 import { superAdminGrantSeeder } from './super-admin-grant.js';
 
 /**
@@ -60,4 +61,6 @@ export const SEEDERS: readonly Seeder[] = [
   superAdminGrantSeeder,
   // After the roles above: it grants one, so the role has to exist first.
   demoUserSeeder,
+  // After the first user: the items name them as their author.
+  posCatalogueSeeder,
 ];
