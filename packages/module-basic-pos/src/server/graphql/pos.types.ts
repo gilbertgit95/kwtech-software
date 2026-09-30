@@ -73,6 +73,10 @@ export class PosItemType {
   @Field(() => String, { nullable: true })
   code!: string | null;
 
+  /** One line for the till, or null. */
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+
   /** Centavos. Unused while the item has live variants: the till asks for one. */
   @Field(() => Float)
   price!: number;
@@ -125,7 +129,7 @@ export class PosCustomerType {
 
 @ObjectType('PosSettings')
 export class PosSettingsType {
-  /** IANA name, such as `Asia/Manila`. */
+  /** The WORKSPACE's IANA zone, such as `Asia/Manila` — read-only here; edited with the workspace. */
   @Field()
   timeZone!: string;
 
@@ -186,6 +190,10 @@ export class SavePosItemInputType {
 
   @Field(() => String, { nullable: true })
   code?: string | null;
+
+  /** Null or empty clears it. Omitted: unchanged. */
+  @Field(() => String, { nullable: true })
+  description?: string | null;
 
   @Field(() => Float)
   price!: number;

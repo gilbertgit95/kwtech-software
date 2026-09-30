@@ -184,7 +184,9 @@ strings with no foreign key.
 
 - `PosCategory` — name, sort order.
 - `PosItem` — name, kind (`product` / `service`), price (centavos), code
-  (optional), cost (centavos, optional), category (optional), `archivedAt`.
+  (optional), description (optional, one line of up to 500 characters, shown
+  on the till's tile and never printed; a save that omits it leaves it as it
+  is), cost (centavos, optional), category (optional), `archivedAt`.
   With variants, the item's own price is unused and the till asks for a
   variant.
 - `PosItemVariant` — item, name, price (centavos), code (optional), cost
@@ -244,7 +246,8 @@ payment into its own table; that is a later change (§7).
 7. `feat(module-basic-pos)`: the keyboard: hot keys, item keys, focus rules,
    the shortcut bar and the `?` list, and the keyboard-only sale test (D18–D21).
 8. `feat(module-basic-pos)`: management: items and variants, customers and
-   their orders, the orders list, refunds, and settings (time zone, hot keys).
+   their orders, the orders list, refunds, and settings (store, hot keys; the
+   time zone is the workspace's since 2026-09-29, PLAN §13).
 9. `feat(module-basic-pos)`: the dashboard and the report tables, CSV export
    (D22).
 10. `docs`: the module README, PLAN §13, and this file's "Built, and where it

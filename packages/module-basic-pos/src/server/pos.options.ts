@@ -16,6 +16,8 @@ export interface PosModuleOptions {
   limitCheckerProvider?: unknown;
   /** A `PosAccessCheck` provider. Unbound: costs are never shown, and fixed discounts drop on every edit. */
   accessCheckProvider?: unknown;
+  /** A `PosWorkspaceTimeZone` provider. Unbound: every store runs on Asia/Manila. */
+  workspaceTimeZoneProvider?: unknown;
   /** A `PosMemberDirectory` provider. Unbound: nobody has a name. */
   memberDirectoryProvider?: unknown;
   /**

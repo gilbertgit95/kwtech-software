@@ -1,3 +1,4 @@
+import { nextDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   outstanding,
@@ -15,12 +16,11 @@ import {
   salesSeries,
   summarize,
 } from '../domain/reports.js';
-import { nextDayKey, zonedStartOfDay } from '../domain/time-zone.js';
 import type { PosMemberDirectory } from './ports.js';
 import { type PosWriteError, refusalError } from './pos.errors.js';
 import type { InScope, PosOrderLineRow, PosOrderRow, PosRefundRow, PosWriteClient } from './pos.repository.js';
 import { POS_MEMBER_DIRECTORY, POS_PRISMA_WRITE } from './pos.tokens.js';
-import { PosSettingsService } from './pos-settings.service.js';
+import { PosTimeZoneService } from './pos-time-zone.service.js';
 
 /** The longest period one report covers. A year and a bit: "This year" plus leap days. */
 export const POS_REPORT_DAYS_MAX = 400;
@@ -62,13 +62,13 @@ export interface PosReport {
 export class PosReportService {
   constructor(
     @Inject(POS_PRISMA_WRITE) private readonly prisma: PosWriteClient,
-    private readonly settings: PosSettingsService,
+    private readonly zones: PosTimeZoneService,
     /** Unbound: nobody has a name. */
     @Optional() @Inject(POS_MEMBER_DIRECTORY) private readonly directory?: PosMemberDirectory,
   ) {}
 
   async report(scope: InScope, fromDay: string, toDay: string): Promise<PosReport> {
-    const { timeZone } = await this.settings.get(scope);
+    const timeZone = await this.zones.of(scope);
     const days = daysBetween(fromDay, toDay);
     const period = this.period(fromDay, toDay, timeZone);
     const previousFromDay = days === 1 ? shiftDay(fromDay, -7) : shiftDay(fromDay, -days);

@@ -54,32 +54,31 @@ describe('settings', () => {
     expect(await settings.get(SCOPE)).toEqual({ timeZone: 'Asia/Manila', keymap: POS_DEFAULT_KEYMAP, version: 0 });
   });
 
-  it('saves a time zone and a keymap, and tells the tills', async () => {
+  it('saves a keymap, and tells the tills', async () => {
     const { settings, pubsub } = harness();
     const keymap = { ...POS_DEFAULT_KEYMAP, actions: { ...POS_DEFAULT_KEYMAP.actions, pay: 'F10' } };
-    const saved = await settings.save(SCOPE, ANA, { timeZone: 'Asia/Singapore', keymap });
-    expect(saved).toMatchObject({ timeZone: 'Asia/Singapore', version: 1 });
+    const saved = await settings.save(SCOPE, ANA, { keymap });
+    expect(saved.version).toBe(1);
     expect(saved.keymap.actions.pay).toBe('F10');
     expect(pubsub.sent.map((event) => event.change)).toEqual(['settings']);
   });
 
-  it('refuses an unknown time zone, and a keymap that takes a browser key — naming the problem', async () => {
+  it('refuses a keymap that takes a browser key — naming the problem', async () => {
     const { settings } = harness();
-    expect(await refusal(settings.save(SCOPE, ANA, { timeZone: 'Mars/Olympus', keymap: null }))).toBe(
-      'invalid_time_zone',
-    );
     const bad = { ...POS_DEFAULT_KEYMAP, actions: { ...POS_DEFAULT_KEYMAP.actions, pay: 'F5' } };
-    await expect(settings.save(SCOPE, ANA, { timeZone: 'Asia/Manila', keymap: bad })).rejects.toThrow(
-      'belongs to the browser',
-    );
+    await expect(settings.save(SCOPE, ANA, { keymap: bad })).rejects.toThrow('belongs to the browser');
+  });
+});
+
+describe('the workspace’s time zone', () => {
+  it('⚠ follows the workspace, not a POS setting', async () => {
+    const { settings } = harness({ timeZone: 'Asia/Singapore' });
+    expect((await settings.get(SCOPE)).timeZone).toBe('Asia/Singapore');
   });
 
-  it('⚠ never reads another organization’s settings, even for a matching workspace id', async () => {
-    const { settings } = harness();
-    await settings.save({ organizationId: 'org-x', workspaceId: SCOPE.workspaceId }, ANA, {
-      timeZone: 'Asia/Tokyo',
-      keymap: null,
-    });
-    expect((await settings.get(SCOPE)).timeZone).toBe('Asia/Manila');
+  it('⚠ falls to Asia/Manila — never UTC — when unbound, unknown or not a real zone', async () => {
+    expect((await harness().settings.get(SCOPE)).timeZone).toBe('Asia/Manila');
+    expect((await harness({ timeZone: null }).settings.get(SCOPE)).timeZone).toBe('Asia/Manila');
+    expect((await harness({ timeZone: 'Mars/Olympus' }).settings.get(SCOPE)).timeZone).toBe('Asia/Manila');
   });
 });

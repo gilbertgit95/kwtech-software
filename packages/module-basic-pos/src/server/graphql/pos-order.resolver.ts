@@ -57,9 +57,11 @@ export class PosOrderResolver {
     @Args('workspaceId') workspaceId: string,
     @Args('tab') tab: string,
     @Args('search', { type: () => String, nullable: true }) search?: string | null,
+    @Args('customerId', { type: () => String, nullable: true }) customerId?: string | null,
   ): Promise<PosOrderSummaryType[]> {
     if (!isPosOrderTab(tab)) throw refusalError('not_found');
-    const rows = await this.orders.list({ organizationId, workspaceId }, tab, search ?? '', new Date());
+    const scope = { organizationId, workspaceId };
+    const rows = await this.orders.list(scope, tab, search ?? '', new Date(), customerId ?? null);
     return rows.map(renderSummary);
   }
 

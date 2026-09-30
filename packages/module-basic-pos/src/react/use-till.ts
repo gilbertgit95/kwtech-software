@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature, useRealtime } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useRealtime, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { effectiveKeymap, type PosKeymap } from '../domain/keymap.js';
 import { POS_CONFLICT_MESSAGE } from '../domain/orders.js';
@@ -72,7 +72,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
 
   const [catalogue, setCatalogue] = useState<PosCatalogueView | null>(null);
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
-  const [timeZone, setTimeZone] = useState('Asia/Manila');
+  // The workspace's zone, from the app's shell: receipts and "today" follow it.
+  const timeZone = useWorkspaceTimeZone();
   const [order, setOrder] = useState<PosOrderView | null>(null);
   const [pending, setPending] = useState<PosOrderSummaryView[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +101,6 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const loadSettings = useCallback(async () => {
     try {
       const settings = await client.settings(scope);
-      setTimeZone(settings.timeZone);
       setKeymap(effectiveKeymap(JSON.parse(settings.keymap) as Partial<PosKeymap>));
     } catch {
       // The defaults serve: a till without the store's keymap still sells.

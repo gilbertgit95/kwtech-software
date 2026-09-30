@@ -1,7 +1,7 @@
 import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { checkPosCost, checkPosPrice } from '../domain/money.js';
-import { preparePosCode, preparePosName } from '../domain/text.js';
+import { preparePosCode, preparePosDescription, preparePosName } from '../domain/text.js';
 import { POS_LIMIT, POS_LIMIT_REGISTRY } from '../feature-keys.js';
 import type { PosItemKind, PosRefusal } from '../types.js';
 import { PosWriteError, refusalError, unwrap } from './pos.errors.js';
@@ -59,6 +59,11 @@ export interface SavePosItemInput {
   kind: string;
   name: string;
   code?: string | null | undefined;
+  /**
+   * One line for the till, or null / empty to clear it. OMITTED: LEFT AS IT
+   * IS, so a client that predates the field cannot wipe it by saving an item.
+   */
+  description?: string | null | undefined;
   /** Centavos. Unused while the item has variants. */
   price: number;
   cost?: number | null | undefined;
@@ -201,6 +206,8 @@ export class PosCatalogueService {
     const kind = input.kind;
     const { name } = unwrap(preparePosName(input.name));
     const { code } = unwrap(preparePosCode(input.code ?? ''));
+    const description =
+      input.description === undefined ? undefined : unwrap(preparePosDescription(input.description ?? '')).description;
     refuse(checkPosPrice(input.price));
     const cost = input.cost ?? null;
     refuse(checkPosCost(cost));
@@ -235,8 +242,14 @@ export class PosCatalogueService {
 
       const fields = { categoryId, kind, name, code, price: input.price, cost };
       const item = existing
-        ? await this.updateItem(tx, scope, existing.id, { ...fields, updatedById: actorId })
-        : await tx.posItem.create({ data: { ...scope, ...fields, createdById: actorId, updatedById: actorId } });
+        ? await this.updateItem(tx, scope, existing.id, {
+            ...fields,
+            ...(description === undefined ? {} : { description }),
+            updatedById: actorId,
+          })
+        : await tx.posItem.create({
+            data: { ...scope, ...fields, description: description ?? null, createdById: actorId, updatedById: actorId },
+          });
 
       if (variants) await this.writeVariants(tx, scope, item.id, variants, currentVariants);
       const rows = await tx.posItemVariant.findMany({

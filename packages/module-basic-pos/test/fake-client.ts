@@ -64,6 +64,7 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     categoryId: null,
     kind: 'product',
     code: null,
+    description: null,
     cost: null,
     archivedAt: null,
     createdAt: now,
@@ -142,7 +143,7 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
   posRefund: (id, now) => ({ id, refundedAt: now }),
   posRefundLine: (id) => ({ id }),
   posCounter: () => ({ nextNumber: 1 }),
-  posSettings: (_id, now) => ({ timeZone: 'Asia/Manila', keymap: null, version: 1, createdAt: now, updatedAt: now }),
+  posSettings: (_id, now) => ({ keymap: null, version: 1, createdAt: now, updatedAt: now }),
 };
 
 export function emptyState(): FakeState {

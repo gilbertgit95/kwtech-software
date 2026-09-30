@@ -1,7 +1,9 @@
 import {
+  POS_DESCRIPTION_MAX,
   POS_NAME_MAX,
   preparePosCode,
   preparePosContact,
+  preparePosDescription,
   preparePosLabel,
   preparePosName,
   preparePosNote,
@@ -24,6 +26,12 @@ describe('POS text', () => {
     expect(preparePosCode('lam a4')).toEqual({ code: 'LAMA4' });
     expect(preparePosCode('')).toEqual({ code: null });
     expect(preparePosCode('LAM#A4')).toEqual({ refused: 'invalid_code' });
+  });
+
+  it('keeps a description to one line within its cap, and an empty one as none', () => {
+    expect(preparePosDescription(' Per page.\n Ink coverage ')).toEqual({ description: 'Per page. Ink coverage' });
+    expect(preparePosDescription('  ')).toEqual({ description: null });
+    expect(preparePosDescription('x'.repeat(POS_DESCRIPTION_MAX + 1))).toEqual({ refused: 'invalid_description' });
   });
 
   it('treats an empty note, label or contact as none', () => {

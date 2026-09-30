@@ -45,6 +45,7 @@ export const POS_NOTE_MAX = 200;
 export const POS_LABEL_MAX = 40;
 export const POS_CONTACT_MAX = 120;
 export const POS_REASON_MAX = 200;
+export const POS_DESCRIPTION_MAX = 500;
 
 /** A name (item, variant, category, customer) as stored, or why it is refused. Never empty. */
 export function preparePosName(raw: string): { name: string } | { refused: PosRefusal } {
@@ -67,6 +68,17 @@ export function preparePosCode(raw: string): { code: string | null } | { refused
   if (code.length > POS_CODE_MAX) return { refused: 'invalid_code' };
   if (!/^[\p{L}\p{N}\-_./]+$/u.test(code)) return { refused: 'invalid_code' };
   return { code };
+}
+
+/**
+ * An item's description ("Per page, ink coverage…"), or null for none, or why
+ * it is refused. One line like every other POS text: the till shows it under
+ * the name and a receipt never prints it, so a newline would only be lost.
+ */
+export function preparePosDescription(raw: string): { description: string | null } | { refused: PosRefusal } {
+  const description = preparePosLine(raw, POS_DESCRIPTION_MAX, { allowEmpty: true });
+  if (description === null) return { refused: 'invalid_description' };
+  return { description: description.length === 0 ? null : description };
 }
 
 /** A line note ("no ice"), or null for none, or why it is refused (D11). */

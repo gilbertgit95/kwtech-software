@@ -5,6 +5,7 @@ import {
   POS_LIMIT_CHECKER,
   POS_MEMBER_DIRECTORY,
   POS_PUBSUB,
+  POS_WORKSPACE_TIME_ZONE,
   posServerModule,
 } from '@kwtech/module-basic-pos/server';
 import {
@@ -79,6 +80,7 @@ import { NotificationUserDirectoryAdapter } from './notifications/user-directory
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import { PosKeyAccess } from './pos/access-check.js';
 import { PosMemberDirectoryAdapter } from './pos/member-directory.js';
+import { PosWorkspaceTimeZoneAdapter } from './pos/workspace-time-zone.js';
 import {
   appHubPrismaProvider,
   authPrismaProvider,
@@ -630,6 +632,12 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
       provide: POS_MEMBER_DIRECTORY,
       inject: [PrismaService],
       useFactory: (prisma: PrismaService) => new PosMemberDirectoryAdapter(prisma),
+    },
+    // The workspace's zone: which day a sale belongs to. Without it, every store runs on Asia/Manila.
+    workspaceTimeZoneProvider: {
+      provide: POS_WORKSPACE_TIME_ZONE,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new PosWorkspaceTimeZoneAdapter(prisma),
     },
 
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,

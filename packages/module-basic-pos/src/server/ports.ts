@@ -26,6 +26,16 @@ export interface PosAccessCheck {
   holds(organizationId: string, workspaceId: string, userId: string, key: PosFeatureKey): Promise<boolean>;
 }
 
+/**
+ * The workspace's IANA time zone (`perm_workspace.timeZone`): which day a sale
+ * belongs to, and when "today" starts. Null when the app cannot say.
+ *
+ * UNBOUND MEANS `DEFAULT_TIME_ZONE` (Asia/Manila), never UTC.
+ */
+export interface PosWorkspaceTimeZone {
+  timeZoneOf(organizationId: string, workspaceId: string): Promise<string | null>;
+}
+
 export interface PosMember {
   userId: string;
   displayName: string;

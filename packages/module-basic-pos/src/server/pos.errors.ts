@@ -1,6 +1,6 @@
 import { POS_PRICE_MAX, POS_QUANTITY_MAX } from '../domain/money.js';
 import { POS_CONFLICT_MESSAGE } from '../domain/orders.js';
-import { POS_CODE_MAX, POS_NAME_MAX, POS_NOTE_MAX, POS_REASON_MAX } from '../domain/text.js';
+import { POS_CODE_MAX, POS_DESCRIPTION_MAX, POS_NAME_MAX, POS_NOTE_MAX, POS_REASON_MAX } from '../domain/text.js';
 import type { PosRefusal } from '../types.js';
 
 /**
@@ -57,6 +57,8 @@ function refusalMessage(reason: PosRefusal): string {
       return 'That order cannot be finished that way';
     case 'invalid_name':
       return `A name needs some text, at most ${POS_NAME_MAX} characters, with no invisible formatting`;
+    case 'invalid_description':
+      return `A description is at most ${POS_DESCRIPTION_MAX} characters, with no invisible formatting`;
     case 'invalid_kind':
       return 'An item is either a product or a service';
     case 'invalid_code':
@@ -103,8 +105,6 @@ function refusalMessage(reason: PosRefusal): string {
       return 'Pick each line of this order once';
     case 'invalid_keymap':
       return 'Those shortcuts cannot be saved';
-    case 'invalid_time_zone':
-      return 'That is not a time zone this server knows, such as Asia/Manila';
     case 'invalid_period':
       return 'A report covers whole store days, from one day to a little over a year';
   }

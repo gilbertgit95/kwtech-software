@@ -54,6 +54,7 @@ export type PosRefusal =
   | 'invalid_cost'
   | 'invalid_quantity'
   | 'invalid_note'
+  | 'invalid_description'
   | 'invalid_label'
   | 'invalid_contact'
   | 'invalid_reason'
@@ -70,5 +71,4 @@ export type PosRefusal =
   | 'exceeds_paid'
   | 'unknown_line'
   | 'invalid_keymap'
-  | 'invalid_time_zone'
   | 'invalid_period';

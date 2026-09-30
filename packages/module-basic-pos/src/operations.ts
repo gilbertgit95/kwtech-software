@@ -12,7 +12,7 @@
 
 const CATEGORY = 'id name sortOrder archivedAt';
 const VARIANT = 'id itemId name code price cost sortOrder archivedAt';
-const ITEM = `id kind name code price cost categoryId archivedAt variants { ${VARIANT} }`;
+const ITEM = `id kind name code description price cost categoryId archivedAt variants { ${VARIANT} }`;
 const CUSTOMER = 'id name contact note archivedAt';
 const SETTINGS = 'timeZone keymap version';
 const DISCOUNT = 'kind value reason givenById givenAt';
@@ -79,15 +79,15 @@ export const POS_OPERATIONS = {
     posSettings(${SCOPE_ARGS}) { ${SETTINGS} }
   }`,
 
-  savePosSettings: `mutation SavePosSettings(${SCOPE_VARS}, $timeZone: String!, $keymap: String) {
-    savePosSettings(${SCOPE_ARGS}, timeZone: $timeZone, keymap: $keymap) { ${SETTINGS} }
+  savePosSettings: `mutation SavePosSettings(${SCOPE_VARS}, $keymap: String) {
+    savePosSettings(${SCOPE_ARGS}, keymap: $keymap) { ${SETTINGS} }
   }`,
 
   // ── orders: reading ───────────────────────────────────────────────────────
 
-  /** One tab of the Orders section: today, pending, unpaid, change_owed, cancelled or all. */
-  posOrders: `query PosOrders(${SCOPE_VARS}, $tab: String!, $search: String) {
-    posOrders(${SCOPE_ARGS}, tab: $tab, search: $search) { ${ORDER_SUMMARY} }
+  /** One tab of the Orders section: today, pending, unpaid, change_owed, cancelled or all. `customerId`: one customer's. */
+  posOrders: `query PosOrders(${SCOPE_VARS}, $tab: String!, $search: String, $customerId: String) {
+    posOrders(${SCOPE_ARGS}, tab: $tab, search: $search, customerId: $customerId) { ${ORDER_SUMMARY} }
   }`,
 
   posOrder: `query PosOrder(${SCOPE_VARS}, $orderId: String!) {

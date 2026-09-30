@@ -276,7 +276,7 @@ type Mutation {
   savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
-  savePosSettings(keymap: String, organizationId: String!, timeZone: String!, workspaceId: String!): PosSettings!
+  savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
   saveWorkspaceAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
@@ -336,7 +336,7 @@ type Mutation {
   updateTaskChecklistItem(done: Boolean, itemId: String!, organizationId: String!, taskId: String!, text: String, workspaceId: String!): Task!
   updateTaskColumn(boardId: String!, columnId: String!, input: UpdateTaskColumnInput!, organizationId: String!, workspaceId: String!): TaskBoard!
   updateTaskComment(body: String!, commentId: String!, organizationId: String!, workspaceId: String!): TaskComment!
-  updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, workspaceId: String!): PermissionWriteResult!
+  updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, timeZone: String, workspaceId: String!): PermissionWriteResult!
   voidPosOrder(orderId: String!, organizationId: String!, reason: String!, version: Int!, workspaceId: String!): PosOrder!
 }
 
@@ -348,6 +348,7 @@ type MyWorkspace {
   roleIcon: String
   roleKey: String
   roleLabel: String
+  timeZone: String!
 }
 
 type Note {
@@ -746,6 +747,7 @@ type PermissionWorkspaceDetail {
   memberCount: Int!
   members: [PermissionWorkspaceMember!]!
   name: String!
+  timeZone: String!
 }
 
 type PermissionWorkspaceMember {
@@ -847,6 +849,7 @@ type PosItem {
   categoryId: String
   code: String
   cost: Float
+  description: String
   id: String!
   kind: String!
   name: String!
@@ -1067,7 +1070,7 @@ type Query {
   posCustomer(customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer
   posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!
   posOrder(orderId: String!, organizationId: String!, workspaceId: String!): PosOrder
-  posOrders(organizationId: String!, search: String, tab: String!, workspaceId: String!): [PosOrderSummary!]!
+  posOrders(customerId: String, organizationId: String!, search: String, tab: String!, workspaceId: String!): [PosOrderSummary!]!
   posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
   posSettings(organizationId: String!, workspaceId: String!): PosSettings!
   queueConsole(organizationId: String!, workspaceId: String!): QueueConsole!
@@ -1138,6 +1141,7 @@ type QueueDisplayEvent {
 
 type QueueDisplayPass {
   pass: String!
+  timeZone: String!
   workspaceName: String!
 }
 
@@ -1268,6 +1272,7 @@ input SavePosItemInput {
   categoryId: String
   code: String
   cost: Float
+  description: String
   id: String
   kind: String!
   name: String!

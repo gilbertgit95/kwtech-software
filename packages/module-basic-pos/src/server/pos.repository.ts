@@ -45,6 +45,7 @@ export interface PosItemRow extends InScope {
   kind: PosItemKind;
   name: string;
   code: string | null;
+  description: string | null;
   price: number;
   cost: number | null;
   archivedAt: Date | null;
@@ -179,7 +180,6 @@ export interface PosCounterRow {
 export interface PosSettingsRow {
   workspaceId: string;
   organizationId: string;
-  timeZone: string;
   /** A `PosKeymap` as JSON, or null for the defaults. Read through `effectiveKeymap`, never trusted as typed. */
   keymap: unknown;
   version: number;
@@ -197,6 +197,7 @@ export interface PosItemFields {
   kind: PosItemKind;
   name: string;
   code: string | null;
+  description: string | null;
   price: number;
   cost: number | null;
 }
@@ -406,8 +407,8 @@ export interface PosTransaction {
     findUnique(args: { where: { workspaceId: string } }): Promise<PosSettingsRow | null>;
     upsert(args: {
       where: { workspaceId: string };
-      create: InScope & { timeZone: string; keymap: PosJsonInput; updatedById: string };
-      update: { timeZone: string; keymap: PosJsonInput; updatedById: string; version: { increment: 1 } };
+      create: InScope & { keymap: PosJsonInput; updatedById: string };
+      update: { keymap: PosJsonInput; updatedById: string; version: { increment: 1 } };
     }): Promise<PosSettingsRow>;
   };
 }

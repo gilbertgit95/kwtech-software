@@ -3,7 +3,14 @@ import { PosCatalogueResolver } from './graphql/pos-catalogue.resolver.js';
 import { PosOrderResolver } from './graphql/pos-order.resolver.js';
 import { PosEventPublisher } from './pos.events.js';
 import type { PosModuleOptions } from './pos.options.js';
-import { POS_ACCESS_CHECK, POS_LIMIT_CHECKER, POS_MEMBER_DIRECTORY, POS_OPTIONS, POS_PUBSUB } from './pos.tokens.js';
+import {
+  POS_ACCESS_CHECK,
+  POS_LIMIT_CHECKER,
+  POS_MEMBER_DIRECTORY,
+  POS_OPTIONS,
+  POS_PUBSUB,
+  POS_WORKSPACE_TIME_ZONE,
+} from './pos.tokens.js';
 import { PosAccessService } from './pos-access.service.js';
 import { PosCatalogueService } from './pos-catalogue.service.js';
 import { PosCustomerService } from './pos-customer.service.js';
@@ -12,12 +19,14 @@ import { PosOrderWriteService } from './pos-order-write.service.js';
 import { PosRefundService } from './pos-refund.service.js';
 import { PosReportService } from './pos-report.service.js';
 import { PosSettingsService } from './pos-settings.service.js';
+import { PosTimeZoneService } from './pos-time-zone.service.js';
 
 const SERVICES = [
   PosAccessService,
   PosCatalogueService,
   PosCustomerService,
   PosSettingsService,
+  PosTimeZoneService,
   PosOrderService,
   PosOrderWriteService,
   PosRefundService,
@@ -46,6 +55,7 @@ export class PosModule {
       [options.limitCheckerProvider, POS_LIMIT_CHECKER],
       [options.accessCheckProvider, POS_ACCESS_CHECK],
       [options.memberDirectoryProvider, POS_MEMBER_DIRECTORY],
+      [options.workspaceTimeZoneProvider, POS_WORKSPACE_TIME_ZONE],
       [options.pubsubProvider, POS_PUBSUB],
     ];
     for (const [provider, token] of optional) {

@@ -13,6 +13,7 @@ import { PosOrderWriteService } from '../src/server/pos-order-write.service.js';
 import { PosRefundService } from '../src/server/pos-refund.service.js';
 import { PosReportService } from '../src/server/pos-report.service.js';
 import { PosSettingsService } from '../src/server/pos-settings.service.js';
+import { PosTimeZoneService } from '../src/server/pos-time-zone.service.js';
 import { type FakeClient, fakeClient } from './fake-client.js';
 
 /** Shared set-up for the service and resolver suites. */
@@ -38,6 +39,8 @@ export function recordingPubSub(): PosPubSub & { sent: PosEvent[] } {
 
 export interface HarnessOptions {
   limits?: LimitChecker;
+  /** The workspace's zone as the app would answer. Omitted: the port is UNBOUND (Asia/Manila). */
+  timeZone?: string | null;
   /** Who holds which key beyond what the guard checked. Omitted: the access port is UNBOUND. */
   holders?: Partial<Record<PosFeatureKey, readonly string[]>>;
 }
@@ -52,13 +55,16 @@ export function harness(options: HarnessOptions = {}) {
   const access = new PosAccessService(accessPort);
   const catalogue = new PosCatalogueService(prisma, events, options.limits);
   const customers = new PosCustomerService(prisma, events);
-  const settings = new PosSettingsService(prisma, events);
+  const zones = new PosTimeZoneService(
+    options.timeZone === undefined ? undefined : { timeZoneOf: async () => options.timeZone ?? null },
+  );
+  const settings = new PosSettingsService(prisma, events, zones);
   const moduleOptions = { resolveActorId: (request: unknown) => (request as { userId?: string } | undefined)?.userId };
   const resolver = new PosCatalogueResolver(catalogue, customers, settings, access, moduleOptions, pubsub);
-  const orders = new PosOrderService(prisma, settings);
+  const orders = new PosOrderService(prisma, zones);
   const writes = new PosOrderWriteService(prisma, events, access);
   const refunds = new PosRefundService(prisma, events);
-  const reports = new PosReportService(prisma, settings, {
+  const reports = new PosReportService(prisma, zones, {
     describe: async (ids) => ids.map((userId) => ({ userId, displayName: userId.replace('user-', '') })),
   });
   const orderResolver = new PosOrderResolver(orders, writes, refunds, reports, access, moduleOptions);

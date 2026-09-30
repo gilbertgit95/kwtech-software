@@ -194,17 +194,15 @@ export class PosCatalogueResolver {
     return renderSettings(await this.settings.get({ organizationId, workspaceId }));
   }
 
-  /** `keymap` is `PosKeymap` as JSON text; omit it to reset every key to its default. */
+  /** `keymap` is `PosKeymap` as JSON text; omit it to reset every key to its default. The time zone is the workspace's. */
   @Mutation(() => PosSettingsType, { name: 'savePosSettings' })
   async savePosSettings(
     @Context() gql: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args('workspaceId') workspaceId: string,
-    @Args('timeZone') timeZone: string,
     @Args('keymap', { type: () => String, nullable: true }) keymap?: string | null,
   ): Promise<PosSettingsType> {
     const saved = await this.settings.save({ organizationId, workspaceId }, this.actor(gql.req), {
-      timeZone,
       keymap: keymap ? parseKeymap(keymap) : null,
     });
     return renderSettings(saved);
@@ -289,6 +287,7 @@ export function renderItem(entry: PosCatalogueItem, costsVisible: boolean): PosI
     kind: item.kind,
     name: item.name,
     code: item.code,
+    description: item.description,
     price: item.price,
     cost: costsVisible ? item.cost : null,
     categoryId: item.categoryId,

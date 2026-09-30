@@ -90,6 +90,9 @@ model PosItem {
   /// and variants: each table's `@@unique` holds its own half, and the service
   /// checks the other table in the same transaction.
   code String?
+  /// One line shown under the name on the till, or null (`preparePosDescription`).
+  /// Never printed on a receipt: an order line copies the name, not this.
+  description String?
 
   /// Centavos. Unused while the item has variants: the till asks for one.
   price Int
@@ -363,13 +366,12 @@ model PosCounter {
   @@map("pos_counter")
 }
 
-/// A store's settings. One row per workspace; none means every default.
+/// A store's settings. One row per workspace; none means every default. The
+/// time zone is not here: it is the WORKSPACE's (`perm_workspace.timeZone`).
 model PosSettings {
   workspaceId    String @id
   organizationId String
 
-  /// IANA name. Decides which day a sale belongs to (D22).
-  timeZone String @default("Asia/Manila")
   /// `PosKeymap`, checked by `validateKeymap` on write; null means the defaults.
   keymap   Json?
 

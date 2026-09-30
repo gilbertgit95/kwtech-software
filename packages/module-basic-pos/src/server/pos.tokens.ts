@@ -32,6 +32,9 @@ export const POS_ACCESS_CHECK = 'kwtech:pos-access-check';
 /** A `PosMemberDirectory`. Unbound means nobody has a name: reports show "a team member". */
 export const POS_MEMBER_DIRECTORY = 'kwtech:pos-member-directory';
 
+/** A `PosWorkspaceTimeZone`. Unbound means every store runs on `DEFAULT_TIME_ZONE` (Asia/Manila). */
+export const POS_WORKSPACE_TIME_ZONE = 'kwtech:pos-workspace-time-zone';
+
 /**
  * The pub/sub engine. Unbound means NOT LIVE: every write still works, and a
  * till only sees another till's change when it reads again.

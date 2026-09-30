@@ -35,6 +35,21 @@ describe('items and variants', () => {
     expect(pubsub.sent).toEqual([{ ...SCOPE, change: 'catalogue', orderId: null, actorId: ANA }]);
   });
 
+  it('⚠ leaves the description alone when a save omits it, and clears it on null', async () => {
+    const { catalogue } = harness();
+    const rush = { kind: 'service', name: 'Rush ID', price: 3000 };
+    const first = await catalogue.saveItem(SCOPE, ANA, { ...rush, description: 'Ready in minutes' });
+    expect(first.item.description).toBe('Ready in minutes');
+    // A client that predates the field must not wipe it by saving the item.
+    const renamed = await catalogue.saveItem(SCOPE, ANA, { ...rush, id: first.item.id, name: 'Rush ID photo' });
+    expect(renamed.item.description).toBe('Ready in minutes');
+    const cleared = await catalogue.saveItem(SCOPE, ANA, { ...rush, id: first.item.id, description: null });
+    expect(cleared.item.description).toBeNull();
+    expect(await refusal(catalogue.saveItem(SCOPE, ANA, { ...rush, description: 'x'.repeat(501) }))).toBe(
+      'invalid_description',
+    );
+  });
+
   it('⚠ archives a variant left out of the list — old orders point at it — and reorders the rest', async () => {
     const { catalogue } = harness();
     const first = await catalogue.saveItem(SCOPE, ANA, LAMINATION);

@@ -1,6 +1,6 @@
+import { zonedDayKey, zonedHour, zonedMonthKey } from '@kwtech/module-kit';
 import type { PosOrderStatus, PosPaymentMethod } from '../types.js';
 import type { PosChangeSettlement } from './orders.js';
-import { zonedDayKey, zonedHour, zonedMonthKey } from './time-zone.js';
 
 /**
  * The report sums (D22). The server reads the rows of a period; these add them

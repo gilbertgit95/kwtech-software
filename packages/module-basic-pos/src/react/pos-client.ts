@@ -46,6 +46,7 @@ export interface PosItemView {
   kind: string;
   name: string;
   code: string | null;
+  description: string | null;
   price: number;
   cost: number | null;
   categoryId: string | null;
@@ -252,6 +253,8 @@ export interface PosItemInput {
   kind: string;
   name: string;
   code?: string | null;
+  /** Null or empty clears it; omitted leaves it as it is. */
+  description?: string | null;
   price: number;
   cost?: number | null;
   categoryId?: string | null;
@@ -301,9 +304,14 @@ export interface PosClient {
   ): Promise<PosCustomerView>;
   setCustomerArchived(scope: PosScopeView, customerId: string, archived: boolean): Promise<PosCustomerView>;
   settings(scope: PosScopeView): Promise<PosSettingsView>;
-  saveSettings(scope: PosScopeView, timeZone: string, keymap: string | null): Promise<PosSettingsView>;
+  saveSettings(scope: PosScopeView, keymap: string | null): Promise<PosSettingsView>;
 
-  orders(scope: PosScopeView, tab: string, search?: string | null): Promise<PosOrderSummaryView[]>;
+  orders(
+    scope: PosScopeView,
+    tab: string,
+    search?: string | null,
+    customerId?: string | null,
+  ): Promise<PosOrderSummaryView[]>;
   order(scope: PosScopeView, orderId: string): Promise<PosOrderView | null>;
   createOrder(scope: PosScopeView, label?: string | null): Promise<PosOrderView>;
   addLine(
@@ -401,9 +409,9 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
     setCustomerArchived: (scope, customerId, archived) =>
       call('setPosCustomerArchived', scope, { customerId, archived }),
     settings: (scope) => call('posSettings', scope),
-    saveSettings: (scope, timeZone, keymap) => call('savePosSettings', scope, { timeZone, keymap }),
+    saveSettings: (scope, keymap) => call('savePosSettings', scope, { keymap }),
 
-    orders: (scope, tab, search = null) => call('posOrders', scope, { tab, search }),
+    orders: (scope, tab, search = null, customerId = null) => call('posOrders', scope, { tab, search, customerId }),
     order: (scope, orderId) => call('posOrder', scope, { orderId }),
     createOrder: (scope, label = null) => call('createPosOrder', scope, { label }),
     addLine: (scope, order, itemId, variantId, quantity) =>

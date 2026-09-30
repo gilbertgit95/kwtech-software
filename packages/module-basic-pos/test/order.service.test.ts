@@ -331,6 +331,18 @@ describe('what the API answers', () => {
     expect((await orders.list(SCOPE, 'all', 'red', new Date())).map((row) => row.order.label)).toEqual(['red cap']);
   });
 
+  it('⚠ lists one customer’s orders by the LINK, not by a walk-in who typed the same name', async () => {
+    const { writes, orders, customers, magnet } = await shop();
+    const juan = await customers.save(SCOPE, BEN, { name: 'Juan', contact: '0917' });
+    let linked = await writes.create(SCOPE, BEN, null);
+    linked = await writes.addLine(SCOPE, BEN, ref(linked), { itemId: magnet.id, quantity: 1 });
+    linked = await writes.setCustomer(SCOPE, BEN, ref(linked), { customerId: juan.id });
+    let walkIn = await writes.create(SCOPE, BEN, null);
+    walkIn = await writes.setCustomer(SCOPE, BEN, ref(walkIn), { name: 'Juan' });
+    const history = await orders.list(SCOPE, 'all', '', new Date(), juan.id);
+    expect(history.map((row) => row.order.id)).toEqual([linked.id]);
+  });
+
   it('reports the day: sales on the day they are paid', async () => {
     const { writes, reports, magnet } = await shop();
     let order = await writes.create(SCOPE, BEN, null);

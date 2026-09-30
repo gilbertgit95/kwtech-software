@@ -1,6 +1,5 @@
-import { escapeLikePattern } from '@kwtech/module-kit';
+import { escapeLikePattern, nextDayKey, zonedDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
-import { nextDayKey, zonedDayKey, zonedStartOfDay } from '../domain/time-zone.js';
 import { linesOf } from './pos.lookup.js';
 import type {
   InScope,
@@ -12,7 +11,7 @@ import type {
   PosWriteClient,
 } from './pos.repository.js';
 import { POS_PRISMA_WRITE } from './pos.tokens.js';
-import { PosSettingsService } from './pos-settings.service.js';
+import { PosTimeZoneService } from './pos-time-zone.service.js';
 
 /** How many orders one list returns. A day at a busy counter is a few hundred. */
 export const POS_ORDERS_READ_MAX = 500;
@@ -57,7 +56,7 @@ export interface PosOrderListEntry {
 export class PosOrderService {
   constructor(
     @Inject(POS_PRISMA_WRITE) private readonly prisma: PosWriteClient,
-    private readonly settings: PosSettingsService,
+    private readonly zones: PosTimeZoneService,
   ) {}
 
   /**
@@ -70,10 +69,19 @@ export class PosOrderService {
    *   cancelled   — the most recent cancellations, with their reasons
    *   all         — the most recent orders
    *
-   * `search` narrows by order number, customer name or label.
+   * `search` narrows by order number, customer name or label; `customerId` to
+   * one recorded customer's orders (their history, D5). Only a LINKED order
+   * is theirs: a walk-in who typed the same name is somebody else.
    */
-  async list(scope: InScope, tab: PosOrderTab, search: string, now: Date): Promise<PosOrderListEntry[]> {
+  async list(
+    scope: InScope,
+    tab: PosOrderTab,
+    search: string,
+    now: Date,
+    customerId: string | null = null,
+  ): Promise<PosOrderListEntry[]> {
     const where = await this.whereFor(scope, tab, now);
+    if (customerId) where.customerId = customerId;
     const term = search.trim();
     if (term) {
       const match = { contains: escapeLikePattern(term), mode: 'insensitive' as const };
@@ -142,7 +150,7 @@ export class PosOrderService {
       case 'all':
         return { ...scope };
       case 'today': {
-        const { timeZone } = await this.settings.get(scope);
+        const timeZone = await this.zones.of(scope);
         const today = zonedDayKey(now, timeZone);
         const from = zonedStartOfDay(today, timeZone) ?? now;
         const to = zonedStartOfDay(nextDayKey(today), timeZone) ?? now;
