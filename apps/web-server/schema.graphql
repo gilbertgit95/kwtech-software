@@ -968,6 +968,7 @@ type PosReport {
   granularity: String!
   previous: PosSummary!
   previousFromDay: String!
+  previousSeries: [PosSeriesPoint!]!
   previousToDay: String!
   series: [PosSeriesPoint!]!
   summary: PosSummary!

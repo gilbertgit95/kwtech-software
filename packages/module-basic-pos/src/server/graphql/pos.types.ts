@@ -732,6 +732,10 @@ export class PosReportType {
   @Field(() => [PosSeriesPointType])
   series!: PosSeriesPointType[];
 
+  /** The comparison period's series, bucketed like `series`: the dashboard's faint line. */
+  @Field(() => [PosSeriesPointType])
+  previousSeries!: PosSeriesPointType[];
+
   @Field(() => [PosBreakdownRowType])
   byItem!: PosBreakdownRowType[];
 

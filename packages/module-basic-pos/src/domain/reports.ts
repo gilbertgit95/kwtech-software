@@ -65,6 +65,22 @@ export interface PosReportRefund {
   refundedAt: Date;
 }
 
+/**
+ * The longest period one report covers, in store days. A year and a bit:
+ * "This year" plus leap days. Here rather than in the service so the period
+ * picker refuses what the server would, with the same number.
+ */
+export const POS_REPORT_DAYS_MAX = 400;
+
+/**
+ * `dayKey` moved by `days` calendar days (`YYYY-MM-DD`). Zone-free: a day key
+ * has no zone, so UTC arithmetic on it is exact — unlike an instant's day.
+ */
+export function shiftDayKey(dayKey: string, days: number): string {
+  const moved = new Date(Date.parse(`${dayKey}T00:00:00Z`) + days * 86_400_000);
+  return moved.toISOString().slice(0, 10);
+}
+
 /** A period: from (inclusive) to (exclusive), as instants. The service turns store days into these. */
 export interface PosPeriod {
   from: Date;

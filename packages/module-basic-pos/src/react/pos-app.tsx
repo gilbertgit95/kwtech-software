@@ -9,13 +9,14 @@ import { buttonClass, INPUT_CLASS } from './components/controls.js';
 import { CustomersSection } from './components/customers-section.js';
 import { ItemsSection } from './components/items-section.js';
 import { OrdersSection } from './components/orders-section.js';
+import { ReportsSection } from './components/reports-section.js';
 import { SettingsSection } from './components/settings-section.js';
 import { Till } from './components/till.js';
 import type { PosClient } from './pos-client.js';
 import { usePosData } from './use-pos-data.js';
 import { useTill } from './use-till.js';
 
-type Section = 'sell' | 'orders' | 'items' | 'customers' | 'settings';
+type Section = 'sell' | 'orders' | 'items' | 'customers' | 'reports' | 'settings';
 
 /**
  * The point of sale as a SUB-APP on the workspace's Apps page (docs/POS-PLAN.md).
@@ -35,6 +36,7 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
   const state = useTill(organizationId, workspaceId, client ? { client } : {});
   const canManageItems = useHoldsFeature(POS_FEATURE.manageItems);
   const canManageSettings = useHoldsFeature(POS_FEATURE.manageSettings);
+  const canSeeReports = useHoldsFeature(POS_FEATURE.reports);
   const [section, setSection] = useState<Section>('sell');
   /** An order to open in Orders, from a customer's history. */
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
@@ -55,8 +57,14 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
     { key: 'orders', label: 'Orders', badge },
     ...(canManageItems ? [{ key: 'items' as const, label: 'Items' }] : []),
     { key: 'customers', label: 'Customers' },
+    ...(canSeeReports ? [{ key: 'reports' as const, label: 'Reports' }] : []),
     ...(canManageSettings ? [{ key: 'settings' as const, label: 'Settings' }] : []),
   ];
+  /** An order opened from somewhere else (a customer's history, the Outstanding report) shows in Orders. */
+  const openOrder = (orderId: string) => {
+    setOpenOrderId(orderId);
+    setSection('orders');
+  };
   const go = (next: Section) => {
     setSection(next);
     if (next !== 'orders') setOpenOrderId(null);
@@ -136,15 +144,8 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
         <OrdersSection state={state} openOrderId={openOrderId} onToSell={() => go('sell')} />
       ) : null}
       {section === 'items' && canManageItems ? <ItemsSection state={state} /> : null}
-      {section === 'customers' ? (
-        <CustomersSection
-          state={state}
-          onOpenOrder={(orderId) => {
-            setOpenOrderId(orderId);
-            setSection('orders');
-          }}
-        />
-      ) : null}
+      {section === 'customers' ? <CustomersSection state={state} onOpenOrder={openOrder} /> : null}
+      {section === 'reports' && canSeeReports ? <ReportsSection state={state} onOpenOrder={openOrder} /> : null}
       {section === 'settings' && canManageSettings ? <SettingsSection state={state} /> : null}
     </div>
   );

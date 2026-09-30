@@ -352,6 +352,23 @@ describe('what the API answers', () => {
     const report = await reports.report(SCOPE, day, day);
     expect(report.summary).toMatchObject({ orders: 1, netSales: 15_000, cashExpected: 15_000, profit: 9000 });
     expect(report.byStaff).toEqual([expect.objectContaining({ key: BEN, name: 'ben', net: 15_000 })]);
+    // One day compares with the same weekday last week, whose series is its own — empty here.
+    expect(report.series).toEqual([{ key: day, orders: 1, sales: 15_000, refunds: 0 }]);
+    expect(report.previousSeries).toEqual([]);
+  });
+
+  it("draws the previous period's series from the previous period's sales", async () => {
+    const { writes, reports, magnet } = await shop();
+    let order = await writes.create(SCOPE, BEN, null);
+    order = await writes.addLine(SCOPE, BEN, ref(order), { itemId: magnet.id, quantity: 10 });
+    order = await writes.pay(SCOPE, BEN, ref(order), cash(20_000));
+    const day = (order.paidAt ?? new Date()).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    // A week from the sale: its "same weekday last week" is the sale's day.
+    const weekLater = new Date(Date.parse(`${day}T00:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+    const report = await reports.report(SCOPE, weekLater, weekLater);
+    expect(report.previousFromDay).toBe(day);
+    expect(report.series).toEqual([]);
+    expect(report.previousSeries).toEqual([{ key: day, orders: 1, sales: 15_000, refunds: 0 }]);
   });
 
   it('refuses a report over a backwards or oversized period', async () => {

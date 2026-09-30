@@ -510,6 +510,7 @@ function renderReport(report: PosReport): PosReportType {
     previousToDay: report.previousToDay,
     granularity: report.granularity,
     series: [...report.series],
+    previousSeries: [...report.previousSeries],
     byItem: [...report.byItem],
     byCategory: [...report.byCategory],
     byStaff: report.byStaff.map((row) => ({ ...row, label: row.name ?? '' })),

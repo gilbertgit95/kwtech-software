@@ -93,6 +93,7 @@ export const METHOD_LABELS: Readonly<Record<string, string>> = {
   card: 'Card',
 };
 
-function escapeHtml(text: string): string {
+/** Text somebody typed, made safe to print inside HTML. The receipt's, and the daily summary's. */
+export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/gu, (character) => `&#${character.charCodeAt(0)};`);
 }

@@ -165,7 +165,8 @@ export const POS_OPERATIONS = {
   posReport: `query PosReport(${SCOPE_VARS}, $fromDay: String!, $toDay: String!) {
     posReport(${SCOPE_ARGS}, fromDay: $fromDay, toDay: $toDay) {
       fromDay toDay timeZone summary { ${SUMMARY} } previous { ${SUMMARY} } previousFromDay previousToDay granularity
-      series { key orders sales refunds } byItem { ${BREAKDOWN} } byCategory { ${BREAKDOWN} } byStaff { ${BREAKDOWN} }
+      series { key orders sales refunds } previousSeries { key orders sales refunds }
+      byItem { ${BREAKDOWN} } byCategory { ${BREAKDOWN} } byStaff { ${BREAKDOWN} }
       byHour { hour orders sales } unpaid { ${OWED} } changeOwed { ${OWED} } truncated
     }
   }`,

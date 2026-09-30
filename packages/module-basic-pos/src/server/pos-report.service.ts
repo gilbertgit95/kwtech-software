@@ -2,6 +2,7 @@ import { nextDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   outstanding,
+  POS_REPORT_DAYS_MAX,
   type PosBreakdownRow,
   type PosOutstanding,
   type PosPeriod,
@@ -14,6 +15,7 @@ import {
   salesByItem,
   salesByStaff,
   salesSeries,
+  shiftDayKey,
   summarize,
 } from '../domain/reports.js';
 import type { PosMemberDirectory } from './ports.js';
@@ -21,9 +23,6 @@ import { type PosWriteError, refusalError } from './pos.errors.js';
 import type { InScope, PosOrderLineRow, PosOrderRow, PosRefundRow, PosWriteClient } from './pos.repository.js';
 import { POS_MEMBER_DIRECTORY, POS_PRISMA_WRITE } from './pos.tokens.js';
 import { PosTimeZoneService } from './pos-time-zone.service.js';
-
-/** The longest period one report covers. A year and a bit: "This year" plus leap days. */
-export const POS_REPORT_DAYS_MAX = 400;
 
 /** How many orders one report reads. Past it the report says it is TRUNCATED rather than quietly wrong. */
 export const POS_REPORT_ORDERS_MAX = 20_000;
@@ -43,6 +42,12 @@ export interface PosReport {
   previousFromDay: string;
   previousToDay: string;
   series: readonly PosSeriesPoint[];
+  /**
+   * The comparison period's series, bucketed the same way, so the dashboard
+   * draws it as the faint line under this period's columns (D22). Its keys
+   * are ITS days; the page lines them up by position, not by date.
+   */
+  previousSeries: readonly PosSeriesPoint[];
   granularity: 'day' | 'month';
   byItem: readonly PosBreakdownRow[];
   byCategory: readonly PosBreakdownRow[];
@@ -71,8 +76,8 @@ export class PosReportService {
     const timeZone = await this.zones.of(scope);
     const days = daysBetween(fromDay, toDay);
     const period = this.period(fromDay, toDay, timeZone);
-    const previousFromDay = days === 1 ? shiftDay(fromDay, -7) : shiftDay(fromDay, -days);
-    const previousToDay = days === 1 ? shiftDay(toDay, -7) : shiftDay(fromDay, -1);
+    const previousFromDay = days === 1 ? shiftDayKey(fromDay, -7) : shiftDayKey(fromDay, -days);
+    const previousToDay = days === 1 ? shiftDayKey(toDay, -7) : shiftDayKey(fromDay, -1);
     const previousPeriod = this.period(previousFromDay, previousToDay, timeZone);
 
     const [current, previous] = await Promise.all([this.read(scope, period), this.read(scope, previousPeriod)]);
@@ -88,6 +93,7 @@ export class PosReportService {
       previousFromDay,
       previousToDay,
       series: salesSeries(current.orders, current.refunds, period, timeZone, granularity),
+      previousSeries: salesSeries(previous.orders, previous.refunds, previousPeriod, timeZone, granularity),
       granularity,
       byItem: salesByItem(current.orders, period),
       byCategory: salesByCategory(current.orders, period),
@@ -225,9 +231,4 @@ function daysBetween(fromDay: string, toDay: string): number {
   const days = Math.round((to - from) / 86_400_000) + 1;
   if (days > POS_REPORT_DAYS_MAX) throw invalidPeriod();
   return days;
-}
-
-function shiftDay(dayKey: string, days: number): string {
-  const moved = new Date(Date.parse(`${dayKey}T00:00:00Z`) + days * 86_400_000);
-  return moved.toISOString().slice(0, 10);
 }

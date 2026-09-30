@@ -216,6 +216,14 @@ export interface PosOwedView {
   since: string;
 }
 
+export interface PosSeriesPointView {
+  /** `YYYY-MM-DD` or `YYYY-MM`, by the report's granularity. */
+  key: string;
+  orders: number;
+  sales: number;
+  refunds: number;
+}
+
 export interface PosReportView {
   fromDay: string;
   toDay: string;
@@ -225,7 +233,9 @@ export interface PosReportView {
   previousFromDay: string;
   previousToDay: string;
   granularity: string;
-  series: { key: string; orders: number; sales: number; refunds: number }[];
+  series: PosSeriesPointView[];
+  /** The comparison period's, bucketed the same way; lined up with `series` by position. */
+  previousSeries: PosSeriesPointView[];
   byItem: PosBreakdownRowView[];
   byCategory: PosBreakdownRowView[];
   byStaff: PosBreakdownRowView[];
