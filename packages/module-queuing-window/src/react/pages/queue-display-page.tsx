@@ -50,6 +50,13 @@ export function QueueDisplayPage({ params, wsUrl }: { params: Record<string, str
   const { phase } = state;
   // ⚠ Only once a pass exists: the prompt is identical for a workspace that exists and one that does not.
   const workspaceName = phase.kind === 'start' || phase.kind === 'board' ? phase.stored.workspaceName : null;
+  /*
+   * The WORKSPACE's clock (PLAN §13, 2026-09-29), handed over with the pass, so
+   * the TV and the console read the same time whatever this device is set to.
+   * Undefined — the TV's own clock — only for a pass from before that, until
+   * the next code.
+   */
+  const timeZone = (phase.kind === 'start' || phase.kind === 'board' ? phase.stored.timeZone : null) ?? undefined;
 
   return (
     <main className="relative isolate flex min-h-screen w-full flex-col overflow-hidden bg-background text-foreground">
@@ -57,7 +64,7 @@ export function QueueDisplayPage({ params, wsUrl }: { params: Record<string, str
       <TopBar
         workspaceName={workspaceName}
         theme={theme}
-        clock={now === null ? null : clockTime(new Date(now).toISOString())}
+        clock={now === null ? null : clockTime(new Date(now).toISOString(), timeZone)}
         status={phase.kind === 'board' && wsUrl ? <LivePill state={state} now={now ?? 0} /> : null}
       />
 
@@ -70,7 +77,7 @@ export function QueueDisplayPage({ params, wsUrl }: { params: Record<string, str
       {phase.kind === 'start' ? <StartDisplay state={state} workspaceName={phase.stored.workspaceName} /> : null}
       {phase.kind === 'board' ? (
         wsUrl ? (
-          <Board state={state} now={now ?? 0} />
+          <Board state={state} now={now ?? 0} timeZone={timeZone} />
         ) : (
           <Stage>
             <Card className="text-center">
@@ -343,7 +350,7 @@ function LivePill({ state, now }: { state: QueueDisplayState; now: number }) {
   );
 }
 
-function Board({ state, now }: { state: QueueDisplayState; now: number }) {
+function Board({ state, now, timeZone }: { state: QueueDisplayState; now: number; timeZone: string | undefined }) {
   const [showFilter, setShowFilter] = useState(false);
 
   const stale = isStale(state.disconnectedSince, now);
@@ -422,7 +429,9 @@ function Board({ state, now }: { state: QueueDisplayState; now: number }) {
                     {call.label}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-2xl">{call.windowName}</span>
-                  <span className="text-lg tabular-nums text-muted-foreground">{clockTime(call.calledAt)}</span>
+                  <span className="text-lg tabular-nums text-muted-foreground">
+                    {clockTime(call.calledAt, timeZone)}
+                  </span>
                 </li>
               ))}
             </ol>

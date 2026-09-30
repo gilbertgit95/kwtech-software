@@ -73,7 +73,12 @@ function memoryPubSub(): QueuePubSub & { sent: { trigger: string; payload: unkno
 }
 
 const locator: QueueWorkspaceLocator = {
-  locate: async () => ({ organizationId: 'org', workspaceId: 'ws', workspaceName: 'Main branch' }),
+  locate: async () => ({
+    organizationId: 'org',
+    workspaceId: 'ws',
+    workspaceName: 'Main branch',
+    timeZone: 'Asia/Manila',
+  }),
 };
 
 /** Line C, Window 3 with joy at it, queuing started, and one TV admitted by its pass. */

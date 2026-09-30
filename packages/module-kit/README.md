@@ -408,6 +408,25 @@ The three members are optional on `RealtimeConnection`, so a hand-written
 connection (a test's fake) still fits; a consumer that finds none treats the
 connection as live.
 
+## A workspace's calendar
+
+"Today" in a workspace is the **workspace's** day, not the server's (UTC) and
+not the viewer's browser's. Each workspace keeps an IANA zone
+(`perm_workspace.timeZone`, default `DEFAULT_TIME_ZONE` = Asia/Manila), so
+everyone in it sees the same today (PLAN §13, 2026-09-29).
+
+- **Root** (`src/time-zone.ts`): `isValidTimeZone`, `zonedDayKey`,
+  `zonedMonthKey`, `zonedHour`, `zonedStartOfDay`, `nextDayKey`. Built on
+  `Intl`, with no date library. Every "which day is this instant" goes through
+  these, so a report and a board never disagree.
+- **React**: the app shell wraps pages in `WorkspaceTimeZoneProvider` with the
+  selected workspace's zone, and a module reads `useWorkspaceTimeZone()`.
+  ⚠ Outside a provider it returns the browser's own zone, which is honest.
+  Guessing a workspace's zone would not be.
+- **Server**: a module cannot read `perm_workspace`, so it declares a port
+  (the POS's `POS_WORKSPACE_TIME_ZONE`) and the app answers it. When it is
+  unbound, fall back to `DEFAULT_TIME_ZONE`, never to UTC.
+
 ## The status channel
 
 The global status bar's vocabulary lives here for the same reason

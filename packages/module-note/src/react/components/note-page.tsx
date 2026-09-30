@@ -1,5 +1,6 @@
 'use client';
 
+import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import {
   ConfirmDialog,
   cn,
@@ -389,6 +390,8 @@ function Revisions({
   onRestore: (id: string) => void;
   onClose: () => void;
 }) {
+  // The workspace's clock, so everyone reading the history sees the same times.
+  const timeZone = useWorkspaceTimeZone();
   return (
     <section aria-label="Earlier versions" className="min-h-0 flex-1 overflow-y-auto px-3 font-sans text-sm">
       <div className="flex items-center justify-between py-1">
@@ -411,7 +414,7 @@ function Revisions({
             <li key={revision.id} className="rounded-md border border-border/60 bg-background/60 p-2">
               <p className="text-xs text-muted-foreground">
                 Written by {revision.editedByName ?? 'a member'} · replaced{' '}
-                {new Date(revision.createdAt).toLocaleString()}
+                {new Date(revision.createdAt).toLocaleString(undefined, { timeZone })}
               </p>
               <p className="mt-1 line-clamp-3 whitespace-pre-wrap">{revision.body || 'Nothing written.'}</p>
               {canRestore ? (

@@ -261,7 +261,7 @@ export class QueueStaffMemberType {
   displayName!: string;
 }
 
-/** What a TV receives once: its pass, and the name it may now show. */
+/** What a TV receives once: its pass, the name it may now show, and the zone its clock reads. */
 @ObjectType('QueueDisplayPass')
 export class QueueDisplayPassType {
   @Field()
@@ -269,6 +269,10 @@ export class QueueDisplayPassType {
 
   @Field()
   workspaceName!: string;
+
+  /** The workspace's IANA zone ("Asia/Manila"). Handed over with the pass, so a new code picks up a changed zone. */
+  @Field()
+  timeZone!: string;
 }
 
 /**

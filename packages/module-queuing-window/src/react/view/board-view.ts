@@ -1,3 +1,4 @@
+import { isValidTimeZone } from '@kwtech/module-kit';
 import { isDisplayPassShaped } from '../../domain/session.js';
 import type { StoredVoice } from '../../domain/voice.js';
 
@@ -36,6 +37,12 @@ export interface QueueDisplayEventView {
 export interface StoredDisplayPass {
   pass: string;
   workspaceName: string;
+  /**
+   * The workspace's zone, for the clock and the called-at times. NULL for a
+   * pass stored before the zone was handed over, or for a zone this browser
+   * does not know: the board then reads the TV's own clock until the next code.
+   */
+  timeZone: string | null;
 }
 
 /** How long a board may be disconnected before it LOOKS stale. */
@@ -64,9 +71,10 @@ export function parseStoredPass(raw: string | null): StoredDisplayPass | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<StoredDisplayPass>;
-    return isDisplayPassShaped(value.pass) && typeof value.workspaceName === 'string'
-      ? { pass: value.pass, workspaceName: value.workspaceName }
-      : null;
+    if (!isDisplayPassShaped(value.pass) || typeof value.workspaceName !== 'string') return null;
+    // ⚠ Checked, not trusted: an unknown zone makes every time on the board throw, and the TV would go blank.
+    const timeZone = typeof value.timeZone === 'string' && isValidTimeZone(value.timeZone) ? value.timeZone : null;
+    return { pass: value.pass, workspaceName: value.workspaceName, timeZone };
   } catch {
     return null;
   }

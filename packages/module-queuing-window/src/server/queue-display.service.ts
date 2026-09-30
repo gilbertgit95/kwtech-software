@@ -69,6 +69,8 @@ export interface OpenedDisplay {
   organizationId: string;
   workspaceId: string;
   workspaceName: string;
+  /** The workspace's zone, for the board's clock. */
+  timeZone: string;
   sessionId: string;
 }
 
@@ -180,6 +182,7 @@ export class QueueDisplayService {
         organizationId: session.organizationId,
         workspaceId: session.workspaceId,
         workspaceName: place.workspaceName,
+        timeZone: place.timeZone,
         sessionId: session.id,
       };
     });

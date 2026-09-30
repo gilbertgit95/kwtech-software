@@ -292,6 +292,8 @@ export interface WorkspaceDetailView {
   key: string;
   name: string;
   description: string | null;
+  /** Its IANA time zone ("Asia/Manila"). */
+  timeZone: string;
   /** Archived workspaces are shown, so the switch does not read as a delete. */
   archived: boolean;
   memberCount: number;
@@ -518,6 +520,8 @@ export interface PermissionsClient {
     key: string,
     name: string,
     description?: string | null,
+    /** An IANA zone. Omitted: unchanged. */
+    timeZone?: string | null,
   ): Promise<WriteResult>;
   archiveWorkspace(organizationId: string, workspaceId: string): Promise<WriteResult>;
   shareWorkspace(organizationId: string, workspaceId: string, userId: string): Promise<WriteResult>;
@@ -814,7 +818,7 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
                role { id key label level icon }
              }
              workspaces {
-               id key name description archived memberCount
+               id key name description timeZone archived memberCount
                members { workspaceMemberId membershipId userId roles { id key label level icon } }
              }
              members {
@@ -856,7 +860,7 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
                role { id key label level icon }
              }
              workspaces {
-               id key name description archived memberCount
+               id key name description timeZone archived memberCount
                members { workspaceMemberId membershipId userId roles { id key label level icon } }
              }
              members {
@@ -876,7 +880,7 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
            myWorkspace(organizationId: $organizationId, workspaceId: $workspaceId) {
              organizationId organizationKey organizationName
              workspace {
-               id key name description archived memberCount
+               id key name description timeZone archived memberCount
                members { workspaceMemberId membershipId userId roles { id key label level icon } }
              }
              organizationMembers {
@@ -1083,19 +1087,20 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
       return data.createWorkspace;
     },
 
-    async updateWorkspace(organizationId, workspaceId, key, name, description = null) {
+    async updateWorkspace(organizationId, workspaceId, key, name, description = null, timeZone = null) {
       const data = await graphql<{ updateWorkspace: WriteResult }>(
         `mutation UpdateWorkspace(
-           $organizationId: String!, $workspaceId: String!, $key: String!, $name: String!, $description: String
+           $organizationId: String!, $workspaceId: String!, $key: String!, $name: String!, $description: String,
+           $timeZone: String
          ) {
            updateWorkspace(
              organizationId: $organizationId, workspaceId: $workspaceId,
-             key: $key, name: $name, description: $description
+             key: $key, name: $name, description: $description, timeZone: $timeZone
            ) {
              ${WRITE_RESULT}
            }
          }`,
-        { organizationId, workspaceId, key, name, description },
+        { organizationId, workspaceId, key, name, description, timeZone },
       );
       return data.updateWorkspace;
     },

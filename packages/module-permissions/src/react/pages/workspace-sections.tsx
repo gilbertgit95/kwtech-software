@@ -13,6 +13,7 @@ import type {
   WorkspaceMemberView,
 } from '../permissions-client.js';
 import { Person, personLabel } from './person.js';
+import { TimeZoneSelect } from './time-zone-select.js';
 
 /**
  * The sections ONE workspace screen is made of, shared by both audiences.
@@ -60,6 +61,8 @@ export function WorkspaceSettings({
   const [key, setKey] = useState(workspace.key);
   const [name, setName] = useState(workspace.name);
   const [description, setDescription] = useState(workspace.description ?? '');
+  const [timeZone, setTimeZone] = useState(workspace.timeZone);
+  const timeZoneId = useId();
 
   /*
    * Re-seeded when the workspace changes underneath — after a save, or when the
@@ -70,12 +73,14 @@ export function WorkspaceSettings({
     setKey(workspace.key);
     setName(workspace.name);
     setDescription(workspace.description ?? '');
-  }, [workspace.key, workspace.name, workspace.description]);
+    setTimeZone(workspace.timeZone);
+  }, [workspace.key, workspace.name, workspace.description, workspace.timeZone]);
 
   const dirty =
     key.trim() !== workspace.key ||
     name.trim() !== workspace.name ||
-    description.trim() !== (workspace.description ?? '');
+    description.trim() !== (workspace.description ?? '') ||
+    timeZone !== workspace.timeZone;
 
   return (
     <FeatureGate allOf={[FEATURE.workspacesUpdate]}>
@@ -135,12 +140,30 @@ export function WorkspaceSettings({
           </p>
         </div>
 
+        <div className="mt-4 max-w-sm">
+          <label htmlFor={timeZoneId} className="mb-1 block text-sm font-medium">
+            Time zone
+          </label>
+          <TimeZoneSelect id={timeZoneId} value={timeZone} onChange={setTimeZone} disabled={workspace.archived} />
+          <p className="mt-1 text-xs text-muted-foreground">
+            What “today” means in this workspace’s apps: when a task is due, the queue’s day, which day a sale belongs
+            to. Everyone here sees the same day, wherever they are.
+          </p>
+        </div>
+
         <button
           type="button"
           disabled={busy || workspace.archived || !dirty || !key.trim() || !name.trim()}
           onClick={() =>
             void onRun('Workspace saved.', () =>
-              api.updateWorkspace(organizationId, workspace.id, key.trim(), name.trim(), description.trim() || null),
+              api.updateWorkspace(
+                organizationId,
+                workspace.id,
+                key.trim(),
+                name.trim(),
+                description.trim() || null,
+                timeZone,
+              ),
             )
           }
           className="mt-4 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"

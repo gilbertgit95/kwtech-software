@@ -1,4 +1,5 @@
 import { SessionKeeper } from '@kwtech/module-auth/react';
+import { WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { FEATURE } from '@kwtech/module-permissions';
 import { PermissionsProvider } from '@kwtech/module-permissions/react';
 import { cookies } from 'next/headers';
@@ -479,7 +480,17 @@ export async function AppShell({
                   : 'min-h-0 flex-1 overflow-auto px-4 py-6 sm:px-6'
               }
             >
-              {children}
+              {/*
+               * The selected workspace's time zone, for every app inside it:
+               * a task due today, the queue's today, the day a sale belongs to
+               * (PLAN §13, 2026-09-29). Null outside a workspace, where pages
+               * show times in the viewer's own zone.
+               */}
+              <WorkspaceTimeZoneProvider
+                timeZone={workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.timeZone ?? null}
+              >
+                {children}
+              </WorkspaceTimeZoneProvider>
             </main>
             {/*
             A flex ITEM after the scrolling main, not a fixed overlay.

@@ -163,6 +163,11 @@ only when it is a feature of its own (PLAN §9 rule 8).
       `packages/module-notification/README.md`, "Notifying people from another
       module". Person-to-person messages are chat, not notifications.
 - [ ] Use `@kwtech/web-ui` components and theme tokens rather than raw colours.
+- [ ] **Anything about days or times** (today, overdue, per-day reports, a
+      printed time) follows the **workspace's time zone**, not the server's
+      or the browser's: `useWorkspaceTimeZone()` in React, a zone port on the
+      server, and the `zoned*` helpers from `@kwtech/module-kit`. The rules are in
+      `.claude/rules/typescript.md`, "Days, times and time zones".
 
 **In the apps (only for a new module, or a new port or option)**
 - [ ] Add the dependency to `apps/web-server/package.json` and

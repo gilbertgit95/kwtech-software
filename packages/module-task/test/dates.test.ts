@@ -3,12 +3,12 @@ import {
   isScheduledAfterDue,
   isTaskDueSoon,
   isTaskOverdue,
-  localTaskDay,
   prepareTaskDay,
   taskAttention,
   taskDayFromDate,
   taskDayGroup,
   taskDayToDate,
+  workspaceTaskDay,
 } from '../src/domain/dates.js';
 
 describe('prepareTaskDay', () => {
@@ -33,9 +33,11 @@ describe('the DATE column round trip', () => {
   });
 });
 
-describe('localTaskDay', () => {
-  it('is the calendar day where the viewer is', () => {
-    expect(localTaskDay(new Date(2026, 9, 5, 23, 30))).toBe('2026-10-05');
+describe('workspaceTaskDay', () => {
+  it('⚠ is the WORKSPACE’s day, whoever reads it — 11:30 PM in Manila is still that day', () => {
+    const late = new Date('2026-10-05T15:30:00Z'); // 23:30 in Manila, 00:30 the next day in Tokyo
+    expect(workspaceTaskDay(late, 'Asia/Manila')).toBe('2026-10-05');
+    expect(workspaceTaskDay(late, 'Asia/Tokyo')).toBe('2026-10-06');
   });
 });
 

@@ -1,3 +1,4 @@
+import { zonedDayKey } from '@kwtech/module-kit';
 import type { TaskRefusal } from '../types.js';
 
 /**
@@ -49,14 +50,13 @@ export function taskDayFromDate(date: Date | null): TaskDay | null {
 }
 
 /**
- * The viewer's own calendar day, in THEIR zone — what "today" and "overdue"
- * are measured against (§0 E). Never the server's: a task due today is not
- * overdue in Manila because it is already tomorrow in Tokyo.
+ * The WORKSPACE's calendar day — what "today" and "overdue" are measured
+ * against. Never the server's, and no longer the viewer's own (PLAN §13,
+ * 2026-09-29): everyone in a workspace sees the same today, so a task due today
+ * is due today for the whole team, wherever each of them happens to be.
  */
-export function localTaskDay(now: Date): TaskDay {
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
+export function workspaceTaskDay(now: Date, timeZone: string): TaskDay {
+  return zonedDayKey(now, timeZone);
 }
 
 /**

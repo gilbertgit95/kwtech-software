@@ -44,7 +44,7 @@ export class QueueDisplayResolver {
     @Args('code') code: string,
   ): Promise<QueueDisplayPassType | null> {
     const opened = await this.displays.openDisplay(organizationKey, workspaceKey, code);
-    return opened ? { pass: opened.pass, workspaceName: opened.workspaceName } : null;
+    return opened ? { pass: opened.pass, workspaceName: opened.workspaceName, timeZone: opened.timeZone } : null;
   }
 
   /**

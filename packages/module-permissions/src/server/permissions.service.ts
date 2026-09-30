@@ -649,6 +649,7 @@ export class PermissionsService {
           key: workspace.key,
           name: workspace.name,
           description: workspace.description,
+          timeZone: workspace.timeZone,
           archived: workspace.archivedAt !== null,
           memberCount: workspace.members.length,
           members: workspace.members
@@ -955,7 +956,7 @@ export class PermissionsService {
         archivedAt: null,
         ...(accessibleWorkspaceIds === null ? {} : { id: { in: [...accessibleWorkspaceIds] } }),
       },
-      select: { id: true, key: true, name: true, description: true },
+      select: { id: true, key: true, name: true, description: true, timeZone: true },
       // By name, so a picker does not reshuffle between renders — the order the
       // database returns is whatever the plan happened to produce.
       orderBy: { name: 'asc' },

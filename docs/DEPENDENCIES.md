@@ -76,6 +76,7 @@ has a documented, fail-closed meaning — see each module's README.
 | People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY`, `NOTE_AUTHOR_DIRECTORY`, `TASK_MEMBER_DIRECTORY` (also who may be assigned, and who has left), `POS_MEMBER_DIRECTORY` (names for "by staff") | adapters reading `auth_user` (and permissions, for tasks' members) |
 | Is this person staff here | `QUEUE_STAFF_CHECK` | `queue/staff-check.ts` (permissions) |
 | Does this person hold a key the module checks itself | `NOTE_ACCESS_CHECK` (`note:manage_all`), `TASK_ACCESS_CHECK` (`task:assign`, `task:manage_all`), `POS_ACCESS_CHECK` (who sees costs; whose edit keeps a fixed discount) | `note/access-check.ts`, `task/access-check.ts`, `pos/access-check.ts` (permissions) |
+| A workspace's time zone (which day a sale belongs to; the TV board's clock) | `POS_WORKSPACE_TIME_ZONE`; `QueueWorkspaceLocation.timeZone`; in the browser, `useWorkspaceTimeZone()` from module-kit | `pos/workspace-time-zone.ts` and `queue/workspace-locator.ts` (read `perm_workspace`); the shell's `WorkspaceTimeZoneProvider` |
 | Live events | `CHAT_PUBSUB`, `QUEUE_PUBSUB`, `PERMISSIONS_PUBSUB`, `NOTIFICATION_PUBSUB`, `NOTE_PUBSUB`, `TASK_PUBSUB`, `POS_PUBSUB` | ONE `realtimePubSub()` engine for all |
 | A database | `X_PRISMA`, `X_PRISMA_WRITE` | `prisma/module-clients.ts`, checked by `satisfies-modules.ts` |
 | Email a person | `CHAT_NOTIFIER`, auth's and permissions' mail callbacks | `chat/notify-mail.ts`, `auth/*-mail.ts`, `permissions/invitation-mail.ts` |

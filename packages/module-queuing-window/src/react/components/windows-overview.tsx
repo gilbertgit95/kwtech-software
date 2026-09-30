@@ -1,5 +1,6 @@
 'use client';
 
+import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import type { QueueConsoleState } from '../use-queue-console.js';
 import { activeWindows, clockTime, seatAt, servingAt } from '../view/console-view.js';
 import { Section } from './ui.js';
@@ -9,6 +10,7 @@ const STATUS_LABEL: Record<string, string> = { called: 'Called', done: 'Done', n
 /** Every window and what it is serving, live — and the calls made this session. */
 export function WindowsOverview({ state }: { state: QueueConsoleState }) {
   const { view } = state;
+  const timeZone = useWorkspaceTimeZone();
   if (!view) return null;
   const windows = activeWindows(view);
 
@@ -75,7 +77,7 @@ export function WindowsOverview({ state }: { state: QueueConsoleState }) {
                 <span className="font-mono text-foreground">{ticket.label}</span>
                 <span className="flex-1 truncate text-muted-foreground">{ticket.windowName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {STATUS_LABEL[ticket.status] ?? ticket.status} · {clockTime(ticket.calledAt)}
+                  {STATUS_LABEL[ticket.status] ?? ticket.status} · {clockTime(ticket.calledAt, timeZone)}
                 </span>
               </li>
             ))}

@@ -155,7 +155,7 @@ export interface QueueClient {
     organizationKey: string,
     workspaceKey: string,
     code: string,
-  ): Promise<{ pass: string; workspaceName: string } | null>;
+  ): Promise<{ pass: string; workspaceName: string; timeZone: string } | null>;
 }
 
 export function createQueueClient(options: { graphqlPath?: string } = {}): QueueClient {
@@ -288,10 +288,9 @@ export function createQueueClient(options: { graphqlPath?: string } = {}): Queue
     },
 
     async openDisplay(organizationKey, workspaceKey, code) {
-      const data = await graphql<{ openQueueDisplay: { pass: string; workspaceName: string } | null }>(
-        ops.openQueueDisplay,
-        { organizationKey, workspaceKey, code },
-      );
+      const data = await graphql<{
+        openQueueDisplay: { pass: string; workspaceName: string; timeZone: string } | null;
+      }>(ops.openQueueDisplay, { organizationKey, workspaceKey, code });
       return data.openQueueDisplay;
     },
   };

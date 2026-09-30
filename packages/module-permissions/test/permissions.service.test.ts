@@ -126,7 +126,7 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
         return (db.workspaces ?? [])
           .filter((w) => w.organizationId === args.where.organizationId)
           .filter((w) => !args.where.id || args.where.id.in.includes(w.id))
-          .map((w) => ({ id: w.id, key: w.key, name: w.name, description: null }))
+          .map((w) => ({ id: w.id, key: w.key, name: w.name, description: null, timeZone: 'Asia/Manila' }))
           .sort((a, b) => a.name.localeCompare(b.name));
       },
     },
@@ -846,8 +846,26 @@ describe('listAccessibleWorkspaces', () => {
   it('returns the named ids, by name', async () => {
     const { svc } = service(db());
     expect(await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1', 'ws2'])).toEqual([
-      { id: 'ws1', key: 'alpha', name: 'Alpha', description: null, roleKey: null, roleLabel: null, roleIcon: null },
-      { id: 'ws2', key: 'beta', name: 'Beta', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+      {
+        id: 'ws1',
+        key: 'alpha',
+        name: 'Alpha',
+        description: null,
+        timeZone: 'Asia/Manila',
+        roleKey: null,
+        roleLabel: null,
+        roleIcon: null,
+      },
+      {
+        id: 'ws2',
+        key: 'beta',
+        name: 'Beta',
+        description: null,
+        timeZone: 'Asia/Manila',
+        roleKey: null,
+        roleLabel: null,
+        roleIcon: null,
+      },
     ]);
   });
 
@@ -881,7 +899,16 @@ describe('listAccessibleWorkspaces', () => {
   it('never returns a workspace of another organization, even when its id is listed', async () => {
     const { svc } = service(db());
     expect(await svc.listAccessibleWorkspaces('org1', 'u1', ['ws1', 'wsX'])).toEqual([
-      { id: 'ws1', key: 'alpha', name: 'Alpha', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+      {
+        id: 'ws1',
+        key: 'alpha',
+        name: 'Alpha',
+        description: null,
+        timeZone: 'Asia/Manila',
+        roleKey: null,
+        roleLabel: null,
+        roleIcon: null,
+      },
     ]);
   });
 
@@ -925,11 +952,21 @@ describe('listAccessibleWorkspaces — the role held in each', () => {
         key: 'alpha',
         name: 'Alpha',
         description: null,
+        timeZone: 'Asia/Manila',
         roleKey: 'workspace-admin',
         roleLabel: 'Workspace admin',
         roleIcon: 'workspace',
       },
-      { id: 'ws2', key: 'beta', name: 'Beta', description: null, roleKey: null, roleLabel: null, roleIcon: null },
+      {
+        id: 'ws2',
+        key: 'beta',
+        name: 'Beta',
+        description: null,
+        timeZone: 'Asia/Manila',
+        roleKey: null,
+        roleLabel: null,
+        roleIcon: null,
+      },
     ]);
   });
 

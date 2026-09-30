@@ -140,7 +140,7 @@ export const QUEUE_OPERATIONS = {
 
   /** The public page's exchange (step 8). Listed now so the schema check covers it. */
   openQueueDisplay: `mutation OpenQueueDisplay($organizationKey: String!, $workspaceKey: String!, $code: String!) {
-    openQueueDisplay(organizationKey: $organizationKey, workspaceKey: $workspaceKey, code: $code) { pass workspaceName }
+    openQueueDisplay(organizationKey: $organizationKey, workspaceKey: $workspaceKey, code: $code) { pass workspaceName timeZone }
   }`,
 
   /** The board, on a socket admitted by a display pass (step 8). */

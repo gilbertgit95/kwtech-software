@@ -95,6 +95,8 @@ export interface ViewerWorkspace {
   id: string;
   key: string;
   name: string;
+  /** Its IANA time zone: what "today" means in its apps (`WorkspaceTimeZoneProvider`). */
+  timeZone: string;
   /**
    * The viewer's WORKSPACE-level role here, or null.
    *
@@ -210,7 +212,7 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
           app: myPermissions { granted }
           organization: myPermissions(organizationId: $organizationId) { granted entitled }
           workspace: myPermissions(organizationId: $organizationId, workspaceId: $workspaceId) { granted }
-          workspaces: myWorkspaces(organizationId: $organizationId) { id key name roleKey roleLabel roleIcon }
+          workspaces: myWorkspaces(organizationId: $organizationId) { id key name timeZone roleKey roleLabel roleIcon }
         }`,
         /*
          * The workspace id is the RAW remembered value, passed before it has

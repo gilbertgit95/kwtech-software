@@ -1,6 +1,7 @@
 'use client';
 
 import type { AppProps } from '@kwtech/module-kit';
+import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { cn } from '@kwtech/web-ui/react';
 import {
   Archive,
@@ -16,7 +17,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
-import { localTaskDay, TASK_SOON_DAYS, type TaskAttention, taskAttention } from '../domain/dates.js';
+import { TASK_SOON_DAYS, type TaskAttention, taskAttention, workspaceTaskDay } from '../domain/dates.js';
 import { BoardForm } from './components/board-form.js';
 import { BoardSettings } from './components/board-settings.js';
 import { BoardView } from './components/board-view.js';
@@ -45,6 +46,8 @@ const MY_TASKS = '__mine__';
  */
 export function TaskApp({ organizationId, workspaceId, client }: AppProps & { client?: TaskClient }) {
   const state = useTasks(organizationId, workspaceId, client ? { client } : {});
+  // The workspace's today: what the attention chip counts as overdue, today and soon.
+  const timeZone = useWorkspaceTimeZone();
   const rootRef = useRef<HTMLDivElement>(null);
   const width = useWidthRem(rootRef);
   const panelBeside = width === null || width >= TASK_PANEL_BESIDE_REM;
@@ -157,7 +160,7 @@ export function TaskApp({ organizationId, workspaceId, client }: AppProps & { cl
           <AttentionChip
             attention={taskAttention(
               state.myTasks.map((card) => ({ ...card, completed: card.completedAt !== null })),
-              localTaskDay(new Date()),
+              workspaceTaskDay(new Date(), timeZone),
             )}
             current={selection.kind === 'mine'}
             onOpen={() => state.select({ kind: 'mine' })}

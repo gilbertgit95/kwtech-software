@@ -113,7 +113,14 @@ export const PRIORITY_LABELS: Record<string, string> = {
   urgent: 'Urgent',
 };
 
-/** A day for a card: "Today", "Tomorrow", "Yesterday", else "Mon 5 Oct" — in the viewer's calendar. */
+/**
+ * A day for a card: "Today", "Tomorrow", "Yesterday", else "Mon 5 Oct".
+ *
+ * Both are calendar days (`YYYY-MM-DD`) with no zone of their own; `today` is
+ * the WORKSPACE's (`workspaceTaskDay`), so the labels follow the workspace's
+ * calendar. Parsing both the same way keeps the difference a whole number of
+ * days, and `Math.round` absorbs a daylight-saving hour between them.
+ */
 export function dayLabel(day: TaskDay, today: TaskDay): string {
   const date = new Date(`${day}T00:00:00`);
   const todayDate = new Date(`${today}T00:00:00`);

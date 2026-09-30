@@ -1,5 +1,6 @@
 import type { QueueLineView, QueueTicketView } from '../src/react/queue-client.js';
 import {
+  clockTime,
   displayLink,
   isTypingTarget,
   linesServedBy,
@@ -110,5 +111,21 @@ describe('isTypingTarget — when Space is not Call next', () => {
   it('takes Space everywhere else', () => {
     expect(isTypingTarget({ tagName: 'BODY', isContentEditable: false } as unknown as EventTarget)).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
+  });
+});
+
+describe('the workspace’s clock', () => {
+  it('⚠ counts session days in the workspace’s zone, not the browser’s', () => {
+    // Started 11 PM Manila on Oct 5 (15:00Z); read at 1 AM Manila on Oct 6 (17:00Z).
+    const startedAt = '2026-10-05T15:00:00Z';
+    const now = new Date('2026-10-05T17:00:00Z');
+    expect(sessionAge(startedAt, now, 'Asia/Manila')).toBe('yesterday');
+    // In London both moments are still Oct 5.
+    expect(sessionAge(startedAt, now, 'Europe/London')).toBe('today');
+  });
+
+  it('prints a time in the zone it is given', () => {
+    expect(clockTime('2026-10-05T01:02:00Z', 'Asia/Manila')).toMatch(/9:02/);
+    expect(clockTime('2026-10-05T01:02:00Z', 'UTC')).toMatch(/1:02/);
   });
 });

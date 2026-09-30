@@ -639,9 +639,10 @@ export class PermissionsResolver {
     @Args('key') key: string,
     @Args('name') name: string,
     @Args('description', { type: () => String, nullable: true }) description?: string | null,
+    @Args('timeZone', { type: () => String, nullable: true }) timeZone?: string | null,
   ): Promise<PermissionWriteResultType> {
     const actor = await this.requireActor(gqlContext.req, { organizationId });
-    await this.writes.updateWorkspace(actor, { organizationId, workspaceId, key, name, description });
+    await this.writes.updateWorkspace(actor, { organizationId, workspaceId, key, name, description, timeZone });
     return { changed: true, id: workspaceId, replaced: false };
   }
 

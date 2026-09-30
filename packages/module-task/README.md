@@ -94,7 +94,7 @@ sends `task.assigned` and `task.comment`, both mutable.
 | **Column** | the owner's own step, in the board's order. One or more are marked **done**: entering one sets `completedAt`, leaving clears it |
 | **Order** | a board's order is SHARED — "top of To do" means the same to everybody. `rank` is a double between neighbours; a column that runs out of room is renumbered |
 | **Assignee** | one by default, up to 10. On a private board, only its owner |
-| **Scheduled / due** | optional DAYS (`YYYY-MM-DD`, Postgres `DATE`), never instants. Overdue is by the viewer's own calendar; scheduled after due is a warning, not a refusal |
+| **Scheduled / due** | optional DAYS (`YYYY-MM-DD`, Postgres `DATE`), never instants. Overdue is by the workspace's calendar (`useWorkspaceTimeZone`, PLAN §13 2026-09-29), the same for everyone in it; scheduled after due is a warning, not a refusal |
 | **Archive** | hides a task or board, read-only and restorable. Delete forever only from the archive |
 | **Label** | text on one task; no shared vocabulary. The filter lists labels on tasks the viewer can see |
 | **Orphaned board** | its owner is no longer an active member. `task:manage_all` may hand it to a member, seeing its name and size only |

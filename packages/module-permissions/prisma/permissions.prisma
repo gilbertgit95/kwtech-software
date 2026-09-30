@@ -114,6 +114,12 @@ model PermWorkspace {
   /// like the organization's — see there.
   description String?
 
+  /// The workspace's IANA time zone. Everything a workspace app decides by the
+  /// DAY follows it — a task due today, the queue's today, which day a sale
+  /// belongs to — so two people in different places see the same "today" for
+  /// the same workspace (PLAN §13, 2026-09-29). Checked by `isValidTimeZone`.
+  timeZone String @default("Asia/Manila")
+
   organization PermOrganization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   members       PermWorkspaceMember[]
   subscriptions PermSubscription[]

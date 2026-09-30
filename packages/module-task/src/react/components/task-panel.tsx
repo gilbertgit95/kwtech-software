@@ -1,5 +1,6 @@
 'use client';
 
+import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, Check, Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -728,6 +729,8 @@ function CommentRow({
   boardOwned: boolean;
 }) {
   const { client, scope } = state;
+  // Times print in the workspace's zone, so everyone here reads the same clock.
+  const timeZone = useWorkspaceTimeZone();
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
   const canRemove = comment.mine || boardOwned || state.canManageAll;
@@ -737,7 +740,7 @@ function CommentRow({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{comment.authorName ?? 'A former member'}</span>{' '}
-          {new Date(comment.createdAt).toLocaleString()}
+          {new Date(comment.createdAt).toLocaleString(undefined, { timeZone })}
           {comment.editedAt ? ' · edited' : ''}
         </p>
         {editing ? (

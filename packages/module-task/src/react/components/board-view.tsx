@@ -13,6 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import {
   cn,
   DropdownMenu,
@@ -34,7 +35,7 @@ import {
 import { type KeyboardEvent, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TASK_COLUMNS_MAX } from '../../domain/boards.js';
-import { localTaskDay } from '../../domain/dates.js';
+import { workspaceTaskDay } from '../../domain/dates.js';
 import type { TaskCardView, TaskColumnView } from '../task-client.js';
 import type { TasksState } from '../use-tasks.js';
 import { type ColumnLane, cardDates, columnDropId, keyboardCardMove, planCardDrop } from '../view/board.js';
@@ -279,7 +280,9 @@ function SortableCard({
 
 /** What a card shows. Shared by the board, the list and My tasks. */
 export function TaskCardBody({ card, showBoard = false }: { card: TaskCardView; showBoard?: boolean }) {
-  const dates = cardDates(card, localTaskDay(new Date()));
+  // The workspace's today, the same for everyone here (PLAN §13, 2026-09-29).
+  const timeZone = useWorkspaceTimeZone();
+  const dates = cardDates(card, workspaceTaskDay(new Date(), timeZone));
   return (
     <span className="flex flex-col gap-1.5">
       {showBoard ? <span className="text-xs text-muted-foreground">{card.boardName}</span> : null}

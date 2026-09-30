@@ -15,7 +15,7 @@ const SCOPE = { organizationId: 'org', workspaceId: 'ws' };
 const locator: QueueWorkspaceLocator = {
   async locate(organizationKey, workspaceKey) {
     return organizationKey === 'acme' && workspaceKey === 'main'
-      ? { organizationId: 'org', workspaceId: 'ws', workspaceName: 'Main branch' }
+      ? { organizationId: 'org', workspaceId: 'ws', workspaceName: 'Main branch', timeZone: 'Asia/Manila' }
       : null;
   },
 };
@@ -46,6 +46,8 @@ describe('QueueDisplayService.openDisplay', () => {
 
     expect(isDisplayPassShaped(opened?.pass)).toBe(true);
     expect(opened?.workspaceName).toBe('Main branch');
+    // The board's clock follows the workspace, not the TV's own setting.
+    expect(opened?.timeZone).toBe('Asia/Manila');
   });
 
   it('⚠ stores only the hash of the pass', async () => {

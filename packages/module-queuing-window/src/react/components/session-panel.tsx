@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, QrCode } from '@kwtech/web-ui/react';
 import { useEffect, useState } from 'react';
 import { QUEUE_FEATURE } from '../../feature-keys.js';
@@ -18,6 +18,8 @@ export function SessionPanel({ state }: { state: QueueConsoleState }) {
   const { view, code, busy, run, client, scope } = state;
   const canStart = useHoldsFeature(QUEUE_FEATURE.start);
   const canStop = useHoldsFeature(QUEUE_FEATURE.stop);
+  // The workspace's day and clock: "started yesterday" means the same to every staff member.
+  const timeZone = useWorkspaceTimeZone();
   const [continueNumbering, setContinueNumbering] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
 
@@ -63,10 +65,10 @@ export function SessionPanel({ state }: { state: QueueConsoleState }) {
     );
   }
 
-  const age = sessionAge(session.startedAt);
+  const age = sessionAge(session.startedAt, new Date(), timeZone);
   const started =
     age === 'today'
-      ? `today at ${clockTime(session.startedAt)}`
+      ? `today at ${clockTime(session.startedAt, timeZone)}`
       : age === 'yesterday'
         ? 'yesterday'
         : 'more than a day ago';

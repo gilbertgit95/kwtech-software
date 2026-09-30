@@ -57,13 +57,23 @@ describe('what a TV keeps', () => {
   });
 
   it('reads back a stored pass, and treats anything else as none', () => {
-    expect(parseStoredPass(JSON.stringify({ pass: PASS, workspaceName: 'Main' }))).toEqual({
+    expect(parseStoredPass(JSON.stringify({ pass: PASS, workspaceName: 'Main', timeZone: 'Asia/Manila' }))).toEqual({
       pass: PASS,
       workspaceName: 'Main',
+      timeZone: 'Asia/Manila',
     });
     expect(parseStoredPass(JSON.stringify({ pass: 'K7QM4XHT', workspaceName: 'Main' }))).toBeNull();
     expect(parseStoredPass('not json')).toBeNull();
     expect(parseStoredPass(null)).toBeNull();
+  });
+
+  it('keeps a pass stored before the zone was handed over — the board reads the TV clock until the next code', () => {
+    expect(parseStoredPass(JSON.stringify({ pass: PASS, workspaceName: 'Main' }))?.timeZone).toBeNull();
+  });
+
+  it('⚠ drops a zone this browser does not know, rather than letting every time on the board throw', () => {
+    const stored = parseStoredPass(JSON.stringify({ pass: PASS, workspaceName: 'Main', timeZone: 'Mars/Olympus' }));
+    expect(stored).toEqual({ pass: PASS, workspaceName: 'Main', timeZone: null });
   });
 
   it('reads back a filter, dropping anything that is not a line id', () => {

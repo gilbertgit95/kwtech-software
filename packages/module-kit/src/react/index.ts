@@ -21,3 +21,8 @@ export {
   useStatusChannel,
   useStatusMessages,
 } from './status-context.js';
+export {
+  useWorkspaceTimeZone,
+  WorkspaceTimeZoneProvider,
+  type WorkspaceTimeZoneProviderProps,
+} from './workspace-time-zone.js';

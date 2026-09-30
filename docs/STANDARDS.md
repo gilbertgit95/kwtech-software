@@ -8,7 +8,7 @@ ask for them. They are written to be read by people too.
 | File | Covers | Loads for |
 |---|---|---|
 | [00-principles.md](../.claude/rules/00-principles.md) | architecture principles, security, "done", which pattern wins | always |
-| [typescript.md](../.claude/rules/typescript.md) | conditions, iteration, functions, naming, types, errors, imports, comments | `**/*.{ts,tsx,mjs}` |
+| [typescript.md](../.claude/rules/typescript.md) | conditions, iteration, functions, naming, types, errors, imports, comments, days and time zones | `**/*.{ts,tsx,mjs}` |
 | [modules.md](../.claude/rules/modules.md) | module package layout, registries, ports, realtime, README | `packages/module-*/**` |
 | [backend.md](../.claude/rules/backend.md) | NestJS, DI, data access, GraphQL, authorization, errors, config | `apps/web-server/**`, `packages/*/src/server/**` |
 | [database.md](../.claude/rules/database.md) | Prisma fragments, migrations, seeders, the snapshot | `*.prisma`, `apps/web-server/{prisma,src/seed,seed-data}/**` |

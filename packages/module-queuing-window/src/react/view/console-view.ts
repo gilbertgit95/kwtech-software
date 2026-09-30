@@ -1,3 +1,4 @@
+import { zonedDayKey } from '@kwtech/module-kit';
 import type {
   QueueConsoleView,
   QueueLineView,
@@ -54,15 +55,19 @@ export function spaceLine(lines: readonly QueueLineView[], current: QueueTicketV
 export type SessionAge = 'today' | 'yesterday' | 'older';
 
 /**
- * How long ago queuing started, in the viewer's own calendar days.
+ * How long ago queuing started, in the WORKSPACE's calendar days (PLAN §13,
+ * 2026-09-29) — so "started yesterday" means the same to every staff member,
+ * wherever their browser thinks it is. Without a zone, the browser's own.
  *
  * ⚠ §12.68: nothing stops a session at closing time, so numbering carries on
  * into the next morning and TVs stay admitted. The console says so in warning
  * colour when a session is not from today.
  */
-export function sessionAge(startedAt: string, now: Date = new Date()): SessionAge {
+export function sessionAge(startedAt: string, now: Date = new Date(), timeZone?: string): SessionAge {
   const started = new Date(startedAt);
-  const dayOf = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Calendar days, compared as UTC midnights of the zone's day keys: no DST hour can tip the count.
+  const dayOf = (date: Date) => Date.parse(`${zonedDayKey(date, zone)}T00:00:00Z`);
   const days = Math.round((dayOf(now) - dayOf(started)) / 86_400_000);
   if (days <= 0) return 'today';
   return days === 1 ? 'yesterday' : 'older';
@@ -96,7 +101,15 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return element.isContentEditable === true || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(element.tagName);
 }
 
-/** "9:02 am", in the viewer's locale. */
-export function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+/**
+ * "9:02 am", in the viewer's locale and in `timeZone`: the workspace's, passed
+ * by the console and by the TV board alike, so both read the same clock.
+ * Without one, the device's own zone.
+ */
+export function clockTime(iso: string, timeZone?: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  });
 }

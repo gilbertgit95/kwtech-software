@@ -157,3 +157,38 @@ Do not hand-format against it.
   the wire. Durations are integer constants in seconds, or with an `_MS` suffix.
   Random tokens use `node:crypto` `randomBytes`, and client ids use
   `crypto.randomUUID`.
+
+## Days, times and time zones
+
+"Today" inside a workspace is the **workspace's** day. It is not the server's
+(UTC) and not the viewer's browser's. Each workspace has one IANA zone,
+`perm_workspace.timeZone` (default `DEFAULT_TIME_ZONE`, Asia/Manila), so two
+people in different places see the same today. PLAN §13, 2026-09-29.
+
+- **Store instants as `timestamptz`/ISO strings; store a plain date as a day
+  (`DATE`, `YYYY-MM-DD`).** A day has no zone. Never store one as UTC midnight
+  of an instant.
+- **Every "which day / month / hour is this instant" goes through `module-kit`**
+  (`src/time-zone.ts`): `zonedDayKey`, `zonedMonthKey`, `zonedHour`,
+  `zonedStartOfDay`, `nextDayKey`, `isValidTimeZone`. Never write
+  `getDate()`/`getHours()`/`setHours(0,0,0,0)` or `toISOString().slice(0, 10)`
+  for a day: those answer in the machine's zone or in UTC.
+- **Browser (workspace pages):** read the zone with `useWorkspaceTimeZone()`
+  from `@kwtech/module-kit/react`, and pass it to every formatter:
+  `toLocaleString(undefined, { timeZone })` and the `zoned*` helpers.
+  Examples: `module-task`'s `workspaceTaskDay`, and `module-queuing-window`'s
+  `clockTime(iso, timeZone)`.
+- **Server:** a module cannot read `perm_workspace`, so it declares a port for
+  the zone and the app answers it (`POS_WORKSPACE_TIME_ZONE` →
+  `apps/web-server/src/pos/workspace-time-zone.ts`). Unbound, unreadable or
+  invalid falls back to `DEFAULT_TIME_ZONE`, **never UTC**, which would move every
+  evening event to the next day. A per-day query is
+  `[zonedStartOfDay(day), zonedStartOfDay(nextDayKey(day)))`.
+- **Public or sessionless surfaces** (the queue TV) get the zone from the
+  server with what they already receive (`openQueueDisplay`), and validate it
+  with `isValidTimeZone` before use. An unknown zone makes `Intl` throw.
+- **Personal screens outside a workspace** (chat, notifications, account)
+  show times in the viewer's own zone. That is correct there.
+- **Test across a boundary:** pick an instant that is a different day in
+  Manila than in UTC or London (for example `15:00Z`), and assert the day in
+  both zones. Pass `now: Date` in, never read the clock inside the rule.

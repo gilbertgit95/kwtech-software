@@ -2469,3 +2469,22 @@ describe('role limits, through createRole and updateRole', () => {
     );
   });
 });
+
+describe('a workspace’s time zone', () => {
+  const workspace = () => fake(emptyState({ workspaces: [{ id: 'ws1', organizationId: 'org1', archivedAt: null }] }));
+  const input = { organizationId: 'org1', workspaceId: 'ws1', key: 'w', name: 'W' };
+
+  it('is saved with the workspace when it is a zone the runtime knows', async () => {
+    const { svc } = workspace();
+    await expect(
+      svc.updateWorkspace(actor([FEATURE.workspacesUpdate]), { ...input, timeZone: 'Asia/Singapore' }),
+    ).resolves.toEqual({ workspaceId: 'ws1', renamed: true });
+  });
+
+  it('⚠ refuses a zone the runtime does not know — every "which day" in the workspace would throw', async () => {
+    const { svc } = workspace();
+    expect(
+      await reason(svc.updateWorkspace(actor([FEATURE.workspacesUpdate]), { ...input, timeZone: 'Mars/Olympus' })),
+    ).toBe('draft_invalid');
+  });
+});

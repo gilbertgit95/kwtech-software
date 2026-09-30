@@ -783,6 +783,10 @@ export class PermissionWorkspaceDetailType {
   @Field(() => String, { nullable: true })
   description!: string | null;
 
+  /** Its IANA time zone ("Asia/Manila"): what its apps' "today" follows. */
+  @Field()
+  timeZone!: string;
+
   /** Archived workspaces are SHOWN, so the switch does not read as a delete. */
   @Field()
   archived!: boolean;
@@ -1242,6 +1246,10 @@ export class MyWorkspaceSummaryType {
    */
   @Field(() => String, { nullable: true })
   description!: string | null;
+
+  /** Its IANA time zone ("Asia/Manila"): what its apps' "today" follows. */
+  @Field()
+  timeZone!: string;
 
   /**
    * The WORKSPACE-level role the viewer holds here, or null.

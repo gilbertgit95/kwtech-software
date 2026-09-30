@@ -570,6 +570,44 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-09-29** — **A workspace has ONE time zone (`perm_workspace.timeZone`,
+  default Asia/Manila), and every workspace app's "today" follows it.**
+
+  The POS kept its own zone in `pos_settings`, the task board used the viewer's
+  browser zone, and the queue console did too. So one workspace could have three
+  different "today"s: a sale at 11:30 PM, a task due today and a session "started
+  yesterday" could each disagree depending on who was looking and where.
+  - **Owned by module-permissions**, beside the workspace's name, edited on
+    the workspace settings screen and checked by `isValidTimeZone` on save
+    (`draft_invalid`). An unknown zone would make every "which day" throw.
+  - **The helpers moved to `module-kit`** (`src/time-zone.ts`: `zonedDayKey`,
+    `zonedStartOfDay`, `nextDayKey`…) now that there are two consumers (POS
+    reports, task days) plus the queue. One rule for "which day is this instant"
+    (principle 5). `module-basic-pos/src/domain/time-zone.ts` is gone.
+  - **Browser:** the app shell wraps pages in `WorkspaceTimeZoneProvider` with
+    the selected workspace's zone (from `myWorkspaces`), and modules read
+    `useWorkspaceTimeZone()`. Outside a provider it is the browser's zone, which
+    is an honest answer, where guessing a workspace's zone would be wrong.
+  - **Server:** the POS asks through a port, `POS_WORKSPACE_TIME_ZONE`
+    (`apps/web-server/src/pos/workspace-time-zone.ts`, scoped by organization
+    too). Unbound, unreadable or invalid means `DEFAULT_TIME_ZONE`, never the
+    server's UTC, which would move every evening sale to the next day.
+  - **`savePosSettings` lost its `timeZone` argument**, and the migration drops
+    `pos_settings.timeZone`. The POS was unreleased, so its per-store value
+    was not carried over.
+  - **The queue's TV board follows it too.** `openQueueDisplay` hands the zone
+    over with the pass (through `QueueWorkspaceLocator`), and the TV stores it.
+    Every queue start issues a new code, so a changed zone reaches the TV at
+    the next start. A pass stored before this reads the TV's own clock until
+    then. The alternative, sending the zone on every board event, would cost
+    a port call per publish for a value that changes almost never.
+  - **The rule is written down** for whoever builds the next date feature:
+    `.claude/rules/typescript.md`, "Days, times and time zones", and the
+    `CLAUDE.md` checklist.
+  - **Not done:** an organization-level default for new workspaces (every new
+    workspace starts on Asia/Manila), and a per-person override ("show me my
+    own zone"). Neither has been asked for.
+
 - **2026-09-28** — **`module-task`: a chip in the Tasks header counts your
   overdue, today and soon tasks, and opens My tasks.**
 

@@ -93,7 +93,7 @@ was asleep when queuing stopped never received the event.
 | **ticket** | one number called in one line, in one session, and what happened to it | a support ticket |
 | **session** | one run of the queue, from Start queuing to Stop queuing | a sign-in session |
 | **display code** | the short code typed into a TV, one per session | the pass |
-| **display pass** | what a TV holds once its code is accepted | a durable link |
+| **display pass** | what a TV holds once its code is accepted, with the workspace's name and time zone (its clock; PLAN §13, 2026-09-29) | a durable link |
 
 Models are `Queue*` and tables `queue_*`, shorter than the package name on
 purpose.

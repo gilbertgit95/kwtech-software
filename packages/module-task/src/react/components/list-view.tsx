@@ -1,8 +1,9 @@
 'use client';
 
+import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { cn } from '@kwtech/web-ui/react';
 import { useId, useState } from 'react';
-import { localTaskDay } from '../../domain/dates.js';
+import { workspaceTaskDay } from '../../domain/dates.js';
 import type { TaskCardView } from '../task-client.js';
 import type { TasksState } from '../use-tasks.js';
 import { DAY_GROUP_LABELS, groupMyTasks, type ListSort, sortCards } from '../view/board.js';
@@ -51,11 +52,12 @@ export function ListView({ state }: { state: TasksState }) {
 
 /** Everything assigned to the viewer, across boards, by day. */
 export function MyTasksView({ state }: { state: TasksState }) {
+  const timeZone = useWorkspaceTimeZone();
   if (state.myTasks === null) return <p className="text-sm text-muted-foreground">Gathering your tasks…</p>;
   if (state.myTasks.length === 0) {
     return <p className="text-sm text-muted-foreground">Nothing is assigned to you on the boards you can open.</p>;
   }
-  const groups = groupMyTasks(state.myTasks, localTaskDay(new Date()));
+  const groups = groupMyTasks(state.myTasks, workspaceTaskDay(new Date(), timeZone));
   return (
     <div className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
       {groups.map((group) => (

@@ -221,6 +221,7 @@ export interface OrganizationDetailRow {
     key: string;
     name: string;
     description: string | null;
+    timeZone: string;
     archivedAt: Date | null;
     /**
      * Who is in it, and what they hold THERE.
@@ -665,9 +666,9 @@ export interface PermissionsPrismaClient {
      */
     findMany(args: {
       where: { organizationId: string; archivedAt: null; id?: { in: string[] } };
-      select: { id: true; key: true; name: true; description: true };
+      select: { id: true; key: true; name: true; description: true; timeZone: true };
       orderBy: { name: 'asc' };
-    }): Promise<{ id: string; key: string; name: string; description: string | null }[]>;
+    }): Promise<{ id: string; key: string; name: string; description: string | null; timeZone: string }[]>;
   };
 }
 
@@ -775,7 +776,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
      */
     updateMany(args: {
       where: { id: string; organizationId: string };
-      data: { archivedAt?: Date | null; key?: string; name?: string; description?: string | null };
+      data: { archivedAt?: Date | null; key?: string; name?: string; description?: string | null; timeZone?: string };
     }): Promise<{ count: number }>;
   };
 

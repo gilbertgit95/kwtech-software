@@ -43,6 +43,12 @@ export interface QueueWorkspaceLocation {
   organizationId: string;
   workspaceId: string;
   workspaceName: string;
+  /**
+   * The workspace's IANA zone (`perm_workspace.timeZone`): the board's clock
+   * and its called-at times, so the TV reads the same time as the console
+   * whatever its own device is set to (PLAN §13, 2026-09-29).
+   */
+  timeZone: string;
 }
 
 /**

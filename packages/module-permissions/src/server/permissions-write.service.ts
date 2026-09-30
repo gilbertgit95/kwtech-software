@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { isValidTimeZone } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { hasFeature } from '../check.js';
 import {
@@ -2121,6 +2122,8 @@ export class PermissionsWriteService {
       key: string;
       name: string;
       description?: string | null | undefined;
+      /** An IANA zone ("Asia/Manila"). Omitted: unchanged. */
+      timeZone?: string | null | undefined;
     },
   ) {
     this.assertPermitted(actor, FEATURE.workspacesUpdate);
@@ -2134,9 +2137,27 @@ export class PermissionsWriteService {
       });
     }
 
+    const timeZone = input.timeZone?.trim() || undefined;
+    // ⚠ Checked here, not only in the form: a zone the runtime does not know
+    // would make every "which day" answer in the workspace throw.
+    if (timeZone !== undefined && !isValidTimeZone(timeZone)) {
+      throw new PermissionWriteError(
+        'draft_invalid',
+        'That is not a time zone this server knows, such as Asia/Manila',
+        {
+          timeZone,
+        },
+      );
+    }
+
     const { count } = await db.permWorkspace.updateMany({
       where: { id: input.workspaceId, organizationId: input.organizationId },
-      data: { key, name, description: initialDescription(input.description, name) },
+      data: {
+        key,
+        name,
+        description: initialDescription(input.description, name),
+        ...(timeZone === undefined ? {} : { timeZone }),
+      },
     });
     if (count === 0) {
       throw new PermissionWriteError('not_found', 'No such workspace in this organization', {

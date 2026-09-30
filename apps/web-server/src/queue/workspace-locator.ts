@@ -29,11 +29,16 @@ export class QueueWorkspaceLocatorAdapter implements QueueWorkspaceLocator {
 
     const workspace = await this.prisma.permWorkspace.findUnique({
       where: { organizationId_key: { organizationId: organization.id, key: workspaceKey } },
-      select: { id: true, name: true, archivedAt: true },
+      select: { id: true, name: true, timeZone: true, archivedAt: true },
     });
     if (!workspace || workspace.archivedAt) return null;
 
-    return { organizationId: organization.id, workspaceId: workspace.id, workspaceName: workspace.name };
+    return {
+      organizationId: organization.id,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      timeZone: workspace.timeZone,
+    };
   }
 
   /**
