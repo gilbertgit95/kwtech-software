@@ -8,6 +8,7 @@ import { AUTH_FEATURE } from '../../features.js';
 import type { MfaEmailEnrolment, MfaEnrolment, MfaFactorSummary } from '../../types.js';
 import type { AuthClient } from '../auth-client.js';
 import { AuthField } from '../auth-shell.js';
+import { CodeInput } from '../code-input.js';
 import { useAuthForm } from '../use-auth-form.js';
 import { factorName, factorUsage, type SecurityLevel, summariseSecurity } from '../view/security-view.js';
 import { SettingsIcon, type SettingsIconName } from './icons.js';
@@ -127,7 +128,15 @@ export function TwoFactorSettings({ api, factors, loadError, reload, renderQr }:
   const hasTotp = view.factors.some((factor) => factor.type === 'totp');
   const hasEmail = view.factors.some((factor) => factor.type === 'email');
 
+  /*
+   * The set-up code, held here so a refusal can clear it: the boxes send
+   * themselves when full, and a wrong code left in them would have to be
+   * deleted before the next try.
+   */
+  const [confirmCode, setConfirmCode] = useState('');
+
   const enrol = useAuthForm(async (form) => {
+    setConfirmCode('');
     setEnrolment(
       await api.enrolMfa({ password: String(form.get('password') ?? ''), label: String(form.get('label') ?? '') }),
     );
@@ -135,6 +144,7 @@ export function TwoFactorSettings({ api, factors, loadError, reload, renderQr }:
   });
 
   const enrolEmail = useAuthForm(async (form) => {
+    setConfirmCode('');
     setEmailEnrolment(await api.enrolEmailMfa({ password: String(form.get('password') ?? '') }));
     setOpen(null);
   });
@@ -142,7 +152,14 @@ export function TwoFactorSettings({ api, factors, loadError, reload, renderQr }:
   const confirm = useAuthForm(async (form) => {
     const pending = enrolment ?? emailEnrolment;
     if (!pending) throw new Error('Start again — that set-up has expired.');
-    const result = await api.confirmMfa({ factorId: pending.factorId, code: String(form.get('code') ?? '') });
+    let result: Awaited<ReturnType<AuthClient['confirmMfa']>>;
+    try {
+      result = await api.confirmMfa({ factorId: pending.factorId, code: String(form.get('code') ?? '') });
+    } catch (cause) {
+      setConfirmCode('');
+      throw cause;
+    }
+    setConfirmCode('');
     setCodes(result.codes);
     // The secret must leave the page the instant it is no longer needed.
     setEnrolment(null);
@@ -205,11 +222,14 @@ export function TwoFactorSettings({ api, factors, loadError, reload, renderQr }:
                   <p className="mb-4 break-all rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-sm text-foreground">
                     {enrolment.secret}
                   </p>
-                  <AuthField
-                    label={`${TOTP_DIGITS}-digit code`}
+                  <CodeInput
+                    label={`${TOTP_DIGITS}-digit code from the app`}
                     name="code"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
+                    value={confirmCode}
+                    onChange={setConfirmCode}
+                    submitOnComplete
+                    busy={confirm.pending}
+                    invalid={Boolean(confirm.error) && confirmCode.length === 0}
                   />
                   <p className="-mt-2 text-xs text-muted-foreground">
                     {/*
@@ -239,12 +259,18 @@ export function TwoFactorSettings({ api, factors, loadError, reload, renderQr }:
                 We sent a {TOTP_DIGITS}-digit code to{' '}
                 <span className="font-medium text-foreground">{emailEnrolment.sentTo}</span>. It works for 10 minutes.
               </p>
-              <AuthField
-                label={`${TOTP_DIGITS}-digit code`}
-                name="code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-              />
+              <div className="max-w-xs">
+                <CodeInput
+                  label={`${TOTP_DIGITS}-digit code from the email`}
+                  name="code"
+                  value={confirmCode}
+                  onChange={setConfirmCode}
+                  submitOnComplete
+                  busy={confirm.pending}
+                  invalid={Boolean(confirm.error) && confirmCode.length === 0}
+                  autoFocus
+                />
+              </div>
               <p className="-mt-2 text-xs text-muted-foreground">
                 This proves the code reaches you. Without it, a mistyped or unreachable address would lock you out.
               </p>

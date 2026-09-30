@@ -241,6 +241,9 @@ export const RECOVERY_CODE_COUNT = 10;
 /** Bytes of entropy per recovery code — 80 bits, well beyond guessable. */
 export const RECOVERY_CODE_BYTES = 10;
 
+/** Characters in a recovery code: its bytes in base32 (16). The challenge's recovery field is sized by it. */
+export const RECOVERY_CODE_LENGTH = Math.ceil((RECOVERY_CODE_BYTES * 8) / 5);
+
 /**
  * One spelling for a code the user typed.
  *
@@ -266,7 +269,7 @@ export function isPlausibleTotpCode(code: string): boolean {
 
 /** The same, for a recovery code: base32 alphabet, fixed length. */
 export function isPlausibleRecoveryCode(code: string): boolean {
-  return new RegExp(`^[A-Z2-7]{${Math.ceil((RECOVERY_CODE_BYTES * 8) / 5)}}$`).test(code);
+  return new RegExp(`^[A-Z2-7]{${RECOVERY_CODE_LENGTH}}$`).test(code);
 }
 
 // ─── the emailed second factor ──────────────────────────────────────────────
