@@ -6,6 +6,7 @@ import { firstUserSeeder } from './first-user.js';
 import { permissionsRegistrySeeder } from './permissions-registry.js';
 import { plansSeeder } from './plans.js';
 import { posCatalogueSeeder } from './pos-catalogue.js';
+import { posHistorySeeder } from './pos-history.js';
 import { superAdminGrantSeeder } from './super-admin-grant.js';
 
 /**
@@ -63,4 +64,6 @@ export const SEEDERS: readonly Seeder[] = [
   demoUserSeeder,
   // After the first user: the items name them as their author.
   posCatalogueSeeder,
+  // After the catalogue: every imported line names one of its items.
+  posHistorySeeder,
 ];
