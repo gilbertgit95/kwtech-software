@@ -1,19 +1,106 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { StatusTone } from '../view/manage.js';
-import { buttonClass } from './controls.js';
+import { buttonClass, INPUT_CLASS } from './controls.js';
 
 /*
- * The management sections' shared frame (D23): tabs, a list with its detail,
+ * The app's shared frame (D23): the section bar, a section's tabs, a list with its detail,
  * a status chip, and the one alert. Laid out by the PANEL's width (container
  * queries), never the viewport's: a grid cell on the Apps page is narrow on a
  * wide screen.
  */
 
-/** A row of tabs. `aria-pressed` buttons in a labelled fieldset rather than a tablist: each tab reloads a list, it hides nothing. */
+/** The warning-toned count beside a section or a tab: what still needs somebody. */
+function CountBadge({ count }: { count: number | undefined }) {
+  if (!count) return null;
+  return (
+    <span className="rounded-full bg-status-warning px-1.5 text-[10px] text-status-warning-foreground tabular-nums">
+      {count}
+    </span>
+  );
+}
+
+/**
+ * The section bar (D23): the app's MAIN tabs. Drawn as an underlined bar
+ * across the whole panel, with an icon each, so it reads as the level above
+ * `Tabs` below — two rows of identical buttons gave no hint which row was the
+ * section and which was the filter inside it (the operator, 2026-10-01).
+ *
+ * A narrow panel folds the bar into a menu (D23), on the same rule line.
+ */
+export function SectionBar<K extends string>({
+  sections,
+  current,
+  onChange,
+  label,
+  children,
+}: {
+  sections: readonly { key: K; label: string; icon: LucideIcon; badge?: number }[];
+  current: K;
+  onChange: (key: K) => void;
+  /** The nav's accessible name. */
+  label: string;
+  /** A quiet note at the bar's far end (the "not live" line). */
+  children?: ReactNode;
+}) {
+  return (
+    <nav aria-label={label} className="flex min-w-0 items-center gap-3 border-b border-border">
+      <label className="pb-2 @xl:hidden">
+        <span className="sr-only">Section</span>
+        <select
+          className={cn(INPUT_CLASS, 'w-auto font-medium')}
+          value={current}
+          // The options are the sections above, so the value is one of them.
+          onChange={(event) => onChange(event.target.value as K)}
+        >
+          {sections.map((entry) => (
+            <option key={entry.key} value={entry.key}>
+              {entry.label}
+              {entry.badge ? ` (${entry.badge})` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="hidden flex-wrap items-center gap-1 @xl:flex">
+        {sections.map((entry) => {
+          const active = entry.key === current;
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                // -mb-px: the tab's own underline sits ON the bar's rule, not above it.
+                '-mb-px inline-flex h-10 items-center gap-2 rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                active
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground',
+              )}
+              onClick={() => onChange(entry.key)}
+            >
+              <entry.icon aria-hidden="true" className={cn('size-4', active ? 'text-primary' : null)} />
+              {entry.label}
+              <CountBadge count={entry.badge} />
+            </button>
+          );
+        })}
+      </div>
+      {children ? <span className="ml-auto pb-2 text-xs text-muted-foreground @xl:pb-0">{children}</span> : null}
+    </nav>
+  );
+}
+
+/**
+ * A section's SUB tabs, as a segmented control: small pills in one muted
+ * track, hugging their content — deliberately unlike `SectionBar` above, so
+ * the two levels cannot be mistaken for each other.
+ *
+ * `aria-pressed` buttons in a labelled fieldset rather than a tablist: each tab reloads a list, it hides nothing.
+ */
 export function Tabs<K extends string>({
   tabs,
   current,
@@ -26,22 +113,24 @@ export function Tabs<K extends string>({
   label: string;
 }) {
   return (
-    <fieldset className="m-0 flex min-w-0 flex-wrap gap-1 border-0 p-0">
+    <fieldset className="m-0 flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-0.5 rounded-lg border-0 bg-muted p-0.5">
       <legend className="sr-only">{label}</legend>
       {tabs.map((tab) => (
         <button
           key={tab.key}
           type="button"
           aria-pressed={tab.key === current}
-          className={cn(buttonClass(tab.key === current ? 'primary' : 'ghost', 'sm'))}
+          className={cn(
+            'inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            tab.key === current
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
           onClick={() => onChange(tab.key)}
         >
           {tab.label}
-          {tab.badge ? (
-            <span className="rounded-full bg-status-warning px-1.5 text-[10px] text-status-warning-foreground tabular-nums">
-              {tab.badge}
-            </span>
-          ) : null}
+          <CountBadge count={tab.badge} />
         </button>
       ))}
     </fieldset>

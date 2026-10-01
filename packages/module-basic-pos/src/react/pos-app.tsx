@@ -2,12 +2,13 @@
 
 import type { AppProps } from '@kwtech/module-kit';
 import { useHoldsFeature } from '@kwtech/module-kit/react';
-import { cn } from '@kwtech/web-ui/react';
+import { BarChart3, type LucideIcon, Package, ReceiptText, Settings, ShoppingCart, Users } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { POS_FEATURE } from '../feature-keys.js';
-import { buttonClass, INPUT_CLASS } from './components/controls.js';
+import { buttonClass } from './components/controls.js';
 import { CustomersSection } from './components/customers-section.js';
 import { ItemsSection } from './components/items-section.js';
+import { SectionBar } from './components/layout.js';
 import { OrdersSection } from './components/orders-section.js';
 import { ReportsSection } from './components/reports-section.js';
 import { SettingsSection } from './components/settings-section.js';
@@ -52,13 +53,13 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
   const owed = usePosData(state.scope, loadOwed, ['order'], 'Could not count the unpaid orders.');
   const badge = state.pending.length + (owed.data ?? 0);
 
-  const sections: { key: Section; label: string; badge?: number }[] = [
-    { key: 'sell', label: 'Sell' },
-    { key: 'orders', label: 'Orders', badge },
-    ...(canManageItems ? [{ key: 'items' as const, label: 'Items' }] : []),
-    { key: 'customers', label: 'Customers' },
-    ...(canSeeReports ? [{ key: 'reports' as const, label: 'Reports' }] : []),
-    ...(canManageSettings ? [{ key: 'settings' as const, label: 'Settings' }] : []),
+  const sections: { key: Section; label: string; icon: LucideIcon; badge?: number }[] = [
+    { key: 'sell', label: 'Sell', icon: ShoppingCart },
+    { key: 'orders', label: 'Orders', icon: ReceiptText, badge },
+    ...(canManageItems ? [{ key: 'items' as const, label: 'Items', icon: Package }] : []),
+    { key: 'customers', label: 'Customers', icon: Users },
+    ...(canSeeReports ? [{ key: 'reports' as const, label: 'Reports', icon: BarChart3 }] : []),
+    ...(canManageSettings ? [{ key: 'settings' as const, label: 'Settings', icon: Settings }] : []),
   ];
   /** An order opened from somewhere else (a customer's history, the Outstanding report) shows in Orders. */
   const openOrder = (orderId: string) => {
@@ -81,48 +82,9 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
         go('sell');
       }}
     >
-      <nav aria-label="Point of sale" className="flex items-center gap-1">
-        {/* A narrow panel folds the bar into a menu (D23). */}
-        <label className="@xl:hidden">
-          <span className="sr-only">Section</span>
-          <select
-            className={cn(INPUT_CLASS, 'h-8 w-auto')}
-            value={section}
-            // The options are the sections above, so the value is one of them.
-            onChange={(event) => go(event.target.value as Section)}
-          >
-            {sections.map((entry) => (
-              <option key={entry.key} value={entry.key}>
-                {entry.label}
-                {entry.badge ? ` (${entry.badge})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="hidden flex-wrap items-center gap-1 @xl:flex">
-          {sections.map((entry) => (
-            <button
-              key={entry.key}
-              type="button"
-              aria-current={section === entry.key ? 'page' : undefined}
-              className={cn(buttonClass(section === entry.key ? 'primary' : 'ghost', 'sm'))}
-              onClick={() => go(entry.key)}
-            >
-              {entry.label}
-              {entry.badge ? (
-                <span className="rounded-full bg-status-warning px-1.5 text-[10px] text-status-warning-foreground tabular-nums">
-                  {entry.badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-        {!state.live ? (
-          <span className="ml-auto text-xs text-muted-foreground">
-            Not live — other tills’ changes show when you reload.
-          </span>
-        ) : null}
-      </nav>
+      <SectionBar label="Point of sale" sections={sections} current={section} onChange={go}>
+        {!state.live ? 'Not live — other tills’ changes show when you reload.' : null}
+      </SectionBar>
 
       {section === 'sell' ? (
         <>
