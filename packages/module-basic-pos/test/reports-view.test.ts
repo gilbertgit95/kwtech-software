@@ -11,10 +11,12 @@ import {
   hourText,
   kpis,
   margin,
+  periodLabel,
   prepareCustomDays,
   presetDays,
   reportCsvRows,
   staffLabel,
+  stepPeriod,
   summaryHtml,
   summaryLines,
   toCsv,
@@ -90,6 +92,104 @@ describe('presetDays', () => {
     const instant = new Date('2026-09-30T17:00:00Z');
     expect(presetDays('today', zonedDayKey(instant, 'Asia/Manila')).fromDay).toBe('2026-10-01');
     expect(presetDays('today', zonedDayKey(instant, 'Europe/London')).fromDay).toBe('2026-09-30');
+  });
+});
+
+describe('the wider presets', () => {
+  // Wednesday 30 September 2026.
+  const today = '2026-09-30';
+
+  it('makes last week the whole Monday to Sunday before, and last month the whole month before', () => {
+    expect(presetDays('lastWeek', today)).toEqual({ fromDay: '2026-09-21', toDay: '2026-09-27' });
+    expect(presetDays('lastMonth', today)).toEqual({ fromDay: '2026-08-01', toDay: '2026-08-31' });
+    expect(presetDays('lastMonth', '2026-03-31')).toEqual({ fromDay: '2026-02-01', toDay: '2026-02-28' });
+    expect(presetDays('lastMonth', '2026-01-15')).toEqual({ fromDay: '2025-12-01', toDay: '2025-12-31' });
+  });
+
+  it('counts the last 7 and 30 days back from today, today included', () => {
+    expect(presetDays('last7', today)).toEqual({ fromDay: '2026-09-24', toDay: today });
+    expect(presetDays('last30', today)).toEqual({ fromDay: '2026-09-01', toDay: today });
+  });
+});
+
+describe('periodLabel', () => {
+  const today = '2026-09-30';
+
+  it('names a period by the preset it is, however it was reached', () => {
+    expect(periodLabel({ fromDay: today, toDay: today }, today)).toBe('Today');
+    expect(periodLabel({ fromDay: '2026-09-29', toDay: '2026-09-29' }, today)).toBe('Yesterday');
+    expect(periodLabel({ fromDay: '2026-08-01', toDay: '2026-08-31' }, today)).toBe('Last month');
+    expect(periodLabel({ fromDay: '2026-07-01', toDay: '2026-07-31' }, today)).toBe('Custom');
+  });
+});
+
+describe('stepPeriod', () => {
+  // Wednesday 30 September 2026.
+  const today = '2026-09-30';
+
+  it('moves a day by a day, and has no day after today', () => {
+    expect(stepPeriod({ fromDay: today, toDay: today }, -1, today)).toEqual({
+      fromDay: '2026-09-29',
+      toDay: '2026-09-29',
+    });
+    expect(stepPeriod({ fromDay: '2026-09-29', toDay: '2026-09-29' }, 1, today)).toEqual({
+      fromDay: today,
+      toDay: today,
+    });
+    expect(stepPeriod({ fromDay: today, toDay: today }, 1, today)).toBeNull();
+  });
+
+  it('never jumps a week from a today that is a Monday', () => {
+    expect(stepPeriod({ fromDay: '2026-09-28', toDay: '2026-09-28' }, -1, '2026-09-28')).toEqual({
+      fromDay: '2026-09-27',
+      toDay: '2026-09-27',
+    });
+  });
+
+  it('moves this week, still running, to the whole week before, and back up to today', () => {
+    const lastWeek = { fromDay: '2026-09-21', toDay: '2026-09-27' };
+    expect(stepPeriod(presetDays('week', today), -1, today)).toEqual(lastWeek);
+    expect(stepPeriod(lastWeek, 1, today)).toEqual({ fromDay: '2026-09-28', toDay: today });
+    expect(stepPeriod(presetDays('week', today), 1, today)).toBeNull();
+  });
+
+  it('moves a month by a month at its own length, across a year', () => {
+    expect(stepPeriod({ fromDay: '2026-03-01', toDay: '2026-03-31' }, -1, today)).toEqual({
+      fromDay: '2026-02-01',
+      toDay: '2026-02-28',
+    });
+    expect(stepPeriod({ fromDay: '2026-01-01', toDay: '2026-01-31' }, -1, today)).toEqual({
+      fromDay: '2025-12-01',
+      toDay: '2025-12-31',
+    });
+    expect(stepPeriod({ fromDay: '2026-08-01', toDay: '2026-08-31' }, 1, today)).toEqual({
+      fromDay: '2026-09-01',
+      toDay: today,
+    });
+    expect(stepPeriod(presetDays('month', '2026-09-16'), -1, '2026-09-16')).toEqual({
+      fromDay: '2026-08-01',
+      toDay: '2026-08-31',
+    });
+  });
+
+  it('moves a year by a year, stopping at today', () => {
+    expect(stepPeriod(presetDays('year', today), -1, today)).toEqual({ fromDay: '2025-01-01', toDay: '2025-12-31' });
+    expect(stepPeriod({ fromDay: '2025-01-01', toDay: '2025-12-31' }, 1, today)).toEqual({
+      fromDay: '2026-01-01',
+      toDay: today,
+    });
+  });
+
+  it('moves any other period by its own length', () => {
+    expect(stepPeriod({ fromDay: '2026-09-10', toDay: '2026-09-14' }, -1, today)).toEqual({
+      fromDay: '2026-09-05',
+      toDay: '2026-09-09',
+    });
+    expect(stepPeriod(presetDays('last7', today), -1, today)).toEqual({ fromDay: '2026-09-17', toDay: '2026-09-23' });
+    expect(stepPeriod({ fromDay: '2026-09-20', toDay: '2026-09-26' }, 1, today)).toEqual({
+      fromDay: '2026-09-27',
+      toDay: today,
+    });
   });
 });
 

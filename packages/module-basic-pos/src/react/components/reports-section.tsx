@@ -22,7 +22,6 @@ import {
   periodText,
   prepareCustomDays,
   presetDays,
-  REPORT_PRESETS,
   type ReportDays,
   type ReportPreset,
   type ReportTable,
@@ -32,8 +31,9 @@ import {
   summaryLines,
   toCsv,
 } from '../view/reports.js';
-import { buttonClass, INPUT_CLASS } from './controls.js';
+import { buttonClass } from './controls.js';
 import { Alert, Empty, Tabs } from './layout.js';
+import { PeriodPicker } from './period-picker.js';
 import { printHtml } from './till.js';
 
 const REPORT_TABS = [
@@ -49,7 +49,7 @@ const REPORT_TABS = [
 type ReportTab = (typeof REPORT_TABS)[number]['key'];
 
 /**
- * Reports (D22), behind `pos:reports`: one period picker drives a dashboard
+ * Reports (D22), behind `pos:reports`: one period picker (`PeriodPicker`) drives a dashboard
  * and six tables, each with CSV export. Every figure is the server's
  * (`src/domain/reports.ts`); this only picks the days and draws them.
  *
@@ -64,6 +64,8 @@ export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpe
   const today = zonedDayKey(new Date(), timeZone);
   const [preset, setPreset] = useState<ReportPreset>('today');
   const [custom, setCustom] = useState<ReportDays>({ fromDay: today, toDay: today });
+  /** Whether the custom range's date fields are open. A period reached by the arrows or a chart is custom too, but nobody is typing it. */
+  const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState<ReportTab>('dashboard');
 
   const prepared = preset === 'custom' ? prepareCustomDays(custom.fromDay, custom.toDay) : presetDays(preset, today);
@@ -84,59 +86,38 @@ export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpe
   const openDays = (next: ReportDays, nextTab: ReportTab) => {
     setPreset('custom');
     setCustom(next);
+    setEditing(false);
     setTab(nextTab);
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Period
-          <select
-            className={cn(INPUT_CLASS, 'h-8 w-auto')}
-            value={preset}
-            // The options are REPORT_PRESETS, so the value is one of them.
-            onChange={(event) => {
-              const next = event.target.value as ReportPreset;
-              // Custom starts from what was showing, so switching to it changes nothing yet.
-              if (next === 'custom' && days) setCustom(days);
-              setPreset(next);
-            }}
-          >
-            {REPORT_PRESETS.map((entry) => (
-              <option key={entry.key} value={entry.key}>
-                {entry.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {preset === 'custom' ? (
-          <>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              From
-              <input
-                type="date"
-                className={cn(INPUT_CLASS, 'h-8 w-auto')}
-                value={custom.fromDay}
-                max={today}
-                onChange={(event) => setCustom({ ...custom, fromDay: event.target.value })}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              To
-              <input
-                type="date"
-                className={cn(INPUT_CLASS, 'h-8 w-auto')}
-                value={custom.toDay}
-                max={today}
-                onChange={(event) => setCustom({ ...custom, toDay: event.target.value })}
-              />
-            </label>
-          </>
-        ) : null}
-        <p className="pb-1.5 text-sm text-muted-foreground">
-          {days ? periodText(days.fromDay, days.toDay) : null}
-          {shown ? ` · ${comparisonText(shown)}` : null}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <PeriodPicker
+          days={days}
+          today={today}
+          preset={preset}
+          custom={custom}
+          editing={editing}
+          onPreset={(next) => {
+            setPreset(next);
+            setEditing(false);
+          }}
+          onDays={(next) => {
+            setPreset('custom');
+            setCustom(next);
+          }}
+          onCustom={(next) => {
+            setPreset('custom');
+            setCustom(next);
+          }}
+          onEditing={setEditing}
+        />
+        {/* The picker hides its days in a narrow panel, so they are said here too. */}
+        <p className="text-sm text-muted-foreground">
+          {days ? <span className="@md:hidden">{periodText(days.fromDay, days.toDay)}</span> : null}
+          {days && shown ? <span className="@md:hidden"> · </span> : null}
+          {shown ? comparisonText(shown) : null}
         </p>
       </div>
 

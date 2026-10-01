@@ -21,13 +21,21 @@ import { escapeHtml } from './receipt.js';
 
 // ── the period ──────────────────────────────────────────────────────────────
 
+/**
+ * The picker's periods, in the menu's order. `group` only draws the menu's
+ * dividers: single days, weeks, months, the year, then the custom range.
+ */
 export const REPORT_PRESETS = [
-  { key: 'today', label: 'Today' },
-  { key: 'yesterday', label: 'Yesterday' },
-  { key: 'week', label: 'This week' },
-  { key: 'month', label: 'This month' },
-  { key: 'year', label: 'This year' },
-  { key: 'custom', label: 'Custom' },
+  { key: 'today', label: 'Today', group: 'day' },
+  { key: 'yesterday', label: 'Yesterday', group: 'day' },
+  { key: 'week', label: 'This week', group: 'week' },
+  { key: 'lastWeek', label: 'Last week', group: 'week' },
+  { key: 'last7', label: 'Last 7 days', group: 'week' },
+  { key: 'month', label: 'This month', group: 'month' },
+  { key: 'lastMonth', label: 'Last month', group: 'month' },
+  { key: 'last30', label: 'Last 30 days', group: 'month' },
+  { key: 'year', label: 'This year', group: 'year' },
+  { key: 'custom', label: 'Custom', group: 'custom' },
 ] as const;
 
 export type ReportPreset = (typeof REPORT_PRESETS)[number]['key'];
@@ -37,9 +45,25 @@ export interface ReportDays {
   toDay: string;
 }
 
+/** The Monday of a day's week. A week starts on MONDAY, as a Philippine store's does, and as ISO's does. */
+function weekStart(dayKey: string): string {
+  return shiftDayKey(dayKey, -((weekday(dayKey) + 6) % 7));
+}
+
+function monthStart(dayKey: string): string {
+  return `${dayKey.slice(0, 7)}-01`;
+}
+
+/** The last day of a day's month: the day before the 1st of the next (32 days on always lands in it). */
+function monthEnd(dayKey: string): string {
+  return shiftDayKey(monthStart(shiftDayKey(monthStart(dayKey), 32)), -1);
+}
+
 /**
- * A preset's store days, inclusive, up to `today`. A week starts on MONDAY,
- * as a Philippine store's week does, and as ISO's does.
+ * A preset's store days, inclusive. "This …" runs up to `today`; "Last week"
+ * and "Last month" are the whole Monday–Sunday and the whole calendar month
+ * before; "Last 7 days" and "Last 30 days" count back from today, today
+ * included.
  */
 export function presetDays(preset: Exclude<ReportPreset, 'custom'>, today: string): ReportDays {
   switch (preset) {
@@ -50,12 +74,77 @@ export function presetDays(preset: Exclude<ReportPreset, 'custom'>, today: strin
       return { fromDay: yesterday, toDay: yesterday };
     }
     case 'week':
-      return { fromDay: shiftDayKey(today, -((weekday(today) + 6) % 7)), toDay: today };
+      return { fromDay: weekStart(today), toDay: today };
+    case 'lastWeek': {
+      const monday = shiftDayKey(weekStart(today), -7);
+      return { fromDay: monday, toDay: shiftDayKey(monday, 6) };
+    }
+    case 'last7':
+      return { fromDay: shiftDayKey(today, -6), toDay: today };
     case 'month':
-      return { fromDay: `${today.slice(0, 7)}-01`, toDay: today };
+      return { fromDay: monthStart(today), toDay: today };
+    case 'lastMonth': {
+      const last = shiftDayKey(monthStart(today), -1);
+      return { fromDay: monthStart(last), toDay: last };
+    }
+    case 'last30':
+      return { fromDay: shiftDayKey(today, -29), toDay: today };
     case 'year':
       return { fromDay: `${today.slice(0, 4)}-01-01`, toDay: today };
   }
+}
+
+/**
+ * What to call a period: the first preset that IS those days, else "Custom".
+ * So a period reached by the arrows or a chart column still reads "Yesterday"
+ * or "Last month" when that is what it is.
+ */
+export function periodLabel(days: ReportDays, today: string): string {
+  for (const entry of REPORT_PRESETS) {
+    if (entry.key === 'custom') continue;
+    const preset = presetDays(entry.key, today);
+    if (preset.fromDay === days.fromDay && preset.toDay === days.toDay) return entry.label;
+  }
+  return 'Custom';
+}
+
+/**
+ * The period one step before (`-1`) or after (`1`) this one — the picker's
+ * arrows. A whole week moves a week, a whole month a month, a whole year a
+ * year (so February follows January at its own length), and anything else
+ * moves by its own number of days. A period still running ("this month", up
+ * to today) counts as whole.
+ *
+ * Null when there is nowhere to go: nothing is sold after `today`, so a
+ * period ending today has no next, and a next period that would pass today
+ * stops at it.
+ *
+ * ⚠ The days alone cannot always tell the unit apart (a Monday is also a
+ * week that began today), so the SMALLEST unit that fits wins: stepping from
+ * "today" must never jump a week.
+ */
+export function stepPeriod(days: ReportDays, direction: -1 | 1, today: string): ReportDays | null {
+  const { fromDay, toDay } = days;
+  const whole = (end: string) => toDay === end || (toDay === today && toDay >= fromDay && toDay < end);
+  let next: ReportDays;
+  if (fromDay === toDay) {
+    const day = shiftDayKey(fromDay, direction);
+    next = { fromDay: day, toDay: day };
+  } else if (fromDay === weekStart(fromDay) && whole(shiftDayKey(fromDay, 6))) {
+    const monday = shiftDayKey(fromDay, 7 * direction);
+    next = { fromDay: monday, toDay: shiftDayKey(monday, 6) };
+  } else if (fromDay === monthStart(fromDay) && whole(monthEnd(fromDay))) {
+    const inside = direction === 1 ? shiftDayKey(monthEnd(fromDay), 1) : shiftDayKey(fromDay, -1);
+    next = { fromDay: monthStart(inside), toDay: monthEnd(inside) };
+  } else if (fromDay.endsWith('-01-01') && whole(`${fromDay.slice(0, 4)}-12-31`)) {
+    const year = Number(fromDay.slice(0, 4)) + direction;
+    next = { fromDay: `${year}-01-01`, toDay: `${year}-12-31` };
+  } else {
+    const length = dayCount(fromDay, toDay) * direction;
+    next = { fromDay: shiftDayKey(fromDay, length), toDay: shiftDayKey(toDay, length) };
+  }
+  if (next.fromDay > today) return null;
+  return next.toDay > today ? { fromDay: next.fromDay, toDay: today } : next;
 }
 
 /** 0 = Sunday … 6 = Saturday, of a day KEY (zone-free: the key already is the store's day). */
