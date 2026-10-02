@@ -53,6 +53,16 @@ export function keyOfPress(press: KeyPress): string | null {
   return [...modifiers.filter((part): part is string => part !== null), base].join('+');
 }
 
+/**
+ * Whether a key still acts while the person is typing in a text field: only a
+ * function key, alone or with a modifier ("F9", "Shift+F1"), because every
+ * other key is something they are typing (D18, D20). True of the item search
+ * too — its global keys are function keys by `validateKeymap`.
+ */
+export function actsWhileTyping(key: string | null): boolean {
+  return key !== null && /(^|\+)F([1-9]|1[0-2])$/u.test(key);
+}
+
 /** What a key does. */
 export type KeyMeaning =
   | { kind: 'action'; action: PosKeyAction }

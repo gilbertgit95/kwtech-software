@@ -1,4 +1,5 @@
 import { POS_KEY_ACTIONS, type PosKeyAction, type PosKeyZone } from '../../domain/keymap.js';
+import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
 import type { PosCategoryView, PosItemInput, PosItemView, PosOrderSummaryView, PosOrderView } from '../pos-client.js';
 import { parsePeso, pesoInputValue } from './money.js';
 
@@ -60,6 +61,48 @@ export function orderTitle(order: Pick<PosOrderSummaryView, 'number' | 'label' |
   return order.label ?? order.customerName ?? 'Walk-in';
 }
 
+/** The Orders list added up: the line under the list. */
+export interface OrderListTotal {
+  /** Orders in the sum. */
+  count: number;
+  /** Their totals added, in centavos — the amounts printed on the rows. */
+  total: number;
+  /** Refunded so far on those orders. Shown beside the total, not taken off it. */
+  refunded: number;
+  /** Cancelled or voided orders in the list that the sum leaves out. */
+  leftOut: number;
+  /** True when the server cut the list at `POS_ORDERS_READ_MAX`: the sum is of what is shown, not of everything. */
+  cut: boolean;
+}
+
+/**
+ * The quick total under the Orders list: the rows as listed (the tab, narrowed
+ * by the search), added up.
+ *
+ * ⚠ A CANCELLED OR VOIDED ORDER IS NOT MONEY (D22: "voided and cancelled
+ * orders never"), so it is left out and counted apart — Today lists the day's
+ * cancellations beside its sales, and adding them in would overstate the day.
+ * The Cancelled tab is the exception: every row there is one, and the sum is
+ * what was cancelled.
+ *
+ * Not a report: a refund counts on the day it is made (D17) and this only
+ * knows the orders listed, so refunds are shown, never subtracted.
+ */
+export function orderListTotal(
+  rows: readonly Pick<PosOrderSummaryView, 'status' | 'total' | 'refunded'>[],
+  tab: OrderTab,
+): OrderListTotal {
+  const counted =
+    tab === 'cancelled' ? rows : rows.filter((row) => row.status !== 'cancelled' && row.status !== 'voided');
+  return {
+    count: counted.length,
+    total: counted.reduce((sum, row) => sum + row.total, 0),
+    refunded: counted.reduce((sum, row) => sum + row.refunded, 0),
+    leftOut: rows.length - counted.length,
+    cut: rows.length >= POS_ORDERS_READ_MAX,
+  };
+}
+
 /** What may be done to an order from the Orders section, for the person looking (D23, "actions live on the thing"). */
 export interface OrderActions {
   resume: boolean;
@@ -89,6 +132,70 @@ export function orderActions(
 export function whenText(iso: string | null, timeZone: string): string {
   if (!iso) return '';
   return new Date(iso).toLocaleString('en-PH', { timeZone, dateStyle: 'medium', timeStyle: 'short' });
+}
+
+// ── customers ───────────────────────────────────────────────────────────────
+
+/**
+ * The letters in a customer's avatar: the first of their first and last
+ * words ("Juan Dela Cruz" → "JC"), one for a single name, "?" for none.
+ * By code point, so an accented or non-Latin first letter is not cut in half.
+ */
+export function customerInitials(name: string): string {
+  const words = name
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => /[\p{L}\p{N}]/u.test(word));
+  const first = words[0];
+  if (!first) return '?';
+  const last = words.length > 1 ? words.at(-1) : undefined;
+  const letter = (word: string) => ([...word].find((char) => /[\p{L}\p{N}]/u.test(char)) ?? '').toUpperCase();
+  return `${letter(first)}${last ? letter(last) : ''}`;
+}
+
+/**
+ * A phone number as a `tel:` link, or null when there is no number to dial.
+ * Only the number at the START is dialled: "0917 123 4567 loc 2" is 0917…,
+ * never …45672.
+ */
+export function phoneHref(phone: string | null): string | null {
+  const number = /^\+?[\d\s().-]+/u.exec(phone?.trim() ?? '')?.[0] ?? '';
+  const digits = number.replace(/[^\d+]/gu, '');
+  return digits.replace('+', '').length >= 5 ? `tel:${digits}` : null;
+}
+
+/** An e-mail address as a `mailto:` link, or null. Encoded, so an address can never add a subject or a second recipient. */
+export function emailHref(email: string | null): string | null {
+  const address = email?.trim() ?? '';
+  if (!/^[^\s@]+@[^\s@]+$/u.test(address)) return null;
+  return `mailto:${encodeURIComponent(address).replace('%40', '@')}`;
+}
+
+/** One customer's history in three numbers, and when they last came. */
+export interface CustomerSummary {
+  /** Orders that happened: cancelled and voided ones are not visits. */
+  orders: number;
+  /** Paid, less what was refunded, in centavos. */
+  spent: number;
+  /** Released unpaid and still unpaid, in centavos. */
+  owed: number;
+  /** The latest moment on any counted order (ISO), or null for none. */
+  lastAt: string | null;
+}
+
+/** The profile's summary, from the customer's linked orders. */
+export function customerSummary(
+  rows: readonly Pick<PosOrderSummaryView, 'status' | 'total' | 'refunded' | 'paidAt' | 'finalisedAt' | 'createdAt'>[],
+): CustomerSummary {
+  const counted = rows.filter((row) => row.status !== 'cancelled' && row.status !== 'voided');
+  const moments = counted.map((row) => row.paidAt ?? row.finalisedAt ?? row.createdAt);
+  return {
+    orders: counted.length,
+    spent: counted.filter((row) => row.status === 'paid').reduce((sum, row) => sum + row.total - row.refunded, 0),
+    owed: counted.filter((row) => row.status === 'unpaid').reduce((sum, row) => sum + row.total, 0),
+    // ISO strings in one zone (UTC) sort as their instants do.
+    lastAt: moments.reduce<string | null>((latest, at) => (latest === null || at > latest ? at : latest), null),
+  };
 }
 
 // ── items ───────────────────────────────────────────────────────────────────

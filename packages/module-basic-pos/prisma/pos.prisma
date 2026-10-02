@@ -151,9 +151,14 @@ model PosCustomer {
   organizationId String
   workspaceId    String
 
-  name    String
-  contact String?
-  note    String?
+  name  String
+  /// How they are reached, each optional (D5). One free-text `contact` until
+  /// 2026-10-02; an order still copies ONE line, `customerContact`.
+  phone String?
+  email String?
+  /// Their Facebook profile, page or Messenger link: always an https Facebook address (`preparePosFacebookUrl`).
+  facebookUrl String?
+  note  String?
 
   archivedAt  DateTime?
   createdById String

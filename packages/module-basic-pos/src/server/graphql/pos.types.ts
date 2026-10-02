@@ -118,7 +118,14 @@ export class PosCustomerType {
   name!: string;
 
   @Field(() => String, { nullable: true })
-  contact!: string | null;
+  phone!: string | null;
+
+  @Field(() => String, { nullable: true })
+  email!: string | null;
+
+  /** Always an https Facebook or Messenger address, so the screen may draw it as a link. */
+  @Field(() => String, { nullable: true })
+  facebookUrl!: string | null;
 
   @Field(() => String, { nullable: true })
   note!: string | null;
@@ -219,7 +226,13 @@ export class SavePosCustomerInputType {
   name!: string;
 
   @Field(() => String, { nullable: true })
-  contact?: string | null;
+  phone?: string | null;
+
+  @Field(() => String, { nullable: true })
+  email?: string | null;
+
+  @Field(() => String, { nullable: true })
+  facebookUrl?: string | null;
 
   @Field(() => String, { nullable: true })
   note?: string | null;

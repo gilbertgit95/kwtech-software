@@ -812,10 +812,12 @@ type PosCountAmount {
 
 type PosCustomer {
   archivedAt: String
-  contact: String
+  email: String
+  facebookUrl: String
   id: String!
   name: String!
   note: String
+  phone: String
 }
 
 type PosDiscount {
@@ -1263,10 +1265,12 @@ input RoleLimitInput {
 }
 
 input SavePosCustomerInput {
-  contact: String
+  email: String
+  facebookUrl: String
   id: String
   name: String!
   note: String
+  phone: String
 }
 
 input SavePosItemInput {

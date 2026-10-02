@@ -13,7 +13,7 @@
 const CATEGORY = 'id name sortOrder archivedAt';
 const VARIANT = 'id itemId name code price cost sortOrder archivedAt';
 const ITEM = `id kind name code description price cost categoryId archivedAt variants { ${VARIANT} }`;
-const CUSTOMER = 'id name contact note archivedAt';
+const CUSTOMER = 'id name phone email facebookUrl note archivedAt';
 const SETTINGS = 'timeZone keymap version';
 const DISCOUNT = 'kind value reason givenById givenAt';
 const LINE = `id itemId variantId name kind variantName code categoryName unitPrice unitCost quantity note discount { ${DISCOUNT} } discountAmount gross total net refundedQuantity`;

@@ -136,7 +136,7 @@ export class PosCatalogueResolver {
 
   // ── customers ─────────────────────────────────────────────────────────────
 
-  /** The till's customer picker: by name or contact. */
+  /** The till's customer picker: by name, phone, e-mail or Facebook link. */
   @Query(() => [PosCustomerType], { name: 'posCustomers' })
   async posCustomers(
     @Args('organizationId') organizationId: string,
@@ -297,7 +297,15 @@ export function renderItem(entry: PosCatalogueItem, costsVisible: boolean): PosI
 }
 
 export function renderCustomer(row: PosCustomerRow): PosCustomerType {
-  return { id: row.id, name: row.name, contact: row.contact, note: row.note, archivedAt: iso(row.archivedAt) };
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    email: row.email,
+    facebookUrl: row.facebookUrl,
+    note: row.note,
+    archivedAt: iso(row.archivedAt),
+  };
 }
 
 function renderSettings(settings: PosStoreSettings): PosSettingsType {

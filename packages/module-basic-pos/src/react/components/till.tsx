@@ -15,11 +15,11 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
-import { type RefObject, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { type PosSearchResult, parseQuantityPrefix, searchItems } from '../../domain/search.js';
 import type { PosItemView, PosOrderLineView, PosOrderView } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
-import { keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
+import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
 import { receiptHtml } from '../view/receipt.js';
 import {
@@ -27,8 +27,11 @@ import {
   gridItems,
   itemCount,
   lineLabel,
+  nextOption,
+  parseQuantity,
   priceNow,
   priceRange,
+  QUANTITY_PROBLEM,
   searchCatalogue,
 } from '../view/till.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
@@ -60,12 +63,17 @@ type Dialog =
  */
 export function Till({ state }: { state: TillState }) {
   const [query, setQuery] = useState('');
+  /** The match ↑ ↓ are on in the search results, and the one Enter adds. The first, until an arrow moves it. */
+  const [activeResult, setActiveResult] = useState(0);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' });
   /** The line the cart's keys act on (D20); null while the cashier is in search. */
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const cartRef = useRef<HTMLUListElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** The receipt's "Next order" button, while a finished order is on the till. */
+  const nextRef = useRef<HTMLButtonElement>(null);
   const searchId = useId();
   const { catalogue, order, client, scope } = state;
   const open = order?.status === 'open' ? order : null;
@@ -76,12 +84,41 @@ export function Till({ state }: { state: TillState }) {
   const quantity = 'refused' in parsed ? null : parsed.quantity;
   const results: PosSearchResult[] = 'refused' in parsed ? [] : searchItems(searchable, parsed.text);
 
+  // Never past the end: the list can shrink under the cursor when the catalogue changes live.
+  const active = Math.min(activeResult, Math.max(0, results.length - 1));
+
   const lines = open?.lines ?? [];
   const selectedLine = lines.find((line) => line.id === selectedLineId) ?? null;
-  // A removed line, or a new order, leaves the cart: the keys go back to search.
+  // Read by `focusHome` a frame later, when the closure that asked for it is already stale.
+  const lineSelectedRef = useRef(false);
+  lineSelectedRef.current = selectedLine !== null;
+
+  /**
+   * D20: focus always has a home, because THE KEYS ONLY FIRE WHILE FOCUS IS
+   * INSIDE THE TILL (D18) — focus left on the page body is a till whose hot
+   * keys are dead. Home is, in order: the receipt's "Next order" after a
+   * sale, the cart while a line is selected, otherwise search.
+   *
+   * ⚠ Decided a frame later, from what is on screen THEN: the caller's own
+   * `order` is the one from before its act. Sending focus to search after a
+   * payment left Enter doing nothing and "P" printing instead of typing.
+   */
+  const focusHome = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (nextRef.current) nextRef.current.focus();
+      else if (lineSelectedRef.current && cartRef.current) cartRef.current.focus();
+      else searchRef.current?.focus();
+    });
+  }, []);
+
+  // ⚠ A removed line, or a new order, leaves the cart — and takes the focus
+  // with it: the line's own buttons are gone, and removing the last line
+  // unmounts the list. Without sending it home the keys stop until a click.
   useEffect(() => {
-    if (selectedLineId && !selectedLine) setSelectedLineId(null);
-  }, [selectedLineId, selectedLine]);
+    if (!selectedLineId || selectedLine) return;
+    setSelectedLineId(null);
+    focusHome();
+  }, [selectedLineId, selectedLine, focusHome]);
 
   const zone = tillZone(dialog, finished !== null, selectedLine !== null);
 
@@ -92,9 +129,7 @@ export function Till({ state }: { state: TillState }) {
 
   const close = () => {
     setDialog({ kind: 'none' });
-    // D20: focus always has a home — the line being worked on, or search.
-    if (selectedLineId) requestAnimationFrame(() => cartRef.current?.focus());
-    else requestAnimationFrame(() => searchRef.current?.focus());
+    focusHome();
   };
 
   const add = async (itemId: string, variantId: string | null, count: number) => {
@@ -129,11 +164,18 @@ export function Till({ state }: { state: TillState }) {
       requestAnimationFrame(() => cartRef.current?.focus());
       return;
     }
+    // ↑ ↓ through the matches (the operator, 2026-10-02): the hands stay on the keyboard for the fifth match too.
+    if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && results.length > 0) {
+      event.preventDefault();
+      setActiveResult(nextOption(results.length, active, event.key === 'ArrowDown' ? 'down' : 'up') ?? 0);
+      return;
+    }
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    const best = results[0];
-    if (!best || quantity === null) return;
-    pick(best.itemId, best.variantId, quantity);
+    // An exact code is alone at the top (D19), and nothing has moved the cursor: a scan still adds exactly that.
+    const chosen = results[active];
+    if (!chosen || quantity === null) return;
+    pick(chosen.itemId, chosen.variantId, quantity);
   };
 
   /** Does what a hot key means here (D18). False when it meant nothing, so the key is left alone. */
@@ -224,11 +266,46 @@ export function Till({ state }: { state: TillState }) {
     }
     const target = event.target as HTMLElement;
     const key = keyOfPress(event);
-    // In a text field other than search, only function keys act: typing a note types (D20).
+    // ⚠ In ANY text field — search included — only function keys act: typing types (D20).
+    // Search was once exempt, and "pen" typed there after a sale printed the receipt at "p".
     const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
-    if (typing && target !== searchRef.current && !/(^|\+)F\d/u.test(key ?? '')) return;
+    if (typing && !actsWhileTyping(key)) return;
     if (perform(meaningOf(key, zone, state.keymap))) event.preventDefault();
   };
+
+  // The page-wide listener below is installed once; it reads this render's zone and keymap through here.
+  const outsideKeyRef = useRef<(key: string | null) => boolean>(() => false);
+  outsideKeyRef.current = (key) => perform(meaningOf(key, zone, state.keymap));
+
+  /**
+   * ⚠ FUNCTION KEYS ALSO WORK WHEN FOCUS IS OUTSIDE THE TILL. Clicking the
+   * POS's own header, or anything that focuses nothing, left the till deaf —
+   * and the BROWSER took the key: F6 went to the address bar (the operator,
+   * 2026-10-02). So while Sell is on screen, a function key pressed anywhere
+   * on the page is the till's, unless somebody is typing in another app's
+   * field or has a dialog of its own open.
+   *
+   * Only function keys (`actsWhileTyping`): D18's reason for keeping keys
+   * inside the panel is the queue's page-wide Space, and letters that would
+   * type. No other app binds a function key. Letters, `+` `−` and Delete
+   * still need the focus in the cart.
+   */
+  useEffect(() => {
+    const onPageKey = (event: KeyboardEvent) => {
+      const root = rootRef.current;
+      const target = event.target;
+      // Inside the till, `onTillKey` already has it. Hidden (another tab of the Apps page), the till takes nothing.
+      if (!root || !(target instanceof Element) || root.contains(target) || root.offsetParent === null) return;
+      if (target.closest('input, textarea, select, [contenteditable], dialog')) return;
+      const key = keyOfPress(event);
+      if (!actsWhileTyping(key) || !outsideKeyRef.current(key)) return;
+      event.preventDefault();
+      // The key came from outside: bring the focus in, so the next key is the till's too.
+      focusHome();
+    };
+    document.addEventListener('keydown', onPageKey);
+    return () => document.removeEventListener('keydown', onPageKey);
+  }, [focusHome]);
 
   if (!state.canSell) {
     return (
@@ -240,7 +317,15 @@ export function Till({ state }: { state: TillState }) {
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the till's keys (D18); every control inside is a real button or field.
-    <div className="flex min-h-0 flex-1 flex-col gap-2" onKeyDown={onTillKey}>
+    <div
+      ref={rootRef}
+      className="flex min-h-0 flex-1 flex-col gap-2"
+      onKeyDown={onTillKey}
+      // ⚠ A click on a blank part of the till focuses nothing, and the keys die with it (D18: they act only inside the till).
+      onClick={() => {
+        if (dialog.kind === 'none' && document.activeElement === document.body) focusHome();
+      }}
+    >
       <div className="flex min-h-0 flex-1 flex-col gap-3 @3xl:flex-row">
         {/* ── search and the grid ─────────────────────────────────────────── */}
         <section aria-label="Items" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
@@ -257,17 +342,23 @@ export function Till({ state }: { state: TillState }) {
             placeholder="Search or scan · 100* for quantity"
             className={cn(INPUT_CLASS, 'h-11 text-base')}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              // New text is a new list: the cursor starts at its best match again.
+              setActiveResult(0);
+            }}
+            // Back in search, the cart's line is let go: the bar then shows search's keys, not the cart's.
+            onFocus={() => setSelectedLineId(null)}
             onKeyDown={onSearchKey}
           />
           {'refused' in parsed ? (
             <p role="alert" className="text-xs text-destructive">
-              A quantity is a whole number from 1 to 9999.
+              {QUANTITY_PROBLEM}
             </p>
           ) : null}
 
           {query.trim() && !('refused' in parsed) && parsed.text.trim() ? (
-            <SearchResults results={results} quantity={quantity ?? 1} onPick={pick} />
+            <SearchResults results={results} active={active} quantity={quantity ?? 1} onPick={pick} />
           ) : (
             <ItemGrid
               state={state}
@@ -287,6 +378,7 @@ export function Till({ state }: { state: TillState }) {
             <Receipt
               order={finished}
               timeZone={state.timeZone}
+              nextRef={nextRef}
               onNext={() => {
                 state.clear();
                 close();
@@ -405,28 +497,38 @@ export function Till({ state }: { state: TillState }) {
 
 function SearchResults({
   results,
+  active,
   quantity,
   onPick,
 }: {
   results: readonly PosSearchResult[];
+  /** The match the search box's ↑ ↓ are on: outlined here, and what Enter adds. */
+  active: number;
   quantity: number;
   onPick: (itemId: string, variantId: string | null, quantity: number) => void;
 }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  // ↓ can go past what the list shows: keep the match Enter would add in sight.
+  useEffect(() => {
+    listRef.current?.children[active]?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
   if (results.length === 0) {
     return (
       <p className="px-1 py-3 text-sm text-muted-foreground">No item matches that. Check the spelling or the code.</p>
     );
   }
   return (
-    <ul aria-label="Matches" className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+    <ul ref={listRef} aria-label="Matches" className="flex min-h-0 flex-col gap-1 overflow-y-auto">
       {results.map((result, index) => (
         <li key={`${result.itemId}:${result.variantId ?? ''}`}>
           <button
             type="button"
+            // The focus stays in the search box, so the choice is marked here rather than focused.
+            aria-current={index === active ? 'true' : undefined}
             className={cn(
               'flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              index === 0 && 'border-primary',
+              index === active && 'border-primary bg-accent text-accent-foreground',
             )}
             onClick={() => onPick(result.itemId, result.variantId, quantity)}
           >
@@ -445,7 +547,7 @@ function SearchResults({
       ))}
       {results.length > 0 ? (
         <li className="px-1 text-xs text-muted-foreground">
-          Enter adds the first{quantity > 1 ? ` × ${quantity}` : ''}.
+          ↑ ↓ choose · Enter adds the highlighted one{quantity > 1 ? ` × ${quantity}` : ''}.
         </li>
       ) : null}
     </ul>
@@ -635,9 +737,16 @@ function Cart({
                   >
                     <Minus aria-hidden="true" className="size-3" />
                   </button>
-                  <span className="tabular-nums">
-                    {line.quantity} × {formatPeso(line.unitPrice)}
-                  </span>
+                  <QuantityField
+                    line={line}
+                    state={state}
+                    onFocus={() => onSelect(line.id)}
+                    onDone={() => {
+                      // Deselected too: with a line still selected, the cart's letter keys would act on what is typed in search.
+                      onSelect(null);
+                      searchRef.current?.focus();
+                    }}
+                  />
                   <button
                     type="button"
                     aria-label={`One more ${lineLabel(line)}`}
@@ -651,6 +760,7 @@ function Cart({
                   >
                     <Plus aria-hidden="true" className="size-3" />
                   </button>
+                  <span className="tabular-nums">× {formatPeso(line.unitPrice)}</span>
                   <span className="ml-auto flex gap-0.5">
                     <button
                       type="button"
@@ -771,8 +881,95 @@ function Cart({
   );
 }
 
+/**
+ * A line's quantity, as a box to type in: + and − are one at a time, and an
+ * order of 20 or 200 is not twenty presses (the operator, 2026-10-02). The
+ * same number `100*` sets before the item (D20), for a line already there.
+ *
+ * Saved when the box is left or on Enter, never per keystroke: typing "20"
+ * must not save 2 on the way. No optimistic UI — the box shows the draft only
+ * while it is being typed, then the quantity the server answered with.
+ */
+function QuantityField({
+  line,
+  state,
+  onFocus,
+  onDone,
+}: {
+  line: PosOrderLineView;
+  state: TillState;
+  /** Focus selects the line, so the cart shows which line is being changed. */
+  onFocus: () => void;
+  /** After Enter: where focus goes home to (D20). */
+  onDone: () => void;
+}) {
+  const { client, scope } = state;
+  const [draft, setDraft] = useState(String(line.quantity));
+  // The server's answer is the quantity: a + or − press, or another till's change, shows here too.
+  useEffect(() => {
+    setDraft(String(line.quantity));
+  }, [line.quantity]);
+  const typed = parseQuantity(draft);
+
+  const save = async () => {
+    if (typed === null) {
+      // ⚠ Refused in words and put back, never clamped: 99999 quietly becoming 9999 is a wrong order.
+      setDraft(String(line.quantity));
+      state.showError(null, QUANTITY_PROBLEM);
+      return;
+    }
+    setDraft(String(typed));
+    if (typed === line.quantity) return;
+    const saved = await state.act((current) => client.updateLine(scope, current, line.id, { quantity: typed }));
+    if (!saved) setDraft(String(line.quantity));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      aria-label={`Quantity of ${lineLabel(line)}`}
+      aria-invalid={typed === null}
+      className={cn(
+        INPUT_CLASS,
+        'h-7 w-14 px-1 text-center text-xs tabular-nums text-foreground',
+        typed === null && 'border-destructive',
+      )}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onFocus={(event) => {
+        // Selected whole, so typing replaces the number instead of adding digits to it.
+        event.target.select();
+        onFocus();
+      }}
+      onBlur={() => void save()}
+      onKeyDown={(event) => {
+        // ⚠ ↑ ↓ would move the cart's selection to another line while this box keeps the focus.
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') event.stopPropagation();
+        if (event.key === 'Escape') setDraft(String(line.quantity));
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        // Leaving the box is what saves: one path for Enter, Tab and a click elsewhere.
+        onDone();
+      }}
+    />
+  );
+}
+
 /** The finished order: paid, or released unpaid. Print, then the next customer. */
-function Receipt({ order, timeZone, onNext }: { order: PosOrderView; timeZone: string; onNext: () => void }) {
+function Receipt({
+  order,
+  timeZone,
+  nextRef,
+  onNext,
+}: {
+  order: PosOrderView;
+  timeZone: string;
+  /** Where focus goes after a sale (`focusHome`): Enter starts the next order. */
+  nextRef: RefObject<HTMLButtonElement | null>;
+  onNext: () => void;
+}) {
   const unpaid = order.status === 'unpaid';
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -836,6 +1033,7 @@ function Receipt({ order, timeZone, onNext }: { order: PosOrderView; timeZone: s
         </button>
         <button
           type="button"
+          ref={nextRef}
           // biome-ignore lint/a11y/noAutofocus: after a sale, Enter starts the next one (D18).
           autoFocus
           className={cn(buttonClass('primary'), 'h-11 text-base')}

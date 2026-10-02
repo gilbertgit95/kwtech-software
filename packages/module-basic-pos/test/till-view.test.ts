@@ -2,7 +2,16 @@ import type { PosCatalogueView, PosOrderLineView, PosOrderView } from '../src/re
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../src/react/view/money.js';
 import { previewPayment } from '../src/react/view/payment.js';
 import { receiptHtml } from '../src/react/view/receipt.js';
-import { gridCategories, gridItems, itemCount, lineLabel, priceNow, searchCatalogue } from '../src/react/view/till.js';
+import {
+  gridCategories,
+  gridItems,
+  itemCount,
+  lineLabel,
+  nextOption,
+  parseQuantity,
+  priceNow,
+  searchCatalogue,
+} from '../src/react/view/till.js';
 
 describe('money on screen', () => {
   it('prints pesos with two decimals', () => {
@@ -142,6 +151,29 @@ describe('the till’s view rules', () => {
   it('counts items and names lines as the receipt does', () => {
     expect(itemCount([{ quantity: 100 }, { quantity: 2 }])).toBe(102);
     expect(lineLabel({ name: 'Lamination', variantName: '250 mic · A4' })).toBe('Lamination — 250 mic · A4');
+  });
+
+  it('reads a quantity typed on a line: a whole number from 1 to 9999', () => {
+    expect(parseQuantity('20')).toBe(20);
+    expect(parseQuantity(' 1,500 ')).toBe(1500);
+    expect(parseQuantity('9999')).toBe(9999);
+  });
+
+  it('⚠ refuses what is not a quantity rather than guessing one — an empty box is not 0, "1e3" is not 1000', () => {
+    for (const text of ['', ' ', '0', '10000', '2.5', '-3', '1e3', 'abc', '12x']) {
+      expect(parseQuantity(text)).toBeNull();
+    }
+  });
+
+  it('steps through a dropdown with ↑ ↓, from nothing chosen, wrapping at the ends', () => {
+    expect(nextOption(3, null, 'down')).toBe(0);
+    expect(nextOption(3, null, 'up')).toBe(2);
+    expect(nextOption(3, 2, 'down')).toBe(0);
+    expect(nextOption(3, 0, 'up')).toBe(2);
+    expect(nextOption(3, 1, 'down')).toBe(2);
+    // The list shrank under the cursor: start again rather than point past the end.
+    expect(nextOption(2, 5, 'down')).toBe(0);
+    expect(nextOption(0, null, 'down')).toBeNull();
   });
 });
 

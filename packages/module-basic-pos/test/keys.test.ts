@@ -1,6 +1,7 @@
 import { POS_DEFAULT_KEYMAP, type PosKeymap } from '../src/domain/keymap.js';
 import { parseQuantityPrefix } from '../src/domain/search.js';
 import {
+  actsWhileTyping,
   allShortcuts,
   type KeyPress,
   keyOfPress,
@@ -35,6 +36,16 @@ describe('keyOfPress', () => {
   it('leaves the fixed keys, bare modifiers and Cmd chords alone', () => {
     for (const key of ['Enter', 'Escape', 'Tab', 'ArrowUp', 'Shift']) expect(keyOfPress(press(key))).toBeNull();
     expect(keyOfPress(press('p', { metaKey: true }))).toBeNull();
+  });
+});
+
+describe('typing in a field', () => {
+  it('⚠ lets only function keys act — a letter typed in search is a letter, never "Print"', () => {
+    for (const key of ['F2', 'F9', 'F12', 'Shift+F1', 'Ctrl+F3']) expect(actsWhileTyping(key)).toBe(true);
+    for (const key of ['P', 'D', 'Shift+D', '+', '-', '/', '?', '1', 'Delete', 'Backspace']) {
+      expect(actsWhileTyping(key)).toBe(false);
+    }
+    expect(actsWhileTyping(null)).toBe(false);
   });
 });
 

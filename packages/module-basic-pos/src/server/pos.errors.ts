@@ -77,6 +77,12 @@ function refusalMessage(reason: PosRefusal): string {
       return 'A label is one short line';
     case 'invalid_contact':
       return 'A contact is one short line: a phone number or an email';
+    case 'invalid_phone':
+      return 'A phone number is one short line with the number in it';
+    case 'invalid_email':
+      return 'That is not an e-mail address, such as juan@example.com';
+    case 'invalid_facebook':
+      return 'Paste the customer’s Facebook or Messenger link, such as facebook.com/juan.delacruz';
     case 'invalid_reason':
       return `A reason is one line of at most ${POS_REASON_MAX} characters`;
     case 'invalid_discount':

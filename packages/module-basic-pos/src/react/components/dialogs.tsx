@@ -2,7 +2,8 @@
 
 import { cn, useDebouncedValue } from '@kwtech/web-ui/react';
 import { UserPlus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { posContactAsCustomerFields, posCustomerContactLine } from '../../domain/customers.js';
 import type {
   PosCustomerView,
   PosDiscountInput,
@@ -12,7 +13,7 @@ import type {
 } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../view/money.js';
-import { liveVariants } from '../view/till.js';
+import { liveVariants, nextOption } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
 
 /** The variants of one item, in order (D9). Picking one adds it. */
@@ -48,21 +49,47 @@ export function VariantPicker({
   );
 }
 
+/** What the customer search last answered, and for which text — so "no match" is never said of a search still on its way. */
+interface CustomerMatches {
+  term: string;
+  rows: readonly PosCustomerView[];
+  failed: boolean;
+}
+
 /**
  * Who the order is for (D5): a walk-in (with optional free text), a recorded
  * customer found by name or contact, or a new one saved from what was typed.
+ *
+ * The name box is a SEARCH-SELECT: what is typed searches the recorded
+ * customers, and the matches drop down under it — ↑ ↓ choose, Enter or a
+ * click links that customer (the operator, 2026-10-02; before, the matches
+ * were a list further down the dialog, easy to miss). What is typed is still
+ * the walk-in's name when nothing is picked.
+ *
+ * ⚠ ENTER LINKS ONLY A CUSTOMER CHOSEN WITH ↑ ↓. Nothing is pre-chosen: a
+ * walk-in called "Ana" must not be rung up to the recorded "Ana Cruz" because
+ * she was the first match.
  */
 export function CustomerDialog({ open, state, onClose }: { open: boolean; state: TillState; onClose: () => void }) {
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
-  const [matches, setMatches] = useState<PosCustomerView[]>([]);
+  const [found, setFound] = useState<CustomerMatches | null>(null);
+  /** Whether the matches are showing. Typing, ↓ or a click opens them — the dialog opening does not, or they would cover Contact and the buttons before anything was asked. */
+  const [listOpen, setListOpen] = useState(false);
+  /** The match ↑ ↓ are on, as an index into `matches`; null until one of them is pressed. */
+  const [active, setActive] = useState<number | null>(null);
   const settled = useDebouncedValue(name, 250);
+  const listId = useId();
   const { client, scope, order } = state;
+  const matches = found?.rows ?? [];
+  const searching = found?.term !== name;
 
   useEffect(() => {
     if (!open) return;
     setName(order?.customerId ? '' : (order?.customerName ?? ''));
     setContact(order?.customerId ? '' : (order?.customerContact ?? ''));
+    setListOpen(false);
+    setActive(null);
   }, [open, order?.customerId, order?.customerName, order?.customerContact]);
 
   useEffect(() => {
@@ -71,14 +98,25 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
     client
       .customers(scope, settled)
       .then((rows) => {
-        if (!cancelled) setMatches(rows);
+        if (cancelled) return;
+        setFound({ term: settled, rows, failed: false });
+        // The list under the cursor changed: an index kept would point at somebody else.
+        setActive(null);
       })
       // The picker is a convenience: without it, typing a walk-in still works.
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setFound({ term: settled, rows: [], failed: true });
+      });
     return () => {
       cancelled = true;
     };
   }, [open, client, scope, settled]);
+
+  // ↑ ↓ can move past what the dropdown shows; keep the chosen one in sight.
+  useEffect(() => {
+    if (active === null) return;
+    document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
+  }, [active, listId]);
 
   const set = async (input: { customerId?: string | null; name?: string | null; contact?: string | null }) => {
     const done = await state.act((current) => client.setCustomer(scope, current, input), { create: true });
@@ -87,26 +125,106 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
 
   const saveAndLink = async () => {
     try {
-      const saved = await client.saveCustomer(scope, { name, contact: contact || null });
+      // The till has one contact line; a customer has a box for each way of reaching them.
+      const saved = await client.saveCustomer(scope, { name, ...posContactAsCustomerFields(contact) });
       await set({ customerId: saved.id });
     } catch (caught) {
       state.showError(caught, 'Could not save that customer.');
     }
   };
 
+  const onNameKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setListOpen(true);
+      setActive(nextOption(matches.length, listOpen ? active : null, event.key === 'ArrowDown' ? 'down' : 'up'));
+      return;
+    }
+    if (event.key === 'Escape' && listOpen) {
+      // ⚠ The first Escape closes the dropdown only. Unprevented, the <dialog> takes it and the whole dialog closes.
+      event.preventDefault();
+      setListOpen(false);
+      setActive(null);
+      return;
+    }
+    if (event.key !== 'Enter' || !listOpen || active === null) return;
+    const chosen = matches[active];
+    if (!chosen) return;
+    event.preventDefault();
+    void set({ customerId: chosen.id });
+  };
+
   return (
     <Modal open={open} title="Customer" onClose={onClose}>
-      <Field label="Name" hint="Search recorded customers, or type a walk-in’s name.">
+      <Field label="Name" hint="Type to search recorded customers, or type a walk-in’s name.">
         {(id, describedBy) => (
-          <input
-            id={id}
-            aria-describedby={describedBy}
-            className={INPUT_CLASS}
-            value={name}
-            // biome-ignore lint/a11y/noAutofocus: a dialog opens where the person will type or choose next (D20: focus always has a home).
-            autoFocus
-            onChange={(event) => setName(event.target.value)}
-          />
+          <div className="relative">
+            <input
+              id={id}
+              role="combobox"
+              aria-expanded={listOpen}
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={listOpen && active !== null ? `${listId}-${active}` : undefined}
+              aria-describedby={describedBy}
+              autoComplete="off"
+              className={INPUT_CLASS}
+              placeholder="Search by name, phone or e-mail"
+              value={name}
+              // biome-ignore lint/a11y/noAutofocus: a dialog opens where the person will type or choose next (D20: focus always has a home).
+              autoFocus
+              onChange={(event) => {
+                setName(event.target.value);
+                setListOpen(true);
+                setActive(null);
+              }}
+              onClick={() => setListOpen(true)}
+              onBlur={() => setListOpen(false)}
+              onKeyDown={onNameKey}
+            />
+            {listOpen ? (
+              // biome-ignore lint/a11y/noStaticElementInteractions: not a control — the handler only keeps the focus in the box; the options inside carry the roles.
+              <div
+                className="absolute inset-x-0 top-full z-10 mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+                // ⚠ A press on the dropdown must not take focus from the box: its blur closes the dropdown before the click lands.
+                onMouseDown={(event) => event.preventDefault()}
+              >
+                <div id={listId} role="listbox" aria-label="Recorded customers" className="flex flex-col gap-0.5">
+                  {matches.map((customer, index) => (
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: the options are chosen from the box, with ↑ ↓ and Enter — the combobox pattern; focus never leaves it.
+                    <div
+                      key={customer.id}
+                      id={`${listId}-${index}`}
+                      role="option"
+                      // Focusable by script only: Tab goes on to Contact, and the box keeps the focus while choosing.
+                      tabIndex={-1}
+                      aria-selected={index === active}
+                      className={cn(
+                        'flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground',
+                        index === active && 'bg-accent text-accent-foreground',
+                      )}
+                      onClick={() => void set({ customerId: customer.id })}
+                    >
+                      <span className="min-w-0 truncate">
+                        {customer.name}
+                        {order?.customerId === customer.id ? (
+                          <span className="ml-1 text-xs text-muted-foreground">(on this order)</span>
+                        ) : null}
+                      </span>
+                      <span className="max-w-[50%] shrink-0 truncate text-xs text-muted-foreground">
+                        {posCustomerContactLine(customer) ?? ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {matches.length === 0 ? (
+                  <p role="status" className="px-2 py-1.5 text-sm text-muted-foreground">
+                    {customerListNote(name, searching, found?.failed ?? false)}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         )}
       </Field>
       <Field label="Contact" hint="Phone or email. Needed to pay later or to owe change.">
@@ -120,29 +238,6 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
           />
         )}
       </Field>
-      {matches.length > 0 ? (
-        <section aria-label="Recorded customers" className="flex flex-col gap-1">
-          <h3 className="text-xs font-medium text-muted-foreground">Recorded customers</h3>
-          <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
-            {matches.map((customer) => (
-              <li key={customer.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    'flex w-full items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5 text-left text-sm hover:bg-accent',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    order?.customerId === customer.id && 'border-primary',
-                  )}
-                  onClick={() => void set({ customerId: customer.id })}
-                >
-                  <span>{customer.name}</span>
-                  <span className="text-xs text-muted-foreground">{customer.contact ?? ''}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className={buttonClass('ghost')} onClick={() => void set({})}>
           Walk-in, no name
@@ -169,6 +264,14 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
       </div>
     </Modal>
   );
+}
+
+/** The dropdown's one line when it has no customer to offer: still looking, could not look, or nobody matches. */
+function customerListNote(name: string, searching: boolean, failed: boolean): string {
+  if (searching) return 'Searching…';
+  if (failed) return 'Could not search the customers. The name can still be used as typed.';
+  if (name.trim() === '') return 'No customers are recorded yet.';
+  return `No recorded customer matches “${name.trim()}”. Use it as typed, or save it as a customer.`;
 }
 
 /**

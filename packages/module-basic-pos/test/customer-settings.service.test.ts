@@ -13,16 +13,44 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
 }
 
 describe('customers', () => {
-  it('saves a customer, and finds them by name or contact', async () => {
+  it('saves a customer, and finds them by name, phone, e-mail or Facebook link', async () => {
     const { customers } = harness();
-    await customers.save(SCOPE, ANA, { name: 'Juan Dela Cruz', contact: '0917 123 4567' });
+    const juan = await customers.save(SCOPE, ANA, {
+      name: 'Juan Dela Cruz',
+      phone: '0917 123 4567',
+      email: 'juan@example.com',
+      facebookUrl: 'facebook.com/juan.delacruz',
+    });
     await customers.save(SCOPE, ANA, { name: 'Maria Santos' });
-    expect((await customers.search(SCOPE, 'jua', false)).map((row) => row.name)).toEqual(['Juan Dela Cruz']);
-    expect((await customers.search(SCOPE, '0917', false)).map((row) => row.name)).toEqual(['Juan Dela Cruz']);
+    expect(juan).toMatchObject({
+      phone: '0917 123 4567',
+      email: 'juan@example.com',
+      facebookUrl: 'https://facebook.com/juan.delacruz',
+    });
+    for (const term of ['jua', '0917', 'example.com', 'juan.delacruz']) {
+      expect((await customers.search(SCOPE, term, false)).map((row) => row.name)).toEqual(['Juan Dela Cruz']);
+    }
     expect((await customers.search(SCOPE, '', false)).map((row) => row.name)).toEqual([
       'Juan Dela Cruz',
       'Maria Santos',
     ]);
+  });
+
+  it('keeps every way of reaching them optional, and clears one saved empty', async () => {
+    const { customers } = harness();
+    const maria = await customers.save(SCOPE, ANA, { name: 'Maria', phone: '0918' });
+    expect(maria).toMatchObject({ phone: '0918', email: null, facebookUrl: null });
+    const edited = await customers.save(SCOPE, ANA, { id: maria.id, name: 'Maria', phone: '', email: 'm@x.ph' });
+    expect(edited).toMatchObject({ phone: null, email: 'm@x.ph', facebookUrl: null });
+  });
+
+  it('⚠ refuses a phone with no number, an e-mail that is not one, and a link that is not Facebook’s', async () => {
+    const { customers } = harness();
+    expect(await refusal(customers.save(SCOPE, ANA, { name: 'A', phone: 'call me' }))).toBe('invalid_phone');
+    expect(await refusal(customers.save(SCOPE, ANA, { name: 'A', email: 'juan at example' }))).toBe('invalid_email');
+    expect(await refusal(customers.save(SCOPE, ANA, { name: 'A', facebookUrl: 'https://evil.example/juan' }))).toBe(
+      'invalid_facebook',
+    );
   });
 
   it('⚠ escapes the search: "%" finds a literal percent sign, not everybody', async () => {

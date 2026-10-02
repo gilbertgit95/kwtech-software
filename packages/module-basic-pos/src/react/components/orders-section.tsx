@@ -3,11 +3,21 @@
 import { useDebouncedValue } from '@kwtech/web-ui/react';
 import { Printer, RotateCcw, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
 import { planRefund } from '../../domain/refunds.js';
 import type { PosOrderLineView, PosOrderView, PosRefundInput } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
-import { ORDER_TABS, type OrderTab, orderActions, orderStatusChip, orderTitle, whenText } from '../view/manage.js';
+import {
+  ORDER_TABS,
+  type OrderListTotal,
+  type OrderTab,
+  orderActions,
+  orderListTotal,
+  orderStatusChip,
+  orderTitle,
+  whenText,
+} from '../view/manage.js';
 import { formatPercent, formatPeso, parsePeso } from '../view/money.js';
 import { METHOD_LABELS, receiptHtml } from '../view/receipt.js';
 import { lineLabel } from '../view/till.js';
@@ -75,6 +85,8 @@ export function OrdersSection({
               />
               <input
                 type="search"
+                // biome-ignore lint/a11y/noAutofocus: a section opens on its search, as Sell does — the next thing done is finding one (D20: focus always has a home).
+                autoFocus
                 className={`${INPUT_CLASS} pl-8`}
                 placeholder="Order number, customer or label"
                 value={search}
@@ -111,6 +123,7 @@ export function OrdersSection({
                 );
               })}
             </ul>
+            {rows.length > 0 ? <ListTotal sum={orderListTotal(rows, tab)} tab={tab} /> : null}
           </>
         }
         detail={
@@ -126,6 +139,37 @@ export function OrdersSection({
         }
       />
     </div>
+  );
+}
+
+/**
+ * The list, added up, under it: a quick total of the orders showing (the
+ * operator, 2026-10-02) — the tab, narrowed by the search. Below the scrolling
+ * list rather than inside it, so it is in sight however long the list is.
+ *
+ * Not a report (`orderListTotal` says why): Reports answers "what did the day
+ * make"; this answers "what do these rows come to".
+ */
+function ListTotal({ sum, tab }: { sum: OrderListTotal; tab: OrderTab }) {
+  const notes = [
+    sum.leftOut > 0 ? `${sum.leftOut} cancelled or voided not counted` : null,
+    sum.refunded > 0 ? `${formatPeso(sum.refunded)} of it refunded` : null,
+    sum.cut ? `the list stops at ${POS_ORDERS_READ_MAX} orders, so this is not all of them` : null,
+  ].filter((note): note is string => note !== null);
+  return (
+    <section aria-label="Total of the orders listed" className="shrink-0 border-t border-border px-3 pt-2 text-sm">
+      <p className="flex items-baseline justify-between gap-3">
+        <span className="font-medium">
+          {tab === 'cancelled' ? 'Cancelled' : 'Total'}
+          <span className="font-normal text-muted-foreground">
+            {' '}
+            · {sum.count} {sum.count === 1 ? 'order' : 'orders'}
+          </span>
+        </span>
+        <span className="font-semibold tabular-nums">{formatPeso(sum.total)}</span>
+      </p>
+      {notes.length > 0 ? <p className="text-xs text-muted-foreground">{notes.join(' · ')}</p> : null}
+    </section>
   );
 }
 
@@ -454,6 +498,8 @@ function RefundDialog({
     request,
   );
   const left = order.total - order.refunded;
+  /** The first line something can still come back from: where the dialog opens (D20). */
+  const firstLineId = order.lines.find((line) => line.quantity > line.refundedQuantity)?.id ?? null;
 
   const submit = async () => {
     if ('refused' in plan) {
@@ -505,6 +551,8 @@ function RefundDialog({
                   min={0}
                   max={most}
                   disabled={most === 0}
+                  // biome-ignore lint/a11y/noAutofocus: a dialog opens where the person will type or choose next (D20: focus always has a home).
+                  autoFocus={line.id === firstLineId}
                   className={`${INPUT_CLASS} w-20`}
                   value={quantities[line.id] ?? ''}
                   placeholder="0"
@@ -521,6 +569,8 @@ function RefundDialog({
               id={id}
               aria-describedby={describedBy}
               inputMode="decimal"
+              // biome-ignore lint/a11y/noAutofocus: choosing "Money only" is asking to type the amount (D20).
+              autoFocus
               className={INPUT_CLASS}
               value={amount}
               onChange={(event) => setAmount(event.target.value)}

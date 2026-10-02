@@ -1,5 +1,6 @@
 import { escapeLikePattern, nextDayKey, zonedDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
+import { POS_ORDERS_READ_MAX } from '../domain/orders.js';
 import { linesOf } from './pos.lookup.js';
 import type {
   InScope,
@@ -12,9 +13,6 @@ import type {
 } from './pos.repository.js';
 import { POS_PRISMA_WRITE } from './pos.tokens.js';
 import { PosTimeZoneService } from './pos-time-zone.service.js';
-
-/** How many orders one list returns. A day at a busy counter is a few hundred. */
-export const POS_ORDERS_READ_MAX = 500;
 
 /** The tabs of the Orders section (D23). */
 export type PosOrderTab = 'today' | 'pending' | 'unpaid' | 'change_owed' | 'cancelled' | 'all';

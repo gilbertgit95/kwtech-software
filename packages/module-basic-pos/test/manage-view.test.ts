@@ -1,16 +1,22 @@
 import { POS_KEY_ACTIONS } from '../src/domain/keymap.js';
+import { POS_ORDERS_READ_MAX } from '../src/domain/orders.js';
 import type { PosCategoryView, PosItemView } from '../src/react/pos-client.js';
 import {
   actionsByZone,
   categoryReorder,
+  customerInitials,
+  customerSummary,
+  emailHref,
   filterItems,
   itemForm,
   itemInput,
   itemKeyTarget,
   moveEntry,
   orderActions,
+  orderListTotal,
   orderStatusChip,
   orderTitle,
+  phoneHref,
   whenText,
 } from '../src/react/view/manage.js';
 
@@ -153,6 +159,25 @@ describe('orders', () => {
     expect(orderStatusChip({ ...PAID, status: 'unpaid' }).label).toBe('Unpaid');
   });
 
+  it('adds up the list: how many orders, and the amounts on their rows', () => {
+    const rows = [PAID, { ...PAID, total: 2500 }, { ...PAID, status: 'unpaid', total: 400 }];
+    expect(orderListTotal(rows, 'today')).toEqual({ count: 3, total: 3900, refunded: 0, leftOut: 0, cut: false });
+    expect(orderListTotal([], 'today')).toEqual({ count: 0, total: 0, refunded: 0, leftOut: 0, cut: false });
+  });
+
+  it('⚠ leaves cancelled and voided orders out of the total, and says how many — they are not money', () => {
+    const rows = [PAID, { ...PAID, status: 'cancelled', total: 700 }, { ...PAID, status: 'voided', total: 50 }];
+    expect(orderListTotal(rows, 'today')).toMatchObject({ count: 1, total: 1000, leftOut: 2 });
+    // On the Cancelled tab every row is one: the sum is what was cancelled.
+    expect(orderListTotal(rows.slice(1), 'cancelled')).toMatchObject({ count: 2, total: 750, leftOut: 0 });
+  });
+
+  it('⚠ shows refunds beside the total, never taken off it, and says when the list was cut', () => {
+    expect(orderListTotal([{ ...PAID, refunded: 300 }, PAID], 'all')).toMatchObject({ total: 2000, refunded: 300 });
+    const full = Array.from({ length: POS_ORDERS_READ_MAX }, () => PAID);
+    expect(orderListTotal(full, 'all').cut).toBe(true);
+  });
+
   it('⚠ offers each act only on the status it applies to, and only to who holds its key', () => {
     const everyone = { sell: true, refund: true };
     expect(orderActions({ ...PAID, status: 'open' }, everyone)).toMatchObject({ resume: true, refund: false });
@@ -181,6 +206,50 @@ describe('orders', () => {
     expect(whenText('2026-09-30T15:30:00Z', 'Asia/Manila')).toContain('11:30');
     expect(whenText('2026-09-30T15:30:00Z', 'Europe/London')).toContain('4:30');
     expect(whenText(null, 'Asia/Manila')).toBe('');
+  });
+});
+
+describe('customers', () => {
+  it('draws initials from the first and last words, whatever the name is made of', () => {
+    expect(customerInitials('Juan Dela Cruz')).toBe('JC');
+    expect(customerInitials('  maria ')).toBe('M');
+    expect(customerInitials('Élodie (suki) Ñera')).toBe('ÉÑ');
+    expect(customerInitials('— —')).toBe('?');
+    expect(customerInitials('')).toBe('?');
+  });
+
+  it('⚠ dials only the number at the start of a phone, and nothing that is not one', () => {
+    expect(phoneHref('0917 123 4567')).toBe('tel:09171234567');
+    expect(phoneHref('+63 (917) 123-4567 loc 2')).toBe('tel:+639171234567');
+    expect(phoneHref('ask for 0917')).toBeNull();
+    expect(phoneHref('123')).toBeNull();
+    expect(phoneHref(null)).toBeNull();
+  });
+
+  it('⚠ makes a mailto that can only ever be the address', () => {
+    expect(emailHref('juan@example.com')).toBe('mailto:juan@example.com');
+    expect(emailHref('juan@example.com?subject=hi&cc=x@y.ph')).toBeNull();
+    expect(emailHref('a&b@example.com')).toBe('mailto:a%26b@example.com');
+    expect(emailHref('not an address')).toBeNull();
+    expect(emailHref(null)).toBeNull();
+  });
+
+  it('sums a customer’s history: visits, what they paid less refunds, what they owe, when they last came', () => {
+    const row = { status: 'paid', total: 1000, refunded: 0, paidAt: null, finalisedAt: null };
+    const summary = customerSummary([
+      { ...row, paidAt: '2026-09-30T02:00:00.000Z', createdAt: '2026-09-30T01:00:00.000Z' },
+      { ...row, total: 500, refunded: 200, paidAt: '2026-10-01T05:00:00.000Z', createdAt: '2026-10-01T04:00:00.000Z' },
+      {
+        ...row,
+        status: 'unpaid',
+        total: 300,
+        finalisedAt: '2026-10-02T03:00:00.000Z',
+        createdAt: '2026-10-02T02:00:00.000Z',
+      },
+      { ...row, status: 'cancelled', total: 9000, createdAt: '2026-10-03T00:00:00.000Z' },
+    ]);
+    expect(summary).toEqual({ orders: 3, spent: 1300, owed: 300, lastAt: '2026-10-02T03:00:00.000Z' });
+    expect(customerSummary([])).toEqual({ orders: 0, spent: 0, owed: 0, lastAt: null });
   });
 });
 

@@ -79,7 +79,16 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     createdAt: now,
     updatedAt: now,
   }),
-  posCustomer: (id, now) => ({ id, contact: null, note: null, archivedAt: null, createdAt: now, updatedAt: now }),
+  posCustomer: (id, now) => ({
+    id,
+    phone: null,
+    email: null,
+    facebookUrl: null,
+    note: null,
+    archivedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  }),
   posOrder: (id, now) => ({
     id,
     status: 'open',

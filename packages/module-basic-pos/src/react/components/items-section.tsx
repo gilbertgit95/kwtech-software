@@ -101,6 +101,8 @@ function ItemsPanel({
               />
               <input
                 type="search"
+                // biome-ignore lint/a11y/noAutofocus: a section opens on its search, as Sell does — the next thing done is finding one (D20: focus always has a home).
+                autoFocus
                 className={`${INPUT_CLASS} pl-8`}
                 placeholder="Name, code or category"
                 value={search}
@@ -261,7 +263,14 @@ function ItemEditor({
       <div className="grid gap-3 @md:grid-cols-2">
         <Field label="Name">
           {(id) => (
-            <input id={id} className={INPUT_CLASS} value={form.name} onChange={(e) => set({ name: e.target.value })} />
+            <input
+              id={id}
+              // biome-ignore lint/a11y/noAutofocus: "New item" is asking to type a name. An existing item opens unfocused: the list is still being browsed.
+              autoFocus={form.id === null}
+              className={INPUT_CLASS}
+              value={form.name}
+              onChange={(e) => set({ name: e.target.value })}
+            />
           )}
         </Field>
         <Field label="Kind" hint="A service is never counted as stock.">
@@ -383,6 +392,8 @@ function ItemEditor({
             >
               <input
                 aria-label={`Variant ${index + 1} name`}
+                // biome-ignore lint/a11y/noAutofocus: a row just added is the one being typed next. Saved variants have an id and mount unfocused.
+                autoFocus={variant.id === null}
                 placeholder="Name"
                 className={cn(INPUT_CLASS, 'col-span-2 @lg:col-span-1')}
                 value={variant.name}

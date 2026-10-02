@@ -63,7 +63,10 @@ export interface PosCatalogueView {
 export interface PosCustomerView {
   id: string;
   name: string;
-  contact: string | null;
+  phone: string | null;
+  email: string | null;
+  /** Always an https Facebook or Messenger address (the server's `preparePosFacebookUrl`). */
+  facebookUrl: string | null;
   note: string | null;
   archivedAt: string | null;
 }
@@ -310,7 +313,14 @@ export interface PosClient {
   customer(scope: PosScopeView, customerId: string): Promise<PosCustomerView | null>;
   saveCustomer(
     scope: PosScopeView,
-    input: { id?: string | null; name: string; contact?: string | null; note?: string | null },
+    input: {
+      id?: string | null;
+      name: string;
+      phone?: string | null;
+      email?: string | null;
+      facebookUrl?: string | null;
+      note?: string | null;
+    },
   ): Promise<PosCustomerView>;
   setCustomerArchived(scope: PosScopeView, customerId: string, archived: boolean): Promise<PosCustomerView>;
   settings(scope: PosScopeView): Promise<PosSettingsView>;

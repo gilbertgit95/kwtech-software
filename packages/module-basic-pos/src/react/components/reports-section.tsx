@@ -62,7 +62,8 @@ type ReportTab = (typeof REPORT_TABS)[number]['key'];
 export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpenOrder: (orderId: string) => void }) {
   const { client, scope, timeZone } = state;
   const today = zonedDayKey(new Date(), timeZone);
-  const [preset, setPreset] = useState<ReportPreset>('today');
+  // Opens on this month so far: one day says little, a quiet morning would open on an empty page, and a month is how a store is read.
+  const [preset, setPreset] = useState<ReportPreset>('month');
   const [custom, setCustom] = useState<ReportDays>({ fromDay: today, toDay: today });
   /** Whether the custom range's date fields are open. A period reached by the arrows or a chart is custom too, but nobody is typing it. */
   const [editing, setEditing] = useState(false);

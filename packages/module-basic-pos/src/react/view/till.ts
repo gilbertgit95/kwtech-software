@@ -1,3 +1,4 @@
+import { checkPosQuantity, POS_QUANTITY_MAX } from '../../domain/money.js';
 import type { PosSearchItem } from '../../domain/search.js';
 import type { PosCatalogueView, PosItemView, PosOrderLineView } from '../pos-client.js';
 
@@ -77,4 +78,31 @@ export function itemCount(lines: readonly Pick<PosOrderLineView, 'quantity'>[]):
 /** A line's name as the cart and the receipt print it: "Lamination — 250 mic · A4". */
 export function lineLabel(line: Pick<PosOrderLineView, 'name' | 'variantName'>): string {
   return line.variantName ? `${line.name} — ${line.variantName}` : line.name;
+}
+
+/** What the till says to a quantity it refuses, typed before the item ("0*") or on a line. */
+export const QUANTITY_PROBLEM = `A quantity is a whole number from 1 to ${POS_QUANTITY_MAX}.`;
+
+/**
+ * A quantity typed on a cart line → the number, or null when it is not one
+ * (empty, "2.5", "0", past `POS_QUANTITY_MAX`). Read from the TEXT: `Number('')`
+ * is 0 and `Number('1e3')` is 1000, and neither is what the cashier typed.
+ * The server checks again with the same `checkPosQuantity`.
+ */
+export function parseQuantity(text: string): number | null {
+  const cleaned = text.replace(/[,\s]/gu, '');
+  if (!/^\d{1,6}$/u.test(cleaned)) return null;
+  const quantity = Number(cleaned);
+  return checkPosQuantity(quantity) ? null : quantity;
+}
+
+/**
+ * The option ↑ / ↓ lands on in a dropdown of `count` options (the customer
+ * picker). Null is "none yet": the first ↓ takes the first, the first ↑ the
+ * last, and both wrap, so a short list is never a dead end.
+ */
+export function nextOption(count: number, current: number | null, direction: 'up' | 'down'): number | null {
+  if (count <= 0) return null;
+  if (current === null || current < 0 || current >= count) return direction === 'down' ? 0 : count - 1;
+  return direction === 'down' ? (current + 1) % count : (current - 1 + count) % count;
 }

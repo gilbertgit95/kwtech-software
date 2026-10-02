@@ -12,6 +12,13 @@ import type { PosOrderStatus, PosPaymentMethod, PosRefusal } from '../types.js';
  */
 export const POS_CONFLICT_MESSAGE = 'Somebody else changed this order; it has been reloaded';
 
+/**
+ * How many orders one list returns. A day at a busy counter is a few hundred.
+ * Here, not in the server, because the Orders list reads it too: a list this
+ * long was cut, and its total says so.
+ */
+export const POS_ORDERS_READ_MAX = 500;
+
 /** What can happen to an order. Each moves it from exactly one or two statuses. */
 export type PosOrderAction = 'pay' | 'pay_later' | 'cancel' | 'void';
 

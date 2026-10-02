@@ -2,7 +2,7 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { X } from 'lucide-react';
-import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 /*
  * The POS's controls — module-task's, copied structurally: a module never
@@ -33,6 +33,14 @@ export const INPUT_CLASS =
  * A modal, drawn by the browser's own `<dialog>` so it is in the top layer and
  * traps focus — `ConfirmDialog`'s reasoning. `showModal()` rather than the
  * `open` attribute, which renders inline with no backdrop and no Escape.
+ *
+ * ⚠ THE CONTENT MOUNTS AFTER `showModal()`, NOT WITH IT, so `autoFocus` inside
+ * a dialog works. React does not write an `autofocus` attribute — it calls
+ * `.focus()` when the element mounts — and inside a dialog still closed that
+ * does nothing; `showModal()` then gave the focus to the first focusable
+ * thing, the Close button. Every dialog opened on Close instead of the box
+ * the person was about to type in (the operator, 2026-10-02). A layout
+ * effect, so the empty dialog is never painted.
  */
 export function Modal({
   open,
@@ -48,13 +56,21 @@ export function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
-  useEffect(() => {
+  /** True once the dialog is really open: only then does the content mount (see above). */
+  const [shown, setShown] = useState(false);
+  useLayoutEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
+    setShown(open);
   }, [open]);
+  // A dialog with nothing to type in or choose first (the key list) still gives focus a home (D20): its way out.
+  useEffect(() => {
+    if (shown && document.activeElement === ref.current) closeRef.current?.focus();
+  }, [shown]);
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the click below only detects a backdrop press; its keyboard equivalent is Escape, which <dialog> handles itself. `ConfirmDialog`'s reasoning.
     <dialog
@@ -70,7 +86,7 @@ export function Modal({
         wide ? 'max-w-xl' : 'max-w-md',
       )}
     >
-      {open ? (
+      {open && shown ? (
         <div className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-5">
           {/*
            * ⚠ Every dialog has a visible way out. Board settings had none —
@@ -83,6 +99,7 @@ export function Modal({
               {title}
             </h2>
             <button
+              ref={closeRef}
               type="button"
               className={cn(buttonClass('ghost', 'sm'), '-mr-2 shrink-0')}
               onClick={() => ref.current?.close()}

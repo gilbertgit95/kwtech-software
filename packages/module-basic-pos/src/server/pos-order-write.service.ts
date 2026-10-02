@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { posCustomerContactLine } from '../domain/customers.js';
 import { checkPosDiscount, checkPosQuantity, discountSurvivesEdit } from '../domain/money.js';
 import {
   cancelNeedsReason,
@@ -273,7 +274,9 @@ export class PosOrderWriteService {
       if (input.customerId) {
         const customer = await tx.posCustomer.findFirst({ where: { ...scope, id: input.customerId } });
         if (!customer) throw refusalError('not_found');
-        return { data: { customerId: customer.id, customerName: customer.name, customerContact: customer.contact } };
+        // One line on the order, from whichever way of reaching them is recorded (`posCustomerContactLine`).
+        const customerContact = posCustomerContactLine(customer);
+        return { data: { customerId: customer.id, customerName: customer.name, customerContact } };
       }
       const name = preparePosLine(input.name ?? '', POS_NAME_MAX, { allowEmpty: true });
       if (name === null) throw refusalError('invalid_name');

@@ -1,19 +1,24 @@
 import { escapeLikePattern } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
-import { POS_NOTE_MAX, preparePosContact, preparePosLine, preparePosName } from '../domain/text.js';
+import {
+  POS_CUSTOMER_SEARCH_MAX,
+  preparePosEmail,
+  preparePosFacebookUrl,
+  preparePosPhone,
+} from '../domain/customers.js';
+import { POS_NOTE_MAX, preparePosLine, preparePosName } from '../domain/text.js';
 import { refusalError, unwrap } from './pos.errors.js';
 import { PosEventPublisher } from './pos.events.js';
 import type { InScope, PosCustomerRow, PosTransaction, PosWriteClient } from './pos.repository.js';
 import { POS_PRISMA_WRITE } from './pos.tokens.js';
 
-/** How many customers one search returns. A picker, not a report. */
-export const POS_CUSTOMER_SEARCH_MAX = 50;
-
 export interface SavePosCustomerInput {
   /** Omitted: a new customer. */
   id?: string | null | undefined;
   name: string;
-  contact?: string | null | undefined;
+  phone?: string | null | undefined;
+  email?: string | null | undefined;
+  facebookUrl?: string | null | undefined;
   note?: string | null | undefined;
 }
 
@@ -30,7 +35,7 @@ export class PosCustomerService {
   ) {}
 
   /**
-   * Customers matching `search` in name or contact, by name — the till's
+   * Customers matching `search` in name, phone, e-mail or Facebook link, by name — the till's
    * picker. An empty search lists the first ones by name.
    *
    * ⚠ The term is ESCAPED for LIKE: Prisma's `contains` escapes nothing, and
@@ -43,7 +48,7 @@ export class PosCustomerService {
       where: {
         ...scope,
         ...(includeArchived ? {} : { archivedAt: null }),
-        ...(match ? { OR: [{ name: match }, { contact: match }] } : {}),
+        ...(match ? { OR: [{ name: match }, { phone: match }, { email: match }, { facebookUrl: match }] } : {}),
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: POS_CUSTOMER_SEARCH_MAX,
@@ -57,17 +62,20 @@ export class PosCustomerService {
   /** A new customer, or an edited one. Editing never changes an old receipt: orders keep their copy. */
   async save(scope: InScope, actorId: string, input: SavePosCustomerInput): Promise<PosCustomerRow> {
     const { name } = unwrap(preparePosName(input.name));
-    const { contact } = unwrap(preparePosContact(input.contact ?? ''));
+    const { phone } = unwrap(preparePosPhone(input.phone ?? ''));
+    const { email } = unwrap(preparePosEmail(input.email ?? ''));
+    const { facebookUrl } = unwrap(preparePosFacebookUrl(input.facebookUrl ?? ''));
     const note = preparePosLine(input.note ?? '', POS_NOTE_MAX, { allowEmpty: true });
     if (note === null) throw refusalError('invalid_note');
+    const fields = { name, phone, email, facebookUrl, note: note || null };
 
     const saved = await this.prisma.$transaction(async (tx) => {
       if (!input.id) {
-        return tx.posCustomer.create({ data: { ...scope, name, contact, note: note || null, createdById: actorId } });
+        return tx.posCustomer.create({ data: { ...scope, ...fields, createdById: actorId } });
       }
       const updated = await tx.posCustomer.updateMany({
         where: { ...scope, id: input.id },
-        data: { name, contact, note: note || null },
+        data: fields,
       });
       if (updated.count === 0) throw refusalError('not_found');
       return requireCustomer(tx, scope, input.id);

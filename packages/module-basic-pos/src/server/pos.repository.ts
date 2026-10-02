@@ -68,10 +68,21 @@ export interface PosItemVariantRow extends InScope {
   updatedAt: Date;
 }
 
+/** What a save writes on a customer. */
+export interface PosCustomerFields {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  facebookUrl: string | null;
+  note: string | null;
+}
+
 export interface PosCustomerRow extends InScope {
   id: string;
   name: string;
-  contact: string | null;
+  phone: string | null;
+  email: string | null;
+  facebookUrl: string | null;
   note: string | null;
   archivedAt: Date | null;
   createdById: string;
@@ -308,18 +319,19 @@ export interface PosTransaction {
       where: InScope & {
         archivedAt?: ArchivedFilter;
         OR?: Array<
-          { name: { contains: string; mode: 'insensitive' } } | { contact: { contains: string; mode: 'insensitive' } }
+          | { name: { contains: string; mode: 'insensitive' } }
+          | { phone: { contains: string; mode: 'insensitive' } }
+          | { email: { contains: string; mode: 'insensitive' } }
+          | { facebookUrl: { contains: string; mode: 'insensitive' } }
         >;
       };
       orderBy: Array<{ name: SortOrder } | { id: SortOrder }>;
       take: number;
     }): Promise<PosCustomerRow[]>;
-    create(args: {
-      data: InScope & { name: string; contact: string | null; note: string | null; createdById: string };
-    }): Promise<PosCustomerRow>;
+    create(args: { data: InScope & PosCustomerFields & { createdById: string } }): Promise<PosCustomerRow>;
     updateMany(args: {
       where: InScope & { id: string };
-      data: { name?: string; contact?: string | null; note?: string | null; archivedAt?: Date | null };
+      data: Partial<PosCustomerFields> & { archivedAt?: Date | null };
     }): Promise<{ count: number }>;
   };
 

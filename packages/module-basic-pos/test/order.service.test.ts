@@ -331,9 +331,20 @@ describe('what the API answers', () => {
     expect((await orders.list(SCOPE, 'all', 'red', new Date())).map((row) => row.order.label)).toEqual(['red cap']);
   });
 
+  it('copies ONE contact line onto a linked order: the phone, else the e-mail, else the Facebook link', async () => {
+    const { writes, customers } = await shop();
+    const facebookOnly = await customers.save(SCOPE, BEN, { name: 'Ana', facebookUrl: 'm.me/ana.cruz' });
+    const both = await customers.save(SCOPE, BEN, { name: 'Juan', phone: '0917', email: 'juan@example.com' });
+    let order = await writes.create(SCOPE, BEN, null);
+    order = await writes.setCustomer(SCOPE, BEN, ref(order), { customerId: facebookOnly.id });
+    expect(order.customerContact).toBe('https://m.me/ana.cruz');
+    order = await writes.setCustomer(SCOPE, BEN, ref(order), { customerId: both.id });
+    expect(order.customerContact).toBe('0917');
+  });
+
   it('⚠ lists one customer’s orders by the LINK, not by a walk-in who typed the same name', async () => {
     const { writes, orders, customers, magnet } = await shop();
-    const juan = await customers.save(SCOPE, BEN, { name: 'Juan', contact: '0917' });
+    const juan = await customers.save(SCOPE, BEN, { name: 'Juan', phone: '0917' });
     let linked = await writes.create(SCOPE, BEN, null);
     linked = await writes.addLine(SCOPE, BEN, ref(linked), { itemId: magnet.id, quantity: 1 });
     linked = await writes.setCustomer(SCOPE, BEN, ref(linked), { customerId: juan.id });
