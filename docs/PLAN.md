@@ -575,6 +575,21 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-03** — **The list drawer moved to `web-ui` (`ListDrawer`), and the books open investors and loans in it.**
+
+  The operator asked for the books to open a row the way the point of sale now
+  does. The books held a structural copy of the POS's old side-by-side
+  `ListDetail`; copying the drawer too would have made two of it.
+  - **A second consumer, so it is shared** (principle 9): `ListDrawer` and the
+    pure `listNeighbours` (with its jest tests) live in `@kwtech/web-ui/react`,
+    and both modules' `ListDetail` copies are gone. It draws its own header
+    buttons, since `buttonClass` is still a per-module copy (§12.87).
+  - **Investors and Loans** open on the list alone; a row slides its detail in,
+    with Previous / Next and the three ways out. Those were the only two views
+    in the books built that way.
+  - **Not done:** tasks keep their own list and detail; nobody asked, and its
+    detail is a different shape.
+
 - **2026-10-03** — **In the point of sale, only Hold makes a pending order (`pos_order.heldAt`).**
 
   The operator tried a few items at the till and found them in Pending. An
