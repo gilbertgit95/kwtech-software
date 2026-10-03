@@ -124,6 +124,10 @@ export const POS_OPERATIONS = {
     setPosOrderLabel(${SCOPE_ARGS}, ${ORDER_ARGS}, label: $label) { ${ORDER} }
   }`,
 
+  holdPosOrder: `mutation HoldPosOrder(${SCOPE_VARS}, ${ORDER_VARS}, $label: String) {
+    holdPosOrder(${SCOPE_ARGS}, ${ORDER_ARGS}, label: $label) { ${ORDER} }
+  }`,
+
   payPosOrder: `mutation PayPosOrder(${SCOPE_VARS}, ${ORDER_VARS}, $input: PayPosOrderInput!) {
     payPosOrder(${SCOPE_ARGS}, ${ORDER_ARGS}, input: $input) { ${ORDER} }
   }`,

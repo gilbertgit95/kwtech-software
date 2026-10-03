@@ -19,6 +19,35 @@ import {
 /** How long after the last event the till reads again — a burst of events is one read. */
 const REREAD_DEBOUNCE_MS = 200;
 
+/**
+ * Where this browser remembers the open order on its till, per workspace.
+ *
+ * A cart is saved on the server from its first line but is listed nowhere
+ * until it is held, so a reload would otherwise strand it: saved, and out of
+ * everyone's reach. Remembering its id here puts it back on the till it was
+ * on. Per device, like the till itself, so localStorage (as chat's dock).
+ */
+const TILL_ORDER_STORAGE_PREFIX = 'kwtech:pos-till-order:';
+
+function readTillOrderId(workspaceId: string): string | null {
+  try {
+    return window.localStorage.getItem(`${TILL_ORDER_STORAGE_PREFIX}${workspaceId}`);
+  } catch {
+    // Storage is blocked (private mode, a policy): the till works, it just starts clear after a reload.
+    return null;
+  }
+}
+
+function writeTillOrderId(workspaceId: string, orderId: string | null): void {
+  try {
+    const key = `${TILL_ORDER_STORAGE_PREFIX}${workspaceId}`;
+    if (orderId) window.localStorage.setItem(key, orderId);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // As above: remembering is a convenience, never a reason to fail a sale.
+  }
+}
+
 export interface TillState {
   scope: PosScopeView;
   client: PosClient;
@@ -27,7 +56,7 @@ export interface TillState {
   timeZone: string;
   /** The order on the till: open, or just finished (its receipt). Null for a clear till. */
   order: PosOrderView | null;
-  /** Held orders waiting (D8), oldest first. */
+  /** Held orders waiting (D8), oldest first: the ones Hold set aside, never a cart still being built. */
   pending: PosOrderSummaryView[];
   canSell: boolean;
   canDiscount: boolean;
@@ -74,7 +103,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
   // The workspace's zone, from the app's shell: receipts and "today" follow it.
   const timeZone = useWorkspaceTimeZone();
-  const [order, setOrder] = useState<PosOrderView | null>(null);
+  const [order, setTillOrder] = useState<PosOrderView | null>(null);
   const [pending, setPending] = useState<PosOrderSummaryView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,6 +112,20 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   // The events handler reads the current order through this, so it is installed once.
   const orderRef = useRef<PosOrderView | null>(null);
   orderRef.current = order;
+
+  /**
+   * Puts an order on the till (or clears it), and remembers an OPEN one for a
+   * reload. Explicit, not an effect on `order`: an effect would also run with
+   * the empty till a fresh page starts on, and forget the order before it was
+   * read back.
+   */
+  const setOrder = useCallback(
+    (next: PosOrderView | null) => {
+      setTillOrder(next);
+      writeTillOrderId(scope.workspaceId, next?.status === 'open' ? next.id : null);
+    },
+    [scope.workspaceId],
+  );
 
   const fail = useCallback((caught: unknown, fallback: string) => {
     setError(caught instanceof Error ? caught.message : fallback);
@@ -123,7 +166,27 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     } catch (caught) {
       fail(caught, 'Could not reload this order.');
     }
-  }, [client, scope, fail]);
+  }, [client, scope, fail, setOrder]);
+
+  // The order that was on this till before a reload goes back on it, if it is
+  // still open and nothing was started meanwhile.
+  useEffect(() => {
+    const remembered = readTillOrderId(scope.workspaceId);
+    if (!remembered) return;
+    let cancelled = false;
+    client
+      .order(scope, remembered)
+      .then((found) => {
+        if (cancelled || orderRef.current) return;
+        // Paid, cancelled or gone since: `setOrder(null)` also forgets it.
+        setOrder(found?.status === 'open' ? found : null);
+      })
+      // Left remembered: the next reload tries again, and the till is usable clear meanwhile.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client, scope, setOrder]);
 
   useEffect(() => {
     void loadCatalogue();
@@ -199,13 +262,13 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
         void reloadPending();
       }
     },
-    [client, scope, fail, reloadOrder, reloadPending],
+    [client, scope, fail, reloadOrder, reloadPending, setOrder],
   );
 
   const clear = useCallback(() => {
     setOrder(null);
     setError(null);
-  }, []);
+  }, [setOrder]);
 
   const resume = useCallback(
     async (orderId: string) => {
@@ -221,7 +284,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
         fail(caught, 'Could not open that order.');
       }
     },
-    [client, scope, fail],
+    [client, scope, fail, setOrder],
   );
 
   return {

@@ -188,6 +188,21 @@ export class PosOrderResolver {
     );
   }
 
+  /** Hold: the order becomes a pending one, under an optional label. */
+  @Mutation(() => PosOrderType, { name: 'holdPosOrder' })
+  async holdPosOrder(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('orderId') orderId: string,
+    @Args('version', { type: () => Int }) version: number,
+    @Args('label', { type: () => String, nullable: true }) label?: string | null,
+  ): Promise<PosOrderType> {
+    return this.write(gql, organizationId, workspaceId, { orderId, version }, (scope, actorId, ref) =>
+      this.writes.hold(scope, actorId, ref, label ?? null, new Date()),
+    );
+  }
+
   /** Idempotent on `input.clientId`: a retry answers with the order it already paid. */
   @Mutation(() => PosOrderType, { name: 'payPosOrder' })
   async payPosOrder(

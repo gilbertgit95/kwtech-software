@@ -426,6 +426,7 @@ type Mutation {
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
+  holdPosOrder(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
   inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!

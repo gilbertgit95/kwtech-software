@@ -188,6 +188,9 @@ model PosOrder {
   number  Int?
   /// Tells held orders apart: "table 3".
   label   String?
+  /// When Hold set it aside (D8). Null for a cart still being built on a till,
+  /// which is nobody's pending order yet: only a HELD open order is listed.
+  heldAt  DateTime?
 
   /// A recorded customer, if one was linked, and the COPIES shown on the
   /// receipt — for a walk-in, the free text. Editing the customer never

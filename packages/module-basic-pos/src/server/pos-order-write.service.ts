@@ -94,7 +94,10 @@ export class PosOrderWriteService {
     private readonly access: PosAccessService,
   ) {}
 
-  /** A new, empty, open order. The cart is saved as it is built (§3), so holding it loses nothing. */
+  /**
+   * A new, empty, open order. The cart is saved as it is built (§3), so holding it loses nothing.
+   * It is not a pending order yet: `hold` makes it one.
+   */
   async create(scope: InScope, actorId: string, rawLabel: string | null): Promise<PosOrderRow> {
     const { label } = unwrap(preparePosLabel(rawLabel ?? ''));
     const order = await this.prisma.posOrder.create({ data: { ...scope, createdById: actorId, label } });
@@ -290,6 +293,27 @@ export class PosOrderWriteService {
   async setLabel(scope: InScope, actorId: string, ref: PosOrderRef, rawLabel: string | null): Promise<PosOrderRow> {
     const { label } = unwrap(preparePosLabel(rawLabel ?? ''));
     return this.change(scope, actorId, ref, ['open'], async () => ({ data: { label } }));
+  }
+
+  /**
+   * Hold (D8): sets the order aside under a label, and from then on it is a
+   * pending order the whole store can see and resume. THE ONLY WAY ONE IS
+   * MADE — a cart that was never held is listed nowhere.
+   *
+   * Holding one that is already held (resumed, changed, held again) keeps the
+   * time it was first set aside: it is the same wait, not a new one.
+   */
+  async hold(
+    scope: InScope,
+    actorId: string,
+    ref: PosOrderRef,
+    rawLabel: string | null,
+    now: Date,
+  ): Promise<PosOrderRow> {
+    const { label } = unwrap(preparePosLabel(rawLabel ?? ''));
+    return this.change(scope, actorId, ref, ['open'], async (_tx, order) => ({
+      data: { label, heldAt: order.heldAt ?? now },
+    }));
   }
 
   // ── discounts (bound to pos:discount) ─────────────────────────────────────

@@ -1,6 +1,7 @@
 import { escapeLikePattern, nextDayKey, zonedDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
 import { POS_ORDERS_READ_MAX } from '../domain/orders.js';
+import type { PosOrderStatus } from '../types.js';
 import { linesOf } from './pos.lookup.js';
 import type {
   InScope,
@@ -61,11 +62,16 @@ export class PosOrderService {
    * One tab of the Orders section.
    *
    *   today       — paid, released unpaid or cancelled on the store's today
-   *   pending     — open: held carts, oldest first
+   *   pending     — open AND held (Hold was pressed), oldest first
    *   unpaid      — the customer owes the store, oldest first
    *   change_owed — the store owes the customer, oldest first
    *   cancelled   — the most recent cancellations, with their reasons
    *   all         — the most recent orders
+   *
+   * ⚠ A CART STILL BEING BUILT IS IN NONE OF THEM. An order is saved from its
+   * first line (§3), but until Hold sets it aside (`heldAt`) it is one till's
+   * cart, not an order the store is waiting on. Listing it made every item
+   * tried at the till a "pending order" (the operator, 2026-10-03).
    *
    * `search` narrows by order number, customer name or label; `customerId` to
    * one recorded customer's orders (their history, D5). Only a LINKED order
@@ -79,6 +85,8 @@ export class PosOrderService {
     customerId: string | null = null,
   ): Promise<PosOrderListEntry[]> {
     const where = await this.whereFor(scope, tab, now);
+    // A tab that already spends its OR (today's three moments, all's "not an unheld cart") is searched in memory below.
+    const ownOr = where.OR !== undefined;
     if (customerId) where.customerId = customerId;
     const term = search.trim();
     if (term) {
@@ -86,9 +94,8 @@ export class PosOrderService {
       const number = /^#?\d{1,9}$/u.test(term) ? Number(term.replace('#', '')) : null;
       const searchOr: NonNullable<PosOrderListWhere['OR']> = [{ customerName: match }, { label: match }];
       if (number !== null) searchOr.push({ number });
-      // ⚠ `today` already uses OR for its three moments; search narrows it
-      // afterwards rather than mixing two ORs into one.
-      if (!where.OR) where.OR = searchOr;
+      // ⚠ Search narrows such a tab afterwards rather than mixing two ORs into one.
+      if (!ownOr) where.OR = searchOr;
     }
     const oldestFirst = tab === 'pending' || tab === 'unpaid' || tab === 'change_owed';
     const orders = await this.prisma.posOrder.findMany({
@@ -96,7 +103,7 @@ export class PosOrderService {
       orderBy: oldestFirst ? [{ createdAt: 'asc' }, { id: 'asc' }] : [{ createdAt: 'desc' }, { id: 'desc' }],
       take: POS_ORDERS_READ_MAX,
     });
-    const narrowed = term && tab === 'today' ? orders.filter((order) => matchesSearch(order, term)) : orders;
+    const narrowed = term && ownOr ? orders.filter((order) => matchesSearch(order, term)) : orders;
     if (narrowed.length === 0) return [];
     const ids = narrowed.map((order) => order.id);
     const [lines, refunds] = await Promise.all([
@@ -138,7 +145,7 @@ export class PosOrderService {
   private async whereFor(scope: InScope, tab: PosOrderTab, now: Date): Promise<PosOrderListWhere> {
     switch (tab) {
       case 'pending':
-        return { ...scope, status: 'open' };
+        return { ...scope, status: 'open', heldAt: { not: null } };
       case 'unpaid':
         return { ...scope, status: 'unpaid' };
       case 'change_owed':
@@ -146,7 +153,8 @@ export class PosOrderService {
       case 'cancelled':
         return { ...scope, status: 'cancelled' };
       case 'all':
-        return { ...scope };
+        // Everything but a cart nobody has held: finished orders, and open ones that were set aside.
+        return { ...scope, OR: [{ status: { in: [...FINISHED_STATUSES] } }, { heldAt: { not: null } }] };
       case 'today': {
         const timeZone = await this.zones.of(scope);
         const today = zonedDayKey(now, timeZone);
@@ -158,6 +166,9 @@ export class PosOrderService {
     }
   }
 }
+
+/** Every status but `open`: an order that was numbered or cancelled, whatever became of it. */
+const FINISHED_STATUSES = ['unpaid', 'paid', 'cancelled', 'voided'] as const satisfies readonly PosOrderStatus[];
 
 function matchesSearch(order: PosOrderRow, term: string): boolean {
   const needle = term.toLowerCase().replace(/^#/u, '');

@@ -95,6 +95,7 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     version: 1,
     number: null,
     label: null,
+    heldAt: null,
     customerId: null,
     customerName: null,
     customerContact: null,

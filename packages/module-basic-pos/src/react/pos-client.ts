@@ -355,6 +355,8 @@ export interface PosClient {
     input: { customerId?: string | null; name?: string | null; contact?: string | null },
   ): Promise<PosOrderView>;
   setLabel(scope: PosScopeView, order: PosOrderRefView, label: string | null): Promise<PosOrderView>;
+  /** Hold: sets the order aside as a pending one. The only way a pending order is made. */
+  hold(scope: PosScopeView, order: PosOrderRefView, label: string | null): Promise<PosOrderView>;
   pay(scope: PosScopeView, order: PosOrderRefView, input: PosPaymentInput): Promise<PosOrderView>;
   payLater(scope: PosScopeView, order: PosOrderRefView): Promise<PosOrderView>;
   cancel(scope: PosScopeView, order: PosOrderRefView, reason: string | null): Promise<PosOrderView>;
@@ -453,6 +455,7 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
         contact: input.contact ?? null,
       }),
     setLabel: (scope, order, label) => call('setPosOrderLabel', scope, { ...ref(order), label }),
+    hold: (scope, order, label) => call('holdPosOrder', scope, { ...ref(order), label }),
     pay: (scope, order, input) => call('payPosOrder', scope, { ...ref(order), input }),
     payLater: (scope, order) => call('payLaterPosOrder', scope, ref(order)),
     cancel: (scope, order, reason) => call('cancelPosOrder', scope, { ...ref(order), reason }),

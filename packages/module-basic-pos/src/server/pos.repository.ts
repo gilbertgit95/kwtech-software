@@ -96,6 +96,8 @@ export interface PosOrderRow extends InScope {
   version: number;
   number: number | null;
   label: string | null;
+  /** When Hold set it aside; null for a cart still on a till (D8). */
+  heldAt: Date | null;
   customerId: string | null;
   customerName: string | null;
   customerContact: string | null;
@@ -223,6 +225,7 @@ export type PosOrderUpdate = Partial<
 
 export interface PosOrderListWhere extends InScope {
   status?: PosOrderStatus | { in: PosOrderStatus[] };
+  heldAt?: { not: null };
   customerId?: string;
   number?: number;
   changeOwed?: { gt: number };
@@ -236,6 +239,8 @@ export interface PosOrderListWhere extends InScope {
     | { cancelledAt: { gte: Date; lt: Date } }
     | { changeSettledAt: { gte: Date; lt: Date } }
     | { status: PosOrderStatus }
+    | { status: { in: PosOrderStatus[] } }
+    | { heldAt: { not: null } }
     | { customerName: { contains: string; mode: 'insensitive' } }
     | { label: { contains: string; mode: 'insensitive' } }
     | { number: number }

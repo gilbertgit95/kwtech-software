@@ -431,7 +431,7 @@ export function Till({ state }: { state: TillState }) {
           initial={open?.label ?? ''}
           confirmLabel="Hold"
           onSave={async (label) => {
-            const held = await state.act((current) => client.setLabel(scope, current, label || null));
+            const held = await state.act((current) => client.hold(scope, current, label || null));
             if (held) state.clear();
             close();
           }}

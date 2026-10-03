@@ -95,6 +95,7 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Mutation.refreshPosOrderLine'),
       op('Mutation.setPosOrderCustomer'),
       op('Mutation.setPosOrderLabel'),
+      op('Mutation.holdPosOrder'),
       op('Mutation.payPosOrder'),
       op('Mutation.payLaterPosOrder'),
       op('Mutation.cancelPosOrder'),

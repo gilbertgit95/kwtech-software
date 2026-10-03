@@ -321,7 +321,8 @@ describe('what the API answers', () => {
 
   it('lists the pending tab oldest first, and today’s paid orders on today', async () => {
     const { writes, orders, magnet } = await shop();
-    const held = await writes.create(SCOPE, BEN, 'red cap');
+    let held = await writes.create(SCOPE, BEN, null);
+    held = await writes.hold(SCOPE, BEN, ref(held), 'red cap', new Date());
     let sold = await writes.create(SCOPE, BEN, null);
     sold = await writes.addLine(SCOPE, BEN, ref(sold), { itemId: magnet.id, quantity: 1 });
     sold = await writes.pay(SCOPE, BEN, ref(sold), cash(1500));
@@ -329,6 +330,24 @@ describe('what the API answers', () => {
     const paidAt = sold.paidAt ?? new Date();
     expect((await orders.list(SCOPE, 'today', '', paidAt)).map((row) => row.order.id)).toEqual([sold.id]);
     expect((await orders.list(SCOPE, 'all', 'red', new Date())).map((row) => row.order.label)).toEqual(['red cap']);
+  });
+
+  it('⚠ lists a cart nobody held nowhere: only Hold makes a pending order', async () => {
+    const { writes, orders, magnet } = await shop();
+    let cart = await writes.create(SCOPE, BEN, null);
+    cart = await writes.addLine(SCOPE, BEN, ref(cart), { itemId: magnet.id, quantity: 1 });
+    const listed = async (tab: 'pending' | 'all') =>
+      (await orders.list(SCOPE, tab, '', new Date())).map((row) => row.order.id);
+    expect([await listed('pending'), await listed('all')]).toEqual([[], []]);
+
+    cart = await writes.hold(SCOPE, BEN, ref(cart), 'table 3', new Date('2026-10-03T01:00:00Z'));
+    expect([await listed('pending'), await listed('all')]).toEqual([[cart.id], [cart.id]]);
+
+    // Resumed and changed, it is still the SAME pending order, and holding it again keeps its first time.
+    cart = await writes.addLine(SCOPE, BEN, ref(cart), { itemId: magnet.id, quantity: 1 });
+    cart = await writes.hold(SCOPE, BEN, ref(cart), 'table 3', new Date('2026-10-03T02:00:00Z'));
+    expect(await listed('pending')).toEqual([cart.id]);
+    expect(cart.heldAt).toEqual(new Date('2026-10-03T01:00:00Z'));
   });
 
   it('copies ONE contact line onto a linked order: the phone, else the e-mail, else the Facebook link', async () => {
@@ -350,6 +369,9 @@ describe('what the API answers', () => {
     linked = await writes.setCustomer(SCOPE, BEN, ref(linked), { customerId: juan.id });
     let walkIn = await writes.create(SCOPE, BEN, null);
     walkIn = await writes.setCustomer(SCOPE, BEN, ref(walkIn), { name: 'Juan' });
+    // Held, so both are orders the store lists: a cart still on a till is in nobody's history yet.
+    linked = await writes.hold(SCOPE, BEN, ref(linked), null, new Date());
+    walkIn = await writes.hold(SCOPE, BEN, ref(walkIn), null, new Date());
     const history = await orders.list(SCOPE, 'all', '', new Date(), juan.id);
     expect(history.map((row) => row.order.id)).toEqual([linked.id]);
   });
