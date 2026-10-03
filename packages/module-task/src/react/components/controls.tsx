@@ -63,7 +63,9 @@ export function Modal({
         if (event.target === ref.current) ref.current?.close();
       }}
       className={cn(
-        'm-auto w-[calc(100%-2rem)] rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-foreground/40',
+        'm-auto w-[calc(100%-2rem)] rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg',
+        // ⚠ A BLACK backdrop, never the theme's foreground: on a dark theme the foreground is light, so it lit the page up behind the dialog instead of dimming it (the operator, 2026-10-03). As `ConfirmDialog`.
+        'backdrop:bg-black/50',
         wide ? 'max-w-xl' : 'max-w-md',
       )}
     >
