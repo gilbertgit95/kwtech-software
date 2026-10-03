@@ -1,5 +1,6 @@
 import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
+import { booksWebModule } from '@kwtech/module-basic-bookkeeping/react';
 import { posWebModule } from '@kwtech/module-basic-pos/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
@@ -40,6 +41,8 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   noteWebModule(),
   taskWebModule(),
   posWebModule(),
+  // The books: cash on hand, investors, profit shares and loans — after the POS on the Apps page.
+  booksWebModule(),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
 ];

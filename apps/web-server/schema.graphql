@@ -50,6 +50,190 @@ type AppHubLayouts {
   workspace: String
 }
 
+type BooksEntries {
+  entries: [BooksEntry!]!
+  opening: Float!
+  truncated: Boolean!
+}
+
+type BooksEntry {
+  advance: Boolean!
+  amount: Float!
+  category: String
+  day: String!
+  description: String
+  id: String!
+  importId: String
+  investorId: String
+  kind: String!
+  loanId: String
+  place: String
+  recordedAt: String!
+  recordedById: String!
+  recordedByName: String
+  reference: String
+  shareId: String
+  toPlace: String
+  voidReason: String
+  voidedAt: String
+  voidedById: String
+  voidedByName: String
+}
+
+type BooksEvent {
+  actorId: String
+  kind: String!
+}
+
+type BooksInvestor {
+  agreedShare: Int
+  capital: Float!
+  capitalReturned: Float!
+  contact: String
+  formerAt: String
+  id: String!
+  name: String!
+  note: String
+  owed: Float!
+  paidOut: Float!
+  profitShared: Float!
+  putIn: Float!
+  reinvested: Float!
+  share: Int
+}
+
+type BooksLoan {
+  borrowerName: String!
+  contact: String
+  createdAt: String!
+  id: String!
+  lastDay: String
+  lent: Float!
+  note: String
+  outstanding: Float!
+  repaid: Float!
+}
+
+type BooksMoney {
+  bank: Float!
+  cash: Float!
+  ewallet: Float!
+  total: Float!
+}
+
+type BooksMonthProfit {
+  costOfGoods: Float!
+  expenses: Float!
+  month: String!
+  profit: Float!
+  purchases: Float!
+  refunds: Float!
+  sales: Float!
+}
+
+type BooksOverview {
+  investors: [BooksInvestor!]!
+  lentOutstanding: Float!
+  loans: [BooksLoan!]!
+  money: BooksMoney!
+  months: [BooksMonthProfit!]!
+  owedToInvestors: Float!
+  pos: BooksPosStatus!
+  shareMode: String!
+  sharedThrough: String
+  shares: [BooksProfitShare!]!
+  timeZone: String!
+  today: String!
+  truncated: Boolean!
+  unshared: BooksProfit
+  unsharedFrom: String
+}
+
+type BooksPosSales {
+  bank: Float!
+  cash: Float!
+  costCoverage: Int!
+  costOfGoods: Float!
+  ewallet: Float!
+  fromDay: String!
+  orders: Int!
+  toDay: String!
+  truncated: Boolean!
+}
+
+type BooksPosStatus {
+  available: Boolean!
+  connected: Boolean!
+  importFrom: String
+  nextFromDay: String
+  recordedThrough: String
+}
+
+type BooksProfit {
+  costOfGoods: Float!
+  expenses: Float!
+  profit: Float!
+  purchases: Float!
+  refunds: Float!
+  sales: Float!
+}
+
+type BooksProfitShare {
+  costOfGoods: Float!
+  expenses: Float!
+  fromDay: String!
+  id: String!
+  kept: Float!
+  parts: [BooksSharePart!]!
+  profit: Float!
+  recordedAt: String!
+  recordedById: String!
+  recordedByName: String
+  refunds: Float!
+  sales: Float!
+  shared: Float!
+  toDay: String!
+  voidReason: String
+  voidedAt: String
+}
+
+type BooksProfitSharePlan {
+  fromDay: String
+  kept: Float!
+  ok: Boolean!
+  parts: [BooksSharePart!]!
+  profit: BooksProfit
+  refusal: String
+  shared: Float!
+  toDay: String!
+}
+
+type BooksSalesImport {
+  bank: Float!
+  cash: Float!
+  costCoverage: Int!
+  costOfGoods: Float!
+  ewallet: Float!
+  fromDay: String!
+  id: String!
+  orders: Int!
+  recordedAt: String!
+  toDay: String!
+  voidedAt: String
+}
+
+type BooksSettings {
+  posImportFrom: String
+  shareMode: String!
+  version: Int!
+}
+
+type BooksSharePart {
+  amount: Float!
+  investorId: String!
+  share: Int!
+}
+
 type ChatConversation {
   archived: Boolean!
   createdById: String!
@@ -176,6 +360,19 @@ type InvitationSignUpResult {
   organizationName: String
 }
 
+input LendBooksMoneyInput {
+  amount: Float!
+  borrowerName: String
+  clientId: String!
+  contact: String
+  day: String!
+  description: String
+  loanId: String
+  note: String
+  place: String!
+  reference: String
+}
+
 type MfaFactor {
   confirmedAt: String
   id: String!
@@ -234,6 +431,7 @@ type Mutation {
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
   leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
+  lendBooksMoney(input: LendBooksMoneyInput!, organizationId: String!, workspaceId: String!): BooksLoan!
   markAllNotificationsRead(before: String!): Int!
   markChatRead(conversationId: String!, messageId: String!): Boolean!
   markNotificationsRead(ids: [String!]!): Int!
@@ -251,6 +449,9 @@ type Mutation {
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
   recallNotificationBatch(batchId: String!): NotificationBatch!
   recallQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
+  recordBooksEntry(input: RecordBooksEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
+  recordBooksInvestorEntry(input: RecordBooksInvestorEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
+  recordBooksPosSales(clientId: String!, organizationId: String!, toDay: String!, workspaceId: String!): BooksSalesImport!
   refreshPosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   refundPosOrder(input: RefundPosOrderInput!, orderId: String!, organizationId: String!, workspaceId: String!): PosOrder!
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
@@ -272,6 +473,9 @@ type Mutation {
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  saveBooksInvestor(input: SaveBooksInvestorInput!, organizationId: String!, workspaceId: String!): BooksInvestor!
+  saveBooksLoan(borrowerName: String!, contact: String, loanId: String!, note: String, organizationId: String!, workspaceId: String!): BooksLoan!
+  saveBooksSettings(organizationId: String!, posImportFrom: String, shareMode: String!, workspaceId: String!): BooksSettings!
   saveMyAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
   savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
@@ -281,6 +485,7 @@ type Mutation {
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
   sendNotification(input: NotificationSendInput!): NotificationBatch!
+  setBooksInvestorFormer(former: Boolean!, investorId: String!, organizationId: String!, workspaceId: String!): BooksInvestor!
   setChatArchived(archived: Boolean!, conversationId: String!): Boolean!
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
@@ -312,6 +517,7 @@ type Mutation {
   setTaskLabels(labels: [String!]!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   setTaskPriority(organizationId: String!, priority: String!, taskId: String!, workspaceId: String!): Task!
   settlePosChangeOwed(orderId: String!, organizationId: String!, settlement: String!, version: Int!, workspaceId: String!): PosOrder!
+  shareBooksProfit(clientId: String!, kept: Float!, organizationId: String!, toDay: String!, workspaceId: String!): BooksProfitShare!
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   startDirectChat(userId: String!): ChatConversation!
@@ -337,6 +543,8 @@ type Mutation {
   updateTaskColumn(boardId: String!, columnId: String!, input: UpdateTaskColumnInput!, organizationId: String!, workspaceId: String!): TaskBoard!
   updateTaskComment(body: String!, commentId: String!, organizationId: String!, workspaceId: String!): TaskComment!
   updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, timeZone: String, workspaceId: String!): PermissionWriteResult!
+  voidBooksEntry(entryId: String!, organizationId: String!, reason: String!, workspaceId: String!): BooksEntry!
+  voidBooksProfitShare(organizationId: String!, reason: String!, shareId: String!, workspaceId: String!): BooksProfitShare!
   voidPosOrder(orderId: String!, organizationId: String!, reason: String!, version: Int!, workspaceId: String!): PosOrder!
 }
 
@@ -1029,6 +1237,10 @@ type Query {
   adminUserSessions(userId: String!): [AdminUserSession!]!
   adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
   appHubLayouts(organizationId: String!, workspaceId: String!): AppHubLayouts!
+  booksEntries(investorId: String, loanId: String, month: String, organizationId: String!, workspaceId: String!): BooksEntries!
+  booksOverview(organizationId: String!, workspaceId: String!): BooksOverview!
+  booksPosSalesPreview(organizationId: String!, toDay: String!, workspaceId: String!): BooksPosSales!
+  booksProfitSharePreview(kept: Float!, organizationId: String!, toDay: String!, workspaceId: String!): BooksProfitSharePlan!
   chatConversation(conversationId: String!): ChatConversation
   chatConversations: [ChatConversation!]!
   chatDirectoryLookup(email: String!): ChatDirectoryMatch
@@ -1231,6 +1443,31 @@ type QueueWindow {
   sortOrder: Int!
 }
 
+input RecordBooksEntryInput {
+  amount: Float!
+  category: String
+  clientId: String!
+  day: String!
+  description: String
+  kind: String!
+  loanId: String
+  place: String!
+  reference: String
+  toPlace: String
+}
+
+input RecordBooksInvestorEntryInput {
+  advance: Boolean
+  amount: Float!
+  clientId: String!
+  day: String!
+  description: String
+  investorId: String!
+  kind: String!
+  place: String
+  reference: String
+}
+
 input RefundPosOrderInput {
   amount: Float
   clientId: String!
@@ -1262,6 +1499,14 @@ input RoleDraftInput {
 input RoleLimitInput {
   limitKey: String!
   value: String!
+}
+
+input SaveBooksInvestorInput {
+  agreedShare: Int
+  contact: String
+  investorId: String
+  name: String!
+  note: String
 }
 
 input SavePosCustomerInput {
@@ -1301,6 +1546,7 @@ type SessionInfo {
 }
 
 type Subscription {
+  booksEvents(organizationId: String!, workspaceId: String!): BooksEvent!
   chatEvents(since: String): ChatEvent!
   noteEvents(organizationId: String!, workspaceId: String!): NoteEvent!
   notificationEvents: NotificationEvent!

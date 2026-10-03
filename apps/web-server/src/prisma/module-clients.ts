@@ -1,6 +1,12 @@
 import { APP_HUB_PRISMA } from '@kwtech/module-app-hub/server';
 import { AUTH_PRISMA, type AuthPrismaClient, type AuthTransaction } from '@kwtech/module-auth/server';
 import {
+  BOOKS_PRISMA,
+  BOOKS_PRISMA_WRITE,
+  type BooksTransaction,
+  type BooksWriteClient,
+} from '@kwtech/module-basic-bookkeeping/server';
+import {
   POS_PRISMA,
   POS_PRISMA_WRITE,
   type PosTransaction,
@@ -278,6 +284,32 @@ export const posWritePrismaProvider: Provider = {
       posRefundLine: prisma.posRefundLine,
       posCounter: prisma.posCounter,
       posSettings: prisma.posSettings,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const booksPrismaProvider: Provider = {
+  provide: BOOKS_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const booksWritePrismaProvider: Provider = {
+  provide: BOOKS_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): BooksWriteClient =>
+    withTransaction<BooksTransaction, BooksWriteClient>(prisma, {
+      /*
+       * ⚠ The settings row's lock, an entry and the balances it was checked
+       * against — and a profit share with its entries and the moved watermark —
+       * each move together, inside the transaction `withTransaction` dispatches.
+       * The lock taken outside it would guard nothing.
+       */
+      booksInvestor: prisma.booksInvestor,
+      booksLoan: prisma.booksLoan,
+      booksEntry: prisma.booksEntry,
+      booksSalesImport: prisma.booksSalesImport,
+      booksProfitShare: prisma.booksProfitShare,
+      booksSettings: prisma.booksSettings,
     }),
 };
 

@@ -1,5 +1,6 @@
 import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
+import { BOOKS_FEATURE_REGISTRY } from '@kwtech/module-basic-bookkeeping';
 import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY } from '@kwtech/module-basic-pos';
 import {
   CHAT_DEFAULT_MOMENT_REGISTRY,
@@ -153,6 +154,11 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    */
   { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY },
   { key: 'pos', features: POS_FEATURE_REGISTRY, limits: POS_LIMIT_REGISTRY },
+  /*
+   * ⚠ And the books' — who put in what, who is owed what. Leave this out and
+   * every bookkeeping operation is reachable by anybody signed in.
+   */
+  { key: 'books', features: BOOKS_FEATURE_REGISTRY },
   /*
    * ⚠ And notifications' — including the key that sends AS THE PLATFORM. Leave
    * this out and anybody signed in could send to anybody.

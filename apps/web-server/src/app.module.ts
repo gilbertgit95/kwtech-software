@@ -1,11 +1,20 @@
 import { appHubServerModule } from '@kwtech/module-app-hub/server';
 import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
 import {
+  BOOKS_ACCESS_CHECK,
+  BOOKS_MEMBER_DIRECTORY,
+  BOOKS_PUBSUB,
+  BOOKS_SALES_SOURCE,
+  BOOKS_WORKSPACE_TIME_ZONE,
+  booksServerModule,
+} from '@kwtech/module-basic-bookkeeping/server';
+import {
   POS_ACCESS_CHECK,
   POS_LIMIT_CHECKER,
   POS_MEMBER_DIRECTORY,
   POS_PUBSUB,
   POS_WORKSPACE_TIME_ZONE,
+  PosReportService,
   posServerModule,
 } from '@kwtech/module-basic-pos/server';
 import {
@@ -65,6 +74,10 @@ import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendMfaEmailCode } from './auth/mfa-code-mail.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
+import { BooksKeyAccess } from './books/access-check.js';
+import { BooksMemberDirectoryAdapter } from './books/member-directory.js';
+import { BooksPosSalesSource } from './books/sales-source.js';
+import { BooksWorkspaceTimeZoneAdapter } from './books/workspace-time-zone.js';
 import { ChatDefaults } from './chat/defaults-reader.js';
 import { ChatMailNotifier } from './chat/notify-mail.js';
 import { ChatPlatformAdmin } from './chat/platform-admin.js';
@@ -84,6 +97,8 @@ import { PosWorkspaceTimeZoneAdapter } from './pos/workspace-time-zone.js';
 import {
   appHubPrismaProvider,
   authPrismaProvider,
+  booksPrismaProvider,
+  booksWritePrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
   notePrismaProvider,
@@ -340,6 +355,48 @@ const NOTIFICATION_SERVER_MODULE: ServerModuleDescriptor = notificationServerMod
    * default is off, and production never turns it on.
    */
   allowHttpLinks: env.NODE_ENV === 'development',
+});
+
+/**
+ * The point of sale — a workspace sub-app. Its ports read other modules'
+ * tables: grants (costs in an answer, fixed discounts kept on an edit) and
+ * names for "by staff". The adapters are in ./pos/.
+ *
+ * HOISTED out of `SERVER_MODULES`, as notifications are, because the books
+ * import this same Nest module object to read the POS's takings
+ * (`PosReportService`): Nest dedupes by reference, and a second
+ * `posServerModule()` would be a second POS.
+ */
+const POS_SERVER_MODULE: ServerModuleDescriptor = posServerModule({
+  prismaProvider: posPrismaProvider,
+  prismaWriteProvider: posWritePrismaProvider,
+
+  // The `pos:items` cap from the plan. Omitted, the module holds its declared default.
+  limitCheckerProvider: { provide: POS_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+  // ⚠ Without it, costs are never shown and fixed discounts drop on every edit — fail closed.
+  accessCheckProvider: {
+    provide: POS_ACCESS_CHECK,
+    inject: [PermissionsService],
+    useFactory: (permissions: PermissionsService) => new PosKeyAccess(permissions),
+  },
+  // Without it, reports name nobody.
+  memberDirectoryProvider: {
+    provide: POS_MEMBER_DIRECTORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService) => new PosMemberDirectoryAdapter(prisma),
+  },
+  // The workspace's zone: which day a sale belongs to. Without it, every store runs on Asia/Manila.
+  workspaceTimeZoneProvider: {
+    provide: POS_WORKSPACE_TIME_ZONE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService) => new PosWorkspaceTimeZoneAdapter(prisma),
+  },
+
+  resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+  // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent till.
+  pubsubProvider: { provide: POS_PUBSUB, useValue: realtimePubSub() },
 });
 
 const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
@@ -609,41 +666,54 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
     pubsubProvider: { provide: TASK_PUBSUB, useValue: realtimePubSub() },
   }),
 
+  POS_SERVER_MODULE,
+
   /*
-   * The point of sale — a workspace sub-app. Its ports read other modules'
-   * tables: grants (costs in an answer, fixed discounts kept on an edit) and
-   * names for "by staff". The adapters are in ./pos/.
+   * The books — a workspace sub-app: cash on hand, investors, profit shares and
+   * loans. Its ports read other modules' tables (grants, names, the
+   * workspace's zone) and the POS's takings. The adapters are in ./books/.
    */
-  posServerModule({
-    prismaProvider: posPrismaProvider,
-    prismaWriteProvider: posWritePrismaProvider,
+  booksServerModule({
+    prismaProvider: booksPrismaProvider,
+    prismaWriteProvider: booksWritePrismaProvider,
 
-    // The `pos:items` cap from the plan. Omitted, the module holds its declared default.
-    limitCheckerProvider: { provide: POS_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
-
-    // ⚠ Without it, costs are never shown and fixed discounts drop on every edit — fail closed.
+    // ⚠ Without it, nobody may void an investor's entry — fail closed.
     accessCheckProvider: {
-      provide: POS_ACCESS_CHECK,
+      provide: BOOKS_ACCESS_CHECK,
       inject: [PermissionsService],
-      useFactory: (permissions: PermissionsService) => new PosKeyAccess(permissions),
+      useFactory: (permissions: PermissionsService) => new BooksKeyAccess(permissions),
     },
-    // Without it, reports name nobody.
+    // Without it, the ledger names nobody.
     memberDirectoryProvider: {
-      provide: POS_MEMBER_DIRECTORY,
+      provide: BOOKS_MEMBER_DIRECTORY,
       inject: [PrismaService],
-      useFactory: (prisma: PrismaService) => new PosMemberDirectoryAdapter(prisma),
+      useFactory: (prisma: PrismaService) => new BooksMemberDirectoryAdapter(prisma),
     },
-    // The workspace's zone: which day a sale belongs to. Without it, every store runs on Asia/Manila.
+    // The workspace's zone: which day "today" is. Without it, every workspace runs on Asia/Manila.
     workspaceTimeZoneProvider: {
-      provide: POS_WORKSPACE_TIME_ZONE,
+      provide: BOOKS_WORKSPACE_TIME_ZONE,
       inject: [PrismaService],
-      useFactory: (prisma: PrismaService) => new PosWorkspaceTimeZoneAdapter(prisma),
+      useFactory: (prisma: PrismaService) => new BooksWorkspaceTimeZoneAdapter(prisma),
+    },
+
+    /*
+     * ⚠ THE POS'S OWN MODULE INSTANCE, imported so its `PosReportService` can be
+     * injected: the same descriptor object that is in this list, never a second
+     * `posServerModule()` — that would build a second POS with its own
+     * resolvers, and the schema would refuse the duplicate types at boot.
+     * Without it, the books have no point of sale and sales are entered by hand.
+     */
+    imports: [POS_SERVER_MODULE.nestModule],
+    salesSourceProvider: {
+      provide: BOOKS_SALES_SOURCE,
+      inject: [PosReportService],
+      useFactory: (reports: PosReportService) => new BooksPosSalesSource(reports),
     },
 
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
 
-    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent till.
-    pubsubProvider: { provide: POS_PUBSUB, useValue: realtimePubSub() },
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent ledger.
+    pubsubProvider: { provide: BOOKS_PUBSUB, useValue: realtimePubSub() },
   }),
 
   /*

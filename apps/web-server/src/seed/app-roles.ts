@@ -1,5 +1,6 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
+import { BOOKS_ROLE_PRESETS, type BooksRolePreset } from '@kwtech/module-basic-bookkeeping';
 import { POS_ROLE_PRESETS, type PosRolePreset } from '@kwtech/module-basic-pos';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
@@ -411,6 +412,20 @@ function posPreset(key: string): PosRolePreset {
 }
 
 /**
+ * A bookkeeping preset, read by key. The owners keep the books themselves for
+ * now, so the owner preset folds into the workspace admin role; a workspace
+ * user gets NONE of it — the books say who is owed what, which a cashier has no
+ * reason to see. A bookkeeper who is not an owner is a combined role, built
+ * when one is needed (`.claude/rules/database.md`). THROWS if a preset is gone.
+ */
+function booksPreset(key: string): BooksRolePreset {
+  const preset = BOOKS_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset)
+    throw new Error(`module-basic-bookkeeping no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * Runs one workspace.
  *
  * EMPTY, and the registry explains why: `workspaces:share` is the only
@@ -478,6 +493,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...taskPreset('task-admin').features,
     // The point of sale: selling, discounts, refunds, items, reports and settings.
     ...posPreset('pos-manager').features,
+    // The books: cash on hand, recording money, investors and sharing profit.
+    ...booksPreset('books-owner').features,
   ],
   limits: {},
 };

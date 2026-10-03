@@ -1,4 +1,5 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
+import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
 import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
@@ -199,6 +200,16 @@ const TASK_CAPS = { [TASK_LIMIT.boards]: 20, [TASK_LIMIT.tasks]: 2000 };
  */
 const POS = Object.values(POS_FEATURE);
 
+/**
+ * The books, sold where the point of sale is: every tier except free. All three
+ * keys are workspace level, and there is no cap.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
+ * seeded before the books has none of these keys, and an operator adds them on
+ * `/admin/plans`. Until then the app is not on the Apps page (not_entitled).
+ */
+const BOOKS = Object.values(BOOKS_FEATURE);
+
 /** Active items and variants per store. The same in every tier for now. */
 const POS_CAPS = { [POS_LIMIT.items]: 1000 };
 
@@ -251,6 +262,7 @@ const STARTER: PlanDefinition = {
     ...NOTES,
     ...TASKS,
     ...POS,
+    ...BOOKS,
     ...APPS_PAGE,
   ],
   limits: {
@@ -292,6 +304,7 @@ const PRO: PlanDefinition = {
     ...NOTES,
     ...TASKS,
     ...POS,
+    ...BOOKS,
     ...APPS_PAGE,
   ],
   limits: {

@@ -20,6 +20,7 @@
     "@kwtech/module-notification": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
     "@kwtech/module-basic-pos": "workspace:*",
+    "@kwtech/module-basic-bookkeeping": "workspace:*",
     "@kwtech/module-queuing-window": "workspace:*",
     "@kwtech/module-task": "workspace:*",
     "@kwtech/web-ui": "workspace:*",

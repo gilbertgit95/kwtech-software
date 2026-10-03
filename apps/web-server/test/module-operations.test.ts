@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
+import { BOOKS_OPERATIONS } from '@kwtech/module-basic-bookkeeping';
 import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
@@ -63,6 +64,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   note: NOTE_OPERATIONS,
   task: TASK_OPERATIONS,
   pos: POS_OPERATIONS,
+  books: BOOKS_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {
