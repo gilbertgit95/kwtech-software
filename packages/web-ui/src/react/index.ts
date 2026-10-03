@@ -38,6 +38,17 @@ export {
   IconSetProvider,
   useIconSet,
 } from './icon-picker.js';
+export {
+  focusFirstListItem,
+  LIST_ATTRIBUTE,
+  LIST_ITEM,
+  LIST_ITEM_ATTRIBUTE,
+  LIST_KEYS,
+  type ListMove,
+  nextListIndex,
+  onListKeyDown,
+  searchIntoList,
+} from './list-keys.js';
 export { MultiSelect, type MultiSelectProps } from './multi-select.js';
 export { QrCode } from './qr-code.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';

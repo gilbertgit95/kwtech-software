@@ -587,6 +587,35 @@ Debounce rather than throttle. Throttling emits during the burst, which is
 exactly the prefixes nobody wanted — and responses can arrive out of order,
 leaving the results showing matches for `featur`.
 
+## Arrow keys through a list
+
+Any list where a person picks one row of several takes ↑ ↓ (and Home / End)
+to move the focus, and Enter to open the row in focus:
+
+```tsx
+const listRef = useRef<HTMLUListElement>(null);
+
+<input onKeyDown={searchIntoList(listRef)} />   {/* optional: ↓ leaves the search box for the list */}
+<ul ref={listRef} {...LIST_KEYS}>
+  <li><button type="button" {...LIST_ITEM} onClick={open}>…</button></li>
+</ul>
+```
+
+- **Each choice is a real `<button>`.** Enter and Space click it natively, so
+  nothing here "simulates" a click, and a row behaves the same whether it was
+  reached by mouse, Tab or an arrow.
+- **Moving never opens anything.** Focus moves, Enter decides.
+- Disabled choices are skipped, and the ends wrap.
+- Keys typed into an input inside the list stay the input's own, and arrows
+  with a modifier are left alone (the notes list reorders with
+  Ctrl+Shift+arrows).
+- The handler stops the key, so an outer listener (the point of sale's till
+  moves between cart lines on ↑ ↓) does not also act on it.
+
+Used by the point of sale (pending orders, variants, orders, customers, unpaid orders in reports,
+items), the books (investors, loans), tasks (the list view), notes (the index)
+and chat (the conversation list).
+
 ## Tones
 
 `playTone`, `unlockTones` and `toneState` at the package root synthesise short
