@@ -19,7 +19,9 @@ const FEATURE_MODULES = [..., booksWebModule()];
 
 One sub-app, `books` ("Books", icon `wallet`, order 50, gated on `books:read`),
 component `BooksApp`. No routes and no drawer entry. Sections: Overview, Money,
-Investors, Loans, and Settings for `books:manage_investors`.
+Investors, Loans, and Settings for `books:manage_investors`. The investors and
+loans lists take ↑ ↓ and Enter (`LIST_KEYS` from `@kwtech/web-ui/react`, on the
+list; `RowButton` is its choice).
 
 ## In a NestJS app
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS } from '@kwtech/web-ui/react';
 import { useCallback, useState } from 'react';
 import { investorStatement } from '../../domain/statements.js';
 import type { BooksInvestorView, BooksOverviewView, BooksProfitShareView } from '../books-client.js';
@@ -54,7 +54,7 @@ export function InvestorsSection({
         Profit is shared {overview.shareMode === 'agreed' ? 'by the agreed percentages' : 'by capital put in'}
         {overview.sharedThrough ? `, and has been shared through ${formatDay(overview.sharedThrough)}.` : '.'}
       </p>
-      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
+      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
         {overview.investors.length === 0 ? <Empty>No investors yet.</Empty> : null}
         {overview.investors.map((investor) => (
           <RowButton key={investor.id} selected={investor.id === selectedId} onClick={() => setSelectedId(investor.id)}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS } from '@kwtech/web-ui/react';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { loanStatement } from '../../domain/statements.js';
 import type { BooksLoanView, BooksOverviewView } from '../books-client.js';
@@ -42,7 +42,7 @@ export function LoansSection({
           </button>
         </div>
       ) : null}
-      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
+      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
         {overview.loans.length === 0 ? <Empty>The business has not lent anybody money.</Empty> : null}
         {overview.loans.map((loan) => (
           <RowButton key={loan.id} selected={loan.id === selectedId} onClick={() => setSelectedId(loan.id)}>
