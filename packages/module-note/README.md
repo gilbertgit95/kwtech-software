@@ -29,6 +29,10 @@ notes list and the open note hides and shows the list at any width
 narrow (it steps aside again once a note is picked, or on Escape), and filling
 the box when narrow with no note open.
 
+The index takes ↑ ↓ between notes and Enter to open the one in focus
+(`LIST_KEYS` from `@kwtech/web-ui/react`). Plain arrows only: Ctrl+Shift+arrows
+still reorder.
+
 ### Fonts — the app loads them
 
 The module reads three CSS variables and cannot load a font itself (its React

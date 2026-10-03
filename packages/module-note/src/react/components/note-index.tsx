@@ -3,7 +3,7 @@
 import { DndContext, type DragEndEvent, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { rectSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
 import { Pin, Search, Users } from 'lucide-react';
 import { type KeyboardEvent, useId } from 'react';
 import type { NoteLook } from '../../domain/appearance.js';
@@ -191,6 +191,8 @@ function NoteSection({
         <ul
           aria-label={label}
           className={sticky ? 'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3 p-3' : undefined}
+          // ↑ ↓ between notes, Enter opens the one in focus. Plain arrows only: Ctrl+Shift+arrows still reorder (below).
+          {...LIST_KEYS}
         >
           {notes.map((note) => (
             <SortableNote
@@ -251,6 +253,8 @@ function SortableNote({
       'aria-disabled': undefined,
       'aria-describedby': hintId ?? undefined,
       onKeyDown,
+      // The element that is dragged is also the list's choice: the row or card button.
+      ...LIST_ITEM,
     },
   };
   return (
