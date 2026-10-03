@@ -1,7 +1,7 @@
 'use client';
 
 import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
 import { useId, useState } from 'react';
 import { workspaceTaskDay } from '../../domain/dates.js';
 import type { TaskCardView } from '../task-client.js';
@@ -93,11 +93,12 @@ function CardGroup({
       {cards.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nothing here.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card">
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card" {...LIST_KEYS}>
           {cards.map((card) => (
             <li key={card.id}>
               <button
                 type="button"
+                {...LIST_ITEM}
                 aria-current={card.id === state.openTaskId ? 'true' : undefined}
                 onClick={() => state.open(card.id)}
                 className={cn(

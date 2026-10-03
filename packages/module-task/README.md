@@ -7,7 +7,9 @@ makes its **columns** and decides whether it is **private** (only them) or
 in a **list**; each has one assignee by default and may have several, who are
 **notified**. Tasks carry an optional **scheduled** day and **due** day, a
 priority, labels, a checklist and comments. Boards update **live**, and **My
-tasks** gathers what is assigned to you across every board you can open.
+tasks** gathers what is assigned to you across every board you can open. The
+list view takes ↑ ↓ between tasks and Enter to open one (`LIST_KEYS` from
+`@kwtech/web-ui/react`).
 
 The plan and the review behind it: `docs/TASK-PLAN.md`. The decision: PLAN §13,
 2026-09-28.
