@@ -1,10 +1,17 @@
 'use client';
 
-import { cn, LIST_ITEM } from '@kwtech/web-ui/react';
-import type { LucideIcon } from 'lucide-react';
+import {
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  LIST_ITEM,
+} from '@kwtech/web-ui/react';
+import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { StatusTone } from '../view/manage.js';
-import { buttonClass, INPUT_CLASS } from './controls.js';
+import { buttonClass } from './controls.js';
 
 /*
  * The app's shared frame (D23): the section bar, a section's tabs,
@@ -20,6 +27,75 @@ function CountBadge({ count }: { count: number | undefined }) {
     <span className="rounded-full bg-status-warning px-1.5 text-[10px] text-status-warning-foreground tabular-nums">
       {count}
     </span>
+  );
+}
+
+/**
+ * The section bar on a narrow panel: one button naming the section you are in,
+ * opening a menu of them all. Our own menu rather than a native `<select>`,
+ * which cannot draw a section's icon or its count and looked like a form field
+ * dropped into the navigation (the operator, 2026-10-03).
+ */
+function SectionMenu<K extends string>({
+  sections,
+  current,
+  onChange,
+}: {
+  sections: readonly { key: K; label: string; icon: LucideIcon; badge?: number }[];
+  current: K;
+  onChange: (key: K) => void;
+}) {
+  const active = sections.find((entry) => entry.key === current);
+  // Folded, the other sections' counts are out of sight: say that one of them needs somebody.
+  const waitingElsewhere = sections.some((entry) => entry.key !== current && entry.badge);
+  return (
+    <div className="pb-2 @xl:hidden">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className={cn(
+            'group inline-flex h-10 max-w-full items-center gap-2 rounded-lg border border-border bg-background pr-2.5 pl-3 text-sm font-medium shadow-xs transition-colors',
+            'hover:bg-accent data-[state=open]:bg-accent',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          )}
+        >
+          {active ? <active.icon aria-hidden="true" className="size-4 shrink-0 text-primary" /> : null}
+          <span className="sr-only">Section: </span>
+          <span className="truncate">{active?.label ?? 'Choose a section'}</span>
+          <CountBadge count={active?.badge} />
+          {waitingElsewhere ? (
+            <span className="size-2 shrink-0 rounded-full bg-status-warning-foreground">
+              <span className="sr-only">Another section needs attention</span>
+            </span>
+          ) : null}
+          <ChevronDown
+            aria-hidden="true"
+            className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-56 rounded-xl p-1.5">
+          {sections.map((entry) => {
+            const chosen = entry.key === current;
+            return (
+              <DropdownMenuItem
+                key={entry.key}
+                role="menuitemradio"
+                aria-checked={chosen}
+                // py-2.5: a narrow panel is usually a phone, so a row is a thumb's height.
+                className={cn('gap-2.5 rounded-lg px-2.5 py-2.5', chosen ? 'bg-accent/60 font-semibold' : null)}
+                onSelect={() => onChange(entry.key)}
+              >
+                <entry.icon aria-hidden="true" className={chosen ? 'text-primary' : 'text-muted-foreground'} />
+                {entry.label}
+                <span className="ml-auto flex items-center gap-2 pl-4">
+                  <CountBadge count={entry.badge} />
+                  <Check aria-hidden="true" className={cn('text-primary', chosen ? null : 'invisible')} />
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -48,22 +124,7 @@ export function SectionBar<K extends string>({
 }) {
   return (
     <nav aria-label={label} className="flex min-w-0 items-center gap-3 border-b border-border">
-      <label className="pb-2 @xl:hidden">
-        <span className="sr-only">Section</span>
-        <select
-          className={cn(INPUT_CLASS, 'w-auto font-medium')}
-          value={current}
-          // The options are the sections above, so the value is one of them.
-          onChange={(event) => onChange(event.target.value as K)}
-        >
-          {sections.map((entry) => (
-            <option key={entry.key} value={entry.key}>
-              {entry.label}
-              {entry.badge ? ` (${entry.badge})` : ''}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SectionMenu sections={sections} current={current} onChange={onChange} />
       <div className="hidden flex-wrap items-center gap-1 @xl:flex">
         {sections.map((entry) => {
           const active = entry.key === current;
