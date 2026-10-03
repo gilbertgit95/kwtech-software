@@ -1,6 +1,8 @@
 # Bookkeeping app — plan (draft)
 
-Status: **ideas captured, 2026-09-29, not scheduled.** Collected while planning
+Status: **v1 built, 2026-10-03, as `packages/module-basic-bookkeeping`** (prefix
+`books`). §7 says what v1 decided and what it left out; the rest of this page is
+the draft it was built from. Ideas first captured 2026-09-29, while planning
 `module-basic-pos` (`docs/POS-PLAN.md`), when the operator asked how an owner
 knows their capital, reinvestment and investors. It is **not part of POS v1**:
 it is bookkeeping, not selling, so it is planned as its own sub-app, after POS
@@ -121,3 +123,35 @@ worth buying"). Optional: one card on the POS dashboard, "capital paid back
 - Cash on hand: computed from POS cash and entries, or counted and entered?
 - Investor sign-in (view-only): wanted, and when?
 - Depreciation of equipment: needed, or out of scope for a small business?
+
+## 7. What v1 decided (2026-10-03)
+
+The answers to §6, and the additions the operator asked for. The decision is
+PLAN §13, 2026-10-03; the module's contract is its README.
+
+- **One app**, "Books", on the Apps page after the POS. Sections: Overview,
+  Money (the cash book by month), Investors, Loans, Settings (owners only).
+- **All capital from all profit.** Payback per machine is not built.
+- **Profit is shared on demand**, through a day the owners choose, from the day
+  after the last share. By capital (default) or by agreed percentages, set in
+  Settings. The owners may keep part of it in the business; the rest becomes
+  each investor's "still owed". A loss is not shared; the period stays open and
+  the loss comes off the next profit.
+- **Cash on hand is computed** from the entries, per place (cash, e-wallet,
+  bank). A count that disagrees is recorded as a count adjustment. A balance
+  below zero is shown, not refused: usually it means sales are not in yet.
+- **Sales come from the POS** when a first day is chosen in Settings: whole
+  days, once, in order, as money by place (cards land in the bank) plus cost
+  of goods. Without the POS, sales are recorded by hand.
+- **Loans (added):** the business lends to a borrower (anyone, not
+  necessarily an investor), lends more, and records repayments up to what is
+  owed.
+- **Paying investors:** payouts from what they are owed, in any number of
+  parts, or as a marked advance; capital returns up to their capital;
+  reinvesting owed profit as capital. A former investor is one whose capital
+  is all back.
+- **Every entry is kept.** A mistake is voided with a reason; a profit share or
+  a POS import is voided whole, latest first.
+- **Not in v1:** depreciation, investor sign-in, buyouts as their own entry
+  (record a capital return and payouts), printable slips and statements, the
+  "payback over time" chart, payback per machine, a POS dashboard card.

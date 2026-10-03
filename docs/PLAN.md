@@ -565,10 +565,50 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 83 | Nobody is reminded when a task is due | when somebody asks for a reminder on the scheduled or due day | Needs the job runner (§12.40) and, for times, a time zone per workspace. The dates are DAYS today; a time would be stored as a UTC instant and shown in the viewer's zone (TASK-PLAN §0 E) |
 | 84 | Who may be assigned is worked out one member at a time | when a workspace has hundreds of members | `listAssignable` loads a permission context per active member, capped at 200 — the queue's staff directory does the same. A grants query that answers "who holds `task:write` here" in one read is the fix |
 | 85 | One workspace role per member, while a workspace holds several sub-apps | when combined roles in `seed/app-roles.ts` multiply, or a customer needs a combination the platform has not declared | §12.32 settled one workspace role per member before sub-apps existed. A cashier who also supervises the queue needs one role carrying both presets, and the number of such roles multiplies with every app. **Interim:** combined roles declared in `app-roles.ts` as a union of module presets, never cloned on the Roles screen, so a preset change reaches them on sync (`.claude/rules/database.md`, "Combined workspace roles"). **Proposed:** one role per APP per member: a `scope` on `PermRole` (`workspace` or a module key), the same on `PermWorkspaceMemberRole` with `@@unique([workspaceMemberId, scope])` and a composite FK `(roleId, scope)`, and a service check that an app role holds only its module's keys. **Considered and not preferred:** role groups (a role that includes other roles) fix drift but not the multiplying combinations, and need a "one role per app inside a group" rule, which is the per-app slot again. Cheapest before `module-basic-pos` has real grants |
+| 86 | The books add every balance up in memory, from every live entry | when one workspace's books pass `BOOKS_LEDGER_MAX` (50,000 live entries) — a busy store recording by hand for years | Balances are never stored, so they cannot disagree with the entries (BOOKKEEPING-PLAN). Each overview reads every live entry and sums them in `src/domain/`; past the cap the answer says `truncated`. Fix: sums in the database (`aggregate`/`groupBy` per kind, place and investor), keeping the domain as the rule the SQL is tested against |
+| 87 | The controls (`buttonClass`, `Modal`, `Field`) and the app frame now exist in three modules | now — this is the third copy (tasks, POS, books) | Copied structurally because a module may not import another. The rule says the third copy moves them to `web-ui`; not done inside the books change, so it is a refactor of its own across three modules |
+| 88 | Sales brought in from the POS are dated the last day of the run they cover | when somebody shares profit for a period that ends in the middle of an import | One import is one entry per place, dated its last day, so profit by day sees the whole run on that day. Sharing waits until the POS is in through the share's last day (`sales_not_recorded`), so a run never straddles a share — but a month table counts a run from Sep 28 to Oct 3 in October. Importing day by day fixes it at three entries a day |
+| 89 | The books keep one bookkeeper role inside the owner role | when a business has a bookkeeper who is not an owner | `workspace-admin` holds `books-owner`; `workspace-user` holds no book key. A bookkeeper who records money but must not pay the owners needs a combined role (§12.85) built from `books-bookkeeper` |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-03** — **Bookkeeping is its own sub-app, `module-basic-bookkeeping` (prefix `books`): one ledger of entries, every balance added up from it, and the POS's sales brought in through a port.**
+
+  The operator asked to track investments, investors, reinvestment, cash on
+  hand from sales, money the business lends, and paying investors —
+  BOOKKEEPING-PLAN's draft, plus loans.
+  - **One `BooksEntry` per movement**, its kind deciding the direction
+    (`entryDirection`). Cash on hand, an investor's capital and what they are
+    owed, and a loan's balance are ADDED UP, never stored (principle 5).
+  - **Nothing is edited or deleted.** A mistake is voided — kept, with who, when
+    and why. A profit share or a POS import is voided whole, and only the latest.
+  - **Profit is shared on demand**, through a day the owners choose, from the day
+    after the last share, by capital (default) or by agreed percentages, minus
+    what they keep in the business. Each part becomes OWED, paid out in any
+    number of parts; a payout over what is owed must be marked an advance. A
+    loss is not shared: the period stays open. Once shared, the kinds that
+    decide a share (sales, refunds, expenses, capital) are closed in it.
+  - **Reinvestment is two things**: profit kept when sharing, and an investor
+    turning owed profit into capital (`reinvest`). A purchase of equipment or
+    stock is not an expense; stock is costed when the POS sells it.
+  - **POS sales come in as money, by place, with cost of goods**
+    (`BOOKS_SALES_SOURCE` → `PosReportService.takings`, which gained
+    `costOfGoods`), in whole days, once, in order (`posRecordedThrough`), and
+    profit waits for them. Unbound, there is no POS and sales are entered by hand.
+  - **Every write takes the books' lock** — an upsert on `books_settings` that
+    bumps its version — so two payouts cannot both fit in one investor's owed
+    balance, and a share commits only if nothing was written since.
+  - **Amounts are `BigInt` columns**, read back as safe-integer numbers; an
+    entry is capped at ₱1B.
+  - **Keys**: `books:read`, `books:record`, `books:manage_investors`
+    (privileged). Workspace admins hold all three; workspace users none. Sold
+    in Starter, Pro and Enterprise.
+  - **Not done**: depreciation, investor sign-in, buyouts as their own kind,
+    payback per machine, sums in the database (§12.86), moving the shared
+    controls to `web-ui` (§12.87), day-by-day imports (§12.88), a bookkeeper
+    role without the owner's keys (§12.89).
 
 - **2026-09-29** — **A workspace has ONE time zone (`perm_workspace.timeZone`,
   default Asia/Manila), and every workspace app's "today" follows it.**
