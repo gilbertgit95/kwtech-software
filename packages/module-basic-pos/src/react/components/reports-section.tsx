@@ -734,7 +734,7 @@ const NUM = 'text-right tabular-nums';
 
 function SummaryReport({ report, timeZone }: { report: PosReportView; timeZone: string }) {
   return (
-    <div className="flex max-w-xl flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div className="flex gap-2">
         <button
           type="button"
@@ -843,7 +843,7 @@ function breakdownOf(
 function HourReport({ report }: { report: PosReportView }) {
   const rows = report.byHour.filter((row) => row.orders > 0);
   return (
-    <div className="flex max-w-xl flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div>
         <CsvButton table="hour" report={report} />
       </div>
