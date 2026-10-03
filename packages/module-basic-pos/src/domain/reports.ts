@@ -121,6 +121,13 @@ export interface PosSummary {
    * gone either way, and a profit that ignores it would flatter the day.
    */
   profit: number | null;
+  /**
+   * Σ unit cost × quantity over the sold lines that had a cost — what the goods
+   * sold cost the store. The bookkeeping app takes it with the takings, so its
+   * profit counts stock when it SELLS (BOOKKEEPING-PLAN §1). 0 when no line had
+   * a cost; `costCoverage` says how much of the sales it covers.
+   */
+  costOfGoods: number;
   /** How much of the sales had a cost entered, in basis points: "profit covers 80% of sales". */
   costCoverage: number;
   unpaidReleased: { count: number; amount: number };
@@ -145,6 +152,7 @@ export function summarize(
   let total = 0;
   let tips = 0;
   let costed = 0;
+  let costOfGoods = 0;
   let costedNet = 0;
   let allNet = 0;
   let hasCost = false;
@@ -163,6 +171,7 @@ export function summarize(
       hasCost = true;
       costedNet += line.net;
       costed += line.net - line.unitCost * line.quantity;
+      costOfGoods += line.unitCost * line.quantity;
     }
   }
 
@@ -207,6 +216,7 @@ export function summarize(
     byMethod,
     cashExpected: cashIn - cashChange - refundedCash,
     profit: hasCost ? costed - refunded : null,
+    costOfGoods,
     costCoverage: allNet === 0 ? 0 : Math.floor((costedNet * 10_000) / allNet),
     unpaidReleased: countAndSum(released, (order) => order.total),
     unpaidCollected: countAndSum(collected, (order) => order.total),

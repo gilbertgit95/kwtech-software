@@ -123,6 +123,8 @@ describe('summarize', () => {
   it('counts profit on costed lines only, and says how much of the sales that covers', () => {
     // Magnets: 140,000 − 600 × 100 = 80,000, less the ₱15 refund.
     expect(day.profit).toBe(80_000 - 1500);
+    // What the costed lines cost — the magnets' ₱6 × 100 — untouched by the refund.
+    expect(day.costOfGoods).toBe(60_000);
     expect(day.costCoverage).toBe(Math.floor((140_000 * 10_000) / (140_000 + 9000)));
   });
 

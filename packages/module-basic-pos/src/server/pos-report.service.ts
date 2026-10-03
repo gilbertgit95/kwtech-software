@@ -104,6 +104,20 @@ export class PosReportService {
     };
   }
 
+  /**
+   * The takings alone for the store days `fromDay`…`toDay` — the summary the
+   * dashboard's first row shows, without the comparison, series and tables.
+   * What the app hands the bookkeeping app's `BooksSalesSource`
+   * (`apps/web-server/src/books/sales-source.ts`).
+   */
+  async takings(scope: InScope, fromDay: string, toDay: string): Promise<{ summary: PosSummary; truncated: boolean }> {
+    const timeZone = await this.zones.of(scope);
+    daysBetween(fromDay, toDay);
+    const period = this.period(fromDay, toDay, timeZone);
+    const current = await this.read(scope, period);
+    return { summary: summarize(current.orders, current.refunds, period), truncated: current.truncated };
+  }
+
   /** Store days → instants, refusing a malformed or oversized range. */
   private period(fromDay: string, toDay: string, timeZone: string): PosPeriod {
     const from = zonedStartOfDay(fromDay, timeZone);

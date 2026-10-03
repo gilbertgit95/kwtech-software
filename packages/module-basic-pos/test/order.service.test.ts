@@ -382,6 +382,20 @@ describe('what the API answers', () => {
     expect(report.previousSeries).toEqual([{ key: day, orders: 1, sales: 15_000, refunds: 0 }]);
   });
 
+  it('gives the takings alone, with what the goods sold cost — the bookkeeping app’s sales', async () => {
+    const { writes, reports, magnet } = await shop();
+    let order = await writes.create(SCOPE, BEN, null);
+    order = await writes.addLine(SCOPE, BEN, ref(order), { itemId: magnet.id, quantity: 10 });
+    order = await writes.pay(SCOPE, BEN, ref(order), cash(20_000));
+    const day = (order.paidAt ?? new Date()).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const { summary, truncated } = await reports.takings(SCOPE, day, day);
+    // Ten magnets at ₱15 that cost ₱6 each: ₱150 taken, ₱60 of goods.
+    expect(summary).toMatchObject({ orders: 1, netSales: 15_000, costOfGoods: 6000, costCoverage: 10_000 });
+    expect(summary.byMethod.cash).toBe(15_000);
+    expect(truncated).toBe(false);
+    expect(await refusal(reports.takings(SCOPE, '2026-10-02', '2026-10-01'))).toBe('invalid_period');
+  });
+
   it('refuses a report over a backwards or oversized period', async () => {
     const { reports } = await shop();
     expect(await refusal(reports.report(SCOPE, '2026-10-02', '2026-10-01'))).toBe('invalid_period');
