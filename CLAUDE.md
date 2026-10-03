@@ -50,6 +50,7 @@ each ship a fragment of it.
 ```bash
 pnpm dev                 # dev database + every package watcher + both apps
 pnpm dev:api | dev:web   # one side only
+pnpm dev:focus <package>…   # both apps, watching only the named packages (less memory)
 pnpm typecheck
 pnpm test                # jest in packages and web-server
 pnpm lint                # biome, then the package boundary check; pnpm check:fix writes the fixes

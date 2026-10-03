@@ -211,6 +211,7 @@ writes to a database, `pnpm env:show` tells you which one you are pointed at.
 pnpm dev                 # everything
 pnpm dev:api             # database + API only (and the packages it needs)
 pnpm dev:web             # web app only
+pnpm dev:focus module-task   # both apps, watching only the named packages (less memory)
 pnpm dev:stop            # free :8080 / :8081
 pnpm dev:ports           # what holds them
 
@@ -264,5 +265,5 @@ set the same variables in the host instead of using profile files.
 | Errors about a table or column that does not exist | the database is behind the code: `pnpm db:migrate` (then `pnpm db:sync`) |
 | A page refuses you ("not available to you") | your roles lack the key. Set `SEED_SUPER_ADMIN_EMAIL` to your address and `pnpm db:seed`, or grant a role in Administration |
 | The notification bell shows a grey or amber dot | the live connection is down or reconnecting — is the API running? "Retry now" in the bell reconnects at once |
-| A package change does not show up | the watcher may have stopped: restart `pnpm dev` (or `pnpm build` the package) |
+| A package change does not show up | under `pnpm dev:focus`, only the packages you named are watched: name that one too. Otherwise the watcher may have stopped: restart `pnpm dev` (or `pnpm build` the package) |
 | Everything is strange | start the database over (section 7), and `pnpm install` again |

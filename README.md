@@ -110,12 +110,19 @@ for each case are in
 Editing a `packages/*` file rebuilds it and the running apps pick the change up;
 there is no separate build step while developing.
 
+That is one `tsc --watch` per package, which is heavy on a machine with little
+memory. When the work is in one or two packages, `pnpm dev:focus module-task`
+(add more names, or `--api` / `--web`) runs the apps and watches only those.
+Every other package is still built once at the start, but an edit to one of
+them does not show up until you name it too or go back to `pnpm dev`.
+
 ## Commands
 
 ```bash
 pnpm dev              # everything: package watchers + both apps
 pnpm dev:api          # just the API, and the packages it needs
 pnpm dev:web          # just the frontend, and the packages it needs
+pnpm dev:focus module-task   # both apps, watching ONLY the packages named (lighter)
 
 pnpm build            # everything, in dependency order
 pnpm start            # run the built apps

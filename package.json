@@ -14,6 +14,7 @@
     "dev": "node scripts/env.mjs ensure && node scripts/dev-ports.mjs && node scripts/dev-db.mjs && turbo run dev",
     "dev:api": "node scripts/env.mjs ensure && node scripts/dev-ports.mjs --ports=8080 && node scripts/dev-db.mjs && turbo run dev --filter=@kwtech/web-server...",
     "dev:web": "node scripts/env.mjs ensure && node scripts/dev-ports.mjs --ports=8081 && turbo run dev --filter=@kwtech/web-app...",
+    "dev:focus": "node scripts/dev-focus.mjs",
     "env:show": "node scripts/env.mjs",
     "env:use": "node scripts/env.mjs use",
     "env:new": "node scripts/env.mjs new",
