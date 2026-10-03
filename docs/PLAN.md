@@ -569,10 +569,67 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 87 | The controls (`buttonClass`, `Modal`, `Field`) and the app frame now exist in three modules | now — this is the third copy (tasks, POS, books) | Copied structurally because a module may not import another. The rule says the third copy moves them to `web-ui`; not done inside the books change, so it is a refactor of its own across three modules |
 | 88 | Sales brought in from the POS are dated the last day of the run they cover | when somebody shares profit for a period that ends in the middle of an import | One import is one entry per place, dated its last day, so profit by day sees the whole run on that day. Sharing waits until the POS is in through the share's last day (`sales_not_recorded`), so a run never straddles a share — but a month table counts a run from Sep 28 to Oct 3 in October. Importing day by day fixes it at three entries a day |
 | 89 | The books keep one bookkeeper role inside the owner role | when a business has a bookkeeper who is not an owner | `workspace-admin` holds `books-owner`; `workspace-user` holds no book key. A bookkeeper who records money but must not pay the owners needs a combined role (§12.85) built from `books-bookkeeper` |
+| 90 | A cart left on a till that never comes back stays in the database, listed nowhere | when open, never-held `pos_order` rows pile up — a till's browser storage is cleared, or a cashier walks away from a cart for good | Only Hold makes a pending order (§13, 2026-10-03), and a till remembers its open cart in the browser to put it back after a reload. A cart whose till forgot it is still saved and reachable by id, but no list shows it. It counts in no report (those read paid orders). Cancelling open, unheld carts older than a day is a job for the job runner (§12.40) |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-03** — **In the point of sale, only Hold makes a pending order (`pos_order.heldAt`).**
+
+  The operator tried a few items at the till and found them in Pending. An
+  order is saved from its first line (POS-PLAN §3), and "pending" was every
+  open order (D8: "no extra status"), so every cart ever started was listed,
+  whether or not anybody set it aside.
+  - **`heldAt`, set by a new `holdPosOrder`.** Pending is now open AND held.
+    A cart still being built is listed in no tab, All and a customer's history
+    included: it is one till's cart, not an order the store is waiting on.
+  - **Still no extra status.** A held order is `open` with a time on it, so
+    every rule about open orders (lines may change, pay, cancel) is untouched.
+  - **A resumed order is the same order.** Changes after Resume are written to
+    it, as before, and it stays in Pending while it is on a till. Holding it
+    again keeps the time it was first held.
+  - **A till remembers its open cart** (browser storage, per workspace) and
+    puts it back after a reload, so an unheld cart is not stranded: saved, and
+    out of everyone's reach.
+  - **The migration marks every order open at that moment as held**, at the
+    time it was started. Real held orders could not be told from abandoned
+    carts, and hiding a real one is the worse mistake; a try can be cancelled
+    from the list.
+  - **Not done:** nothing removes a cart whose till never comes back (§12.90).
+    `setPosOrderLabel` is kept, though the till no longer calls it.
+
+- **2026-10-03** — **In the point of sale, an order, item or customer opens in a drawer over its list, not beside it.**
+
+  The operator asked for Orders, Items and Customers to open on the list alone
+  and for a row to slide its detail in from the right. Before (POS-PLAN D23)
+  the detail sat beside the list in a wide panel and replaced it in a narrow
+  one, so the list was always squeezed into two fifths of the width.
+  - **One component, `ListDetail`** (`module-basic-pos`, `components/layout.tsx`):
+    the three tabs already shared it, so they changed together.
+  - **It closes three ways:** the Close button, a press outside it, and Esc.
+    Esc closes only the drawer (one Esc, one step back), and a dialog opened
+    from the drawer (refund, void) still takes its own Esc first.
+  - **Previous and Next walk the list as shown** — the tab, the search, the
+    archived filter — with "3 of 20" beside them (`listNeighbours`, pure, with
+    jest tests). Something open that is not in the list (a new, unsaved one)
+    has no neighbours.
+  - **The drawer stays inside the POS panel** (`absolute`, not `fixed` or a
+    modal `<dialog>`): in a grid cell on the Apps page a viewport drawer would
+    cover the apps beside it. The list behind is `inert` while it is open.
+  - **It is the raised surface (`card`) over a BLACK scrim.** A scrim in the
+    theme's foreground lit the list up on a dark theme instead of dimming it.
+    The slide is an animation on `transform` alone, so it runs off the main
+    thread while the detail loads; as a style transition it stuttered.
+  - **Every modal's backdrop is black too** (`Modal` in the point of sale, the
+    books and tasks): the same foreground scrim, the same fault on a dark
+    theme. `ConfirmDialog` in `web-ui` was already black.
+  - **The dashboard has a Chart / Table switch** (Reports), opening on Chart:
+    the same four panels as tables. The toggles there became joined button
+    groups, since two separate buttons read as two actions.
+  - **Not done:** the drawer does not ask before closing a form with unsaved
+    edits (opening another row never did either), and Previous / Next have no
+    keys of their own. Not extracted to `web-ui`: one consumer (principle 9).
 
 - **2026-10-03** — **Every list where a person picks one row takes ↑ ↓ and Enter, from one helper in `web-ui` (`list-keys`).**
 
