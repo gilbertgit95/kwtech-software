@@ -22,6 +22,7 @@ import {
   customerInitials,
   customerSummary,
   emailHref,
+  listNeighbours,
   orderStatusChip,
   orderTitle,
   phoneHref,
@@ -57,13 +58,22 @@ export function CustomersSection({ state, onOpenOrder }: { state: TillState; onO
   const list = usePosData(scope, load, ['customers'], 'Could not load the customers.');
   const rows = list.data ?? [];
   const searching = settled.trim() !== '';
+  const around = listNeighbours(
+    rows.map((row) => row.id),
+    selected,
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <Alert message={list.error} />
       <ListDetail
-        onBack={() => setSelected(null)}
-        backLabel="Back to customers"
+        onClose={() => setSelected(null)}
+        label="customer"
+        step={{
+          onPrevious: around.previous ? () => setSelected(around.previous) : null,
+          onNext: around.next ? () => setSelected(around.next) : null,
+          position: around.position,
+        }}
         list={
           <>
             <div className="flex gap-2">

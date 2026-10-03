@@ -11,6 +11,7 @@ import {
   itemForm,
   itemInput,
   itemKeyTarget,
+  listNeighbours,
   moveEntry,
   orderActions,
   orderListTotal,
@@ -269,5 +270,25 @@ describe('hot keys', () => {
     expect(itemKeyTarget({ itemId: 'mag', variantId: null }, items).broken).toBe(true);
     expect(itemKeyTarget({ itemId: 'gone', variantId: null }, items).broken).toBe(true);
     expect(itemKeyTarget({ itemId: 'lam', variantId: 'nope' }, items).broken).toBe(true);
+  });
+});
+
+describe('listNeighbours', () => {
+  const ids = ['a', 'b', 'c'];
+
+  it('gives the rows either side and the place in the list', () => {
+    expect(listNeighbours(ids, 'b')).toEqual({ previous: 'a', next: 'c', position: '2 of 3' });
+  });
+
+  it('has no previous at the top and no next at the bottom', () => {
+    expect(listNeighbours(ids, 'a')).toEqual({ previous: null, next: 'b', position: '1 of 3' });
+    expect(listNeighbours(ids, 'c')).toEqual({ previous: 'b', next: null, position: '3 of 3' });
+  });
+
+  it('steps nowhere from something that is not in the list', () => {
+    const nowhere = { previous: null, next: null, position: null };
+    expect(listNeighbours(ids, 'new')).toEqual(nowhere);
+    expect(listNeighbours(ids, null)).toEqual(nowhere);
+    expect(listNeighbours([], 'a')).toEqual(nowhere);
   });
 });

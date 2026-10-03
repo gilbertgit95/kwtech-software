@@ -12,6 +12,7 @@ import {
   type ItemForm,
   itemForm,
   itemInput,
+  listNeighbours,
   moveEntry,
   newVariantKey,
   type VariantForm,
@@ -86,11 +87,20 @@ function ItemsPanel({
   const items = filterItems(catalogue.items, catalogue.categories, search, showArchived);
   const categoryName = new Map(catalogue.categories.map((category) => [category.id, category.name]));
   const item = selected && selected !== 'new' ? (catalogue.items.find((row) => row.id === selected) ?? null) : null;
+  const around = listNeighbours(
+    items.map((row) => row.id),
+    selected,
+  );
 
   return (
     <ListDetail
-      onBack={() => open(null)}
-      backLabel="Back to items"
+      onClose={() => open(null)}
+      label="item"
+      step={{
+        onPrevious: around.previous ? () => open(around.previous) : null,
+        onNext: around.next ? () => open(around.next) : null,
+        position: around.position,
+      }}
       list={
         <>
           <div className="flex gap-2">

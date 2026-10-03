@@ -9,6 +9,7 @@ import type { PosOrderLineView, PosOrderView, PosRefundInput } from '../pos-clie
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
 import {
+  listNeighbours,
   ORDER_TABS,
   type OrderListTotal,
   type OrderTab,
@@ -29,7 +30,7 @@ import { printHtml } from './till.js';
 
 /**
  * Orders (D23): Today, Pending, Unpaid, Change owed, Cancelled, All — a list,
- * and the order beside it with what may be done to it: resume an open one,
+ * and the order in a drawer over it with what may be done to it: resume an open one,
  * take payment for an unpaid one or void it, refund a paid one, settle owed
  * change, reprint.
  *
@@ -60,6 +61,10 @@ export function OrdersSection({
   const load = useCallback(() => client.orders(scope, tab, settled || null), [client, scope, tab, settled]);
   const list = usePosData(scope, load, ['order'], 'Could not load the orders.');
   const rows = list.data ?? [];
+  const around = listNeighbours(
+    rows.map((row) => row.id),
+    selectedId,
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -74,8 +79,13 @@ export function OrdersSection({
       />
       <Alert message={list.error} />
       <ListDetail
-        onBack={() => setSelectedId(null)}
-        backLabel="Back to orders"
+        onClose={() => setSelectedId(null)}
+        label="order"
+        step={{
+          onPrevious: around.previous ? () => setSelectedId(around.previous) : null,
+          onNext: around.next ? () => setSelectedId(around.next) : null,
+          position: around.position,
+        }}
         list={
           <>
             <label className="relative block">
@@ -95,7 +105,13 @@ export function OrdersSection({
                 onKeyDown={searchIntoList(listRef)}
               />
             </label>
-            <ul ref={listRef} className="flex min-h-0 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
+            {/*
+             * ⚠ `flex-1`: the list takes the column's spare height, so with
+             * three orders the total under it is still at the bottom of the
+             * column, where it is with three hundred — not floating beneath
+             * the last row (the operator, 2026-10-03).
+             */}
+            <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
               {rows.length === 0 ? (
                 <li>
                   <Empty>{list.loading ? 'Loading…' : 'No orders here.'}</Empty>
@@ -147,7 +163,8 @@ export function OrdersSection({
 /**
  * The list, added up, under it: a quick total of the orders showing (the
  * operator, 2026-10-02) — the tab, narrowed by the search. Below the scrolling
- * list rather than inside it, so it is in sight however long the list is.
+ * list rather than inside it, so it is in sight however long the list is, and
+ * the list grows to keep it at the bottom of the column however short.
  *
  * Not a report (`orderListTotal` says why): Reports answers "what did the day
  * make"; this answers "what do these rows come to".
@@ -277,14 +294,15 @@ export function OrderDetail({
       </ul>
 
       {/*
-       * ⚠ STICKY TO THE BOTTOM of the detail panel (ListDetail's scroller):
+       * ⚠ STICKY TO THE BOTTOM of the drawer (ListDetail's scroller):
        * an order of forty lines pushed its total below the fold, and the total
        * is what the person opened it for (the operator, 2026-10-03). It rides
        * the panel's bottom edge while the lines scroll under it and settles in
-       * place at the end; the background hides the lines passing beneath.
+       * place at the end; the background (the drawer's own, `card`) hides the
+       * lines passing beneath.
        * A short order needs no sticking: the lines above grow and push it down.
        */}
-      <dl className="sticky bottom-0 grid grid-cols-2 gap-y-0.5 border-t border-border bg-background py-2 text-sm tabular-nums">
+      <dl className="sticky bottom-0 grid grid-cols-2 gap-y-0.5 border-t border-border bg-card py-2 text-sm tabular-nums">
         {order.orderDiscount > 0 ? (
           <>
             <dt>Subtotal</dt>
