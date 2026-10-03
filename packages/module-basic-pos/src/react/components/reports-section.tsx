@@ -2,7 +2,7 @@
 
 import { zonedDayKey } from '@kwtech/module-kit';
 import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
-import { Download, Printer } from 'lucide-react';
+import { BarChart3, Download, type LucideIcon, Printer, Table2 } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 import type { PosBreakdownRowView, PosOwedView, PosReportView } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
@@ -48,6 +48,14 @@ const REPORT_TABS = [
 
 type ReportTab = (typeof REPORT_TABS)[number]['key'];
 
+/** How the dashboard's panels are drawn: the charts, or the same figures as tables. */
+type DashboardView = 'chart' | 'table';
+
+const DASHBOARD_VIEWS = [
+  { key: 'chart', label: 'Chart', icon: BarChart3 },
+  { key: 'table', label: 'Table', icon: Table2 },
+] as const;
+
 /**
  * Reports (D22), behind `pos:reports`: one period picker (`PeriodPicker`) drives a dashboard
  * and six tables, each with CSV export. Every figure is the server's
@@ -68,6 +76,8 @@ export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpe
   /** Whether the custom range's date fields are open. A period reached by the arrows or a chart is custom too, but nobody is typing it. */
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState<ReportTab>('dashboard');
+  // Held here, not in the dashboard: the dashboard unmounts when another tab opens, and someone who chose tables should come back to tables.
+  const [view, setView] = useState<DashboardView>('chart');
 
   const prepared = preset === 'custom' ? prepareCustomDays(custom.fromDay, custom.toDay) : presetDays(preset, today);
   const days = 'problem' in prepared ? null : prepared;
@@ -122,7 +132,13 @@ export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpe
         </p>
       </div>
 
-      <Tabs tabs={REPORT_TABS} current={tab} onChange={setTab} label="Report" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Tabs tabs={REPORT_TABS} current={tab} onChange={setTab} label="Report" />
+        {/* Only the dashboard has charts to swap; the other tabs are tables already. */}
+        {tab === 'dashboard' ? (
+          <Toggle options={DASHBOARD_VIEWS} current={view} onChange={setView} label="Show the dashboard as" />
+        ) : null}
+      </div>
       {'problem' in prepared ? <Alert message={prepared.problem} /> : null}
       <Alert message={report.error} />
       {shown?.truncated ? (
@@ -133,6 +149,7 @@ export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpe
         {shown ? (
           <ReportBody
             tab={tab}
+            view={view}
             report={shown}
             timeZone={timeZone}
             onOpenDays={openDays}
@@ -150,6 +167,7 @@ export function ReportsSection({ state, onOpenOrder }: { state: TillState; onOpe
 /** The open tab's content, for a report that is this period's. */
 function ReportBody({
   tab,
+  view,
   report,
   timeZone,
   onOpenDays,
@@ -157,6 +175,7 @@ function ReportBody({
   onTab,
 }: {
   tab: ReportTab;
+  view: DashboardView;
   report: PosReportView;
   timeZone: string;
   onOpenDays: (days: ReportDays, tab: ReportTab) => void;
@@ -168,6 +187,7 @@ function ReportBody({
       return (
         <Dashboard
           report={report}
+          view={view}
           // One day opens its summary; a month opens the dashboard for that month.
           onOpenDays={(days) => onOpenDays(days, days.fromDay === days.toDay ? 'summary' : 'dashboard')}
           onOutstanding={() => onTab('outstanding')}
@@ -188,18 +208,29 @@ function ReportBody({
 
 // ── the dashboard ───────────────────────────────────────────────────────────
 
+/**
+ * The dashboard, as charts or as tables (`view`, the operator, 2026-10-03):
+ * the same four panels and the same figures either way, so switching never
+ * changes what is being said, only whether it is read as a shape or a number.
+ * The cards and the outstanding banner are text already and stay as they are.
+ */
 function Dashboard({
   report,
+  view,
   onOpenDays,
   onOutstanding,
 }: {
   report: PosReportView;
+  view: DashboardView;
   onOpenDays: (days: ReportDays) => void;
   onOutstanding: () => void;
 }) {
   const [measure, setMeasure] = useState<'sales' | 'orders'>('sales');
   const [topBy, setTopBy] = useState<'net' | 'quantity'>('net');
+  const charts = view === 'chart';
   const points = chartPoints(report);
+  const hasPrevious = points.some((point) => point.previousSales !== null);
+  const hours = report.byHour.filter((row) => row.orders > 0);
   const unpaid = report.unpaid.reduce((sum, row) => sum + row.amount, 0);
   const owed = report.changeOwed.reduce((sum, row) => sum + row.amount, 0);
   const top = [...report.byItem]
@@ -248,55 +279,107 @@ function Dashboard({
       ) : null}
 
       <Panel
-        title={measure === 'sales' ? 'Sales over time' : 'Orders over time'}
+        title={charts ? (measure === 'sales' ? 'Sales over time' : 'Orders over time') : 'Sales and orders over time'}
         controls={
-          <Toggle
-            options={[
-              { key: 'sales', label: '₱' },
-              { key: 'orders', label: 'Orders' },
-            ]}
-            current={measure}
-            onChange={setMeasure}
-            label="Measure"
-          />
+          // A table has a column for each, so there is nothing to choose between.
+          charts ? (
+            <Toggle
+              options={[
+                { key: 'sales', label: '₱' },
+                { key: 'orders', label: 'Orders' },
+              ]}
+              current={measure}
+              onChange={setMeasure}
+              label="Measure"
+            />
+          ) : null
         }
       >
-        <Columns
-          label={measure === 'sales' ? 'Sales per period' : 'Orders per period'}
-          points={points.map((point) => {
-            const value = measure === 'sales' ? point.sales : point.orders;
-            const previous = measure === 'sales' ? point.previousSales : point.previousOrders;
-            const text = (amount: number) => (measure === 'sales' ? formatPeso(amount) : `${amount} orders`);
-            return {
+        {charts ? (
+          <Columns
+            label={measure === 'sales' ? 'Sales per period' : 'Orders per period'}
+            points={points.map((point) => {
+              const value = measure === 'sales' ? point.sales : point.orders;
+              const previous = measure === 'sales' ? point.previousSales : point.previousOrders;
+              const text = (amount: number) => (measure === 'sales' ? formatPeso(amount) : `${amount} orders`);
+              return {
+                key: point.key,
+                label: point.label,
+                value,
+                previous,
+                text: previous === null ? text(value) : `${text(value)} · before ${text(previous)}`,
+              };
+            })}
+            format={(amount) => (measure === 'sales' ? formatPeso(amount) : String(amount))}
+            onPick={(key) => onOpenDays(bucketDays(key, report))}
+            legend
+          />
+        ) : (
+          <FigureTable
+            headers={['Period', 'Sales', 'Orders', ...(hasPrevious ? ['Sales before', 'Orders before'] : [])]}
+            rows={points.map((point) => ({
               key: point.key,
               label: point.label,
-              value,
-              previous,
-              text: previous === null ? text(value) : `${text(value)} · before ${text(previous)}`,
-            };
-          })}
-          format={(amount) => (measure === 'sales' ? formatPeso(amount) : String(amount))}
-          onPick={(key) => onOpenDays(bucketDays(key, report))}
-          legend
-        />
+              cells: [
+                formatPeso(point.sales),
+                String(point.orders),
+                // A dash past the end of the comparison period: there was no such day, which is not ₱0.
+                ...(hasPrevious
+                  ? [
+                      point.previousSales === null ? '—' : formatPeso(point.previousSales),
+                      point.previousOrders === null ? '—' : String(point.previousOrders),
+                    ]
+                  : []),
+              ],
+            }))}
+            // The same way in as a chart's column: a row opens its day or month.
+            onPick={(key) => onOpenDays(bucketDays(key, report))}
+            empty="Nothing sold in this period."
+          />
+        )}
       </Panel>
 
       <div className="grid gap-4 @3xl:grid-cols-2">
         <Panel title="Sales by hour">
-          <Columns
-            label="Sales by hour of the day"
-            points={report.byHour.map((row) => ({
-              key: String(row.hour),
-              label: hourText(row.hour),
-              value: row.sales,
-              previous: null,
-              text: `${formatPeso(row.sales)} · ${row.orders} orders`,
-            }))}
-            format={formatPeso}
-          />
+          {charts ? (
+            <Columns
+              label="Sales by hour of the day"
+              points={report.byHour.map((row) => ({
+                key: String(row.hour),
+                label: hourText(row.hour),
+                value: row.sales,
+                previous: null,
+                text: `${formatPeso(row.sales)} · ${row.orders} orders`,
+              }))}
+              format={formatPeso}
+            />
+          ) : (
+            <FigureTable
+              headers={['Hour', 'Orders', 'Sales']}
+              // Only the hours that sold, as the By hour tab lists them.
+              rows={hours.map((row) => ({
+                key: String(row.hour),
+                label: hourText(row.hour),
+                cells: [String(row.orders), formatPeso(row.sales)],
+              }))}
+              empty="Nothing sold in this period."
+            />
+          )}
         </Panel>
         <Panel title="Payment methods">
-          <Bars rows={methods} empty="No payments in this period." />
+          {charts ? (
+            <Bars rows={methods} empty="No payments in this period." />
+          ) : (
+            <FigureTable
+              headers={['Method', 'Received']}
+              rows={
+                methods.every((row) => row.value === 0)
+                  ? []
+                  : methods.map((row) => ({ key: row.key, label: row.label, cells: [row.text] }))
+              }
+              empty="No payments in this period."
+            />
+          )}
         </Panel>
       </div>
 
@@ -314,15 +397,27 @@ function Dashboard({
           />
         }
       >
-        <Bars
-          rows={top.map((row) => ({
-            key: row.key,
-            label: row.label,
-            value: topBy === 'net' ? row.net : row.quantity,
-            text: topBy === 'net' ? formatPeso(row.net) : String(row.quantity),
-          }))}
-          empty="Nothing sold in this period."
-        />
+        {charts ? (
+          <Bars
+            rows={top.map((row) => ({
+              key: row.key,
+              label: row.label,
+              value: topBy === 'net' ? row.net : row.quantity,
+              text: topBy === 'net' ? formatPeso(row.net) : String(row.quantity),
+            }))}
+            empty="Nothing sold in this period."
+          />
+        ) : (
+          <FigureTable
+            headers={['Item', 'Qty', 'Net sales']}
+            rows={top.map((row) => ({
+              key: row.key,
+              label: row.label,
+              cells: [String(row.quantity), formatPeso(row.net)],
+            }))}
+            empty="Nothing sold in this period."
+          />
+        )}
       </Panel>
     </div>
   );
@@ -340,28 +435,108 @@ function Panel({ title, controls, children }: { title: string; controls?: ReactN
   );
 }
 
+/**
+ * A dashboard panel's figures as a table: a label column, then numbers,
+ * right-aligned in tabular figures so a column of pesos lines up.
+ *
+ * With `onPick` the label is a button, as a chart's column is — the table
+ * view must not lose a way in that the chart view has.
+ */
+function FigureTable({
+  headers,
+  rows,
+  onPick,
+  empty,
+}: {
+  /** The label column's heading first, then one per cell. */
+  headers: readonly string[];
+  rows: readonly { key: string; label: string; cells: readonly string[] }[];
+  onPick?: (key: string) => void;
+  empty: string;
+}) {
+  if (rows.length === 0) return <Empty>{empty}</Empty>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            {headers.map((header, index) => (
+              <th key={header} className={cn(TH, index > 0 && 'text-right')}>
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key} className="border-b border-border last:border-b-0">
+              <td className={TD}>
+                {onPick ? (
+                  <button
+                    type="button"
+                    aria-label={`${row.label}. Open`}
+                    className="rounded underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onPick(row.key)}
+                  >
+                    {row.label}
+                  </button>
+                ) : (
+                  row.label
+                )}
+              </td>
+              {row.cells.map((cell, index) => (
+                // Cells are positional and never reorder; the header names the column.
+                <td key={headers[index + 1] ?? index} className={cn(TD, NUM)}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * One choice of a few, as a JOINED button group: one outline around all the
+ * options with dividers between, and the chosen one filled. Separate buttons
+ * side by side read as two actions rather than one either/or (the operator,
+ * 2026-10-03).
+ *
+ * Filled with the primary, not the muted track `Tabs` uses: on the dashboard
+ * this sits beside the report tabs and must not read as two more of them.
+ */
 function Toggle<K extends string>({
   options,
   current,
   onChange,
   label,
 }: {
-  options: readonly { key: K; label: string }[];
+  options: readonly { key: K; label: string; icon?: LucideIcon }[];
   current: K;
   onChange: (key: K) => void;
   label: string;
 }) {
   return (
-    <fieldset className="m-0 flex gap-1 border-0 p-0">
+    <fieldset className="m-0 inline-flex shrink-0 divide-x divide-border overflow-hidden rounded-md border border-border p-0">
       <legend className="sr-only">{label}</legend>
       {options.map((option) => (
         <button
           key={option.key}
           type="button"
           aria-pressed={option.key === current}
-          className={buttonClass(option.key === current ? 'secondary' : 'ghost', 'sm')}
+          className={cn(
+            'inline-flex h-7 items-center gap-1.5 px-2.5 text-xs font-medium transition-colors',
+            // Inset: the group clips its corners, which would cut an outer ring off.
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+            option.key === current
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
+          )}
           onClick={() => onChange(option.key)}
         >
+          {option.icon ? <option.icon aria-hidden="true" className="size-3.5" /> : null}
           {option.label}
         </button>
       ))}
