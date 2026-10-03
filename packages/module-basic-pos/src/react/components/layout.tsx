@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM } from '@kwtech/web-ui/react';
 import { ArrowLeft, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { StatusTone } from '../view/manage.js';
@@ -211,7 +211,10 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="px-1 py-4 text-sm text-muted-foreground">{children}</p>;
 }
 
-/** A list row button: the whole row opens the thing. */
+/**
+ * A list row button: the whole row opens the thing. It is a choice of the list
+ * around it (`LIST_KEYS` on the container), so ↑ ↓ reach it and Enter opens it.
+ */
 export function RowButton({
   selected,
   onClick,
@@ -224,6 +227,7 @@ export function RowButton({
   return (
     <button
       type="button"
+      {...LIST_ITEM}
       aria-current={selected ? 'true' : undefined}
       className={cn(
         'flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useDebouncedValue } from '@kwtech/web-ui/react';
+import { LIST_KEYS, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
 import { Printer, RotateCcw, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
@@ -47,6 +47,7 @@ export function OrdersSection({
   const { client, scope } = state;
   const [tab, setTab] = useState<OrderTab>('today');
   const [search, setSearch] = useState('');
+  const listRef = useRef<HTMLUListElement>(null);
   const settled = useDebouncedValue(search);
   const [selectedId, setSelectedId] = useState<string | null>(openOrderId);
 
@@ -91,9 +92,10 @@ export function OrdersSection({
                 placeholder="Order number, customer or label"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={searchIntoList(listRef)}
               />
             </label>
-            <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+            <ul ref={listRef} className="flex min-h-0 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
               {rows.length === 0 ? (
                 <li>
                   <Empty>{list.loading ? 'Loading…' : 'No orders here.'}</Empty>
@@ -231,7 +233,7 @@ export function OrderDetail({
 
   const chip = orderStatusChip(order);
   return (
-    <section aria-label={`Order ${orderTitle(order)}`} className="flex flex-col gap-3">
+    <section aria-label={`Order ${orderTitle(order)}`} className="flex shrink-0 grow flex-col gap-3">
       <header className="flex flex-wrap items-center gap-2">
         <h2 className="text-lg font-semibold tracking-tight">{orderTitle(order)}</h2>
         <StatusChip {...chip} />
@@ -253,7 +255,13 @@ export function OrderDetail({
         {order.label ? <span className="text-muted-foreground"> · {order.label}</span> : null}
       </p>
 
-      <ul className="flex flex-col gap-1 text-sm">
+      {/*
+       * ⚠ THE LINES TAKE THE SPARE HEIGHT (`grow`, in a section that fills the
+       * panel), so an order of two lines still has its total at the bottom of
+       * the panel rather than floating under them: the total is in one place
+       * whatever the order's length (the operator, 2026-10-03).
+       */}
+      <ul className="flex grow flex-col gap-1 text-sm">
         {order.lines.length === 0 ? <li className="text-muted-foreground">No items.</li> : null}
         {order.lines.map((line) => (
           <li key={line.id} className="flex flex-col">
@@ -268,7 +276,15 @@ export function OrderDetail({
         ))}
       </ul>
 
-      <dl className="grid grid-cols-2 gap-y-0.5 border-t border-border pt-2 text-sm tabular-nums">
+      {/*
+       * ⚠ STICKY TO THE BOTTOM of the detail panel (ListDetail's scroller):
+       * an order of forty lines pushed its total below the fold, and the total
+       * is what the person opened it for (the operator, 2026-10-03). It rides
+       * the panel's bottom edge while the lines scroll under it and settles in
+       * place at the end; the background hides the lines passing beneath.
+       * A short order needs no sticking: the lines above grow and push it down.
+       */}
+      <dl className="sticky bottom-0 grid grid-cols-2 gap-y-0.5 border-t border-border bg-background py-2 text-sm tabular-nums">
         {order.orderDiscount > 0 ? (
           <>
             <dt>Subtotal</dt>

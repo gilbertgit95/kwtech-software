@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, useDebouncedValue } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
 import {
   Archive,
   ArchiveRestore,
@@ -13,7 +13,7 @@ import {
   Search,
   UsersRound,
 } from 'lucide-react';
-import { type FormEvent, type ReactNode, useCallback, useState } from 'react';
+import { type FormEvent, type ReactNode, useCallback, useRef, useState } from 'react';
 import { POS_CUSTOMER_SEARCH_MAX, posCustomerContactLine, preparePosFacebookUrl } from '../../domain/customers.js';
 import type { PosCustomerView } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
@@ -46,6 +46,7 @@ import { Alert, Empty, ListDetail, RowButton, StatusChip } from './layout.js';
 export function CustomersSection({ state, onOpenOrder }: { state: TillState; onOpenOrder: (orderId: string) => void }) {
   const { client, scope } = state;
   const [search, setSearch] = useState('');
+  const listRef = useRef<HTMLUListElement>(null);
   const settled = useDebouncedValue(search);
   const [showArchived, setShowArchived] = useState(false);
   const [selected, setSelected] = useState<null | 'new' | string>(null);
@@ -80,6 +81,7 @@ export function CustomersSection({ state, onOpenOrder }: { state: TillState; onO
                   placeholder="Name, phone, e-mail or Facebook"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
+                  onKeyDown={searchIntoList(listRef)}
                 />
               </label>
               {state.canSell ? (
@@ -107,7 +109,7 @@ export function CustomersSection({ state, onOpenOrder }: { state: TillState; onO
                 onAdd={state.canSell ? () => setSelected('new') : null}
               />
             ) : (
-              <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+              <ul ref={listRef} className="flex min-h-0 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
                 {rows.map((row) => (
                   <li key={row.id}>
                     <RowButton selected={row.id === selected} onClick={() => setSelected(row.id)}>
@@ -420,7 +422,7 @@ function CustomerProfile({
         {history.length === 0 ? (
           <Empty>{orders.loading ? 'Loading…' : 'No orders linked to them yet.'}</Empty>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-1" {...LIST_KEYS}>
             {history.map((row) => (
               <li key={row.id}>
                 <RowButton selected={false} onClick={() => onOpenOrder(row.id)}>

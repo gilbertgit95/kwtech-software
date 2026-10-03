@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, useDebouncedValue } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM, LIST_KEYS, useDebouncedValue } from '@kwtech/web-ui/react';
 import { UserPlus } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { posContactAsCustomerFields, posCustomerContactLine } from '../../domain/customers.js';
@@ -29,11 +29,12 @@ export function VariantPicker({
   const variants = item ? liveVariants(item) : [];
   return (
     <Modal open={item !== null} title={item?.name ?? ''} onClose={onClose}>
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1" {...LIST_KEYS}>
         {variants.map((variant, index) => (
           <li key={variant.id}>
             <button
               type="button"
+              {...LIST_ITEM}
               // biome-ignore lint/a11y/noAutofocus: The first choice takes focus, so ↓ / Enter work at once (D20).
               autoFocus={index === 0}
               className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -462,18 +463,22 @@ export function PendingDialog({
   onResume: (orderId: string) => void;
   onClose: () => void;
 }) {
+  // ⚠ The first one that CAN be resumed: a disabled button takes no focus, and with
+  // the order on the till listed first the arrows had nowhere to start from.
+  const firstResumable = pending.findIndex((row) => row.id !== currentId);
   return (
     <Modal open={open} title="Pending orders" onClose={onClose} wide>
       {pending.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing is on hold.</p>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-1" {...LIST_KEYS}>
           {pending.map((row, index) => (
             <li key={row.id}>
               <button
                 type="button"
+                {...LIST_ITEM}
                 // biome-ignore lint/a11y/noAutofocus: a dialog opens where the person will type or choose next (D20: focus always has a home).
-                autoFocus={index === 0}
+                autoFocus={index === firstResumable}
                 disabled={row.id === currentId}
                 className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => onResume(row.id)}

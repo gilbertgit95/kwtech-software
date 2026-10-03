@@ -1,7 +1,7 @@
 'use client';
 
 import { zonedDayKey } from '@kwtech/module-kit';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
 import { Download, Printer } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 import type { PosBreakdownRowView, PosOwedView, PosReportView } from '../pos-client.js';
@@ -738,11 +738,12 @@ function OwedTable({
       {rows.length === 0 ? (
         <Empty>Nothing outstanding.</Empty>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-1" {...LIST_KEYS}>
           {rows.map((row) => (
             <li key={row.orderId}>
               <button
                 type="button"
+                {...LIST_ITEM}
                 className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => onOpenOrder(row.orderId)}
               >

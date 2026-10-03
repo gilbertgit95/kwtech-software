@@ -1,8 +1,8 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS, searchIntoList } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PosCatalogueView, PosCategoryView } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
@@ -74,6 +74,7 @@ function ItemsPanel({
   onSaved: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const listRef = useRef<HTMLUListElement>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [selected, setSelected] = useState<Selection>(null);
   /** The item just saved, so its editor says so even after it remounts with the saved values. */
@@ -107,6 +108,7 @@ function ItemsPanel({
                 placeholder="Name, code or category"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={searchIntoList(listRef)}
               />
             </label>
             <button type="button" className={buttonClass('primary')} onClick={() => open('new')}>
@@ -118,7 +120,7 @@ function ItemsPanel({
             <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
             Show archived
           </label>
-          <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+          <ul ref={listRef} className="flex min-h-0 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
             {items.length === 0 ? (
               <li>
                 <Empty>{catalogue.items.length === 0 ? 'No items yet. Add the first one.' : 'Nothing matches.'}</Empty>
