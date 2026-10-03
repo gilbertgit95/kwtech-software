@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, LIST_KEYS, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
 import {
   Archive,
   ArchiveRestore,
@@ -22,7 +22,6 @@ import {
   customerInitials,
   customerSummary,
   emailHref,
-  listNeighbours,
   orderStatusChip,
   orderTitle,
   phoneHref,
@@ -30,7 +29,7 @@ import {
 } from '../view/manage.js';
 import { formatPeso } from '../view/money.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
-import { Alert, Empty, ListDetail, RowButton, StatusChip } from './layout.js';
+import { Alert, Empty, RowButton, StatusChip } from './layout.js';
 
 /**
  * Customers (D5, D23): the store's recorded customers, and each one's orders.
@@ -66,7 +65,7 @@ export function CustomersSection({ state, onOpenOrder }: { state: TillState; onO
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <Alert message={list.error} />
-      <ListDetail
+      <ListDrawer
         onClose={() => setSelected(null)}
         label="customer"
         step={{

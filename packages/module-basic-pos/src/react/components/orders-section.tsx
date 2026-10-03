@@ -1,6 +1,6 @@
 'use client';
 
-import { LIST_KEYS, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
+import { LIST_KEYS, ListDrawer, listNeighbours, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
 import { Printer, RotateCcw, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
@@ -9,7 +9,6 @@ import type { PosOrderLineView, PosOrderView, PosRefundInput } from '../pos-clie
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
 import {
-  listNeighbours,
   ORDER_TABS,
   type OrderListTotal,
   type OrderTab,
@@ -24,7 +23,7 @@ import { METHOD_LABELS, receiptHtml } from '../view/receipt.js';
 import { lineLabel } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
 import { TextDialog } from './dialogs.js';
-import { Alert, Empty, ListDetail, RowButton, StatusChip, Tabs } from './layout.js';
+import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { printHtml } from './till.js';
 
@@ -78,7 +77,7 @@ export function OrdersSection({
         }}
       />
       <Alert message={list.error} />
-      <ListDetail
+      <ListDrawer
         onClose={() => setSelectedId(null)}
         label="order"
         step={{
@@ -294,7 +293,7 @@ export function OrderDetail({
       </ul>
 
       {/*
-       * ⚠ STICKY TO THE BOTTOM of the drawer (ListDetail's scroller):
+       * ⚠ STICKY TO THE BOTTOM of the drawer (ListDrawer's scroller):
        * an order of forty lines pushed its total below the fold, and the total
        * is what the person opened it for (the operator, 2026-10-03). It rides
        * the panel's bottom edge while the lines scroll under it and settles in

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, LIST_KEYS, searchIntoList } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PosCatalogueView, PosCategoryView } from '../pos-client.js';
@@ -12,7 +12,6 @@ import {
   type ItemForm,
   itemForm,
   itemInput,
-  listNeighbours,
   moveEntry,
   newVariantKey,
   type VariantForm,
@@ -21,7 +20,7 @@ import { formatPeso } from '../view/money.js';
 import { priceRange } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
 import { TextDialog } from './dialogs.js';
-import { Alert, Empty, ListDetail, RowButton, StatusChip, Tabs } from './layout.js';
+import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 
 type ItemsTab = 'items' | 'categories';
 
@@ -93,7 +92,7 @@ function ItemsPanel({
   );
 
   return (
-    <ListDetail
+    <ListDrawer
       onClose={() => open(null)}
       label="item"
       step={{
