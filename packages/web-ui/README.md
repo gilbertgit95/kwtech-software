@@ -587,6 +587,43 @@ Debounce rather than throttle. Throttling emits during the burst, which is
 exactly the prefixes nobody wanted — and responses can arrive out of order,
 leaving the results showing matches for `featur`.
 
+## A list and its detail drawer
+
+A view that opens on a list and shows one row's detail uses `ListDrawer`: the
+list at full width, and the detail sliding in from the right over it.
+
+```tsx
+const around = listNeighbours(rows.map((row) => row.id), selectedId);
+
+<ListDrawer
+  label="order"                       // the accessible name, and "Previous order" / "Next order"
+  list={<ul {...LIST_KEYS}>…</ul>}
+  detail={selectedId ? <OrderDetail key={selectedId} … /> : null}   // null: no drawer
+  onClose={() => setSelectedId(null)}
+  step={{
+    onPrevious: around.previous ? () => setSelectedId(around.previous) : null,
+    onNext: around.next ? () => setSelectedId(around.next) : null,
+    position: around.position,       // "3 of 20"
+  }}
+/>
+```
+
+- **It closes three ways:** its Close button, a press outside it, and Esc. Esc
+  is prevented there, so an app's own Esc handler does not also fire, and a
+  `<dialog>` opened from the drawer takes its own Esc first.
+- **Inside its panel, not the viewport** (`absolute`): on the Apps page an app
+  may be one cell of a grid, and must not cover the apps beside it. The parent
+  must be a flex column with a height; the list behind is `inert` while open.
+- **The raised surface (`card`) over a black scrim**, lighter on a light theme:
+  a scrim in the theme's foreground lights the list up on a dark theme.
+- **`listNeighbours(ids, current)`** is pure: the rows either side of the open
+  one in the list AS SHOWN, and nothing for one that is not in it.
+- ⚠ **A row with `sr-only` text needs `relative`** on the row, or that text
+  does not scroll with the list and the app grows a second scrollbar.
+
+Used by the point of sale (orders, items, customers) and the books (investors,
+loans).
+
 ## Arrow keys through a list
 
 Any list where a person picks one row of several takes ↑ ↓ (and Home / End)

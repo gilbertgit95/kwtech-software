@@ -38,6 +38,7 @@ export {
   IconSetProvider,
   useIconSet,
 } from './icon-picker.js';
+export { ListDrawer, type ListDrawerStep } from './list-drawer.js';
 export {
   focusFirstListItem,
   LIST_ATTRIBUTE,
@@ -49,6 +50,7 @@ export {
   onListKeyDown,
   searchIntoList,
 } from './list-keys.js';
+export { type ListNeighbours, listNeighbours } from './list-neighbours.js';
 export { MultiSelect, type MultiSelectProps } from './multi-select.js';
 export { QrCode } from './qr-code.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
