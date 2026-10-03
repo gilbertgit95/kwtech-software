@@ -34,6 +34,10 @@ One window at a time: picking another conversation replaces it. Moving the
 window is pointer-only (mouse, pen, touch); everything in it works by keyboard
 without moving it.
 
+The conversation list takes ↑ ↓ between conversations and Enter to open the one
+in focus (`LIST_KEYS` from `@kwtech/web-ui/react`). The requests above it are
+not choices of that list: each row has two buttons, reached by Tab.
+
 ## In a NestJS app
 
 ```ts

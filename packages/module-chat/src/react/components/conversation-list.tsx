@@ -1,7 +1,7 @@
 'use client';
 
 import { useHoldsFeature } from '@kwtech/module-kit/react';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
 import { CHAT_FEATURE } from '../../feature-keys.js';
 import type { ChatConversationView, ChatMyAvailabilityView, ChatPresenceView } from '../chat-client.js';
 import { conversationTitle, otherParticipants, splitConversations } from '../view/conversation-view.js';
@@ -166,13 +166,15 @@ export function ConversationList({
           </section>
         ) : null}
 
-        <ul className="space-y-1">
+        {/* ↑ ↓ between conversations, Enter opens the one in focus. The requests above are not choices: each has two buttons. */}
+        <ul className="space-y-1" {...LIST_KEYS}>
           {active.map((conversation) => {
             const selected = conversation.id === selectedId;
             return (
               <li key={conversation.id}>
                 <button
                   type="button"
+                  {...LIST_ITEM}
                   onClick={() => onOpen(conversation.id)}
                   aria-current={selected ? 'true' : undefined}
                   className={cn(
