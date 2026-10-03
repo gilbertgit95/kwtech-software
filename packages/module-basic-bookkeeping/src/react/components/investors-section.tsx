@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, LIST_KEYS } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS, ListDrawer, listNeighbours } from '@kwtech/web-ui/react';
 import { useCallback, useState } from 'react';
 import { investorStatement } from '../../domain/statements.js';
 import type { BooksInvestorView, BooksOverviewView, BooksProfitShareView } from '../books-client.js';
@@ -12,7 +12,7 @@ import { formatPercent, formatPeso, formatSignedPeso } from '../view/money.js';
 import { buttonClass } from './controls.js';
 import { InvestorDialog, InvestorEntryDialog, ShareProfitDialog, VoidDialog } from './dialogs.js';
 import { Figure } from './form-fields.js';
-import { Alert, Empty, ListDetail, RowButton, StatusChip } from './layout.js';
+import { Alert, Empty, RowButton, StatusChip } from './layout.js';
 
 /**
  * The investors: who put in what, their share, what they have been given and
@@ -37,6 +37,10 @@ export function InvestorsSection({
   const [voidingShare, setVoidingShare] = useState<BooksProfitShareView | null>(null);
   const selected = overview.investors.find((investor) => investor.id === selectedId) ?? null;
   const latestShare = overview.shares.find((share) => share.voidedAt === null) ?? null;
+  const around = listNeighbours(
+    overview.investors.map((investor) => investor.id),
+    selected?.id ?? null,
+  );
 
   const list = (
     <>
@@ -86,7 +90,7 @@ export function InvestorsSection({
 
   return (
     <>
-      <ListDetail
+      <ListDrawer
         list={list}
         detail={
           selected ? (
@@ -101,8 +105,13 @@ export function InvestorsSection({
             />
           ) : null
         }
-        onBack={() => setSelectedId(null)}
-        backLabel="All investors"
+        onClose={() => setSelectedId(null)}
+        label="investor"
+        step={{
+          onPrevious: around.previous ? () => setSelectedId(around.previous) : null,
+          onNext: around.next ? () => setSelectedId(around.next) : null,
+          position: around.position,
+        }}
       />
       <InvestorDialog
         open={editing !== null}

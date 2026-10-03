@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, LIST_KEYS } from '@kwtech/web-ui/react';
+import { cn, LIST_KEYS, ListDrawer, listNeighbours } from '@kwtech/web-ui/react';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { loanStatement } from '../../domain/statements.js';
 import type { BooksLoanView, BooksOverviewView } from '../books-client.js';
@@ -11,7 +11,7 @@ import { formatPeso, formatSignedPeso } from '../view/money.js';
 import { buttonClass, Modal } from './controls.js';
 import { LendDialog, RecordEntryDialog } from './dialogs.js';
 import { Figure, FormActions, TextField } from './form-fields.js';
-import { Alert, Empty, ListDetail, RowButton, StatusChip } from './layout.js';
+import { Alert, Empty, RowButton, StatusChip } from './layout.js';
 
 /**
  * Money the business lent: to whom, how much is still owed, and every amount
@@ -32,6 +32,10 @@ export function LoansSection({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lending, setLending] = useState<BooksLoanView | 'new' | null>(null);
   const selected = overview.loans.find((loan) => loan.id === selectedId) ?? null;
+  const around = listNeighbours(
+    overview.loans.map((loan) => loan.id),
+    selected?.id ?? null,
+  );
 
   const list = (
     <>
@@ -63,7 +67,7 @@ export function LoansSection({
 
   return (
     <>
-      <ListDetail
+      <ListDrawer
         list={list}
         detail={
           selected ? (
@@ -78,8 +82,13 @@ export function LoansSection({
             />
           ) : null
         }
-        onBack={() => setSelectedId(null)}
-        backLabel="All loans"
+        onClose={() => setSelectedId(null)}
+        label="loan"
+        step={{
+          onPrevious: around.previous ? () => setSelectedId(around.previous) : null,
+          onNext: around.next ? () => setSelectedId(around.next) : null,
+          position: around.position,
+        }}
       />
       <LendDialog
         open={lending !== null}

@@ -1,15 +1,15 @@
 'use client';
 
 import { cn, LIST_ITEM } from '@kwtech/web-ui/react';
-import { ArrowLeft, type LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { StatusTone } from '../view/labels.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
 
 /*
  * The app's shared frame — the point of sale's (POS-PLAN D23), copied
- * structurally: the section bar, a section's tabs, a list with its detail, a
- * status chip, and the one alert. Laid out by the PANEL's width (container
+ * structurally: the section bar, a section's tabs, a status chip, and the one
+ * alert. A list's detail opens in `ListDrawer`, shared from `web-ui`. Laid out by the PANEL's width (container
  * queries), never the viewport's: a grid cell on the Apps page is narrow on a
  * wide screen.
  */
@@ -138,43 +138,6 @@ export function Tabs<K extends string>({
   );
 }
 
-/**
- * List, then detail (D23): side by side in a wide panel, and in a narrow one
- * the detail REPLACES the list, with a back arrow — as the tasks app does.
- */
-export function ListDetail({
-  list,
-  detail,
-  onBack,
-  backLabel,
-}: {
-  list: ReactNode;
-  /** Null: nothing is open, and a narrow panel shows the list. */
-  detail: ReactNode | null;
-  onBack: () => void;
-  backLabel: string;
-}) {
-  const open = detail !== null;
-  return (
-    <div className="grid min-h-0 flex-1 gap-3 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <div className={cn('min-h-0 flex-col gap-2', open ? 'hidden @3xl:flex' : 'flex')}>{list}</div>
-      {open ? (
-        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-lg border border-border p-3">
-          <button type="button" className={cn(buttonClass('ghost', 'sm'), 'w-fit @3xl:hidden')} onClick={onBack}>
-            <ArrowLeft aria-hidden="true" className="size-4" />
-            {backLabel}
-          </button>
-          {detail}
-        </div>
-      ) : (
-        <div className="hidden items-center justify-center rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground @3xl:flex">
-          Choose one from the list.
-        </div>
-      )}
-    </div>
-  );
-}
-
 const TONE_CLASS: Readonly<Record<StatusTone, string>> = {
   neutral: 'bg-muted text-muted-foreground',
   success: 'bg-status-success text-status-success-foreground',
@@ -231,7 +194,9 @@ export function RowButton({
       {...LIST_ITEM}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent',
+        // ⚠ `relative`: screen-reader-only text in a row is absolutely positioned, and without a positioned ancestor
+        // inside the scrolling list it does not scroll with it — it gave the whole app a second scrollbar (the POS's customers).
+        'relative flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         selected ? 'border-primary bg-accent' : 'border-border',
       )}
