@@ -574,6 +574,43 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-03** — **Every list where a person picks one row takes ↑ ↓ and Enter, from one helper in `web-ui` (`list-keys`).**
+
+  The operator asked to move through the held orders, the orders, customers and
+  items lists, the investors and the loans without the mouse. Each of those was
+  a column of buttons reachable only by Tab, one stop per row.
+  - **One implementation, in `@kwtech/web-ui/react`** (`src/react/list-keys.ts`):
+    `LIST_KEYS` spread on the list, `LIST_ITEM` on each choice's button, and
+    `searchIntoList(ref)` on a search box above it. Two modules needed it at
+    once (the point of sale and the books), and two copies of "which way does ↑
+    go" drift (principles 5 and 9).
+  - **Each choice stays a real `<button>`.** Enter and Space click it natively,
+    so nothing simulates a click, and a row behaves the same reached by mouse,
+    Tab or an arrow.
+  - **Moving never opens anything.** Focus moves, Enter decides. A list whose
+    rows opened on arrival would load an order per key press.
+  - **↑ ↓ wrap, Home and End jump, disabled choices are skipped.** The index
+    arithmetic is the pure `nextListIndex`, with jest tests. The pending-orders
+    dialog now opens on the first order that CAN be resumed: the one on the
+    till is disabled, takes no focus, and left the arrows nowhere to start.
+  - **It keeps out of the way.** Keys typed into an input inside the list stay
+    the input's own; arrows with a modifier are left alone (the notes index
+    reorders with Ctrl+Shift+arrows); and the handler stops the key, so the
+    till's own ↑ ↓ between cart lines does not also fire.
+  - **Adopted by** the point of sale (pending orders, variants, orders,
+    customers and their history, items, unpaid orders in reports), the books
+    (investors, loans), tasks (the list view), notes (the index) and chat (the
+    conversation list).
+  - **An order's total stays in sight** (`OrderDetail`): the totals are sticky
+    to the bottom of the detail panel, and the lines take the spare height, so
+    the total is in one place for an order of two lines or forty.
+  - **Not done**: `role="listbox"` and `aria-activedescendant` (the rows are
+    buttons that open something, not options of a value, and real focus is
+    simpler and already announced); a roving `tabIndex` (Tab still stops on
+    every row, as before); type-ahead; ← → on the notes' sticky board, which
+    is a grid; the queue and the chat requests, whose rows hold several
+    buttons. `RowButton` is still copied in the POS and the books (§12.87).
+
 - **2026-10-03** — **Bookkeeping is its own sub-app, `module-basic-bookkeeping` (prefix `books`): one ledger of entries, every balance added up from it, and the POS's sales brought in through a port.**
 
   The operator asked to track investments, investors, reinvestment, cash on

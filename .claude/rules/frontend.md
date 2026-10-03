@@ -112,12 +112,17 @@ Client, no codegen, no react-query and no redux. Do not add them.**
 - **Merge classes with `cn()` from `@kwtech/web-ui/react`.** Express variants as a
   function over a union (`buttonClass(variant, size)`), with no CVA.
 - **Focus is visible:** `focus-visible:ring-2 focus-visible:ring-ring`.
+- **A list where a person picks one row takes ↑ ↓ and Enter:** `{...LIST_KEYS}`
+  on the list and `{...LIST_ITEM}` on each row's `<button>`, and
+  `searchIntoList(ref)` on a search box above it. Never a key handler of your
+  own (`packages/web-ui/README.md`, "Arrow keys through a list").
 - **Common idioms:** `mx-auto w-full max-w-3xl`; an `h1` is
   `text-2xl font-semibold tracking-tight`; a section is
   `rounded-lg border border-border p-4`.
 - **Icons:** lucide-react. Nav icons are string names (`nav: { icon: 'megaphone' }`).
 - **`web-ui` exports** ConfirmDialog, DataGrid, DropdownMenu, IconPicker,
-  MultiSelect, StatusBar, ThemeSwitcher, TreeSelect, useDebouncedValue and `cn`.
+  MultiSelect, StatusBar, ThemeSwitcher, TreeSelect, useDebouncedValue, the
+  list keys (`LIST_KEYS`, `LIST_ITEM`, `searchIntoList`) and `cn`.
   Check there before building a primitive. A component moves into `web-ui` only
   when a second module needs it.
 
