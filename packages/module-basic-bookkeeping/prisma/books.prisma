@@ -1,0 +1,265 @@
+// The books' slice of the data model (docs/BOOKKEEPING-PLAN.md).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Books` and mapped to `books_*`.
+//
+//   investor ◀── entry ──▶ loan
+//                  │  ├──▶ sales import (sales brought in from the point of sale)
+//                  │  └──▶ profit share (a period's profit split among investors)
+//   settings: one per workspace (how profit is shared, the two watermarks)
+//
+// ⚠ ONE LEDGER. Every movement of money — and every change to what an investor
+// is owed — is a `BooksEntry`. Balances (cash on hand, capital, owed, a loan's
+// outstanding) are ADDED UP from the entries and never stored, so they cannot
+// disagree with them (src/domain/balances.ts).
+//
+// ⚠ MONEY IS AN INTEGER NUMBER OF CENTAVOS: ₱12.50 is 1250. Every amount column
+// is a `BigInt`, not an `Int`: a 32-bit `Int` stops at ₱21,474,836.47, which one
+// capital entry or a year of a busy store's sales can pass. Every value is still
+// a SAFE integer in JavaScript — an entry is capped at ₱1B (`BOOKS_AMOUNT_MAX`,
+// 10^11 centavos, far below 2^53) — so the server reads each one back as a
+// `number` at the repository boundary and nothing past it sees a `bigint`.
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE. The guard proves the caller is a
+// member of the workspace in the request, not that the row is in it.
+//
+// ⚠ NOTHING IS EDITED OR DELETED. An entry, a sales import or a profit share
+// that was wrong is VOIDED — kept, with who, when and why. The `userId`s are
+// bare strings with no foreign key: `auth_user` belongs to module-auth (PLAN §9).
+
+/// What one entry is. The direction of each is `entryDirection` (src/domain/entries.ts).
+enum BooksEntryKind {
+  capital
+  sales
+  loan_repayment
+  adjustment_in
+  expense
+  purchase
+  refund
+  loan_out
+  payout
+  capital_return
+  adjustment_out
+  transfer
+  profit_share
+  reinvest
+}
+
+/// Where the money is: the drawer, an e-wallet, a bank account.
+enum BooksPlace {
+  cash
+  ewallet
+  bank
+}
+
+/// `capital`: profit by what each investor has in. `agreed`: by the percentages they agreed.
+enum BooksShareMode {
+  capital
+  agreed
+}
+
+/// Somebody who put money into the business. Need not be a user of the app.
+model BooksInvestor {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name    String
+  /// The name lower-cased: what makes two names the same investor.
+  nameKey String
+  contact String?
+  note    String?
+  /// Basis points (5000 = 50%), used when profit is shared by agreement. Null: not agreed.
+  agreedShare Int?
+
+  /// Set when they are no longer an investor (capital all returned). History is kept.
+  formerAt DateTime?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  entries BooksEntry[]
+
+  @@unique([workspaceId, nameKey])
+  @@index([organizationId])
+  @@map("books_investor")
+}
+
+/// Money the business lent to somebody. What is still owed is added up from its entries.
+model BooksLoan {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  borrowerName String
+  contact      String?
+  note         String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  entries BooksEntry[]
+
+  @@index([workspaceId, createdAt])
+  @@index([organizationId])
+  @@map("books_loan")
+}
+
+/// One movement in the ledger.
+model BooksEntry {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  kind   BooksEntryKind
+  /// Centavos, always above 0; the kind says which way it moved.
+  amount BigInt
+  /// Where the money was. Null only for `profit_share` and `reinvest`, which move none.
+  place   BooksPlace?
+  /// Transfers only: where the money went.
+  toPlace BooksPlace?
+  /// The WORKSPACE's calendar day it happened on — a day, never an instant.
+  day     DateTime    @db.Date
+
+  /// What it was for ("Rent", "Equipment"). Required for expenses and purchases.
+  category    String?
+  description String?
+  /// A receipt number, a GCash reference.
+  reference   String?
+
+  investorId String?
+  loanId     String?
+  /// Set on the entries a point-of-sale import made.
+  importId   String?
+  /// Set on the `profit_share` entries a profit share made.
+  shareId    String?
+  /// A payout made ahead of profit: it leaves the investor owing.
+  advance    Boolean @default(false)
+
+  /// The form's id for this entry, so a double press records it once. Null on
+  /// the entries an import or a profit share made (theirs carry the id).
+  clientId String?
+
+  recordedById String
+  createdAt    DateTime @default(now())
+
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+
+  investor BooksInvestor?    @relation(fields: [investorId], references: [id], onDelete: Restrict)
+  loan     BooksLoan?        @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  import   BooksSalesImport? @relation(fields: [importId], references: [id], onDelete: Restrict)
+  share    BooksProfitShare? @relation(fields: [shareId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, clientId])
+  /// A month of the ledger, in order; and every live entry, for the balances.
+  @@index([workspaceId, day, createdAt])
+  @@index([workspaceId, voidedAt])
+  @@index([investorId])
+  @@index([loanId])
+  @@index([importId])
+  @@index([shareId])
+  @@index([organizationId])
+  @@map("books_entry")
+}
+
+/// Sales brought in from the point of sale for a run of days: one entry per place money came in.
+model BooksSalesImport {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  fromDay DateTime @db.Date
+  /// Its entries are dated this day.
+  toDay   DateTime @db.Date
+  /// Centavos kept per place, as the POS counted them: received − change − refunds.
+  cash    BigInt
+  ewallet BigInt
+  bank    BigInt
+  /// Σ unit cost × quantity of what was sold, over the lines with a cost entered.
+  costOfGoods  BigInt
+  /// How much of the sales had a cost entered, in basis points. Below 10,000, profit is overstated.
+  costCoverage Int
+  orders       Int
+
+  clientId     String
+  recordedById String
+  createdAt    DateTime @default(now())
+
+  voidedAt   DateTime?
+  voidedById String?
+  voidReason String?
+
+  entries BooksEntry[]
+
+  @@unique([workspaceId, clientId])
+  @@index([workspaceId, toDay])
+  @@index([organizationId])
+  @@map("books_sales_import")
+}
+
+/// A period's profit, split among the investors: its `profit_share` entries say who got what.
+model BooksProfitShare {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  fromDay     DateTime @db.Date
+  toDay       DateTime @db.Date
+  /// The figures as they were when it was shared, so the history reads as it was decided.
+  sales       BigInt
+  refunds     BigInt
+  costOfGoods BigInt
+  expenses    BigInt
+  profit      BigInt
+  /// Kept in the business rather than shared.
+  kept        BigInt
+  /// Profit − kept: Σ its entries.
+  shared      BigInt
+  mode        BooksShareMode
+
+  clientId     String
+  recordedById String
+  createdAt    DateTime @default(now())
+
+  voidedAt   DateTime?
+  voidedById String?
+  voidReason String?
+
+  entries BooksEntry[]
+
+  @@unique([workspaceId, clientId])
+  @@index([workspaceId, toDay])
+  @@index([organizationId])
+  @@map("books_profit_share")
+}
+
+/// One per workspace. No row means every default.
+model BooksSettings {
+  workspaceId    String @id
+  organizationId String
+
+  shareMode BooksShareMode @default(capital)
+  /// The first day to bring the point of sale's sales in from. Null: the POS is not connected.
+  posImportFrom      DateTime? @db.Date
+  /// The last day brought in from the POS. Moves back when the latest import is voided.
+  posRecordedThrough DateTime? @db.Date
+  /// The last day whose profit was shared. Profit and capital on or before it are closed.
+  sharedThrough      DateTime? @db.Date
+
+  /// ⚠ BUMPED BY EVERY WRITE, inside its transaction: the row lock it takes
+  /// orders a write against a profit share or an import, and a share or an
+  /// import that read the entries at version N commits only if nothing was
+  /// written since (compare-and-set).
+  version     Int      @default(1)
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("books_settings")
+}
