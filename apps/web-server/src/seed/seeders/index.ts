@@ -1,5 +1,6 @@
 import type { Seeder } from '../types.js';
 import { appRolesSeeder } from './app-roles.js';
+import { booksHistorySeeder } from './books-history.js';
 import { defaultsSeeder } from './defaults.js';
 import { demoUserSeeder } from './demo-user.js';
 import { firstUserSeeder } from './first-user.js';
@@ -66,4 +67,6 @@ export const SEEDERS: readonly Seeder[] = [
   posCatalogueSeeder,
   // After the catalogue: every imported line names one of its items.
   posHistorySeeder,
+  // After the POS history: the same store, and its reinvestments were paid from those sales.
+  booksHistorySeeder,
 ];
