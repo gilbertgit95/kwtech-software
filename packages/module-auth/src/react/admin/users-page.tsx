@@ -1,6 +1,7 @@
 'use client';
 
 import { useHoldsFeature } from '@kwtech/module-kit/react';
+import { Tooltip } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTH_FEATURE } from '../../features.js';
 import { AdminShell } from './admin-shell.js';
@@ -273,70 +274,73 @@ export function UsersPage({
           </thead>
           <tbody>
             {rows?.map((row) => (
-              <tr
-                key={row.id}
-                onDoubleClick={() => openAccount(row.id)}
-                /*
-                 * `select-none` only because the row is double-clickable: the
-                 * gesture would otherwise highlight whatever it landed on. The
-                 * address is still readable from the detail page, where nothing
-                 * suppresses selection.
-                 */
-                className="cursor-pointer select-none border-t border-border hover:bg-muted/50"
-                title="Double-click to open"
-              >
-                <td className="px-3 py-2">
-                  <a href={detailHref(row.id)} className="font-medium text-foreground hover:underline">
-                    {row.displayName ?? row.email}
-                  </a>
-                  {/* The address always, even when it is also the link text: it
+              <Tooltip key={row.id} text="Double-click to open" align="start" describes={false}>
+                {(tooltip) => (
+                  <tr
+                    onDoubleClick={() => openAccount(row.id)}
+                    /*
+                     * `select-none` only because the row is double-clickable: the
+                     * gesture would otherwise highlight whatever it landed on. The
+                     * address is still readable from the detail page, where nothing
+                     * suppresses selection.
+                     */
+                    className="cursor-pointer select-none border-t border-border hover:bg-muted/50"
+                    {...tooltip}
+                  >
+                    <td className="px-3 py-2">
+                      <a href={detailHref(row.id)} className="font-medium text-foreground hover:underline">
+                        {row.displayName ?? row.email}
+                      </a>
+                      {/* The address always, even when it is also the link text: it
                       is the account's identifier, and a list of display names
                       alone cannot tell two Someones apart. */}
-                  <div className="text-xs text-muted-foreground">{row.email}</div>
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">{row.username ?? '—'}</td>
-                <td className="px-3 py-2">
-                  {/*
+                      <div className="text-xs text-muted-foreground">{row.email}</div>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{row.username ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      {/*
                     An em dash for somebody with no app-level role, which is the
                     ordinary case: most accounts hold none and belong to an
                     organization instead. "None" would read as a role.
                   */}
-                  {appRoles.get(row.id)?.roleLabel ?? <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className="px-3 py-2">
-                  {/*
+                      {appRoles.get(row.id)?.roleLabel ?? <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {/*
                     "Platform only" rather than "0": the zero is the meaningful
                     value here — an account with a role and no tenant — and a
                     bare digit reads as missing data rather than as a state.
                   */}
-                  {organizationCounts.get(row.id) ? (
-                    <span className="text-foreground">{organizationCounts.get(row.id)}</span>
-                  ) : (
-                    <span className="text-muted-foreground">Platform only</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <StatusPill status={row.status} />
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">{formatDate(row.lastLoginAt)}</td>
-                <td className="px-3 py-2 text-muted-foreground">{formatDate(row.createdAt)}</td>
-                <td className="px-3 py-2 text-right">
-                  {mayEdit ? (
-                    <a
-                      href={editHref(row.id)}
-                      /*
-                       * Stops the link's click from counting toward a double
-                       * click on the row — without it, a slow double click on
-                       * the link itself navigates twice.
-                       */
-                      onDoubleClick={(event) => event.stopPropagation()}
-                      className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                    >
-                      Edit
-                    </a>
-                  ) : null}
-                </td>
-              </tr>
+                      {organizationCounts.get(row.id) ? (
+                        <span className="text-foreground">{organizationCounts.get(row.id)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Platform only</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <StatusPill status={row.status} />
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDate(row.lastLoginAt)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDate(row.createdAt)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {mayEdit ? (
+                        <a
+                          href={editHref(row.id)}
+                          /*
+                           * Stops the link's click from counting toward a double
+                           * click on the row — without it, a slow double click on
+                           * the link itself navigates twice.
+                           */
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                        >
+                          Edit
+                        </a>
+                      ) : null}
+                    </td>
+                  </tr>
+                )}
+              </Tooltip>
             ))}
             {rows?.length === 0 ? (
               <tr>
