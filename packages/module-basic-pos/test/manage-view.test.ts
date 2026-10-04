@@ -8,14 +8,18 @@ import {
   customerSummary,
   emailHref,
   filterItems,
+  isOutstandingFilter,
   itemForm,
   itemInput,
   itemKeyTarget,
   moveEntry,
+  ORDER_FILTERS,
   orderActions,
   orderListTotal,
   orderStatusChip,
+  ordersEmptyText,
   orderTitle,
+  otherDaysNote,
   phoneHref,
   whenText,
 } from '../src/react/view/manage.js';
@@ -161,14 +165,14 @@ describe('orders', () => {
 
   it('adds up the list: how many orders, and the amounts on their rows', () => {
     const rows = [PAID, { ...PAID, total: 2500 }, { ...PAID, status: 'unpaid', total: 400 }];
-    expect(orderListTotal(rows, 'today')).toEqual({ count: 3, total: 3900, refunded: 0, leftOut: 0, cut: false });
-    expect(orderListTotal([], 'today')).toEqual({ count: 0, total: 0, refunded: 0, leftOut: 0, cut: false });
+    expect(orderListTotal(rows, 'all')).toEqual({ count: 3, total: 3900, refunded: 0, leftOut: 0, cut: false });
+    expect(orderListTotal([], 'all')).toEqual({ count: 0, total: 0, refunded: 0, leftOut: 0, cut: false });
   });
 
   it('⚠ leaves cancelled and voided orders out of the total, and says how many — they are not money', () => {
     const rows = [PAID, { ...PAID, status: 'cancelled', total: 700 }, { ...PAID, status: 'voided', total: 50 }];
-    expect(orderListTotal(rows, 'today')).toMatchObject({ count: 1, total: 1000, leftOut: 2 });
-    // On the Cancelled tab every row is one: the sum is what was cancelled.
+    expect(orderListTotal(rows, 'all')).toMatchObject({ count: 1, total: 1000, leftOut: 2 });
+    // On the Cancelled filter every row is one: the sum is what was cancelled.
     expect(orderListTotal(rows.slice(1), 'cancelled')).toMatchObject({ count: 2, total: 750, leftOut: 0 });
   });
 
@@ -176,6 +180,33 @@ describe('orders', () => {
     expect(orderListTotal([{ ...PAID, refunded: 300 }, PAID], 'all')).toMatchObject({ total: 2000, refunded: 300 });
     const full = Array.from({ length: POS_ORDERS_READ_MAX }, () => PAID);
     expect(orderListTotal(full, 'all').cut).toBe(true);
+  });
+
+  it('opens on every status, and knows which ones are still waiting on somebody', () => {
+    expect(ORDER_FILTERS[0].key).toBe('all');
+    expect(ORDER_FILTERS.map((entry) => entry.key).filter(isOutstandingFilter)).toEqual([
+      'pending',
+      'unpaid',
+      'change_owed',
+    ]);
+  });
+
+  it('⚠ says how many outstanding orders the days showing leave out, and nothing when they hold them all', () => {
+    expect(otherDaysNote('unpaid', 1, 3)).toBe('2 more unpaid orders on other days');
+    expect(otherDaysNote('change_owed', 0, 1)).toBe('1 more order with change owed on other days');
+    expect(otherDaysNote('pending', 2, 2)).toBeNull();
+    // A paid or cancelled order is finished: it belongs to its day, and nothing is waiting elsewhere.
+    expect(otherDaysNote('paid', 0, 5)).toBeNull();
+    expect(otherDaysNote('all', 0, 5)).toBeNull();
+  });
+
+  it('says which orders there are none of, and on which days', () => {
+    const day = { fromDay: '2026-10-05', toDay: '2026-10-05' };
+    expect(ordersEmptyText('all', day)).toBe('No orders on Oct 5, 2026.');
+    expect(ordersEmptyText('unpaid', { fromDay: '2026-10-01', toDay: '2026-10-05' })).toBe(
+      'No unpaid orders from Oct 1, 2026 to Oct 5, 2026.',
+    );
+    expect(ordersEmptyText('change_owed', null)).toBe('No orders with change owed yet.');
   });
 
   it('⚠ offers each act only on the status it applies to, and only to who holds its key', () => {

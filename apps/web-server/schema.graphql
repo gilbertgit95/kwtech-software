@@ -1286,7 +1286,7 @@ type Query {
   posCustomer(customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer
   posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!
   posOrder(orderId: String!, organizationId: String!, workspaceId: String!): PosOrder
-  posOrders(customerId: String, organizationId: String!, search: String, tab: String!, workspaceId: String!): [PosOrderSummary!]!
+  posOrders(customerId: String, fromDay: String, organizationId: String!, search: String, tab: String!, toDay: String, workspaceId: String!): [PosOrderSummary!]!
   posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
   posSettings(organizationId: String!, workspaceId: String!): PosSettings!
   queueConsole(organizationId: String!, workspaceId: String!): QueueConsole!

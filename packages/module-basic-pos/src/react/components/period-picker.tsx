@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Infinity as InfinityIcon, X } from 'lucide-react';
 import {
   periodLabel,
   periodText,
@@ -25,14 +25,17 @@ const DAY_INPUT_CLASS =
   'h-7 rounded bg-transparent px-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 /**
- * The reports' period picker (D22): one control that always says WHICH days
- * are showing, with three ways to change them.
+ * The period picker (D22), for the reports and the Orders list: one control
+ * that always says WHICH days are showing, with three ways to change them.
  *
  * - The arrows step to the period before or after (`stepPeriod`): yesterday,
  *   the week before, the month before. There is no period after today.
  * - The button opens the presets, each with the days it means, so nobody has
  *   to guess what "This week" covers.
  * - "Custom range…" opens two date fields for any days at all.
+ *
+ * `everyDate` adds a fourth, for a list rather than a report: "All dates", no
+ * period at all. Only the Orders list passes it — a report always has days.
  *
  * Every day is a STORE day: `today` is the workspace's, handed in.
  */
@@ -46,8 +49,9 @@ export function PeriodPicker({
   onDays,
   onCustom,
   onEditing,
+  everyDate,
 }: {
-  /** The period showing, or null while the custom range is not a period yet. */
+  /** The period showing, or null while the custom range is not a period yet (or while every date is showing). */
   days: ReportDays | null;
   today: string;
   preset: ReportPreset;
@@ -60,10 +64,14 @@ export function PeriodPicker({
   onDays: (days: ReportDays) => void;
   onCustom: (custom: ReportDays) => void;
   onEditing: (editing: boolean) => void;
+  /** Offers "All dates"; `active` while it is what is showing (then `days` is null). */
+  everyDate?: { active: boolean; onSelect: () => void };
 }) {
+  const allDates = everyDate?.active ?? false;
   // A preset keeps its own name (on the 1st, "This month" is also today); anything else is named by its days.
   const chosen = REPORT_PRESETS.find((entry) => entry.key === preset);
-  const label = chosen && chosen.key !== 'custom' ? chosen.label : days ? periodLabel(days, today) : 'Custom';
+  const named = chosen && chosen.key !== 'custom' ? chosen.label : days ? periodLabel(days, today) : 'Custom';
+  const label = allDates ? 'All dates' : named;
   const before = days ? stepPeriod(days, -1, today) : null;
   const after = days ? stepPeriod(days, 1, today) : null;
 
@@ -90,7 +98,7 @@ export function PeriodPicker({
             <span className="sr-only">Period: </span>
             <span className="font-semibold">{label}</span>
             <span className="hidden truncate font-normal text-muted-foreground @md:inline">
-              {days ? periodText(days.fromDay, days.toDay) : 'Choose the days'}
+              {days ? periodText(days.fromDay, days.toDay) : allDates ? 'Every order' : 'Choose the days'}
             </span>
             <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
           </DropdownMenuTrigger>
@@ -101,6 +109,13 @@ export function PeriodPicker({
                 return (
                   <div key={entry.key}>
                     <DropdownMenuSeparator />
+                    {everyDate ? (
+                      <DropdownMenuItem role="menuitemradio" aria-checked={allDates} onSelect={everyDate.onSelect}>
+                        <Check aria-hidden="true" className={cn('text-primary', allDates ? null : 'invisible')} />
+                        <span className={cn(allDates ? 'font-semibold' : null)}>All dates</span>
+                        <InfinityIcon aria-hidden="true" className="ml-auto text-muted-foreground" />
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       role="menuitemradio"
                       aria-checked={editing}

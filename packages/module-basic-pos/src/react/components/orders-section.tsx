@@ -1,39 +1,56 @@
 'use client';
 
+import { zonedDayKey } from '@kwtech/module-kit';
 import { LIST_KEYS, ListDrawer, listNeighbours, searchIntoList, useDebouncedValue } from '@kwtech/web-ui/react';
 import { Printer, RotateCcw, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
 import { planRefund } from '../../domain/refunds.js';
-import type { PosOrderLineView, PosOrderView, PosRefundInput } from '../pos-client.js';
+import type { PosOrderLineView, PosOrderSummaryView, PosOrderView, PosRefundInput } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
 import {
-  ORDER_TABS,
+  isOutstandingFilter,
+  ORDER_FILTERS,
+  type OrderFilter,
   type OrderListTotal,
-  type OrderTab,
   orderActions,
   orderListTotal,
   orderStatusChip,
+  ordersEmptyText,
   orderTitle,
+  otherDaysNote,
   whenText,
 } from '../view/manage.js';
 import { formatPercent, formatPeso, parsePeso } from '../view/money.js';
 import { METHOD_LABELS, receiptHtml } from '../view/receipt.js';
+import { periodText, prepareCustomDays, presetDays, type ReportDays, type ReportPreset } from '../view/reports.js';
 import { lineLabel } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
 import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PaymentDialog } from './payment-dialog.js';
+import { PeriodPicker } from './period-picker.js';
 import { printHtml } from './till.js';
 
 /**
- * Orders (D23): Today, Pending, Unpaid, Change owed, Cancelled, All — a list,
- * and the order in a drawer over it with what may be done to it: resume an open one,
- * take payment for an unpaid one or void it, refund a paid one, settle owed
- * change, reprint.
+ * Orders (D23): a list, and the order in a drawer over it with what may be
+ * done to it: resume an open one, take payment for an unpaid one or void it,
+ * refund a paid one, settle owed change, reprint.
  *
- * `openOrderId` opens one from elsewhere (a customer's history), on All.
+ * WHICH orders is two filters, each its own question (the operator,
+ * 2026-10-05): the DAYS — the reports' own picker, plus "All dates" — and the
+ * STATUS. It opens on today, every status: what the counter did so far.
+ *
+ * - The days are the WORKSPACE's (`state.timeZone`), so "Today" is the
+ *   store's today wherever the person is reading from.
+ * - ⚠ An outstanding order outlives its day. Narrowed to some days, the
+ *   Pending, Unpaid and Change owed lists say how many more there are on
+ *   other days, one click from all of them — a filter must never read as
+ *   "nobody owes".
+ *
+ * `openOrderId` opens one from elsewhere (a customer's history), on every
+ * status and every date, so it is in the list whenever it was sold.
  */
 export function OrdersSection({
   state,
@@ -44,8 +61,15 @@ export function OrdersSection({
   openOrderId: string | null;
   onToSell: () => void;
 }) {
-  const { client, scope } = state;
-  const [tab, setTab] = useState<OrderTab>('today');
+  const { client, scope, timeZone } = state;
+  const today = zonedDayKey(new Date(), timeZone);
+  const [filter, setFilter] = useState<OrderFilter>('all');
+  const [preset, setPreset] = useState<ReportPreset>('today');
+  const [custom, setCustom] = useState<ReportDays>({ fromDay: today, toDay: today });
+  /** Whether the custom range's date fields are open. */
+  const [editing, setEditing] = useState(false);
+  /** No period at all: every date. */
+  const [everyDate, setEveryDate] = useState(openOrderId !== null);
   const [search, setSearch] = useState('');
   const listRef = useRef<HTMLUListElement>(null);
   const settled = useDebouncedValue(search);
@@ -53,11 +77,23 @@ export function OrdersSection({
 
   useEffect(() => {
     if (!openOrderId) return;
-    setTab('all');
+    setFilter('all');
+    setEveryDate(true);
+    setEditing(false);
     setSelectedId(openOrderId);
   }, [openOrderId]);
 
-  const load = useCallback(() => client.orders(scope, tab, settled || null), [client, scope, tab, settled]);
+  const prepared = preset === 'custom' ? prepareCustomDays(custom.fromDay, custom.toDay) : presetDays(preset, today);
+  const problem = !everyDate && 'problem' in prepared ? prepared.problem : null;
+  const days = everyDate || 'problem' in prepared ? null : prepared;
+  const fromDay = days?.fromDay ?? null;
+  const toDay = days?.toDay ?? null;
+
+  const load = useCallback(async (): Promise<PosOrderSummaryView[]> => {
+    // A custom range still being typed is no period yet: list nothing rather than every date.
+    if (problem) return [];
+    return client.orders(scope, filter, settled || null, null, fromDay && toDay ? { fromDay, toDay } : null);
+  }, [client, scope, filter, settled, fromDay, toDay, problem]);
   const list = usePosData(scope, load, ['order'], 'Could not load the orders.');
   const rows = list.data ?? [];
   const around = listNeighbours(
@@ -65,18 +101,102 @@ export function OrdersSection({
     selectedId,
   );
 
+  // How many of an outstanding status there are on ANY date, to say what the days showing leave out.
+  // Not while searching: the search narrows the list, and the two counts would no longer be of the same thing.
+  const counting = isOutstandingFilter(filter) && fromDay !== null && !settled;
+  const loadEveryDate = useCallback(async (): Promise<{ filter: OrderFilter; count: number } | null> => {
+    if (!counting) return null;
+    return { filter, count: (await client.orders(scope, filter)).length };
+  }, [client, scope, filter, counting]);
+  const elsewhere = usePosData(scope, loadEveryDate, ['order'], 'Could not count the orders on other days.');
+  // ⚠ Only a count OF THIS FILTER, beside a list that has loaded: a late answer for the last one must not be shown as this one's.
+  const otherDays =
+    counting && !list.loading && elsewhere.data?.filter === filter
+      ? otherDaysNote(filter, rows.length, elsewhere.data.count)
+      : null;
+
+  /** Another period or status is another list: the order that was open may not be in it. */
+  const showEveryDate = () => {
+    setEveryDate(true);
+    setEditing(false);
+    setSelectedId(null);
+  };
+  const filtered = filter !== 'all' || everyDate || preset !== 'today';
+  const reset = () => {
+    setFilter('all');
+    setPreset('today');
+    setEveryDate(false);
+    setEditing(false);
+    setSelectedId(null);
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <Tabs
-        label="Which orders"
-        tabs={ORDER_TABS}
-        current={tab}
-        onChange={(next) => {
-          setTab(next);
-          setSelectedId(null);
-        }}
-      />
-      <Alert message={list.error} />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <PeriodPicker
+          days={days}
+          today={today}
+          preset={preset}
+          custom={custom}
+          editing={editing}
+          everyDate={{ active: everyDate, onSelect: showEveryDate }}
+          onPreset={(next) => {
+            setPreset(next);
+            setEveryDate(false);
+            setEditing(false);
+            setSelectedId(null);
+          }}
+          onDays={(next) => {
+            setPreset('custom');
+            setCustom(next);
+            setEveryDate(false);
+            setSelectedId(null);
+          }}
+          onCustom={(next) => {
+            setPreset('custom');
+            setCustom(next);
+            setEveryDate(false);
+            setSelectedId(null);
+          }}
+          onEditing={(open) => {
+            setEditing(open);
+            if (!open || !everyDate) return;
+            // From "All dates" there are no days to start the range from: start it at today.
+            setPreset('custom');
+            setCustom({ fromDay: today, toDay: today });
+            setEveryDate(false);
+          }}
+        />
+        <Tabs
+          label="Status"
+          tabs={ORDER_FILTERS}
+          current={filter}
+          onChange={(next) => {
+            setFilter(next);
+            setSelectedId(null);
+          }}
+        />
+        {filtered ? (
+          <button type="button" className={buttonClass('ghost', 'sm')} onClick={reset}>
+            <RotateCcw aria-hidden="true" className="size-3.5" />
+            Reset
+          </button>
+        ) : null}
+      </div>
+      {/* The picker hides its days in a narrow panel, so they are said here too. */}
+      {days ? <p className="text-xs text-muted-foreground @md:hidden">{periodText(days.fromDay, days.toDay)}</p> : null}
+      {otherDays ? (
+        <p
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted px-3 py-1.5 text-sm"
+          role="status"
+        >
+          <span>{otherDays}.</span>
+          <button type="button" className={buttonClass('ghost', 'sm')} onClick={showEveryDate}>
+            Show all dates
+          </button>
+        </p>
+      ) : null}
+      <Alert message={list.error ?? elsewhere.error} />
       <ListDrawer
         onClose={() => setSelectedId(null)}
         label="order"
@@ -113,7 +233,9 @@ export function OrdersSection({
             <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
               {rows.length === 0 ? (
                 <li>
-                  <Empty>{list.loading ? 'Loading…' : 'No orders here.'}</Empty>
+                  <Empty>
+                    {emptyText({ loading: list.loading, problem, searching: settled !== '', filter, days })}
+                  </Empty>
                 </li>
               ) : null}
               {rows.map((row) => {
@@ -131,7 +253,7 @@ export function OrdersSection({
                             ? `${row.customerName ?? row.label} · `
                             : ''}
                           {row.itemCount} {row.itemCount === 1 ? 'item' : 'items'} ·{' '}
-                          {whenText(row.paidAt ?? row.finalisedAt ?? row.createdAt, state.timeZone)}
+                          {whenText(row.paidAt ?? row.finalisedAt ?? row.createdAt, timeZone)}
                         </span>
                       </span>
                       <span className="shrink-0 tabular-nums">{formatPeso(row.total)}</span>
@@ -140,7 +262,7 @@ export function OrdersSection({
                 );
               })}
             </ul>
-            {rows.length > 0 ? <ListTotal sum={orderListTotal(rows, tab)} tab={tab} /> : null}
+            {rows.length > 0 ? <ListTotal sum={orderListTotal(rows, filter)} filter={filter} /> : null}
           </>
         }
         detail={
@@ -159,16 +281,36 @@ export function OrdersSection({
   );
 }
 
+/** Why the list is empty, in words: still loading, a range not finished, nothing matching, or simply none. */
+function emptyText({
+  loading,
+  problem,
+  searching,
+  filter,
+  days,
+}: {
+  loading: boolean;
+  problem: string | null;
+  searching: boolean;
+  filter: OrderFilter;
+  days: ReportDays | null;
+}) {
+  if (problem) return problem;
+  if (loading) return 'Loading…';
+  if (searching) return 'No orders match that search.';
+  return ordersEmptyText(filter, days);
+}
+
 /**
  * The list, added up, under it: a quick total of the orders showing (the
- * operator, 2026-10-02) — the tab, narrowed by the search. Below the scrolling
+ * operator, 2026-10-02) — the days and the status, narrowed by the search. Below the scrolling
  * list rather than inside it, so it is in sight however long the list is, and
  * the list grows to keep it at the bottom of the column however short.
  *
  * Not a report (`orderListTotal` says why): Reports answers "what did the day
  * make"; this answers "what do these rows come to".
  */
-function ListTotal({ sum, tab }: { sum: OrderListTotal; tab: OrderTab }) {
+function ListTotal({ sum, filter }: { sum: OrderListTotal; filter: OrderFilter }) {
   const notes = [
     sum.leftOut > 0 ? `${sum.leftOut} cancelled or voided not counted` : null,
     sum.refunded > 0 ? `${formatPeso(sum.refunded)} of it refunded` : null,
@@ -178,7 +320,7 @@ function ListTotal({ sum, tab }: { sum: OrderListTotal; tab: OrderTab }) {
     <section aria-label="Total of the orders listed" className="shrink-0 border-t border-border px-3 pt-2 text-sm">
       <p className="flex items-baseline justify-between gap-3">
         <span className="font-medium">
-          {tab === 'cancelled' ? 'Cancelled' : 'Total'}
+          {filter === 'cancelled' ? 'Cancelled' : 'Total'}
           <span className="font-normal text-muted-foreground">
             {' '}
             · {sum.count} {sum.count === 1 ? 'order' : 'orders'}

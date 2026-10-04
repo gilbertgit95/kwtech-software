@@ -225,7 +225,7 @@ export type PosOrderUpdate = Partial<
 
 export interface PosOrderListWhere extends InScope {
   status?: PosOrderStatus | { in: PosOrderStatus[] };
-  heldAt?: { not: null };
+  heldAt?: { not: null } | { gte: Date; lt: Date };
   customerId?: string;
   number?: number;
   changeOwed?: { gt: number };
@@ -241,6 +241,7 @@ export interface PosOrderListWhere extends InScope {
     | { status: PosOrderStatus }
     | { status: { in: PosOrderStatus[] } }
     | { heldAt: { not: null } }
+    | { status: PosOrderStatus; heldAt: { gte: Date; lt: Date } }
     | { customerName: { contains: string; mode: 'insensitive' } }
     | { label: { contains: string; mode: 'insensitive' } }
     | { number: number }

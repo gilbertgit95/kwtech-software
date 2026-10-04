@@ -112,6 +112,6 @@ function refusalMessage(reason: PosRefusal): string {
     case 'invalid_keymap':
       return 'Those shortcuts cannot be saved';
     case 'invalid_period':
-      return 'A report covers whole store days, from one day to a little over a year';
+      return 'A period covers whole store days, from one day to a little over a year';
   }
 }

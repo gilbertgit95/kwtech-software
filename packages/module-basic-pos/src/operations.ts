@@ -85,9 +85,12 @@ export const POS_OPERATIONS = {
 
   // ── orders: reading ───────────────────────────────────────────────────────
 
-  /** One tab of the Orders section: today, pending, unpaid, change_owed, cancelled or all. `customerId`: one customer's. */
-  posOrders: `query PosOrders(${SCOPE_VARS}, $tab: String!, $search: String, $customerId: String) {
-    posOrders(${SCOPE_ARGS}, tab: $tab, search: $search, customerId: $customerId) { ${ORDER_SUMMARY} }
+  /**
+   * The Orders list. `tab` is the status: all, paid, pending, unpaid, change_owed or cancelled.
+   * `fromDay`..`toDay`: the store's days (both or neither; neither is every date). `customerId`: one customer's.
+   */
+  posOrders: `query PosOrders(${SCOPE_VARS}, $tab: String!, $search: String, $customerId: String, $fromDay: String, $toDay: String) {
+    posOrders(${SCOPE_ARGS}, tab: $tab, search: $search, customerId: $customerId, fromDay: $fromDay, toDay: $toDay) { ${ORDER_SUMMARY} }
   }`,
 
   posOrder: `query PosOrder(${SCOPE_VARS}, $orderId: String!) {

@@ -1,3 +1,4 @@
+import { zonedDayKey } from '@kwtech/module-kit';
 import { POS_FEATURE } from '../src/feature-keys.js';
 import { PosWriteError } from '../src/server/pos.errors.js';
 import type { PosOrderRow } from '../src/server/pos.repository.js';
@@ -319,25 +320,74 @@ describe('what the API answers', () => {
     expect([forBen?.lines[0]?.unitCost, forAna?.lines[0]?.unitCost]).toEqual([null, 600]);
   });
 
-  it('lists the pending tab oldest first, and today’s paid orders on today', async () => {
+  it('lists pending orders oldest first, and the orders paid on a store day on that day', async () => {
     const { writes, orders, magnet } = await shop();
     let held = await writes.create(SCOPE, BEN, null);
     held = await writes.hold(SCOPE, BEN, ref(held), 'red cap', new Date());
     let sold = await writes.create(SCOPE, BEN, null);
     sold = await writes.addLine(SCOPE, BEN, ref(sold), { itemId: magnet.id, quantity: 1 });
     sold = await writes.pay(SCOPE, BEN, ref(sold), cash(1500));
-    expect((await orders.list(SCOPE, 'pending', '', new Date())).map((row) => row.order.id)).toEqual([held.id]);
-    const paidAt = sold.paidAt ?? new Date();
-    expect((await orders.list(SCOPE, 'today', '', paidAt)).map((row) => row.order.id)).toEqual([sold.id]);
-    expect((await orders.list(SCOPE, 'all', 'red', new Date())).map((row) => row.order.label)).toEqual(['red cap']);
+    expect((await orders.list(SCOPE, 'pending', '')).map((row) => row.order.id)).toEqual([held.id]);
+    const day = zonedDayKey(sold.paidAt ?? new Date(), 'Asia/Manila');
+    const paidThatDay = await orders.list(SCOPE, 'paid', '', { fromDay: day, toDay: day });
+    expect(paidThatDay.map((row) => row.order.id)).toEqual([sold.id]);
+    expect((await orders.list(SCOPE, 'all', 'red')).map((row) => row.order.label)).toEqual(['red cap']);
+  });
+
+  it('⚠ narrows the list to the STORE’s days, each status by its own moment', async () => {
+    const { writes, orders, prisma, magnet } = await shop();
+    const sell = async () => {
+      const order = await writes.create(SCOPE, BEN, null);
+      return writes.addLine(SCOPE, BEN, ref(order), { itemId: magnet.id, quantity: 1 });
+    };
+    const late = await writes.pay(SCOPE, BEN, ref(await sell()), cash(1500));
+    const early = await writes.pay(SCOPE, BEN, ref(await sell()), { ...cash(1500), clientId: 'pay-early' });
+    // Held on the 1st and still open; and one held on the 1st but paid on the 2nd, which is the 2nd's.
+    const held = await writes.hold(SCOPE, BEN, ref(await sell()), 'table 3', new Date('2026-10-01T02:00:00Z'));
+    const stamp = (id: string, data: Record<string, unknown>) => {
+      const row = prisma.state.posOrder.find((order) => order.id === id);
+      if (row) Object.assign(row, data);
+    };
+    // 15:00Z is 11 PM on the 1st in Manila; 16:30Z the same UTC day is already the 2nd there.
+    stamp(late.id, { paidAt: new Date('2026-10-01T15:00:00Z'), finalisedAt: new Date('2026-10-01T15:00:00Z') });
+    stamp(early.id, {
+      paidAt: new Date('2026-10-01T16:30:00Z'),
+      finalisedAt: new Date('2026-10-01T16:30:00Z'),
+      heldAt: new Date('2026-10-01T02:00:00Z'),
+    });
+    const first = { fromDay: '2026-10-01', toDay: '2026-10-01' };
+    const second = { fromDay: '2026-10-02', toDay: '2026-10-02' };
+    const ids = async (tab: 'all' | 'paid' | 'pending', days: typeof first | null) =>
+      (await orders.list(SCOPE, tab, '', days)).map((row) => row.order.id).sort();
+
+    expect(await ids('paid', first)).toEqual([late.id]);
+    expect(await ids('paid', second)).toEqual([early.id]);
+    expect(await ids('all', first)).toEqual([late.id, held.id].sort());
+    expect(await ids('all', second)).toEqual([early.id]);
+    expect(await ids('pending', first)).toEqual([held.id]);
+    expect(await ids('pending', second)).toEqual([]);
+    expect(await ids('all', { fromDay: '2026-10-01', toDay: '2026-10-02' })).toEqual(
+      [late.id, early.id, held.id].sort(),
+    );
+    // No days: nothing is narrowed by date, so what is outstanding is listed however old.
+    expect(await ids('pending', null)).toEqual([held.id]);
+  });
+
+  it('⚠ refuses days that are not a period, rather than listing every date', async () => {
+    const { orders } = await shop();
+    expect(await refusal(orders.list(SCOPE, 'all', '', { fromDay: '2026-10-02', toDay: '2026-10-01' }))).toBe(
+      'invalid_period',
+    );
+    expect(await refusal(orders.list(SCOPE, 'all', '', { fromDay: 'today', toDay: '2026-10-01' }))).toBe(
+      'invalid_period',
+    );
   });
 
   it('⚠ lists a cart nobody held nowhere: only Hold makes a pending order', async () => {
     const { writes, orders, magnet } = await shop();
     let cart = await writes.create(SCOPE, BEN, null);
     cart = await writes.addLine(SCOPE, BEN, ref(cart), { itemId: magnet.id, quantity: 1 });
-    const listed = async (tab: 'pending' | 'all') =>
-      (await orders.list(SCOPE, tab, '', new Date())).map((row) => row.order.id);
+    const listed = async (tab: 'pending' | 'all') => (await orders.list(SCOPE, tab, '')).map((row) => row.order.id);
     expect([await listed('pending'), await listed('all')]).toEqual([[], []]);
 
     cart = await writes.hold(SCOPE, BEN, ref(cart), 'table 3', new Date('2026-10-03T01:00:00Z'));
@@ -372,7 +422,7 @@ describe('what the API answers', () => {
     // Held, so both are orders the store lists: a cart still on a till is in nobody's history yet.
     linked = await writes.hold(SCOPE, BEN, ref(linked), null, new Date());
     walkIn = await writes.hold(SCOPE, BEN, ref(walkIn), null, new Date());
-    const history = await orders.list(SCOPE, 'all', '', new Date(), juan.id);
+    const history = await orders.list(SCOPE, 'all', '', null, juan.id);
     expect(history.map((row) => row.order.id)).toEqual([linked.id]);
   });
 

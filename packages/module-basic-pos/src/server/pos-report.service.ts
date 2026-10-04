@@ -10,6 +10,7 @@ import {
   type PosReportRefund,
   type PosSeriesPoint,
   type PosSummary,
+  periodDayCount,
   salesByCategory,
   salesByHour,
   salesByItem,
@@ -236,13 +237,9 @@ function invalidPeriod(): PosWriteError {
   return refusalError('invalid_period', { maxDays: POS_REPORT_DAYS_MAX });
 }
 
-/** How many store days `fromDay`..`toDay` covers, inclusive; refused past the cap or backwards. */
+/** How many store days `fromDay`..`toDay` covers, inclusive; refused past the cap or backwards (`periodDayCount`). */
 function daysBetween(fromDay: string, toDay: string): number {
-  const from = Date.parse(`${fromDay}T00:00:00Z`);
-  const to = Date.parse(`${toDay}T00:00:00Z`);
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(fromDay) || !/^\d{4}-\d{2}-\d{2}$/u.test(toDay)) throw invalidPeriod();
-  if (Number.isNaN(from) || Number.isNaN(to) || to < from) throw invalidPeriod();
-  const days = Math.round((to - from) / 86_400_000) + 1;
-  if (days > POS_REPORT_DAYS_MAX) throw invalidPeriod();
+  const days = periodDayCount(fromDay, toDay);
+  if (days === null) throw invalidPeriod();
   return days;
 }

@@ -81,6 +81,23 @@ export function shiftDayKey(dayKey: string, days: number): string {
   return moved.toISOString().slice(0, 10);
 }
 
+const PERIOD_DAY_KEY = /^\d{4}-\d{2}-\d{2}$/u;
+
+/**
+ * How many store days `fromDay`..`toDay` covers, inclusive — or null when it
+ * is not a period one read may cover: a day that is not `YYYY-MM-DD`, a last
+ * day before the first, or more than `POS_REPORT_DAYS_MAX` days. One rule for
+ * the reports and the Orders list, so neither accepts what the other refuses.
+ */
+export function periodDayCount(fromDay: string, toDay: string): number | null {
+  if (!PERIOD_DAY_KEY.test(fromDay) || !PERIOD_DAY_KEY.test(toDay)) return null;
+  const from = Date.parse(`${fromDay}T00:00:00Z`);
+  const to = Date.parse(`${toDay}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null;
+  const days = Math.round((to - from) / 86_400_000) + 1;
+  return days > POS_REPORT_DAYS_MAX ? null : days;
+}
+
 /** A period: from (inclusive) to (exclusive), as instants. The service turns store days into these. */
 export interface PosPeriod {
   from: Date;

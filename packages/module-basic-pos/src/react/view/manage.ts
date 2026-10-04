@@ -2,6 +2,7 @@ import { POS_KEY_ACTIONS, type PosKeyAction, type PosKeyZone } from '../../domai
 import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
 import type { PosCategoryView, PosItemInput, PosItemView, PosOrderSummaryView, PosOrderView } from '../pos-client.js';
 import { parsePeso, pesoInputValue } from './money.js';
+import { dayText } from './reports.js';
 
 /**
  * The management sections' decisions (D23), pure so they are tested rather
@@ -11,17 +12,70 @@ import { parsePeso, pesoInputValue } from './money.js';
 
 // ── orders ──────────────────────────────────────────────────────────────────
 
-/** The Orders section's tabs, in the bar's order; the keys are the API's `tab`. */
-export const ORDER_TABS = [
-  { key: 'today', label: 'Today' },
+/**
+ * The Orders section's status filter, in the bar's order; the keys are the
+ * API's `tab`. A filter beside the period picker, not tabs of their own: which
+ * days and which status are two questions, answered separately (the operator,
+ * 2026-10-05). It opens on All, for today.
+ */
+export const ORDER_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'paid', label: 'Paid' },
   { key: 'pending', label: 'Pending' },
   { key: 'unpaid', label: 'Unpaid' },
   { key: 'change_owed', label: 'Change owed' },
   { key: 'cancelled', label: 'Cancelled' },
-  { key: 'all', label: 'All' },
 ] as const;
 
-export type OrderTab = (typeof ORDER_TABS)[number]['key'];
+export type OrderFilter = (typeof ORDER_FILTERS)[number]['key'];
+
+/**
+ * The statuses that are still waiting on somebody: a held order, a customer
+ * who owes, change the store owes. ⚠ These outlive their day — last week's
+ * unpaid order is still unpaid — so a list of them narrowed to some days says
+ * how many it left out (`otherDaysNote`), rather than looking like "nobody owes".
+ */
+export function isOutstandingFilter(filter: OrderFilter): boolean {
+  return filter === 'pending' || filter === 'unpaid' || filter === 'change_owed';
+}
+
+/** What a filter's orders are called in a sentence: "unpaid orders", "orders with change owed". */
+function filterPhrase(filter: OrderFilter, count: number): string {
+  const noun = count === 1 ? 'order' : 'orders';
+  switch (filter) {
+    case 'all':
+      return noun;
+    case 'paid':
+      return `paid ${noun}`;
+    case 'pending':
+      return `pending ${noun}`;
+    case 'unpaid':
+      return `unpaid ${noun}`;
+    case 'change_owed':
+      return `${noun} with change owed`;
+    case 'cancelled':
+      return `cancelled ${noun}`;
+  }
+}
+
+/**
+ * "2 more unpaid orders on other days", or null when the days showing hold
+ * every one — the line that keeps an outstanding order findable while the
+ * list is narrowed to a period. `everyDate` is how many there are on any date.
+ */
+export function otherDaysNote(filter: OrderFilter, listed: number, everyDate: number): string | null {
+  const more = everyDate - listed;
+  if (!isOutstandingFilter(filter) || more <= 0) return null;
+  return `${more} more ${filterPhrase(filter, more)} on other days`;
+}
+
+/** The empty list, in words: which orders there are none of, and on which days. `days` null is every date. */
+export function ordersEmptyText(filter: OrderFilter, days: { fromDay: string; toDay: string } | null): string {
+  const what = `No ${filterPhrase(filter, 2)}`;
+  if (!days) return `${what} yet.`;
+  if (days.fromDay === days.toDay) return `${what} on ${dayText(days.fromDay)}.`;
+  return `${what} from ${dayText(days.fromDay)} to ${dayText(days.toDay)}.`;
+}
 
 /** How a status reads, and which colour tells it apart at a glance. */
 export type StatusTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
@@ -76,13 +130,13 @@ export interface OrderListTotal {
 }
 
 /**
- * The quick total under the Orders list: the rows as listed (the tab, narrowed
- * by the search), added up.
+ * The quick total under the Orders list: the rows as listed (the days and the
+ * status, narrowed by the search), added up.
  *
  * ⚠ A CANCELLED OR VOIDED ORDER IS NOT MONEY (D22: "voided and cancelled
- * orders never"), so it is left out and counted apart — Today lists the day's
+ * orders never"), so it is left out and counted apart — a day lists its
  * cancellations beside its sales, and adding them in would overstate the day.
- * The Cancelled tab is the exception: every row there is one, and the sum is
+ * The Cancelled filter is the exception: every row there is one, and the sum is
  * what was cancelled.
  *
  * Not a report: a refund counts on the day it is made (D17) and this only
@@ -90,10 +144,10 @@ export interface OrderListTotal {
  */
 export function orderListTotal(
   rows: readonly Pick<PosOrderSummaryView, 'status' | 'total' | 'refunded'>[],
-  tab: OrderTab,
+  filter: OrderFilter,
 ): OrderListTotal {
   const counted =
-    tab === 'cancelled' ? rows : rows.filter((row) => row.status !== 'cancelled' && row.status !== 'voided');
+    filter === 'cancelled' ? rows : rows.filter((row) => row.status !== 'cancelled' && row.status !== 'voided');
   return {
     count: counted.length,
     total: counted.reduce((sum, row) => sum + row.total, 0),

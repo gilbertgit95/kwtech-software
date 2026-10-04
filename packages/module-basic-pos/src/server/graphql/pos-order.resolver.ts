@@ -2,7 +2,7 @@ import { declareScope, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
 import { Inject, SetMetadata } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { refundState } from '../../domain/refunds.js';
-import type { PosSummary } from '../../domain/reports.js';
+import { POS_REPORT_DAYS_MAX, type PosSummary } from '../../domain/reports.js';
 import { PosWriteError, refusalError } from '../pos.errors.js';
 import { storedDiscount } from '../pos.lookup.js';
 import type { PosModuleOptions } from '../pos.options.js';
@@ -50,7 +50,11 @@ export class PosOrderResolver {
 
   // ── reading ───────────────────────────────────────────────────────────────
 
-  /** One tab of the Orders section: `today`, `pending`, `unpaid`, `change_owed`, `cancelled` or `all`. */
+  /**
+   * The Orders list: `tab` is the status (`all`, `paid`, `pending`, `unpaid`,
+   * `change_owed` or `cancelled`), and `fromDay`..`toDay` the store's days it
+   * is narrowed to — both or neither; neither is every date.
+   */
   @Query(() => [PosOrderSummaryType], { name: 'posOrders' })
   async posOrders(
     @Args('organizationId') organizationId: string,
@@ -58,10 +62,15 @@ export class PosOrderResolver {
     @Args('tab') tab: string,
     @Args('search', { type: () => String, nullable: true }) search?: string | null,
     @Args('customerId', { type: () => String, nullable: true }) customerId?: string | null,
+    @Args('fromDay', { type: () => String, nullable: true }) fromDay?: string | null,
+    @Args('toDay', { type: () => String, nullable: true }) toDay?: string | null,
   ): Promise<PosOrderSummaryType[]> {
     if (!isPosOrderTab(tab)) throw refusalError('not_found');
+    // ⚠ One day without the other is refused, not read as "every date": half a period must never list everything.
+    if ((fromDay == null) !== (toDay == null)) throw refusalError('invalid_period', { maxDays: POS_REPORT_DAYS_MAX });
     const scope = { organizationId, workspaceId };
-    const rows = await this.orders.list(scope, tab, search ?? '', new Date(), customerId ?? null);
+    const days = fromDay != null && toDay != null ? { fromDay, toDay } : null;
+    const rows = await this.orders.list(scope, tab, search ?? '', days, customerId ?? null);
     return rows.map(renderSummary);
   }
 

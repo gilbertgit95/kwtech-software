@@ -326,11 +326,13 @@ export interface PosClient {
   settings(scope: PosScopeView): Promise<PosSettingsView>;
   saveSettings(scope: PosScopeView, keymap: string | null): Promise<PosSettingsView>;
 
+  /** `tab` is the status; `days` the store's days it is narrowed to, or null for every date. */
   orders(
     scope: PosScopeView,
     tab: string,
     search?: string | null,
     customerId?: string | null,
+    days?: { fromDay: string; toDay: string } | null,
   ): Promise<PosOrderSummaryView[]>;
   order(scope: PosScopeView, orderId: string): Promise<PosOrderView | null>;
   createOrder(scope: PosScopeView, label?: string | null): Promise<PosOrderView>;
@@ -433,7 +435,8 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
     settings: (scope) => call('posSettings', scope),
     saveSettings: (scope, keymap) => call('savePosSettings', scope, { keymap }),
 
-    orders: (scope, tab, search = null, customerId = null) => call('posOrders', scope, { tab, search, customerId }),
+    orders: (scope, tab, search = null, customerId = null, days = null) =>
+      call('posOrders', scope, { tab, search, customerId, fromDay: days?.fromDay ?? null, toDay: days?.toDay ?? null }),
     order: (scope, orderId) => call('posOrder', scope, { orderId }),
     createOrder: (scope, label = null) => call('createPosOrder', scope, { label }),
     addLine: (scope, order, itemId, variantId, quantity) =>

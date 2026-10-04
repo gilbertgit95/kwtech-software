@@ -575,6 +575,29 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-05** — **The point of sale's Orders list is filtered by days and by status, not by six tabs.**
+
+  The operator asked for Orders to show more than today (yesterday, this week,
+  last month, any range) and for the other tabs to become a filter. The tabs
+  mixed two questions in one row: Today was a day, the rest were statuses, so
+  "yesterday's cancellations" could not be asked at all.
+  - **Two filters.** The days are the reports' own `PeriodPicker` (presets,
+    arrows, a custom range), opening on today. The status is a row of pills,
+    opening on All, with **Paid** added. A Reset button returns to today, All.
+  - **Each status is dated by its own moment:** paid on those days, released
+    unpaid on them, held on them, cancelled on them; All is any of the four. An
+    order held on Monday and paid on Tuesday is Tuesday's.
+  - **"All dates" is in the picker for Orders only.** `posOrders` takes
+    `fromDay` and `toDay` (both or neither); neither is every date, which is
+    what the till's pending list, the Orders badge and a customer's history
+    still ask. The `today` tab is gone from the API.
+  - **An outstanding order outlives its day.** Pending, Unpaid and Change owed
+    narrowed to some days say "2 more unpaid orders on other days", with a
+    button to all dates, so a filter never reads as "nobody owes".
+  - **Not done:** counts on the status pills (two more reads per change of
+    period), and remembering the last filters between visits: the section
+    opens on today each time, which is what the counter asks first.
+
 - **2026-10-04** — **The Apps page's app list collapses to a rail of icons and resizes, like the main drawer.**
 
   The operator asked for the grid's app list to behave like the main

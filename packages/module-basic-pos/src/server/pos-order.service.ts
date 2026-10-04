@@ -1,7 +1,9 @@
-import { escapeLikePattern, nextDayKey, zonedDayKey, zonedStartOfDay } from '@kwtech/module-kit';
+import { escapeLikePattern, nextDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
 import { POS_ORDERS_READ_MAX } from '../domain/orders.js';
+import { POS_REPORT_DAYS_MAX, periodDayCount } from '../domain/reports.js';
 import type { PosOrderStatus } from '../types.js';
+import { type PosWriteError, refusalError } from './pos.errors.js';
 import { linesOf } from './pos.lookup.js';
 import type {
   InScope,
@@ -15,17 +17,26 @@ import type {
 import { POS_PRISMA_WRITE } from './pos.tokens.js';
 import { PosTimeZoneService } from './pos-time-zone.service.js';
 
-/** The tabs of the Orders section (D23). */
-export type PosOrderTab = 'today' | 'pending' | 'unpaid' | 'change_owed' | 'cancelled' | 'all';
+/**
+ * The Orders section's status filter (D23). Still called `tab` on the wire: it
+ * was one tab of six until the days became a filter of their own (`PosOrderDays`).
+ */
+export type PosOrderTab = 'all' | 'paid' | 'pending' | 'unpaid' | 'change_owed' | 'cancelled';
 
 export const POS_ORDER_TABS = [
-  'today',
+  'all',
+  'paid',
   'pending',
   'unpaid',
   'change_owed',
   'cancelled',
-  'all',
 ] as const satisfies readonly PosOrderTab[];
+
+/** The store days a list is narrowed to, inclusive (`YYYY-MM-DD`, the workspace's days). */
+export interface PosOrderDays {
+  fromDay: string;
+  toDay: string;
+}
 
 export function isPosOrderTab(value: unknown): value is PosOrderTab {
   return (POS_ORDER_TABS as readonly unknown[]).includes(value);
@@ -47,7 +58,7 @@ export interface PosOrderListEntry {
 }
 
 /**
- * Reading orders: the Orders section's tabs, and one order with its lines and
+ * Reading orders: the Orders section's list, and one order with its lines and
  * refunds. Bound to `pos:read`. Every read names the store; costs are stripped
  * by the resolver, not here.
  */
@@ -59,14 +70,20 @@ export class PosOrderService {
   ) {}
 
   /**
-   * One tab of the Orders section.
+   * The Orders section's list: a status, and optionally the store's days.
    *
-   *   today       — paid, released unpaid or cancelled on the store's today
+   *   all         — the most recent orders
+   *   paid        — paid, whatever became of them since (refunded, change owed)
    *   pending     — open AND held (Hold was pressed), oldest first
    *   unpaid      — the customer owes the store, oldest first
    *   change_owed — the store owes the customer, oldest first
    *   cancelled   — the most recent cancellations, with their reasons
-   *   all         — the most recent orders
+   *
+   * `days` narrows it to what HAPPENED on those store days, each status by its
+   * own moment: paid on them, released unpaid on them, held on them, cancelled
+   * on them — and `all` by any of the four, so a day lists what the day did.
+   * Without `days` nothing is narrowed by date: that is how the till's pending
+   * list and the Orders badge ask what is still outstanding, however old.
    *
    * ⚠ A CART STILL BEING BUILT IS IN NONE OF THEM. An order is saved from its
    * first line (§3), but until Hold sets it aside (`heldAt`) it is one till's
@@ -81,11 +98,11 @@ export class PosOrderService {
     scope: InScope,
     tab: PosOrderTab,
     search: string,
-    now: Date,
+    days: PosOrderDays | null = null,
     customerId: string | null = null,
   ): Promise<PosOrderListEntry[]> {
-    const where = await this.whereFor(scope, tab, now);
-    // A tab that already spends its OR (today's three moments, all's "not an unheld cart") is searched in memory below.
+    const where = this.whereFor(scope, tab, days ? await this.rangeOf(scope, days) : null);
+    // A list that already spends its OR (`all`: the day's four moments, or "not an unheld cart") is searched in memory below.
     const ownOr = where.OR !== undefined;
     if (customerId) where.customerId = customerId;
     const term = search.trim();
@@ -142,29 +159,58 @@ export class PosOrderService {
     return { order, lines, refunds, refundLines };
   }
 
-  private async whereFor(scope: InScope, tab: PosOrderTab, now: Date): Promise<PosOrderListWhere> {
+  /**
+   * Store days as instants: `[start of fromDay, start of the day after toDay)`
+   * in the WORKSPACE's zone, so "today" is the store's today wherever the
+   * server runs. Refused (`invalid_period`) for days that are not a period.
+   */
+  private async rangeOf(scope: InScope, days: PosOrderDays): Promise<DayRange> {
+    if (periodDayCount(days.fromDay, days.toDay) === null) throw invalidPeriod();
+    const timeZone = await this.zones.of(scope);
+    const gte = zonedStartOfDay(days.fromDay, timeZone);
+    const lt = zonedStartOfDay(nextDayKey(days.toDay), timeZone);
+    if (!gte || !lt) throw invalidPeriod();
+    return { gte, lt };
+  }
+
+  private whereFor(scope: InScope, tab: PosOrderTab, range: DayRange | null): PosOrderListWhere {
     switch (tab) {
+      case 'paid':
+        return { ...scope, status: 'paid', ...(range ? { paidAt: range } : {}) };
       case 'pending':
-        return { ...scope, status: 'open', heldAt: { not: null } };
+        return { ...scope, status: 'open', heldAt: range ?? { not: null } };
       case 'unpaid':
-        return { ...scope, status: 'unpaid' };
+        return { ...scope, status: 'unpaid', ...(range ? { finalisedAt: range } : {}) };
       case 'change_owed':
-        return { ...scope, status: 'paid', changeOwed: { gt: 0 }, changeSettledAt: null };
+        return {
+          ...scope,
+          status: 'paid',
+          changeOwed: { gt: 0 },
+          changeSettledAt: null,
+          ...(range ? { paidAt: range } : {}),
+        };
       case 'cancelled':
-        return { ...scope, status: 'cancelled' };
+        return { ...scope, status: 'cancelled', ...(range ? { cancelledAt: range } : {}) };
       case 'all':
         // Everything but a cart nobody has held: finished orders, and open ones that were set aside.
-        return { ...scope, OR: [{ status: { in: [...FINISHED_STATUSES] } }, { heldAt: { not: null } }] };
-      case 'today': {
-        const timeZone = await this.zones.of(scope);
-        const today = zonedDayKey(now, timeZone);
-        const from = zonedStartOfDay(today, timeZone) ?? now;
-        const to = zonedStartOfDay(nextDayKey(today), timeZone) ?? now;
-        const range = { gte: from, lt: to };
-        return { ...scope, OR: [{ paidAt: range }, { finalisedAt: range }, { cancelledAt: range }] };
-      }
+        if (!range) return { ...scope, OR: [{ status: { in: [...FINISHED_STATUSES] } }, { heldAt: { not: null } }] };
+        // ⚠ `status: 'open'` beside `heldAt`: an order held on Monday and paid on Tuesday is Tuesday's, not both days'.
+        return {
+          ...scope,
+          OR: [{ paidAt: range }, { finalisedAt: range }, { cancelledAt: range }, { status: 'open', heldAt: range }],
+        };
     }
   }
+}
+
+/** From (inclusive) to (exclusive), as instants. */
+interface DayRange {
+  gte: Date;
+  lt: Date;
+}
+
+function invalidPeriod(): PosWriteError {
+  return refusalError('invalid_period', { maxDays: POS_REPORT_DAYS_MAX });
 }
 
 /** Every status but `open`: an order that was numbered or cancelled, whatever became of it. */
