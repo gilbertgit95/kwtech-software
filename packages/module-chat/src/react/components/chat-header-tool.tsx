@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatClient } from '../chat-client.js';
 import { openInFullChat, useFullChatOnScreen } from '../chat-surface.js';
@@ -160,29 +160,33 @@ export function ChatHeaderTool({ client }: { client?: ChatClient } = {}) {
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setPanelOpen((current) => !current)}
-        aria-expanded={panelOpen}
-        aria-haspopup="dialog"
-        aria-label={count > 0 ? `Chat, ${describeWaiting(waiting)}` : 'Chat'}
-        title="Chat"
-        className={cn(
-          'relative grid size-9 place-items-center rounded-md text-muted-foreground transition-colors',
-          'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          panelOpen && 'bg-accent text-foreground',
-        )}
-      >
-        <ChatIcon name="message" className="size-[1.125rem]" />
-        {count > 0 ? (
-          <span
-            aria-hidden
-            className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold leading-none text-primary-foreground ring-2 ring-card"
+      <Tooltip text={panelOpen ? null : 'Chat'} align="end" describes={false}>
+        {(tooltip) => (
+          <button
+            type="button"
+            onClick={() => setPanelOpen((current) => !current)}
+            aria-expanded={panelOpen}
+            aria-haspopup="dialog"
+            aria-label={count > 0 ? `Chat, ${describeWaiting(waiting)}` : 'Chat'}
+            className={cn(
+              'relative grid size-9 place-items-center rounded-md text-muted-foreground transition-colors',
+              'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              panelOpen && 'bg-accent text-foreground',
+            )}
+            {...tooltip}
           >
-            {count > BADGE_CEILING ? `${BADGE_CEILING}+` : count}
-          </span>
-        ) : null}
-      </button>
+            <ChatIcon name="message" className="size-[1.125rem]" />
+            {count > 0 ? (
+              <span
+                aria-hidden
+                className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold leading-none text-primary-foreground ring-2 ring-card"
+              >
+                {count > BADGE_CEILING ? `${BADGE_CEILING}+` : count}
+              </span>
+            ) : null}
+          </button>
+        )}
+      </Tooltip>
 
       {panelOpen ? (
         <div

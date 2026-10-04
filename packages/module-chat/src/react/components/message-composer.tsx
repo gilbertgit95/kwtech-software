@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { MAX_BODY_CODE_POINTS } from '../../domain/messages.js';
 import {
@@ -194,16 +194,20 @@ export function MessageComposer({
           greyed out. Set in /chat/preferences.
         */}
         {quickEmoji ? (
-          <button
-            type="button"
-            onClick={sendQuick}
-            disabled={disabled}
-            title={`Send ${quickEmoji}`}
-            aria-label={`Send ${quickEmoji}`}
-            className="shrink-0 rounded-md border border-border px-2 py-2 text-lg leading-none hover:bg-accent disabled:opacity-50"
-          >
-            {quickEmoji}
-          </button>
+          <Tooltip text={`Send ${quickEmoji}`} side="top" describes={false}>
+            {(tooltip) => (
+              <button
+                type="button"
+                onClick={sendQuick}
+                disabled={disabled}
+                aria-label={`Send ${quickEmoji}`}
+                className="shrink-0 rounded-md border border-border px-2 py-2 text-lg leading-none hover:bg-accent disabled:opacity-50"
+                {...tooltip}
+              >
+                {quickEmoji}
+              </button>
+            )}
+          </Tooltip>
         ) : null}
 
         <button

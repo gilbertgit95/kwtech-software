@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { type PointerEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { clampDock, type DockPosition, draggedDock } from '../view/dock-view.js';
@@ -142,9 +142,13 @@ export function ChatDock({
           label={collapsed ? 'Expand chat window' : 'Minimise chat window'}
           onClick={onToggleCollapsed}
         />
-        <a href={expandHref} aria-label="Open in full chat" title="Open in full chat" className={BAR_BUTTON_CLASS}>
-          <ChatIcon name="expand" />
-        </a>
+        <Tooltip text="Open in full chat" side="top" align="end" describes={false}>
+          {(tooltip) => (
+            <a href={expandHref} aria-label="Open in full chat" className={BAR_BUTTON_CLASS} {...tooltip}>
+              <ChatIcon name="expand" />
+            </a>
+          )}
+        </Tooltip>
         <BarButton icon="close" label="Close chat window" onClick={onClose} />
       </div>
 
@@ -163,8 +167,12 @@ const BAR_BUTTON_CLASS =
 
 function BarButton({ icon, label, onClick }: { icon: ChatIconName; label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} title={label} className={BAR_BUTTON_CLASS}>
-      <ChatIcon name={icon} />
-    </button>
+    <Tooltip text={label} side="top" align="end" describes={false}>
+      {(tooltip) => (
+        <button type="button" onClick={onClick} aria-label={label} className={BAR_BUTTON_CLASS} {...tooltip}>
+          <ChatIcon name={icon} />
+        </button>
+      )}
+    </Tooltip>
   );
 }

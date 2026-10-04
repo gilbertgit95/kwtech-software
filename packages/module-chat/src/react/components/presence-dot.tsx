@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import type { ChatPresenceView } from '../chat-client.js';
 
 /**
@@ -22,15 +22,19 @@ export function PresenceDot({ presence, className }: { presence?: ChatPresenceVi
 
   const label = describe(presence);
   return (
-    <span
-      className={cn('inline-grid size-2 shrink-0 place-items-center rounded-full', colour(presence), className)}
-      // The colour is the whole content, so the name has to be text: a dot with
-      // no accessible name is decoration that happens to carry the only
-      // information in the row.
-      role="img"
-      aria-label={label}
-      title={label}
-    />
+    <Tooltip text={label} side="top" describes={false}>
+      {(tooltip) => (
+        <span
+          className={cn('inline-grid size-2 shrink-0 place-items-center rounded-full', colour(presence), className)}
+          // The colour is the whole content, so the name has to be text: a dot with
+          // no accessible name is decoration that happens to carry the only
+          // information in the row.
+          role="img"
+          aria-label={label}
+          {...tooltip}
+        />
+      )}
+    </Tooltip>
   );
 }
 
