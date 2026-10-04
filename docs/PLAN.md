@@ -604,6 +604,24 @@ Decisions 1, 2, 3 and 5 gate the next step.
     refused; a pause and a schedule are global, app level; runs are kept 90
     days and control actions for good; and a time of day means each
     workspace's own time.
+  - **Core, not an optional module** (the operator, the same day). A new
+    application made in this repository later may leave out some feature
+    modules; it never leaves out this one, which runs the processes of the
+    modules it does use. So `module-jobs` depends on no feature module and
+    works with none composed.
+  - **A process follows the organization's plan.** Inside one application, a
+    sub-app's process skips the workspaces of an organization whose plan does
+    not include that sub-app. It declares the feature it serves and receives
+    the entitled workspaces through a port; unbound, it reaches none.
+  - **Runs are queued** (the operator's proposal, the same day): a due run
+    joins a queue in Postgres and a few are taken at a time, so processes do
+    not all run at once. A process is queued at most once, and a run has a
+    time limit and a lease.
+  - **The developer of a process answers for its design and its limits.**
+    The queue is shared, so a process declares in code how long a run may
+    take, how many items it handles and how late is too late (composition
+    fails without them), and is built to batch, to be idempotent, and to
+    assume nothing about when it runs (JOBS-PLAN §4c).
   - **Built before booking.** `module-jobs` first, with task due reminders
     as its first process, then `module-booking` phase 1: booking's reminders
     and lapsed requests depend on the runner, so it is not gone back to.

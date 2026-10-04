@@ -23,6 +23,15 @@ reminders and with requests that should lapse (`BOOKING-PLAN.md`). PLAN has
 reserved `apps/worker` for "queue consumers, cron" since §5 and lists the job
 platform as open (§12.10).
 
+**It is part of the core, not an optional module (operator, 2026-10-05, D9).**
+"Optional" here is about which packages an APPLICATION is built from: a new
+application made in this repository later may leave out some of the feature
+modules (no point of sale, no queue, no booking). This module is not one of
+those. It runs the processes of whichever modules an application does use, so
+it stands with `module-kit`, `module-auth`, `module-permissions` and
+`module-notification`: every application composes it. What that means in
+practice is in §4a.
+
 Three parts:
 
 1. **A contract in `module-kit`.** A module declares its processes as data, as
@@ -84,7 +93,8 @@ Three parts:
 - **One run at a time, per process.** The runner takes a database lock before
   a run, scheduled or forced. A second instance of the server, or a Run now
   pressed during a scheduled run, does not start another: it is refused, and
-  the page says a run is under way.
+  the page says a run is under way. Across DIFFERENT processes, the queue
+  (§4b) limits how many run at once.
 - **Each process says how late is too late.** After a pause or an outage a
   sweep finds everything it missed. A reminder for a session that began two
   hours ago is worse than none, so the declaration carries the window past
@@ -103,6 +113,132 @@ Three parts:
 - **Accurate to minutes, not seconds.** The schedule is a floor on how often,
   not a promise of when.
 
+## 4a. Core: every application has it, whatever else it leaves out (D9)
+
+- **Every application composes it.** `module-jobs` is in `SERVER_MODULES` and
+  `WEB_MODULES` of this application and of any made later, as auth and
+  permissions are. It is not a sub-app: no entry on a workspace's Apps page
+  and no workspace-level key.
+- **⚠ It depends on no feature module, and works with none.** From `@kwtech/*`
+  it imports `module-kit` and, for its pages, `web-ui`, like any module. An
+  application that composes it with no feature module at all boots, shows an
+  empty process list, and runs only the module's own history clean-up. That is
+  the test of "core": nothing an application leaves out can break it.
+- **It runs whatever is composed, and only that.** The processes are the ones
+  the application's modules declare (§3). An application without booking has
+  none of booking's: nothing to configure, nothing to switch off, and the
+  admin page does not list them. Rows left from a module that was composed
+  once are deprecated by the sync and never run.
+- **A feature module may rely on the runner being there.** Because every
+  application has it, a module declares its processes without an "if the
+  runner exists" branch. What it may NOT rely on is a run having happened: a
+  process can be paused or late, so nothing on a request path waits on one.
+- **What it needs from the rest of the core arrives as ports**, as for every
+  module: who the actor is, and (unbound: nobody is told) the notice that a
+  process is failing.
+- **Core is not a licence to hold logic.** What is due, who is told, and how
+  late is too late stay in the module that owns them. The runner schedules,
+  locks, records and controls, and nothing else.
+
+**Inside ONE application, a process follows the organization's plan (D12).**
+A separate matter from the above: an organization's plan may not include a
+sub-app, and then that sub-app's processes skip its workspaces. A task
+reminder never reaches a workspace of an organization whose plan has no
+tasks; otherwise the app would be working for somebody not entitled to it.
+
+- **The process declares the feature it serves** (a feature key of its own
+  module), with its other limits (§4c). Composition fails without it, unless
+  the process is declared as serving none (the runner's own history clean-up).
+- **It receives the workspaces entitled to that feature through a port the
+  app answers.** A module cannot read plans: `module-permissions` owns them.
+- **⚠ Entitlement, not grants.** The question is "is this app on this
+  organization's plan", not "does some user hold the key". A reminder is the
+  app acting, not a person, so there is no actor whose grants to check.
+- **Fail closed.** The port unbound or unreadable, the process reaches NO
+  workspace, and the run records that it skipped for that reason. An
+  organization whose plan cannot be read is treated as not having the app.
+- **A plan that changes takes effect on the next run.** Nothing is cached
+  across runs: an organization that drops the app stops being reminded, and
+  one that adds it starts, without anybody touching the process.
+
+## 4b. The queue (D10)
+
+The operator asked for a queue, to prevent parallel runs and to keep the
+runner from overusing the server. The lock in §4 stops a process overlapping
+ITSELF; it does nothing about five different processes coming due at 8:00 and
+all reading the database at once. The queue is for that.
+
+- **A due run is queued, not started.** The scheduler's only act is to add a
+  run to the queue; a separate loop takes runs off it. The queue is a table in
+  Postgres (`JobRun` rows waiting), so there is no new infrastructure and the
+  backlog is in the same audit trail as everything else.
+- **A limit on how many run at once**, an option of `jobsServerModule({ … })`
+  (proposed default: 2). The rest wait their turn, first in, first out. More
+  server instances do not raise it: the limit is counted in the database.
+- **A process is in the queue at most once.** Already queued or running, a
+  second request (the schedule coming round again, or Run now) is refused,
+  not added: two runs of one sweep do nothing the first did not. This is D2,
+  unchanged.
+- **Run now joins the same queue**, at the back. An admin cannot go round the
+  limit; the page says where the run stands.
+- **A run has a time limit.** Past it the run is stopped and marked failed,
+  and the next starts. A hung process must not hold the queue.
+- **A run is held on a lease.** A server that dies mid-run leaves a row
+  marked running; when its lease lapses the run is marked interrupted and the
+  process is free again. Nothing waits on a run that no longer exists.
+- **The cost, accepted:** with two at a time, a slow process delays the ones
+  behind it. The time limit bounds the delay, and the "too late" window (D1)
+  keeps a delayed reminder from being sent stale.
+- **Not done: priorities between processes.** First in, first out until
+  something proves it wrong. **Not done: an outside queue** (Redis, BullMQ):
+  it would move the backlog out of the audit trail (§8).
+
+## 4c. What the developer of a process answers for (D11)
+
+The operator's rule: because of the queue, a process is not free to take what
+it likes, and the DEVELOPER who writes one is responsible for how it is
+designed and for its limits. The runner is shared by every module; a process
+written carelessly delays everybody else's.
+
+**Declared, in code, with the process** (composition fails without them, so a
+process cannot be added with its limits left unsaid — principle 6):
+
+- its default schedule, and the limits an admin may change it within (§3);
+- the longest one run may take, inside the runner's own ceiling;
+- how many items one run handles at most, the rest being left for the next;
+- how late is too late (D1);
+- the feature it serves, so it runs only where the organization's plan
+  includes that app (D12).
+
+**Designed in, and reviewed:**
+
+- **It sweeps and is idempotent** (§4). A run stopped at its time limit, or
+  killed with the server, is simply run again.
+- **It works in batches and gives up the queue.** It never reads every
+  workspace into memory, and it never holds one long transaction: a batch,
+  commit, the next.
+- **It assumes nothing about WHEN it runs.** It may be late (the queue), not
+  run at all (paused), or run twice in a row (forced). Correctness never
+  depends on the schedule being kept.
+- **It counts what it did**: handled, skipped as too late, left for the next
+  run. Counts and errors, never names (D5).
+- **It does its own module's work only**, through that module's services and
+  ports. It tells people through its module's notifier port, after the commit.
+
+**Tested, in the module:** run twice and the second does nothing; stopped
+half way and the next run finishes it; an item past the window is skipped and
+counted; "today" asserted across a day boundary in two time zones.
+
+**Written down:** the module's README gets a "Processes" section: what each
+one does, how often by default, its limits, and what a person sees when it is
+paused. When the first process is built these become a section of
+`.claude/rules/modules.md`, so they are followed without being asked.
+
+**What the runner enforces, and what it cannot.** It enforces the time limit,
+one run at a time, and that the limits were declared. It cannot see whether a
+process is idempotent or batches properly: that is the developer's, and the
+tests above are how it is shown.
+
 ## 5. Schema (`prisma/jobs.prisma`)
 
 All `Job*` models and `job_*` tables. App level: no `workspaceId` on the
@@ -111,7 +247,7 @@ process or the control rows.
 | Model | Holds |
 |---|---|
 | `JobProcess` | the mirror of a declared process: key, module, label, description, the default schedule and its limits, whether it is deprecated; the admin's schedule if one is set (by whom and when); and its pause state (paused or not, by whom, when, why) |
-| `JobRun` | one run: the process, how it started (`scheduled` or `forced`), who forced it, when it started and finished, the result (`succeeded`, `failed`, `skipped`), how many items it handled and how many it skipped as too late, and the error if it failed |
+| `JobRun` | one run, from the moment it is queued: the process, how it started (`scheduled` or `forced`), who forced it, when it was queued, started and finished, its state (`queued`, `running`, `succeeded`, `failed`, `skipped`, `interrupted`), the lease it is held on, how many items it handled, how many it skipped as too late and how many it left for the next run, and the error if it failed |
 | `JobControl` | one control action: paused, resumed, forced, rescheduled or reset to default, on which process, by whom, when, the reason given, and for a schedule the one it changed from and to |
 
 **A run records counts and errors, never names.** App-level staff see across
@@ -138,8 +274,8 @@ the plan filter and no organization's plan includes them.
 One page in the drawer, beside users and roles, behind `jobs:read`.
 
 - **The list**, grouped by module (Tasks, Booking, Point of sale): the
-  process and what it does, how often it runs, its state (running, paused by
-  whom and since when, or failing), the last run and its result, and when the
+  process and what it does, how often it runs, its state (queued and where in
+  the queue, running, paused by whom and since when, or failing), the last run and its result, and when the
   next is due.
 - **Pause, Resume and Run now** on each row, each shown only to who holds its
   key (`useHoldsFeature`; the API authorises again). Pausing asks for a
@@ -185,11 +321,16 @@ question is open.
 | D6 | "At 8:00" in whose time | **Each WORKSPACE's own time.** "Tasks due today, at 8:00" reaches a workspace at its 8:00. The runner wakes often, and the process takes the workspaces whose time has come. One app-wide zone was the alternative: simpler, and it sends a workspace abroad its morning reminder at night |
 | D7 | A schedule per organization or workspace | **No: one schedule, app level**, as for the pause (D3). A workspace wanting its reminder at another hour is a setting of that module |
 | D8 | What is built first, this or booking | **`module-jobs` first, with task due reminders as its first process; then booking's phase 1.** Booking's reminders and lapsed requests depend on the runner, so it comes first rather than being fitted in afterwards |
+| D9 | Is it an optional module, or part of the core | **Core.** A new application made later may leave out some feature modules; it never leaves out this one, because this is what runs the processes of the modules it does use. So it depends on no feature module and works with none composed (§4a) |
+| D10 | A queue for the runs | **Yes** (the operator's own proposal). Due runs are queued in Postgres and taken a few at a time, so processes do not all run at once and overuse the server. A process is queued at most once; Run now joins the same queue; a run has a time limit and a lease (§4b) |
+| D11 | Who answers for a process's design and limits | **The developer who writes it.** Because the queue is shared, each process declares its limits in code (composition fails without them), is designed to batch, to be idempotent and to assume nothing about when it runs, and is tested and documented as such (§4c) |
+| D12 | A process and an organization whose plan lacks that app | **Skipped: it is based on the organization's plan.** A process declares the feature it serves and works only through the workspaces of organizations entitled to it, which arrive through a port the app answers. Unbound or unreadable, it reaches no workspace (§4a) |
 
 ## 10. Phases
 
-1. **The contract and the runner.** The `module-kit` declaration, the sync,
-   the lock, `JobRun`, with **task due reminders** as the first process
+1. **The contract and the runner.** The `module-kit` declaration with its
+   required limits (§4c), the sync, the queue with its limit, time limit and
+   lease (§4b), `JobRun`, with **task due reminders** as the first process
    (§12.83): the smallest real consumer that exists today.
 2. **The admin page.** The list, the history, Pause, Resume, Run now and
    the schedule form, `JobControl`.
