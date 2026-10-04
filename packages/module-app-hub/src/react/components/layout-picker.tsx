@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   APP_HUB_MAX_CELLS,
   type AppHubGrid,
@@ -80,24 +80,41 @@ export function LayoutPicker({
         const chosen = preset.key === current;
         const cells = cellCount(preset.columns);
         return (
-          <button
+          // The reason a preset is unavailable is a description; an available one's hint only repeats its name.
+          <Tooltip
             key={preset.key}
-            type="button"
-            aria-pressed={chosen}
-            aria-label={`${preset.label} (${cells} cell${cells === 1 ? '' : 's'})`}
-            title={allowed ? preset.label : `${preset.label} — ${why}`}
-            disabled={!allowed}
-            onClick={() => onChoose(preset)}
-            className={cn(
-              'grid h-8 w-11 shrink-0 place-items-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-              chosen
-                ? 'bg-background text-primary shadow-sm'
-                : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
-              'disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
-            )}
+            text={allowed ? preset.label : `${preset.label} — ${why}`}
+            align="start"
+            describes={!allowed}
           >
-            <LayoutIcon columns={preset.columns} />
-          </button>
+            {(tooltip) => (
+              <button
+                type="button"
+                aria-pressed={chosen}
+                aria-label={`${preset.label} (${cells} cell${cells === 1 ? '' : 's'})`}
+                /*
+                 * ⚠ `aria-disabled`, not `disabled`: a disabled button fires no
+                 * pointer events and takes no focus, so the hint saying WHY the
+                 * preset is unavailable could never show. The click is refused
+                 * here instead.
+                 */
+                aria-disabled={!allowed}
+                onClick={() => {
+                  if (allowed) onChoose(preset);
+                }}
+                className={cn(
+                  'grid h-8 w-11 shrink-0 place-items-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                  chosen
+                    ? 'bg-background text-primary shadow-sm'
+                    : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+                  'aria-disabled:cursor-not-allowed aria-disabled:opacity-30 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground',
+                )}
+                {...tooltip}
+              >
+                <LayoutIcon columns={preset.columns} />
+              </button>
+            )}
+          </Tooltip>
         );
       })}
     </fieldset>

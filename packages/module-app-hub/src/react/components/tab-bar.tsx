@@ -12,7 +12,14 @@ import {
 } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@kwtech/web-ui/react';
+import {
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Tooltip,
+} from '@kwtech/web-ui/react';
 import { ChevronDown } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { moveTab, reorderTabs } from '../../domain/layout.js';
@@ -108,13 +115,17 @@ export function TabBar({
       {/* Every tab by name, for when there are more than fit and the bar scrolls. */}
       {order.length > 1 ? (
         <DropdownMenu>
-          <DropdownMenuTrigger
-            className={cn(buttonClass('ghost', 'sm'), 'size-8 shrink-0 px-0')}
-            aria-label="All apps"
-            title="All apps"
-          >
-            <ChevronDown aria-hidden className="size-4" />
-          </DropdownMenuTrigger>
+          <Tooltip text="All apps" align="end" describes={false}>
+            {(tooltip) => (
+              <DropdownMenuTrigger
+                className={cn(buttonClass('ghost', 'sm'), 'size-8 shrink-0 px-0')}
+                aria-label="All apps"
+                {...tooltip}
+              >
+                <ChevronDown aria-hidden className="size-4" />
+              </DropdownMenuTrigger>
+            )}
+          </Tooltip>
           <DropdownMenuContent align="end">
             {order.map((key) => {
               const app = apps.get(key);
@@ -145,29 +156,37 @@ function SortableTab({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: app.key });
   return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      aria-selected={selected}
-      title={`${app.label} — drag to reorder, or Ctrl+Shift+← / →`}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn(
-        'flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-sm transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected
-          ? 'bg-background font-medium text-foreground shadow-sm'
-          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
-        isDragging && 'opacity-40',
+    <Tooltip text="Drag to reorder, or Ctrl+Shift+← / →" align="start">
+      {(tooltip) => (
+        <button
+          ref={setNodeRef}
+          type="button"
+          aria-selected={selected}
+          {...tooltip}
+          style={{ transform: CSS.Translate.toString(transform), transition }}
+          className={cn(
+            'flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-sm transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            selected
+              ? 'bg-background font-medium text-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+            isDragging && 'opacity-40',
+          )}
+          {...attributes}
+          {...listeners}
+          // After the spreads: dnd-kit's attributes carry a role of their own, and a tab must stay a tab.
+          role="tab"
+          onClick={onSelect}
+          // Both: this prop replaces the hint's own key handler (Escape closes it), so it is called here.
+          onKeyDown={(event) => {
+            tooltip.onKeyDown(event);
+            onKeyDown(event);
+          }}
+        >
+          <AppIcon name={app.icon} />
+          {app.label}
+        </button>
       )}
-      {...attributes}
-      {...listeners}
-      // After the spreads: dnd-kit's attributes carry a role of their own, and a tab must stay a tab.
-      role="tab"
-      onClick={onSelect}
-      onKeyDown={onKeyDown}
-    >
-      <AppIcon name={app.icon} />
-      {app.label}
-    </button>
+    </Tooltip>
   );
 }

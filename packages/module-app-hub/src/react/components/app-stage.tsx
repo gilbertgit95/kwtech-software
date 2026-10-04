@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
 } from '@kwtech/web-ui/react';
 import { EllipsisVertical, GripVertical, X } from 'lucide-react';
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useRef } from 'react';
@@ -237,22 +238,26 @@ function AppFrame({
         <CellHeader
           tools={tools}
           handle={
-            <span
-              ref={drag.setNodeRef}
-              {...drag.attributes}
-              {...drag.listeners}
-              title="Drag to move this app to another cell"
-              className="flex min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
-            >
-              <GripVertical aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-              <AppIcon name={app.icon} />
-              <span className="truncate text-sm font-medium text-foreground">{app.label}</span>
-              {tools.isMain ? (
-                <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                  Main
+            <Tooltip text="Drag to move this app to another cell" align="start">
+              {(tooltip) => (
+                <span
+                  ref={drag.setNodeRef}
+                  {...drag.attributes}
+                  {...drag.listeners}
+                  className="flex min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
+                  {...tooltip}
+                >
+                  <GripVertical aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  <AppIcon name={app.icon} />
+                  <span className="truncate text-sm font-medium text-foreground">{app.label}</span>
+                  {tools.isMain ? (
+                    <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                      Main
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </span>
+              )}
+            </Tooltip>
           }
         />
       ) : null}
@@ -282,15 +287,19 @@ function CellHeader({ tools, handle }: { tools: CellTools; handle: ReactNode }) 
           <CellMenuItems tools={tools} />
         </DropdownMenuContent>
       </DropdownMenu>
-      <button
-        type="button"
-        className={cn(buttonClass('ghost', 'sm'), 'size-7 px-0')}
-        aria-label="Empty this cell"
-        title="Empty this cell"
-        onClick={tools.clear}
-      >
-        <X aria-hidden className="size-4" />
-      </button>
+      <Tooltip text="Empty this cell" align="end" describes={false}>
+        {(tooltip) => (
+          <button
+            type="button"
+            className={cn(buttonClass('ghost', 'sm'), 'size-7 px-0')}
+            aria-label="Empty this cell"
+            onClick={tools.clear}
+            {...tooltip}
+          >
+            <X aria-hidden className="size-4" />
+          </button>
+        )}
+      </Tooltip>
     </header>
   );
 }

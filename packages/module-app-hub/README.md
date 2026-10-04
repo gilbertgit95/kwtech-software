@@ -76,7 +76,7 @@ the server alike: `GRID_PRESETS`, `presetOf`, `hasMainView`,
 
 - **One toolbar, no page header.** The page has no visible title (an `sr-only`
   `h1` stays for screen readers). A single row holds the tabs, or in the grid
-  the app list toggle and the presets, on the left; saving, the Tabs / Grid
+  the presets, on the left; saving, the Tabs / Grid
   switch and the layout menu (⋮, which also says whose layout this is) are
   always on the right. Grid borders show a centred ellipsis, so they read as
   draggable.
@@ -94,6 +94,14 @@ the server alike: `GRID_PRESETS`, `presetOf`, `hasMainView`,
   resize that column only. Drag a cell by its header to swap, drag an app from the list onto a
   cell, drag the borders to resize (or focus one and use the arrow keys). The
   cell menu has "Move to…" for keyboard and touch.
+- **The app list** beside the grid works like the app's main drawer. The arrow
+  on its edge collapses it to a rail of icons, each keeping its grip and still dragging
+  onto a cell (a dot marks an app already in the grid); it never disappears. Expanded, its
+  edge drags to resize it between 176 and 360 pixels (or focus the edge and use
+  ← → Home End; double-click resets). Collapsed and width are remembered **per
+  device** in localStorage (`kwtech:app-hub-list`), not in the saved layout, so
+  a workspace default never collapses it for everybody. The rules are
+  `src/react/view/app-list.ts`.
 - **Apps are rendered once, in one CSS grid**, and a view only changes where
   each sits. Switching views, swapping cells and reordering tabs never remount
   an app, so the queue console keeps its state and socket.

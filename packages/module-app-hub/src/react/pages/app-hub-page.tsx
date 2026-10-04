@@ -8,7 +8,6 @@ import {
   MouseSensor,
   pointerWithin,
   TouchSensor,
-  useDraggable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -22,16 +21,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
 } from '@kwtech/web-ui/react';
-import {
-  AppWindow,
-  EllipsisVertical,
-  GripVertical,
-  LayoutGrid,
-  LoaderCircle,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from 'lucide-react';
+import { AppWindow, EllipsisVertical, LayoutGrid, LoaderCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   type AppHubGrid,
@@ -45,10 +37,11 @@ import {
 } from '../../domain/layout.js';
 import { APP_HUB_FEATURE } from '../../feature-keys.js';
 import { type AppHubClient, createAppHubClient } from '../app-hub-client.js';
-import { AppStage, appId } from '../components/app-stage.js';
+import { AppList } from '../components/app-list.js';
+import { AppStage } from '../components/app-stage.js';
 import { LayoutPicker } from '../components/layout-picker.js';
 import { TabBar } from '../components/tab-bar.js';
-import { AppIcon, buttonClass, useWideScreen } from '../components/ui.js';
+import { AppIcon, useWideScreen } from '../components/ui.js';
 import type { AppHubEntry } from '../types.js';
 import { useAppHubLayout } from '../use-app-hub-layout.js';
 
@@ -113,7 +106,6 @@ export function AppHubPage({
   // ── confirmations ─────────────────────────────────────────────────────────
   const [pendingShape, setPendingShape] = useState<{ grid: AppHubGrid; dropped: string[] } | null>(null);
   const [confirm, setConfirm] = useState<'save-default' | 'remove-default' | null>(null);
-  const [showList, setShowList] = useState(true);
 
   if (held.length === 0 && layout) {
     return (
@@ -189,24 +181,7 @@ export function AppHubPage({
                 onReorder={(order) => change({ ...layout, tabs: { ...layout.tabs, order } })}
               />
             ) : (
-              <>
-                <button
-                  type="button"
-                  aria-pressed={showList}
-                  aria-label={showList ? 'Hide the app list' : 'Show the app list'}
-                  title={showList ? 'Hide the app list' : 'Show the app list'}
-                  className={toolbarButtonClass(showList)}
-                  onClick={() => setShowList((open) => !open)}
-                >
-                  {showList ? (
-                    <PanelLeftClose aria-hidden className="size-4" />
-                  ) : (
-                    <PanelLeftOpen aria-hidden className="size-4" />
-                  )}
-                </button>
-                <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />
-                <LayoutPicker grid={layout.grid} cap={cellCap(held.length)} onChoose={choosePreset} />
-              </>
+              <LayoutPicker grid={layout.grid} cap={cellCap(held.length)} onChoose={choosePreset} />
             )}
           </Toolbar>
           {layout.view === 'grid' && !wide ? (
@@ -214,8 +189,12 @@ export function AppHubPage({
               The grid needs a wider screen, so your apps are shown as tabs.
             </p>
           ) : null}
-          <div className="flex min-h-0 flex-1 gap-2">
-            {mode === 'grid' && showList ? <AppList apps={held} grid={layout.grid} onGridChange={setGrid} /> : null}
+          {/*
+           * gap-3, not gap-2: the list's collapse arrow hangs 12px off its edge
+           * and would otherwise sit on the first cell's border.
+           */}
+          <div className={cn('flex min-h-0 flex-1', mode === 'grid' ? 'gap-3' : 'gap-2')}>
+            {mode === 'grid' ? <AppList apps={held} grid={layout.grid} onGridChange={setGrid} /> : null}
             <div className="min-h-0 min-w-0 flex-1">
               <AppStage
                 mode={mode}
@@ -289,7 +268,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 /**
  * One row of controls above the apps: what the view is about on the left (the
- * tabs, or the app list toggle and the grid presets), and the page's own
+ * tabs, or the grid presets), and the page's own
  * controls — saving, the view switch, the layout menu — on the right, in the
  * same place in both views.
  */
@@ -327,23 +306,28 @@ function ViewSwitch({ view, onChange }: { view: 'tabs' | 'grid'; onChange(view: 
     <fieldset className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5">
       <legend className="sr-only">View</legend>
       {VIEWS.map(({ view: option, label, Icon }) => (
-        <button
-          key={option}
-          type="button"
-          aria-pressed={view === option}
-          title={`Show your apps as ${label.toLowerCase()}`}
-          onClick={() => onChange(option)}
-          className={cn(
-            'flex h-7 items-center gap-1.5 rounded px-2.5 text-sm transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            view === option
-              ? 'bg-background font-medium text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
+        <Tooltip key={option} text={`Show your apps as ${label.toLowerCase()}`} align="end">
+          {(tooltip) => (
+            <button
+              type="button"
+              aria-pressed={view === option}
+              // Its own name: the word beside the icon is hidden below `lg`, and the hint is a description, not a name.
+              aria-label={label}
+              onClick={() => onChange(option)}
+              className={cn(
+                'flex h-7 items-center gap-1.5 rounded px-2.5 text-sm transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                view === option
+                  ? 'bg-background font-medium text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              {...tooltip}
+            >
+              <Icon aria-hidden className="size-4" />
+              <span className="hidden lg:inline">{label}</span>
+            </button>
           )}
-        >
-          <Icon aria-hidden className="size-4" />
-          <span className="hidden lg:inline">{label}</span>
-        </button>
+        </Tooltip>
       ))}
     </fieldset>
   );
@@ -370,13 +354,18 @@ function LayoutMenu({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        className={toolbarButtonClass()}
-        aria-label={`Layout options — ${SOURCE_LABEL[source]}`}
-        title={`Layout options — ${SOURCE_LABEL[source]}`}
-      >
-        <EllipsisVertical aria-hidden className="size-4" />
-      </DropdownMenuTrigger>
+      {/* The name already says it, so the hint is not also a description. Radix calls these handlers before its own. */}
+      <Tooltip text={`Layout options — ${SOURCE_LABEL[source]}`} align="end" describes={false}>
+        {(tooltip) => (
+          <DropdownMenuTrigger
+            className={toolbarButtonClass()}
+            aria-label={`Layout options — ${SOURCE_LABEL[source]}`}
+            {...tooltip}
+          >
+            <EllipsisVertical aria-hidden className="size-4" />
+          </DropdownMenuTrigger>
+        )}
+      </Tooltip>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel className="font-normal text-muted-foreground">{SOURCE_LABEL[source]}</DropdownMenuLabel>
         {source === 'user' ? (
@@ -456,76 +445,19 @@ function GridDnd({
       {children}
       {/* A label follows the pointer, not the app: moving a live app's DOM would be slow and could reset it. */}
       <DragOverlay>
+        {/*
+         * ⚠ `w-max`: dnd-kit sizes the overlay to the element being dragged, and
+         * a collapsed app is an icon 44px wide — the label was squeezed into it
+         * and the name could not be read. The rail is exactly where the name
+         * matters, since it is not on screen anywhere else.
+         */}
         {shown ? (
-          <div className="flex items-center gap-2 rounded-md border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg">
+          <div className="flex w-max items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg">
             <AppIcon name={shown.icon} />
             {shown.label}
           </div>
         ) : null}
       </DragOverlay>
     </DndContext>
-  );
-}
-
-/** The apps the viewer holds, to drag into a cell or add to the first empty one. */
-function AppList({
-  apps,
-  grid,
-  onGridChange,
-}: {
-  apps: readonly AppHubEntry[];
-  grid: AppHubGrid;
-  onGridChange(grid: AppHubGrid): void;
-}) {
-  const firstEmpty = grid.cells.indexOf(null);
-  return (
-    <aside
-      aria-label="Your apps"
-      className="flex w-52 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-muted/20 p-2"
-    >
-      <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">Drag an app onto a cell</p>
-      {apps.map((app) => {
-        const placed = grid.cells.includes(app.key);
-        return (
-          <DraggableApp
-            key={app.key}
-            app={app}
-            placed={placed}
-            onAdd={placed || firstEmpty === -1 ? null : () => onGridChange(assignCell(grid, firstEmpty, app.key))}
-          />
-        );
-      })}
-    </aside>
-  );
-}
-
-function DraggableApp({ app, placed, onAdd }: { app: AppHubEntry; placed: boolean; onAdd: (() => void) | null }) {
-  const drag = useDraggable({ id: appId(app.key) });
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5',
-        drag.isDragging && 'opacity-50',
-      )}
-    >
-      <span
-        ref={drag.setNodeRef}
-        {...drag.attributes}
-        {...drag.listeners}
-        title={app.description ?? app.label}
-        className="flex min-w-0 flex-1 cursor-grab items-center gap-2 text-sm text-foreground active:cursor-grabbing"
-      >
-        <GripVertical aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <AppIcon name={app.icon} />
-        <span className="truncate">{app.label}</span>
-      </span>
-      {placed ? (
-        <span className="text-xs text-muted-foreground">In grid</span>
-      ) : onAdd ? (
-        <button type="button" className={buttonClass('ghost', 'sm')} onClick={onAdd}>
-          Add
-        </button>
-      ) : null}
-    </div>
   );
 }
