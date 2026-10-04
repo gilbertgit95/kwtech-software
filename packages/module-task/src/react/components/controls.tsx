@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, ChevronsUp, Minus, X } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 import type { TaskPersonView } from '../task-client.js';
@@ -135,16 +135,20 @@ export function Field({
 export function Avatar({ person, size = 'sm' }: { person: TaskPersonView; size?: 'sm' | 'md' }) {
   const name = person.displayName ?? 'A former member';
   return (
-    <span
-      title={name}
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full border border-card bg-secondary font-medium text-secondary-foreground',
-        size === 'sm' ? 'size-6 text-[0.625rem]' : 'size-8 text-xs',
+    <Tooltip text={name} side="top" describes={false}>
+      {(tooltip) => (
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center justify-center rounded-full border border-card bg-secondary font-medium text-secondary-foreground',
+            size === 'sm' ? 'size-6 text-[0.625rem]' : 'size-8 text-xs',
+          )}
+          {...tooltip}
+        >
+          <span aria-hidden="true">{initials(person.displayName)}</span>
+          <span className="sr-only">{name}</span>
+        </span>
       )}
-    >
-      <span aria-hidden="true">{initials(person.displayName)}</span>
-      <span className="sr-only">{name}</span>
-    </span>
+    </Tooltip>
   );
 }
 

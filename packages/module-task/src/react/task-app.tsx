@@ -2,7 +2,7 @@
 
 import type { AppProps } from '@kwtech/module-kit';
 import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   Archive,
   CalendarClock,
@@ -365,40 +365,44 @@ function AttentionChip({
   // Workspace-wide, and said so: it counts every board, not the one on screen (the operator's request).
   const label = `Assigned to you on every board in this workspace: ${said.join(', ')}. Open My tasks.`;
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={label}
-      aria-pressed={current}
-      title={label}
-      className={cn(
-        'inline-flex h-8 items-center gap-1 rounded-full border border-border bg-card px-1 text-xs font-medium',
-        'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        current && 'ring-2 ring-primary',
+    <Tooltip text={label} describes={false}>
+      {(tooltip) => (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={label}
+          aria-pressed={current}
+          className={cn(
+            'inline-flex h-8 items-center gap-1 rounded-full border border-border bg-card px-1 text-xs font-medium',
+            'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            current && 'ring-2 ring-primary',
+          )}
+          {...tooltip}
+        >
+          <span aria-hidden="true" className="pl-1.5 font-normal text-muted-foreground">
+            All my tasks
+          </span>
+          {overdue > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">
+              <TriangleAlert aria-hidden="true" className="size-3.5" />
+              {overdue} overdue
+            </span>
+          ) : null}
+          {today > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+              <CalendarClock aria-hidden="true" className="size-3.5" />
+              {today} today
+            </span>
+          ) : null}
+          {soon > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-status-warning px-2 py-0.5 text-status-warning-foreground">
+              <Clock aria-hidden="true" className="size-3.5" />
+              {soon} soon
+            </span>
+          ) : null}
+        </button>
       )}
-    >
-      <span aria-hidden="true" className="pl-1.5 font-normal text-muted-foreground">
-        All my tasks
-      </span>
-      {overdue > 0 ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">
-          <TriangleAlert aria-hidden="true" className="size-3.5" />
-          {overdue} overdue
-        </span>
-      ) : null}
-      {today > 0 ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-primary">
-          <CalendarClock aria-hidden="true" className="size-3.5" />
-          {today} today
-        </span>
-      ) : null}
-      {soon > 0 ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-status-warning px-2 py-0.5 text-status-warning-foreground">
-          <Clock aria-hidden="true" className="size-3.5" />
-          {soon} soon
-        </span>
-      ) : null}
-    </button>
+    </Tooltip>
   );
 }
 
@@ -437,30 +441,34 @@ function CollapseBar({
 }) {
   const label = expanded ? 'Hide the task' : 'Show the task';
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={expanded}
-      aria-controls={controls}
-      aria-label={label}
-      title={label}
-      className={cn(
-        'mx-1 flex w-5 shrink-0 flex-col items-center justify-center gap-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-        // Over the board it needs its own ground, or the cards show through it.
-        (overlay || !expanded) && 'border border-border bg-card',
+    <Tooltip text={label} side="left" describes={false}>
+      {(tooltip) => (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={controls}
+          aria-label={label}
+          className={cn(
+            'mx-1 flex w-5 shrink-0 flex-col items-center justify-center gap-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            // Over the board it needs its own ground, or the cards show through it.
+            (overlay || !expanded) && 'border border-border bg-card',
+          )}
+          {...tooltip}
+        >
+          {expanded ? (
+            <ChevronsRight aria-hidden="true" className="size-4" />
+          ) : (
+            <>
+              <ChevronsLeft aria-hidden="true" className="size-4" />
+              <span aria-hidden="true" className="text-xs [writing-mode:vertical-rl]">
+                Task
+              </span>
+            </>
+          )}
+        </button>
       )}
-    >
-      {expanded ? (
-        <ChevronsRight aria-hidden="true" className="size-4" />
-      ) : (
-        <>
-          <ChevronsLeft aria-hidden="true" className="size-4" />
-          <span aria-hidden="true" className="text-xs [writing-mode:vertical-rl]">
-            Task
-          </span>
-        </>
-      )}
-    </button>
+    </Tooltip>
   );
 }
 
