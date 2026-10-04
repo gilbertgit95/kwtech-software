@@ -3,6 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Tooltip } from './tooltip.js';
 import { cn } from './utils.js';
 
 /**
@@ -226,29 +227,33 @@ export function IconPicker({
                   const active = name === value;
                   return (
                     <li key={name}>
-                      <button
-                        type="button"
-                        onClick={() => choose(name)}
-                        // The NAME is the accessible label; the glyph alone
-                        // announces nothing, and the name is what gets stored.
-                        aria-label={name}
-                        aria-pressed={active}
-                        title={name}
-                        className={cn(
-                          'flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-lg border p-1',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          active
-                            ? 'border-primary bg-primary/10 text-foreground'
-                            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
-                        )}
-                      >
-                        <Icon aria-hidden className="size-4" />
-                        {/* The name under every glyph, not only on hover: it is
+                      <Tooltip text={name} side="top" describes={false}>
+                        {(tooltip) => (
+                          <button
+                            type="button"
+                            onClick={() => choose(name)}
+                            // The NAME is the accessible label; the glyph alone
+                            // announces nothing, and the name is what gets stored.
+                            aria-label={name}
+                            aria-pressed={active}
+                            className={cn(
+                              'flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-lg border p-1',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                              active
+                                ? 'border-primary bg-primary/10 text-foreground'
+                                : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+                            )}
+                            {...tooltip}
+                          >
+                            <Icon aria-hidden className="size-4" />
+                            {/* The name under every glyph, not only on hover: it is
                             the value being stored, and a grid of anonymous
                             pictures makes someone guess which one is 'shield'. */}
-                        <span className="w-full truncate text-center text-[0.5625rem] leading-none">{name}</span>
-                        {active ? <Check aria-hidden className="size-3" /> : null}
-                      </button>
+                            <span className="w-full truncate text-center text-[0.5625rem] leading-none">{name}</span>
+                            {active ? <Check aria-hidden className="size-3" /> : null}
+                          </button>
+                        )}
+                      </Tooltip>
                     </li>
                   );
                 })}

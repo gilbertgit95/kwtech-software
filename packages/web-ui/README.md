@@ -587,6 +587,39 @@ Debounce rather than throttle. Throttling emits during the burst, which is
 exactly the prefixes nobody wanted — and responses can arrive out of order,
 leaving the results showing matches for `featur`.
 
+## Tooltips
+
+A hint on a control is `Tooltip`, never the browser's own `title`: a `title`
+ignores the theme, takes over a second to appear and never shows for a keyboard.
+
+```tsx
+<Tooltip text="Empty this cell" side="bottom" align="end" describes={false}>
+  {(tooltip) => (
+    <button type="button" aria-label="Empty this cell" onClick={clear} {...tooltip}>
+      <X aria-hidden className="size-4" />
+    </button>
+  )}
+</Tooltip>
+```
+
+- **It shows** after 350ms of hover, and at once on keyboard focus. A press,
+  Escape, a scroll or the pointer leaving hides it. Touch gets none.
+- **`side`** (`top` | `bottom` | `left` | `right`) and **`align`** (`start` |
+  `center` | `end`) place it. ⚠ It does not flip at the screen's edge: pick the
+  side with room, and `start` / `end` for a control in a corner.
+- **It is drawn on `<body>`, fixed**, so a scrolling list or a clipped panel
+  cannot cut it off, and it adds no wrapper around the trigger.
+- **`describes`** (default true) also gives the text to a screen reader as the
+  control's description. Pass `false` when the control's `aria-label` already
+  says the same words, or they are read twice.
+- ⚠ **Spread the trigger props last, or call both.** A control with its own
+  `onKeyDown` or `onPointerDown` must call the tooltip's too.
+- ⚠ **A `disabled` button shows no hint** (it fires no pointer events). When
+  the hint says why something is unavailable, use `aria-disabled`.
+- `tooltipPosition(anchor, side, align)` is the pure rule, tested.
+
+Used by notes and the Apps page.
+
 ## A list and its detail drawer
 
 A view that opens on a list and shows one row's detail uses `ListDrawer`: the
