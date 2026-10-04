@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { useEffect, useRef, useState } from 'react';
 import type { PosKeymap } from '../../domain/keymap.js';
 import type { PosPaymentMethod } from '../../types.js';
@@ -221,15 +221,22 @@ export function PaymentDialog({
           {unpaid ? (
             <span className="text-xs text-muted-foreground">Taking payment for an unpaid order.</span>
           ) : (
-            <button
-              type="button"
-              className={buttonClass('ghost')}
-              disabled={state.busy}
-              title={customer.name && customer.contact ? undefined : 'Needs the customer’s name and contact'}
-              onClick={() => void payLater()}
+            <Tooltip
+              text={customer.name && customer.contact ? null : 'Needs the customer’s name and contact'}
+              side="top"
             >
-              Pay later <kbd className="text-xs opacity-70">{keymap.actions.payLater}</kbd>
-            </button>
+              {(tooltip) => (
+                <button
+                  type="button"
+                  className={buttonClass('ghost')}
+                  disabled={state.busy}
+                  onClick={() => void payLater()}
+                  {...tooltip}
+                >
+                  Pay later <kbd className="text-xs opacity-70">{keymap.actions.payLater}</kbd>
+                </button>
+              )}
+            </Tooltip>
           )}
           <button
             type="button"

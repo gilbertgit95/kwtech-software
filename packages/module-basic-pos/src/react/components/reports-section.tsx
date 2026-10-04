@@ -1,7 +1,7 @@
 'use client';
 
 import { zonedDayKey } from '@kwtech/module-kit';
-import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
+import { cn, LIST_ITEM, LIST_KEYS, Tooltip } from '@kwtech/web-ui/react';
 import { BarChart3, Download, type LucideIcon, Printer, Table2 } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 import type { PosBreakdownRowView, PosOwedView, PosReportView } from '../pos-client.js';
@@ -686,9 +686,13 @@ function Bars({
     <ul className="flex flex-col gap-1.5">
       {rows.map((row) => (
         <li key={row.key} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-2 text-sm">
-          <span className="truncate" title={row.label}>
-            {row.label}
-          </span>
+          <Tooltip text={row.label} side="top" align="start" describes={false}>
+            {(tooltip) => (
+              <span className="truncate" {...tooltip}>
+                {row.label}
+              </span>
+            )}
+          </Tooltip>
           <span className="h-3 rounded-r bg-muted">
             <span
               className="block h-full rounded-r bg-primary"

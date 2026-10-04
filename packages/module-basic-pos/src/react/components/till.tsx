@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   Ban,
   Hand,
@@ -609,23 +609,27 @@ function ItemGrid({
           const hasVariants = item.variants.some((variant) => variant.archivedAt === null);
           return (
             <li key={item.id}>
-              <button
-                type="button"
-                className="flex h-full w-full flex-col items-start gap-1 rounded-md border border-border bg-background p-2.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => onPick(item.id)}
-                title={item.description ?? undefined}
-              >
-                <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
-                {item.description ? (
-                  <span className="line-clamp-2 text-xs text-muted-foreground">{item.description}</span>
-                ) : null}
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {range.min === range.max
-                    ? formatPeso(range.min)
-                    : `${formatPeso(range.min)}–${formatPeso(range.max)}`}
-                  {hasVariants ? ' ▾' : ''}
-                </span>
-              </button>
+              <Tooltip text={item.description ?? null} describes={false}>
+                {(tooltip) => (
+                  <button
+                    type="button"
+                    className="flex h-full w-full flex-col items-start gap-1 rounded-md border border-border bg-background p-2.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onPick(item.id)}
+                    {...tooltip}
+                  >
+                    <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
+                    {item.description ? (
+                      <span className="line-clamp-2 text-xs text-muted-foreground">{item.description}</span>
+                    ) : null}
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {range.min === range.max
+                        ? formatPeso(range.min)
+                        : `${formatPeso(range.min)}–${formatPeso(range.max)}`}
+                      {hasVariants ? ' ▾' : ''}
+                    </span>
+                  </button>
+                )}
+              </Tooltip>
             </li>
           );
         })}
