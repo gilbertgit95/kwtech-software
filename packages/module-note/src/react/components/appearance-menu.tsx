@@ -8,6 +8,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
 } from '@kwtech/web-ui/react';
 import { Check, Palette } from 'lucide-react';
 import {
@@ -72,22 +73,27 @@ export function AppearanceMenu({
         <DropdownMenuSeparator className="my-2" />
         <Section label="New notes start in">
           {NOTE_COLORS.map((color) => (
-            <DropdownMenuItem
-              key={color}
-              role="menuitemradio"
-              aria-checked={settings.defaultColor === color}
-              // A swatch has no words on it, so its name is its label — and its tooltip.
-              aria-label={NOTE_APPEARANCE_LABELS.color[color]}
-              title={NOTE_APPEARANCE_LABELS.color[color]}
-              onSelect={() => onChange({ ...settings, defaultColor: color })}
-              className={cn(
-                'size-8 justify-center rounded-full border border-border p-0',
-                settings.defaultColor === color && 'ring-2 ring-primary ring-offset-1 ring-offset-popover',
+            // A swatch has no words on it, so its name is its label — and its hint, which is why the hint does not describe it too.
+            <Tooltip key={color} text={NOTE_APPEARANCE_LABELS.color[color]} side="top" describes={false}>
+              {(tooltip) => (
+                <DropdownMenuItem
+                  role="menuitemradio"
+                  aria-checked={settings.defaultColor === color}
+                  aria-label={NOTE_APPEARANCE_LABELS.color[color]}
+                  {...tooltip}
+                  onSelect={() => onChange({ ...settings, defaultColor: color })}
+                  className={cn(
+                    'size-8 justify-center rounded-full border border-border p-0',
+                    settings.defaultColor === color && 'ring-2 ring-primary ring-offset-1 ring-offset-popover',
+                  )}
+                  style={{ backgroundColor: notePaperColor(color, 'strong') }}
+                >
+                  {settings.defaultColor === color ? (
+                    <Check aria-hidden="true" className="size-4 text-foreground" />
+                  ) : null}
+                </DropdownMenuItem>
               )}
-              style={{ backgroundColor: notePaperColor(color, 'strong') }}
-            >
-              {settings.defaultColor === color ? <Check aria-hidden="true" className="size-4 text-foreground" /> : null}
-            </DropdownMenuItem>
+            </Tooltip>
           ))}
         </Section>
       </DropdownMenuContent>

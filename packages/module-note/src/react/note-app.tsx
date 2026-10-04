@@ -1,7 +1,7 @@
 'use client';
 
 import type { AppProps } from '@kwtech/module-kit';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { ChevronsLeft, ChevronsRight, Plus } from 'lucide-react';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { AppearanceMenu } from './components/appearance-menu.js';
@@ -125,9 +125,13 @@ export function NoteApp({ organizationId, workspaceId, client }: AppProps & { cl
         </div>
         <div className="ml-auto flex items-center gap-2">
           {!state.live ? (
-            <span className="text-xs text-muted-foreground" title="Other people’s changes show when you reopen notes">
-              Not live
-            </span>
+            <Tooltip text="Other people’s changes show when you reopen notes" align="end">
+              {(tooltip) => (
+                <span className="text-xs text-muted-foreground" {...tooltip}>
+                  Not live
+                </span>
+              )}
+            </Tooltip>
           ) : null}
           <AppearanceMenu settings={settings} onChange={(next) => void state.saveSettings(next)} />
           {state.canWrite ? (
@@ -235,30 +239,34 @@ function CollapseBar({
   onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={expanded}
-      aria-controls={controls}
-      aria-label={expanded ? 'Hide the notes list' : 'Show the notes list'}
-      title={expanded ? 'Hide the notes list' : 'Show the notes list'}
-      className={cn(
-        'flex w-5 shrink-0 flex-col items-center justify-center gap-2 font-sans text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-        // Between the two halves of a spread it IS the join, so it takes the paper's border.
-        joined ? 'border-y border-border bg-card' : 'mx-1 rounded-md',
+    <Tooltip text={expanded ? 'Hide the notes list' : 'Show the notes list'} side="right" describes={false}>
+      {(tooltip) => (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={controls}
+          aria-label={expanded ? 'Hide the notes list' : 'Show the notes list'}
+          className={cn(
+            'flex w-5 shrink-0 flex-col items-center justify-center gap-2 font-sans text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            // Between the two halves of a spread it IS the join, so it takes the paper's border.
+            joined ? 'border-y border-border bg-card' : 'mx-1 rounded-md',
+          )}
+          {...tooltip}
+        >
+          {expanded ? (
+            <ChevronsLeft aria-hidden="true" className="size-4" />
+          ) : (
+            <>
+              <ChevronsRight aria-hidden="true" className="size-4" />
+              <span aria-hidden="true" className="text-xs [writing-mode:vertical-rl]">
+                Notes
+              </span>
+            </>
+          )}
+        </button>
       )}
-    >
-      {expanded ? (
-        <ChevronsLeft aria-hidden="true" className="size-4" />
-      ) : (
-        <>
-          <ChevronsRight aria-hidden="true" className="size-4" />
-          <span aria-hidden="true" className="text-xs [writing-mode:vertical-rl]">
-            Notes
-          </span>
-        </>
-      )}
-    </button>
+    </Tooltip>
   );
 }
 

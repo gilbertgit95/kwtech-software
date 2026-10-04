@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
 } from '@kwtech/web-ui/react';
 import {
   ChevronLeft,
@@ -31,7 +32,6 @@ import { notePaperColor } from '../view/appearance.js';
 import { parseTagField } from '../view/editing.js';
 import { noteLinesStyle } from './paper.js';
 import { ProblemBanner } from './problem-banner.js';
-import { Tooltip } from './tooltip.js';
 
 /** The parser is only needed to preview, and it is ESM-only — loaded on demand. */
 const NoteMarkdown = lazy(async () => ({ default: (await import('./note-markdown.js')).NoteMarkdown }));
@@ -126,7 +126,7 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
           {note.mine && editable ? (
             // The hint says what sharing MEANS: everyone in this workspace, not chosen
             // people — and they can edit it. Read out after the name, too.
-            <Tooltip text={shared ? SHARED_HINT : SHARE_HINT}>
+            <Tooltip text={shared ? SHARED_HINT : SHARE_HINT} align="end">
               {(tooltip) => (
                 <button
                   type="button"
@@ -359,20 +359,23 @@ function ColorDots({ value, onChange }: { value: string; onChange: (color: strin
     <fieldset className="flex items-center gap-1">
       <legend className="sr-only">Note colour</legend>
       {NOTE_COLORS.map((color) => (
-        <button
-          key={color}
-          type="button"
-          onClick={() => onChange(color)}
-          aria-pressed={color === current}
-          title={NOTE_APPEARANCE_LABELS.color[color]}
-          className={cn(
-            'size-4 rounded-full border border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-            color === current && 'ring-2 ring-primary ring-offset-1 ring-offset-card',
+        <Tooltip key={color} text={NOTE_APPEARANCE_LABELS.color[color]} describes={false}>
+          {(tooltip) => (
+            <button
+              type="button"
+              onClick={() => onChange(color)}
+              aria-pressed={color === current}
+              className={cn(
+                'size-4 rounded-full border border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                color === current && 'ring-2 ring-primary ring-offset-1 ring-offset-card',
+              )}
+              style={{ backgroundColor: notePaperColor(color, 'strong') }}
+              {...tooltip}
+            >
+              <span className="sr-only">{NOTE_APPEARANCE_LABELS.color[color]}</span>
+            </button>
           )}
-          style={{ backgroundColor: notePaperColor(color, 'strong') }}
-        >
-          <span className="sr-only">{NOTE_APPEARANCE_LABELS.color[color]}</span>
-        </button>
+        </Tooltip>
       ))}
     </fieldset>
   );
