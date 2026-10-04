@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, DataGrid, type DataGridColumn } from '@kwtech/web-ui/react';
+import { cn, DataGrid, type DataGridColumn, Tooltip } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
@@ -183,12 +183,19 @@ export function SubscriptionsPage({
                 subscription for something the plan did.
               */}
               {params.data.planArchived ? (
-                <span
-                  className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
-                  title="This plan is archived, so it entitles nothing — whatever this subscription's status says."
+                <Tooltip
+                  text="This plan is archived, so it entitles nothing — whatever this subscription's status says."
+                  align="start"
                 >
-                  Plan archived
-                </span>
+                  {(tooltip) => (
+                    <span
+                      className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                      {...tooltip}
+                    >
+                      Plan archived
+                    </span>
+                  )}
+                </Tooltip>
               ) : null}
             </span>
           ) : null,

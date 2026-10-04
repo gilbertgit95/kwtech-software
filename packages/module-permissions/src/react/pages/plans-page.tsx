@@ -1,7 +1,7 @@
 'use client';
 
 import { useRealtime } from '@kwtech/module-kit/react';
-import { DataGrid, type DataGridColumn, useIconSet } from '@kwtech/web-ui/react';
+import { DataGrid, type DataGridColumn, Tooltip, useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LIMIT_REGISTRY } from '../../domain/limits.js';
 import { FEATURE } from '../../feature-keys.js';
@@ -205,7 +205,16 @@ export function PlansPage({
           return (
             // `role="img"` so the name is an accessible name: a bare span has no
             // role that supports one, and the dot would announce nothing.
-            <span role="img" title={name} aria-label={name} className="size-1.5 rounded-full bg-muted-foreground/50" />
+            <Tooltip text={name} side="right" describes={false}>
+              {(tooltip) => (
+                <span
+                  role="img"
+                  aria-label={name}
+                  className="size-1.5 rounded-full bg-muted-foreground/50"
+                  {...tooltip}
+                />
+              )}
+            </Tooltip>
           );
         },
       },
@@ -254,12 +263,13 @@ export function PlansPage({
           params.data?.isPublic ? (
             <span className="text-xs text-muted-foreground">Public</span>
           ) : (
-            <span
-              className="text-xs text-muted-foreground"
-              title="Not offered in the catalogue. Still honoured for anyone already subscribed."
-            >
-              Private
-            </span>
+            <Tooltip text="Not offered in the catalogue. Still honoured for anyone already subscribed." align="start">
+              {(tooltip) => (
+                <span className="text-xs text-muted-foreground" {...tooltip}>
+                  Private
+                </span>
+              )}
+            </Tooltip>
           ),
       },
       {

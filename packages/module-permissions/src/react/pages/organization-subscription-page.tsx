@@ -1,6 +1,6 @@
 'use client';
 
-import { useIconSet } from '@kwtech/web-ui/react';
+import { Tooltip, useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
 import type { PermissionsClient, SubscriptionView } from '../permissions-client.js';
@@ -241,8 +241,15 @@ function Entitlements() {
       ) : (
         <ul className="mt-3 flex flex-wrap gap-1.5">
           {[...permissions.effective].sort().map((key) => (
-            <li key={key} className="rounded-full border border-border px-2.5 py-1 text-xs" title={key}>
-              {labels.get(key) ?? key}
+            // The hint is on a span INSIDE the item: its description sits beside its trigger, and a <ul> takes only <li>.
+            <li key={key}>
+              <Tooltip text={key} side="top">
+                {(tooltip) => (
+                  <span className="block rounded-full border border-border px-2.5 py-1 text-xs" {...tooltip}>
+                    {labels.get(key) ?? key}
+                  </span>
+                )}
+              </Tooltip>
             </li>
           ))}
         </ul>
@@ -257,12 +264,17 @@ function Entitlements() {
           </p>
           <ul className="mt-2 flex flex-wrap gap-1.5">
             {[...blockedByPlan].sort().map((key) => (
-              <li
-                key={key}
-                className="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground"
-                title={key}
-              >
-                {labels.get(key) ?? key}
+              <li key={key}>
+                <Tooltip text={key} side="top">
+                  {(tooltip) => (
+                    <span
+                      className="block rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground"
+                      {...tooltip}
+                    >
+                      {labels.get(key) ?? key}
+                    </span>
+                  )}
+                </Tooltip>
               </li>
             ))}
           </ul>

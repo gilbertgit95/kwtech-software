@@ -1,5 +1,6 @@
 'use client';
 
+import { Tooltip } from '@kwtech/web-ui/react';
 import type { FoundUser } from '../permissions-client.js';
 
 /**
@@ -37,9 +38,13 @@ export function personLabel(user: FoundUser | undefined, userId: string): string
 export function Person({ user, userId }: { user: FoundUser | undefined; userId: string }) {
   if (!user) {
     return (
-      <span title="No account found for this id — it may have been deleted.">
-        <code className="text-xs text-muted-foreground">{userId}</code>
-      </span>
+      <Tooltip text="No account found for this id — it may have been deleted." align="start">
+        {(tooltip) => (
+          <span {...tooltip}>
+            <code className="text-xs text-muted-foreground">{userId}</code>
+          </span>
+        )}
+      </Tooltip>
     );
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, DataGrid, type DataGridColumn, useIconSet } from '@kwtech/web-ui/react';
+import { cn, DataGrid, type DataGridColumn, Tooltip, useIconSet } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
 import { FeatureGate } from '../feature-gate.js';
@@ -223,7 +223,16 @@ export function RolesPage({
           return (
             // `role="img"` so the name is an accessible name: a bare <span> has
             // no role that supports one, and the dot would announce nothing.
-            <span role="img" title={name} aria-label={name} className="size-1.5 rounded-full bg-muted-foreground/50" />
+            <Tooltip text={name} side="right" describes={false}>
+              {(tooltip) => (
+                <span
+                  role="img"
+                  aria-label={name}
+                  className="size-1.5 rounded-full bg-muted-foreground/50"
+                  {...tooltip}
+                />
+              )}
+            </Tooltip>
           );
         },
       },
@@ -282,9 +291,13 @@ export function RolesPage({
          */
         cellRenderer: (params: { data?: RoleRow }) =>
           params.data?.isSystem ? (
-            <span className="text-xs text-muted-foreground" title="Defined in the application; replaced on deploy">
-              Built in
-            </span>
+            <Tooltip text="Defined in the application; replaced on deploy" align="start">
+              {(tooltip) => (
+                <span className="text-xs text-muted-foreground" {...tooltip}>
+                  Built in
+                </span>
+              )}
+            </Tooltip>
           ) : (
             <span className="text-xs">Custom</span>
           ),

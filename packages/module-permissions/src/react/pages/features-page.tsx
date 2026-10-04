@@ -1,6 +1,13 @@
 'use client';
 
-import { ConfirmDialog, DataGrid, type DataGridColumn, MultiSelect, useDebouncedValue } from '@kwtech/web-ui/react';
+import {
+  ConfirmDialog,
+  DataGrid,
+  type DataGridColumn,
+  MultiSelect,
+  Tooltip,
+  useDebouncedValue,
+} from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type FeatureFilter, featureFacets, filterFeatures, isEmptyFilter } from '../../domain/feature-filter.js';
 import { FEATURE } from '../../feature-keys.js';
@@ -273,18 +280,23 @@ export function FeaturesPage({ client }: { client?: PermissionsClient } = {}) {
               double-click is unfindable on its own and impossible on a
               touchscreen, so it is a shortcut to this, not a replacement for it.
             */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const row = selected[0];
-                    if (row) onRowActivate(row);
-                  }}
-                  disabled={selected.length !== 1}
-                  title={selected.length > 1 ? 'Select one feature to edit' : undefined}
-                  className="rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
-                >
-                  Edit
-                </button>
+                <Tooltip text={selected.length > 1 ? 'Select one feature to edit' : null} side="top">
+                  {(tooltip) => (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const row = selected[0];
+                        if (row && selected.length === 1) onRowActivate(row);
+                      }}
+                      // ⚠ `aria-disabled`, not `disabled`: a disabled button fires no pointer events, so the hint saying why could never show. The click is refused above instead.
+                      aria-disabled={selected.length !== 1}
+                      className="rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-transparent"
+                      {...tooltip}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </Tooltip>
               </FeatureGate>
               {/*
               Create and import are SEPARATE gates, not one. Adding a feature by
