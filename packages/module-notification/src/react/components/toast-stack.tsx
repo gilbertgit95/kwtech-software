@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toastDurationMs, toastPoliteness } from '../../domain/toast.js';
@@ -167,41 +167,47 @@ export interface ToastCardProps {
 export function ToastCard({ toast, onFollow, onDismiss }: ToastCardProps) {
   const look = severityLook(toast.severity);
   const source = [toast.sourceLabel, toast.contextLabel].filter(Boolean).join(' · ');
-  const tooltip = [toast.title, toast.body, source].filter(Boolean).join('\n');
+  const hint = [toast.title, toast.body, source].filter(Boolean).join('\n');
   return (
-    <div
-      title={tooltip}
-      className="flex h-9 max-w-full items-center gap-2 rounded-full border border-border bg-popover py-1 pl-1.5 pr-1.5 text-popover-foreground shadow-lg"
-    >
-      <span className={cn('grid size-6 shrink-0 place-items-center rounded-full', look.chip)}>
-        <NotificationIcon name={look.icon} className="size-3.5" />
-      </span>
-      {toast.href && onFollow ? (
-        <button
-          type="button"
-          onClick={onFollow}
-          className="min-w-0 truncate text-left text-sm font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <Tooltip text={hint} describes={false}>
+      {(tooltip) => (
+        <div
+          className="flex h-9 max-w-full items-center gap-2 rounded-full border border-border bg-popover py-1 pl-1.5 pr-1.5 text-popover-foreground shadow-lg"
+          {...tooltip}
         >
-          {toast.title}
-        </button>
-      ) : (
-        <p className="min-w-0 truncate text-sm font-medium">{toast.title}</p>
+          <span className={cn('grid size-6 shrink-0 place-items-center rounded-full', look.chip)}>
+            <NotificationIcon name={look.icon} className="size-3.5" />
+          </span>
+          {toast.href && onFollow ? (
+            <button
+              type="button"
+              onClick={onFollow}
+              className="min-w-0 truncate text-left text-sm font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {toast.title}
+            </button>
+          ) : (
+            <p className="min-w-0 truncate text-sm font-medium">{toast.title}</p>
+          )}
+          {source ? (
+            <span className="hidden max-w-[9rem] shrink-0 truncate text-xs text-muted-foreground sm:block">
+              {source}
+            </span>
+          ) : null}
+          {onDismiss ? (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label={`Dismiss "${toast.title}"`}
+              className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <NotificationIcon name="close" className="size-3" />
+            </button>
+          ) : (
+            <span aria-hidden className="w-1" />
+          )}
+        </div>
       )}
-      {source ? (
-        <span className="hidden max-w-[9rem] shrink-0 truncate text-xs text-muted-foreground sm:block">{source}</span>
-      ) : null}
-      {onDismiss ? (
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={`Dismiss "${toast.title}"`}
-          className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <NotificationIcon name="close" className="size-3" />
-        </button>
-      ) : (
-        <span aria-hidden className="w-1" />
-      )}
-    </div>
+    </Tooltip>
   );
 }

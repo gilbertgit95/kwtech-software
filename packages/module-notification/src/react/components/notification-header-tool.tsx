@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { pausedSentence } from '../../domain/live-state.js';
 import { badgeText, bellLabel } from '../../domain/unread.js';
@@ -84,38 +84,42 @@ export function NotificationHeaderTool({ client }: { client?: NotificationClient
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label={label}
-        title="Notifications"
-        className={cn(
-          'relative grid size-9 place-items-center rounded-md text-muted-foreground transition-colors',
-          'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          open && 'bg-accent text-foreground',
-        )}
-      >
-        <NotificationIcon name="bell" className="size-[1.125rem]" />
-        {badge ? (
-          <span
-            aria-hidden
-            className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold leading-none text-primary-foreground ring-2 ring-card"
-          >
-            {badge}
-          </span>
-        ) : null}
-        {liveDot ? (
-          <span
-            aria-hidden
+      <Tooltip text={open ? null : 'Notifications'} align="end" describes={false}>
+        {(tooltip) => (
+          <button
+            type="button"
+            onClick={() => setOpen((current) => !current)}
+            aria-expanded={open}
+            aria-haspopup="dialog"
+            aria-label={label}
             className={cn(
-              'absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-card',
-              liveDot === 'paused' ? 'bg-status-warning-foreground' : 'bg-muted-foreground',
+              'relative grid size-9 place-items-center rounded-md text-muted-foreground transition-colors',
+              'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              open && 'bg-accent text-foreground',
             )}
-          />
-        ) : null}
-      </button>
+            {...tooltip}
+          >
+            <NotificationIcon name="bell" className="size-[1.125rem]" />
+            {badge ? (
+              <span
+                aria-hidden
+                className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold leading-none text-primary-foreground ring-2 ring-card"
+              >
+                {badge}
+              </span>
+            ) : null}
+            {liveDot ? (
+              <span
+                aria-hidden
+                className={cn(
+                  'absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-card',
+                  liveDot === 'paused' ? 'bg-status-warning-foreground' : 'bg-muted-foreground',
+                )}
+              />
+            ) : null}
+          </button>
+        )}
+      </Tooltip>
 
       {open ? (
         <div
@@ -136,14 +140,18 @@ export function NotificationHeaderTool({ client }: { client?: NotificationClient
                   Mark all read
                 </button>
               ) : null}
-              <a
-                href={NOTIFICATION_PREFERENCES_HREF}
-                aria-label="Notification settings"
-                title="Notification settings"
-                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <NotificationIcon name="settings" className="size-4" />
-              </a>
+              <Tooltip text="Notification settings" align="end" describes={false}>
+                {(tooltip) => (
+                  <a
+                    href={NOTIFICATION_PREFERENCES_HREF}
+                    aria-label="Notification settings"
+                    className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    {...tooltip}
+                  >
+                    <NotificationIcon name="settings" className="size-4" />
+                  </a>
+                )}
+              </Tooltip>
             </div>
           </div>
 

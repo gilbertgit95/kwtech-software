@@ -1,6 +1,6 @@
 'use client';
 
-import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
+import { ConfirmDialog, cn, Tooltip } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useState } from 'react';
 import type { NotificationBatchView, NotificationClient } from '../../notification-client.js';
 import { initialsOf, readShare } from '../../view/compose-view.js';
@@ -222,9 +222,13 @@ function SentRow({
         recalled ? 'opacity-70' : 'hover:border-foreground/20',
       )}
     >
-      <span className={cn('grid size-9 shrink-0 place-items-center rounded-full', look.chip)} title={look.label}>
-        <NotificationIcon name={look.icon} className="size-4" />
-      </span>
+      <Tooltip text={look.label} side="right">
+        {(tooltip) => (
+          <span className={cn('grid size-9 shrink-0 place-items-center rounded-full', look.chip)} {...tooltip}>
+            <NotificationIcon name={look.icon} className="size-4" />
+          </span>
+        )}
+      </Tooltip>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -244,9 +248,13 @@ function SentRow({
           </span>
           <span>{sender}</span>
           <span aria-hidden>·</span>
-          <time dateTime={batch.createdAt} title={new Date(batch.createdAt).toLocaleString()}>
-            {relativeTime(batch.createdAt, now)}
-          </time>
+          <Tooltip text={new Date(batch.createdAt).toLocaleString()} side="top">
+            {(tooltip) => (
+              <time dateTime={batch.createdAt} {...tooltip}>
+                {relativeTime(batch.createdAt, now)}
+              </time>
+            )}
+          </Tooltip>
           <span aria-hidden>·</span>
           <span>{batch.sourceLabel}</span>
         </p>

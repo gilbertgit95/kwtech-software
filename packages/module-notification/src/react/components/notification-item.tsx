@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import type { NotificationView } from '../notification-client.js';
 import { relativeTime } from '../view/inbox-view.js';
 import { severityLook } from '../view/severity-view.js';
@@ -66,9 +66,13 @@ export function NotificationItem({ item, now, compact = false, onActivate }: Not
             <span className="rounded border border-border px-1.5 py-px text-[0.6875rem]">{item.contextLabel}</span>
           ) : null}
           {item.groupCount > 1 ? <span>{item.groupCount} in this group</span> : null}
-          <time dateTime={item.occurredAt} title={new Date(item.occurredAt).toLocaleString()}>
-            {relativeTime(item.occurredAt, now)}
-          </time>
+          <Tooltip text={new Date(item.occurredAt).toLocaleString()} side="top">
+            {(tooltip) => (
+              <time dateTime={item.occurredAt} {...tooltip}>
+                {relativeTime(item.occurredAt, now)}
+              </time>
+            )}
+          </Tooltip>
         </p>
 
         {expired ? (

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { useEffect, useId, useState } from 'react';
 import { NOTIFICATION_SEVERITIES } from '../../types.js';
 import { InboxRow } from '../components/inbox-row.js';
@@ -89,14 +89,18 @@ export function NotificationsPage({ client }: { client?: NotificationClient } = 
               Mark all read
             </button>
           ) : null}
-          <a
-            href={NOTIFICATION_PREFERENCES_HREF}
-            aria-label="Notification settings"
-            title="Notification settings"
-            className="grid size-9 place-items-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <NotificationIcon name="settings" className="size-4" />
-          </a>
+          <Tooltip text="Notification settings" align="end" describes={false}>
+            {(tooltip) => (
+              <a
+                href={NOTIFICATION_PREFERENCES_HREF}
+                aria-label="Notification settings"
+                className="grid size-9 place-items-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {...tooltip}
+              >
+                <NotificationIcon name="settings" className="size-4" />
+              </a>
+            )}
+          </Tooltip>
         </div>
       </header>
 
@@ -356,15 +360,19 @@ export function NotificationsPage({ client }: { client?: NotificationClient } = 
                 <BulkButton icon="archive" label="Archive" onClick={() => void inbox.archive(selectedIds)} />
               </>
             )}
-            <button
-              type="button"
-              onClick={inbox.clearSelection}
-              aria-label="Clear selection"
-              title="Clear selection"
-              className="ml-1 grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <NotificationIcon name="close" className="size-4" />
-            </button>
+            <Tooltip text="Clear selection" side="top" align="end" describes={false}>
+              {(tooltip) => (
+                <button
+                  type="button"
+                  onClick={inbox.clearSelection}
+                  aria-label="Clear selection"
+                  className="ml-1 grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                  {...tooltip}
+                >
+                  <NotificationIcon name="close" className="size-4" />
+                </button>
+              )}
+            </Tooltip>
           </div>
         </div>
       ) : null}

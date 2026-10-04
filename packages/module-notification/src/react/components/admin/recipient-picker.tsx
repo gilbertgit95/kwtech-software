@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, useDebouncedValue } from '@kwtech/web-ui/react';
+import { cn, Tooltip, useDebouncedValue } from '@kwtech/web-ui/react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { NotificationClient } from '../../notification-client.js';
 import { type ComposeRecipient, initialsOf, moveHighlight } from '../../view/compose-view.js';
@@ -118,27 +118,30 @@ export function RecipientPicker({ id, client, value, onChange, error }: Recipien
         )}
       >
         {value.map((person) => (
-          <span
-            key={person.userId}
-            title={person.email}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted py-0.5 pl-0.5 pr-1.5 text-xs font-medium"
-          >
-            <span
-              aria-hidden
-              className="grid size-5 place-items-center rounded-full bg-primary/15 text-[0.625rem] font-semibold text-primary"
-            >
-              {initialsOf(person.displayName)}
-            </span>
-            {person.displayName}
-            <button
-              type="button"
-              onClick={() => remove(person.userId)}
-              aria-label={`Remove ${person.displayName}`}
-              className="grid size-4 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <NotificationIcon name="close" className="size-3" />
-            </button>
-          </span>
+          <Tooltip key={person.userId} text={person.email} side="top">
+            {(tooltip) => (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted py-0.5 pl-0.5 pr-1.5 text-xs font-medium"
+                {...tooltip}
+              >
+                <span
+                  aria-hidden
+                  className="grid size-5 place-items-center rounded-full bg-primary/15 text-[0.625rem] font-semibold text-primary"
+                >
+                  {initialsOf(person.displayName)}
+                </span>
+                {person.displayName}
+                <button
+                  type="button"
+                  onClick={() => remove(person.userId)}
+                  aria-label={`Remove ${person.displayName}`}
+                  className="grid size-4 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <NotificationIcon name="close" className="size-3" />
+                </button>
+              </span>
+            )}
+          </Tooltip>
         ))}
         <span className="flex min-w-[12rem] flex-1 items-center gap-1.5 px-1">
           <NotificationIcon name="search" className="size-4 shrink-0 text-muted-foreground" />

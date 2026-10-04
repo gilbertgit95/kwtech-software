@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { useState } from 'react';
 import type { NotificationView } from '../notification-client.js';
 import { isLongBody, relativeTime } from '../view/inbox-view.js';
@@ -69,22 +69,30 @@ export function InboxRow({
         )}
       />
 
-      <span className={cn('mt-0.5 grid size-9 shrink-0 place-items-center rounded-full', look.chip)} title={look.label}>
-        <NotificationIcon name={look.icon} className="size-4" />
-      </span>
+      <Tooltip text={look.label} side="right">
+        {(tooltip) => (
+          <span className={cn('mt-0.5 grid size-9 shrink-0 place-items-center rounded-full', look.chip)} {...tooltip}>
+            <NotificationIcon name={look.icon} className="size-4" />
+          </span>
+        )}
+      </Tooltip>
 
       <article aria-label={`${look.label}: ${item.title}${unread ? ', unread' : ''}`} className="min-w-0 flex-1">
         <div className="flex items-start gap-3">
           <h3 className={cn('min-w-0 flex-1 text-sm leading-snug', unread ? 'font-semibold' : 'font-medium')}>
             {item.title}
           </h3>
-          <time
-            dateTime={item.occurredAt}
-            title={new Date(item.occurredAt).toLocaleString()}
-            className="shrink-0 pt-0.5 text-xs text-muted-foreground group-hover:hidden group-focus-within:hidden"
-          >
-            {relativeTime(item.occurredAt, now)}
-          </time>
+          <Tooltip text={new Date(item.occurredAt).toLocaleString()} side="top" align="end">
+            {(tooltip) => (
+              <time
+                dateTime={item.occurredAt}
+                className="shrink-0 pt-0.5 text-xs text-muted-foreground group-hover:hidden group-focus-within:hidden"
+                {...tooltip}
+              >
+                {relativeTime(item.occurredAt, now)}
+              </time>
+            )}
+          </Tooltip>
         </div>
 
         {item.body ? (
@@ -180,14 +188,18 @@ function RowTool({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <NotificationIcon name={icon} className="size-4" />
-    </button>
+    <Tooltip text={label} side="top" align="end" describes={false}>
+      {(tooltip) => (
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={label}
+          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          {...tooltip}
+        >
+          <NotificationIcon name={icon} className="size-4" />
+        </button>
+      )}
+    </Tooltip>
   );
 }
