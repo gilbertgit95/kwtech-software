@@ -575,6 +575,26 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-04** — **The Apps page's app list collapses to a rail of icons and resizes, like the main drawer.**
+
+  The operator asked for the grid's app list to behave like the main
+  navigation. Its toggle was a toolbar button that removed the list outright,
+  so putting an app in a cell meant first finding the button that brought the
+  list back.
+  - **Collapsed is a rail, not gone.** Each app is its icon (its initial when it
+    declares none), still a draggable of the grid's drag context, with a dot
+    for "in grid". "Add" stays in the expanded list only.
+  - **The arrow is on the list's edge**, the main drawer's own chevron, and the
+    toolbar button is removed. The edge drags to resize, 176–360px, with the
+    window-splitter keys.
+  - **Remembered per device, in localStorage** (`kwtech:app-hub-list`), as
+    chat's dock is. Not in the saved layout: a workspace default would then
+    collapse the list for everybody, and its width depends on the screen.
+  - **Not done:** the drawer's rules were copied into
+    `module-app-hub/src/react/view/app-list.ts`, not shared. The drawer is the
+    app's and a module cannot import it; a third resizable panel is the time to
+    move one into `web-ui` (principle 9). The tab view is unchanged.
+
 - **2026-10-03** — **The list drawer moved to `web-ui` (`ListDrawer`), and the books open investors and loans in it.**
 
   The operator asked for the books to open a row the way the point of sale now
