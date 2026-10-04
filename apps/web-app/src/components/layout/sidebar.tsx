@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -199,31 +199,42 @@ export function Sidebar({
        * asked for. Double-click puts the default back.
        */}
       {collapsed ? null : (
-        // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or pointer events; a focusable separator is the ARIA window-splitter pattern.
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize navigation"
-          aria-controls="main-nav"
-          aria-valuenow={width}
-          aria-valuemin={SIDEBAR_WIDTH.min}
-          aria-valuemax={SIDEBAR_WIDTH.max}
-          tabIndex={0}
-          title="Drag to resize · double-click to reset"
-          onPointerDown={onResizeStart}
-          onPointerMove={onResizeMove}
-          onPointerUp={onResizeEnd}
-          onPointerCancel={onResizeEnd}
-          onKeyDown={onResizeKey}
-          onDoubleClick={() => resizeTo(SIDEBAR_WIDTH.default)}
-          className={cn(
-            // touch-none: a finger dragging the edge resizes instead of scrolling.
-            'absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none',
-            'after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:transition-colors',
-            'hover:after:bg-primary/40 focus-visible:outline-none focus-visible:after:bg-ring',
-            resizing && 'after:bg-primary/60',
+        <Tooltip text="Drag to resize · double-click to reset" side="right">
+          {(tooltip) => (
+            // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or pointer events; a focusable separator is the ARIA window-splitter pattern.
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize navigation"
+              aria-controls="main-nav"
+              aria-valuenow={width}
+              aria-valuemin={SIDEBAR_WIDTH.min}
+              aria-valuemax={SIDEBAR_WIDTH.max}
+              tabIndex={0}
+              {...tooltip}
+              // Both, for the two events the handle and the hint each listen to: a later prop replaces the spread one.
+              onPointerDown={(event) => {
+                tooltip.onPointerDown();
+                onResizeStart(event);
+              }}
+              onPointerMove={onResizeMove}
+              onPointerUp={onResizeEnd}
+              onPointerCancel={onResizeEnd}
+              onKeyDown={(event) => {
+                tooltip.onKeyDown(event);
+                onResizeKey(event);
+              }}
+              onDoubleClick={() => resizeTo(SIDEBAR_WIDTH.default)}
+              className={cn(
+                // touch-none: a finger dragging the edge resizes instead of scrolling.
+                'absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none',
+                'after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:transition-colors',
+                'hover:after:bg-primary/40 focus-visible:outline-none focus-visible:after:bg-ring',
+                resizing && 'after:bg-primary/60',
+              )}
+            />
           )}
-        />
+        </Tooltip>
       )}
       {/*
        * The handle sits ON the edge it moves, half outside the panel, rather
@@ -235,39 +246,43 @@ export function Sidebar({
        * Always visible, not revealed on hover: hiding it is the fashionable
        * choice and it makes the control undiscoverable on a touch screen.
        */}
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={!collapsed}
-        aria-controls="main-nav"
-        title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-        className={cn(
-          // top-[1.125rem] is not arbitrary: py-4 (16px) plus half the 28px
-          // brand mark puts that mark's centre at 30px, and a 24px handle
-          // centres there at 18px — so the handle reads as belonging to the
-          // first row rather than floating near it.
-          'absolute -right-3 top-[1.125rem] z-20 grid size-6 place-items-center rounded-full',
-          'border border-border bg-card text-muted-foreground shadow-sm',
-          'transition-[transform,color,border-color,box-shadow] duration-200 ease-out',
-          'hover:scale-110 hover:border-primary/40 hover:text-foreground hover:shadow-md',
-          'active:scale-95',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+      <Tooltip text={collapsed ? 'Expand navigation' : 'Collapse navigation'} side="right" describes={false}>
+        {(tooltip) => (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={!collapsed}
+            aria-controls="main-nav"
+            className={cn(
+              // top-[1.125rem] is not arbitrary: py-4 (16px) plus half the 28px
+              // brand mark puts that mark's centre at 30px, and a 24px handle
+              // centres there at 18px — so the handle reads as belonging to the
+              // first row rather than floating near it.
+              'absolute -right-3 top-[1.125rem] z-20 grid size-6 place-items-center rounded-full',
+              'border border-border bg-card text-muted-foreground shadow-sm',
+              'transition-[transform,color,border-color,box-shadow] duration-200 ease-out',
+              'hover:scale-110 hover:border-primary/40 hover:text-foreground hover:shadow-md',
+              'active:scale-95',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            )}
+            {...tooltip}
+          >
+            {/*
+             * One chevron that turns, not two icons that swap. A swap is a cut;
+             * the rotation runs the same 300ms as the panel's width, so the arrow
+             * and the edge it points at move together.
+             */}
+            <ChevronLeft
+              aria-hidden
+              className={cn(
+                'size-3.5 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                collapsed && 'rotate-180',
+              )}
+            />
+            <span className="sr-only">{collapsed ? 'Expand navigation' : 'Collapse navigation'}</span>
+          </button>
         )}
-      >
-        {/*
-         * One chevron that turns, not two icons that swap. A swap is a cut;
-         * the rotation runs the same 300ms as the panel's width, so the arrow
-         * and the edge it points at move together.
-         */}
-        <ChevronLeft
-          aria-hidden
-          className={cn(
-            'size-3.5 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-            collapsed && 'rotate-180',
-          )}
-        />
-        <span className="sr-only">{collapsed ? 'Expand navigation' : 'Collapse navigation'}</span>
-      </button>
+      </Tooltip>
 
       {/*
         THE SWITCHER SITS WHERE THE BRAND USED TO.
@@ -345,70 +360,73 @@ export function Sidebar({
                 const Icon = iconFor(item.icon);
                 return (
                   <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      /*
-                       * Only when collapsed: a native tooltip is what names an
-                       * icon whose label is no longer on screen. A Radix
-                       * tooltip would look better and would cost a dependency
-                       * for one hover hint — and the label below stays in the
-                       * DOM either way, so the accessible name never depends
-                       * on this.
-                       */
-                      title={collapsed ? item.label : undefined}
-                      className={cn(
-                        // py-1.5, not py-2: a drawer with four sections outgrew a
-                        // laptop screen, and the rows are still a 32px target.
-                        'relative flex items-center rounded-md py-1.5 text-sm transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        collapsed ? 'justify-center gap-0 px-0' : 'gap-2.5 px-2.5',
-                        active
-                          ? 'bg-accent font-medium text-accent-foreground'
-                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                    {/*
+                     * Only when collapsed: the hint is what names an icon whose
+                     * label is no longer on screen. `describes={false}` because
+                     * the label below stays in the DOM either way, so the
+                     * accessible name never depends on this — described as
+                     * well, a screen reader would say it twice.
+                     */}
+                    <Tooltip text={collapsed ? item.label : null} side="right" describes={false}>
+                      {(tooltip) => (
+                        <Link
+                          href={item.href}
+                          aria-current={active ? 'page' : undefined}
+                          {...tooltip}
+                          className={cn(
+                            // py-1.5, not py-2: a drawer with four sections outgrew a
+                            // laptop screen, and the rows are still a 32px target.
+                            'relative flex items-center rounded-md py-1.5 text-sm transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            collapsed ? 'justify-center gap-0 px-0' : 'gap-2.5 px-2.5',
+                            active
+                              ? 'bg-accent font-medium text-accent-foreground'
+                              : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                          )}
+                        >
+                          <Icon className="size-4 shrink-0" aria-hidden />
+                          {/*
+                           * Collapsed to zero width, NOT removed and not sr-only.
+                           * `max-w-0 overflow-hidden` still exposes the text to a
+                           * screen reader — dropping it would leave a column of
+                           * unlabelled links, which is not a smaller drawer but a
+                           * broken one — and unlike sr-only it is a property that
+                           * animates, so the labels slide away with the panel
+                           * instead of vanishing a frame before it moves.
+                           */}
+                          <span
+                            className={cn(
+                              'truncate transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                              collapsed ? 'max-w-0 opacity-0' : 'max-w-full opacity-100',
+                            )}
+                          >
+                            {item.label}
+                          </span>
+                          {/*
+                            WHAT A MODULE HANGS OFF ITS OWN ENTRY — an unread count
+                            today. The drawer draws it and never learns what it
+                            counts.
+
+                            ⚠ RENDERED, never called. `item.Badge` is a client
+                            component reference carried through `composeNav`, and
+                            the entry it belongs to has already been filtered by its
+                            feature key — so a badge that subscribes never runs for
+                            somebody the API would refuse.
+
+                            Two placements, because a collapsed drawer has no room
+                            beside the label: pinned to the icon when collapsed,
+                            pushed to the far edge when open. The badge itself knows
+                            neither — the shell decides where it sits and the module
+                            decides what it says.
+                          */}
+                          {item.Badge ? (
+                            <span className={cn('shrink-0', collapsed ? 'absolute right-1 top-1' : 'ml-auto')}>
+                              <item.Badge />
+                            </span>
+                          ) : null}
+                        </Link>
                       )}
-                    >
-                      <Icon className="size-4 shrink-0" aria-hidden />
-                      {/*
-                       * Collapsed to zero width, NOT removed and not sr-only.
-                       * `max-w-0 overflow-hidden` still exposes the text to a
-                       * screen reader — dropping it would leave a column of
-                       * unlabelled links, which is not a smaller drawer but a
-                       * broken one — and unlike sr-only it is a property that
-                       * animates, so the labels slide away with the panel
-                       * instead of vanishing a frame before it moves.
-                       */}
-                      <span
-                        className={cn(
-                          'truncate transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-                          collapsed ? 'max-w-0 opacity-0' : 'max-w-full opacity-100',
-                        )}
-                      >
-                        {item.label}
-                      </span>
-                      {/*
-                        WHAT A MODULE HANGS OFF ITS OWN ENTRY — an unread count
-                        today. The drawer draws it and never learns what it
-                        counts.
-
-                        ⚠ RENDERED, never called. `item.Badge` is a client
-                        component reference carried through `composeNav`, and
-                        the entry it belongs to has already been filtered by its
-                        feature key — so a badge that subscribes never runs for
-                        somebody the API would refuse.
-
-                        Two placements, because a collapsed drawer has no room
-                        beside the label: pinned to the icon when collapsed,
-                        pushed to the far edge when open. The badge itself knows
-                        neither — the shell decides where it sits and the module
-                        decides what it says.
-                      */}
-                      {item.Badge ? (
-                        <span className={cn('shrink-0', collapsed ? 'absolute right-1 top-1' : 'ml-auto')}>
-                          <item.Badge />
-                        </span>
-                      ) : null}
-                    </Link>
+                    </Tooltip>
                   </li>
                 );
               })}

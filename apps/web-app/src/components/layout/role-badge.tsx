@@ -1,5 +1,5 @@
 import type { AppRole } from '@kwtech/module-permissions';
-import { cn } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import { iconFor } from '@/components/layout/nav-icons';
 
 /**
@@ -14,7 +14,7 @@ import { iconFor } from '@/components/layout/nav-icons';
  *
  * The name is still the only thing that says what the picture MEANS, so it is
  * attached rather than dropped: `role="img"` plus `aria-label` gives the icon an
- * accessible name, and `title` surfaces the same string on hover. Both are
+ * accessible name, and a `Tooltip` surfaces the same string on hover. Both are
  * invisible until asked for. Dropping it outright would leave a screen-reader
  * user with an unlabelled graphic and everyone else with a glyph they can only
  * guess at — a crown reads as rank, but a briefcase and a sprout do not
@@ -35,13 +35,17 @@ export function RoleBadge({ role, className }: { role: AppRole; className?: stri
   const Icon = iconFor(role.icon ?? undefined);
 
   return (
-    <Icon role="img" aria-label={role.label} className={cn('size-4 shrink-0 text-muted-foreground', className)}>
-      {/*
-        The same string twice, and both earn their place: `aria-label` is what a
-        screen reader announces, `<title>` inside the SVG is what a mouse gets on
-        hover. Neither substitutes for the other.
-      */}
-      <title>{role.label}</title>
-    </Icon>
+    // The same string twice, and both earn their place: `aria-label` is what a
+    // screen reader announces, the tooltip is what a mouse gets on hover. Hence
+    // `describes={false}`: described as well, the name would be read out twice.
+    <Tooltip text={role.label} side="bottom" align="end" describes={false}>
+      {(tooltip) => (
+        // A span carries the hint, not the icon: the handlers are typed for an
+        // HTML element, and an <svg> title would bring back the browser's own.
+        <span className="inline-flex shrink-0" {...tooltip}>
+          <Icon role="img" aria-label={role.label} className={cn('size-4 shrink-0 text-muted-foreground', className)} />
+        </span>
+      )}
+    </Tooltip>
   );
 }

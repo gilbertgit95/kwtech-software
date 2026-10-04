@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
 } from '@kwtech/web-ui/react';
 import { ChevronsUpDown, Layers, Plus } from 'lucide-react';
 import Link from 'next/link';
@@ -179,46 +180,60 @@ export function WorkspaceSwitcher({
       <span aria-hidden className="mt-0 w-2 shrink-0 rounded-bl-md border-b border-l border-border" />
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={disabled}>
-          <button
-            type="button"
-            disabled={disabled}
-            title={
-              disabled
-                ? 'Select an organization first — workspaces belong to one.'
-                : (active?.name ?? 'Choose a workspace')
-            }
-            className={cn(
-              'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-accent/60',
-            )}
-          >
-            <Layers aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span
+        {/*
+          ⚠ `aria-disabled`, not `disabled`: a disabled button fires no pointer
+          events and takes no focus, so the hint saying WHY there is nothing to
+          choose could never show. Disabled, it is simply not a menu trigger.
+        */}
+        <Tooltip
+          text={
+            disabled
+              ? 'Select an organization first — workspaces belong to one.'
+              : (active?.name ?? 'Choose a workspace')
+          }
+          align="start"
+          describes={false}
+        >
+          {(tooltip) => {
+            const button = (
+              <button
+                type="button"
+                aria-disabled={disabled}
+                {...tooltip}
                 className={cn(
-                  'block truncate text-xs leading-tight',
-                  // Muted until something is chosen, so "Workspace" reads as the
-                  // placeholder it is rather than as the name of one.
-                  active ? 'text-foreground' : 'text-muted-foreground',
+                  'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-accent/60',
                 )}
               >
-                {label}
-              </span>
-              {/*
+                <Layers aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      'block truncate text-xs leading-tight',
+                      // Muted until something is chosen, so "Workspace" reads as the
+                      // placeholder it is rather than as the name of one.
+                      active ? 'text-foreground' : 'text-muted-foreground',
+                    )}
+                  >
+                    {label}
+                  </span>
+                  {/*
                 The role only once a workspace is actually chosen. "All
                 workspaces" and the disabled placeholder are not places, so
                 there is nothing to hold a role in.
               */}
-              {active ? <WorkspaceRole workspace={active} /> : null}
-            </span>
-            {disabled ? null : <ChevronsUpDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />}
-            <span className="sr-only">
-              {disabled ? 'Workspace selector, disabled until an organization is selected' : 'Switch workspace'}
-            </span>
-          </button>
-        </DropdownMenuTrigger>
+                  {active ? <WorkspaceRole workspace={active} /> : null}
+                </span>
+                {disabled ? null : <ChevronsUpDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />}
+                <span className="sr-only">
+                  {disabled ? 'Workspace selector, disabled until an organization is selected' : 'Switch workspace'}
+                </span>
+              </button>
+            );
+            return disabled ? button : <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>;
+          }}
+        </Tooltip>
 
         <DropdownMenuContent align="start" className="w-56">
           <DropdownMenuLabel>Workspaces</DropdownMenuLabel>

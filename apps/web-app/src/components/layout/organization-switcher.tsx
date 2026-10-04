@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
 } from '@kwtech/web-ui/react';
 import { ChevronsUpDown, Plus } from 'lucide-react';
 import Link from 'next/link';
@@ -387,18 +388,25 @@ export function OrganizationSwitcher({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          title={collapsed ? title : undefined}
-          className={cn(
-            'group/trigger flex w-full items-center gap-2.5 rounded-lg pb-0 transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            'hover:bg-accent/60',
-            collapsed ? 'justify-center px-0 py-1.5' : 'px-2 py-1.5',
-          )}
-        >
-          {/*
+      {/*
+        Only collapsed, where the name is not printed beside the mark. AROUND the
+        trigger, not inside it: `asChild` hands its props to its one child, and
+        that child has to be the button.
+      */}
+      <Tooltip text={collapsed ? title : null} side="right" describes={false}>
+        {(tooltip) => (
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              {...tooltip}
+              className={cn(
+                'group/trigger flex w-full items-center gap-2.5 rounded-lg pb-0 transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'hover:bg-accent/60',
+                collapsed ? 'justify-center px-0 py-1.5' : 'px-2 py-1.5',
+              )}
+            >
+              {/*
             THE MARK, and it now draws the PLAN rather than the initials.
 
             The square itself is unchanged — same size, same gradient, same
@@ -412,93 +420,95 @@ export function OrganizationSwitcher({
             only one — and would need a portal inside a dropdown trigger, which
             is where focus handling goes wrong.
           */}
-          {/*
+              {/*
             `relative` so the card positions against the MARK rather than the
             button — which keeps it in the same place whether the drawer is
             expanded or collapsed to 4rem. `group/mark` is what reveals it; the
             button carries `group/trigger` so keyboard focus reveals it too.
           */}
-          <span className="group/mark relative shrink-0">
-            <span
-              aria-hidden
-              className={cn(
-                'grid size-7 place-items-center rounded-lg',
-                'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
-                'text-xs font-bold leading-none tracking-tight',
-              )}
-            >
-              {/*
+              <span className="group/mark relative shrink-0">
+                <span
+                  aria-hidden
+                  className={cn(
+                    'grid size-7 place-items-center rounded-lg',
+                    'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
+                    'text-xs font-bold leading-none tracking-tight',
+                  )}
+                >
+                  {/*
                 No organization selected means the row is drawing the PRODUCT,
                 so the square carries the product's logo. Painted in
                 `primary-foreground`, the token made to be read on the
                 gradient's `primary`, so it holds up in every palette and in
                 light and dark alike.
               */}
-              {PlanIcon ? (
-                <PlanIcon className="size-4" />
-              ) : active ? (
-                initials(title)
-              ) : (
-                <BrandLogo className="h-5 bg-primary-foreground" />
-              )}
-            </span>
-            {/*
+                  {PlanIcon ? (
+                    <PlanIcon className="size-4" />
+                  ) : active ? (
+                    initials(title)
+                  ) : (
+                    <BrandLogo className="h-5 bg-primary-foreground" />
+                  )}
+                </span>
+                {/*
               Only where there is a plan to describe. With none — no
               organization selected, none bought, or a tenant somebody is
               visiting without `subscriptions:read` — the mark is the initials
               and a card explaining an absence would be worse than no card.
             */}
-            {active?.planLabel ? (
-              <PlanCard
-                organizationName={active.name}
-                planLabel={active.planLabel}
-                planKey={active.planKey}
-                planIcon={active.planIcon}
-                entitlements={planDetail?.entitlements ?? null}
-                canReadSubscription={planDetail?.canReadSubscription ?? false}
-              />
-            ) : null}
-          </span>
-          {/*
+                {active?.planLabel ? (
+                  <PlanCard
+                    organizationName={active.name}
+                    planLabel={active.planLabel}
+                    planKey={active.planKey}
+                    planIcon={active.planIcon}
+                    entitlements={planDetail?.entitlements ?? null}
+                    canReadSubscription={planDetail?.canReadSubscription ?? false}
+                  />
+                ) : null}
+              </span>
+              {/*
             Collapsed to zero width rather than removed, the same treatment the
             nav labels get: `max-w-0 overflow-hidden` keeps the text in the
             accessibility tree, so the button never becomes an unlabelled
             square, and unlike `sr-only` it is a property that animates with the
             panel.
           */}
-          <span
-            className={cn(
-              'min-w-0 flex-1 overflow-hidden text-left transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-              collapsed ? 'max-w-0 opacity-0' : 'max-w-full opacity-100',
-            )}
-          >
-            <span className="block truncate text-sm font-semibold leading-tight">{title}</span>
-            {subtitle ? (
-              <span className="flex items-center gap-1 text-xs leading-tight text-muted-foreground">
-                {/*
+              <span
+                className={cn(
+                  'min-w-0 flex-1 overflow-hidden text-left transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                  collapsed ? 'max-w-0 opacity-0' : 'max-w-full opacity-100',
+                )}
+              >
+                <span className="block truncate text-sm font-semibold leading-tight">{title}</span>
+                {subtitle ? (
+                  <span className="flex items-center gap-1 text-xs leading-tight text-muted-foreground">
+                    {/*
                   `aria-hidden`: the label beside it already names the role, so
                   announcing the icon would read the same fact twice.
                 */}
-                {RoleIcon ? <RoleIcon aria-hidden className="size-3 shrink-0" /> : null}
-                <span className="truncate">{subtitle}</span>
+                    {RoleIcon ? <RoleIcon aria-hidden className="size-3 shrink-0" /> : null}
+                    <span className="truncate">{subtitle}</span>
+                  </span>
+                ) : null}
               </span>
-            ) : null}
-          </span>
-          {collapsed ? null : <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
-          {/*
+              {collapsed ? null : <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+              {/*
             The plan said HERE as well, because the mark that draws it is
             `aria-hidden` and a `title` on a hidden element is announced by
             nobody. Without this the change would have moved a fact out of the
             reach of anyone not using a pointer.
           */}
-          {/*
+              {/*
             The card's facts, spoken. It is `aria-hidden` — a hover box is a
             pointer affordance — so without this the plan would reach only
             people using one.
           */}
-          <span className="sr-only">{spokenLabel}</span>
-        </button>
-      </DropdownMenuTrigger>
+              <span className="sr-only">{spokenLabel}</span>
+            </button>
+          </DropdownMenuTrigger>
+        )}
+      </Tooltip>
 
       <DropdownMenuContent align="start" className="w-60">
         {/*
