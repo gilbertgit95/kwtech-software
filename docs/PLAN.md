@@ -484,7 +484,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 6 | Validation: zod pipe (masterdb) vs `class-validator` (coseller) | Phase 2 | code-first GraphQL needs decorators for *types* either way; zod can still own *validation*. Decide once, not per-module |
 | 7 | TypeScript version for `web-server` | Phase 2 | masterdb pins its backend to 6.0.3 while the catalog is 7.0.2 — confirm the reason (decorator metadata) before deviating |
 | 8 | ~~`next-auth` 5 beta vs server-issued JWT~~ **Closed** | — | **NestJS-issued JWT.** One issuer and one verification path for REST, GraphQL and the WS handshake; Auth.js would have left the API verifying a session it did not mint |
-| 10 | Job platform for `worker`; CI + remote cache | Phase 7+ | coseller uses Inngest |
+| 10 | Job platform for `worker`; CI + remote cache | Phase 7+ | coseller uses Inngest. **Planned 2026-10-05 as `module-jobs` (`docs/JOBS-PLAN.md`):** a runner inside `web-server` under a Postgres lock, moving to `apps/worker` later; an outside platform is not proposed |
 | 11 | Next route strategy: catch-all vs generated stubs (§9) | Phase 4 | start catch-all; the module is identical either way |
 | 12 | ~~Does `module-permissions` own user identity?~~ **Closed: no** | — | Identity lives in **`@kwtech/module-auth`**. `perm_*` still holds `userId` as a bare string with no FK to `auth_user`; the two meet only in the app's `resolvePrincipal` |
 | 13 | ~~Where the active organization and workspace come from on a request~~ **Closed** | — | **The URL, 2026-09-09.** `/organizations/:orgId/*` is organization level and `/organizations/:orgId/workspaces/:wsId/*` workspace level — the convention `scope.ts` has defined since it was written and which nothing used. Rejected: a header (forgettable, invisible in a bug report), a subdomain (a DNS record per tenant), and the token (baking the active tenant into a week-long credential makes switching organization need a new sign-in). Thirteen resolvers now declare `@RequireScope`, `myPermissions` takes an optional scope, and the web catch-all derives one from the matched route. Until this landed, an ORGANIZATION-LEVEL ROLE GRANTED NOTHING ANYWHERE — see the decision log |
@@ -562,7 +562,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 80 | There is no link to one note, or one task | when a notification or a bookmark should open a note or a task — a task notification opens the Apps page | Notes live on the Apps page, where a URL change closes every other app. A full-page route (as the queue's console has) would need its own frame and a way back |
 | 81 | The notes list is ordered in memory, over at most 2,000 notes | when one person sees more than `NOTE_ORDER_MAX` notes in a workspace | A per-person order lives on `NotePreference.noteOrder`, and Prisma cannot sort notes by another row, so `notes` reads up to 2,000 visible matching notes (newest first), orders them and pages by "after this id". Past that, the OLDEST unplaced notes drop off the end. Fine at the 500-per-person cap plus shared notes. Fix: a `note_order` table with a sortable position (fractional index) the query can join |
 | 82 | A board shows at most 1,000 tasks at once | when one board holds more live tasks than that | `tasks` reads up to `TASK_BOARD_READ_MAX` cards in one go and says the list was cut (`truncated`); search and filters reach the rest. Paging a board by column is the fix, and changes the drag model |
-| 83 | Nobody is reminded when a task is due | when somebody asks for a reminder on the scheduled or due day | Needs the job runner (§12.40) and, for times, a time zone per workspace. The dates are DAYS today; a time would be stored as a UTC instant and shown in the viewer's zone (TASK-PLAN §0 E) |
+| 83 | Nobody is reminded when a task is due | when somebody asks for a reminder on the scheduled or due day | Needs the job runner (§12.40) and, for times, a time zone per workspace. The dates are DAYS today; a time would be stored as a UTC instant and shown in the viewer's zone (TASK-PLAN §0 E). Planned as the first process of `module-jobs` (JOBS-PLAN §10) |
 | 84 | Who may be assigned is worked out one member at a time | when a workspace has hundreds of members | `listAssignable` loads a permission context per active member, capped at 200 — the queue's staff directory does the same. A grants query that answers "who holds `task:write` here" in one read is the fix |
 | 85 | One workspace role per member, while a workspace holds several sub-apps | when combined roles in `seed/app-roles.ts` multiply, or a customer needs a combination the platform has not declared | §12.32 settled one workspace role per member before sub-apps existed. A cashier who also supervises the queue needs one role carrying both presets, and the number of such roles multiplies with every app. **Interim:** combined roles declared in `app-roles.ts` as a union of module presets, never cloned on the Roles screen, so a preset change reaches them on sync (`.claude/rules/database.md`, "Combined workspace roles"). **Proposed:** one role per APP per member: a `scope` on `PermRole` (`workspace` or a module key), the same on `PermWorkspaceMemberRole` with `@@unique([workspaceMemberId, scope])` and a composite FK `(roleId, scope)`, and a service check that an app role holds only its module's keys. **Considered and not preferred:** role groups (a role that includes other roles) fix drift but not the multiplying combinations, and need a "one role per app inside a group" rule, which is the per-app slot again. Cheapest before `module-basic-pos` has real grants |
 | 86 | The books add every balance up in memory, from every live entry | when one workspace's books pass `BOOKS_LEDGER_MAX` (50,000 live entries) — a busy store recording by hand for years | Balances are never stored, so they cannot disagree with the entries (BOOKKEEPING-PLAN). Each overview reads every live entry and sums them in `src/domain/`; past the cap the answer says `truncated`. Fix: sums in the database (`aggregate`/`groupBy` per kind, place and investor), keeping the domain as the rule the SQL is tested against |
@@ -570,10 +570,75 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 88 | Sales brought in from the POS are dated the last day of the run they cover | when somebody shares profit for a period that ends in the middle of an import | One import is one entry per place, dated its last day, so profit by day sees the whole run on that day. Sharing waits until the POS is in through the share's last day (`sales_not_recorded`), so a run never straddles a share — but a month table counts a run from Sep 28 to Oct 3 in October. Importing day by day fixes it at three entries a day |
 | 89 | The books keep one bookkeeper role inside the owner role | when a business has a bookkeeper who is not an owner | `workspace-admin` holds `books-owner`; `workspace-user` holds no book key. A bookkeeper who records money but must not pay the owners needs a combined role (§12.85) built from `books-bookkeeper` |
 | 90 | A cart left on a till that never comes back stays in the database, listed nowhere | when open, never-held `pos_order` rows pile up — a till's browser storage is cleared, or a cashier walks away from a cart for good | Only Hold makes a pending order (§13, 2026-10-03), and a till remembers its open cart in the browser to put it back after a reload. A cart whose till forgot it is still saved and reachable by id, but no list shows it. It counts in no report (those read paid orders). Cancelling open, unheld carts older than a day is a job for the job runner (§12.40) |
+| 91 | Booking sends nothing to the customer: no "received", no "confirmed", no reminder | when the operator sets up an e-mail provider (planned), and later an SMS provider | `module-booking` is planned with a public booking that staff must confirm (BOOKING-PLAN §8, D2 and D3), so until then a customer learns the outcome only from their manage link or from the shop contacting them. The module declares `BOOKING_CUSTOMER_MESSENGER`, unbound; binding it needs a provider, its credentials in the env profiles, and a cost decision. A reminder before the time also needs the job runner (§12.40) |
+| 92 | There is no customer record shared between the apps: the point of sale keeps `PosCustomer`, and booking will keep a copy on each booking | when the customer management module is planned (the operator intends one, 2026-10-05) | The operator wants one customer shared across the apps (BOOKING-PLAN §8, D5). Modules never import each other, so it is a module of its own that the others reach through ports. Booking is shaped for it (a nullable `customerId`, `BOOKING_CUSTOMER_DIRECTORY` unbound). Building it means moving `pos_customer` rows into it and matching them to bookings by phone or e-mail, which is a data migration to plan, not a rename |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-05** — **A background runner is planned as `module-jobs`: modules declare their processes, and an app-level page shows, pauses and forces them.**
+
+  The operator asked whether a background service could check for what is
+  due (an incoming booking, tasks due today), generic to any module, with an
+  audit trail, and managed at app level like users and roles. Nothing in
+  `web-server` schedules anything today, and §12.83 and §12.90 wait on it. It
+  is written up in `docs/JOBS-PLAN.md`.
+  - **Modules declare processes as data through `module-kit`**, mirrored by
+    `db:sync` like features. The runner knows no module and no module knows
+    the runner.
+  - **A process sweeps and is idempotent**; it never sets a timer per item.
+    One run at a time per process, under a database lock.
+  - **Every run and every control action is a row**: counts and errors, never
+    names, because app-level staff see across every organization.
+  - **App-level keys split by risk:** `jobs:read`, `jobs:pause`, `jobs:run`,
+    `jobs:schedule`.
+  - **An admin sets each process's schedule** (every N minutes, or at set
+    times of day), inside limits the module declares; the code's default runs
+    until then. The schedule changes when a process runs, never what it does.
+  - **Proposed to run inside `web-server`** under a Postgres lock, moving to
+    `apps/worker` later as wiring. An outside job platform (§12.10) would put
+    the audit trail and the controls in somebody else's dashboard.
+  - **Decided the same day (JOBS-PLAN §9):** each process declares how late
+    is too late, and skips and counts the rest; Run now during a run is
+    refused; a pause and a schedule are global, app level; runs are kept 90
+    days and control actions for good; and a time of day means each
+    workspace's own time.
+  - **Built before booking.** `module-jobs` first, with task due reminders
+    as its first process, then `module-booking` phase 1: booking's reminders
+    and lapsed requests depend on the runner, so it is not gone back to.
+  - **Not done:** nothing is built. It is to be built with its first process,
+    task due reminders, not ahead of one.
+
+- **2026-10-05** — **Appointments are the next sub-app to be planned, as `module-booking`, before any calendar app.**
+
+  The operator asked what else the architecture could take, had appointments
+  expanded, and asked for the conversation to be kept. It is written up in
+  `docs/BOOKING-PLAN.md`: the pieces, the schema, the keys, the public booking
+  page, the ports and the phases.
+  - **Booking first, a calendar out of it later.** Booking is useful alone; a
+    general calendar with nothing feeding it is an empty grid, and building it
+    first would be extraction on speculation (principle 9). The day grid is
+    built inside booking and moves to `web-ui` when a second module needs it.
+  - **Phase 1 is staff only, with the day as a list**, so the model and the
+    no-double-booking rule are proven before the costly UI.
+  - **Decided the same day (BOOKING-PLAN §8):** a print shop first but built
+    generic, with no trade named in the schema or the copy; a public booking
+    always needs staff to confirm it, and holds its slot while it waits; and
+    nothing is sent to customers yet, with a port left for the e-mail and SMS
+    providers the operator will set up (§12.91). No deposit is taken when
+    booking. The operator wants one customer record shared across the apps,
+    from a customer management module to be built later (§12.92); until then
+    a booking carries its own copy of the name, phone and e-mail, with a
+    `customerId` and a port left for the shared record.
+  - **Staff bookings are confirmed as made; cancelling and rescheduling are in
+    from the start**, by staff and by the customer on their manage link. A
+    reschedule keeps the same booking and records where it moved from, and
+    nothing is deleted. A customer's reschedule goes back to waiting for
+    confirmation at the new time; a reschedule by staff stays confirmed.
+  - **Not done:** nothing is built. The other sub-apps raised (inventory,
+    expenses, shifts, invoices, job orders and more) are listed in
+    BOOKING-PLAN §11 and none is planned.
 
 - **2026-10-05** — **The point of sale's Orders list is filtered by days and by status, not by six tabs.**
 
