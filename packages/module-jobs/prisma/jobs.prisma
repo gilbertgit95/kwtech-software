@@ -1,0 +1,139 @@
+// The background runner's slice of the data model (docs/JOBS-PLAN.md §5).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Job` and mapped to `job_*`.
+//
+//   process ──▶ run (one per time it was queued: the queue AND the history)
+//
+//   queue lock (one row: what every claim waits on)
+//
+// ⚠ APP LEVEL. No row here carries an organization or a workspace: a process is
+// one thing for the whole application, paused and scheduled once (JOBS-PLAN D3,
+// D7). So a run records COUNTS AND ERRORS, NEVER NAMES (D5) — the people who
+// read these see across every organization.
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key. `auth_user` belongs to
+// module-auth (PLAN §9).
+
+/// Where a run is in its life. The first two are the queue; the rest are history.
+enum JobRunState {
+  queued
+  running
+  succeeded
+  failed
+  /// Never started its work: paused or retired after it was queued, or nothing
+  /// could say which workspaces it may reach. `note` says which.
+  skipped
+  /// The server running it stopped; its lease lapsed and it was let go.
+  interrupted
+}
+
+enum JobRunTrigger {
+  scheduled
+  /// "Run now", by `forcedById`.
+  forced
+}
+
+/// The MIRROR of a process a module declares in code (`ProcessDeclaration`,
+/// module-kit), written by `db:sync`, plus the two things an admin sets on it:
+/// its schedule and its pause.
+///
+/// ⚠ The code is the source of truth. A row no build declares any more is
+/// deprecated, never deleted, and never run.
+model JobProcess {
+  /// `<module>.<what>`: `task.due_today`.
+  key         String @id
+  module      String
+  label       String
+  description String
+  /// The feature it serves, or null for a process that serves no workspace.
+  serves      String?
+
+  /// Mirrored for the admin screen. ⚠ The runner reads these from the CODE,
+  /// never from here: a row is not a way to raise a process's limits.
+  defaultSchedule     Json
+  scheduleLimits      Json
+  maxRunSeconds       Int
+  maxItemsPerRun      Int
+  tooLateAfterMinutes Int
+
+  /// Set by the sync when no build declares it any more. Never runs again.
+  deprecatedAt DateTime?
+
+  /// The admin's schedule (a `ProcessSchedule`), or null for the default. One
+  /// that no longer fits the declared limits is ignored in favour of the
+  /// default (`effectiveProcessSchedule`).
+  schedule        Json?
+  scheduleSetById String?
+  scheduleSetAt   DateTime?
+
+  /// Paused since then: nothing is queued and a queued run is skipped. ⚠ Any
+  /// value is "paused" — the runner never reads this as a number to compare.
+  pausedAt    DateTime?
+  pausedById  String?
+  pauseReason String?
+
+  /// ⚠ THE AT-MOST-ONCE LOCK. The run now queued or running, or null. Taken by
+  /// a compare-and-set on null, so two servers — or a schedule coming round
+  /// while "Run now" is pressed — cannot both queue one process (JOBS-PLAN D2).
+  activeRunId  String?   @unique
+  /// When it was last queued, by a schedule or by hand: what "is it due" reads.
+  lastQueuedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs JobRun[]
+
+  @@map("job_process")
+}
+
+/// One run, from the moment it is queued. The queue is the rows still
+/// `queued`; the audit trail is every row, never edited once finished.
+model JobRun {
+  id         String        @id @default(cuid())
+  processKey String
+  trigger    JobRunTrigger
+  forcedById String?
+
+  state      JobRunState @default(queued)
+  queuedAt   DateTime    @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  /// Until when a `running` row is believed. Past it the server that held it
+  /// is taken to have died, and the run is marked `interrupted`.
+  leaseExpiresAt DateTime?
+
+  /// What it did — counts only (D5).
+  handled     Int @default(0)
+  /// Skipped as past the process's "too late" window.
+  skippedLate Int @default(0)
+  /// Seen and left for the next run, because the item limit was reached.
+  leftForNext Int @default(0)
+
+  /// Why it was skipped, in the runner's own words.
+  note  String?
+  /// Why it failed. The process's own message, written knowing who reads it.
+  error String?
+
+  process JobProcess @relation(fields: [processKey], references: [key], onDelete: Cascade)
+
+  /// Taking the next run: the oldest still queued. And counting the running.
+  @@index([state, queuedAt])
+  /// A process's history, newest first.
+  @@index([processKey, queuedAt])
+  @@map("job_run")
+}
+
+/// ONE row, `id = 'queue'`, written by the sync. Every claim updates it first,
+/// inside its transaction, so claims wait on each other: "how many are running"
+/// is then counted by one server at a time, and the limit on runs at once holds
+/// across every instance rather than per instance (JOBS-PLAN §4b).
+///
+/// ⚠ No row means NO RUN IS EVER CLAIMED — fail closed. `db:sync` writes it.
+model JobQueueLock {
+  id        String   @id
+  touchedAt DateTime @default(now())
+
+  @@map("job_queue_lock")
+}

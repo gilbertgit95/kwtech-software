@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM and no JSX: the runner has no React half yet. The admin page
+    // (JOBS-PLAN phase 2) brings both, with `src/react/`.
+    "lib": ["ES2023"],
+    "outDir": "dist",
+    // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
+    // with the build info beside the tsconfig it outlives every `rm -rf dist` —
+    // after which tsc concludes nothing changed and emits NOTHING. See
+    // module-chat's tsconfig for the incident.
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "rootDir": "src",
+    // The Nest adapter uses parameter and class decorators.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
