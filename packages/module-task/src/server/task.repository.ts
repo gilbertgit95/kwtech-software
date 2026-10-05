@@ -98,6 +98,17 @@ export interface TaskCommentRow extends InScope {
   createdAt: Date;
 }
 
+/** `sent`, `skipped_late` or `no_recipient` — see prisma/task.prisma. */
+export type TaskDueReminderOutcome = 'sent' | 'skipped_late' | 'no_recipient';
+
+export interface TaskDueReminderRow extends InScope {
+  taskId: string;
+  /** A `DATE`: midnight UTC of the day. */
+  dueOn: Date;
+  outcome: TaskDueReminderOutcome;
+  createdAt: Date;
+}
+
 export interface TaskPreferenceRow extends InScope {
   userId: string;
   view: string;
@@ -130,6 +141,20 @@ export interface TaskListWhere extends InScope {
   OR?: Array<{ title: TextMatch } | { description: TextMatch }>;
 }
 
+/**
+ * What the due-reminder sweep reads: a workspace's unfinished, live tasks due
+ * on one day, on boards that are not archived, ⚠ WITH NO REMINDER FOR THAT DAY
+ * YET. The last line is the idempotence, in the query itself: a task dealt
+ * with stops matching, so a run never needs to remember where it got to.
+ */
+export interface TaskDueWhere extends InScope {
+  dueOn: Date;
+  completedAt: null;
+  archivedAt: null;
+  board: { archivedAt: null };
+  dueReminders: { none: { dueOn: Date } };
+}
+
 export interface TaskBoardUpdate {
   name?: string;
   visibility?: TaskBoardVisibility;
@@ -160,7 +185,8 @@ export interface TaskTransaction {
     /** ⚠ The only way to find one board: by id AND scope. */
     findFirst(args: { where: InScope & { id: string } }): Promise<TaskBoardRow | null>;
     findMany(args: {
-      where: TaskBoardListWhere;
+      /** The second shape names boards already reached through their tasks, for a reminder's words. */
+      where: TaskBoardListWhere | (InScope & { id: { in: string[] } });
       orderBy: Array<{ name: SortOrder } | { createdAt: SortOrder } | { id: SortOrder }>;
       take: number;
     }): Promise<TaskBoardRow[]>;
@@ -196,7 +222,7 @@ export interface TaskTransaction {
     /** ⚠ The only way to find one task: by id AND scope. */
     findFirst(args: { where: InScope & { id: string } }): Promise<TaskRow | null>;
     findMany(args: {
-      where: TaskListWhere;
+      where: TaskListWhere | TaskDueWhere;
       orderBy: Array<{ columnId: SortOrder } | { rank: SortOrder } | { id: SortOrder } | { dueOn: SortOrder }>;
       take: number;
     }): Promise<TaskRow[]>;
@@ -204,7 +230,8 @@ export interface TaskTransaction {
       where:
         | (InScope & { creatorId: string })
         | (InScope & { boardId: string; archivedAt?: null })
-        | { boardId: string; columnId: string };
+        | { boardId: string; columnId: string }
+        | TaskDueWhere;
     }): Promise<number>;
     create(args: {
       data: InScope & {
@@ -282,6 +309,17 @@ export interface TaskTransaction {
       data: { body: string; editedAt: Date };
     }): Promise<{ count: number }>;
     deleteMany(args: { where: InScope & { id: string } }): Promise<{ count: number }>;
+  };
+
+  taskDueReminder: {
+    /**
+     * ⚠ The claim on one task's reminder for one day. A second create for the
+     * same pair raises a unique violation (`P2002`), which the process reads
+     * as "somebody else dealt with it" and tells nobody.
+     */
+    create(args: {
+      data: InScope & { taskId: string; dueOn: Date; outcome: TaskDueReminderOutcome };
+    }): Promise<TaskDueReminderRow>;
   };
 
   taskPreference: {

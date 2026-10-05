@@ -6,7 +6,8 @@
 //   board ──▶ column (the owner's own steps, in order)
 //     └─────▶ task ──▶ assignee (one by default, several allowed)
 //                ├───▶ checklist item
-//                └───▶ comment
+//                ├───▶ comment
+//                └───▶ due reminder (one per task per due day: dealt with, once)
 //
 //   preference (one per person per workspace: last board, board or list)
 //
@@ -35,6 +36,17 @@ enum TaskPriority {
   normal
   high
   urgent
+}
+
+/// What became of a task's reminder for one due day (`task.due_today`).
+enum TaskDueReminderOutcome {
+  /// Its people were told.
+  sent
+  /// The reminder's time had passed by more than the process allows.
+  skipped_late
+  /// Nobody could be told: no assignee or creator who is still a member and
+  /// may open the board.
+  no_recipient
 }
 
 /// A board: its owner, its name, its kind. Its columns and tasks hang off it.
@@ -147,9 +159,12 @@ model Task {
   assignees TaskAssignee[]
   checklist TaskChecklistItem[]
   comments  TaskComment[]
+  dueReminders TaskDueReminder[]
 
   /// The board: live or archived, column by column, in order.
   @@index([boardId, archivedAt, columnId, rank])
+  /// The due-reminder sweep: a workspace's unfinished tasks due on one day.
+  @@index([workspaceId, dueOn])
   /// A person's own tasks, and the per-person count behind `task:tasks`.
   @@index([workspaceId, creatorId])
   @@index([columnId])
@@ -221,6 +236,31 @@ model TaskComment {
   @@index([taskId, createdAt])
   @@index([organizationId])
   @@map("task_comment")
+}
+
+/// A task's reminder for ONE due day, dealt with. ⚠ This row is what makes the
+/// `task.due_today` process idempotent: it is written BEFORE anybody is told,
+/// and the key is the task and the day, so a second run, a restart or a second
+/// server can never tell somebody twice (JOBS-PLAN §4).
+///
+/// Keyed by the day as well as the task, so a task moved to a NEW due day is
+/// reminded on that day too, and one moved away and back is not reminded again.
+model TaskDueReminder {
+  taskId         String
+  /// The due day it was for — the task's `dueOn` at the time.
+  dueOn          DateTime @db.Date
+  organizationId String
+  workspaceId    String
+
+  outcome TaskDueReminderOutcome
+
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dueOn])
+  @@index([organizationId])
+  @@map("task_due_reminder")
 }
 
 /// One person's view settings in one workspace. No row means the defaults:

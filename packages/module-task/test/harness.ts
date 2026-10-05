@@ -3,6 +3,7 @@ import { TaskBoardService } from '../src/server/board.service.js';
 import { TaskResolver } from '../src/server/graphql/task.resolver.js';
 import type {
   TaskAccessCheck,
+  TaskDueNotice,
   TaskMember,
   TaskMemberDirectory,
   TaskNotice,
@@ -12,6 +13,7 @@ import { TaskEventPublisher } from '../src/server/task.events.js';
 import type { TaskEvent, TaskPubSub } from '../src/server/task.pubsub.js';
 import { TaskService } from '../src/server/task.service.js';
 import { TaskCommentService } from '../src/server/task-comment.service.js';
+import { TaskDueTodayProcess } from '../src/server/task-due.process.js';
 import { TaskWriteService } from '../src/server/task-write.service.js';
 import { type FakeClient, fakeClient } from './fake-client.js';
 
@@ -106,6 +108,7 @@ export function harness(options: HarnessOptions = {}) {
       }
     : undefined;
   const notices: Array<{ kind: 'assigned' | 'commented'; notice: TaskNotice }> = [];
+  const dueNotices: TaskDueNotice[] = [];
   const notifier: TaskNotifier | undefined = options.notify
     ? {
         async assigned(notice) {
@@ -113,6 +116,9 @@ export function harness(options: HarnessOptions = {}) {
         },
         async commented(notice) {
           notices.push({ kind: 'commented', notice });
+        },
+        async dueToday(notice) {
+          dueNotices.push(notice);
         },
       }
     : undefined;
@@ -130,7 +136,8 @@ export function harness(options: HarnessOptions = {}) {
     { resolveActorId: (req) => req as string },
     pubsub,
   );
-  return { prisma, pubsub, boards, tasks, writes, comments, resolver, notices };
+  const dueToday = new TaskDueTodayProcess(prisma, directory, notifier);
+  return { prisma, pubsub, boards, tasks, writes, comments, resolver, notices, dueNotices, dueToday };
 }
 
 /** A board with the default columns, owned by `ownerId`. */

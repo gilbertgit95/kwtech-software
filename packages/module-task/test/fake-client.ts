@@ -14,7 +14,10 @@ import type { TaskWriteClient } from '../src/server/task.repository.js';
  *   - the CASCADES of prisma/task.prisma — a board takes its columns and tasks,
  *     a task its assignees, checklist and comments — and the one NO ACTION: a
  *     column still holding tasks cannot be deleted (proved against Postgres);
- *   - `updatedAt` moving on every update, as `@updatedAt` does.
+ *   - `updatedAt` moving on every update, as `@updatedAt` does;
+ *   - the `@@id([taskId, dueOn])` of a due reminder, raising `P2002` — the
+ *     claim the due-reminder process's idempotence rests on — and the two
+ *     relation filters its sweep sends (`board`, `dueReminders: { none }`).
  *
  * ⚠ It supports only the operators the services send, and throws on anything
  * else, so a new query cannot pass against a fake that silently ignored its
@@ -31,6 +34,7 @@ export const TABLES = [
   'taskAssignee',
   'taskChecklistItem',
   'taskComment',
+  'taskDueReminder',
   'taskPreference',
 ] as const;
 export type TableName = (typeof TABLES)[number];
@@ -44,6 +48,7 @@ const UNIQUES: Record<TableName, string[][]> = {
   taskAssignee: [['taskId', 'userId']],
   taskChecklistItem: [['id']],
   taskComment: [['id']],
+  taskDueReminder: [['taskId', 'dueOn']],
   taskPreference: [['userId', 'workspaceId']],
 };
 
@@ -76,6 +81,7 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
   taskAssignee: (_id, now) => ({ createdAt: now }),
   taskChecklistItem: (id, now) => ({ id, done: false, doneById: null, createdAt: now, updatedAt: now }),
   taskComment: (id, now) => ({ id, editedAt: null, createdAt: now }),
+  taskDueReminder: (_id, now) => ({ createdAt: now }),
   taskPreference: (_id, now) => ({ view: 'board', lastBoardId: null, createdAt: now, updatedAt: now }),
 };
 
@@ -218,6 +224,26 @@ export function fakeClient(state: FakeState = emptyState()): FakeClient {
     state.taskAssignee = state.taskAssignee.filter((row) => !ids.has(row.taskId));
     state.taskChecklistItem = state.taskChecklistItem.filter((row) => !ids.has(row.taskId));
     state.taskComment = state.taskComment.filter((row) => !ids.has(row.taskId));
+    state.taskDueReminder = state.taskDueReminder.filter((row) => !ids.has(row.taskId));
+  }
+
+  /**
+   * `matches`, plus the two RELATION filters the due-reminder sweep sends on a
+   * task: its board's own columns, and "no reminder like this yet". Any other
+   * relation filter still throws, from `matches`, as an unsupported operator.
+   */
+  function test(table: TableName, row: Row, where: Where | undefined): boolean {
+    if (table !== 'task' || !where) return matches(row, where);
+    const { board, dueReminders, ...rest } = where as Where & { board?: Where; dueReminders?: { none?: Where } };
+    if (board && !state.taskBoard.some((candidate) => candidate.id === row.boardId && matches(candidate, board))) {
+      return false;
+    }
+    if (dueReminders) {
+      const { none } = dueReminders;
+      if (!none) throw new Error('fake client: only `none` is supported on dueReminders');
+      if (state.taskDueReminder.some((reminder) => reminder.taskId === row.id && matches(reminder, none))) return false;
+    }
+    return matches(row, rest);
   }
 
   function delegate(table: TableName) {
@@ -228,7 +254,7 @@ export function fakeClient(state: FakeState = emptyState()): FakeClient {
       return copy(row);
     };
     const find = ({ where }: { where: Where }) => {
-      const row = state[table].find((candidate) => matches(candidate, where));
+      const row = state[table].find((candidate) => test(table, candidate, where));
       return row ? copy(row) : null;
     };
 
@@ -237,25 +263,25 @@ export function fakeClient(state: FakeState = emptyState()): FakeClient {
       findUnique: async (args: { where: Where }) => find(args),
       findMany: async (args: { where?: Where; orderBy?: unknown; take?: number }) => {
         const rows = sortRows(
-          state[table].filter((row) => matches(row, args.where)),
+          state[table].filter((row) => test(table, row, args.where)),
           args.orderBy,
         );
         return rows.slice(0, args.take).map((row) => copy(row));
       },
-      count: async ({ where }: { where: Where }) => state[table].filter((row) => matches(row, where)).length,
+      count: async ({ where }: { where: Where }) => state[table].filter((row) => test(table, row, where)).length,
       create,
       updateMany: async ({ where, data }: { where: Where; data: Row }) => {
-        const rows = state[table].filter((row) => matches(row, where));
+        const rows = state[table].filter((row) => test(table, row, where));
         for (const row of rows) apply(table, row, data);
         return { count: rows.length };
       },
       deleteMany: async ({ where }: { where: Where }) => {
-        const rows = state[table].filter((row) => matches(row, where));
+        const rows = state[table].filter((row) => test(table, row, where));
         remove(table, rows);
         return { count: rows.length };
       },
       upsert: async ({ where, create: createData, update }: { where: Where; create: Row; update: Row }) => {
-        const row = state[table].find((candidate) => matches(candidate, where));
+        const row = state[table].find((candidate) => test(table, candidate, where));
         if (!row) return create({ data: createData });
         apply(table, row, update);
         return copy(row);

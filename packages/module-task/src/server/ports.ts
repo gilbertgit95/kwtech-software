@@ -63,6 +63,16 @@ export interface TaskMemberDirectory {
 export interface TaskNotifier {
   assigned(event: TaskNotice): Promise<void>;
   commented(event: TaskNotice & { commentPreview: string }): Promise<void>;
+  /**
+   * A task is due today, in its workspace's own day — said by the
+   * `task.due_today` process, not by a person, so there is no actor.
+   */
+  dueToday(event: TaskDueNotice): Promise<void>;
+}
+
+/** A due-day reminder: a notice with nobody behind it, and the day it is for (`YYYY-MM-DD`). */
+export interface TaskDueNotice extends Omit<TaskNotice, 'actorId'> {
+  dueOn: string;
 }
 
 export interface TaskNotice {

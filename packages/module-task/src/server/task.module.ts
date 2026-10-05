@@ -13,6 +13,7 @@ import {
   TASK_PUBSUB,
 } from './task.tokens.js';
 import { TaskCommentService } from './task-comment.service.js';
+import { TaskDueTodayProcess } from './task-due.process.js';
 import { TaskWriteService } from './task-write.service.js';
 
 /**
@@ -29,6 +30,8 @@ export class TaskModule {
       TaskWriteService,
       TaskCommentService,
       TaskEventPublisher,
+      // A provider like any service: the runner resolves it from the container by this class.
+      TaskDueTodayProcess,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider as Provider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider as Provider);
@@ -56,7 +59,15 @@ export class TaskModule {
       module: TaskModule,
       imports: (options.imports ?? []) as NonNullable<DynamicModule['imports']>,
       providers,
-      exports: [TaskBoardService, TaskService, TaskWriteService, TaskCommentService, TaskEventPublisher, TASK_OPTIONS],
+      exports: [
+        TaskBoardService,
+        TaskService,
+        TaskWriteService,
+        TaskCommentService,
+        TaskEventPublisher,
+        TaskDueTodayProcess,
+        TASK_OPTIONS,
+      ],
     };
   }
 }

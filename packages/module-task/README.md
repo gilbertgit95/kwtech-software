@@ -69,12 +69,13 @@ guard); the presets are read by `seed/app-roles.ts`.
 | `TASK_LIMIT_CHECKER` | `task:boards` and `task:tasks` from the plan | the DECLARED defaults (20 and 2,000), never unlimited |
 | `TASK_ACCESS_CHECK` | does this person hold `task:assign` / `task:manage_all` here | neither: you assign only yourself and delete only your own |
 | `TASK_MEMBER_DIRECTORY` | who may be assigned (active members holding `task:write`), who is still a member, names | you can assign only yourself; nobody has a name; no board is ever orphaned |
-| `TASK_NOTIFIER` | telling people they were assigned, or that a task they are on has a comment | nobody is told; tasks still work |
+| `TASK_NOTIFIER` | telling people they were assigned, that a task they are on has a comment, or that a task is due today | nobody is told; tasks still work, and the due reminders mark nothing |
 | `TASK_PUBSUB` | the app's one engine | not live: changes show on the next read |
 
 The notifier is called **after the commit**, never fails the write, and never
 tells the person who acted. This app's adapter (`apps/web-server/src/task/notifier.ts`)
-sends `task.assigned` and `task.comment`, both mutable.
+sends `task.assigned`, `task.comment` and `task.due`, all mutable. `task.due`
+has no actor: it is sent by the background process below.
 
 ## Realtime
 
@@ -150,9 +151,48 @@ tasks go); board settings has the same as a list. Every change is its own small
 write (`addTaskColumn`, `updateTaskColumn`, `moveTaskColumn`,
 `removeTaskColumn`), so two tabs never overwrite each other's column list.
 
+## Processes
+
+Work this module does on a schedule, declared in `TASK_PROCESS_REGISTRY`
+(`src/processes.ts`) and run by `module-jobs`, which this module never imports.
+The app must list the registry in `seed/registry.ts`, or the process is never
+synced and never runs.
+
+### `task.due_today` — task due reminders
+
+On the day a task is due, tells the people **assigned** to it, or its
+**creator** when nobody is assigned. Only people who could open the task today:
+active members of the workspace (`TASK_MEMBER_DIRECTORY`) whom the board does
+not shut out. Finished and archived tasks, and tasks on archived boards, are
+left alone.
+
+| | |
+|---|---|
+| Serves | `task:read`: it reaches only workspaces whose organization's plan includes tasks |
+| Default schedule | every day at 08:00, **in each workspace's own time** |
+| An admin may set | times of day and weekdays, or an interval of at least 15 minutes |
+| One run | at most 120 seconds and 500 tasks; the rest wait for the next run |
+| Too late | 10 hours after its time (18:00 by default). Skipped, and counted |
+
+- **Idempotent.** A row in `task_due_reminder`, keyed by task and due day, is
+  written BEFORE anybody is told, and a task with one no longer matches the
+  sweep. Run twice, the second tells nobody. A task moved to a new due day is
+  reminded on that day too.
+- **At most once.** A server dying between the row and the notice loses that
+  one reminder rather than risking two.
+- **"Today" is the workspace's day**, from the run's clock and the workspace's
+  zone (`processOccurrence`). A zone that cannot be read falls back to
+  Asia/Manila, never UTC.
+- **Paused**, nobody is reminded and nothing is marked. Resumed the same day
+  within 10 hours of the time, the reminders go out then; later, they are
+  skipped and counted.
+- **Unbound ports:** no notifier, it does nothing and marks nothing; no member
+  directory, nobody can be shown to be a member, so nobody is told.
+
 ## What it declares
 
 `TASK_FEATURE_REGISTRY` (5 keys, 39 bound operations), `TASK_LIMIT_REGISTRY`
-(2 caps), `TASK_ROLE_PRESETS`, `prisma/task.prisma` (`task_board`,
-`task_column`, `task_task`, `task_assignee`, `task_checklist_item`,
-`task_comment`, `task_preference`), and the sub-app `task`.
+(2 caps), `TASK_ROLE_PRESETS`, `TASK_PROCESS_REGISTRY` (1 process),
+`prisma/task.prisma` (`task_board`, `task_column`, `task_task`,
+`task_assignee`, `task_checklist_item`, `task_comment`, `task_due_reminder`,
+`task_preference`), and the sub-app `task`.

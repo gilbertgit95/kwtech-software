@@ -21,4 +21,5 @@ export * from './task.repository.js';
 export * from './task.service.js';
 export * from './task.tokens.js';
 export * from './task-comment.service.js';
+export * from './task-due.process.js';
 export * from './task-write.service.js';
