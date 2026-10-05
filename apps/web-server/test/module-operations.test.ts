@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
 import { BOOKS_OPERATIONS } from '@kwtech/module-basic-bookkeeping';
 import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
+import { BOOKING_OPERATIONS } from '@kwtech/module-booking';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
 import { JOBS_OPERATIONS } from '@kwtech/module-jobs';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
@@ -66,6 +67,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   task: TASK_OPERATIONS,
   pos: POS_OPERATIONS,
   books: BOOKS_OPERATIONS,
+  booking: BOOKING_OPERATIONS,
   jobs: JOBS_OPERATIONS,
 };
 

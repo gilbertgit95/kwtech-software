@@ -18,6 +18,14 @@ import {
   posServerModule,
 } from '@kwtech/module-basic-pos/server';
 import {
+  BOOKING_LIMIT_CHECKER,
+  BOOKING_MEMBER_DIRECTORY,
+  BOOKING_NOTIFIER,
+  BOOKING_PUBSUB,
+  BOOKING_WORKSPACE_TIME_ZONE,
+  bookingServerModule,
+} from '@kwtech/module-booking/server';
+import {
   CHAT_DEFAULTS,
   CHAT_LIMIT_CHECKER,
   CHAT_NOTIFIER,
@@ -80,6 +88,9 @@ import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendMfaEmailCode } from './auth/mfa-code-mail.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
+import { BookingMemberDirectoryAdapter } from './booking/member-directory.js';
+import { BookingNotifierAdapter } from './booking/notifier.js';
+import { BookingWorkspaceTimeZoneAdapter } from './booking/workspace-time-zone.js';
 import { BooksKeyAccess } from './books/access-check.js';
 import { BooksMemberDirectoryAdapter } from './books/member-directory.js';
 import { BooksPosSalesSource } from './books/sales-source.js';
@@ -105,6 +116,8 @@ import { PosWorkspaceTimeZoneAdapter } from './pos/workspace-time-zone.js';
 import {
   appHubPrismaProvider,
   authPrismaProvider,
+  bookingPrismaProvider,
+  bookingWritePrismaProvider,
   booksPrismaProvider,
   booksWritePrismaProvider,
   chatPrismaProvider,
@@ -729,6 +742,53 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
 
     // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent ledger.
     pubsubProvider: { provide: BOOKS_PUBSUB, useValue: realtimePubSub() },
+  }),
+
+  /*
+   * Booking — a workspace sub-app: services, the staff, places and equipment
+   * that perform them, opening hours and the day's reservations. Its ports read
+   * other modules' tables (the workspace's zone, who works the desk, names) and
+   * the sender for notices; it declares a BACKGROUND PROCESS too
+   * (`booking.upcoming_sessions`, run by the runner below). The adapters are in
+   * ./booking/.
+   */
+  bookingServerModule({
+    prismaProvider: bookingPrismaProvider,
+    prismaWriteProvider: bookingWritePrismaProvider,
+
+    // The `booking:resources` cap from the plan. Omitted, the module holds its declared default.
+    limitCheckerProvider: { provide: BOOKING_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    // The workspace's zone: what 9:00 means there. Without it, every shop opens on Asia/Manila time.
+    workspaceTimeZoneProvider: {
+      provide: BOOKING_WORKSPACE_TIME_ZONE,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new BookingWorkspaceTimeZoneAdapter(prisma),
+    },
+    // ⚠ Without it, nobody has a name, no member can be linked to a resource, and no reminder reaches anyone.
+    memberDirectoryProvider: {
+      provide: BOOKING_MEMBER_DIRECTORY,
+      inject: [PermissionsService, PrismaService],
+      useFactory: (permissions: PermissionsService, prisma: PrismaService) =>
+        new BookingMemberDirectoryAdapter(permissions, prisma),
+    },
+
+    /*
+     * ⚠ THE SAME notification module object, imported so `NotificationSender`
+     * can be injected — as tasks do, and for the same reason: a second
+     * `notificationServerModule()` would build a second, disconnected sender.
+     */
+    imports: [NOTIFICATION_SERVER_MODULE.nestModule],
+    notifierProvider: {
+      provide: BOOKING_NOTIFIER,
+      inject: [NotificationSender],
+      useFactory: (sender: NotificationSender) => new BookingNotifierAdapter(sender),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent day list.
+    pubsubProvider: { provide: BOOKING_PUBSUB, useValue: realtimePubSub() },
   }),
 
   /*

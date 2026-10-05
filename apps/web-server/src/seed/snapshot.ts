@@ -69,6 +69,8 @@ const EXCLUDED_TABLES: Record<string, string> = {
  */
 const SCRUBBED_COLUMNS: Record<string, Record<string, string>> = {
   perm_invitation: { tokenHash: `encode(sha256(gen_random_uuid()::text::bytea), 'hex')` },
+  // A customer's manage link: the hash of a 256-bit token. Nulled — a restored booking has no working link, as one made by staff has none.
+  booking_appointment: { manageTokenHash: 'NULL' },
 };
 
 const quote = (identifier: string) => `"${identifier.replaceAll('"', '""')}"`;

@@ -2,6 +2,7 @@ import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
 import { BOOKS_FEATURE_REGISTRY } from '@kwtech/module-basic-bookkeeping';
 import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY } from '@kwtech/module-basic-pos';
+import { BOOKING_FEATURE_REGISTRY, BOOKING_LIMIT_REGISTRY, BOOKING_PROCESS_REGISTRY } from '@kwtech/module-booking';
 import {
   CHAT_DEFAULT_MOMENT_REGISTRY,
   CHAT_DEFAULT_REGISTRY,
@@ -173,6 +174,17 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * every bookkeeping operation is reachable by anybody signed in.
    */
   { key: 'books', features: BOOKS_FEATURE_REGISTRY },
+  /*
+   * ⚠ And booking's — every booking carries a customer's name and phone. Leave
+   * this out and they are readable by anybody signed in, the resource cap is
+   * never mirrored for plans, and the reminders never run.
+   */
+  {
+    key: 'booking',
+    features: BOOKING_FEATURE_REGISTRY,
+    limits: BOOKING_LIMIT_REGISTRY,
+    processes: BOOKING_PROCESS_REGISTRY,
+  },
   /*
    * ⚠ And notifications' — including the key that sends AS THE PLATFORM. Leave
    * this out and anybody signed in could send to anybody.

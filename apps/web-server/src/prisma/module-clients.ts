@@ -13,6 +13,12 @@ import {
   type PosWriteClient,
 } from '@kwtech/module-basic-pos/server';
 import {
+  BOOKING_PRISMA,
+  BOOKING_PRISMA_WRITE,
+  type BookingTransaction,
+  type BookingWriteClient,
+} from '@kwtech/module-booking/server';
+import {
   CHAT_PRISMA,
   CHAT_PRISMA_WRITE,
   type ChatPrismaClient,
@@ -313,6 +319,38 @@ export const booksWritePrismaProvider: Provider = {
       booksSalesImport: prisma.booksSalesImport,
       booksProfitShare: prisma.booksProfitShare,
       booksSettings: prisma.booksSettings,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const bookingPrismaProvider: Provider = {
+  provide: BOOKING_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const bookingWritePrismaProvider: Provider = {
+  provide: BOOKING_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): BookingWriteClient =>
+    withTransaction<BookingTransaction, BookingWriteClient>(prisma, {
+      /*
+       * ⚠ The look for a clash and the booking it allows, a move and the
+       * history row saying where from, a resource and the cap it was counted
+       * against — each moves together, inside the transaction
+       * `withTransaction` dispatches. And when two writes pass that look at
+       * once, the row itself is refused by the database
+       * (`booking_appointment_no_overlap`).
+       */
+      bookingService: prisma.bookingService,
+      bookingResource: prisma.bookingResource,
+      bookingServiceResource: prisma.bookingServiceResource,
+      bookingHours: prisma.bookingHours,
+      bookingException: prisma.bookingException,
+      bookingAppointment: prisma.bookingAppointment,
+      bookingChange: prisma.bookingChange,
+      // The reminder process's claim: one row per booking per start, written before anybody is told.
+      bookingReminder: prisma.bookingReminder,
+      bookingSettings: prisma.bookingSettings,
     }),
 };
 

@@ -36,4 +36,20 @@ export const NOTIFICATION_SOURCES: readonly NotificationSource[] = [
   { key: 'task.assigned', label: 'Tasks: assigned to you', mutable: true },
   { key: 'task.comment', label: 'Tasks: comments', mutable: true },
   { key: 'task.due', label: 'Tasks: due today', mutable: true },
+
+  /*
+   * Booking (`./booking/notifier.ts`), sent by nobody: the
+   * `booking.upcoming_sessions` background process, shortly before a confirmed
+   * booking starts. Mutable — and a workspace can turn the reminders off for
+   * everybody in its booking settings.
+   */
+  { key: 'booking.upcoming', label: 'Bookings: starting soon', mutable: true },
+  /*
+   * And two for what a CUSTOMER did on the public booking page or their manage
+   * link: asked for a booking (which waits for the desk and holds its time),
+   * and cancelled or moved one. Apart, because a request asks for an answer
+   * and the other is news.
+   */
+  { key: 'booking.request', label: 'Bookings: requests to confirm', mutable: true },
+  { key: 'booking.customer', label: 'Bookings: cancelled or moved by the customer', mutable: true },
 ];

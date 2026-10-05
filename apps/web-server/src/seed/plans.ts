@@ -1,6 +1,7 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
 import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
+import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
@@ -210,6 +211,20 @@ const POS = Object.values(POS_FEATURE);
  */
 const BOOKS = Object.values(BOOKS_FEATURE);
 
+/**
+ * Booking, sold where the point of sale is: every tier except free. All five
+ * keys are workspace level.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
+ * seeded before booking has none of these keys, and an operator adds them and
+ * the `booking:resources` cap on `/admin/plans`. Until then the app is not on
+ * the Apps page (not_entitled), and its reminders reach no workspace.
+ */
+const BOOKING = Object.values(BOOKING_FEATURE);
+
+/** Live staff, places and equipment a workspace takes bookings for. The same in every tier for now. */
+const BOOKING_CAPS = { [BOOKING_LIMIT.resources]: 10 };
+
 /** Active items and variants per store. The same in every tier for now. */
 const POS_CAPS = { [POS_LIMIT.items]: 1000 };
 
@@ -263,6 +278,7 @@ const STARTER: PlanDefinition = {
     ...TASKS,
     ...POS,
     ...BOOKS,
+    ...BOOKING,
     ...APPS_PAGE,
   ],
   limits: {
@@ -273,6 +289,7 @@ const STARTER: PlanDefinition = {
     ...NOTE_CAPS,
     ...TASK_CAPS,
     ...POS_CAPS,
+    ...BOOKING_CAPS,
   },
 };
 
@@ -305,6 +322,7 @@ const PRO: PlanDefinition = {
     ...TASKS,
     ...POS,
     ...BOOKS,
+    ...BOOKING,
     ...APPS_PAGE,
   ],
   limits: {
@@ -315,6 +333,7 @@ const PRO: PlanDefinition = {
     ...NOTE_CAPS,
     ...TASK_CAPS,
     ...POS_CAPS,
+    ...BOOKING_CAPS,
   },
 };
 
@@ -353,6 +372,7 @@ const ENTERPRISE: PlanDefinition = {
     ...NOTE_CAPS,
     ...TASK_CAPS,
     ...POS_CAPS,
+    ...BOOKING_CAPS,
   },
 };
 

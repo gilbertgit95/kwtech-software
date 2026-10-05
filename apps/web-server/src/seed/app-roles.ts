@@ -2,6 +2,7 @@ import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { BOOKS_ROLE_PRESETS, type BooksRolePreset } from '@kwtech/module-basic-bookkeeping';
 import { POS_ROLE_PRESETS, type PosRolePreset } from '@kwtech/module-basic-pos';
+import { BOOKING_ROLE_PRESETS, type BookingRolePreset } from '@kwtech/module-booking';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
@@ -426,6 +427,20 @@ function booksPreset(key: string): BooksRolePreset {
 }
 
 /**
+ * A booking preset, read by key (BOOKING-PLAN §5). The shops taking bookings
+ * have no separate front desk yet, so its keys fold into the two workspace
+ * roles, as the point of sale's do: a workspace admin is `booking-manager`
+ * (everything, services and settings included) and a workspace user
+ * `booking-front-desk` (sees the day, makes, moves and cancels bookings).
+ * THROWS if a preset is gone.
+ */
+function bookingPreset(key: string): BookingRolePreset {
+  const preset = BOOKING_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-booking no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * Runs one workspace.
  *
  * EMPTY, and the registry explains why: `workspaces:share` is the only
@@ -495,6 +510,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...posPreset('pos-manager').features,
     // The books: cash on hand, recording money, investors and sharing profit.
     ...booksPreset('books-owner').features,
+    // Booking: the day, the bookings, and what can be booked when.
+    ...bookingPreset('booking-manager').features,
   ],
   limits: {},
 };
@@ -526,6 +543,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
     ...taskPreset('task-user').features,
     // Sells at the listed price: no discounts, refunds, costs or reports.
     ...posPreset('pos-cashier').features,
+    // Works the bookings: sees the day, makes, moves and cancels them. No services, hours or settings.
+    ...bookingPreset('booking-front-desk').features,
   ],
   limits: {},
 };

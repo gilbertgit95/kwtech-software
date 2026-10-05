@@ -50,6 +50,251 @@ type AppHubLayouts {
   workspace: String
 }
 
+type BookingAppointment {
+  createdAt: String!
+  createdById: String
+  createdByName: String
+  customerEmail: String
+  customerName: String!
+  customerPhone: String
+  endsAt: String!
+  id: String!
+  note: String!
+  resourceId: String!
+  resourceName: String!
+  serviceId: String!
+  serviceName: String!
+  startsAt: String!
+  status: String!
+  updatedAt: String!
+}
+
+type BookingAppointmentDetail {
+  changes: [BookingChange!]!
+  createdAt: String!
+  createdById: String
+  createdByName: String
+  customerEmail: String
+  customerName: String!
+  customerPhone: String
+  endsAt: String!
+  id: String!
+  note: String!
+  resourceId: String!
+  resourceName: String!
+  serviceId: String!
+  serviceName: String!
+  startsAt: String!
+  status: String!
+  updatedAt: String!
+}
+
+input BookingAppointmentDetailsInput {
+  customerEmail: String
+  customerName: String!
+  customerPhone: String
+  note: String
+}
+
+input BookingAppointmentInput {
+  customerEmail: String
+  customerName: String!
+  customerPhone: String
+  note: String
+  resourceId: String!
+  serviceId: String!
+  startsAt: String!
+}
+
+type BookingCatalogue {
+  resources: [BookingResource!]!
+  services: [BookingService!]!
+}
+
+type BookingChange {
+  actorId: String
+  actorKind: String!
+  actorName: String
+  createdAt: String!
+  fromResourceName: String
+  fromStartsAt: String
+  id: String!
+  kind: String!
+  reason: String!
+  toResourceName: String
+  toStartsAt: String
+}
+
+type BookingDay {
+  appointments: [BookingAppointment!]!
+  day: String!
+  timeZone: String!
+  truncated: Boolean!
+}
+
+type BookingEvent {
+  actorId: String
+  appointmentId: String
+  kind: String!
+}
+
+type BookingException {
+  day: String!
+  endMinute: Int
+  id: String!
+  note: String!
+  resourceId: String
+  startMinute: Int
+}
+
+input BookingExceptionInput {
+  day: String!
+  endMinute: Int
+  note: String
+  resourceId: String
+  startMinute: Int
+}
+
+type BookingHoursWindow {
+  endMinute: Int!
+  startMinute: Int!
+  weekday: Int!
+}
+
+input BookingHoursWindowInput {
+  endMinute: Int!
+  startMinute: Int!
+  weekday: Int!
+}
+
+type BookingPerson {
+  displayName: String!
+  userId: String!
+}
+
+type BookingPublicBooking {
+  canChange: Boolean!
+  customerName: String!
+  cutoffMinutes: Int!
+  endsAt: String!
+  lastDay: String!
+  note: String!
+  reason: String!
+  resourceId: String!
+  resourceName: String!
+  serviceId: String!
+  serviceName: String!
+  startsAt: String!
+  status: String!
+  timeZone: String!
+  title: String!
+  today: String!
+}
+
+type BookingPublicPage {
+  cutoffMinutes: Int!
+  lastDay: String!
+  note: String!
+  services: [BookingPublicService!]!
+  timeZone: String!
+  title: String!
+  today: String!
+}
+
+type BookingPublicRequest {
+  booking: BookingPublicBooking!
+  manageToken: String!
+}
+
+input BookingPublicRequestInput {
+  customerEmail: String
+  customerName: String!
+  customerPhone: String
+  note: String
+  resourceId: String!
+  serviceId: String!
+  startsAt: String!
+}
+
+type BookingPublicService {
+  durationMinutes: Int!
+  id: String!
+  name: String!
+  price: Int
+}
+
+type BookingPublicSlots {
+  resourceId: String!
+  resourceName: String!
+  starts: [String!]!
+}
+
+type BookingResource {
+  archivedAt: String
+  hours: [BookingHoursWindow!]!
+  id: String!
+  kind: String!
+  name: String!
+  userId: String
+  userName: String
+}
+
+input BookingResourceInput {
+  kind: String!
+  name: String!
+  userId: String
+}
+
+type BookingResourceSlots {
+  resourceId: String!
+  starts: [String!]!
+}
+
+type BookingService {
+  archivedAt: String
+  bufferAfterMinutes: Int!
+  bufferBeforeMinutes: Int!
+  durationMinutes: Int!
+  id: String!
+  name: String!
+  price: Int
+  resourceIds: [String!]!
+}
+
+input BookingServiceInput {
+  bufferAfterMinutes: Int
+  bufferBeforeMinutes: Int
+  durationMinutes: Int!
+  name: String!
+  price: Int
+  resourceIds: [String!]!
+}
+
+type BookingSettings {
+  cutoffMinutes: Int!
+  horizonDays: Int!
+  lapseHours: Int!
+  leadMinutes: Int!
+  publicEnabled: Boolean!
+  publicLinkId: String
+  publicNote: String!
+  publicTitle: String!
+  reminderMinutes: Int!
+  slotMinutes: Int!
+}
+
+input BookingSettingsInput {
+  cutoffMinutes: Int
+  horizonDays: Int
+  lapseHours: Int
+  leadMinutes: Int
+  publicEnabled: Boolean
+  publicNote: String
+  publicTitle: String
+  reminderMinutes: Int
+  slotMinutes: Int
+}
+
 type BooksEntries {
   entries: [BooksEntry!]!
   opening: Float!
@@ -461,6 +706,7 @@ type MfaFactor {
 
 type Mutation {
   acceptInvitation(token: String!): PermissionWriteResult!
+  addBookingException(input: BookingExceptionInput!, organizationId: String!, workspaceId: String!): BookingException!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
   addPosOrderLine(itemId: String!, orderId: String!, organizationId: String!, quantity: Int!, variantId: String, version: Int!, workspaceId: String!): PosOrder!
   addTaskChecklistItem(organizationId: String!, taskId: String!, text: String!, workspaceId: String!): Task!
@@ -481,10 +727,14 @@ type Mutation {
   assignWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   callNextQueueTicket(clientRequestId: String, lineId: String!, organizationId: String!, workspaceId: String!): QueueTicket!
   callQueueNumber(lineId: String!, number: Int!, organizationId: String!, workspaceId: String!): QueueTicket!
+  cancelBookingAppointment(appointmentId: String!, organizationId: String!, reason: String!, workspaceId: String!): BookingAppointment!
   cancelPosOrder(orderId: String!, organizationId: String!, reason: String, version: Int!, workspaceId: String!): PosOrder!
+  cancelPublicBooking(reason: String, token: String!): BookingPublicBooking!
   clearMyQueueNickname(organizationId: String!, workspaceId: String!): Boolean!
   clearQueueNickname(organizationId: String!, userId: String!, workspaceId: String!): Boolean!
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
+  confirmBookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointment!
+  createBookingAppointment(input: BookingAppointmentInput!, organizationId: String!, workspaceId: String!): BookingAppointment!
   createNote(input: CreateNoteInput!, organizationId: String!, workspaceId: String!): Note!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
   createPlan(input: PlanDraftInput!): PermissionPlanDetail!
@@ -496,6 +746,7 @@ type Mutation {
   createTask(boardId: String!, input: CreateTaskInput!, organizationId: String!, workspaceId: String!): Task!
   createTaskBoard(input: CreateTaskBoardInput!, organizationId: String!, workspaceId: String!): TaskBoard!
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  declineBookingAppointment(appointmentId: String!, organizationId: String!, reason: String, workspaceId: String!): BookingAppointment!
   declineInvitation(token: String!): InvitationDeclineResult!
   deleteChatMessage(messageId: String!): ChatMessage!
   deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -512,6 +763,7 @@ type Mutation {
   leaveOrganization(organizationId: String!): PermissionWriteResult!
   lendBooksMoney(input: LendBooksMoneyInput!, organizationId: String!, workspaceId: String!): BooksLoan!
   markAllNotificationsRead(before: String!): Int!
+  markBookingAppointment(appointmentId: String!, organizationId: String!, status: String!, workspaceId: String!): BookingAppointment!
   markChatRead(conversationId: String!, messageId: String!): Boolean!
   markNotificationsRead(ids: [String!]!): Int!
   markNotificationsUnread(ids: [String!]!): Int!
@@ -535,6 +787,7 @@ type Mutation {
   refreshPosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   refundPosOrder(input: RefundPosOrderInput!, orderId: String!, organizationId: String!, workspaceId: String!): PosOrder!
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
+  removeBookingException(exceptionId: String!, organizationId: String!, workspaceId: String!): Boolean!
   removeChatParticipant(conversationId: String!, userId: String!): Boolean!
   removeMember(organizationId: String!, userId: String!): PermissionWriteResult!
   removePosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
@@ -543,6 +796,10 @@ type Mutation {
   removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  requestPublicBooking(input: BookingPublicRequestInput!, linkId: String!): BookingPublicRequest!
+  rescheduleBookingAppointment(appointmentId: String!, organizationId: String!, resourceId: String!, startsAt: String!, workspaceId: String!): BookingAppointment!
+  reschedulePublicBooking(resourceId: String!, startsAt: String!, token: String!): BookingPublicBooking!
+  resetBookingPublicLink(organizationId: String!, workspaceId: String!): BookingSettings!
   resetJobProcessSchedule(processKey: String!): JobProcess!
   resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   resetWorkspaceAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
@@ -556,6 +813,9 @@ type Mutation {
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   runJobProcessNow(processKey: String!): JobProcess!
+  saveBookingResource(input: BookingResourceInput!, organizationId: String!, resourceId: String, workspaceId: String!): BookingResource!
+  saveBookingService(input: BookingServiceInput!, organizationId: String!, serviceId: String, workspaceId: String!): BookingService!
+  saveBookingSettings(input: BookingSettingsInput!, organizationId: String!, workspaceId: String!): BookingSettings!
   saveBooksInvestor(input: SaveBooksInvestorInput!, organizationId: String!, workspaceId: String!): BooksInvestor!
   saveBooksLoan(borrowerName: String!, contact: String, loanId: String!, note: String, organizationId: String!, workspaceId: String!): BooksLoan!
   saveBooksSettings(organizationId: String!, posImportFrom: String, shareMode: String!, workspaceId: String!): BooksSettings!
@@ -568,6 +828,9 @@ type Mutation {
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
   sendNotification(input: NotificationSendInput!): NotificationBatch!
+  setBookingResourceArchived(archived: Boolean!, organizationId: String!, resourceId: String!, workspaceId: String!): BookingResource!
+  setBookingResourceHours(hours: [BookingHoursWindowInput!]!, organizationId: String!, resourceId: String!, workspaceId: String!): BookingResource!
+  setBookingServiceArchived(archived: Boolean!, organizationId: String!, serviceId: String!, workspaceId: String!): BookingService!
   setBooksInvestorFormer(former: Boolean!, investorId: String!, organizationId: String!, workspaceId: String!): BooksInvestor!
   setChatArchived(archived: Boolean!, conversationId: String!): Boolean!
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
@@ -612,6 +875,7 @@ type Mutation {
   trashNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
   unarchiveNotifications(ids: [String!]!): Int!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  updateBookingAppointmentDetails(appointmentId: String!, input: BookingAppointmentDetailsInput!, organizationId: String!, workspaceId: String!): BookingAppointment!
   updateNote(expectedVersion: Int!, input: UpdateNoteInput!, noteId: String!, organizationId: String!, workspaceId: String!): Note!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
@@ -1321,6 +1585,14 @@ type Query {
   adminUserSessions(userId: String!): [AdminUserSession!]!
   adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
   appHubLayouts(organizationId: String!, workspaceId: String!): AppHubLayouts!
+  bookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointmentDetail
+  bookingCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): BookingCatalogue!
+  bookingDay(day: String!, organizationId: String!, workspaceId: String!): BookingDay!
+  bookingExceptions(fromDay: String!, organizationId: String!, workspaceId: String!): [BookingException!]!
+  bookingMembers(organizationId: String!, workspaceId: String!): [BookingPerson!]!
+  bookingRequests(organizationId: String!, workspaceId: String!): [BookingAppointment!]!
+  bookingSettings(organizationId: String!, workspaceId: String!): BookingSettings!
+  bookingSlots(day: String!, forAppointmentId: String, organizationId: String!, serviceId: String!, workspaceId: String!): [BookingResourceSlots!]!
   booksEntries(investorId: String, loanId: String, month: String, organizationId: String!, workspaceId: String!): BooksEntries!
   booksOverview(organizationId: String!, workspaceId: String!): BooksOverview!
   booksPosSalesPreview(organizationId: String!, toDay: String!, workspaceId: String!): BooksPosSales!
@@ -1374,6 +1646,10 @@ type Query {
   posOrders(customerId: String, fromDay: String, organizationId: String!, search: String, tab: String!, toDay: String, workspaceId: String!): [PosOrderSummary!]!
   posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
   posSettings(organizationId: String!, workspaceId: String!): PosSettings!
+  publicBooking(token: String!): BookingPublicBooking
+  publicBookingMoveSlots(day: String!, token: String!): [BookingPublicSlots!]
+  publicBookingPage(linkId: String!): BookingPublicPage
+  publicBookingSlots(day: String!, linkId: String!, serviceId: String!): [BookingPublicSlots!]
   queueConsole(organizationId: String!, workspaceId: String!): QueueConsole!
   queueDisplayCode(organizationId: String!, workspaceId: String!): QueueDisplayCode
   queueStaffCandidates(organizationId: String!, workspaceId: String!): [QueueStaffMember!]!
@@ -1632,6 +1908,7 @@ type SessionInfo {
 }
 
 type Subscription {
+  bookingEvents(organizationId: String!, workspaceId: String!): BookingEvent!
   booksEvents(organizationId: String!, workspaceId: String!): BooksEvent!
   chatEvents(since: String): ChatEvent!
   noteEvents(organizationId: String!, workspaceId: String!): NoteEvent!
