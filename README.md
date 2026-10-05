@@ -34,6 +34,7 @@ packages/
   module-queuing-window/  walk-in queue: windows, lines, a live TV board
   module-notification/    system notifications: bell, toasts, an inbox
   module-jobs/            the background runner: queues and runs the processes modules declare; its admin page
+  module-booking/         booking sub-app: services, resources and their hours, the day's bookings
 ```
 
 No module imports another; only the apps depend on them. The map, and the

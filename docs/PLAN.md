@@ -575,10 +575,127 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 93 | A process is declared in two places in the app: with its handler on the server descriptor, and without it in `seed/registry.ts` | when a third module declares a process, or the first time one is forgotten | The seed task cannot build a Nest module (it would need every secret), so it reads `X_PROCESS_REGISTRY` while the runner reads the descriptors. A process missing from the seed line has no row and never runs; the runner says so once, in the boot log. A test in `web-server` comparing the two lists would turn the log line into a failed build, and cannot be written until `AppModule` can be loaded without its secrets |
 | 94 | ~~The background runner has no screen~~ **Settled 2026-10-05** — see §13: `/admin/processes` lists every process with Pause, Resume, Run now, a schedule form and the history. What is still not built is phase 3: runs are never cleaned up, and a failing process tells nobody | when `job_run` is large enough to notice, or a process fails with nobody looking at the page | Under a hundred rows a day per process at a wake-up every 15 minutes. The page says a failing process plainly, with its last error, but only to somebody who opens it; the notice needs a port (`JOBS_NOTIFIER`) bound to `module-notification` (JOBS-PLAN §10, phase 3). The page is also not live: it re-reads every ten seconds, because the module publishes no events |
 | 95 | A plan seeded before tasks existed does not include `task:read`, so its organizations get no due reminders — while their super-admins, who bypass the plan filter, use tasks every day | when an operator expects reminders in an organization whose plan has no task key | By design (JOBS-PLAN D12): a process follows the organization's plan and nothing bypasses that for a process. `seed/plans.ts` includes the task keys in every tier, but plans are `seed`, not `sync`, so an existing database keeps the plans it had. The fix is the operator's: add the task keys to the plan on the Plans screen. The run records `0 handled`, which does not say why |
+| 96 | A booking moved or cancelled by staff, or left inside hours that were then shortened or a day then closed, is not told to the customer and is not moved for them: the desk does both by hand | when customer messages exist (§12.91), and when the day grid shows what falls outside the hours (BOOKING-PLAN §10, phase 2) | `module-booking` phase 1 changes only what is OFFERED when hours, closed days or a resource change; bookings already made stay. The dialogs say so and show the phone and e-mail. Cancelling them automatically would break promises the app cannot explain to anybody |
+| 97 | A booking's status cannot be undone: a no-show or a cancellation marked by mistake stays, and the desk makes a new booking | when somebody asks, after phase 1 is in use | Undoing one has to take the slot again, which is a new booking's check, not a status change. Nothing is lost — the history says what happened — but a misclick costs a re-entry |
+| 98 | A workspace seeded before booking existed has no `booking:*` key in its plan, so the app is not on its Apps page and `booking.upcoming_sessions` reaches none of its workspaces | when plans are next edited (`/admin/plans`), as §12.95 for tasks | `createPlanIfAbsent` never rewrites a plan. Super admins see the app regardless; everybody else, and the reminders, wait for the keys and the `booking:resources` cap to be added to the plan |
+| 99 | The public booking page has no proof that a visitor is a person: no CAPTCHA, no confirmation of the phone or e-mail they leave | when a shop's page is abused, or with customer messages (§12.91), which make a confirmed contact possible | What bounds abuse today is in `BookingPublicService`: a contact is required, one contact may have 3 requests waiting, a workspace 200, and unanswered requests lapse. A visitor inventing contacts can still hold up to 200 slots until they lapse or staff decline them. The manage token is throttled; asking for a booking is on the default throttle only |
+| 100 | A customer's manage link carries its secret in the URL's path, and is shown once with nothing sent to them | with customer messages (§12.91): the link is then e-mailed, and can be re-sent | A link in a path is in browser history and can be forwarded; whoever has it can see, cancel and move that ONE booking, nothing else. A customer who loses it cannot get it back — only its hash is stored — and must contact the shop, who can still cancel or move the booking |
+| 101 | A request that lapses, or that staff decline, tells the customer only on their manage link | with customer messages (§12.91) | `booking.lapse_requests` declines it and frees the slot; nobody is notified. The desk sees it leave Requests |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-05** — **Booking's public link is built: customers ask for a booking with no account, and manage it by a secret link.**
+
+  The operator asked how customers reach the page to book, was told it was
+  not built, and said to proceed. This is BOOKING-PLAN §10 phase 3, built
+  before phase 2 (the day grid): nothing in it needed the grid.
+
+  - **Two public addresses, both `chrome: 'fullscreen'` with no feature.**
+    `/book/:linkId` is the shop's page; `/my-booking/:token` is one booking.
+    Their operations are in a resolver of their own (`BookingPublicResolver`),
+    with no workspace scope and bound to no key, as the queue's display is.
+  - **The link id names the shop and is not a secret; the manage token is.**
+    The link id is 72 random bits in `booking_settings.publicLinkId`, made the
+    first time the page is turned on, kept when it is turned off, and replaced
+    only by "Replace the link". The token is 256 bits, returned ONCE when the
+    request is made and stored as its SHA-256 (`manageTokenHash`, nulled in the
+    dev snapshot). Every operation taking it is a credential surface, so it
+    gets the tight throttle (seen refusing guesses against the API).
+  - **One refusal for what is not there.** An unknown link, a page turned off
+    and a token nobody was given all answer `null`; and a visitor whose request
+    the shop's set-up cannot take (outside hours, a resource that does not
+    perform it) is told only that the time is not free.
+  - **A customer's booking is a request (D2), and the page never says
+    otherwise.** `pending`, holding its slot; the button is "Request this
+    booking". Staff confirm or decline from a new Requests list, which shows
+    every waiting request whatever its day, longest-waiting first, with a count
+    on the section bar.
+  - **The shop's name on the page is booking's own setting, not a port.**
+    `publicTitle` (required to turn the page on) and `publicNote`: what a
+    stranger sees is what the shop typed for them, and nothing is read from
+    permissions' tables to show it. So `BOOKING-PLAN §7` gained no port.
+  - **The customer's rules are four settings, none binding staff:** notice
+    (`leadMinutes`, 60), horizon (`horizonDays`, 30), cancellation cutoff
+    (`cutoffMinutes`, 120) and how long a request waits (`lapseHours`, 24).
+    The page is OFF by default.
+  - **A customer's move goes back to waiting (D8), and the page says so before
+    the press.** A move by staff leaves a confirmed booking confirmed (D6).
+  - **`booking.lapse_requests`, every five minutes:** a request unanswered for
+    `lapseHours`, or whose own time has come, is declined by the app
+    (`actorKind: system`, "Not confirmed in time"), which frees its slot.
+    Idempotent by the booking's own compare-and-set from `pending`. Nothing is
+    ever too late to lapse, so its `tooLateAfterMinutes` is declared and unused.
+  - **Abuse is bounded, not prevented** (§12.99): a contact is required, three
+    waiting requests per contact, two hundred per workspace.
+  - **The desk is told** of a request, a customer's cancellation and a
+    customer's move (`BOOKING_NOTIFIER`; sources `booking.request` and
+    `booking.customer`). **The customer is told nothing** except on their
+    manage link (§12.91, §12.100, §12.101).
+  - **Fixed on the way: a booking dialog no longer closes on a press outside
+    it or on Escape once something is typed.** Selecting text and releasing
+    the mouse outside the box counted as a backdrop press and threw the form
+    away (the operator, 2026-10-05).
+  - **Not done:** the day grid (phase 2); messages to customers (phase 4);
+    the shared customer record (phase 5); the queue and point-of-sale
+    hand-offs (phase 6); a CAPTCHA (§12.99).
+
+- **2026-10-05** — **Booking is built, phase 1: `module-booking`, staff only, with no double booking kept by the database.**
+
+  The operator said to start development of the module booking, after the
+  runner it was planned behind (`module-jobs` phases 1 and 2). This is
+  BOOKING-PLAN §10 phase 1: services, resources and their hours, the day as a
+  list, bookings made, moved and cancelled by staff, live, and the first
+  reminder process. Decisions D1 to D8 there stand; these are the ones made
+  while building.
+
+  - **No double booking is an exclusion constraint, written by hand in the
+    migration** (`booking_appointment_no_overlap`). Prisma cannot express one,
+    so it is not in the schema fragment. The service looks for a clash inside
+    its transaction, for the sentence; the constraint refuses the second of two
+    writes that both passed that look (proved against Postgres: two overlapping
+    creates at once, one succeeds and the other is "That time has just been
+    taken"). It needs the `btree_gist` extension. The statuses in its WHERE are
+    `BOOKING_HOLDING_STATUSES`; changing that list needs a new migration.
+  - **A booking holds its resource for the service's time PLUS its buffers**,
+    copied onto the booking (`blockedFrom`, `blockedUntil`) when it is made or
+    moved. Changing a service's length or buffers never moves an old booking.
+  - **`pending`, `confirmed`, `arrived` and `done` hold a slot; `declined`,
+    `cancelled` and `no_show` let it go.** Pending is in the rule from the
+    start (D2) though nothing is pending until the public link exists.
+  - **Opening hours bind staff too.** A time outside a resource's hours, or on
+    a closed day, is refused for everybody: what is offered and what is
+    accepted are read by one function (`openWindowsOn`). Whoever means to open
+    late changes the hours. The alternative — letting staff book anywhere —
+    would make the hours a suggestion and the slot list a second opinion.
+  - **Hours are minutes of the workspace's day; a booking is an instant.**
+    `zonedInstant` (in the module) turns "9:00 on the 5th" into the moment it
+    is in the workspace's zone, by module-kit's guess-and-correct. It stays in
+    the module until a second consumer needs it (principle 9).
+  - **Nothing comes back from `done`, `cancelled`, `declined` or `no_show`**
+    (§12.97), and a no-show cannot be marked before the booking's time.
+  - **Changing hours, closing a day or archiving a resource changes what is
+    offered, never what is booked** (§12.96).
+  - **One process, `booking.upcoming_sessions`, every five minutes**: tells the
+    member a staff resource is linked to, otherwise everybody who works the
+    desk, a workspace-set number of minutes before a confirmed booking (default
+    15, 0 turns it off). Idempotent by `booking_reminder`, keyed by booking and
+    start. For it, "too late" means "already started": such a booking is
+    counted as skipped, never announced.
+  - **Roles and plans** (`seed/app-roles.ts`, `seed/plans.ts`): a workspace
+    admin is `booking-manager`, a workspace user `booking-front-desk`
+    (including cancelling), as the point of sale's presets fold in; every tier
+    but free sells it, with `booking:resources` at 10. Existing plans are not
+    rewritten (§12.98).
+  - **Not done, and where each is planned** (BOOKING-PLAN §10): the day grid
+    (phase 2); the public link, the manage token, confirming requests in
+    practice, the customer's rules (lead time, horizon, cancellation cutoff)
+    and the process that lapses a request nobody confirmed (phase 3); messages
+    to customers (phase 4, §12.91); the shared customer record (phase 5,
+    §12.92); the queue and point-of-sale hand-offs (phase 6). Their ports are
+    not declared yet: a port nothing calls is a promise nothing keeps.
+  - **Not done: a link to one booking from its reminder** (§12.80, as tasks).
 
 - **2026-10-05** — **The background runner has its admin page: `module-jobs` phase 2, at `/admin/processes`.**
 

@@ -40,6 +40,7 @@ packages/module-note/       notes sub-app: private or shared Markdown notes, liv
 packages/module-task/       tasks sub-app: owner-configured boards, private or shared, assignees, live
 packages/module-basic-pos/  basic point-of-sale sub-app: items, orders, recorded payment (placeholder)
 packages/module-basic-bookkeeping/ books sub-app: cash on hand, investors, profit shares, payouts, loans, POS sales
+packages/module-booking/    booking sub-app: services, resources and their hours, the day's bookings, no double booking
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 

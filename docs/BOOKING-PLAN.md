@@ -1,6 +1,10 @@
 # `module-booking` — plan
 
-Status: **planning, started 2026-10-05. Nothing is built.** The operator asked
+Status: **phases 1 (staff only) and 3 (the public link) are built, 2026-10-05**
+— `packages/module-booking`, what it does and does not do in its README and in
+PLAN §13. Phase 3 was built before phase 2 (the day grid) on the operator's
+word; nothing in it depended on the grid. Phases 2, 4, 5 and 6 (§10) are not
+started. What follows is the plan as it was written: the operator asked
 which sub-apps the architecture could take next, had appointments expanded,
 asked for the conversation to be kept here, and then said the module will be
 planned. The operator's answers are in §8 (D1 to D8); no question is open.
