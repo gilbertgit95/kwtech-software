@@ -2,6 +2,7 @@ import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
 import { booksWebModule } from '@kwtech/module-basic-bookkeeping/react';
 import { posWebModule } from '@kwtech/module-basic-pos/react';
+import { bookingWebModule } from '@kwtech/module-booking/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import { jobsWebModule } from '@kwtech/module-jobs/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
@@ -44,6 +45,8 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   posWebModule(),
   // The books: cash on hand, investors, profit shares and loans — after the POS on the Apps page.
   booksWebModule(),
+  // Booking: services, who performs them and when, and the day's reservations — after the books.
+  bookingWebModule(),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
   /*
@@ -53,12 +56,12 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
    * import none of them, so it cannot know. Add a module's here when it
    * declares its first process; without one it is headed by its key.
    */
-  jobsWebModule({ moduleLabels: { task: 'Tasks' } }),
+  jobsWebModule({ moduleLabels: { task: 'Tasks', booking: 'Booking' } }),
 ];
 
 /*
  * The workspace's Apps page, handed every sub-app the modules above declare
- * (the queue, notes, tasks and the point of sale today). Composed from the list
+ * (the queue, notes, tasks, the point of sale, the books and booking today). Composed from the list
  * rather than naming them, so a new sub-app module added above appears on the
  * page with no edit here — and
  * `composeApps` throws on two apps sharing a key, which saved layouts depend on.
