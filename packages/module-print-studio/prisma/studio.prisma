@@ -1,0 +1,172 @@
+// The print studio's slice of the data model (docs/PRINT-STUDIO-PLAN.md §5).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Studio` and mapped to `studio_*`.
+//
+//   layout        a paper, its printable area and its cells; private or shared
+//   calibration   one person's correction for one printer and paper
+//   log           who made a result, when, and the NAMES of the files in it
+//   settings      one per workspace: its shortcut keys
+//
+// ⚠ NO FILE IS EVER STORED. Photos and the result live in the browser's memory
+// only (decision 8). There is no table here that could hold one, on purpose.
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE. The guard proves the caller is a
+// member of the workspace in the request, not that the row is in it: a lookup
+// by id alone reads a layout from any tenant.
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key. `auth_user` belongs to
+// module-auth (PLAN §9).
+//
+// ⚠ EVERY LENGTH IS A WHOLE NUMBER OF HUNDREDTHS OF A MILLIMETRE
+// (`src/domain/units.ts`), in columns and inside `spec` alike.
+
+/// Who may see a layout. `private`: its owner, whatever keys anybody else holds.
+/// `workspace`: every member holding `studio:read`.
+enum StudioVisibility {
+  private
+  workspace
+}
+
+/// What the person did with a result. ⚠ Neither means paper came out: a browser
+/// never tells a page whether a print finished (`src/domain/log.ts`).
+enum StudioLogAction {
+  downloaded
+  sent_to_print
+}
+
+/// `layout`: photos in a layout's cells. `pages`: a document as whole pages.
+enum StudioLogKind {
+  layout
+  pages
+}
+
+/// One layout.
+model StudioLayout {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  ownerId        String
+
+  /// One clean line, at most `STUDIO_LAYOUT_NAME_MAX`. Not unique: two people
+  /// may each have an "ID package", and a private name must not collide with
+  /// one its owner cannot see.
+  name       String
+  visibility StudioVisibility @default(private)
+
+  /// A `StudioLayoutSpec`: the paper, margins and the EXACT cells drawn.
+  /// ⚠ Written only through `prepareLayoutSpec`, which rebuilds it from known
+  /// fields and bounds every number — so this column holds only what the
+  /// domain accepted, never whatever a client sent.
+  spec Json
+
+  /// ⚠ OPTIMISTIC CONCURRENCY. Every save names the version it was based on
+  /// and the update is conditional on it (`where: { id, version }`), so of two
+  /// saves from the same version exactly one lands and the other is told.
+  version Int @default(1)
+
+  /// Who saved last. Shown beside a shared layout an admin changed.
+  updatedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// A person's own layouts, and the per-person count behind `studio:layouts`.
+  @@index([workspaceId, ownerId])
+  /// The layouts shared with a workspace.
+  @@index([workspaceId, visibility])
+  @@index([organizationId])
+  @@map("studio_layout")
+}
+
+/// One person's correction for a printer that does not print at exactly 100%.
+/// Its maker's alone: a profile describes the printer on THEIR desk.
+model StudioCalibration {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  ownerId        String
+
+  /// What the person calls it: "Epson L3210, 4R".
+  name String
+
+  /// Ten-thousandths: 10000 is exactly 100%. Bounded by `prepareCalibration`.
+  scaleX  Int @default(10000)
+  scaleY  Int @default(10000)
+  /// Hundredths of a millimetre; positive is right and down.
+  offsetX Int @default(0)
+  offsetY Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// ⚠ One profile per name per person here, kept by the database: two tabs
+  /// saving "Epson" at once must not leave two rows the picker cannot tell apart.
+  @@unique([workspaceId, ownerId, name])
+  @@index([organizationId])
+  @@map("studio_calibration")
+}
+
+/// One result that was downloaded or sent to the browser's print dialog.
+///
+/// ⚠ PERSONAL DATA. `fileNames` are often customers' names
+/// (`juan-dela-cruz.jpg`). Rows are pruned by the `studio.prune_logs` process
+/// after the keep the host sets (90 days by default), and this table is left
+/// out of the public dev snapshot (`apps/web-server/src/seed/snapshot.ts`).
+model StudioLog {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  userId         String
+
+  action StudioLogAction
+  kind   StudioLogKind
+
+  /// The saved layout used, if any. ⚠ NOT a relation: the log outlives the
+  /// layout, and `layoutName` is the COPY that still reads after a rename or
+  /// a delete.
+  layoutId   String?
+  layoutName String?
+
+  paperLabel  String
+  /// As oriented, in hundredths of a millimetre.
+  paperWidth  Int
+  paperHeight Int
+
+  pages  Int
+  copies Int
+
+  /// Names only, never a folder path; capped by `cleanFileNames`.
+  fileNames String[] @default([])
+
+  createdAt DateTime @default(now())
+
+  /// The history, newest first — and what the prune deletes by.
+  @@index([workspaceId, createdAt])
+  /// One person's own history.
+  @@index([workspaceId, userId, createdAt])
+  @@index([organizationId])
+  @@map("studio_log")
+}
+
+/// One workspace's studio settings. No row means every default.
+model StudioSettings {
+  workspaceId    String @id
+  organizationId String
+
+  /// A `StudioKeymap` (`src/domain/keymap.ts`): each action's shortcut key.
+  /// Null means the defaults. ⚠ Written only through `validateStudioKeymap`,
+  /// and read back through `effectiveStudioKeymap`, which never trusts it.
+  keymap Json?
+
+  /// Moves with every save, so the screens know theirs is stale.
+  version     Int    @default(1)
+  updatedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("studio_settings")
+}
