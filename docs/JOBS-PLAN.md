@@ -1,11 +1,13 @@
 # `module-jobs` — plan
 
-Status: **phase 1 is built (2026-10-05); phases 2 and 3 are not.** The
+Status: **phases 1 and 2 are built (2026-10-05); phase 3 is not.** The
 contract, the sync, the queue, the runner and the first process
-(`task.due_today`) exist and run inside `web-server`. The admin page, its keys,
-`JobControl`, the history clean-up and the failing-process notice are still to
-be built (§10). What was decided while building is in PLAN §13, 2026-10-05, and
-how to use it is in `packages/module-jobs/README.md`.
+(`task.due_today`) exist and run inside `web-server`, and the admin page
+(`/admin/processes`) lists every process with Pause, Resume, Run now, the
+schedule form and the history, behind its four keys, with every control action
+in `job_control`. The history clean-up and the failing-process notice are still
+to be built (§10). What was decided while building is in PLAN §13, 2026-10-05,
+and how to use it is in `packages/module-jobs/README.md`.
 
 The operator asked
 whether a background service could check for what is due (an incoming booking,
@@ -339,8 +341,12 @@ question is open.
    required limits (§4c), the sync, the queue with its limit, time limit and
    lease (§4b), `JobRun`, with **task due reminders** as the first process
    (§12.83): the smallest real consumer that exists today.
-2. **The admin page.** The list, the history, Pause, Resume, Run now and
-   the schedule form, `JobControl`.
+2. **The admin page. BUILT 2026-10-05.** The list, the history, Pause, Resume,
+   Run now and the schedule form, `JobControl`, and the four keys. As built:
+   the page re-reads every ten seconds rather than being live; an admin's
+   schedule is in force only while `scheduleSetAt` is set (a reset clears
+   that, not the Json column); and a failing process is said on the page
+   only, until phase 3 brings the notice.
 3. **History clean-up**, as a process of the module's own, and the failing
    process notice.
 4. **The other consumers as they are built:** booking's reminders and lapsed

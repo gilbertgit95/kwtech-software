@@ -573,12 +573,65 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 91 | Booking sends nothing to the customer: no "received", no "confirmed", no reminder | when the operator sets up an e-mail provider (planned), and later an SMS provider | `module-booking` is planned with a public booking that staff must confirm (BOOKING-PLAN §8, D2 and D3), so until then a customer learns the outcome only from their manage link or from the shop contacting them. The module declares `BOOKING_CUSTOMER_MESSENGER`, unbound; binding it needs a provider, its credentials in the env profiles, and a cost decision. A reminder before the time also needs the job runner (§12.40) |
 | 92 | There is no customer record shared between the apps: the point of sale keeps `PosCustomer`, and booking will keep a copy on each booking | when the customer management module is planned (the operator intends one, 2026-10-05) | The operator wants one customer shared across the apps (BOOKING-PLAN §8, D5). Modules never import each other, so it is a module of its own that the others reach through ports. Booking is shaped for it (a nullable `customerId`, `BOOKING_CUSTOMER_DIRECTORY` unbound). Building it means moving `pos_customer` rows into it and matching them to bookings by phone or e-mail, which is a data migration to plan, not a rename |
 | 93 | A process is declared in two places in the app: with its handler on the server descriptor, and without it in `seed/registry.ts` | when a third module declares a process, or the first time one is forgotten | The seed task cannot build a Nest module (it would need every secret), so it reads `X_PROCESS_REGISTRY` while the runner reads the descriptors. A process missing from the seed line has no row and never runs; the runner says so once, in the boot log. A test in `web-server` comparing the two lists would turn the log line into a failed build, and cannot be written until `AppModule` can be loaded without its secrets |
-| 94 | The background runner has no screen: no list of processes, no pause, no Run now, no schedule form | now — it is the next phase (JOBS-PLAN §10, phase 2) | Phase 1 built the contract, the queue and the first process. Until phase 2, a process is watched in the server log and in `job_run`, paused by setting `job_process.pausedAt` by hand, and its runs are never cleaned up (phase 3: 90 days). At a wake-up every 15 minutes per process that is under a hundred rows a day each |
+| 94 | ~~The background runner has no screen~~ **Settled 2026-10-05** — see §13: `/admin/processes` lists every process with Pause, Resume, Run now, a schedule form and the history. What is still not built is phase 3: runs are never cleaned up, and a failing process tells nobody | when `job_run` is large enough to notice, or a process fails with nobody looking at the page | Under a hundred rows a day per process at a wake-up every 15 minutes. The page says a failing process plainly, with its last error, but only to somebody who opens it; the notice needs a port (`JOBS_NOTIFIER`) bound to `module-notification` (JOBS-PLAN §10, phase 3). The page is also not live: it re-reads every ten seconds, because the module publishes no events |
 | 95 | A plan seeded before tasks existed does not include `task:read`, so its organizations get no due reminders — while their super-admins, who bypass the plan filter, use tasks every day | when an operator expects reminders in an organization whose plan has no task key | By design (JOBS-PLAN D12): a process follows the organization's plan and nothing bypasses that for a process. `seed/plans.ts` includes the task keys in every tier, but plans are `seed`, not `sync`, so an existing database keeps the plans it had. The fix is the operator's: add the task keys to the plan on the Plans screen. The run records `0 handled`, which does not say why |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-05** — **The background runner has its admin page: `module-jobs` phase 2, at `/admin/processes`.**
+
+  Phase 1 left the runner watched in the server log and paused by editing a
+  row by hand (§12.94). The operator asked whether the screen for it existed
+  yet; told it did not, they asked for it to be built.
+  - **Four app-level keys, split by risk** (JOBS-PLAN §6): `jobs:read`,
+    `jobs:pause`, `jobs:run`, `jobs:schedule`. Pause and schedule are
+    privileged, because one act reaches every organization. The bindings are
+    the guard, and `super-admin` holds all four by derivation.
+  - **The page lists what THIS BUILD declares, not what the table holds.** A
+    row left by a module no longer composed is not shown, and a process
+    declared but never synced IS shown, as "Not synced": the one state an
+    operator can fix and would otherwise never see.
+  - **Every control action writes its audit row with the change**, in one
+    transaction (`job_control`): who, when, why, and for a schedule from what
+    to what. Each change is a compare-and-set, so two admins pressing Pause at
+    once are one pause and one refusal. Run now is the exception: the queue
+    owns queueing, so its row is written after, and the run itself already
+    carries who forced it.
+  - **A pause requires a reason**, shown to whoever looks next.
+  - **"Failing" is judged on the last run that finished its work.** A
+    `skipped` or `interrupted` run says nothing about the process (it was
+    paused, or the server stopped), so neither starts nor ends a failure.
+  - **An admin's schedule is in force only while `scheduleSetAt` is set.**
+    Reset clears that and leaves the Json column as it was: writing SQL NULL
+    into a Json column needs a sentinel from the generated Prisma client, which
+    a module may not import. Every reader goes through `adminSchedule`. The
+    alternative, a text column holding JSON, would have changed a column
+    phase 1 had just shipped for the sake of one write.
+  - **The form and the server run one check and say one sentence**
+    (`checkProcessSchedule`, `scheduleRefusalMessage`): "This process can run
+    at most every 15 minutes".
+  - **History is runs and control actions merged**, newest first, with a
+    keyset cursor of an instant and an id, so a run and the "Run now" that
+    queued it (one clock) are never split by a page break.
+  - **Names arrive through a port** (`JOBS_ACTOR_DIRECTORY`, answered from
+    `auth_user`). Unbound or failing, the page says "an administrator" and
+    still loads.
+  - **The module labels come from the app** (`jobsWebModule({ moduleLabels })`):
+    the runner may import no feature module, so it cannot know that `task` is
+    called Tasks.
+  - **Checked in the running app**, signed in as a throwaway super-admin: every
+    control and every refusal through the API, then the page in a browser
+    (open by keyboard, pause with and without a reason, resume, reschedule,
+    reset, Run now), and that an account without the keys is refused by both.
+  - **NOT done: live updates.** The module publishes no events; the page
+    re-reads every ten seconds while its tab is in front. Events would be the
+    first thing the runner publishes, for one screen a few people open.
+  - **NOT done: a role other than `super-admin` holding these keys.** Nobody
+    else has been decided, so no preset is exported.
+  - **NOT done: the history clean-up and the failing-process notice.** Phase 3
+    (JOBS-PLAN §10). §12.94 now records those two.
 
 - **2026-10-05** — **The background runner is built, inside `web-server`: `module-jobs` phase 1, with task due reminders as its first process.**
 

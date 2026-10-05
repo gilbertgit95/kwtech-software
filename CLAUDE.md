@@ -34,7 +34,7 @@ packages/module-permissions/ organizations, workspaces, roles, features, plans, 
 packages/module-chat/       conversations and messages
 packages/module-queuing-window/ walk-in queue: windows, lines, a live TV board
 packages/module-notification/ system notifications: bell, toasts, a paginated inbox
-packages/module-jobs/       the background runner (core): queues and runs the processes modules declare
+packages/module-jobs/       the background runner (core): queues and runs the processes modules declare; its admin page
 packages/module-app-hub/    a workspace's Apps page: sub-apps in tabs or a resizable grid
 packages/module-note/       notes sub-app: private or shared Markdown notes, live, themed looks
 packages/module-task/       tasks sub-app: owner-configured boards, private or shared, assignees, live

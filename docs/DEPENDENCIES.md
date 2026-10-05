@@ -44,7 +44,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-task` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
 | `module-basic-pos` | module-kit | web-ui, Nest, React | both apps |
 | `module-basic-bookkeeping` | module-kit | web-ui, Nest, React | both apps |
-| `module-jobs` | module-kit | Nest (`@nestjs/common`, `@nestjs/core`) | web-server (no React half yet) |
+| `module-jobs` | module-kit | web-ui, Nest, React | both apps |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -88,6 +88,7 @@ has a documented, fail-closed meaning — see each module's README.
 
 | Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
 | Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans and subscriptions) |
+| Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |
 
 Shared shapes (a pub/sub port, a directory entry) are COPIED structurally in
 each module, not imported — a duplicate interface is cheaper than a coupling.
