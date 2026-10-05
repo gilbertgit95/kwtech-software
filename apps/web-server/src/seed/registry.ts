@@ -32,6 +32,7 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
+import { STUDIO_FEATURE_REGISTRY, STUDIO_LIMIT_REGISTRY, STUDIO_PROCESS_REGISTRY } from '@kwtech/module-print-studio';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE_REGISTRY, TASK_LIMIT_REGISTRY, TASK_PROCESS_REGISTRY } from '@kwtech/module-task';
 
@@ -162,6 +163,18 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * per-person cap never mirrored for plans.
    */
   { key: 'note', features: NOTE_FEATURE_REGISTRY, limits: NOTE_LIMIT_REGISTRY },
+  /*
+   * ⚠ And the print studio's — its history names the files people printed,
+   * which are often customers' names. Leave this out and that history is
+   * readable by anybody signed in, the per-person cap is never mirrored for
+   * plans, and the history is never pruned.
+   */
+  {
+    key: 'studio',
+    features: STUDIO_FEATURE_REGISTRY,
+    limits: STUDIO_LIMIT_REGISTRY,
+    processes: STUDIO_PROCESS_REGISTRY,
+  },
   /*
    * ⚠ THE BINDINGS ARE THE GUARD of tasks and the point of sale, as the
    * queue's are. Leaving a line out would leave that module's every operation

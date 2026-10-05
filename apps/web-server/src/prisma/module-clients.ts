@@ -41,6 +41,12 @@ import {
   type PermissionsWriteClient,
 } from '@kwtech/module-permissions/server';
 import {
+  STUDIO_PRISMA,
+  STUDIO_PRISMA_WRITE,
+  type StudioTransaction,
+  type StudioWriteClient,
+} from '@kwtech/module-print-studio/server';
+import {
   QUEUE_PRISMA,
   QUEUE_PRISMA_WRITE,
   type QueueTransaction,
@@ -235,6 +241,28 @@ export const noteWritePrismaProvider: Provider = {
       notePin: prisma.notePin,
       noteRevision: prisma.noteRevision,
       notePreference: prisma.notePreference,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const studioPrismaProvider: Provider = {
+  provide: STUDIO_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const studioWritePrismaProvider: Provider = {
+  provide: STUDIO_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): StudioWriteClient =>
+    withTransaction<StudioTransaction, StudioWriteClient>(prisma, {
+      /*
+       * ⚠ A new layout is counted against the per-person cap and inserted in
+       * one transaction, which `withTransaction` dispatches over these.
+       */
+      studioLayout: prisma.studioLayout,
+      studioCalibration: prisma.studioCalibration,
+      studioLog: prisma.studioLog,
+      studioSettings: prisma.studioSettings,
     }),
 };
 

@@ -8,6 +8,7 @@ import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
+import { STUDIO_ROLE_PRESETS, type StudioRolePreset } from '@kwtech/module-print-studio';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
 import { TASK_ROLE_PRESETS, type TaskRolePreset } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
@@ -441,6 +442,19 @@ function bookingPreset(key: string): BookingRolePreset {
 }
 
 /**
+ * A print studio preset, read by key (PRINT-STUDIO-PLAN §4), and granted to the
+ * EXISTING workspace roles as notes' are: every member uses the studio and
+ * keeps layouts of their own (`studio-user`), and a workspace admin can also
+ * change other people's SHARED layouts and read everybody's print history
+ * (`studio-admin`, which adds `studio:manage_all`). THROWS if a preset is gone.
+ */
+function studioPreset(key: string): StudioRolePreset {
+  const preset = STUDIO_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-print-studio no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * Runs one workspace.
  *
  * EMPTY, and the registry explains why: `workspaces:share` is the only
@@ -512,6 +526,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...booksPreset('books-owner').features,
     // Booking: the day, the bookings, and what can be booked when.
     ...bookingPreset('booking-manager').features,
+    // The print studio: layouts, anybody's shared ones, and everybody's print history.
+    ...studioPreset('studio-admin').features,
   ],
   limits: {},
 };
@@ -545,6 +561,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
     ...posPreset('pos-cashier').features,
     // Works the bookings: sees the day, makes, moves and cancels them. No services, hours or settings.
     ...bookingPreset('booking-front-desk').features,
+    // Lays photos out and keeps layouts of their own; sees their own print history only.
+    ...studioPreset('studio-user').features,
   ],
   limits: {},
 };

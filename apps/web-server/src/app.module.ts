@@ -63,6 +63,12 @@ import {
   permissionsServerModule,
 } from '@kwtech/module-permissions/server';
 import {
+  STUDIO_ACCESS_CHECK,
+  STUDIO_LIMIT_CHECKER,
+  STUDIO_MEMBER_DIRECTORY,
+  studioServerModule,
+} from '@kwtech/module-print-studio/server';
+import {
   QUEUE_LIMIT_CHECKER,
   QUEUE_PUBSUB,
   QUEUE_STAFF_CHECK,
@@ -134,6 +140,8 @@ import {
   posWritePrismaProvider,
   queuePrismaProvider,
   queueWritePrismaProvider,
+  studioPrismaProvider,
+  studioWritePrismaProvider,
   taskPrismaProvider,
   taskWritePrismaProvider,
 } from './prisma/module-clients.js';
@@ -145,6 +153,8 @@ import { QueueWorkspaceLocatorAdapter } from './queue/workspace-locator.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_DEFAULT_MOMENTS, ALL_DEFAULTS, ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
+import { StudioManageAllAccess } from './studio/access-check.js';
+import { StudioMemberDirectoryAdapter } from './studio/member-directory.js';
 import { TaskKeyAccess } from './task/access-check.js';
 import { TaskMemberDirectoryAdapter } from './task/member-directory.js';
 import { TaskNotifierAdapter } from './task/notifier.js';
@@ -644,6 +654,34 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
 
     // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent index.
     pubsubProvider: { provide: NOTE_PUBSUB, useValue: realtimePubSub() },
+  }),
+
+  /*
+   * The print studio — a workspace sub-app. Layouts, calibration profiles and
+   * a print history; photos and results never reach this server. Its ports
+   * read another module's tables: grants for `studio:manage_all`, `auth_user`
+   * for names. The adapters are in ./studio/.
+   */
+  studioServerModule({
+    prismaProvider: studioPrismaProvider,
+    prismaWriteProvider: studioWritePrismaProvider,
+
+    // The per-person cap from the plan. Omitted, the module holds its declared default.
+    limitCheckerProvider: { provide: STUDIO_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    // ⚠ Without it, nobody may change somebody else's shared layout or read everybody's history — fail closed.
+    accessCheckProvider: {
+      provide: STUDIO_ACCESS_CHECK,
+      inject: [PermissionsService],
+      useFactory: (permissions: PermissionsService) => new StudioManageAllAccess(permissions),
+    },
+    memberDirectoryProvider: {
+      provide: STUDIO_MEMBER_DIRECTORY,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new StudioMemberDirectoryAdapter(prisma),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
   }),
 
   NOTIFICATION_SERVER_MODULE,

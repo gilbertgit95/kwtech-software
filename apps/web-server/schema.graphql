@@ -553,6 +553,12 @@ input CreateNoteInput {
   visibility: String
 }
 
+input CreateStudioLayoutInput {
+  name: String!
+  spec: StudioLayoutSpecInput!
+  visibility: String
+}
+
 input CreateTaskBoardInput {
   columns: [TaskColumnInput!]
   name: String!
@@ -742,6 +748,7 @@ type Mutation {
   createQueueLine(endNumber: Int, name: String!, organizationId: String!, padTo: Int, prefix: String!, startNumber: Int, workspaceId: String!): QueueLine!
   createQueueWindow(name: String!, organizationId: String!, workspaceId: String!): QueueWindow!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
+  createStudioLayout(input: CreateStudioLayoutInput!, organizationId: String!, workspaceId: String!): StudioLayout!
   createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
   createTask(boardId: String!, input: CreateTaskInput!, organizationId: String!, workspaceId: String!): Task!
   createTaskBoard(input: CreateTaskBoardInput!, organizationId: String!, workspaceId: String!): TaskBoard!
@@ -750,8 +757,11 @@ type Mutation {
   declineInvitation(token: String!): InvitationDeclineResult!
   deleteChatMessage(messageId: String!): ChatMessage!
   deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
+  deleteStudioCalibration(calibrationId: String!, organizationId: String!, workspaceId: String!): Boolean!
+  deleteStudioLayout(layoutId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteTaskBoardForever(boardId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteTaskForever(organizationId: String!, taskId: String!, workspaceId: String!): Boolean!
+  duplicateStudioLayout(layoutId: String!, name: String, organizationId: String!, workspaceId: String!): StudioLayout!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
@@ -784,6 +794,7 @@ type Mutation {
   recordBooksEntry(input: RecordBooksEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
   recordBooksInvestorEntry(input: RecordBooksInvestorEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
   recordBooksPosSales(clientId: String!, organizationId: String!, toDay: String!, workspaceId: String!): BooksSalesImport!
+  recordStudioPrint(input: StudioPrintInput!, organizationId: String!, workspaceId: String!): Boolean!
   refreshPosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   refundPosOrder(input: RefundPosOrderInput!, orderId: String!, organizationId: String!, workspaceId: String!): PosOrder!
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
@@ -824,6 +835,8 @@ type Mutation {
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
   savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
+  saveStudioCalibration(input: StudioCalibrationInput!, organizationId: String!, workspaceId: String!): StudioCalibration!
+  saveStudioSettings(keymap: String, organizationId: String!, workspaceId: String!): StudioSettings!
   saveWorkspaceAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
   sendChatMessage(body: String!, clientMessageId: String, conversationId: String!, replyToMessageId: String): ChatMessage!
   sendChatTyping(conversationId: String!): Boolean!
@@ -858,6 +871,7 @@ type Mutation {
   setQueueWindowArchived(archived: Boolean!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setQueueWindowLines(lineIds: [String!]!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
+  setStudioLayoutVisibility(layoutId: String!, organizationId: String!, visibility: String!, workspaceId: String!): StudioLayout!
   setTaskAssignees(organizationId: String!, taskId: String!, userIds: [String!]!, workspaceId: String!): Task!
   setTaskBoardVisibility(boardId: String!, organizationId: String!, visibility: String!, workspaceId: String!): TaskBoard!
   setTaskDates(dueOn: String, organizationId: String!, scheduledOn: String, taskId: String!, workspaceId: String!): Task!
@@ -884,6 +898,7 @@ type Mutation {
   updateQueueLine(endNumber: Int, lineId: String!, name: String, organizationId: String!, padTo: Int, sortOrder: Int, startNumber: Int, workspaceId: String!): QueueLine!
   updateQueueWindow(name: String, organizationId: String!, sortOrder: Int, windowId: String!, workspaceId: String!): QueueWindow!
   updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
+  updateStudioLayout(expectedVersion: Int!, input: UpdateStudioLayoutInput!, layoutId: String!, organizationId: String!, workspaceId: String!): StudioLayout!
   updateSubscription(currentPeriodEnd: String!, status: String!, subscriptionId: String!): PermissionSubscription!
   updateTask(expectedVersion: Int!, input: UpdateTaskInput!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   updateTaskBoard(boardId: String!, name: String!, organizationId: String!, workspaceId: String!): TaskBoard!
@@ -1654,6 +1669,11 @@ type Query {
   queueDisplayCode(organizationId: String!, workspaceId: String!): QueueDisplayCode
   queueStaffCandidates(organizationId: String!, workspaceId: String!): [QueueStaffMember!]!
   session: SessionInfo
+  studioCalibrations(organizationId: String!, workspaceId: String!): [StudioCalibration!]!
+  studioLayout(layoutId: String!, organizationId: String!, workspaceId: String!): StudioLayout
+  studioLayouts(organizationId: String!, workspaceId: String!): [StudioLayout!]!
+  studioLog(cursor: String, everyone: Boolean, limit: Int, organizationId: String!, workspaceId: String!): StudioLogPage!
+  studioSettings(organizationId: String!, workspaceId: String!): StudioSettings!
   task(organizationId: String!, taskId: String!, workspaceId: String!): Task
   taskAssignableMembers(boardId: String!, organizationId: String!, workspaceId: String!): [TaskPerson!]
   taskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard
@@ -1907,6 +1927,156 @@ type SessionInfo {
   userId: String!
 }
 
+type StudioBorder {
+  color: String!
+  style: String!
+  width: Int!
+}
+
+input StudioBorderInput {
+  color: String!
+  style: String!
+  width: Int!
+}
+
+type StudioCalibration {
+  id: String!
+  name: String!
+  offsetX: Int!
+  offsetY: Int!
+  scaleX: Int!
+  scaleY: Int!
+  updatedAt: String!
+}
+
+input StudioCalibrationInput {
+  id: String
+  name: String!
+  offsetX: Int!
+  offsetY: Int!
+  scaleX: Int!
+  scaleY: Int!
+}
+
+type StudioCell {
+  height: Int!
+  label: String
+  width: Int!
+  x: Int!
+  y: Int!
+}
+
+input StudioCellInput {
+  height: Int!
+  label: String
+  width: Int!
+  x: Int!
+  y: Int!
+}
+
+type StudioLayout {
+  createdAt: String!
+  id: String!
+  mine: Boolean!
+  name: String!
+  ownerId: String!
+  ownerName: String
+  spec: StudioLayoutSpec!
+  updatedAt: String!
+  version: Int!
+  visibility: String!
+}
+
+type StudioLayoutSpec {
+  border: StudioBorder
+  cells: [StudioCell!]!
+  guides: Boolean!
+  margins: StudioMargins!
+  orientation: String!
+  paper: StudioPaperSpec!
+  version: Int!
+}
+
+input StudioLayoutSpecInput {
+  border: StudioBorderInput
+  cells: [StudioCellInput!]!
+  guides: Boolean!
+  margins: StudioMarginsInput!
+  orientation: String!
+  paper: StudioPaperSpecInput!
+  version: Int!
+}
+
+type StudioLogEntry {
+  action: String!
+  copies: Int!
+  createdAt: String!
+  fileNames: [String!]!
+  id: String!
+  kind: String!
+  layoutId: String
+  layoutName: String
+  mine: Boolean!
+  pages: Int!
+  paperHeight: Int!
+  paperLabel: String!
+  paperWidth: Int!
+  userId: String!
+  userName: String
+}
+
+type StudioLogPage {
+  entries: [StudioLogEntry!]!
+  everyone: Boolean!
+  nextCursor: String
+}
+
+type StudioMargins {
+  bottom: Int!
+  left: Int!
+  right: Int!
+  top: Int!
+}
+
+input StudioMarginsInput {
+  bottom: Int!
+  left: Int!
+  right: Int!
+  top: Int!
+}
+
+type StudioPaperSpec {
+  height: Int!
+  key: String
+  label: String!
+  width: Int!
+}
+
+input StudioPaperSpecInput {
+  height: Int!
+  key: String
+  label: String!
+  width: Int!
+}
+
+input StudioPrintInput {
+  action: String!
+  copies: Int!
+  fileNames: [String!]!
+  kind: String!
+  layoutId: String
+  layoutName: String
+  pages: Int!
+  paperHeight: Int!
+  paperLabel: String!
+  paperWidth: Int!
+}
+
+type StudioSettings {
+  keymap: String!
+  version: Int!
+}
+
 type Subscription {
   bookingEvents(organizationId: String!, workspaceId: String!): BookingEvent!
   booksEvents(organizationId: String!, workspaceId: String!): BooksEvent!
@@ -2075,6 +2245,11 @@ input UpdateNoteInput {
 input UpdateProfileInput {
   displayName: String
   username: String
+}
+
+input UpdateStudioLayoutInput {
+  name: String
+  spec: StudioLayoutSpecInput
 }
 
 input UpdateTaskColumnInput {

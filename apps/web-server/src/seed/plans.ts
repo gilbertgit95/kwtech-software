@@ -4,6 +4,7 @@ import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
+import { STUDIO_FEATURE, STUDIO_LIMIT } from '@kwtech/module-print-studio';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE, TASK_LIMIT } from '@kwtech/module-task';
 import { ALL_FEATURES } from './registry.js';
@@ -225,6 +226,20 @@ const BOOKING = Object.values(BOOKING_FEATURE);
 /** Live staff, places and equipment a workspace takes bookings for. The same in every tier for now. */
 const BOOKING_CAPS = { [BOOKING_LIMIT.resources]: 10 };
 
+/**
+ * The print studio, sold where booking is: every tier except free. All three
+ * keys are workspace level.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
+ * seeded before the studio has none of these keys, and an operator adds them
+ * and the `studio:layouts` cap on `/admin/plans`. Until then the app is not on
+ * the Apps page (not_entitled), and its history is pruned in no workspace.
+ */
+const STUDIO = Object.values(STUDIO_FEATURE);
+
+/** Layouts kept per person per workspace. The same in every tier for now. */
+const STUDIO_CAPS = { [STUDIO_LIMIT.layouts]: 100 };
+
 /** Active items and variants per store. The same in every tier for now. */
 const POS_CAPS = { [POS_LIMIT.items]: 1000 };
 
@@ -279,6 +294,7 @@ const STARTER: PlanDefinition = {
     ...POS,
     ...BOOKS,
     ...BOOKING,
+    ...STUDIO,
     ...APPS_PAGE,
   ],
   limits: {
@@ -290,6 +306,7 @@ const STARTER: PlanDefinition = {
     ...TASK_CAPS,
     ...POS_CAPS,
     ...BOOKING_CAPS,
+    ...STUDIO_CAPS,
   },
 };
 
@@ -323,6 +340,7 @@ const PRO: PlanDefinition = {
     ...POS,
     ...BOOKS,
     ...BOOKING,
+    ...STUDIO,
     ...APPS_PAGE,
   ],
   limits: {
@@ -334,6 +352,7 @@ const PRO: PlanDefinition = {
     ...TASK_CAPS,
     ...POS_CAPS,
     ...BOOKING_CAPS,
+    ...STUDIO_CAPS,
   },
 };
 
@@ -373,6 +392,7 @@ const ENTERPRISE: PlanDefinition = {
     ...TASK_CAPS,
     ...POS_CAPS,
     ...BOOKING_CAPS,
+    ...STUDIO_CAPS,
   },
 };
 

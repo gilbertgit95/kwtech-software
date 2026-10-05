@@ -57,6 +57,8 @@ const EXCLUDED_TABLES: Record<string, string> = {
   // Six-digit codes: a hash of one is brute-forced offline in seconds.
   auth_mfa_email_code: 'second-factor email code hashes',
   queue_display_pass: 'live TV display credentials',
+  // Personal data, not a secret: the names of files people printed are often customers' names.
+  studio_log: 'print history: file names that are often customers’ names',
 };
 
 /**
