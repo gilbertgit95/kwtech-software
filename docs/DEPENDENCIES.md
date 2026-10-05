@@ -18,6 +18,7 @@ each other still work together. The rules come from PLAN §9 and `CLAUDE.md`;
    │  module-queuing-window   module-notification   module-app-hub │
    │  module-note   module-task   module-basic-pos                 │
    │  module-basic-bookkeeping   module-jobs   module-booking      │
+   │  module-print-studio                                          │
    │                                                               │
    │  Each depends on module-kit ONLY, with web-ui, React and      │
    │  Nest as OPTIONAL peers. None imports another module.         │
@@ -46,6 +47,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-basic-bookkeeping` | module-kit | web-ui, Nest, React | both apps |
 | `module-jobs` | module-kit | web-ui, Nest, React | both apps |
 | `module-booking` | module-kit | web-ui, Nest, React | both apps |
+| `module-print-studio` | module-kit (and `pdf-lib`, `pdfjs-dist`, `heic2any`, all used in the browser only) | web-ui, Nest, React | both apps |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -76,10 +78,10 @@ has a documented, fail-closed meaning — see each module's README.
 |---|---|---|
 | Who is calling | `resolveActorId` / `resolvePrincipal` option | `auth/resolve-principal.ts` — where auth and permissions meet |
 | May this caller do it (feature keys) | the registry's `bindings` | `FeatureGuard` from module-permissions, fed by `seed/registry.ts` |
-| How many may there be (caps) | `CHAT_LIMIT_CHECKER`, `QUEUE_LIMIT_CHECKER`, `NOTE_LIMIT_CHECKER`, `TASK_LIMIT_CHECKER`, `POS_LIMIT_CHECKER`, `BOOKING_LIMIT_CHECKER` | `PermissionsLimitChecker` |
-| People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY`, `NOTE_AUTHOR_DIRECTORY`, `TASK_MEMBER_DIRECTORY` (also who may be assigned, and who has left), `POS_MEMBER_DIRECTORY` (names for "by staff"), `BOOKS_MEMBER_DIRECTORY` (who recorded and voided each entry), `BOOKING_MEMBER_DIRECTORY` (also who works the desk: who a staff resource may be, and who is reminded) | adapters reading `auth_user` (and permissions, for tasks' members) |
+| How many may there be (caps) | `CHAT_LIMIT_CHECKER`, `QUEUE_LIMIT_CHECKER`, `NOTE_LIMIT_CHECKER`, `TASK_LIMIT_CHECKER`, `POS_LIMIT_CHECKER`, `BOOKING_LIMIT_CHECKER`, `STUDIO_LIMIT_CHECKER` | `PermissionsLimitChecker` |
+| People's names / emails | `CHAT_USER_DIRECTORY`, `QUEUE_STAFF_DIRECTORY`, `NOTIFICATION_USER_DIRECTORY`, `NOTE_AUTHOR_DIRECTORY`, `TASK_MEMBER_DIRECTORY` (also who may be assigned, and who has left), `POS_MEMBER_DIRECTORY` (names for "by staff"), `BOOKS_MEMBER_DIRECTORY` (who recorded and voided each entry), `BOOKING_MEMBER_DIRECTORY` (also who works the desk: who a staff resource may be, and who is reminded), `STUDIO_MEMBER_DIRECTORY` (who owns a shared layout, who printed what) | adapters reading `auth_user` (and permissions, for tasks' members) |
 | Is this person staff here | `QUEUE_STAFF_CHECK` | `queue/staff-check.ts` (permissions) |
-| Does this person hold a key the module checks itself | `NOTE_ACCESS_CHECK` (`note:manage_all`), `TASK_ACCESS_CHECK` (`task:assign`, `task:manage_all`), `POS_ACCESS_CHECK` (who sees costs; whose edit keeps a fixed discount), `BOOKS_ACCESS_CHECK` (who may void an investor's entry) | `note/access-check.ts`, `task/access-check.ts`, `pos/access-check.ts`, `books/access-check.ts` (permissions) |
+| Does this person hold a key the module checks itself | `NOTE_ACCESS_CHECK` (`note:manage_all`), `TASK_ACCESS_CHECK` (`task:assign`, `task:manage_all`), `POS_ACCESS_CHECK` (who sees costs; whose edit keeps a fixed discount), `BOOKS_ACCESS_CHECK` (who may void an investor's entry), `STUDIO_ACCESS_CHECK` (`studio:manage_all`: change somebody else's shared layout, read everybody's print history) | `note/access-check.ts`, `task/access-check.ts`, `pos/access-check.ts`, `books/access-check.ts`, `studio/access-check.ts` (permissions) |
 | A workspace's time zone (which day a sale belongs to; the TV board's clock) | `POS_WORKSPACE_TIME_ZONE`, `BOOKS_WORKSPACE_TIME_ZONE`, `BOOKING_WORKSPACE_TIME_ZONE` (what 9:00 means there); `QueueWorkspaceLocation.timeZone`; in the browser, `useWorkspaceTimeZone()` from module-kit | `pos/workspace-time-zone.ts` and `queue/workspace-locator.ts` (read `perm_workspace`); the shell's `WorkspaceTimeZoneProvider` |
 | A point of sale's takings for some days (the books' sales and cost of goods) | `BOOKS_SALES_SOURCE` | `books/sales-source.ts`, calling the POS's own `PosReportService.takings` (the books import the POS's Nest module instance) |
 | Live events | `CHAT_PUBSUB`, `QUEUE_PUBSUB`, `PERMISSIONS_PUBSUB`, `NOTIFICATION_PUBSUB`, `NOTE_PUBSUB`, `TASK_PUBSUB`, `POS_PUBSUB`, `BOOKS_PUBSUB`, `BOOKING_PUBSUB` | ONE `realtimePubSub()` engine for all |
@@ -87,7 +89,7 @@ has a documented, fail-closed meaning — see each module's README.
 | Email a person | `CHAT_NOTIFIER`, auth's and permissions' mail callbacks | `chat/notify-mail.ts`, `auth/*-mail.ts`, `permissions/invitation-mail.ts` |
 | Tell a person something (in the app) | `X_NOTIFIER` declared by the producing module — the first is `TASK_NOTIFIER` (`task/notifier.ts`), then `BOOKING_NOTIFIER` (`booking/notifier.ts`) | an adapter calling module-notification's `NotificationSender` — see its README |
 
-| Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today`, then `booking.upcoming_sessions` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
+| Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today`, then `booking.upcoming_sessions`, then `studio.prune_logs` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
 | Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans and subscriptions) |
 | Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |
 

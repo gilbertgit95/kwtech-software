@@ -40,8 +40,10 @@ test/                   fake-client.ts, surface-coverage, feature-keys, web-modu
 
 ## package.json
 
-- `"private": true`, `"version": "0.0.0"`, `"type": "module"`, `"sideEffects": false`,
-  `"files": ["dist", "prisma"]`.
+- `"private": true`, `"version": "0.0.0"`, `"sideEffects": false`,
+  `"files": ["dist", "prisma"]`. No `"type"` field: no module declares one, and
+  `tsc` emits what both apps load today. (This rule used to ask for
+  `"type": "module"`; the code never had it, and the code is right.)
 - **exports:** `"."`, `"./server"` and `"./react"`, each as
   `{ "types": "./dist/…d.ts", "default": "./dist/….js" }`. `"./prisma"` points
   at the raw `.prisma` file.

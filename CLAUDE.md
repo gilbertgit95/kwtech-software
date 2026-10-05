@@ -41,6 +41,7 @@ packages/module-task/       tasks sub-app: owner-configured boards, private or s
 packages/module-basic-pos/  basic point-of-sale sub-app: items, orders, recorded payment (placeholder)
 packages/module-basic-bookkeeping/ books sub-app: cash on hand, investors, profit shares, payouts, loans, POS sales
 packages/module-booking/    booking sub-app: services, resources and their hours, the day's bookings, no double booking
+packages/module-print-studio/ print studio sub-app: layouts of cells on paper, photos placed at exact sizes, PDFs as whole pages; files stay in the browser
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 

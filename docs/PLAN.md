@@ -581,10 +581,73 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 99 | The public booking page has no proof that a visitor is a person: no CAPTCHA, no confirmation of the phone or e-mail they leave | when a shop's page is abused, or with customer messages (§12.91), which make a confirmed contact possible | What bounds abuse today is in `BookingPublicService`: a contact is required, one contact may have 3 requests waiting, a workspace 200, and unanswered requests lapse. A visitor inventing contacts can still hold up to 200 slots until they lapse or staff decline them. The manage token is throttled; asking for a booking is on the default throttle only |
 | 100 | A customer's manage link carries its secret in the URL's path, and is shown once with nothing sent to them | with customer messages (§12.91): the link is then e-mailed, and can be re-sent | A link in a path is in browser history and can be forwarded; whoever has it can see, cancel and move that ONE booking, nothing else. A customer who loses it cannot get it back — only its hash is stored — and must contact the shop, who can still cancel or move the booking |
 | 101 | A request that lapses, or that staff decline, tells the customer only on their manage link | with customer messages (§12.91) | `booking.lapse_requests` declines it and frees the slot; nobody is notified. The desk sees it leave Requests |
+| 102 | The print studio's exact size depends on the person printing at 100% | with the print agent (PRINT-STUDIO-PLAN §10), which prints at 100% itself | The result is a PDF at the paper's exact size; the browser's dialog and a PDF viewer both offer "fit to page", and either one changes every size. The studio says so beside the buttons, makes Download the main action, and offers calibration for a printer that is slightly off. It cannot stop a person choosing "fit" |
+| 103 | A layout's printable area is typed by hand, and belongs to the printer rather than the layout | with the print agent, which can read a printer's margins | A shared layout made for one printer can clip on another; the studio only warns. ⚠ Until then "shared" means "shared between people using the same printer" |
+| 104 | A reprint means choosing the photos again | never, by decision (PRINT-STUDIO-PLAN decision 8); revisit only with a blob store (§12.45) | Nothing is kept. The history names the files, so somebody can find them again on their own computer |
+| 105 | The print history cannot say paper came out | with the print agent | It records `downloaded` and `sent_to_print`. A browser never tells a page whether a print finished or was cancelled |
+| 106 | A departed member's private layouts stay in the database, seen by nobody | when member offboarding is built | No key reads a private layout, so no admin can delete one. They count against the departed person's own cap only |
+| 107 | A workspace seeded before the print studio has no `studio:*` key in its plan, so the app is not on its Apps page and `studio.prune_logs` reaches none of its workspaces | when plans are next edited (`/admin/plans`), as §12.98 | `createPlanIfAbsent` never rewrites a plan that exists |
+| 108 | ~~The document screen previews where pages land, not the pages~~ **CLOSED 2026-10-05: built** | — | The operator asked to see the PDF's content. `pdfjs-dist` draws the pages for the preview, loaded only when a PDF is opened and run on the main thread, so the app serves no worker file. The result still copies the pages untouched. ⚠ What remains: a very heavy page parses on the main thread and can stall the screen for a moment |
+| 109 | The print studio has no borderless printing, no text or borders on photos, no saved list of custom sizes, no phone or tablet editor, and no office documents | on request, each on its own | All five were left out by the operator's decision (PRINT-STUDIO-PLAN decisions 9, 11, 12, 20 and 7). A Word document is saved as a PDF first |
+| 110 | The print studio does not manage colour | if prints come out visibly off | Photos are drawn as sRGB. A wide-gamut phone photo can shift slightly; the printer's own driver does the rest |
+| 111 | Shared layouts are not live | if two people edit layouts at once in practice | No subscription. A stale save is refused, never merged, and a change shows on reopening |
+| 112 | The printing side is not built: a print agent on the shop computer, and receipts for other modules | next, as its own module `module-print` | PRINT-STUDIO-PLAN §10 and §11. ⚠ To decide then: the operator wants files never saved on the server, and reaching an agent means the result crosses it — an in-memory relay keeps the rule but cannot queue |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-05** — **The print studio is built: `module-print-studio`, layouts of cells on paper, with every file kept in the browser.**
+
+  The operator asked whether the app could reach a printer driver, and it
+  became a plan for a print agent. Midway they said what they wanted first was
+  a studio: lay photos out at exact sizes, and print. So the agent is step 2
+  and this is step 1 (PRINT-STUDIO-PLAN). §12.66 had already said why an agent
+  is needed at all; the studio needs none, which is why it could go first.
+
+  - **A separate module, not part of a future `module-print`.** Composing a
+    page and getting it onto paper are two features. The operator chose the
+    name `module-print-studio` because plain "print" undersold the layout and
+    editing side; `module-print` is kept free for the agent and receipts.
+  - **No file ever reaches the server.** Photos are decoded in the browser,
+    sheets are drawn on a canvas, and the result is a PDF built in the tab —
+    "print and go", the operator's words. So there is no upload, no blob store
+    and no job table, and §12.45 stays open, untouched. ⚠ Three tests hold
+    this: no API field could carry a file, the web half writes to no browser
+    storage, and it reaches the network only through the JSON client.
+  - **A layout stores the exact cells drawn**, not a list of sizes to pack
+    again. A packer that improved would otherwise move the cells of every
+    saved layout, and a shop that lined its cutter up against one would find
+    out on paper. The packing functions are the EDITOR's tools only.
+  - **Lengths are whole hundredths of a millimetre.** Photo sizes are named in
+    inches and margins in millimetres, and 3 × 25.4 is not 76.2 in a float; an
+    inch is exactly 2540 units, so overlap checks are integer arithmetic.
+  - **Private or shared, as notes are — but only the owner edits a shared
+    layout.** A changed shared layout silently changes everybody's next print,
+    so others duplicate it. `studio:manage_all` may edit and delete shared
+    ones and read everybody's history; no key reads a private layout.
+  - **The preview and the result are one function** at two resolutions, and
+    lighting is arithmetic on pixels rather than a canvas filter, which some
+    browsers ignore silently. There is nothing the screen can show that the
+    paper will not.
+  - **A print history of file NAMES, pruned after 90 days.** The operator asked
+    for it. ⚠ A file name is often a customer's name, so the table is personal
+    data: capped, stripped of folder paths, pruned by a declared process
+    (`studio.prune_logs`), and left out of the public dev snapshot.
+  - **Download is the main output**, the browser's print dialog the second:
+    browsers may ignore the page size a page asks for (§12.102). Calibration
+    from a measured ruler page makes up for a printer that is slightly off.
+  - **Checked in a real browser**: a 4R result is a 288 × 432 pt PDF and a
+    1 × 1 cell is exactly 300 px at 300 dpi.
+
+  NOT done, each named in §12: the print agent and receipts (§12.112);
+  exact size still depends on printing at 100% (§12.102); margins are typed by
+  hand (§12.103); nothing is kept for a reprint (§12.104); the history cannot
+  say paper came out (§12.105); documents preview as a diagram (§12.108);
+  borderless printing, text on photos, office documents and a phone editor
+  (§12.109). ⚠ The rule in `.claude/rules/modules.md` asking for
+  `"type": "module"` in a module's `package.json` was stale — no module has
+  it — and was corrected in this change.
 
 - **2026-10-05** — **Booking's public link is built: customers ask for a booking with no account, and manage it by a secret link.**
 
