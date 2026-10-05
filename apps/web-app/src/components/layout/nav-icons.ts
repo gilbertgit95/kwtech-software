@@ -67,6 +67,7 @@ import {
   PenLine,
   Plug,
   Power,
+  Printer,
   Puzzle,
   Receipt,
   RefreshCw,
@@ -199,6 +200,7 @@ export const ICONS: Record<string, LucideIcon> = {
   // ── things and places ────────────────────────────────────────────────────
   folder: Folder,
   file: FileText,
+  printer: Printer,
   archive: Archive,
   inbox: Inbox,
   box: Box,
