@@ -3,6 +3,7 @@ import type { AuthTransaction } from '@kwtech/module-auth/server';
 import type { BooksPrismaClient, BooksTransaction } from '@kwtech/module-basic-bookkeeping/server';
 import type { PosPrismaClient, PosTransaction } from '@kwtech/module-basic-pos/server';
 import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
+import type { JobsSyncClient, JobsTransaction } from '@kwtech/module-jobs/server';
 import type { NotePrismaClient, NoteTransaction } from '@kwtech/module-note/server';
 import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
 import type { PermissionsPrismaClient, PermissionsTransaction } from '@kwtech/module-permissions/server';
@@ -68,3 +69,10 @@ export const _notificationWriteDelegatesFit: NotificationTransaction = client;
 
 /** One client, reads and single writes alike — see `appHubPrismaProvider`. */
 export const _appHubClientFits: AppHubPrismaClient = client;
+
+/**
+ * The runner writes only, and the sync (`syncJobProcesses`, run by the seeder
+ * with a plain client) needs two of the same delegates.
+ */
+export const _jobsWriteDelegatesFit: JobsTransaction = client;
+export const _jobsSyncClientFits: JobsSyncClient = client;

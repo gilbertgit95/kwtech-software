@@ -28,7 +28,12 @@ export const NOTIFICATION_SOURCES: readonly NotificationSource[] = [
    * commented on a task you are on. Two sources because they are two things a
    * person may want to hear about differently — a busy thread is worth muting,
    * being handed work rarely is.
+   *
+   * And a third, sent by nobody: the `task.due_today` background process, on
+   * the day a task is due. Its own source so a person can keep the reminders
+   * and mute the chatter, or the other way round.
    */
   { key: 'task.assigned', label: 'Tasks: assigned to you', mutable: true },
   { key: 'task.comment', label: 'Tasks: comments', mutable: true },
+  { key: 'task.due', label: 'Tasks: due today', mutable: true },
 ];

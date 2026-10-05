@@ -1,10 +1,11 @@
 import type { NotificationSender } from '@kwtech/module-notification/server';
-import type { TaskNotice, TaskNotifier } from '@kwtech/module-task/server';
+import type { TaskDueNotice, TaskNotice, TaskNotifier } from '@kwtech/module-task/server';
 
 /**
  * `module-task`'s notifier, spoken as notifications (`module-notification`'s
  * recipe). The module says what happened — somebody was assigned, somebody
- * commented — and this chooses the words, the severity and the source.
+ * commented, a task is due today — and this chooses the words, the severity
+ * and the source.
  *
  * ⚠ The TITLE carries the task's title, and a task's recipients are always
  * people who can open its board: a private board's tasks are assigned only to
@@ -39,6 +40,24 @@ export class TaskNotifierAdapter implements TaskNotifier {
       actions: [{ kind: 'link', key: 'open', label: 'Open tasks', href: appsHref(event), target: 'self' }],
       // A busy thread folds into one unread row per task.
       group: { key: `task:${event.taskId}:comments`, title: `{count} new comments on “${event.taskTitle}”` },
+    });
+  }
+
+  /**
+   * Sent by the `task.due_today` background process, not by a person. `warning`
+   * rather than `info`: it is the one task notice that asks for something
+   * today. No day in the words — "today" is the workspace's own, and the
+   * process only sends this on it.
+   */
+  async dueToday(event: TaskDueNotice): Promise<void> {
+    await this.sender.sendSafely({
+      recipientIds: event.recipientIds,
+      severity: 'warning',
+      title: `Due today: “${event.taskTitle}”`,
+      body: `On the board ${event.boardName}.`,
+      source: 'task.due',
+      context: { scope: 'workspace', organizationId: event.organizationId, workspaceId: event.workspaceId },
+      actions: [{ kind: 'link', key: 'open', label: 'Open tasks', href: appsHref(event), target: 'self' }],
     });
   }
 }

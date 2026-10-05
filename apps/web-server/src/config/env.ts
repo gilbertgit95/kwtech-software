@@ -180,6 +180,23 @@ const envSchema = z
     REALTIME_REPLICAS: z.coerce.number().int().positive().default(1),
 
     /**
+     * ── background processes ──────────────────────────────────────────────────
+     *
+     * Whether THIS server runs the background processes (`module-jobs`: task due
+     * reminders, and whatever modules declare after it). `on` unless said
+     * otherwise, so one server does everything with nothing to configure.
+     *
+     * `off` is for a deployment that runs them elsewhere — a worker started
+     * from the same image (JOBS-PLAN §8) — and wants its API instances to serve
+     * requests only. ⚠ `off` on EVERY instance means nothing runs, and the only
+     * sign is one line in the boot log.
+     *
+     * Running several instances with it `on` is safe: the queue, the one-run-
+     * per-process lock and the limit on runs at once are all in Postgres.
+     */
+    JOBS_RUNNER: z.enum(['on', 'off']).default('on'),
+
+    /**
      * The distributed pub/sub backend.
      *
      * ⚠ **THIS ONE VARIABLE IS THE ENGINE SWITCH.** Set it and this process

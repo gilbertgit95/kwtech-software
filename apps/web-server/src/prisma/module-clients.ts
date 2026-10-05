@@ -19,6 +19,7 @@ import {
   type ChatTransaction,
   type ChatWriteClient,
 } from '@kwtech/module-chat/server';
+import { JOBS_PRISMA_WRITE, type JobsTransaction, type JobsWriteClient } from '@kwtech/module-jobs/server';
 import { NOTE_PRISMA, NOTE_PRISMA_WRITE, type NoteTransaction, type NoteWriteClient } from '@kwtech/module-note/server';
 import {
   NOTIFICATION_PRISMA,
@@ -253,6 +254,8 @@ export const taskWritePrismaProvider: Provider = {
       taskAssignee: prisma.taskAssignee,
       taskChecklistItem: prisma.taskChecklistItem,
       taskComment: prisma.taskComment,
+      // The due-reminder process's claim: one row per task per due day, written before anybody is told.
+      taskDueReminder: prisma.taskDueReminder,
       taskPreference: prisma.taskPreference,
     }),
 };
@@ -351,4 +354,20 @@ export type { ChatPrismaClient, PermissionsPrismaClient };
 export const appHubPrismaProvider: Provider = {
   provide: APP_HUB_PRISMA,
   useExisting: PrismaService,
+};
+
+/**
+ * The background runner's one client. Write only: queueing and claiming a run
+ * are compare-and-sets inside the transaction `withTransaction` dispatches —
+ * the queue lock taken outside it would serialise nothing.
+ */
+export const jobsWritePrismaProvider: Provider = {
+  provide: JOBS_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): JobsWriteClient =>
+    withTransaction<JobsTransaction, JobsWriteClient>(prisma, {
+      jobProcess: prisma.jobProcess,
+      jobRun: prisma.jobRun,
+      jobQueueLock: prisma.jobQueueLock,
+    }),
 };

@@ -14,7 +14,9 @@ import {
   composeDefaults,
   composeFeatures,
   composeLimits,
+  composeProcesses,
   type LimitContribution,
+  type ProcessDeclaration,
   type WebModuleDescriptor,
 } from '@kwtech/module-kit';
 import { NOTE_FEATURE_REGISTRY, NOTE_LIMIT_REGISTRY } from '@kwtech/module-note';
@@ -29,7 +31,7 @@ import {
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
-import { TASK_FEATURE_REGISTRY, TASK_LIMIT_REGISTRY } from '@kwtech/module-task';
+import { TASK_FEATURE_REGISTRY, TASK_LIMIT_REGISTRY, TASK_PROCESS_REGISTRY } from '@kwtech/module-task';
 
 /**
  * EVERY module's features, composed. ← add a module's registry here
@@ -118,8 +120,19 @@ function toFeatureSpec(contribution: FeatureContribution): FeatureSpec {
  *
  * ⚠ Descriptors rather than Nest modules on purpose: only `key` is required, so
  * nothing here has to construct a `DynamicModule` to be counted.
+ *
+ * `processes` is the FIFTH registry, and the one a web descriptor does not
+ * carry — a browser runs none. It is the declaration WITHOUT its handler, which
+ * is what lets this file list it: the handler is a Nest class, and the server
+ * descriptor in `app.module.ts` is where the two are joined.
+ *
+ *   processes  an unlisted module's processes are never mirrored to
+ *              `job_process`, and the runner runs nothing that has no row. It
+ *              says so in the boot log, once, and the reminders never arrive.
  */
-const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
+type ModuleDeclaration = WebModuleDescriptor & { processes?: readonly ProcessDeclaration[] };
+
+const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
   {
     key: 'permissions',
     features: FEATURE_REGISTRY,
@@ -152,7 +165,7 @@ const MODULE_DECLARATIONS: readonly WebModuleDescriptor[] = [
    * queue's are. Leaving a line out would leave that module's every operation
    * reachable by anybody signed in, and its caps never mirrored for plans.
    */
-  { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY },
+  { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY, processes: TASK_PROCESS_REGISTRY },
   { key: 'pos', features: POS_FEATURE_REGISTRY, limits: POS_LIMIT_REGISTRY },
   /*
    * ⚠ And the books' — who put in what, who is owed what. Leave this out and
@@ -230,3 +243,17 @@ function toLimitSpec(contribution: LimitContribution): LimitSpec {
 }
 
 export const ALL_LIMITS: readonly LimitSpec[] = composeLimits(MODULE_DECLARATIONS).map(toLimitSpec);
+
+/**
+ * Every background process the app's modules declare, for `db:sync` to mirror
+ * into `job_process` (`seeders/jobs-processes.ts`).
+ *
+ * ⚠ The runner is handed the SAME processes, with their handlers, composed from
+ * the server descriptors in `app.module.ts`. Two lists, because a handler
+ * cannot be named without Nest and this file must run without it — so a
+ * process added to a module's descriptor and not to its line above is declared,
+ * never synced, and never run. The runner names it at its first wake-up.
+ *
+ * Duplicate keys and incomplete declarations throw, in `composeProcesses`.
+ */
+export const ALL_PROCESSES: readonly ProcessDeclaration[] = composeProcesses(MODULE_DECLARATIONS);

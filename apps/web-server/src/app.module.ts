@@ -27,7 +27,13 @@ import {
   ChatPresenceService,
   chatServerModule,
 } from '@kwtech/module-chat/server';
-import { type ServerModuleDescriptor, serverModuleImports, serverRoutePrefixes } from '@kwtech/module-kit';
+import { JOBS_ENTITLED_WORKSPACES, jobsServerModule } from '@kwtech/module-jobs/server';
+import {
+  composeProcesses,
+  type ServerModuleDescriptor,
+  serverModuleImports,
+  serverRoutePrefixes,
+} from '@kwtech/module-kit';
 import {
   NOTE_ACCESS_CHECK,
   NOTE_AUTHOR_DIRECTORY,
@@ -86,6 +92,7 @@ import { env } from './config/env.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
+import { JobsEntitledWorkspacesAdapter } from './jobs/entitled-workspaces.js';
 import { NoteManageAllAccess } from './note/access-check.js';
 import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
 import { NOTIFICATION_SOURCES } from './notifications/sources.js';
@@ -101,6 +108,7 @@ import {
   booksWritePrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
+  jobsWritePrismaProvider,
   notePrismaProvider,
   noteWritePrismaProvider,
   notificationPrismaProvider,
@@ -399,7 +407,11 @@ const POS_SERVER_MODULE: ServerModuleDescriptor = posServerModule({
   pubsubProvider: { provide: POS_PUBSUB, useValue: realtimePubSub() },
 });
 
-const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
+/**
+ * Every module EXCEPT the background runner, which is appended below because
+ * it is handed the processes these declare.
+ */
+const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
   /*
    * Three things, and every one of them is genuinely this app's:
    *   - which Prisma client the module writes through
@@ -623,7 +635,8 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
 
   /*
    * Task boards — a workspace sub-app, and the first module to TELL people
-   * things through `module-notification`. Every port reads another module's
+   * things through `module-notification`, and the first to declare a
+   * BACKGROUND PROCESS (`task.due_today`, run by the runner below). Every port reads another module's
    * tables: grants for `task:assign` / `task:manage_all`, membership and names
    * for assigning, the sender for notices. The adapters are in ./task/.
    */
@@ -723,6 +736,48 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   appHubServerModule({
     prismaProvider: appHubPrismaProvider,
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+  }),
+];
+
+/**
+ * EVERY MODULE THIS SERVER COMPOSES: the ones above, and the background runner.
+ *
+ * `module-jobs` is CORE, not a feature (JOBS-PLAN D9): it runs the processes of
+ * whichever modules are listed above, and with none it boots and runs nothing.
+ * So it is LAST and built from the rest — `composeProcesses` reads each
+ * descriptor's `processes`, and adopting a module that declares one changes
+ * nothing here.
+ *
+ * It runs INSIDE this server (the operator's decision, 2026-10-05; JOBS-PLAN
+ * §8). Moving it to a worker is `JOBS_RUNNER=off` here and the same modules
+ * booted there: the queue and its locks are in Postgres, not in this process.
+ */
+const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
+  ...DECLARING_MODULES,
+
+  jobsServerModule({
+    prismaWriteProvider: jobsWritePrismaProvider,
+
+    /*
+     * ⚠ Composed from the descriptors ABOVE, handlers and all. The same
+     * declarations, without handlers, are composed in `seed/registry.ts` for
+     * `db:sync`; a process missing there has no row and is never run.
+     */
+    processes: composeProcesses(DECLARING_MODULES),
+
+    /*
+     * ⚠ Without it, a process serving a feature reaches NO workspace — fail
+     * closed. Plans are permissions' tables, so the app answers which
+     * workspaces an organization's plan entitles. See ./jobs/.
+     */
+    entitledWorkspacesProvider: {
+      provide: JOBS_ENTITLED_WORKSPACES,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new JobsEntitledWorkspacesAdapter(prisma),
+    },
+
+    // Passed explicitly: the default lives in this app's zod schema, which never reaches `process.env`.
+    runner: env.JOBS_RUNNER === 'on',
   }),
 ];
 

@@ -4,6 +4,7 @@ import { booksHistorySeeder } from './books-history.js';
 import { defaultsSeeder } from './defaults.js';
 import { demoUserSeeder } from './demo-user.js';
 import { firstUserSeeder } from './first-user.js';
+import { jobsProcessesSeeder } from './jobs-processes.js';
 import { permissionsRegistrySeeder } from './permissions-registry.js';
 import { plansSeeder } from './plans.js';
 import { posCatalogueSeeder } from './pos-catalogue.js';
@@ -50,6 +51,11 @@ export const SEEDERS: readonly Seeder[] = [
    * above has not created yet is one it would skip.
    */
   defaultsSeeder,
+  /*
+   * Independent of the three above: a process row points at nothing of theirs.
+   * In this phase because the runner queues nothing that has no row.
+   */
+  jobsProcessesSeeder,
 
   // ── seed: once per environment, on request ──────────────────────────────
   /*
