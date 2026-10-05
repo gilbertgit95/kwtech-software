@@ -78,6 +78,25 @@ export function zonedHour(instant: Date, timeZone: string): number {
 }
 
 /**
+ * How many minutes into the store's day an instant is (0–1439): what "at 8:00"
+ * is compared against, for a schedule kept in the workspace's own time.
+ */
+export function zonedMinuteOfDay(instant: Date, timeZone: string): number {
+  const { hour, minute } = zonedParts(instant, timeZone);
+  return hour * 60 + minute;
+}
+
+/**
+ * The store's day of the week for an instant: 0 is Sunday, as `Date#getDay`
+ * numbers them. Read off the store's own day, so a Sunday evening in Manila is
+ * Sunday there while the server, in UTC, may already disagree.
+ */
+export function zonedWeekday(instant: Date, timeZone: string): number {
+  const { year, month, day } = zonedParts(instant, timeZone);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+/**
  * The instant a store day (`YYYY-MM-DD`) begins, so the server can ask for
  * "rows from this instant until the next day's".
  *

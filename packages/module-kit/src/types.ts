@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import type { DefaultContribution, DefaultMomentContribution } from './defaults.js';
 import type { LimitContribution } from './limits.js';
+import type { ProcessContribution } from './processes.js';
 
 /**
  * The contract a module-* package fills in and an app composes.
@@ -233,6 +234,17 @@ export interface ServerModuleDescriptor {
    * visible, which is the point, but not explained.
    */
   defaultMoments?: readonly DefaultMomentContribution[];
+  /**
+   * Work this module does on a SCHEDULE rather than on a request — see
+   * `ProcessContribution`. A fourth kind of declaration: not what may be done,
+   * how many, or what happens when nobody said, but what happens when nobody
+   * asked.
+   *
+   * ⚠ Declared here and RUN ELSEWHERE. The module never starts a timer: the app
+   * hands every module's processes to the runner (`composeProcesses`), which is
+   * what lets one screen list, pause and force them all.
+   */
+  processes?: readonly ProcessContribution[];
 }
 
 /**

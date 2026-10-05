@@ -223,6 +223,47 @@ registry, so a row in its table for a key nobody declared is ignored, and the
 screen that sets it has no control to offer. Setting the value in the database
 changes nothing, with no error to explain why.
 
+### A fourth: background processes
+
+Work a module does on a **schedule** rather than on a request. Same split:
+every module may declare one, and only `module-jobs` runs them.
+
+```ts
+// packages/module-task/src/processes.ts — pure data, in the module's root
+export const TASK_PROCESS_REGISTRY: readonly ProcessDeclaration[] = [{
+  key: 'task.due_today', module: 'task',
+  label: 'Task due reminders', description: '…',
+  serves: TASK_FEATURE.read,                       // or null, WRITTEN: serves no workspace
+  defaultSchedule: { kind: 'daily', times: ['08:00'], weekdays: [0, 1, 2, 3, 4, 5, 6] },
+  scheduleLimits: { kinds: ['daily', 'interval'], minEveryMinutes: 15 },
+  maxRunSeconds: 120, maxItemsPerRun: 500, tooLateAfterMinutes: 600,
+}];
+
+// server-module.ts — joined to the class that runs it
+processes: [{ ...declaration, handler: TaskDueTodayProcess }],
+```
+
+| | |
+|---|---|
+| `ProcessDeclaration` | the data: key, what it serves, default schedule, and its limits. **Every limit is required** |
+| `ProcessContribution` | a declaration plus `handler`, the module's `@Injectable()` class implementing `ProcessHandler` |
+| `composeProcesses` | every module's, for the runner and the seed task. Throws on a duplicate key or an incomplete declaration |
+| `ProcessRunContext` | what a run is handed: `now`, the schedule in force, `maxItems`, `tooLateAfterMinutes`, `signal`, and `workspaces(cursor, limit)` |
+| `processOccurrence` | whether a process's time has come in ONE workspace, and for which day: `none`, `due`, `too_late` |
+| `effectiveProcessSchedule` | the admin's schedule if it still fits the declared limits, otherwise the default |
+
+Two schedule kinds: `interval` (every N minutes) and `daily` (at set times, on
+chosen weekdays, **in each workspace's own time**). A `daily` process is not
+run once a day: no instant is 8:00 everywhere, so it is swept every
+`minEveryMinutes` and takes the workspaces whose time has come.
+
+**The developer of a process answers for its design**
+(`.claude/rules/modules.md`, "Background processes"): it sweeps, is idempotent,
+works in batches inside `maxItems`, stops when `signal` aborts, and assumes
+nothing about when it runs. It reaches only the workspaces `context.workspaces`
+hands it, which are those whose organization's plan includes the feature it
+`serves`.
+
 ### Defaults also need their MOMENT declared
 
 The defaults screen groups by *moment* — somebody arrives asking "what happens
