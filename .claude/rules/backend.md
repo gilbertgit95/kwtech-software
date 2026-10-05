@@ -24,8 +24,9 @@ Reference: `packages/module-queuing-window/src/server/` and
   **Legacy — do not copy:** auth and permissions declare tokens inside `*.repository.ts`.
 - **New modules are NOT `global: true` and expose no REST.** Auth and permissions
   are global with REST controllers for historical reasons.
-- **Register in the app:** add the descriptor to `SERVER_MODULES` in
-  `apps/web-server/src/app.module.ts`. Bind ports with `useFactory` + `inject`.
+- **Register in the app:** add the descriptor to `DECLARING_MODULES` in
+  `apps/web-server/src/app.module.ts` (`SERVER_MODULES` is those plus the
+  background runner, which is built from them). Bind ports with `useFactory` + `inject`.
   Use `useExisting` for shared singletons.
 - **Never import a Nest-injected class with `import type`.** It erases DI metadata.
 - **Nest, `@nestjs/graphql` and `graphql` come from the pnpm `catalog:`.** A second

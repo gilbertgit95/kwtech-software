@@ -484,7 +484,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 6 | Validation: zod pipe (masterdb) vs `class-validator` (coseller) | Phase 2 | code-first GraphQL needs decorators for *types* either way; zod can still own *validation*. Decide once, not per-module |
 | 7 | TypeScript version for `web-server` | Phase 2 | masterdb pins its backend to 6.0.3 while the catalog is 7.0.2 — confirm the reason (decorator metadata) before deviating |
 | 8 | ~~`next-auth` 5 beta vs server-issued JWT~~ **Closed** | — | **NestJS-issued JWT.** One issuer and one verification path for REST, GraphQL and the WS handshake; Auth.js would have left the API verifying a session it did not mint |
-| 10 | Job platform for `worker`; CI + remote cache | Phase 7+ | coseller uses Inngest. **Planned 2026-10-05 as `module-jobs` (`docs/JOBS-PLAN.md`):** a runner inside `web-server` under a Postgres lock, moving to `apps/worker` later; an outside platform is not proposed |
+| 10 | Job platform for `worker`; CI + remote cache | Phase 7+ | coseller uses Inngest. **Built 2026-10-05 as `module-jobs` (`docs/JOBS-PLAN.md`, §13):** a runner inside `web-server` whose queue and locks are in Postgres, behind `JOBS_RUNNER` so it can move to `apps/worker` later; an outside platform is not proposed |
 | 11 | Next route strategy: catch-all vs generated stubs (§9) | Phase 4 | start catch-all; the module is identical either way |
 | 12 | ~~Does `module-permissions` own user identity?~~ **Closed: no** | — | Identity lives in **`@kwtech/module-auth`**. `perm_*` still holds `userId` as a bare string with no FK to `auth_user`; the two meet only in the app's `resolvePrincipal` |
 | 13 | ~~Where the active organization and workspace come from on a request~~ **Closed** | — | **The URL, 2026-09-09.** `/organizations/:orgId/*` is organization level and `/organizations/:orgId/workspaces/:wsId/*` workspace level — the convention `scope.ts` has defined since it was written and which nothing used. Rejected: a header (forgettable, invisible in a bug report), a subdomain (a DNS record per tenant), and the token (baking the active tenant into a week-long credential makes switching organization need a new sign-in). Thirteen resolvers now declare `@RequireScope`, `myPermissions` takes an optional scope, and the web catch-all derives one from the matched route. Until this landed, an ORGANIZATION-LEVEL ROLE GRANTED NOTHING ANYWHERE — see the decision log |
@@ -562,7 +562,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 80 | There is no link to one note, or one task | when a notification or a bookmark should open a note or a task — a task notification opens the Apps page | Notes live on the Apps page, where a URL change closes every other app. A full-page route (as the queue's console has) would need its own frame and a way back |
 | 81 | The notes list is ordered in memory, over at most 2,000 notes | when one person sees more than `NOTE_ORDER_MAX` notes in a workspace | A per-person order lives on `NotePreference.noteOrder`, and Prisma cannot sort notes by another row, so `notes` reads up to 2,000 visible matching notes (newest first), orders them and pages by "after this id". Past that, the OLDEST unplaced notes drop off the end. Fine at the 500-per-person cap plus shared notes. Fix: a `note_order` table with a sortable position (fractional index) the query can join |
 | 82 | A board shows at most 1,000 tasks at once | when one board holds more live tasks than that | `tasks` reads up to `TASK_BOARD_READ_MAX` cards in one go and says the list was cut (`truncated`); search and filters reach the rest. Paging a board by column is the fix, and changes the drag model |
-| 83 | Nobody is reminded when a task is due | when somebody asks for a reminder on the scheduled or due day | Needs the job runner (§12.40) and, for times, a time zone per workspace. The dates are DAYS today; a time would be stored as a UTC instant and shown in the viewer's zone (TASK-PLAN §0 E). Planned as the first process of `module-jobs` (JOBS-PLAN §10) |
+| 83 | ~~Nobody is reminded when a task is due~~ **Settled 2026-10-05 for the DUE day** — see §13. A reminder on the SCHEDULED day, and a reminder at a time of the task's own, are still not built | when somebody asks to be reminded on the day they planned the work, or at an hour | `task.due_today` (run by `module-jobs`) tells a task's assignees, or its creator, on the due day at the workspace's 8:00. The dates are still DAYS; a time on a task would be stored as a UTC instant and shown in the viewer's zone (TASK-PLAN §0 E) |
 | 84 | Who may be assigned is worked out one member at a time | when a workspace has hundreds of members | `listAssignable` loads a permission context per active member, capped at 200 — the queue's staff directory does the same. A grants query that answers "who holds `task:write` here" in one read is the fix |
 | 85 | One workspace role per member, while a workspace holds several sub-apps | when combined roles in `seed/app-roles.ts` multiply, or a customer needs a combination the platform has not declared | §12.32 settled one workspace role per member before sub-apps existed. A cashier who also supervises the queue needs one role carrying both presets, and the number of such roles multiplies with every app. **Interim:** combined roles declared in `app-roles.ts` as a union of module presets, never cloned on the Roles screen, so a preset change reaches them on sync (`.claude/rules/database.md`, "Combined workspace roles"). **Proposed:** one role per APP per member: a `scope` on `PermRole` (`workspace` or a module key), the same on `PermWorkspaceMemberRole` with `@@unique([workspaceMemberId, scope])` and a composite FK `(roleId, scope)`, and a service check that an app role holds only its module's keys. **Considered and not preferred:** role groups (a role that includes other roles) fix drift but not the multiplying combinations, and need a "one role per app inside a group" rule, which is the per-app slot again. Cheapest before `module-basic-pos` has real grants |
 | 86 | The books add every balance up in memory, from every live entry | when one workspace's books pass `BOOKS_LEDGER_MAX` (50,000 live entries) — a busy store recording by hand for years | Balances are never stored, so they cannot disagree with the entries (BOOKKEEPING-PLAN). Each overview reads every live entry and sums them in `src/domain/`; past the cap the answer says `truncated`. Fix: sums in the database (`aggregate`/`groupBy` per kind, place and investor), keeping the domain as the rule the SQL is tested against |
@@ -572,10 +572,64 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 90 | A cart left on a till that never comes back stays in the database, listed nowhere | when open, never-held `pos_order` rows pile up — a till's browser storage is cleared, or a cashier walks away from a cart for good | Only Hold makes a pending order (§13, 2026-10-03), and a till remembers its open cart in the browser to put it back after a reload. A cart whose till forgot it is still saved and reachable by id, but no list shows it. It counts in no report (those read paid orders). Cancelling open, unheld carts older than a day is a job for the job runner (§12.40) |
 | 91 | Booking sends nothing to the customer: no "received", no "confirmed", no reminder | when the operator sets up an e-mail provider (planned), and later an SMS provider | `module-booking` is planned with a public booking that staff must confirm (BOOKING-PLAN §8, D2 and D3), so until then a customer learns the outcome only from their manage link or from the shop contacting them. The module declares `BOOKING_CUSTOMER_MESSENGER`, unbound; binding it needs a provider, its credentials in the env profiles, and a cost decision. A reminder before the time also needs the job runner (§12.40) |
 | 92 | There is no customer record shared between the apps: the point of sale keeps `PosCustomer`, and booking will keep a copy on each booking | when the customer management module is planned (the operator intends one, 2026-10-05) | The operator wants one customer shared across the apps (BOOKING-PLAN §8, D5). Modules never import each other, so it is a module of its own that the others reach through ports. Booking is shaped for it (a nullable `customerId`, `BOOKING_CUSTOMER_DIRECTORY` unbound). Building it means moving `pos_customer` rows into it and matching them to bookings by phone or e-mail, which is a data migration to plan, not a rename |
+| 93 | A process is declared in two places in the app: with its handler on the server descriptor, and without it in `seed/registry.ts` | when a third module declares a process, or the first time one is forgotten | The seed task cannot build a Nest module (it would need every secret), so it reads `X_PROCESS_REGISTRY` while the runner reads the descriptors. A process missing from the seed line has no row and never runs; the runner says so once, in the boot log. A test in `web-server` comparing the two lists would turn the log line into a failed build, and cannot be written until `AppModule` can be loaded without its secrets |
+| 94 | The background runner has no screen: no list of processes, no pause, no Run now, no schedule form | now — it is the next phase (JOBS-PLAN §10, phase 2) | Phase 1 built the contract, the queue and the first process. Until phase 2, a process is watched in the server log and in `job_run`, paused by setting `job_process.pausedAt` by hand, and its runs are never cleaned up (phase 3: 90 days). At a wake-up every 15 minutes per process that is under a hundred rows a day each |
+| 95 | A plan seeded before tasks existed does not include `task:read`, so its organizations get no due reminders — while their super-admins, who bypass the plan filter, use tasks every day | when an operator expects reminders in an organization whose plan has no task key | By design (JOBS-PLAN D12): a process follows the organization's plan and nothing bypasses that for a process. `seed/plans.ts` includes the task keys in every tier, but plans are `seed`, not `sync`, so an existing database keeps the plans it had. The fix is the operator's: add the task keys to the plan on the Plans screen. The run records `0 handled`, which does not say why |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-05** — **The background runner is built, inside `web-server`: `module-jobs` phase 1, with task due reminders as its first process.**
+
+  The plan below was accepted and the operator asked for it to be built. They
+  then asked which server it should run on, and whether separating it into its
+  own app would be a big job; told it was about half a day and could be done
+  later, they decided: inside `web-server`.
+  - **The contract is in `module-kit`** (`src/processes.ts`): a
+    `ProcessDeclaration` is data with every limit required, a
+    `ProcessContribution` adds the handler class, and `composeProcesses`
+    throws on a duplicate key or a limit left unsaid.
+  - **A `daily` schedule is swept, not run once a day.** No instant is 8:00
+    everywhere, so the runner starts the process every `minEveryMinutes` and
+    the process takes the workspaces whose time has come (`processOccurrence`).
+    A workspace's 8:00 is noticed within fifteen minutes of it.
+  - **Lateness is measured from the LATEST time that has come.** A second time
+    of day is a second chance for whatever became due since the first, which
+    is what an admin adding one asked for.
+  - **The queue's three promises are kept by Postgres, not by the process**,
+    so they hold on several instances: one run per process (a compare-and-set
+    on `job_process.activeRunId`), at most two at once (every claim first
+    updates the one row of `job_queue_lock`, so claims wait on each other), and
+    a lease past which a dead server's run is marked `interrupted`.
+  - **It runs inside `web-server`, behind `JOBS_RUNNER`** (`on` by default).
+    A worker later is `off` on the API and the same modules booted there.
+  - **Fail closed, everywhere.** A process never synced, paused, deprecated or
+    not in this build does not run. With no entitlement source bound, or one
+    that throws, a process serving a feature reaches no workspace and its run
+    is recorded as `skipped`, saying so.
+  - **Entitlement is one query in the app** (`jobs/entitled-workspaces.ts`),
+    applying the same test `loadContext` applies to a person: an active
+    subscription to a live plan carrying the feature. No grant is read.
+  - **`task.due_today` writes its own row before it tells anybody**
+    (`task_due_reminder`, keyed by task and due day), so it is at most once. It
+    tells the assignees, or the creator when nobody is assigned, and only
+    people who are still members and whom the board does not shut out.
+  - **Checked against the running server:** a booted `web-server` queued the
+    process, sent one "Due today" notification and recorded the run.
+  - **Not done: the admin page, its four keys, `JobControl`, the history
+    clean-up and the failing-process notice** (JOBS-PLAN phases 2 and 3; §12.94).
+    The schema already carries the pause and the admin's schedule, and the
+    runner already honours both, so phase 2 adds screens and writes, not rules.
+  - **Not done: an advisory lock.** The plan said "a Postgres lock"; a row
+    lock on one row does the same and needs no raw SQL in a module, which
+    declares its client structurally and has no `$queryRaw`.
+  - **Not done: an exact "left for the next run".** A run stopped at its item
+    limit counts what is waiting in the workspace where it stopped, not in the
+    workspaces after it. Counting those would be the unbounded read the limit
+    exists to prevent.
+  - **Not done: a reminder on the scheduled day, or at a task's own hour**
+    (§12.83). **Not done: `apps/worker`** (the operator's decision above).
 
 - **2026-10-05** — **A background runner is planned as `module-jobs`: modules declare their processes, and an app-level page shows, pauses and forces them.**
 

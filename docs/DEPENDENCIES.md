@@ -17,7 +17,7 @@ each other still work together. The rules come from PLAN §9 and `CLAUDE.md`;
    │  module-auth   module-permissions   module-chat               │
    │  module-queuing-window   module-notification   module-app-hub │
    │  module-note   module-task   module-basic-pos                 │
-   │  module-basic-bookkeeping                                           │
+   │  module-basic-bookkeeping   module-jobs                       │
    │                                                               │
    │  Each depends on module-kit ONLY, with web-ui, React and      │
    │  Nest as OPTIONAL peers. None imports another module.         │
@@ -44,6 +44,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-task` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
 | `module-basic-pos` | module-kit | web-ui, Nest, React | both apps |
 | `module-basic-bookkeeping` | module-kit | web-ui, Nest, React | both apps |
+| `module-jobs` | module-kit | Nest (`@nestjs/common`, `@nestjs/core`) | web-server (no React half yet) |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -84,6 +85,9 @@ has a documented, fail-closed meaning — see each module's README.
 | A database | `X_PRISMA`, `X_PRISMA_WRITE` | `prisma/module-clients.ts`, checked by `satisfies-modules.ts` |
 | Email a person | `CHAT_NOTIFIER`, auth's and permissions' mail callbacks | `chat/notify-mail.ts`, `auth/*-mail.ts`, `permissions/invitation-mail.ts` |
 | Tell a person something (in the app) | `X_NOTIFIER` declared by the producing module — the first is `TASK_NOTIFIER` (`task/notifier.ts`) | an adapter calling module-notification's `NotificationSender` — see its README |
+
+| Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
+| Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans and subscriptions) |
 
 Shared shapes (a pub/sub port, a directory entry) are COPIED structurally in
 each module, not imported — a duplicate interface is cheaper than a coupling.

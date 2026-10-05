@@ -1,15 +1,19 @@
 # `module-jobs` — plan
 
-Status: **planning, started 2026-10-05. Nothing is built.** The operator asked
+Status: **phase 1 is built (2026-10-05); phases 2 and 3 are not.** The
+contract, the sync, the queue, the runner and the first process
+(`task.due_today`) exist and run inside `web-server`. The admin page, its keys,
+`JobControl`, the history clean-up and the failing-process notice are still to
+be built (§10). What was decided while building is in PLAN §13, 2026-10-05, and
+how to use it is in `packages/module-jobs/README.md`.
+
+The operator asked
 whether a background service could check for what is due (an incoming booking,
 a task due today), generic enough for any module to use; then asked for an
 audit trail of it, and for it to be managed at app level like users and roles:
 see every process, pause it, resume it, force a run. This file is the proposal
 that came out of that conversation. What the operator asked for is in §2 and
-what they decided in §9; no question is open. The rest (the contract, the
-schema, the keys, the phases) is still to be reviewed before anything is
-built. Once it is built the decision goes to
-PLAN §13.
+what they decided in §9; no question is open.
 
 ## 1. What it is
 
@@ -293,11 +297,14 @@ One page in the drawer, beside users and roles, behind `jobs:read`.
 
 ## 8. Where it runs
 
-- **Proposed: inside `web-server`, guarded by a Postgres lock.** No new
-  infrastructure and no second deploy. The lock is what makes it safe when
-  the API runs as more than one instance.
+- **Decided (operator, 2026-10-05): inside `web-server`.** No new
+  infrastructure and no second deploy. Its locks are rows in Postgres, which
+  is what makes it safe when the API runs as more than one instance. The
+  operator asked whether a standalone server would be better and how big a job
+  separating it would be; it is about half a day, so it waits until a process
+  is heavy enough to slow requests.
 - **Later: `apps/worker`,** the same image started for its processes alone
-  (PLAN §5). Because the processes are declared through `module-kit` and the
+  (PLAN §5): `JOBS_RUNNER=off` on the API, on there. Because the processes are declared through `module-kit` and the
   runner is one Nest module, the move is wiring, not a rewrite.
 - **Not proposed: an outside job platform** (Inngest, as coseller uses,
   §12.10). It earns its place for long-running jobs and fan-out at scale, and
@@ -328,7 +335,7 @@ question is open.
 
 ## 10. Phases
 
-1. **The contract and the runner.** The `module-kit` declaration with its
+1. **The contract and the runner. BUILT 2026-10-05.** The `module-kit` declaration with its
    required limits (§4c), the sync, the queue with its limit, time limit and
    lease (§4b), `JobRun`, with **task due reminders** as the first process
    (§12.83): the smallest real consumer that exists today.

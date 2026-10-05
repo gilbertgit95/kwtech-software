@@ -34,6 +34,7 @@ packages/module-permissions/ organizations, workspaces, roles, features, plans, 
 packages/module-chat/       conversations and messages
 packages/module-queuing-window/ walk-in queue: windows, lines, a live TV board
 packages/module-notification/ system notifications: bell, toasts, a paginated inbox
+packages/module-jobs/       the background runner (core): queues and runs the processes modules declare
 packages/module-app-hub/    a workspace's Apps page: sub-apps in tabs or a resizable grid
 packages/module-note/       notes sub-app: private or shared Markdown notes, live, themed looks
 packages/module-task/       tasks sub-app: owner-configured boards, private or shared, assignees, live
@@ -164,6 +165,10 @@ only when it is a feature of its own (PLAN §9 rule 8).
       `apps/web-server/src/notifications/sources.ts`. Recipe:
       `packages/module-notification/README.md`, "Notifying people from another
       module". Person-to-person messages are chat, not notifications.
+- [ ] **Something that must happen on a schedule** (a reminder on the due day,
+      a stale request lapsing)? Never a timer: declare a process in
+      `src/processes.ts`, with every limit, and let `module-jobs` run it. The
+      rules are in `.claude/rules/modules.md`, "Background processes".
 - [ ] Use `@kwtech/web-ui` components and theme tokens rather than raw colours.
 - [ ] **Anything about days or times** (today, overdue, per-day reports, a
       printed time) follows the **workspace's time zone**, not the server's
@@ -176,12 +181,15 @@ only when it is a feature of its own (PLAN §9 rule 8).
       `apps/web-app/package.json`. The schema compose script and
       `next.config.ts` read those lists, so there is nothing else to register.
 - [ ] `apps/web-server/src/app.module.ts`: add the descriptor to
-      `SERVER_MODULES` with its providers (prisma clients, ports, pubsub).
+      `DECLARING_MODULES` (every module but the runner, which is built from
+      them) with its providers (prisma clients, ports, pubsub).
 - [ ] `apps/web-server/src/prisma/module-clients.ts` and `satisfies-modules.ts`:
       bind and check the client.
 - [ ] `apps/web-server/src/seed/registry.ts`: add to `MODULE_DECLARATIONS`.
       This is how the features reach `perm_feature`. For modules that cannot
-      use `@RequireFeature`, the bindings **are** the guard.
+      use `@RequireFeature`, the bindings **are** the guard. A module's
+      background processes go on the same line (`processes:`), or they are
+      never synced and never run.
 - [ ] `apps/web-server/src/seed/app-roles.ts` (and `plans.ts` for organization
       keys): grant the new keys to the roles and plans that should hold them.
       Read the module's presets (for example `QUEUE_ROLE_PRESETS`) rather than

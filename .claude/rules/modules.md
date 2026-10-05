@@ -17,6 +17,7 @@ src/index.ts            pure root: types, feature keys, domain, operations. NO f
 src/types.ts            shared shapes (views, refusal unions)
 src/feature-keys.ts     X_FEATURE, X_FEATURE_REGISTRY, X_LIMIT, X_LIMIT_REGISTRY, X_ROLE_PRESETS
 src/operations.ts       X_OPERATIONS: every GraphQL document the client sends
+src/processes.ts        X_PROCESS, X_PROCESS_REGISTRY: background processes, if any
 src/domain/*.ts         pure decisions, and where the unit tests point
 src/server/             → "./server"
   index.ts  x.module.ts  server-module.ts  x.options.ts  x.tokens.ts  ports.ts
@@ -127,8 +128,48 @@ violation of the import rules below.
 - **If a payload ever carries personal data, filter the audience per publish**, as
   chat does.
 
+## Background processes (work on a schedule)
+
+A module never starts a timer. It DECLARES a process and `module-jobs` runs it
+(`docs/JOBS-PLAN.md`). Reference: `task.due_today` in `module-task`.
+
+- **Declare it as data in `src/processes.ts`** (the root, pure):
+  `X_PROCESS = { … } as const` and `X_PROCESS_REGISTRY: readonly
+  ProcessDeclaration[]`. The key is `<module>.<what>` in snake_case. Join each
+  declaration to its handler class in `server-module.ts` (`processes`), and
+  list the handler in the Nest module's providers.
+- **Every limit is declared, with the reason in a comment:** the default
+  schedule and what an admin may change it within, `maxRunSeconds`,
+  `maxItemsPerRun`, `tooLateAfterMinutes`, and `serves` (a feature key of this
+  module, or a written `null`). Composition throws without them.
+- **It sweeps.** "Find what is due and not yet dealt with", never a timer per
+  item.
+- **It is idempotent, by a row of its own.** Record what was done in the
+  module's own table under a `@@unique` or `@@id`, write that row BEFORE the
+  side effect, and treat `P2002` as "somebody else did it". Put "not dealt with
+  yet" in the sweep's query, so a run never has to remember where it got to.
+- **It works in batches and stops when told.** Page the workspaces, hold no
+  long transaction, stay inside `context.maxItems`, and check
+  `context.signal.aborted` between items.
+- **It assumes nothing about when it runs.** Use `context.now`, never the
+  clock. Work out each workspace's day with `processOccurrence`, skip and count
+  what is `too_late`.
+- **It reaches only the workspaces `context.workspaces` hands it.** That is the
+  organization's plan, applied (JOBS-PLAN D12). Never query across tenants.
+- **It returns counts, never names:** `handled`, `skippedLate`, `leftForNext`.
+  An error message is written knowing app-level staff read it.
+- **It tells people through the module's own `X_NOTIFIER`**, after its row is
+  written, and a failed notice never fails the run.
+- **Tests, in the module:** run twice and the second does nothing; stopped at
+  its item limit and the next run finishes; an item past the window is skipped
+  and counted once; "today" asserted in two time zones at one instant.
+- **In the app:** add the registry to the module's line in `seed/registry.ts`
+  (`processes:`), then `db:sync`. A process never synced does not run.
+- **README:** a "Processes" section, before "What it declares": what each does,
+  its default schedule, its limits, and what a person sees when it is paused.
+
 ## README (update with every contract change)
 
 Sections in this order: "In a Next.js app" → "In a NestJS app" (options, ports,
 what unbound means) → Realtime → Vocabulary → the domain entry point →
-feature-specific sections → "What it declares".
+feature-specific sections → Processes → "What it declares".
