@@ -1,0 +1,360 @@
+// The booking module's slice of the data model (docs/BOOKING-PLAN.md §4).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Booking` and mapped to `booking_*`.
+//
+//   service ◀──▶ resource        (which resources can perform which service)
+//                  ├──▶ hours     (its week: minutes of the workspace's day)
+//                  └──▶ exception (a closed day, or a closed stretch of one)
+//
+//   appointment ──▶ change        (its history: one row per thing done to it)
+//        └────────▶ reminder      (one per start time: staff were told, once)
+//
+//   settings (one row per workspace)
+//
+// ⚠ SLOTS ARE NOT HERE, and never will be. What is free is computed from hours,
+// exceptions and the appointments that hold a slot, every time it is asked.
+//
+// ⚠ NO DOUBLE BOOKING IS A DATABASE CONSTRAINT, written in the migration because
+// Prisma cannot express it: `booking_appointment_no_overlap`, an EXCLUDE over
+// (`resourceId`, the blocked range) for the statuses that hold a slot. The
+// service looks first, for the friendly answer; the constraint is what holds
+// when two writes race (BOOKING-PLAN §3).
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE. The guard proves the caller is a
+// member of the workspace in the request, not that the row is in it.
+//
+// ⚠ `userId`s and `customerId` are BARE STRINGS with no foreign key: `auth_user`
+// belongs to module-auth, and the shared customer record to a module not built
+// yet (PLAN §9, BOOKING-PLAN D5).
+
+/// What a resource is. Generic on purpose (D1): no trade is named here.
+enum BookingResourceKind {
+  staff
+  place
+  equipment
+}
+
+/// Where a booking stands. `pending`, `confirmed`, `arrived` and `done` HOLD
+/// their slot; the rest have let it go.
+enum BookingAppointmentStatus {
+  /// Asked for on the public link, waiting for staff (D2). Holds its slot.
+  pending
+  confirmed
+  declined
+  arrived
+  done
+  cancelled
+  no_show
+}
+
+enum BookingChangeKind {
+  created
+  confirmed
+  declined
+  rescheduled
+  cancelled
+  arrived
+  done
+  no_show
+  /// The customer's details or the note were corrected.
+  details
+}
+
+/// Who made a change: a member of staff, the customer on the public page or
+/// their manage link, or the app — a request that lapsed.
+enum BookingChangeActor {
+  staff
+  customer
+  system
+}
+
+/// What became of a booking's reminder (`booking.upcoming_sessions`).
+enum BookingReminderOutcome {
+  /// Its people were told.
+  sent
+  /// It had already started when a run first saw it.
+  skipped_late
+  /// Nobody works the desk who could be told.
+  no_recipient
+}
+
+/// Something that can be booked. Archived, never deleted: old bookings name it.
+model BookingService {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name                String
+  durationMinutes     Int
+  /// Time kept clear on the resource before and after. Copied into a booking's
+  /// blocked range when it is made, so changing these never moves an old one.
+  bufferBeforeMinutes Int    @default(0)
+  bufferAfterMinutes  Int    @default(0)
+  /// In the currency's smallest unit, as the point of sale keeps prices. Shown,
+  /// never charged: no money is taken when booking (D4).
+  price               Int?
+
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resources    BookingServiceResource[]
+  appointments BookingAppointment[]
+
+  @@index([workspaceId, archivedAt])
+  @@index([organizationId])
+  @@map("booking_service")
+}
+
+/// Who or what is booked: a person, a place or a piece of equipment.
+model BookingResource {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name   String
+  kind   BookingResourceKind
+  /// For a `staff` resource: the member it is, told of their own bookings.
+  /// Optional — somebody who is booked need not have an account.
+  userId String?
+
+  /// Archived since then: takes no new booking, and does not count toward
+  /// `booking:resources`.
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services     BookingServiceResource[]
+  hours        BookingHours[]
+  exceptions   BookingException[]
+  appointments BookingAppointment[]
+
+  /// The live resources of a workspace, and the count behind `booking:resources`.
+  @@index([workspaceId, archivedAt])
+  @@index([organizationId])
+  @@map("booking_resource")
+}
+
+/// Which resources can perform which service.
+model BookingServiceResource {
+  serviceId      String
+  resourceId     String
+  organizationId String
+  workspaceId    String
+
+  service  BookingService  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, resourceId])
+  @@index([resourceId])
+  @@index([organizationId])
+  @@map("booking_service_resource")
+}
+
+/// One stretch of a resource's week, `[startMinute, endMinute)`.
+///
+/// ⚠ MINUTES OF THE WORKSPACE'S DAY, not instants: 540 is 9:00 wherever the
+/// workspace is, summer and winter. A resource's week is replaced whole.
+model BookingHours {
+  id             String @id @default(cuid())
+  resourceId     String
+  organizationId String
+  workspaceId    String
+
+  /// 0 is Sunday.
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+
+  resource BookingResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, weekday])
+  @@index([organizationId])
+  @@map("booking_hours")
+}
+
+/// A day, or a stretch of one, that is closed.
+model BookingException {
+  id             String  @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  /// Null: EVERY resource of the workspace — a holiday.
+  resourceId     String?
+
+  /// A DAY of the workspace, never an instant.
+  day         DateTime @db.Date
+  /// Both null: the whole day. Otherwise minutes of that day, as hours are.
+  startMinute Int?
+  endMinute   Int?
+  note        String   @default("")
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  resource BookingResource? @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, day])
+  @@index([organizationId])
+  @@map("booking_exception")
+}
+
+/// One booking: a service, with a resource, at a time, for a customer.
+model BookingAppointment {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  serviceId      String
+  resourceId     String
+
+  /// The service's own time: instants.
+  startsAt     DateTime
+  endsAt       DateTime
+  /// ⚠ What the resource is TAKEN for: the service's time plus its buffers as
+  /// they were when the booking was made or last moved. The exclusion
+  /// constraint and every overlap check read these two, never `startsAt`.
+  blockedFrom  DateTime
+  blockedUntil DateTime
+
+  status BookingAppointmentStatus
+
+  /// The customer, COPIED onto the booking (D5): what was true when it was
+  /// made. Phone and e-mail are separate so a message can be addressed to
+  /// either later (D3).
+  customerName  String
+  customerPhone String?
+  customerEmail String?
+  /// The shared customer record, once a customer module exists (PLAN §12.92).
+  /// Bare, no foreign key, and always null until then.
+  customerId    String?
+  /// What the customer needs, in their words or the desk's.
+  note          String  @default("")
+
+  /// The member of staff who made it. Null: the customer, on the public link.
+  createdById String?
+  /// Who confirmed or declined a request, and when.
+  decidedById String?
+  decidedAt   DateTime?
+
+  /// Since when it has been WAITING for staff: set when it becomes `pending`
+  /// (asked for, or moved by the customer), cleared when it stops. What the
+  /// lapse of an unanswered request is measured from.
+  pendingSince DateTime?
+
+  /// ⚠ A SECRET, hashed. SHA-256 of the manage token given to the customer who
+  /// asked for the booking; the token itself is shown once and never stored.
+  /// Null for a booking made by staff: it has no manage link. Scrubbed from
+  /// the dev snapshot (`SCRUBBED_COLUMNS`).
+  manageTokenHash String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// ⚠ Restrict: a service or resource with bookings is archived, never deleted.
+  service   BookingService    @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  resource  BookingResource   @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  changes   BookingChange[]
+  reminders BookingReminder[]
+
+  /// The day's list, and the reminder sweep.
+  @@index([workspaceId, startsAt])
+  /// The requests waiting for staff, and the sweep that lapses them.
+  @@index([workspaceId, status, startsAt])
+  /// The overlap check before a write.
+  @@index([resourceId, blockedFrom])
+  @@index([organizationId])
+  @@map("booking_appointment")
+}
+
+/// One thing done to a booking (D7). Never updated, never deleted: this is the
+/// answer to "who moved Maria's booking, and from when".
+model BookingChange {
+  id             String @id @default(cuid())
+  appointmentId  String
+  organizationId String
+  workspaceId    String
+
+  kind      BookingChangeKind
+  actorKind BookingChangeActor
+  /// The member of staff. Null when the customer did it.
+  actorId   String?
+
+  /// For `rescheduled`: where it moved from and to.
+  fromStartsAt   DateTime?
+  toStartsAt     DateTime?
+  fromResourceId String?
+  toResourceId   String?
+  /// Why — required for a cancellation.
+  reason         String    @default("")
+
+  createdAt DateTime @default(now())
+
+  appointment BookingAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, createdAt])
+  @@index([organizationId])
+  @@map("booking_change")
+}
+
+/// A booking's reminder for ONE start time, dealt with. ⚠ This row is what
+/// makes `booking.upcoming_sessions` idempotent: it is written BEFORE anybody
+/// is told, and its key is the booking and its start, so a second run, a
+/// restart or a second server can never tell somebody twice.
+///
+/// Keyed by the start as well as the booking, so one moved to another time is
+/// reminded of the new time too.
+model BookingReminder {
+  appointmentId  String
+  /// The start it was for — the booking's `startsAt` at the time.
+  startsAt       DateTime
+  organizationId String
+  workspaceId    String
+
+  outcome BookingReminderOutcome
+
+  createdAt DateTime @default(now())
+
+  appointment BookingAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@id([appointmentId, startsAt])
+  @@index([organizationId])
+  @@map("booking_reminder")
+}
+
+/// One workspace's booking settings. No row means the defaults
+/// (`BOOKING_DEFAULT_SETTINGS`).
+model BookingSettings {
+  workspaceId    String @id
+  organizationId String
+
+  /// How far apart the offered start times are, in minutes.
+  slotMinutes     Int @default(30)
+  /// How long before a booking starts staff are told. 0: no reminder.
+  reminderMinutes Int @default(15)
+
+  /// Whether customers can book on the public page. Off until a workspace says so.
+  publicEnabled Boolean @default(false)
+  /// The public page's address: `/book/<publicLinkId>`. Random, made when the
+  /// page is first turned on, and replaced by "reset the link". NOT a secret —
+  /// it is handed out — but it must not be guessable from the workspace's id.
+  publicLinkId  String? @unique
+  /// What the page is headed with, and a few lines under it.
+  publicTitle   String  @default("")
+  publicNote    String  @default("")
+
+  /// The customer's rules. None binds staff.
+  leadMinutes   Int @default(60)
+  horizonDays   Int @default(30)
+  cutoffMinutes Int @default(120)
+  /// How long a request waits for staff before it lapses, in hours.
+  lapseHours    Int @default(24)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("booking_settings")
+}
