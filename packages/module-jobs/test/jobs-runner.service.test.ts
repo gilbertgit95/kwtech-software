@@ -20,7 +20,10 @@ describe('a wake-up', () => {
   it('hands the process its own limits, and the schedule in force', async () => {
     const reminders = processOf('task.due_today', undefined, { maxItemsPerRun: 40, tooLateAfterMinutes: 90 });
     const h = await harness([reminders]);
-    Object.assign(h.prisma.state.jobProcess[0] ?? {}, { schedule: { kind: 'interval', everyMinutes: 30 } });
+    Object.assign(h.prisma.state.jobProcess[0] ?? {}, {
+      schedule: { kind: 'interval', everyMinutes: 30 },
+      scheduleSetAt: NOW,
+    });
 
     await h.runner.tick(NOW);
     await h.runner.idle();

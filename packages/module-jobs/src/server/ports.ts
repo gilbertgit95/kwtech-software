@@ -21,3 +21,19 @@ import type { ProcessWorkspacePage } from '@kwtech/module-kit';
 export interface JobsEntitledWorkspaces {
   page(featureKey: string, cursor: string | null, limit: number): Promise<ProcessWorkspacePage>;
 }
+
+/**
+ * Who a user id is, in words, for the admin page: "Paused by Ana Cruz".
+ *
+ * Accounts are `module-auth`'s tables, and a module may not import a module
+ * (PLAN §9), so the app answers. The same question `QueueStaffDirectory`
+ * asks, copied structurally rather than shared: nothing else needs this shape.
+ *
+ * ⚠ A LOOK-UP OF NAMES ONLY, for ids this module already holds. It is never a
+ * search, and an id with no answer is simply left out.
+ *
+ * UNBOUND, OR THROWING, MEANS NO NAMES — the page says "an administrator".
+ */
+export interface JobsActorDirectory {
+  names(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+}

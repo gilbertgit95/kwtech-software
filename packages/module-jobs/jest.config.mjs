@@ -6,8 +6,10 @@
  * it lets the suite run against src/ directly.
  *
  * Decorators are on because the server adapter is Nest: the services carry
- * `@Inject` parameters, which need the polyfill loaded before a class is
- * evaluated.
+ * `@Inject` parameters, and the surface-coverage suite reads the resolver's
+ * metadata back — both need the polyfill loaded before a class is evaluated.
+ * `tsx` because the web descriptor renders its route adapter, and a suite that
+ * could not parse JSX could not assert what the module contributes.
  */
 export default {
   setupFiles: ['reflect-metadata'],
@@ -19,12 +21,12 @@ export default {
       '@swc/jest',
       {
         jsc: {
-          parser: { syntax: 'typescript', decorators: true },
-          transform: { decoratorMetadata: true, legacyDecorator: true },
+          parser: { syntax: 'typescript', tsx: true, decorators: true },
+          transform: { decoratorMetadata: true, legacyDecorator: true, react: { runtime: 'automatic' } },
           target: 'es2023',
         },
       },
     ],
   },
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/index.ts', '!src/react/**'],
 };

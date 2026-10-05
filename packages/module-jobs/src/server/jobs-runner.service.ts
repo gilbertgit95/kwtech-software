@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { runCount, runErrorText } from '../domain/queue.js';
+import { adminSchedule } from '../domain/schedule.js';
 import type { ResolvedJobsOptions } from './jobs.options.js';
 import type { JobProcessRow, JobRunRow } from './jobs.repository.js';
 import { JOBS_ENTITLED_WORKSPACES, JOBS_OPTIONS } from './jobs.tokens.js';
@@ -255,7 +256,7 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
     return {
       // When the run STARTED: one clock for the whole run, as the contract says.
       now: run.startedAt ?? new Date(),
-      schedule: effectiveProcessSchedule(declaration, process.schedule).schedule,
+      schedule: effectiveProcessSchedule(declaration, adminSchedule(process)).schedule,
       maxItems: declaration.maxItemsPerRun,
       tooLateAfterMinutes: declaration.tooLateAfterMinutes,
       signal,

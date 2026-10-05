@@ -8,6 +8,8 @@ import { JOBS_MAX_CONCURRENT_RUNS, JOBS_MAX_RUN_SECONDS_CEILING, JOBS_TICK_SECON
  * comes to one descriptor plus the one adapter only it can write.
  */
 export interface JobsModuleOptions {
+  /** The read client, for the admin page. Structural, host-injected — this module opens nothing. */
+  prismaProvider?: unknown;
   /** The write client, which must expose `$transaction`. Structural, host-injected. */
   prismaWriteProvider?: unknown;
 
@@ -22,8 +24,17 @@ export interface JobsModuleOptions {
   /** A `JobsEntitledWorkspaces` provider. ⚠ Unbound: a process serving a feature reaches no workspace. */
   entitledWorkspacesProvider?: unknown;
 
+  /** A `JobsActorDirectory` provider. Unbound: the admin page shows no names. */
+  actorDirectoryProvider?: unknown;
+
   /** Modules the host wants visible inside this one's injector. */
   imports?: unknown[];
+
+  /** Which transports to publish. GraphQL only: the admin page's queries and control actions. */
+  expose?: { graphql?: boolean };
+
+  /** Principal → `userId`, for who paused, forced or rescheduled. The module never learns what a session is. */
+  resolveActorId?: (request: unknown) => string | undefined;
 
   /**
    * Whether THIS server takes runs off the queue. Default true.
@@ -54,6 +65,8 @@ export interface JobsModuleOptions {
 /** The options with every default applied — what the services read. */
 export interface ResolvedJobsOptions {
   processes: readonly ProcessContribution[];
+  /** Absent: nobody can be named as the actor, and every control action is refused as not signed in. */
+  resolveActorId?: (request: unknown) => string | undefined;
   runner: boolean;
   maxConcurrentRuns: number;
   tickSeconds: number;
@@ -75,6 +88,8 @@ export function resolveJobsOptions(options: JobsModuleOptions): ResolvedJobsOpti
     maxConcurrentRuns: options.maxConcurrentRuns ?? JOBS_MAX_CONCURRENT_RUNS,
     tickSeconds: options.tickSeconds ?? JOBS_TICK_SECONDS,
     maxRunSecondsCeiling: options.maxRunSecondsCeiling ?? JOBS_MAX_RUN_SECONDS_CEILING,
+    // Omitted rather than undefined (`exactOptionalPropertyTypes`).
+    ...(options.resolveActorId ? { resolveActorId: options.resolveActorId } : {}),
   };
 
   for (const [name, value] of [

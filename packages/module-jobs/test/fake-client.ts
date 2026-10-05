@@ -2,7 +2,7 @@ import type { JobsWriteClient } from '../src/server/jobs.repository.js';
 
 /**
  * An in-memory stand-in for the host's Prisma client — `module-task`'s fake,
- * with the runner's three tables.
+ * with the runner's four tables.
  *
  * The payoff of `JobsTransaction` being STRUCTURAL: the module opens no
  * connection, so its tests need no database. The fake keeps the promises the
@@ -27,7 +27,7 @@ import type { JobsWriteClient } from '../src/server/jobs.repository.js';
 type Row = Record<string, unknown>;
 type Where = Record<string, unknown>;
 
-export const TABLES = ['jobProcess', 'jobRun', 'jobQueueLock'] as const;
+export const TABLES = ['jobProcess', 'jobRun', 'jobControl', 'jobQueueLock'] as const;
 export type TableName = (typeof TABLES)[number];
 export type FakeState = Record<TableName, Row[]>;
 
@@ -35,6 +35,7 @@ export type FakeState = Record<TableName, Row[]>;
 const UNIQUES: Record<TableName, string[][]> = {
   jobProcess: [['key'], ['activeRunId']],
   jobRun: [['id']],
+  jobControl: [['id']],
   jobQueueLock: [['id']],
 };
 
@@ -62,6 +63,8 @@ const DEFAULTS: Record<TableName, (now: Date) => Row> = {
     note: null,
     error: null,
   }),
+  // `id` is the database's (`@default(cuid())`); `fakeClient` numbers them.
+  jobControl: () => ({ reason: null, scheduleFrom: null, scheduleTo: null }),
   jobQueueLock: (now) => ({ touchedAt: now }),
 };
 
@@ -89,11 +92,19 @@ function matches(row: Row, where: Where | undefined): boolean {
 
     return Object.entries(condition).every(([operator, value]) => {
       switch (operator) {
+        case 'in':
+          return (value as unknown[]).some((candidate) => same(row[key], candidate));
         case 'notIn':
           return !(value as unknown[]).some((candidate) => same(row[key], candidate));
+        case 'not':
+          // Only "is not null" is sent: resuming takes a process that is paused.
+          if (value !== null) throw new Error(`fake client: unsupported 'not' value on ${key}`);
+          return row[key] != null;
         case 'lt':
           // A null never compares, as in SQL: a run with no lease has not lapsed.
           return row[key] != null && compare(row[key], value) < 0;
+        case 'lte':
+          return row[key] != null && compare(row[key], value) <= 0;
         default:
           throw new Error(`fake client: unsupported operator '${operator}' on ${key}`);
       }
@@ -146,6 +157,8 @@ export function fakeClient(state: FakeState = emptyState()): FakeClient {
   function delegate(table: TableName) {
     const create = async ({ data }: { data: Row }) => {
       const row = { ...DEFAULTS[table](now()), ...copy(data) };
+      if (table === 'jobControl' && row.id == null)
+        row.id = `control-${String(state[table].length + 1).padStart(4, '0')}`;
       assertUnique(table, row);
       state[table].push(row);
       return copy(row);

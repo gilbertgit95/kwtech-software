@@ -1,9 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // No DOM and no JSX: the runner has no React half yet. The admin page
-    // (JOBS-PLAN phase 2) brings both, with `src/react/`.
-    "lib": ["ES2023"],
+    // DOM and JSX for the React half (the admin page). The DOMAIN half imports
+    // none of it — `src/index.ts` exports no React, the server no DOM.
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
     "outDir": "dist",
     // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
     // with the build info beside the tsconfig it outlives every `rm -rf dist` —

@@ -1,4 +1,4 @@
-import type { JobRunState, JobRunTrigger } from '../types.js';
+import type { JobControlAction, JobRunState, JobRunTrigger } from '../types.js';
 
 /**
  * The slice of a Prisma client this module uses — declared STRUCTURALLY, never
@@ -30,7 +30,7 @@ export interface JobProcessRow {
   maxItemsPerRun: number;
   tooLateAfterMinutes: number;
   deprecatedAt: Date | null;
-  /** Json. The admin's schedule, narrowed by `effectiveProcessSchedule` on every read. */
+  /** Json. The admin's schedule — ⚠ in force only while `scheduleSetAt` is set: read it through `adminSchedule`. */
   schedule: unknown;
   scheduleSetById: string | null;
   scheduleSetAt: Date | null;
@@ -58,6 +58,19 @@ export interface JobRunRow {
   leftForNext: number;
   note: string | null;
   error: string | null;
+}
+
+export interface JobControlRow {
+  id: string;
+  processKey: string;
+  action: JobControlAction;
+  actorId: string;
+  reason: string | null;
+  /** Json. A `ProcessSchedule`, for `rescheduled` and `reset_schedule`. */
+  scheduleFrom: unknown;
+  /** Json. As above. */
+  scheduleTo: unknown;
+  createdAt: Date;
 }
 
 /** What the sync writes: the declaration, and nothing an admin set. */
@@ -94,8 +107,25 @@ export interface JobsTransaction {
       where:
         | { key: string; activeRunId: null; deprecatedAt: null; pausedAt: null }
         | { activeRunId: string }
-        | { key: { notIn: string[] }; deprecatedAt: null };
-      data: { activeRunId?: string | null; lastQueuedAt?: Date; deprecatedAt?: Date };
+        | { key: { notIn: string[] }; deprecatedAt: null }
+        /** Pausing: only a live process that is not paused already. */
+        | { key: string; deprecatedAt: null; pausedAt: null }
+        /** Resuming: only one that is paused. */
+        | { key: string; pausedAt: { not: null } }
+        /** Setting or resetting a schedule. */
+        | { key: string; deprecatedAt: null };
+      data: {
+        activeRunId?: string | null;
+        lastQueuedAt?: Date;
+        deprecatedAt?: Date;
+        pausedAt?: Date | null;
+        pausedById?: string | null;
+        pauseReason?: string | null;
+        /** ⚠ Never null: a reset clears `scheduleSetAt` instead (`adminSchedule`). */
+        schedule?: object;
+        scheduleSetById?: string | null;
+        scheduleSetAt?: Date | null;
+      };
     }): Promise<{ count: number }>;
   };
 
@@ -110,9 +140,18 @@ export interface JobsTransaction {
         queuedAt: Date;
       };
     }): Promise<JobRunRow>;
-    /** The head of the queue, or the running rows whose lease has lapsed. */
+    /**
+     * The head of the queue, or the running rows whose lease has lapsed. For
+     * the admin page: the runs some processes are held by, a process's last
+     * run in given states, and a page of its history from an instant back.
+     */
     findMany(args: {
-      where: { state: 'queued' } | { state: 'running'; leaseExpiresAt: { lt: Date } };
+      where:
+        | { state: 'queued' }
+        | { state: 'running'; leaseExpiresAt: { lt: Date } }
+        | { id: { in: string[] } }
+        | { processKey: string; state: { in: JobRunState[] } }
+        | { processKey: string; queuedAt?: { lte: Date } };
       orderBy: Array<{ queuedAt: SortOrder } | { processKey: SortOrder } | { id: SortOrder }>;
       take: number;
     }): Promise<JobRunRow[]>;
@@ -138,6 +177,27 @@ export interface JobsTransaction {
     }): Promise<{ count: number }>;
   };
 
+  jobControl: {
+    /** ⚠ `createdAt` is passed, never defaulted: it is the service's one clock, shared with the row it explains. */
+    create(args: {
+      data: {
+        processKey: string;
+        action: JobControlAction;
+        actorId: string;
+        reason: string | null;
+        scheduleFrom?: object;
+        scheduleTo?: object;
+        createdAt: Date;
+      };
+    }): Promise<JobControlRow>;
+    /** A page of a process's control actions, from an instant back. */
+    findMany(args: {
+      where: { processKey: string; createdAt?: { lte: Date } };
+      orderBy: Array<{ createdAt: SortOrder } | { id: SortOrder }>;
+      take: number;
+    }): Promise<JobControlRow[]>;
+  };
+
   jobQueueLock: {
     upsert(args: {
       where: { id: string };
@@ -148,6 +208,9 @@ export interface JobsTransaction {
     updateMany(args: { where: { id: string }; data: { touchedAt: Date } }): Promise<{ count: number }>;
   };
 }
+
+/** The read client. The same delegates; a host may bind a replica. */
+export type JobsPrismaClient = JobsTransaction;
 
 export interface JobsWriteClient extends JobsTransaction {
   $transaction<T>(fn: (tx: JobsTransaction) => Promise<T>): Promise<T>;

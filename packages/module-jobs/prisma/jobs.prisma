@@ -4,6 +4,7 @@
 // is the source. Models are prefixed `Job` and mapped to `job_*`.
 //
 //   process ──▶ run (one per time it was queued: the queue AND the history)
+//     └─────▶ control (one per thing an admin did to it: the audit trail proper)
 //
 //   queue lock (one row: what every claim waits on)
 //
@@ -34,6 +35,18 @@ enum JobRunTrigger {
   forced
 }
 
+/// What an admin did to a process. Mirrors `JobControlAction` in src/types.ts.
+enum JobControlAction {
+  paused
+  resumed
+  /// "Run now": the run it queued carries the same person as `forcedById`.
+  forced
+  /// The schedule was changed: `scheduleFrom` and `scheduleTo` say from what to what.
+  rescheduled
+  /// The schedule was put back to the module's default.
+  reset_schedule
+}
+
 /// The MIRROR of a process a module declares in code (`ProcessDeclaration`,
 /// module-kit), written by `db:sync`, plus the two things an admin sets on it:
 /// its schedule and its pause.
@@ -60,9 +73,15 @@ model JobProcess {
   /// Set by the sync when no build declares it any more. Never runs again.
   deprecatedAt DateTime?
 
-  /// The admin's schedule (a `ProcessSchedule`), or null for the default. One
-  /// that no longer fits the declared limits is ignored in favour of the
-  /// default (`effectiveProcessSchedule`).
+  /// The admin's schedule (a `ProcessSchedule`). One that no longer fits the
+  /// declared limits is ignored in favour of the default
+  /// (`effectiveProcessSchedule`).
+  ///
+  /// ⚠ IN FORCE ONLY WHILE `scheduleSetAt` IS SET. "Reset to default" clears
+  /// `scheduleSetAt` and leaves this column as it was: writing SQL NULL into a
+  /// Json column needs a sentinel from the generated client, which a module
+  /// may not import. Read it through `adminSchedule` (src/domain/schedule.ts),
+  /// never directly.
   schedule        Json?
   scheduleSetById String?
   scheduleSetAt   DateTime?
@@ -83,7 +102,8 @@ model JobProcess {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  runs JobRun[]
+  runs     JobRun[]
+  controls JobControl[]
 
   @@map("job_process")
 }
@@ -123,6 +143,32 @@ model JobRun {
   /// A process's history, newest first.
   @@index([processKey, queuedAt])
   @@map("job_run")
+}
+
+/// One thing an admin did to a process: paused it, resumed it, forced a run,
+/// changed its schedule or put it back. ⚠ NEVER EDITED AND NEVER CLEANED UP
+/// (JOBS-PLAN D4): there are few, and "who stopped the reminders, and why" is
+/// the audit trail proper. Runs are history; these are decisions.
+model JobControl {
+  id         String           @id @default(cuid())
+  processKey String
+  action     JobControlAction
+  /// Who did it. A bare id (PLAN §9); the name is asked of the app when shown.
+  actorId    String
+  /// Why — required for a pause, absent for everything else.
+  reason     String?
+  /// For `rescheduled` and `reset_schedule`: the schedule in force before and
+  /// after, as `ProcessSchedule`s, so the trail reads without the rows around it.
+  scheduleFrom Json?
+  scheduleTo   Json?
+
+  createdAt DateTime @default(now())
+
+  process JobProcess @relation(fields: [processKey], references: [key], onDelete: Cascade)
+
+  /// A process's control actions, newest first, merged with its runs.
+  @@index([processKey, createdAt])
+  @@map("job_control")
 }
 
 /// ONE row, `id = 'queue'`, written by the sync. Every claim updates it first,

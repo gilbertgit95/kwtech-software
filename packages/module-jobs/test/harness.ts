@@ -1,9 +1,12 @@
 import type { ProcessContribution, ProcessRunContext, ProcessRunResult, ProcessWorkspace } from '@kwtech/module-kit';
 import { type JobsModuleOptions, resolveJobsOptions } from '../src/server/jobs.options.js';
+import type { JobControlRow, JobProcessRow, JobRunRow } from '../src/server/jobs.repository.js';
+import { JobsService } from '../src/server/jobs.service.js';
 import { syncJobProcesses } from '../src/server/jobs.sync.js';
 import { JobsQueueService } from '../src/server/jobs-queue.service.js';
 import { JobsRunnerService } from '../src/server/jobs-runner.service.js';
-import type { JobsEntitledWorkspaces } from '../src/server/ports.js';
+import { JobsWriteService } from '../src/server/jobs-write.service.js';
+import type { JobsActorDirectory, JobsEntitledWorkspaces } from '../src/server/ports.js';
 import { type FakeClient, fakeClient } from './fake-client.js';
 
 /** Shared set-up for the queue, runner and sync suites. */
@@ -64,6 +67,8 @@ export function held(): { run: () => Promise<ProcessRunResult>; release: () => v
 export interface HarnessOptions extends Pick<JobsModuleOptions, 'maxConcurrentRuns' | 'maxRunSecondsCeiling'> {
   /** Omitted: the entitled-workspaces port is UNBOUND. */
   entitled?: JobsEntitledWorkspaces;
+  /** Omitted: the actor directory is UNBOUND, and the admin page has no names. */
+  directory?: JobsActorDirectory;
   /** False leaves `job_process` and the queue lock unwritten, as before the first `db:sync`. */
   synced?: boolean;
 }
@@ -81,11 +86,23 @@ export async function harness(processes: readonly ProcessContribution[], options
   const driven = new JobsRunnerService(queue, { ...resolved, runner: false }, undefined, options.entitled);
   driven.onApplicationBootstrap();
 
-  const runs = () => prisma.state.jobRun as unknown as import('../src/server/jobs.repository.js').JobRunRow[];
-  const process = (key: string) =>
-    prisma.state.jobProcess.find((row) => row.key === key) as unknown as
-      | import('../src/server/jobs.repository.js').JobProcessRow
-      | undefined;
+  // The admin page's two services, on the same client: what a control writes, the page reads back.
+  const jobs = new JobsService(prisma, resolved, options.directory);
+  const writes = new JobsWriteService(prisma, resolved, queue);
 
-  return { prisma, queue, runner: driven, runs, process };
+  const runs = () => prisma.state.jobRun as unknown as JobRunRow[];
+  const controls = () => prisma.state.jobControl as unknown as JobControlRow[];
+  const process = (key: string) =>
+    prisma.state.jobProcess.find((row) => row.key === key) as unknown as JobProcessRow | undefined;
+
+  return { prisma, queue, runner: driven, jobs, writes, runs, controls, process };
+}
+
+/** A directory that knows the given people and nobody else. */
+export function directoryOf(names: Record<string, string>): JobsActorDirectory {
+  return {
+    async names(userIds) {
+      return new Map(userIds.flatMap((id) => (names[id] ? [[id, names[id]] as const] : [])));
+    },
+  };
 }

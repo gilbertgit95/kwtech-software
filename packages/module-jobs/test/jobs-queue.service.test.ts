@@ -50,6 +50,7 @@ describe('queueing what is due', () => {
     const h = await harness([processOf('task.due_today')]);
     Object.assign(h.prisma.state.jobProcess[0] ?? {}, {
       schedule: { kind: 'interval', everyMinutes: 60 },
+      scheduleSetAt: NOW,
       lastQueuedAt: NOW,
     });
 
@@ -61,10 +62,23 @@ describe('queueing what is due', () => {
     const h = await harness([processOf('task.due_today')]);
     Object.assign(h.prisma.state.jobProcess[0] ?? {}, {
       schedule: { kind: 'interval', everyMinutes: 1 },
+      scheduleSetAt: NOW,
       lastQueuedAt: NOW,
     });
 
     expect((await h.queue.enqueueDue(minutesAfter(5))).queued).toEqual([]);
+    expect((await h.queue.enqueueDue(minutesAfter(15))).queued).toEqual(['task.due_today']);
+  });
+
+  it('⚠ ignores an admin’s schedule that was reset, though the column still holds it', async () => {
+    const h = await harness([processOf('task.due_today')]);
+    Object.assign(h.prisma.state.jobProcess[0] ?? {}, {
+      schedule: { kind: 'interval', everyMinutes: 60 },
+      scheduleSetAt: null,
+      lastQueuedAt: NOW,
+    });
+
+    // The default, every 15 — not the 60 left behind.
     expect((await h.queue.enqueueDue(minutesAfter(15))).queued).toEqual(['task.due_today']);
   });
 

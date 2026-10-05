@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { effectiveProcessSchedule, type ProcessContribution, processCadenceMinutes } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
 import { checkEnqueue, isRunDue, JOB_QUEUE_LOCK_ID, runLeaseExpiry } from '../domain/queue.js';
+import { adminSchedule } from '../domain/schedule.js';
 import type { JobEnqueueRefusal, JobRunOutcome, JobRunTrigger } from '../types.js';
 import type { ResolvedJobsOptions } from './jobs.options.js';
 import type { JobProcessRow, JobRunRow, JobsTransaction, JobsWriteClient } from './jobs.repository.js';
@@ -114,7 +115,7 @@ export class JobsQueueService {
         continue;
       }
       if (checkEnqueue(row) !== null) continue;
-      const { schedule } = effectiveProcessSchedule(declaration, row.schedule);
+      const { schedule } = effectiveProcessSchedule(declaration, adminSchedule(row));
       if (!isRunDue(row.lastQueuedAt, processCadenceMinutes(schedule, declaration.scheduleLimits), now)) continue;
       const result = await this.enqueue(declaration.key, 'scheduled', now);
       if ('run' in result) queued.push(declaration.key);
