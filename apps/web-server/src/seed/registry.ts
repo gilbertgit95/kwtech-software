@@ -8,6 +8,7 @@ import {
   CHAT_FEATURE_REGISTRY,
   CHAT_LIMIT_REGISTRY,
 } from '@kwtech/module-chat';
+import { JOBS_FEATURE_REGISTRY } from '@kwtech/module-jobs';
 import type { FeatureContribution } from '@kwtech/module-kit';
 import {
   composeDefaultMoments,
@@ -182,6 +183,12 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * layout into, or reset the default of, any workspace they name.
    */
   { key: 'app_hub', features: APP_HUB_FEATURE_REGISTRY },
+  /*
+   * ⚠ And the background runner's — APP level, held by `super-admin` and
+   * nobody else. Leave this out and anybody signed in could pause a process
+   * for every organization, or force a run.
+   */
+  { key: 'jobs', features: JOBS_FEATURE_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

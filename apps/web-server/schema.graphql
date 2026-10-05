@@ -360,6 +360,84 @@ type InvitationSignUpResult {
   organizationName: String
 }
 
+type JobControl {
+  action: String!
+  actorName: String
+  reason: String
+  scheduleFrom: JobSchedule
+  scheduleTo: JobSchedule
+}
+
+type JobHistoryEntry {
+  at: String!
+  control: JobControl
+  id: String!
+  kind: String!
+  run: JobRun
+}
+
+type JobHistoryPage {
+  entries: [JobHistoryEntry!]!
+  nextCursor: String
+}
+
+type JobProcess {
+  activeRun: JobRun
+  allowedKinds: [String!]!
+  defaultSchedule: JobSchedule!
+  description: String!
+  failingError: String
+  key: String!
+  label: String!
+  lastRun: JobRun
+  maxItemsPerRun: Int!
+  maxRunSeconds: Int!
+  minEveryMinutes: Int!
+  module: String!
+  nextCheckAt: String
+  pauseReason: String
+  pausedAt: String
+  pausedByName: String
+  queuePosition: Int
+  schedule: JobSchedule!
+  scheduleIsDefault: Boolean!
+  scheduleOverrideIgnored: Boolean!
+  scheduleSetAt: String
+  scheduleSetByName: String
+  serves: String
+  standing: String!
+  tooLateAfterMinutes: Int!
+}
+
+type JobRun {
+  error: String
+  finishedAt: String
+  forcedByName: String
+  handled: Int!
+  id: String!
+  leftForNext: Int!
+  note: String
+  queuedAt: String!
+  skippedLate: Int!
+  startedAt: String
+  state: String!
+  trigger: String!
+}
+
+type JobSchedule {
+  everyMinutes: Int
+  kind: String!
+  times: [String!]!
+  weekdays: [Int!]!
+}
+
+input JobScheduleInput {
+  everyMinutes: Int
+  kind: String!
+  times: [String!]
+  weekdays: [Int!]
+}
+
 input LendBooksMoneyInput {
   amount: Float!
   borrowerName: String
@@ -444,6 +522,7 @@ type Mutation {
   moveTaskChecklistItem(afterItemId: String, itemId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   moveTaskColumn(afterColumnId: String, boardId: String!, columnId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
+  pauseJobProcess(processKey: String!, reason: String!): JobProcess!
   payLaterPosOrder(orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   payPosOrder(input: PayPosOrderInput!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
@@ -464,6 +543,7 @@ type Mutation {
   removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  resetJobProcessSchedule(processKey: String!): JobProcess!
   resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   resetWorkspaceAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
@@ -471,9 +551,11 @@ type Mutation {
   restoreNoteRevision(expectedVersion: Int!, noteId: String!, organizationId: String!, revisionId: String!, workspaceId: String!): Note!
   restoreTask(organizationId: String!, taskId: String!, workspaceId: String!): Task!
   restoreTaskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
+  resumeJobProcess(processKey: String!): JobProcess!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
+  runJobProcessNow(processKey: String!): JobProcess!
   saveBooksInvestor(input: SaveBooksInvestorInput!, organizationId: String!, workspaceId: String!): BooksInvestor!
   saveBooksLoan(borrowerName: String!, contact: String, loanId: String!, note: String, organizationId: String!, workspaceId: String!): BooksLoan!
   saveBooksSettings(organizationId: String!, posImportFrom: String, shareMode: String!, workspaceId: String!): BooksSettings!
@@ -491,6 +573,7 @@ type Mutation {
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
   setChatParticipantRole(conversationId: String!, role: String!, userId: String!): Boolean!
+  setJobProcessSchedule(processKey: String!, schedule: JobScheduleInput!): JobProcess!
   setMyNoteSettings(organizationId: String!, settings: NoteSettingsInput!, workspaceId: String!): NoteSettings!
   setMyQueueNickname(nickname: String!, organizationId: String!, workspaceId: String!): String!
   setMyTaskSettings(organizationId: String!, settings: TaskSettingsInput!, workspaceId: String!): TaskSettings!
@@ -1251,6 +1334,8 @@ type Query {
   findUserByEmail(email: String!): FoundUser
   findUsersByIds(ids: [String!]!, organizationId: String!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview
+  jobProcessHistory(cursor: String, limit: Int, processKey: String!): JobHistoryPage!
+  jobProcesses: [JobProcess!]!
   mfaFactors: [MfaFactor!]!
   myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!
   myOrganization(organizationId: String!): PermissionOrganizationDetail

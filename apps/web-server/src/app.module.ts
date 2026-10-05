@@ -27,7 +27,7 @@ import {
   ChatPresenceService,
   chatServerModule,
 } from '@kwtech/module-chat/server';
-import { JOBS_ENTITLED_WORKSPACES, jobsServerModule } from '@kwtech/module-jobs/server';
+import { JOBS_ACTOR_DIRECTORY, JOBS_ENTITLED_WORKSPACES, jobsServerModule } from '@kwtech/module-jobs/server';
 import {
   composeProcesses,
   type ServerModuleDescriptor,
@@ -92,6 +92,7 @@ import { env } from './config/env.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
+import { JobsActorDirectoryAdapter } from './jobs/actor-directory.js';
 import { JobsEntitledWorkspacesAdapter } from './jobs/entitled-workspaces.js';
 import { NoteManageAllAccess } from './note/access-check.js';
 import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
@@ -108,6 +109,7 @@ import {
   booksWritePrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
+  jobsPrismaProvider,
   jobsWritePrismaProvider,
   notePrismaProvider,
   noteWritePrismaProvider,
@@ -756,6 +758,8 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
   ...DECLARING_MODULES,
 
   jobsServerModule({
+    // The read client is the admin page's; the runner itself only writes.
+    prismaProvider: jobsPrismaProvider,
     prismaWriteProvider: jobsWritePrismaProvider,
 
     /*
@@ -775,6 +779,20 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
       inject: [PrismaService],
       useFactory: (prisma: PrismaService) => new JobsEntitledWorkspacesAdapter(prisma),
     },
+
+    /*
+     * Names for "paused by", "forced by" and "set by" on the admin page, from
+     * `auth_user`. Unbound, the page would say "an administrator" throughout.
+     * See ./jobs/actor-directory.ts.
+     */
+    actorDirectoryProvider: {
+      provide: JOBS_ACTOR_DIRECTORY,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new JobsActorDirectoryAdapter(prisma),
+    },
+
+    // Who pressed Pause or Run now: the principal the app's guard proved.
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
 
     // Passed explicitly: the default lives in this app's zod schema, which never reaches `process.env`.
     runner: env.JOBS_RUNNER === 'on',

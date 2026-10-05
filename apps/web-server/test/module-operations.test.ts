@@ -4,6 +4,7 @@ import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
 import { BOOKS_OPERATIONS } from '@kwtech/module-basic-bookkeeping';
 import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
+import { JOBS_OPERATIONS } from '@kwtech/module-jobs';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
 import { QUEUE_OPERATIONS } from '@kwtech/module-queuing-window';
@@ -65,6 +66,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   task: TASK_OPERATIONS,
   pos: POS_OPERATIONS,
   books: BOOKS_OPERATIONS,
+  jobs: JOBS_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {

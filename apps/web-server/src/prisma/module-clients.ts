@@ -19,7 +19,7 @@ import {
   type ChatTransaction,
   type ChatWriteClient,
 } from '@kwtech/module-chat/server';
-import { JOBS_PRISMA_WRITE, type JobsTransaction, type JobsWriteClient } from '@kwtech/module-jobs/server';
+import { JOBS_PRISMA, JOBS_PRISMA_WRITE, type JobsTransaction, type JobsWriteClient } from '@kwtech/module-jobs/server';
 import { NOTE_PRISMA, NOTE_PRISMA_WRITE, type NoteTransaction, type NoteWriteClient } from '@kwtech/module-note/server';
 import {
   NOTIFICATION_PRISMA,
@@ -357,9 +357,20 @@ export const appHubPrismaProvider: Provider = {
 };
 
 /**
- * The background runner's one client. Write only: queueing and claiming a run
- * are compare-and-sets inside the transaction `withTransaction` dispatches —
- * the queue lock taken outside it would serialise nothing.
+ * The background processes page's read client: the list and the history. The
+ * delegates fit outright, as every read client's do. Checked in
+ * ./satisfies-modules.ts.
+ */
+export const jobsPrismaProvider: Provider = {
+  provide: JOBS_PRISMA,
+  useExisting: PrismaService,
+};
+
+/**
+ * The background runner's write client. Queueing and claiming a run are
+ * compare-and-sets inside the transaction `withTransaction` dispatches — the
+ * queue lock taken outside it would serialise nothing — and a control action
+ * is the change and its audit row (`jobControl`) in one.
  */
 export const jobsWritePrismaProvider: Provider = {
   provide: JOBS_PRISMA_WRITE,
@@ -368,6 +379,7 @@ export const jobsWritePrismaProvider: Provider = {
     withTransaction<JobsTransaction, JobsWriteClient>(prisma, {
       jobProcess: prisma.jobProcess,
       jobRun: prisma.jobRun,
+      jobControl: prisma.jobControl,
       jobQueueLock: prisma.jobQueueLock,
     }),
 };
