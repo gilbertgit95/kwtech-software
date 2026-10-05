@@ -3,6 +3,7 @@ import { authWebModule } from '@kwtech/module-auth/react';
 import { booksWebModule } from '@kwtech/module-basic-bookkeeping/react';
 import { posWebModule } from '@kwtech/module-basic-pos/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
+import { jobsWebModule } from '@kwtech/module-jobs/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
 import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
@@ -45,6 +46,14 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   booksWebModule(),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
+  /*
+   * The background runner's one page, in Administration. CORE, not a sub-app
+   * (JOBS-PLAN D9): it lists the processes of whichever modules above declare
+   * one. The labels are what THIS app calls those modules — the runner may
+   * import none of them, so it cannot know. Add a module's here when it
+   * declares its first process; without one it is headed by its key.
+   */
+  jobsWebModule({ moduleLabels: { task: 'Tasks' } }),
 ];
 
 /*
