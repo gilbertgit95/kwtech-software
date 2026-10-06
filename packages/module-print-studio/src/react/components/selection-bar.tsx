@@ -26,11 +26,23 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react';
-import { useId } from 'react';
+import { type MouseEvent, type PointerEvent, useEffect, useId, useRef } from 'react';
 import { type StudioFrame, zoomFloor, zoomFrameBy } from '../../domain/slot-fit.js';
+import { sliderAtZoom, ZOOM_SLIDER_STEPS, zoomAtSlider } from '../view/zoom-slider.js';
 
 /** Where the zoom slider stops. Past it a photo is mostly a blur; the keys still go to `STUDIO_ZOOM_MAX`. */
 const SLIDER_ZOOM_MAX = 4;
+/**
+ * Where the slider starts for a freely placed photo. Below a tenth of its cell
+ * a photo is a speck, and a slider that reached down to `STUDIO_FREE_ZOOM_MIN`
+ * would spend a third of its track there; the buttons still go all the way.
+ */
+const SLIDER_FREE_ZOOM_MIN = 0.1;
+/** What one press of − or + changes: a point of zoom. A tenth at a time, no photo could be set to a chosen size. */
+const BUTTON_ZOOM_STEP = 0.01;
+/** A held − or + waits this long, then repeats this often: a point a press, about twenty points a second held. */
+const HOLD_DELAY_MS = 350;
+const HOLD_EVERY_MS = 50;
 
 export interface SelectionBarProps {
   /** How many cells are selected; 0 shows the bar's resting hint. */
@@ -129,9 +141,12 @@ function SelectedTools({
 }: SelectionBarProps & { free: boolean }) {
   const zoomId = useId();
   const zoom = frame?.zoom ?? 1;
+  const sliderMin = frame && !free ? zoomFloor(frame) : SLIDER_FREE_ZOOM_MIN;
   const step = (by: number) => {
     if (frame) onZoom(Math.min(zoomFrameBy(frame, by).zoom, SLIDER_ZOOM_MAX));
   };
+  const zoomOut = useHeldRepeat(() => step(-BUTTON_ZOOM_STEP));
+  const zoomIn = useHeldRepeat(() => step(BUTTON_ZOOM_STEP));
 
   return (
     <>
@@ -157,21 +172,23 @@ function SelectedTools({
         <>
           <Divider />
           <div className="flex items-center gap-0.5">
-            <IconButton icon={Minus} label="Zoom out" onClick={() => step(-0.1)} />
+            <IconButton icon={Minus} label="Zoom out" held={zoomOut} />
             <label htmlFor={zoomId} className="sr-only">
               Zoom
             </label>
             <input
               id={zoomId}
               type="range"
-              className="w-24 accent-primary"
-              min={zoomFloor(frame)}
-              max={SLIDER_ZOOM_MAX}
-              step={0.01}
-              value={zoom}
-              onChange={(event) => onZoom(Number(event.target.value))}
+              className="w-48 accent-primary"
+              min={0}
+              max={ZOOM_SLIDER_STEPS}
+              step={1}
+              value={sliderAtZoom(zoom, sliderMin, SLIDER_ZOOM_MAX)}
+              // The thumb's place is not the zoom (the scale is proportional): say the zoom.
+              aria-valuetext={`${Math.round(zoom * 100)}%`}
+              onChange={(event) => onZoom(zoomAtSlider(Number(event.target.value), sliderMin, SLIDER_ZOOM_MAX))}
             />
-            <IconButton icon={Plus} label="Zoom in" onClick={() => step(0.1)} />
+            <IconButton icon={Plus} label="Zoom in" held={zoomIn} />
             <span className="w-11 text-center text-xs font-medium tabular-nums text-muted-foreground">
               {Math.round(zoom * 100)}%
             </span>
@@ -241,17 +258,77 @@ function SelectedTools({
   );
 }
 
-/** A square icon button with its name as a themed hint. */
+/** What a button that repeats while it is held spreads onto itself. */
+interface HeldRepeatProps {
+  onPointerDown: (event: PointerEvent<HTMLElement>) => void;
+  onPointerUp: () => void;
+  onPointerLeave: () => void;
+  onPointerCancel: () => void;
+  onClick: (event: MouseEvent<HTMLElement>) => void;
+}
+
+/**
+ * An act done once on a press and again and again while the press is held, so
+ * a small step is still a quick way across a long range.
+ *
+ * ⚠ THE PRESS ACTS, NOT THE CLICK that follows it, or every press would step
+ * twice. A click with no press before it (Enter or Space, a screen reader)
+ * says so with `detail` 0, and that one acts.
+ *
+ * ⚠ IT READS THE LATEST `act` THROUGH A REF: each step re-renders the bar with
+ * a new frame, and a repeat holding the first one would step from the same
+ * zoom forever.
+ */
+function useHeldRepeat(act: () => void): HeldRepeatProps {
+  const latest = useRef(act);
+  latest.current = act;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stop = () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  // A button that goes away mid-press (the cell emptied by a key) must not keep stepping.
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  return {
+    onPointerDown: (event) => {
+      if (event.button !== 0) return;
+      stop();
+      latest.current();
+      const again = () => {
+        latest.current();
+        timer.current = setTimeout(again, HOLD_EVERY_MS);
+      };
+      timer.current = setTimeout(again, HOLD_DELAY_MS);
+    },
+    onPointerUp: stop,
+    onPointerLeave: stop,
+    onPointerCancel: stop,
+    onClick: (event) => {
+      if (event.detail === 0) latest.current();
+    },
+  };
+}
+
+/** A square icon button with its name as a themed hint. Given `held`, it repeats while pressed instead of clicking once. */
 function IconButton({
   icon: Icon,
   label,
   danger = false,
   onClick,
+  held,
 }: {
   icon: LucideIcon;
   label: string;
   danger?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  held?: HeldRepeatProps;
 }) {
   return (
     <Tooltip text={label} describes={false}>
@@ -264,7 +341,18 @@ function IconButton({
             'flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             danger ? 'text-destructive hover:bg-destructive/10' : 'text-foreground hover:bg-accent',
           )}
-          onClick={onClick}
+          onClick={held ? held.onClick : onClick}
+          // The hint's own handlers for the same events still run: a later prop replaces the one spread above.
+          onPointerDown={(event) => {
+            trigger.onPointerDown();
+            held?.onPointerDown(event);
+          }}
+          onPointerLeave={() => {
+            trigger.onPointerLeave();
+            held?.onPointerLeave();
+          }}
+          onPointerUp={held?.onPointerUp}
+          onPointerCancel={held?.onPointerCancel}
         >
           <Icon aria-hidden="true" className="size-4" />
         </button>
