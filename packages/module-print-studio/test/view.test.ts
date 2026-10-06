@@ -65,7 +65,7 @@ describe('summarising a layout', () => {
 
   it('says a layout in a line', () => {
     const preset = findStudioPreset('a4-id-1x1');
-    expect(preset ? layoutSummary(preset.spec, 'in') : '').toBe('A4 · 18 of 1 × 1 in');
+    expect(preset ? layoutSummary(preset.spec, 'in') : '').toBe('A4 · 21 of 1 × 1 in');
     const empty = emptyLayoutSpec({ key: 'a4', label: 'A4', width: mm(210), height: mm(297) }, 0);
     expect(layoutSummary(empty, 'mm')).toBe('A4 · no cells yet');
   });

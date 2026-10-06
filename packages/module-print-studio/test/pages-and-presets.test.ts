@@ -89,7 +89,7 @@ describe('the shipped presets', () => {
     const counts = STUDIO_PRESETS.map((preset) => [preset.name, preset.spec.cells.length]);
     expect(counts).toEqual([
       ['ID Package - 1, 2', 13],
-      ['ID Package - 1x1', 18],
+      ['ID Package - 1x1', 21],
       ['ID Package - 2x2', 6],
       ['ID Package - 1.5x1.5', 8],
       ['ID Package - Passport', 10],
