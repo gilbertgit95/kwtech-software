@@ -597,6 +597,42 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-07** — **The Print screen gives the sheet the panel's whole height: the tools moved beside it.**
+
+  The operator had to scroll to see a whole page, and what did show was too
+  small to judge a photo by. The sheet shared its column with the
+  photos-or-PDF switch above it and, below it, a hint line, the pager, the
+  output bar and the shortcut keys: about 330 px of a laptop's panel.
+
+  - **One layout for photos and documents** (`StudioSplit`): settings in a
+    column beside the sheet, the output card pinned under them so Print and
+    Download stay in reach however far the settings scroll, and the sheet's
+    card in a column of its own. On a 700 px tall panel the sheet went from
+    about 260 px to about 475 px.
+  - **The photos-or-PDF switch is the first thing in the settings column**,
+    not a row above the studio. It reads "PDF document" now, to fit there.
+  - **The pager floats in the preview's corner**, opposite the zoom
+    (`SheetFrame`'s `dock`), with "Add a page" and Remove beside it. The row
+    between the two takes no presses, so a photo under it is still picked up.
+  - **The selection toolbar is a rail of icons down the left edge of the
+    sheet's card** (the operator, the same day, after it was first made a strip
+    along the top): a portrait page has room beside it and none above, so the
+    rail costs the sheet nothing. The zoom slider stands upright, Free
+    placement is one lit icon, every hint opens to the right, and the blurry
+    warning is an icon in the rail with its sentence as the hint. With nothing
+    selected it is the same rail holding one icon, so the sheet never moves.
+  - **The output card is laid out for a narrow column**: what will come out,
+    copies and calibration side by side, then Print and Download.
+  - **Not done: floating the blurry warning over the sheet.** Tried and taken
+    back the same day: it covered the photo it was about.
+  - **Not done: hiding the shortcut keys.** They are one line under both
+    columns. Remembering that somebody hid them needs browser storage, which
+    the studio does not write (PRINT-STUDIO-PLAN decision 8).
+  - **Not done: reserving room under the paper for the floating controls.**
+    That is the height just won back. On a sheet as wide as its panel they
+    cover its bottom corners, as the zoom control already did; zooming or
+    scrolling the view uncovers them.
+
 - **2026-10-06** — **The Print screen's selection toolbar, page buttons and preview were reworked: one grouped toolbar, a pager, and optional rulers.**
 
   The operator found the selection controls awkward, the row of one button
