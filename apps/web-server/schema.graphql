@@ -556,6 +556,7 @@ input CreateNoteInput {
 input CreateStudioLayoutInput {
   name: String!
   spec: StudioLayoutSpecInput!
+  tag: String
   visibility: String
 }
 
@@ -1982,6 +1983,7 @@ type StudioLayout {
   ownerId: String!
   ownerName: String
   spec: StudioLayoutSpec!
+  tag: String
   updatedAt: String!
   version: Int!
   visibility: String!
@@ -2250,6 +2252,7 @@ input UpdateProfileInput {
 input UpdateStudioLayoutInput {
   name: String
   spec: StudioLayoutSpecInput
+  tag: String
 }
 
 input UpdateTaskColumnInput {
