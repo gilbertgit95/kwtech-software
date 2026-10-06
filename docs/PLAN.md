@@ -597,6 +597,77 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-06** — **The print studio's ready-made layouts are the operator's own thirteen, and every layout can carry a tag the screens group by.**
+
+  The seven A4 strips the studio shipped with were a guess at what a photo
+  shop prints. The operator then drew what they actually print, as shared
+  layouts in their workspace, and asked for those to be the ready-made ones
+  instead, grouped by the kind of work.
+
+  - **The seven strips are gone, not kept beside the new ones.** Nobody asked
+    for both, and twenty tiles is a harder choice than thirteen.
+  - **The thirteen are written out as positions** (`src/domain/presets.ts`),
+    copied exactly from the saved rows, cell order included. The strips were
+    BUILT by the editor's packing tools; these cannot be, because a person
+    placed them (a 1.69 mm inset, a column moved 3.1 mm) and a packer would
+    put them somewhere else. Each cell's size and label still come from
+    `STUDIO_CELL_SIZES`, so only the positions are literal.
+  - **Presets carry their own margins**: 24 mm clear at the bottom on all of
+    them, 12 mm sides for the ID packages and 9 mm for the photo sheets. A NEW
+    layout still starts on `STUDIO_DEFAULT_MARGINS` (3 mm, 12 mm sides).
+  - **A preset's tag is a registry entry** (`STUDIO_PRESET_TAGS`: `id`,
+    `photo-print`), so one tag cannot become two groups by a spelling. Both
+    screens show one "Ready-made: …" shelf per tag, in registry order.
+  - **A saved layout's tag is free text, one per layout** (`studio_layout.tag`,
+    nullable, at most 30 characters, `prepareLayoutTag`), typed in the editor
+    beside the name. Free, because a shop names its own kinds of work; ONE,
+    because a tag is what a layout is filed under and a layout under two
+    would be drawn twice. Two spellings are kept from becoming two shelves
+    by comparing without case or spacing (`studioTagKey`) and by the editor
+    offering the tags already in use. "My layouts" and "Shared" are grouped
+    the same way, tags alphabetically and the untagged last.
+  - **On `updateStudioLayout`, an absent tag is left alone and an EMPTY
+    STRING takes it off**: GraphQL cannot tell a field left out from null.
+    A duplicate, and a copy of a preset, keep the tag.
+  - **No new feature key.** A tag is part of a layout, changed by whoever may
+    save it (`studio:write`, the owner or `studio:manage_all`).
+  - **NOT done: several tags per layout, renaming a tag everywhere at once,
+    and filtering by tag.** One tag and grouping is what was asked for.
+  - **The operator's thirteen rows were deleted from their workspace**, at
+    their request once the same layouts were ready-made: duplicates.
+  - **A fourteenth was added the same day: "ID Package - PVC ID Size"**, ten
+    54 × 85.6 mm cards on an A4, tagged ID. Its size was TYPED, so the preset
+    carries the size itself; it was NOT added to `STUDIO_CELL_SIZES`, which
+    would put it in every workspace's palette unasked. Its row was deleted too.
+  - **A third tag, Page Grid, with five whole-A4 grids**: Full, 1x2 and 2x2
+    as the operator drew them, and 2x3 and 3x3 which they asked for "in the
+    same pattern". These ARE built by a function (`pageGrid`): equal,
+    unlabelled cells filling the sheet inside 3 mm margins, running down each
+    column as the saved 2x2 did. A count that does not divide the area
+    exactly throws. The three drawn rows were deleted as duplicates.
+  - **The editor's equal grid moved into "Add cells"**, beside "Your own
+    size": quick picks, steppers for across and down, a gap, and a picture
+    of the result before it is made. It was folded under "Border and more",
+    where the operator did not find it. It still replaces every cell, and now
+    asks first when the sheet has any, since the editor has no undo.
+  - **The tag box is a combobox of the module's own** (`TagInput`), after a
+    first version used `<input list>`: a `<datalist>` is drawn by the browser
+    and looked like nothing else in the studio. Not moved to `web-ui`: it is
+    the second searchable list in the repo (after the time zone picker) but
+    the first that accepts free text, and one consumer is not two.
+  - **A cell's label is sized by its length as well as its cell**
+    (`cellLabelSize`). Sized by the cell alone, a typed size's twelve-character
+    label ran across its neighbour's. Short labels ("1 × 1") are unchanged.
+  - **GIF and `.jfif` are accepted as photos.** `.jfif` is what a photo
+    downloaded from Messenger is saved as, and so most of what the shop is
+    sent; it is a JPEG and is matched by extension, since it often arrives
+    with no type. A GIF prints its first frame. NOT done: BMP, TIFF, RAW.
+  - **Layout cards keep a minimum width** (`auto-fill`, 13rem) rather than a
+    column count per breakpoint, which squeezed a card until its buttons ran
+    over the next one.
+  - **A history row naming an old strip** keeps its name: the log stores the
+    layout's NAME as a copy, never the preset's key.
+
 - **2026-10-05** — **The print studio is built: `module-print-studio`, layouts of cells on paper, with every file kept in the browser.**
 
   The operator asked whether the app could reach a printer driver, and it

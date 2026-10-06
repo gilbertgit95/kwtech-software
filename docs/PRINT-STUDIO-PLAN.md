@@ -38,17 +38,31 @@ is in `packages/module-print-studio/README.md` and the decision in PLAN §13.
 - **No Playwright test and no click-through**: the seed account has two-step
   verification, which the harness does not support (as for notes and the Apps
   page).
-- **Presets are A4 strips, by the operator's request after trying it
-  (2026-10-05).** Every preset is on A4 with **12 mm kept clear on the left
-  and right** (15 mm at first; the operator then asked for 12) — their
-  printers cannot reach the outer edge of either side —
-  and its cells stop **one inch above the centre of the sheet** (first tried
-  as the top third, then widened the same day), so the sheet is cut across the
-  middle and the lower half is used again. Its cells **touch, with no gap**, so one cut
-  separates two photos; the cut guides show where. One per ID size
-  (1 × 1, 1.5 × 1.5, 2 × 2, passport) and three combinations with 1 × 1. A new
-  layout starts on the same paper and margins (`defaultLayoutSpec`). The top
-  and bottom keep 3 mm; the operator named only the sides.
+- **The presets are the operator's own thirteen layouts, grouped by tag
+  (2026-10-06).** The studio first shipped seven A4 strips built by the
+  editor's packing tools (2026-10-05); the operator then drew what they
+  actually print and asked for those instead. Seven **ID** packages (1 × 1,
+  1.5 × 1.5, 2 × 2, passport, and three mixes) sit in the top half of an A4
+  with 12 mm sides, so the lower half is used again; six **Photo Print**
+  sheets (2R, wallet, 3R, 4R, 5R, 6R) use the whole sheet with 9 mm sides.
+  A fourteenth, added the same day, is ten PVC ID cards (54 × 85.6 mm) on a
+  whole sheet, tagged ID. A third tag, **Page Grid**, holds five whole-A4
+  grids of equal cells inside 3 mm margins: Full, 1x2, 2x2, 2x3 and 3x3
+  (columns × rows).
+  All keep **24 mm clear at the bottom**, and their cells **touch, with no
+  gap**, so one cut separates two photos. They are written out as positions,
+  exactly as saved. Each has a tag from `STUDIO_PRESET_TAGS`, and both screens
+  show one "Ready-made" shelf per tag. A new layout still starts on A4 with
+  12 mm sides and 3 mm top and bottom (`defaultLayoutSpec`).
+- **The editor's equal grid is under "Add cells" (2026-10-06)**, beside "Your
+  own size": quick picks, across and down, a gap, and a picture of the result.
+  It replaces every cell and asks first when there are any.
+- **A cell's label is sized to stay inside its cell (2026-10-06)**, by its
+  length as well as the cell's size (`cellLabelSize`).
+- **Any layout can carry one tag (2026-10-06).** Typed in the editor beside
+  the name, with the tags already in use offered; stored in
+  `studio_layout.tag`. Both screens group "My layouts" and "Shared" by it,
+  the untagged last (PLAN §13, 2026-10-06).
 - **Several cells can be selected, and every action applies to all of them**,
   by the operator's request after trying it (2026-10-05). Ctrl, ⌘ or Shift
   with a press adds a cell or takes it out; two buttons select every cell
@@ -154,7 +168,7 @@ without a local bridge". The studio needs no bridge, which is why it is first.
 | 4 | Making a layout | In this order: paper size → printable area → cells |
 | 5 | What goes in a cell | **Images only.** PDFs and documents never go into a layout |
 | 6 | Filling a layout | By hand per cell; the same photo in every cell; or many photos in order, adding pages with the same layout for the rest |
-| 7 | File types | JPG, PNG, WebP, HEIC in layouts; PDF in a separate whole-page mode. Office documents later |
+| 7 | File types | JPG (and `.jfif`), PNG, WebP, HEIC, and GIF as a still (its first frame; added 2026-10-06) in layouts; PDF in a separate whole-page mode. Office documents later |
 | 8 | Files | **Temporary.** Never saved on the server or in the database. The result can be downloaded before it is cleared |
 | 9 | Image tools | Basic only: crop, resize, rotate and flip, lighting (brightness, contrast, saturation, warmth, black and white). No text, borders or retouching: that is done in other software |
 | 10 | A print log | Yes: who, when, which layout, paper, pages, copies, and the **file names**. Never the files |
@@ -274,7 +288,7 @@ also names the workspace. `userId`s are bare strings.
 | `calibration.ts` | Scale and offset from a measured ruler page |
 | `log.ts` | What a log entry may hold, and its caps |
 | `access.ts` | Who may see, use, edit, share and delete a layout |
-| `presets.ts` | Shipped layouts to copy |
+| `presets.ts` | Shipped layouts to copy, and the tags they are grouped by |
 | `page-layout.ts` | The whole-page mode's arithmetic |
 
 ## 7. Server (`src/server/`)
