@@ -2,7 +2,7 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { FileText, FileUp, X } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { printableArea, type StudioLayoutPaper, type StudioOrientation, sheetSize } from '../../domain/layout.js';
 import {
   groupIntoSheets,
@@ -22,7 +22,7 @@ import type { StudioAppState } from '../studio-state.js';
 import { paperName, plural } from '../view/summary.js';
 import { resultFileName } from '../view/work.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
-import { Alert, EmptyState } from './layout.js';
+import { Alert, EmptyState, StudioSplit } from './layout.js';
 import { OutputBar } from './output-bar.js';
 import { Pager } from './pager.js';
 import { defaultPaper, PaperPicker } from './paper-fields.js';
@@ -54,7 +54,14 @@ const DOCUMENT_GAP = mm(4);
  * drawing is for looking only — the result copies the pages themselves. A page
  * that cannot be drawn shows as its number in a box, and still prints.
  */
-export function DocumentStudio({ state }: { state: StudioAppState }) {
+export function DocumentStudio({
+  state,
+  modeSwitch,
+}: {
+  state: StudioAppState;
+  /** The photos-or-document switch, drawn at the top of the settings so it takes no row above the sheet. */
+  modeSwitch: ReactNode;
+}) {
   const inputId = useId();
   const [document, setDocument] = useState<StudioDocument | null>(null);
   const [paper, setPaper] = useState<StudioLayoutPaper>(() => defaultPaper('a4'));
@@ -152,6 +159,7 @@ export function DocumentStudio({ state }: { state: StudioAppState }) {
   if (!document) {
     return (
       <div className="flex flex-col gap-3">
+        <div className="self-start">{modeSwitch}</div>
         <Alert message={error} onDismiss={() => setError(null)} />
         <EmptyState icon={FileText} title="Print a document" action={picker}>
           Choose a PDF to print as whole pages. It stays on this computer: nothing is uploaded or saved. A Word document
@@ -167,151 +175,89 @@ export function DocumentStudio({ state }: { state: StudioAppState }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <Alert message={error} onDismiss={() => setError(null)} />
-      <div className="flex min-h-0 flex-1 flex-col gap-3 @3xl:flex-row">
-        <div className="flex shrink-0 flex-col gap-3 @3xl:w-80">
-          <section className="flex items-start justify-between gap-2 rounded-xl border border-border bg-card p-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-semibold" title={document.name}>
-                {document.name}
-              </h3>
-              <p className="text-xs text-muted-foreground">{plural(document.pages.length, 'page')}</p>
-            </div>
-            <button type="button" className={buttonClass('ghost', 'sm')} onClick={clearEverything}>
-              <X aria-hidden="true" className="size-3.5" />
-              Close
-            </button>
-          </section>
-
-          <section className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3">
-            <PaperPicker
-              paper={paper}
-              orientation={orientation}
-              onPaper={(next) => change(() => setPaper(next))}
-              onOrientation={(next) => change(() => setOrientation(next))}
-            />
-            <Field label="Pages on each sheet">
-              {(id) => (
-                <select
-                  id={id}
-                  className={cn(INPUT_CLASS, 'h-9')}
-                  value={perSheet}
-                  onChange={(event) =>
-                    change(() =>
-                      setPerSheet(STUDIO_PAGES_PER_SHEET.find((one) => one === Number(event.target.value)) ?? 1),
-                    )
-                  }
-                >
-                  {STUDIO_PAGES_PER_SHEET.map((count) => (
-                    <option key={count} value={count}>
-                      {count}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            <Field label="Size on the paper">
-              {(id) => (
-                <select
-                  id={id}
-                  className={cn(INPUT_CLASS, 'h-9')}
-                  value={fit}
-                  onChange={(event) =>
-                    change(() => setFit(STUDIO_PAGE_FITS.find((one) => one === event.target.value) ?? 'fit'))
-                  }
-                >
-                  {STUDIO_PAGE_FITS.map((option) => (
-                    <option key={option} value={option}>
-                      {FIT_LABELS[option]}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            <Field
-              label="Which pages"
-              hint="Leave empty for all of them, or type pages and ranges: 1-3, 5, 8-"
-              error={pages === null ? 'That is not a list of pages. Try 1-3, 5.' : null}
-            >
-              {(id, describedBy) => (
-                <input
-                  id={id}
-                  aria-describedby={describedBy}
-                  aria-invalid={pages === null ? true : undefined}
-                  className={cn(INPUT_CLASS, 'h-9')}
-                  value={range}
-                  placeholder="All pages"
-                  onChange={(event) => change(() => setRange(event.target.value))}
-                />
-              )}
-            </Field>
-          </section>
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="flex min-h-64 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
-            <SheetFrame
-              zoom={viewZoom}
-              onZoom={setViewZoom}
-              tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
-              rulers={{ unit: rulerUnit, sheet }}
-            >
-              {/* The sheet, to scale, with each page drawn where it will print. Paper is white in every theme. */}
-              <div
-                role="img"
-                aria-label={`Sheet ${shown + 1} of ${sheets.length}: ${plural(onSheet.length, 'page')} on ${paperName(spec, 'mm')}`}
-                data-studio-paper
-                className="relative shadow-md ring-1 ring-border"
-                style={{
-                  width: fitWidth(sheet, viewZoom),
-                  aspectRatio: `${sheet.width} / ${sheet.height}`,
-                  backgroundColor: '#ffffff',
-                }}
-              >
-                {slots.map((slot, at) => {
-                  const pageIndex = onSheet[at];
-                  const size = pageIndex === undefined ? undefined : document.pages[pageIndex];
-                  if (pageIndex === undefined || !size) return null;
-                  const placed = placeInSlot(size, slot, fit);
-                  return (
-                    // ⚠ `overflow-hidden`: "fill" and "actual size" place a page larger than its slot, and the slot cuts it —
-                    // as the result does.
-                    <div
-                      key={`${slot.x}:${slot.y}`}
-                      className="absolute overflow-hidden"
-                      style={{
-                        left: `${((area.x + slot.x) / sheet.width) * 100}%`,
-                        top: `${((area.y + slot.y) / sheet.height) * 100}%`,
-                        width: `${(slot.width / sheet.width) * 100}%`,
-                        height: `${(slot.height / sheet.height) * 100}%`,
-                      }}
-                    >
-                      <div
-                        className="absolute"
-                        style={{
-                          left: `${(placed.x / slot.width) * 100}%`,
-                          top: `${(placed.y / slot.height) * 100}%`,
-                          width: `${(placed.width / slot.width) * 100}%`,
-                          height: `${(placed.height / slot.height) * 100}%`,
-                        }}
-                      >
-                        <PageView
-                          preview={preview}
-                          pageIndex={pageIndex}
-                          // Looked at closer, or alone on its sheet, a page is drawn finer.
-                          pixels={Math.round((perSheet === 1 ? 1000 : 700) * Math.min(viewZoom, 2.5))}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+      <StudioSplit
+        side={
+          <>
+            {modeSwitch}
+            <section className="flex items-start justify-between gap-2 rounded-xl border border-border bg-card p-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold" title={document.name}>
+                  {document.name}
+                </h3>
+                <p className="text-xs text-muted-foreground">{plural(document.pages.length, 'page')}</p>
               </div>
-            </SheetFrame>
-          </div>
-          {sheets.length > 1 ? (
-            <div className="flex justify-center rounded-xl border border-border bg-card px-1.5 py-1 shadow-sm">
-              <Pager count={sheets.length} current={shown} noun="Sheet" onChange={setSheetIndex} />
-            </div>
-          ) : null}
+              <button type="button" className={buttonClass('ghost', 'sm')} onClick={clearEverything}>
+                <X aria-hidden="true" className="size-3.5" />
+                Close
+              </button>
+            </section>
+
+            <section className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3">
+              <PaperPicker
+                paper={paper}
+                orientation={orientation}
+                onPaper={(next) => change(() => setPaper(next))}
+                onOrientation={(next) => change(() => setOrientation(next))}
+              />
+              <Field label="Pages on each sheet">
+                {(id) => (
+                  <select
+                    id={id}
+                    className={cn(INPUT_CLASS, 'h-9')}
+                    value={perSheet}
+                    onChange={(event) =>
+                      change(() =>
+                        setPerSheet(STUDIO_PAGES_PER_SHEET.find((one) => one === Number(event.target.value)) ?? 1),
+                      )
+                    }
+                  >
+                    {STUDIO_PAGES_PER_SHEET.map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label="Size on the paper">
+                {(id) => (
+                  <select
+                    id={id}
+                    className={cn(INPUT_CLASS, 'h-9')}
+                    value={fit}
+                    onChange={(event) =>
+                      change(() => setFit(STUDIO_PAGE_FITS.find((one) => one === event.target.value) ?? 'fit'))
+                    }
+                  >
+                    {STUDIO_PAGE_FITS.map((option) => (
+                      <option key={option} value={option}>
+                        {FIT_LABELS[option]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field
+                label="Which pages"
+                hint="Leave empty for all of them, or type pages and ranges: 1-3, 5, 8-"
+                error={pages === null ? 'That is not a list of pages. Try 1-3, 5.' : null}
+              >
+                {(id, describedBy) => (
+                  <input
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={pages === null ? true : undefined}
+                    className={cn(INPUT_CLASS, 'h-9')}
+                    value={range}
+                    placeholder="All pages"
+                    onChange={(event) => change(() => setRange(event.target.value))}
+                  />
+                )}
+              </Field>
+            </section>
+          </>
+        }
+        output={
           <OutputBar
             state={state}
             summary={
@@ -340,8 +286,73 @@ export function DocumentStudio({ state }: { state: StudioAppState }) {
             onStartOver={clearEverything}
             onError={setError}
           />
+        }
+      >
+        <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+          <SheetFrame
+            zoom={viewZoom}
+            onZoom={setViewZoom}
+            tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
+            rulers={{ unit: rulerUnit, sheet }}
+            dock={
+              sheets.length > 1 ? (
+                <Pager count={sheets.length} current={shown} noun="Sheet" onChange={setSheetIndex} />
+              ) : undefined
+            }
+          >
+            {/* The sheet, to scale, with each page drawn where it will print. Paper is white in every theme. */}
+            <div
+              role="img"
+              aria-label={`Sheet ${shown + 1} of ${sheets.length}: ${plural(onSheet.length, 'page')} on ${paperName(spec, 'mm')}`}
+              data-studio-paper
+              className="relative shadow-md ring-1 ring-border"
+              style={{
+                width: fitWidth(sheet, viewZoom),
+                aspectRatio: `${sheet.width} / ${sheet.height}`,
+                backgroundColor: '#ffffff',
+              }}
+            >
+              {slots.map((slot, at) => {
+                const pageIndex = onSheet[at];
+                const size = pageIndex === undefined ? undefined : document.pages[pageIndex];
+                if (pageIndex === undefined || !size) return null;
+                const placed = placeInSlot(size, slot, fit);
+                return (
+                  // ⚠ `overflow-hidden`: "fill" and "actual size" place a page larger than its slot, and the slot cuts it —
+                  // as the result does.
+                  <div
+                    key={`${slot.x}:${slot.y}`}
+                    className="absolute overflow-hidden"
+                    style={{
+                      left: `${((area.x + slot.x) / sheet.width) * 100}%`,
+                      top: `${((area.y + slot.y) / sheet.height) * 100}%`,
+                      width: `${(slot.width / sheet.width) * 100}%`,
+                      height: `${(slot.height / sheet.height) * 100}%`,
+                    }}
+                  >
+                    <div
+                      className="absolute"
+                      style={{
+                        left: `${(placed.x / slot.width) * 100}%`,
+                        top: `${(placed.y / slot.height) * 100}%`,
+                        width: `${(placed.width / slot.width) * 100}%`,
+                        height: `${(placed.height / slot.height) * 100}%`,
+                      }}
+                    >
+                      <PageView
+                        preview={preview}
+                        pageIndex={pageIndex}
+                        // Looked at closer, or alone on its sheet, a page is drawn finer.
+                        pixels={Math.round((perSheet === 1 ? 1000 : 700) * Math.min(viewZoom, 2.5))}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </SheetFrame>
         </div>
-      </div>
+      </StudioSplit>
     </div>
   );
 }

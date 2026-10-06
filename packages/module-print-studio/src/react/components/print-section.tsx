@@ -42,34 +42,17 @@ export function PrintSection({
   onBrowseLayouts: () => void;
 }) {
   const [mode, setMode] = useState<Mode>('photos');
+  /*
+   * ⚠ THE SWITCH IS HANDED DOWN, not drawn above the screens: a row of its own
+   * over a studio is height its sheet does not get. Each studio puts it at the
+   * top of its settings column; only a screen with no sheet yet (the gallery,
+   * "choose a PDF") has it along the top.
+   */
+  const modeSwitch = <ModeSwitch mode={mode} onMode={setMode} />;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-      <fieldset className="inline-flex self-start rounded-lg border border-border bg-background p-0.5">
-        <legend className="sr-only">What to print</legend>
-        {(
-          [
-            { key: 'photos', label: 'Photos', icon: Images },
-            { key: 'document', label: 'A PDF document', icon: FileText },
-          ] as const
-        ).map((option) => (
-          <button
-            key={option.key}
-            type="button"
-            aria-pressed={mode === option.key}
-            className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              mode === option.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
-            )}
-            onClick={() => setMode(option.key)}
-          >
-            <option.icon aria-hidden="true" className="size-4" />
-            {option.label}
-          </button>
-        ))}
-      </fieldset>
-
-      {mode === 'document' ? <DocumentStudio state={state} /> : null}
+      {mode === 'document' ? <DocumentStudio state={state} modeSwitch={modeSwitch} /> : null}
 
       {layout ? (
         // ⚠ HIDDEN, NOT UNMOUNTED, while a document is open: it holds the chosen photos, in memory and nowhere else.
@@ -80,14 +63,47 @@ export function PrintSection({
             state={state}
             layout={layout}
             onChangeLayout={() => onLayout(null)}
+            modeSwitch={modeSwitch}
           />
         </div>
       ) : null}
 
       {mode === 'photos' && !layout ? (
-        <LayoutGallery state={state} onLayout={onLayout} onBrowseLayouts={onBrowseLayouts} />
+        <>
+          <div className="self-start">{modeSwitch}</div>
+          <LayoutGallery state={state} onLayout={onLayout} onBrowseLayouts={onBrowseLayouts} />
+        </>
       ) : null}
     </div>
+  );
+}
+
+/** Photos or a document: two halves of one control, as wide as whatever holds it. */
+function ModeSwitch({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void }) {
+  return (
+    <fieldset className="flex min-w-0 rounded-lg border border-border bg-background p-0.5">
+      <legend className="sr-only">What to print</legend>
+      {(
+        [
+          { key: 'photos', label: 'Photos', icon: Images },
+          { key: 'document', label: 'PDF document', icon: FileText },
+        ] as const
+      ).map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          aria-pressed={mode === option.key}
+          className={cn(
+            'inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            mode === option.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
+          )}
+          onClick={() => onMode(option.key)}
+        >
+          <option.icon aria-hidden="true" className="size-4 shrink-0" />
+          {option.label}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 

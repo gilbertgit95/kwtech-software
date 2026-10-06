@@ -266,6 +266,7 @@ export function SheetFrame({
   zoom = 1,
   onZoom,
   tools,
+  dock,
   rulers,
 }: {
   children: ReactNode;
@@ -276,6 +277,11 @@ export function SheetFrame({
   onZoom?: (zoom: number) => void;
   /** More controls for how the sheet is looked at (the rulers), in the same floating bar, before the zoom. */
   tools?: ReactNode;
+  /**
+   * What steps through the sheets (a pager), floating in the frame's bottom left corner opposite the zoom. Floating,
+   * not a row of its own under the frame: a row is height the sheet does not get.
+   */
+  dock?: ReactNode;
   /**
    * Rulers along the frame's top and left edges, measuring the paper inside it — the element marked
    * `data-studio-paper`. A null unit is no rulers.
@@ -412,7 +418,21 @@ export function SheetFrame({
           <div className="mx-auto w-fit">{children}</div>
         </div>
       </div>
-      {onZoom ? <ZoomControl zoom={zoom} onZoom={onZoom} tools={tools} /> : null}
+      {dock || onZoom ? (
+        /*
+         * ⚠ z-30, over everything in the view: the controls must stay pressable whatever is drawn under them.
+         * The row itself takes no presses (`pointer-events-none`) — between its two ends is the sheet, and a photo
+         * there must still be picked up. Too narrow for both, the zoom wraps ABOVE the pager, not off the frame.
+         */
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex flex-wrap-reverse items-end justify-between gap-1.5">
+          {dock ? (
+            <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-md">
+              {dock}
+            </div>
+          ) : null}
+          {onZoom ? <ZoomControl zoom={zoom} onZoom={onZoom} tools={tools} /> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -434,8 +454,8 @@ function ZoomControl({ zoom, onZoom, tools }: { zoom: number; onZoom: (zoom: num
     'flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <fieldset
-      // ⚠ z-30, over everything in the view: the controls must stay pressable whatever is drawn under them.
-      className="absolute right-2 bottom-2 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-md"
+      // ml-auto: at the right end whether or not anything shares the row.
+      className="pointer-events-auto ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-md"
       title="Hold Ctrl (⌘ on a Mac) and turn the mouse wheel to zoom"
     >
       <legend className="sr-only">Zoom the view</legend>

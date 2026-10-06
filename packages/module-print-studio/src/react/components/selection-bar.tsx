@@ -11,17 +11,17 @@ import {
   Tooltip,
 } from '@kwtech/web-ui/react';
 import {
-  ChevronDown,
   ImagePlus,
   Images,
-  Info,
   type LucideIcon,
   Minus,
   MousePointerClick,
+  Move,
   Plus,
   RotateCcw,
   RotateCw,
   SquareDashed,
+  SquareDashedMousePointer,
   Trash2,
   TriangleAlert,
   X,
@@ -51,6 +51,7 @@ export interface SelectionBarProps {
   filled: number;
   /** The frame of the cell pressed last, or null when that cell is empty. */
   frame: StudioFrame | null;
+  /** Why the pressed photo may print badly, as a sentence; null when it will not. */
   warning: string | null;
   /** What the bar says when nothing is selected. */
   idleHint: string;
@@ -69,56 +70,58 @@ export interface SelectionBarProps {
 }
 
 /**
- * The selection's toolbar, above the sheet where the eye already is: one row
- * of grouped controls, and a quiet line under it saying what dragging does.
+ * The selection's toolbar: a rail of icons down the LEFT edge of the sheet's
+ * card (the operator, 2026-10-07).
+ *
+ * ## ⚠ A RAIL, NOT A ROW
+ *
+ * Height is what the sheet is short of: a portrait page in a landscape panel
+ * has room to spare on both sides and none above or below. As a strip along
+ * the top this toolbar took its height from the sheet; down the side it takes
+ * width the sheet was not using. So every control is an icon with its name as
+ * a hint to the right of it, and the zoom slider stands upright.
  *
  * ⚠ EVERY ACTION HERE APPLIES TO EVERY SELECTED CELL. The count comes first,
- * as a chip the selection is let go from, so nothing moves that the person did
- * not expect. Position is not here: the photo is dragged on the sheet itself.
+ * as the button the selection is let go from, so nothing moves that the person
+ * did not expect. Position is not here: the photo is dragged on the sheet.
  *
- * ⚠ THE SAME HEIGHT SELECTED OR NOT. With nothing selected it is the same card
- * holding a hint, so pressing a photo never pushes the sheet down.
+ * ⚠ THE SAME WIDTH SELECTED OR NOT. With nothing selected it is the same rail
+ * holding one icon whose hint says what to do, so pressing a photo never moves
+ * the sheet sideways.
+ *
+ * The blurry warning is an icon in the rail, with its whole sentence as the
+ * hint; floated over the sheet instead, it covered the very photo it was
+ * about.
  */
 export function SelectionBar(props: SelectionBarProps) {
-  const { count, frame, warning } = props;
-  const free = frame?.free === true;
-  const hint = !frame
-    ? null
-    : free
-      ? 'Drag the photo anywhere in its cell; zoom below 100% to make it smaller. What falls outside the cell is not printed.'
-      : 'Drag the photo on the sheet to move it inside its cell.';
+  const { count } = props;
+  const free = props.frame?.free === true;
 
   return (
-    <section aria-label="Selected cells" className="flex flex-col gap-1">
-      <div
-        className={cn(
-          'flex min-h-12 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-xl border bg-card px-2 py-1.5 shadow-sm transition-colors',
-          count > 0 ? 'border-primary/40' : 'border-border',
-        )}
-      >
-        {count === 0 ? (
-          <p className="flex items-center gap-2 px-1.5 text-sm text-muted-foreground">
-            <MousePointerClick aria-hidden="true" className="size-4 shrink-0" />
-            {props.idleHint}
-          </p>
-        ) : (
-          <SelectedTools {...props} free={free} />
-        )}
-      </div>
-      {warning ? (
-        <p
-          role="status"
-          className="flex items-start gap-1.5 rounded-lg bg-status-warning px-2.5 py-1.5 text-xs text-status-warning-foreground"
-        >
-          <TriangleAlert aria-hidden="true" className="mt-px size-3.5 shrink-0" />
-          {warning}
-        </p>
-      ) : hint ? (
-        <p className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-          <Info aria-hidden="true" className="size-3.5 shrink-0" />
-          {hint}
-        </p>
-      ) : null}
+    <section
+      aria-label="Selected cells"
+      className={cn(
+        // Scrolls by itself, with no bar drawn, on a panel too short for every control: none is ever out of reach.
+        'flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border py-2 transition-colors [scrollbar-width:none]',
+        count > 0 ? 'bg-primary/5' : null,
+      )}
+    >
+      {count === 0 ? (
+        <Tooltip text={props.idleHint} side="right">
+          {(trigger) => (
+            <button
+              {...trigger}
+              type="button"
+              aria-label="How to work on a photo"
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <MousePointerClick aria-hidden="true" className="size-4" />
+            </button>
+          )}
+        </Tooltip>
+      ) : (
+        <SelectedTools {...props} free={free} />
+      )}
     </section>
   );
 }
@@ -128,6 +131,7 @@ function SelectedTools({
   filled,
   frame,
   free,
+  warning,
   pickedPhoto,
   onZoom,
   onTurn,
@@ -147,77 +151,102 @@ function SelectedTools({
   };
   const zoomOut = useHeldRepeat(() => step(-BUTTON_ZOOM_STEP));
   const zoomIn = useHeldRepeat(() => step(BUTTON_ZOOM_STEP));
+  const selected = count === 1 ? '1 cell selected' : `${count} cells selected`;
 
   return (
     <>
-      {/* The count, and the way to let go of the selection. */}
-      <span className="inline-flex h-8 items-center gap-1 rounded-full bg-primary/10 pr-1 pl-3 text-xs font-semibold text-primary">
-        {count === 1 ? '1 cell' : `${count} cells`}
-        <Tooltip text="Deselect (Esc)" describes={false}>
-          {(trigger) => (
-            <button
-              {...trigger}
-              type="button"
-              aria-label="Deselect"
-              className="flex size-6 items-center justify-center rounded-full transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onDone}
-            >
-              <X aria-hidden="true" className="size-3.5" />
-            </button>
-          )}
-        </Tooltip>
-      </span>
+      {/* The count, and the way to let go of the selection: under the pointer or the focus, the number becomes the ×. */}
+      <Tooltip text={`${selected}. Press to deselect (Esc)`} side="right" describes={false}>
+        {(trigger) => (
+          <button
+            {...trigger}
+            type="button"
+            aria-label={`${selected}. Deselect`}
+            className="group flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold tabular-nums text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onDone}
+          >
+            <span aria-hidden="true" className="group-hover:hidden group-focus-visible:hidden">
+              {count}
+            </span>
+            <X aria-hidden="true" className="hidden size-4 group-hover:block group-focus-visible:block" />
+          </button>
+        )}
+      </Tooltip>
 
       {frame ? (
         <>
           <Divider />
-          <div className="flex items-center gap-0.5">
-            <IconButton icon={Minus} label="Zoom out" held={zoomOut} />
-            <label htmlFor={zoomId} className="sr-only">
-              Zoom
-            </label>
-            <input
-              id={zoomId}
-              type="range"
-              className="w-48 accent-primary"
-              min={0}
-              max={ZOOM_SLIDER_STEPS}
-              step={1}
-              value={sliderAtZoom(zoom, sliderMin, SLIDER_ZOOM_MAX)}
-              // The thumb's place is not the zoom (the scale is proportional): say the zoom.
-              aria-valuetext={`${Math.round(zoom * 100)}%`}
-              onChange={(event) => onZoom(zoomAtSlider(Number(event.target.value), sliderMin, SLIDER_ZOOM_MAX))}
-            />
-            <IconButton icon={Plus} label="Zoom in" held={zoomIn} />
-            <span className="w-11 text-center text-xs font-medium tabular-nums text-muted-foreground">
-              {Math.round(zoom * 100)}%
-            </span>
-          </div>
+          {/* + above −, as the slider between them reads: up is larger. */}
+          <IconButton icon={Plus} label="Zoom in" held={zoomIn} />
+          <label htmlFor={zoomId} className="sr-only">
+            Zoom
+          </label>
+          <input
+            id={zoomId}
+            type="range"
+            // Upright, its larger end at the top: the two properties together are how a browser draws a range that way.
+            className="h-16 w-4 shrink-0 accent-primary [direction:rtl] [writing-mode:vertical-lr]"
+            min={0}
+            max={ZOOM_SLIDER_STEPS}
+            step={1}
+            value={sliderAtZoom(zoom, sliderMin, SLIDER_ZOOM_MAX)}
+            // The thumb's place is not the zoom (the scale is proportional): say the zoom.
+            aria-valuetext={`${Math.round(zoom * 100)}%`}
+            onChange={(event) => onZoom(zoomAtSlider(Number(event.target.value), sliderMin, SLIDER_ZOOM_MAX))}
+          />
+          <IconButton icon={Minus} label="Zoom out" held={zoomOut} />
+          <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
           <Divider />
           <IconButton icon={RotateCw} label="Turn a quarter" onClick={onTurn} />
           <IconButton icon={RotateCcw} label="Reset: centred, 100%, upright" onClick={onReset} />
           <Divider />
-          <Switch
+          <Toggle
             on={free}
+            icon={Move}
             label="Free placement"
-            hint="Move the photo freely inside its cell, and make it smaller than the cell"
+            hint={
+              free
+                ? 'Free placement is on: drag the photo anywhere in its cell, and zoom below 100% to make it smaller. What falls outside the cell is not printed.'
+                : 'Free placement is off: drag the photo on the sheet to move it inside its cell. Turn this on to move it freely and make it smaller than the cell.'
+            }
             onChange={onFree}
           />
         </>
       ) : null}
 
-      <div className="ml-auto flex items-center gap-0.5">
+      {warning ? (
+        // Not the icon's description as well: the status inside it already says the sentence once.
+        <Tooltip text={warning} side="right" describes={false}>
+          {(trigger) => (
+            <button
+              {...trigger}
+              type="button"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-status-warning text-status-warning-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <TriangleAlert aria-hidden="true" className="size-4" />
+              {/* Said as it appears, in full, to somebody who cannot hover over the icon. */}
+              <span role="status" className="sr-only">
+                {warning}
+              </span>
+            </button>
+          )}
+        </Tooltip>
+      ) : null}
+
+      {/* mt-auto: what acts on the cells themselves sits at the rail's foot, apart from what acts on the photo. */}
+      <div className="mt-auto flex flex-col items-center gap-1 pt-1">
         <DropdownMenu>
           <DropdownMenuTrigger
+            aria-label="Select more cells"
+            title="Select more cells"
             className={cn(
-              'flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-accent',
+              'flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-accent',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             )}
           >
-            Select
-            <ChevronDown aria-hidden="true" className="size-3.5" />
+            <SquareDashedMousePointer aria-hidden="true" className="size-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-60">
+          <DropdownMenuContent align="end" side="right" className="min-w-60">
             {onSelectSamePhoto ? (
               <DropdownMenuItem onSelect={onSelectSamePhoto}>
                 <SquareDashed aria-hidden="true" />
@@ -331,7 +360,7 @@ function IconButton({
   held?: HeldRepeatProps;
 }) {
   return (
-    <Tooltip text={label} describes={false}>
+    <Tooltip text={label} side="right" describes={false}>
       {(trigger) => (
         <button
           {...trigger}
@@ -361,50 +390,47 @@ function IconButton({
   );
 }
 
-/** An on/off switch with its words beside it: a setting, not an action, so not a button that looks pressed. */
-function Switch({
+/**
+ * An on/off setting as one icon: lit while it is on. Still a `switch` to a
+ * screen reader — it is a setting, not an action — and its hint says which
+ * way it is now, since an icon alone cannot.
+ */
+function Toggle({
   on,
+  icon: Icon,
   label,
   hint,
   onChange,
 }: {
   on: boolean;
+  icon: LucideIcon;
   label: string;
   hint: string;
   onChange: (on: boolean) => void;
 }) {
   return (
-    <Tooltip text={hint}>
+    <Tooltip text={hint} side="right">
       {(trigger) => (
         <button
           {...trigger}
           type="button"
           role="switch"
           aria-checked={on}
-          className="flex h-8 items-center gap-2 rounded-lg px-2 text-xs font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={label}
+          className={cn(
+            'flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            on ? 'bg-primary text-primary-foreground shadow-sm' : 'text-foreground hover:bg-accent',
+          )}
           onClick={() => onChange(!on)}
         >
-          <span
-            aria-hidden="true"
-            className={cn(
-              'relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors',
-              on ? 'bg-primary' : 'bg-muted-foreground/30',
-            )}
-          >
-            <span
-              className={cn(
-                'absolute top-0.5 size-3 rounded-full bg-background shadow-sm transition-transform',
-                on ? 'translate-x-3.5' : 'translate-x-0.5',
-              )}
-            />
-          </span>
-          {label}
+          <Icon aria-hidden="true" className="size-4" />
         </button>
       )}
     </Tooltip>
   );
 }
 
+/** A short rule across the rail, between two groups of controls. */
 function Divider() {
-  return <span aria-hidden="true" className="mx-0.5 h-5 w-px shrink-0 bg-border" />;
+  return <span aria-hidden="true" className="my-0.5 h-px w-5 shrink-0 bg-border" />;
 }

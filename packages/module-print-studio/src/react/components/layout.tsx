@@ -147,6 +147,56 @@ export function SectionBar<K extends string>({
 }
 
 /**
+ * The Print screen's working layout, for photos and for a document alike: the
+ * settings beside the sheet, and the sheet as tall as the panel.
+ *
+ * ## ⚠ THE SHEET GETS THE WHOLE HEIGHT (the operator, 2026-10-07)
+ *
+ * The sheet used to share its column with a mode switch above it and a pager,
+ * the output bar and the shortcut keys below it, which left it a few hundred
+ * pixels on a laptop — the panel scrolled to show a whole page, and a photo on
+ * it was too small to judge. So nothing but the sheet's own card is in its
+ * column: the way out (`output`) is pinned under the settings, where it is
+ * always in reach however far they scroll, and `footer` is one line under both.
+ *
+ * A narrow panel stacks them — settings, sheet, output, footer — and scrolls as
+ * a page; the sheet keeps a height worth looking at there too.
+ *
+ * ⚠ ONE ELEMENT EACH, PLACED BY THE GRID, never one copy per arrangement: the
+ * output bar holds what has been downloaded, and the sheet holds a canvas.
+ */
+export function StudioSplit({
+  side,
+  output,
+  footer,
+  children,
+}: {
+  /** The settings: what is printed and how. Scrolls by itself beside the sheet. */
+  side: ReactNode;
+  /** The way out — copies, Print, Download. */
+  output: ReactNode;
+  /** One quiet line under everything (the shortcut keys). */
+  footer?: ReactNode;
+  /** The sheet's card. */
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid shrink-0 grid-cols-1 gap-3 @3xl:min-h-0 @3xl:flex-1 @3xl:grid-cols-[18rem_minmax(0,1fr)] @3xl:grid-rows-[minmax(0,1fr)_auto]">
+      <div className="flex min-w-0 flex-col gap-3 @3xl:col-start-1 @3xl:row-start-1 @3xl:min-h-0 @3xl:overflow-y-auto @3xl:pr-1">
+        {side}
+      </div>
+      {/* min-h: a grid item is otherwise as tall as its content at least, and a canvas has no height of its own to give. */}
+      <div className="flex min-h-112 min-w-0 flex-col @3xl:col-start-2 @3xl:row-span-2 @3xl:row-start-1 @3xl:min-h-64">
+        {children}
+      </div>
+      {/* pr-1, as the settings above it (their scrollbar's room): the two are one column and end on one line. */}
+      <div className="min-w-0 @3xl:col-start-1 @3xl:row-start-2 @3xl:pr-1">{output}</div>
+      {footer ? <div className="min-w-0 @3xl:col-span-2 @3xl:row-start-3">{footer}</div> : null}
+    </div>
+  );
+}
+
+/**
  * An empty list, said properly: what is missing, why it matters, and the one
  * thing to do about it. A blank panel reads as broken; a bare sentence is
  * missed.

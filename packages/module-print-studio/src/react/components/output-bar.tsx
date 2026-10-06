@@ -133,76 +133,84 @@ export function OutputBar({
       : { download: () => void run('downloaded'), print: () => void run('sent_to_print') };
   }
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <label htmlFor={copiesInput} className="text-xs font-medium text-muted-foreground">
-              Copies
+    /*
+     * A card as narrow as the settings column it sits under (`StudioSplit`), so
+     * it is laid out in rows that also read at full width on a narrow panel:
+     * what will come out, the two numbers that change it, then the buttons.
+     */
+    <section
+      aria-label="Print and download"
+      className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-sm"
+    >
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <p className="min-w-0 text-sm font-medium">{summary}</p>
+        {hasWork ? (
+          <button
+            type="button"
+            className={cn(buttonClass('ghost', 'sm'), '-mr-1 text-muted-foreground')}
+            disabled={busy !== null}
+            onClick={() => (atRisk ? setAsking(true) : onStartOver())}
+          >
+            <RotateCcw aria-hidden="true" className="size-3.5" />
+            Start over
+          </button>
+        ) : null}
+      </div>
+      <div className="flex items-end gap-2">
+        <div className="flex w-20 shrink-0 flex-col gap-1">
+          <label htmlFor={copiesInput} className="text-xs font-medium text-muted-foreground">
+            Copies
+          </label>
+          <input
+            id={copiesInput}
+            type="number"
+            min={1}
+            max={99}
+            className={cn(INPUT_CLASS, 'h-9')}
+            value={copies}
+            onChange={(event) => onCopies(Math.min(Math.max(Math.trunc(Number(event.target.value) || 1), 1), 99))}
+          />
+        </div>
+        {calibrations && calibrations.length > 0 && onCalibration ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor={calibrationInput} className="text-xs font-medium text-muted-foreground">
+              Printer calibration
             </label>
-            <input
-              id={copiesInput}
-              type="number"
-              min={1}
-              max={99}
-              className={cn(INPUT_CLASS, 'h-10 w-20')}
-              value={copies}
-              onChange={(event) => onCopies(Math.min(Math.max(Math.trunc(Number(event.target.value) || 1), 1), 99))}
-            />
-          </div>
-          {calibrations && calibrations.length > 0 && onCalibration ? (
-            <div className="flex flex-col gap-1">
-              <label htmlFor={calibrationInput} className="text-xs font-medium text-muted-foreground">
-                Printer calibration
-              </label>
-              <select
-                id={calibrationInput}
-                className={cn(INPUT_CLASS, 'h-10 w-48')}
-                value={calibrationId ?? ''}
-                onChange={(event) => onCalibration(event.target.value)}
-              >
-                <option value="">None</option>
-                {calibrations.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          <p className="pb-2.5 text-sm text-muted-foreground">{summary}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {hasWork ? (
-            <button
-              type="button"
-              className={buttonClass('ghost')}
-              disabled={busy !== null}
-              onClick={() => (atRisk ? setAsking(true) : onStartOver())}
+            <select
+              id={calibrationInput}
+              className={cn(INPUT_CLASS, 'h-9')}
+              value={calibrationId ?? ''}
+              onChange={(event) => onCalibration(event.target.value)}
             >
-              <RotateCcw aria-hidden="true" className="size-4" />
-              Start over
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={buttonClass('secondary')}
-            disabled={disabled}
-            onClick={() => void run('sent_to_print')}
-          >
-            <Printer aria-hidden="true" className="size-4" />
-            Print
-          </button>
-          <button
-            type="button"
-            className={buttonClass('primary')}
-            disabled={disabled}
-            onClick={() => void run('downloaded')}
-          >
-            <Download aria-hidden="true" className="size-4" />
-            {busy ?? 'Download PDF'}
-          </button>
-        </div>
+              <option value="">None</option>
+              {calibrations.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={buttonClass('secondary')}
+          disabled={disabled}
+          onClick={() => void run('sent_to_print')}
+        >
+          <Printer aria-hidden="true" className="size-4" />
+          Print
+        </button>
+        <button
+          type="button"
+          className={cn(buttonClass('primary'), 'min-w-0 flex-1')}
+          disabled={disabled}
+          onClick={() => void run('downloaded')}
+        >
+          <Download aria-hidden="true" className="size-4" />
+          {busy ?? 'Download PDF'}
+        </button>
       </div>
       {said ? (
         <p role="status" className="text-xs text-muted-foreground">
@@ -232,6 +240,6 @@ export function OutputBar({
           onStartOver();
         }}
       />
-    </div>
+    </section>
   );
 }
