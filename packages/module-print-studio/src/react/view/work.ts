@@ -208,13 +208,19 @@ export function resultFileName(layoutName: string): string {
   return `${safe || 'print'}.pdf`;
 }
 
-/** The file types the photo picker offers. HEIC by extension too: browsers often give it no type. */
-export const STUDIO_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';
+/**
+ * The file types the photo picker offers. HEIC by extension too: browsers often give it no type.
+ *
+ * ⚠ `.jfif` IS THE MOST COMMON FILE THE SHOP GETS (the operator, 2026-10-06): it is what a photo downloaded from
+ * Messenger is saved as. It is a JPEG under another extension, and often arrives with no type at all, so it is named
+ * here and matched by extension in `isPhotoFile` — drop it from either and most customers' photos are refused. ⚠ A GIF IS A STILL HERE: the browser decodes its first frame, and that is what prints.
+ */
+export const STUDIO_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.jfif,.heic,.heif';
 
 /** Whether a file is one the studio can lay out as a photo. */
 export function isPhotoFile(file: { name: string; type: string }): boolean {
-  if (/^image\/(jpeg|png|webp|heic|heif)$/iu.test(file.type)) return true;
-  return /\.(jpe?g|png|webp|heic|heif)$/iu.test(file.name);
+  if (/^image\/(jpeg|png|webp|gif|heic|heif)$/iu.test(file.type)) return true;
+  return /\.(jpe?g|jfif|png|webp|gif|heic|heif)$/iu.test(file.name);
 }
 
 export function isHeicFile(file: { name: string; type: string }): boolean {

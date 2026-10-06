@@ -55,6 +55,12 @@ model StudioLayout {
   name       String
   visibility StudioVisibility @default(private)
 
+  /// What kind of work it is for ("ID", "Photo Print"); the screens group
+  /// layouts by it. Null: none. ⚠ Written only through `prepareLayoutTag`.
+  /// Not indexed and never queried by: a person's layouts are capped, and are
+  /// grouped after they are read (`groupByStudioTag`).
+  tag String?
+
   /// A `StudioLayoutSpec`: the paper, margins and the EXACT cells drawn.
   /// ⚠ Written only through `prepareLayoutSpec`, which rebuilds it from known
   /// fields and bounds every number — so this column holds only what the

@@ -4,6 +4,7 @@ import { canSeeLayout, checkShareLayout, isStudioVisibility, planChangeLayout } 
 import { prepareCalibration, prepareCalibrationName } from '../domain/calibration.js';
 import { checkLayoutVersion, prepareLayoutName, prepareLayoutSpec, STUDIO_LAYOUT_NAME_MAX } from '../domain/layout.js';
 import { prepareLogEntry } from '../domain/log.js';
+import { prepareLayoutTag } from '../domain/tags.js';
 import { STUDIO_LIMIT, STUDIO_LIMIT_REGISTRY } from '../feature-keys.js';
 import type { StudioRefusal } from '../types.js';
 import type { StudioAccessCheck } from './ports.js';
@@ -30,6 +31,8 @@ export interface CreateLayoutInput {
   name?: unknown;
   /** A string off the wire, checked by `isStudioVisibility`. */
   visibility?: string | null | undefined;
+  /** Checked by `prepareLayoutTag`. Absent or empty: no tag. */
+  tag?: unknown;
   /** A `StudioLayoutSpec` as the client sent it, checked by `prepareLayoutSpec`. */
   spec?: unknown;
 }
@@ -38,6 +41,12 @@ export interface CreateLayoutInput {
 export interface EditLayoutInput {
   name?: unknown;
   spec?: unknown;
+  /**
+   * ⚠ ABSENT (or null) LEAVES THE TAG AS IT IS; AN EMPTY STRING TAKES IT OFF.
+   * GraphQL cannot tell a field left out from one sent as null, so "no tag"
+   * has to be a value of its own.
+   */
+  tag?: unknown;
 }
 
 export interface SaveCalibrationInput {
@@ -78,7 +87,8 @@ export class StudioWriteService {
     const { spec } = unwrap(prepareLayoutSpec(input.spec));
     const visibility = input.visibility ?? 'private';
     if (!isStudioVisibility(visibility)) throw refusalError('invalid_visibility');
-    return this.insertLayout(scope, actorId, { name, spec, visibility });
+    const { tag } = unwrap(prepareLayoutTag(input.tag));
+    return this.insertLayout(scope, actorId, { name, spec, visibility, tag });
   }
 
   /**
@@ -87,7 +97,8 @@ export class StudioWriteService {
    *
    * The copy is read back through `prepareLayoutSpec`, like any spec: a row
    * written by an older version of this code is cleaned on its way out, not
-   * copied forward as it was.
+   * copied forward as it was. The copy keeps the tag: it is the same kind of
+   * work.
    */
   async duplicateLayout(
     scope: StudioScope,
@@ -101,7 +112,12 @@ export class StudioWriteService {
     const { spec } = unwrap(prepareLayoutSpec(source.spec));
     const wanted = name == null || name === '' ? copyName(source.name) : name;
     const prepared = unwrap(prepareLayoutName(wanted));
-    return this.insertLayout(scope, actorId, { name: prepared.name, spec, visibility: 'private' });
+    return this.insertLayout(scope, actorId, {
+      name: prepared.name,
+      spec,
+      visibility: 'private',
+      tag: source.tag,
+    });
   }
 
   /**
@@ -127,7 +143,8 @@ export class StudioWriteService {
     if (input.name != null) data.name = unwrap(prepareLayoutName(input.name)).name;
     if (input.spec != null) data.spec = unwrap(prepareLayoutSpec(input.spec)).spec;
     // Nothing to change: the version must not move, or it would conflict with a real edit.
-    if (data.name === undefined && data.spec === undefined) return layout;
+    if (input.tag != null) data.tag = unwrap(prepareLayoutTag(input.tag)).tag;
+    if (data.name === undefined && data.spec === undefined && data.tag === undefined) return layout;
 
     const moved = await this.prisma.studioLayout.updateMany({
       where: { ...scope, id: layout.id, version: layout.version },
@@ -257,7 +274,7 @@ export class StudioWriteService {
   private async insertLayout(
     scope: StudioScope,
     actorId: string,
-    values: { name: string; spec: object; visibility: 'private' | 'workspace' },
+    values: { name: string; spec: object; visibility: 'private' | 'workspace'; tag: string | null },
   ): Promise<StudioLayoutRow> {
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.studioLayout.count({ where: { ...scope, ownerId: actorId } });

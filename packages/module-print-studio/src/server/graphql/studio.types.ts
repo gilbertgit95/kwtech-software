@@ -121,6 +121,10 @@ export class StudioLayoutType {
   @Field()
   visibility!: string;
 
+  /** What kind of work it is for; the screens group layouts by it. Null: none. */
+  @Field(() => String, { nullable: true })
+  tag!: string | null;
+
   /** Send it back with the next save; a save from an older one is refused. */
   @Field(() => Int)
   version!: number;
@@ -241,6 +245,10 @@ export class CreateStudioLayoutInputType {
   @Field(() => String, { nullable: true })
   visibility?: string | null;
 
+  /** Absent or empty: no tag. */
+  @Field(() => String, { nullable: true })
+  tag?: string | null;
+
   @Field(() => StudioLayoutSpecInputType)
   spec!: StudioLayoutSpecInputType;
 }
@@ -253,6 +261,10 @@ export class UpdateStudioLayoutInputType {
 
   @Field(() => StudioLayoutSpecInputType, { nullable: true })
   spec?: StudioLayoutSpecInputType | null;
+
+  /** ⚠ Absent leaves the tag as it is; an EMPTY STRING takes it off. */
+  @Field(() => String, { nullable: true })
+  tag?: string | null;
 }
 
 // ── calibration ──────────────────────────────────────────────────────────────

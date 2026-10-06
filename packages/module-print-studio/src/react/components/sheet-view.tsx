@@ -4,6 +4,7 @@ import { cn } from '@kwtech/web-ui/react';
 import { Minus, Plus } from 'lucide-react';
 import { type DragEvent, type ReactNode, type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
 import { printableArea, type StudioLayoutSpec, sheetSize } from '../../domain/layout.js';
+import { cellLabelSize } from '../view/summary.js';
 import { STUDIO_VIEW_ZOOMS, stepViewZoom } from '../view/work.js';
 
 /**
@@ -175,7 +176,8 @@ export function SheetView({
       <g transform={`translate(${area.x} ${area.y})`}>
         {spec.cells.map((cell, index) => {
           const chosen = index === selected;
-          const text = Math.min(cell.width / 5, cell.height / 3);
+          // Sized to the label as well as the cell, so a long one stays inside its own cell.
+          const text = cell.label ? cellLabelSize(cell, cell.label) : 0;
           return (
             // Cells never overlap, so a cell's top left names it and no other.
             <g key={`${cell.x}:${cell.y}`}>

@@ -34,7 +34,7 @@ const UNIQUES: Record<TableName, string[][]> = {
 };
 
 const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
-  studioLayout: (id, now) => ({ id, visibility: 'private', version: 1, createdAt: now, updatedAt: now }),
+  studioLayout: (id, now) => ({ id, visibility: 'private', tag: null, version: 1, createdAt: now, updatedAt: now }),
   studioCalibration: (id, now) => ({
     id,
     scaleX: 10000,

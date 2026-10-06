@@ -26,6 +26,8 @@ export interface StudioLayoutView {
   name: string;
   /** `private` or `workspace`. */
   visibility: string;
+  /** What kind of work it is for. Null: none. */
+  tag: string | null;
   version: number;
   mine: boolean;
   ownerId: string;
@@ -78,14 +80,15 @@ export interface StudioClient {
   layouts(scope: StudioScopeView): Promise<StudioLayoutView[]>;
   createLayout(
     scope: StudioScopeView,
-    input: { name: string; visibility?: 'private' | 'workspace'; spec: StudioLayoutSpec },
+    input: { name: string; visibility?: 'private' | 'workspace'; tag?: string; spec: StudioLayoutSpec },
   ): Promise<StudioLayoutView>;
   /** ⚠ Only the changed fields, from the version they were changed from. */
   updateLayout(
     scope: StudioScopeView,
     layoutId: string,
     expectedVersion: number,
-    input: { name?: string; spec?: StudioLayoutSpec },
+    /** `tag`: an empty string takes it off; absent leaves it. */
+    input: { name?: string; spec?: StudioLayoutSpec; tag?: string },
   ): Promise<StudioLayoutView>;
   setVisibility(
     scope: StudioScopeView,

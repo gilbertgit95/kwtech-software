@@ -32,6 +32,7 @@ export type StudioRefusal =
   | 'conflict'
   | 'limit_reached'
   | 'invalid_name'
+  | 'invalid_tag'
   | 'duplicate_name'
   | 'invalid_visibility'
   | 'invalid_spec'

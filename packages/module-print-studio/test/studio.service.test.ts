@@ -24,6 +24,34 @@ describe('creating a layout', () => {
     expect(layout.spec).toEqual(sampleSpec());
   });
 
+  it('files it under a tidied tag, or under none', async () => {
+    const { writes } = harness();
+    expect(
+      await writes.createLayout(SCOPE, ANA, { name: 'a', spec: sampleSpec(), tag: ' Photo  Print ' }),
+    ).toMatchObject({
+      tag: 'Photo Print',
+    });
+    expect(await writes.createLayout(SCOPE, ANA, { name: 'b', spec: sampleSpec() })).toMatchObject({ tag: null });
+    expect(await writes.createLayout(SCOPE, ANA, { name: 'c', spec: sampleSpec(), tag: '' })).toMatchObject({
+      tag: null,
+    });
+    expect(
+      await reasonOf(writes.createLayout(SCOPE, ANA, { name: 'd', spec: sampleSpec(), tag: 'x'.repeat(31) })),
+    ).toBe('invalid_tag');
+  });
+
+  it('⚠ changes a tag on a save, takes it off with an empty one, and leaves it alone when none is sent', async () => {
+    const { writes } = harness();
+    const made = await writes.createLayout(SCOPE, ANA, { name: 'a', spec: sampleSpec(), tag: 'ID' });
+    const renamed = await writes.updateLayout(SCOPE, ANA, made.id, made.version, { name: 'b' });
+    expect(renamed).toMatchObject({ name: 'b', tag: 'ID', version: 2 });
+    const moved = await writes.updateLayout(SCOPE, ANA, made.id, 2, { tag: 'Photo Print' });
+    expect(moved).toMatchObject({ tag: 'Photo Print', version: 3 });
+    expect(await writes.updateLayout(SCOPE, ANA, made.id, 3, { tag: '' })).toMatchObject({ tag: null, version: 4 });
+    // Somebody else may not file your layout somewhere else.
+    expect(await reasonOf(writes.updateLayout(SCOPE, BEN, made.id, 4, { tag: 'Theirs' }))).toBe('not_found');
+  });
+
   it('stores only the spec the domain accepted, not what was sent', async () => {
     const { writes } = harness();
     const layout = await writes.createLayout(SCOPE, ANA, {
@@ -280,8 +308,10 @@ describe('sharing and duplicating', () => {
       name: 'ID package',
       spec: sampleSpec(),
       visibility: 'workspace',
+      tag: 'ID',
     });
     const copy = await writes.duplicateLayout(SCOPE, BEN, shared.id);
+    expect(copy.tag).toBe('ID');
     expect(copy).toMatchObject({ name: 'ID package (copy)', ownerId: BEN, visibility: 'private', version: 1 });
     expect(copy.spec).toEqual(shared.spec);
     expect(copy.id).not.toBe(shared.id);

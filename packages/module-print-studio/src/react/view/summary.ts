@@ -67,3 +67,30 @@ export function layoutSummary(spec: StudioLayoutSpec, unit: StudioUnit): string 
 export function plural(count: number, one: string, many: string = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
+
+/**
+ * How wide a character of a cell's label is drawn, as a share of the font
+ * size. Digits, "×" and letters are a little over half an em in the app's
+ * face; 0.6 is the wide side of that, so the estimate errs towards a label
+ * that is too small rather than one that spills.
+ */
+const LABEL_CHARACTER_WIDTH = 0.6;
+/** The share of a cell's width its label may take, leaving air at both sides. */
+const LABEL_WIDTH_SHARE = 0.8;
+
+/**
+ * The font size of the label written on a cell, in the cell's own units.
+ *
+ * A fifth of the cell's width and at most a third of its height — the size a
+ * short name like "1 × 1" has always been drawn at — and SMALLER when the
+ * label is long, so the whole of it stays inside the cell.
+ *
+ * ⚠ THE LENGTH OF THE LABEL IS PART OF THE ANSWER. Without it a typed size is
+ * labelled "54 × 85.6 mm", twelve characters at a size chosen for five, and
+ * each label ran across its neighbour's (the operator, 2026-10-06).
+ */
+export function cellLabelSize(cell: { width: number; height: number }, label: string): number {
+  const characters = Math.max([...label].length, 1);
+  const fitted = (cell.width * LABEL_WIDTH_SHARE) / (characters * LABEL_CHARACTER_WIDTH);
+  return Math.min(cell.width / 5, cell.height / 3, fitted);
+}

@@ -42,7 +42,7 @@ const PREVIEW_SIDE = 1600;
  * studio can read."
  */
 export async function loadPhoto(file: File): Promise<StudioPhoto> {
-  if (!isPhotoFile(file)) throw new Error(`“${file.name}” is not a photo. Use JPG, PNG, WebP or HEIC.`);
+  if (!isPhotoFile(file)) throw new Error(`“${file.name}” is not a photo. Use JPG, PNG, WebP, GIF or HEIC.`);
 
   let blob: Blob = file;
   if (isHeicFile(file)) {

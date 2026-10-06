@@ -37,7 +37,10 @@ photos and nothing else does.
 
 Rendering is in the browser: `pdf-lib` writes the result; `pdfjs-dist` draws a
 PDF's pages for the document preview, and `heic2any` decodes HEIC photos —
-each of those two loaded only when needed. All three are this package's own
+each of those two loaded only when needed. **Photos accepted:** JPG (also
+as `.jfif`, what a photo downloaded from Messenger is saved as — the shop's
+most common file), PNG, WebP, HEIC/HEIF, and GIF as a still (its first
+frame); a PDF only as whole pages (`isPhotoFile`, `STUDIO_PHOTO_ACCEPT`). All three are this package's own
 dependencies, and none needs a file served by the app (`pdfjs-dist` runs on
 the main thread, with no worker URL).
 
@@ -81,8 +84,10 @@ shows when the Layouts section is opened again.
 | **Cell** | one place a photo goes, measured from the printable area's top left |
 | **Layout** | a paper, an orientation, margins, the EXACT cells drawn, and the border printed around them |
 | **Border** | the line around each cell, to cut along: on or off, solid or dashed, a thickness, grey or black. Saved with the layout; the Print screen can change it for one print |
+| **Tag** | what kind of work a layout is for ("ID", "Photo Print"): ONE per layout, free text of at most 30 characters, or none. The screens show the layouts of one tag together, the untagged last. Compared without case or spacing (`studioTagKey`), so two spellings are one shelf |
+| **Cell label** | the size's name written on a cell in the editor. Its font size comes from the cell AND the label's length (`cellLabelSize`), so a long one ("54 × 85.6 mm") stays inside its own cell |
 | **Private / shared** | `visibility`: `private` (the owner only, whatever keys anyone holds) or `workspace` |
-| **Preset** | a layout that ships with the studio: an A4 with 12 mm clear on the left and right, its cells stopping one inch above the sheet's centre so the lower half is used again. Using or copying one makes no row |
+| **Preset** | a layout that ships with the studio: the operator's own ID packages and photo sheets on A4, written out exactly as they drew them. Each has a **tag** (`STUDIO_PRESET_TAGS`: ID, Photo Print, Page Grid — the last being whole-A4 grids of equal cells) and the screens show one Ready-made shelf per tag (`studioPresetGroups`). Using or copying one makes no row |
 | **Frame** | how a cell shows its photo: zoom, position, a quarter turn. Kept per cell, and changed for every SELECTED cell at once: several can be selected, on any page |
 | **Photo edit** | what was done to a PHOTO — crop, flips, lighting — followed by every cell holding it |
 | **Result** | the PDF made in the browser, held in memory until downloaded or cleared |
@@ -96,6 +101,9 @@ shows when the Layouts section is opened again.
   placed together, at a dropped point or the first free place), `addAt`,
   `fillWithSize`, `addOfSize`, `splitIntoGrid`, `moveCell`, `resizeCell`,
   `rotateCell`, `duplicateCell`, `snapPosition`. Deterministic; run only in the editor.
+  In the editor's "Add cells" card, **Equal grid** is `splitIntoGrid` with a
+  live picture: so many across, so many down, an optional gap. ⚠ It replaces
+  every cell, and asks first when there are any.
 - **What may be saved** (`layout.ts`): `prepareLayoutSpec` rebuilds a spec from
   known fields and bounds every number. It is the only way a spec reaches the
   database, and the same `checkCells` the editor runs.
@@ -105,6 +113,12 @@ shows when the Layouts section is opened again.
 - **Framing and editing** (`slot-fit.ts`, `adjust.ts`): `sourceRect`,
   `panFrame` (a photo dragged inside its cell), `effectiveDpi`, and lighting as arithmetic on pixels so the preview and the
   result agree.
+- **Tags** (`tags.ts`): `prepareLayoutTag` (what may be saved),
+  `groupByStudioTag` (the shelves) and `studioTagSuggestions` (what the editor
+  offers). ⚠ On `updateStudioLayout`, leaving `tag` out keeps it and an EMPTY
+  STRING takes it off. The editor's tag box is the module's own combobox
+  (`TagInput`), not an `<input list>`: it offers the tags in use, and what is
+  typed is the value.
 - **Who may** (`access.ts`): `canSeeLayout`, `planChangeLayout`,
   `checkShareLayout`. ⚠ Somebody else's private layout is `not_found` from every
   check, and no key overrides that.

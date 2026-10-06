@@ -2,7 +2,7 @@ import { emptyLayoutSpec } from '../src/domain/layout.js';
 import { findStudioPreset } from '../src/domain/presets.js';
 import { inches, mm } from '../src/domain/units.js';
 import { lengthText, parseLength, scaleText } from '../src/react/view/lengths.js';
-import { cellGroups, layoutSummary, paperName, plural, sizeName } from '../src/react/view/summary.js';
+import { cellGroups, cellLabelSize, layoutSummary, paperName, plural, sizeName } from '../src/react/view/summary.js';
 
 describe('parseLength', () => {
   it('reads a bare number in the field’s own unit', () => {
@@ -40,13 +40,13 @@ describe('showing lengths', () => {
 
 describe('summarising a layout', () => {
   it('groups cells by size, largest first, upright and sideways together', () => {
-    const cells = findStudioPreset('a4-strip-2x2-1x1')?.spec.cells ?? [];
+    const cells = findStudioPreset('a4-id-1-2')?.spec.cells ?? [];
     const groups = cellGroups(cells, 'in');
-    expect(groups[0]).toEqual({ label: '2 × 2 in', count: 2 });
+    expect(groups[0]).toEqual({ label: '2 × 2 in', count: 4 });
     expect(groups[1]?.label).toBe('1 × 1 in');
 
-    const passport = findStudioPreset('a4-strip-passport')?.spec.cells ?? [];
-    expect(cellGroups(passport, 'mm')).toEqual([{ label: 'Passport', count: 12 }]);
+    const passport = findStudioPreset('a4-id-passport')?.spec.cells ?? [];
+    expect(cellGroups(passport, 'mm')).toEqual([{ label: 'Passport', count: 10 }]);
   });
 
   it('names a size it knows and measures one it does not', () => {
@@ -64,10 +64,24 @@ describe('summarising a layout', () => {
   });
 
   it('says a layout in a line', () => {
-    const preset = findStudioPreset('a4-strip-1x1');
-    expect(preset ? layoutSummary(preset.spec, 'in') : '').toBe('A4 · 28 of 1 × 1 in');
+    const preset = findStudioPreset('a4-id-1x1');
+    expect(preset ? layoutSummary(preset.spec, 'in') : '').toBe('A4 · 18 of 1 × 1 in');
     const empty = emptyLayoutSpec({ key: 'a4', label: 'A4', width: mm(210), height: mm(297) }, 0);
     expect(layoutSummary(empty, 'mm')).toBe('A4 · no cells yet');
+  });
+
+  it('⚠ writes a short label at a fifth of the cell, and shrinks a long one so it stays inside', () => {
+    const inch = { width: inches(1), height: inches(1) };
+    expect(cellLabelSize(inch, '1 × 1')).toBe(inches(1) / 5);
+    // A wide, flat cell: the height decides.
+    expect(cellLabelSize({ width: inches(6), height: inches(1) }, '4R')).toBe(inches(1) / 3);
+
+    const card = { width: mm(54), height: mm(85.6) };
+    const size = cellLabelSize(card, '54 × 85.6 mm');
+    expect(size).toBeLessThan(card.width / 5);
+    // Twelve characters, at the widest a character is drawn, fit inside the cell with room to spare.
+    expect(12 * 0.6 * size).toBeLessThanOrEqual(card.width * 0.8 + 1e-6);
+    expect(cellLabelSize(inch, '')).toBe(inches(1) / 5);
   });
 
   it('counts in words', () => {

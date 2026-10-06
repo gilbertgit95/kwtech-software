@@ -725,7 +725,8 @@ export function PhotoStudio({
                           {photo ? null : (
                             // An empty cell, drawn on the white paper: literal colours, as the paper's are.
                             <span
-                              className="flex size-full items-center justify-center border border-dashed"
+                              // ⚠ `overflow-hidden`: a long label is cut at the cell's edge, never written across the next cell.
+                              className="flex size-full items-center justify-center overflow-hidden whitespace-nowrap border border-dashed"
                               style={{
                                 borderColor: SELECTED,
                                 color: SELECTED,

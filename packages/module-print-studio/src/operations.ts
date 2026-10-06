@@ -19,7 +19,7 @@ const SPEC = `spec {
       guides
       border { style width color }
     }`;
-const LAYOUT = `id name visibility version mine ownerId ownerName updatedAt createdAt ${SPEC}`;
+const LAYOUT = `id name visibility tag version mine ownerId ownerName updatedAt createdAt ${SPEC}`;
 const CALIBRATION = 'id name scaleX scaleY offsetX offsetY updatedAt';
 const LOG =
   'id action kind userId userName mine layoutId layoutName paperLabel paperWidth paperHeight pages copies fileNames createdAt';

@@ -28,6 +28,8 @@ export interface StudioLayoutRow {
   ownerId: string;
   name: string;
   visibility: StudioVisibility;
+  /** What kind of work it is for. Null: none. */
+  tag: string | null;
   /** ⚠ `unknown` on purpose: a `Json` column. Read through `prepareLayoutSpec`, never cast. */
   spec: unknown;
   version: number;
@@ -79,6 +81,8 @@ export interface StudioLayoutUpdate {
   /** A clean `StudioLayoutSpec`, as a plain JSON value. */
   spec?: object;
   visibility?: StudioVisibility;
+  /** Null takes the tag off. */
+  tag?: string | null;
   updatedById: string;
   version: { increment: 1 };
 }
@@ -108,6 +112,7 @@ export interface StudioTransaction {
         ownerId: string;
         name: string;
         visibility: StudioVisibility;
+        tag: string | null;
         spec: object;
         updatedById: string;
       };

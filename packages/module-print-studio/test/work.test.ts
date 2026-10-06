@@ -161,7 +161,9 @@ describe('file kinds', () => {
   it('knows a photo by its type or, failing that, its name', () => {
     expect(isPhotoFile({ name: 'a.bin', type: 'image/jpeg' })).toBe(true);
     expect(isPhotoFile({ name: 'IMG_0001.HEIC', type: '' })).toBe(true);
-    expect(isPhotoFile({ name: 'a.gif', type: 'image/gif' })).toBe(false);
+    expect(isPhotoFile({ name: 'a.gif', type: 'image/gif' })).toBe(true);
+    expect(isPhotoFile({ name: 'download.JFIF', type: '' })).toBe(true);
+    expect(isPhotoFile({ name: 'a.bmp', type: 'image/bmp' })).toBe(false);
     expect(isPhotoFile({ name: 'a.pdf', type: 'application/pdf' })).toBe(false);
   });
 

@@ -4,7 +4,8 @@ import { cn } from '@kwtech/web-ui/react';
 import { FileText, Images, Plus, UsersRound } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 import type { StudioLayoutSpec } from '../../domain/layout.js';
-import { STUDIO_PRESETS } from '../../domain/presets.js';
+import { studioPresetGroups } from '../../domain/presets.js';
+import { groupByStudioTag } from '../../domain/tags.js';
 import type { StudioAppState } from '../studio-state.js';
 import { useStudioData } from '../use-studio-data.js';
 import { cellGroups } from '../view/summary.js';
@@ -104,6 +105,7 @@ function LayoutGallery({
   const layouts = useStudioData(load, 'Could not load your layouts.');
   const mine = (layouts.data ?? []).filter((one) => one.mine);
   const shared = (layouts.data ?? []).filter((one) => !one.mine);
+  const presetGroups = studioPresetGroups();
 
   return (
     <div className="flex flex-col gap-5">
@@ -113,9 +115,9 @@ function LayoutGallery({
       </div>
       <Alert message={layouts.error} />
 
-      {mine.length > 0 ? (
-        <Shelf title="Your layouts">
-          {mine.map((one) => (
+      {groupByStudioTag(mine, (one) => one.tag).map((group) => (
+        <Shelf key={group.key ?? ''} title={shelfTitle('Your layouts', group.label)}>
+          {group.items.map((one) => (
             <LayoutTile
               key={one.id}
               name={one.name}
@@ -125,11 +127,11 @@ function LayoutGallery({
             />
           ))}
         </Shelf>
-      ) : null}
+      ))}
 
-      {shared.length > 0 ? (
-        <Shelf title="Shared with the workspace">
-          {shared.map((one) => (
+      {groupByStudioTag(shared, (one) => one.tag).map((group) => (
+        <Shelf key={group.key ?? ''} title={shelfTitle('Shared with the workspace', group.label)}>
+          {group.items.map((one) => (
             <LayoutTile
               key={one.id}
               name={one.name}
@@ -139,33 +141,41 @@ function LayoutGallery({
             />
           ))}
         </Shelf>
-      ) : null}
+      ))}
 
-      <Shelf title="Ready-made">
-        {STUDIO_PRESETS.map((preset) => (
-          <LayoutTile
-            key={preset.key}
-            name={preset.name}
-            spec={preset.spec}
-            note={null}
-            onPick={() => onLayout({ id: null, name: preset.name, spec: preset.spec, foreign: false })}
-          />
-        ))}
-        {state.can.write ? (
-          <button
-            type="button"
-            className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border p-3 text-center text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onBrowseLayouts}
-          >
-            <span className="flex size-9 items-center justify-center rounded-full bg-muted">
-              <Plus aria-hidden="true" className="size-4" />
-            </span>
-            Make your own
-          </button>
-        ) : null}
-      </Shelf>
+      {presetGroups.map((group, index) => (
+        <Shelf key={group.key} title={shelfTitle('Ready-made', group.label)}>
+          {group.presets.map((preset) => (
+            <LayoutTile
+              key={preset.key}
+              name={preset.name}
+              spec={preset.spec}
+              note={null}
+              onPick={() => onLayout({ id: null, name: preset.name, spec: preset.spec, foreign: false })}
+            />
+          ))}
+          {/* Once, after the last ready-made one: the way out for somebody who found nothing that fits. */}
+          {state.can.write && index === presetGroups.length - 1 ? (
+            <button
+              type="button"
+              className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border p-3 text-center text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onBrowseLayouts}
+            >
+              <span className="flex size-9 items-center justify-center rounded-full bg-muted">
+                <Plus aria-hidden="true" className="size-4" />
+              </span>
+              Make your own
+            </button>
+          ) : null}
+        </Shelf>
+      ))}
     </div>
   );
+}
+
+/** One shelf per tag: "Your layouts: ID". The untagged keep the plain title. */
+function shelfTitle(title: string, tag: string | null): string {
+  return tag === null ? title : `${title}: ${tag}`;
 }
 
 function Shelf({ title, children }: { title: string; children: ReactNode }) {

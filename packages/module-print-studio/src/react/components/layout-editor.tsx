@@ -1,7 +1,7 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
-import { ChevronDown, Copy, GripVertical, LayoutGrid, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
+import { ChevronDown, Copy, Grid2x2, GripVertical, LayoutGrid, Minus, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { type DragEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   borderOf,
@@ -29,6 +29,7 @@ import {
   splitIntoGrid,
 } from '../../domain/place.js';
 import { STUDIO_CELL_MIN, STUDIO_ID_SIZES, type StudioCellSize } from '../../domain/sizes.js';
+import { prepareLayoutTag } from '../../domain/tags.js';
 import { formatSize, mm } from '../../domain/units.js';
 import type { StudioRefusal } from '../../types.js';
 import type { StudioAppState } from '../studio-state.js';
@@ -43,6 +44,7 @@ import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert } from './layout.js';
 import { SheetFrame, SheetView } from './sheet-view.js';
 import { ShortcutBar } from './shortcut-bar.js';
+import { TagInput } from './tag-input.js';
 
 /** What the editor was opened on: a new layout, or a saved one being changed. */
 export interface EditorTarget {
@@ -52,6 +54,8 @@ export interface EditorTarget {
   version: number;
   name: string;
   visibility: 'private' | 'workspace';
+  /** What kind of work it is for, or null for none. */
+  tag: string | null;
   spec: StudioLayoutSpec;
 }
 
@@ -81,7 +85,8 @@ const NUDGE = mm(1);
  * drawing board:
  *
  *   SIZES   a palette on the left. Press a size to add one cell of it; drag it
- *           onto the sheet to put it exactly there. A custom size is typed.
+ *           onto the sheet to put it exactly there. A custom size is typed,
+ *           and an equal grid divides the whole printable area.
  *   SHEET   the paper, to scale. Drag a cell to move it, drag its corner to
  *           resize it; arrow keys nudge, Delete removes.
  *   PAGE    the paper and its margins, folded into one line until wanted —
@@ -97,16 +102,20 @@ const NUDGE = mm(1);
 export function LayoutEditor({
   state,
   target,
+  tags,
   onSaved,
   onCancel,
 }: {
   state: StudioAppState;
   target: EditorTarget;
+  /** Tags to offer while one is typed: the ones already in use, so a second spelling is not made by accident. */
+  tags: readonly string[];
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const nameId = useId();
   const [name, setName] = useState(target.name);
+  const [tag, setTag] = useState(target.tag ?? '');
   const [visibility, setVisibility] = useState(target.visibility);
   const [spec, setSpec] = useState(target.spec);
   const [unit, setUnit] = useState<StudioUnit>('mm');
@@ -236,13 +245,21 @@ export function LayoutEditor({
     }
     setNameError(false);
     if (problem) return;
+    // The input's `maxLength` keeps a typed tag inside the limit, so this only tidies it; '' means none.
+    const preparedTag = prepareLayoutTag(tag);
+    const cleanTag = 'refused' in preparedTag ? '' : (preparedTag.tag ?? '');
 
     const done = await save.run(async () => {
       if (target.id === null) {
-        await state.client.createLayout(state.scope, { name: prepared.name, visibility, spec });
+        await state.client.createLayout(state.scope, { name: prepared.name, visibility, tag: cleanTag, spec });
         return;
       }
-      await state.client.updateLayout(state.scope, target.id, target.version, { name: prepared.name, spec });
+      await state.client.updateLayout(state.scope, target.id, target.version, {
+        name: prepared.name,
+        spec,
+        // ⚠ An empty string is how a tag is taken off; leaving the field out would keep the old one.
+        tag: cleanTag,
+      });
       // Sharing is its own act, and the owner's alone: only sent when it changed.
       if (visibility !== target.visibility) await state.client.setVisibility(state.scope, target.id, visibility);
     });
@@ -251,7 +268,7 @@ export function LayoutEditor({
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3">
-      {/* ── the bar: what it is called, who sees it, and the way out ── */}
+      {/* ── the bar: what it is called, what it is filed under, who sees it, and the way out ── */}
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor={nameId} className="sr-only">
           Layout name
@@ -271,6 +288,7 @@ export function LayoutEditor({
             setNameError(false);
           }}
         />
+        <TagInput className="w-44 shrink-0" value={tag} onChange={setTag} tags={tags} />
         <Segmented
           label="Who can use this layout"
           value={visibility}
@@ -301,22 +319,29 @@ export function LayoutEditor({
       <div className="hidden min-h-0 flex-1 gap-4 @2xl:flex">
         {/* ── the palette ── */}
         <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto pr-1">
-          <SizePalette unit={unit} onAdd={addCells} onFill={fillWith} />
+          <SizePalette
+            unit={unit}
+            area={area}
+            cellCount={spec.cells.length}
+            onAdd={addCells}
+            onFill={fillWith}
+            onSplit={(rows, columns, gap) => {
+              const grid = splitIntoGrid(area, rows, columns, { gap });
+              if (!grid) return setNote('Those cells would be too small.');
+              setCells(
+                grid,
+                `Divided the sheet into ${columns} across and ${rows} down: ${plural(grid.length, 'equal cell')}.`,
+              );
+              setSelected(null);
+            }}
+          />
           <PageSetup spec={spec} unit={unit} onUnit={setUnit} onChange={change} />
           <MoreTools
-            area={area}
-            unit={unit}
             hasCells={spec.cells.length > 0}
             guides={spec.guides}
             border={borderOf(spec)}
             onGuides={(guides) => change({ guides })}
             onBorder={(border) => change({ border })}
-            onSplit={(rows, columns, gap) => {
-              const grid = splitIntoGrid(area, rows, columns, { gap });
-              if (!grid) return setNote('Those cells would be too small.');
-              setCells(grid, `Split the sheet into ${plural(grid.length, 'equal cell')}.`);
-              setSelected(null);
-            }}
             onClear={() => {
               setCells([], 'Removed every cell.');
               setSelected(null);
@@ -627,12 +652,20 @@ const PHOTO_CELL_SIZES: readonly StudioCellSize[] = STUDIO_PAPERS.filter((paper)
  */
 function SizePalette({
   unit,
+  area,
+  cellCount,
   onAdd,
   onFill,
+  onSplit,
 }: {
   unit: StudioUnit;
+  /** The printable area, which the equal grid divides. */
+  area: StudioSize;
+  /** How many cells the layout has now — what an equal grid would replace. */
+  cellCount: number;
   onAdd: (size: StudioSize, label: string, many: BlockChoice) => void;
   onFill: (size: StudioSize, label: string, gap: number) => void;
+  onSplit: (rows: number, columns: number, gap: number) => void;
 }) {
   const [custom, setCustom] = useState<StudioSize>({ width: mm(30), height: mm(40) });
   const [many, setMany] = useState<BlockChoice>({ rows: 1, columns: 1, gap: 0 });
@@ -707,7 +740,218 @@ function SizePalette({
           Add {count === 1 ? customLabel : `${count} of ${customLabel}`}
         </button>
       </div>
+
+      <EqualGrid area={area} unit={unit} cellCount={cellCount} onSplit={onSplit} />
     </Card>
+  );
+}
+
+/** Grids people ask for most, as one press each: across × down. */
+const GRID_PICKS: readonly { columns: number; rows: number }[] = [
+  { columns: 1, rows: 2 },
+  { columns: 2, rows: 2 },
+  { columns: 2, rows: 3 },
+  { columns: 3, rows: 3 },
+  { columns: 4, rows: 4 },
+];
+/** The most rows or columns a grid is offered with; past this the cells are too small to be photos anyway. */
+const GRID_SIDE_MAX = 20;
+
+/**
+ * Divide the printable area into equal cells: so many across, so many down.
+ *
+ * Here, under "Add cells" beside "Your own size" (the operator, 2026-10-06):
+ * it first lived folded away under "Border and more", where nobody making a
+ * page grid found it. A sheet of equal cells is a way of ADDING cells, so this
+ * is where a person looks.
+ *
+ * It answers before it is pressed: the picture is the printable area with the
+ * grid drawn on it, and the line under it says how many cells and how big.
+ *
+ * ⚠ IT REPLACES EVERY CELL — a grid fills the whole area, so nothing already
+ * placed could stay. With cells on the sheet it asks first; the editor has no
+ * undo, and one press must not cost a layout somebody spent ten minutes on.
+ */
+function EqualGrid({
+  area,
+  unit,
+  cellCount,
+  onSplit,
+}: {
+  area: StudioSize;
+  unit: StudioUnit;
+  cellCount: number;
+  onSplit: (rows: number, columns: number, gap: number) => void;
+}) {
+  const [columns, setColumns] = useState(2);
+  const [rows, setRows] = useState(2);
+  const [gap, setGap] = useState(0);
+  const [asking, setAsking] = useState(false);
+
+  // The same function that will make the cells, so the picture and the size shown are what Divide gives.
+  const cells = area.width > 0 && area.height > 0 ? splitIntoGrid(area, rows, columns, { gap }) : null;
+  const first = cells?.[0];
+  const total = rows * columns;
+
+  function divide() {
+    setAsking(false);
+    onSplit(rows, columns, gap);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-2.5">
+      <div className="flex items-center gap-1.5">
+        <Grid2x2 aria-hidden="true" className="size-3.5 text-muted-foreground" />
+        <p className="text-xs font-semibold">Equal grid</p>
+      </div>
+      <p className="text-xs text-muted-foreground">Divide the whole printable area into cells of one size.</p>
+
+      <fieldset className="flex flex-wrap gap-1">
+        <legend className="sr-only">Common grids, across by down</legend>
+        {GRID_PICKS.map((pick) => {
+          const chosen = pick.columns === columns && pick.rows === rows;
+          return (
+            <button
+              key={`${pick.columns}x${pick.rows}`}
+              type="button"
+              aria-pressed={chosen}
+              aria-label={`${pick.columns} across, ${pick.rows} down`}
+              className={cn(
+                'h-7 rounded-full border px-2.5 text-xs font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                chosen
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary hover:text-foreground',
+              )}
+              onClick={() => {
+                setColumns(pick.columns);
+                setRows(pick.rows);
+              }}
+            >
+              {pick.columns} × {pick.rows}
+            </button>
+          );
+        })}
+      </fieldset>
+
+      <div className="flex items-center gap-3">
+        <GridPicture area={area} cells={cells} />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <Stepper label="Across" value={columns} max={GRID_SIDE_MAX} onChange={setColumns} />
+          <Stepper label="Down" value={rows} max={GRID_SIDE_MAX} onChange={setRows} />
+        </div>
+      </div>
+      <LengthField label="Gap between cells" unit={unit} value={gap} onCommit={setGap} />
+
+      <p role="status" className={cn('text-xs', first ? 'text-muted-foreground' : 'text-destructive')}>
+        {first
+          ? `${plural(total, 'cell')}, each ${formatSize(first.width, first.height, unit)}.`
+          : 'Those cells would be too small to hold a photo. Use fewer, or a smaller gap.'}
+      </p>
+      <button
+        type="button"
+        className={buttonClass('secondary', 'sm')}
+        disabled={!first}
+        onClick={() => (cellCount > 0 ? setAsking(true) : divide())}
+      >
+        <Grid2x2 aria-hidden="true" className="size-3.5" />
+        Divide into {columns} × {rows}
+      </button>
+
+      <ConfirmDialog
+        open={asking}
+        title="Replace the cells on this sheet?"
+        description={`The ${plural(cellCount, 'cell')} on the sheet now will be removed, and ${plural(total, 'equal cell')} put in their place.`}
+        confirmLabel="Replace with the grid"
+        onCancel={() => setAsking(false)}
+        onConfirm={divide}
+      />
+    </div>
+  );
+}
+
+/**
+ * The printable area with the grid drawn on it, to scale. A picture of paper,
+ * so its colours are literal like the sheet's own (`sheet-view.tsx`): a
+ * dark-theme sheet would be paper nobody owns.
+ */
+function GridPicture({ area, cells }: { area: StudioSize; cells: readonly StudioCell[] | null }) {
+  const width = Math.max(area.width, 1);
+  const height = Math.max(area.height, 1);
+  const hair = Math.max(width, height) / 90;
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox={`${-hair} ${-hair} ${width + hair * 2} ${height + hair * 2}`}
+      className="h-24 w-20 shrink-0 rounded-sm shadow-sm ring-1 ring-border"
+    >
+      <rect x={-hair} y={-hair} width={width + hair * 2} height={height + hair * 2} fill="#ffffff" />
+      {(cells ?? []).map((cell) => (
+        <rect
+          key={`${cell.x}:${cell.y}`}
+          x={cell.x}
+          y={cell.y}
+          width={cell.width}
+          height={cell.height}
+          fill="#2563eb"
+          fillOpacity={0.12}
+          stroke="#2563eb"
+          strokeWidth={hair}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** A small whole number, changed a step at a time or typed. */
+function Stepper({
+  label,
+  value,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  const id = useId();
+  const set = (next: number) => onChange(Math.min(Math.max(Math.trunc(next) || 1, 1), max));
+  const button =
+    'flex size-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
+      <div className="flex items-center overflow-hidden rounded-lg border border-border bg-background shadow-xs">
+        <button
+          type="button"
+          aria-label={`One fewer ${label.toLowerCase()}`}
+          className={button}
+          disabled={value <= 1}
+          onClick={() => set(value - 1)}
+        >
+          <Minus aria-hidden="true" className="size-3.5" />
+        </button>
+        <input
+          id={id}
+          inputMode="numeric"
+          className="h-8 w-9 border-x border-border bg-transparent text-center text-sm font-medium tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          value={value}
+          onChange={(event) => set(Number(event.target.value))}
+          onFocus={(event) => event.target.select()}
+        />
+        <button
+          type="button"
+          aria-label={`One more ${label.toLowerCase()}`}
+          className={button}
+          disabled={value >= max}
+          onClick={() => set(value + 1)}
+        >
+          <Plus aria-hidden="true" className="size-3.5" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -943,47 +1187,26 @@ function paperOption(paper: { label: string; alias?: string; width: number; heig
   return `${name} — ${formatSize(paper.width, paper.height, paper.unit)}`;
 }
 
-// ── the rest: a grid, the cut guides, starting over ──────────────────────────
+// ── the rest: the cut guides, starting over ──────────────────────────
 
 function MoreTools({
-  area,
-  unit,
   hasCells,
   guides,
   border,
   onGuides,
   onBorder,
-  onSplit,
   onClear,
 }: {
-  area: StudioSize;
-  unit: StudioUnit;
   hasCells: boolean;
   guides: boolean;
   border: StudioBorder;
   onGuides: (guides: boolean) => void;
   onBorder: (border: StudioBorder) => void;
-  onSplit: (rows: number, columns: number, gap: number) => void;
   onClear: () => void;
 }) {
-  const [rows, setRows] = useState(2);
-  const [columns, setColumns] = useState(2);
   return (
-    <Foldable title="Border and more" summary={`${borderSummary(guides, border)} · equal grid · start over`}>
+    <Foldable title="Border and more" summary={`${borderSummary(guides, border)} · start over`}>
       <BorderControls on={guides} border={border} onOn={onGuides} onBorder={onBorder} />
-
-      <p className="border-t border-border pt-2.5 text-xs font-semibold">Divide the sheet into equal cells</p>
-      <div className="grid grid-cols-3 items-end gap-2">
-        <CountField label="Rows" value={rows} onChange={setRows} max={20} />
-        <CountField label="Columns" value={columns} onChange={setColumns} max={20} />
-        <button type="button" className={buttonClass('secondary', 'sm')} onClick={() => onSplit(rows, columns, 0)}>
-          Divide
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        This replaces every cell with {rows * columns} equal ones, each{' '}
-        {formatSize(Math.floor(area.width / columns), Math.floor(area.height / rows), unit)}.
-      </p>
 
       {hasCells ? (
         <button

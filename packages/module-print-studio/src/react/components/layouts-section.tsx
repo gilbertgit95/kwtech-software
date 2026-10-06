@@ -12,7 +12,8 @@ import {
 import { Copy, LayoutTemplate, Lock, MoreHorizontal, Pencil, Plus, Printer, Trash2, UsersRound } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 import type { StudioLayoutSpec } from '../../domain/layout.js';
-import { defaultLayoutSpec, STUDIO_PRESETS } from '../../domain/presets.js';
+import { defaultLayoutSpec, studioPresetGroups } from '../../domain/presets.js';
+import { groupByStudioTag, type StudioTagGroup, studioTagSuggestions } from '../../domain/tags.js';
 import type { StudioLayoutView } from '../studio-client.js';
 import type { StudioAppState } from '../studio-state.js';
 import { useStudioAction, useStudioData } from '../use-studio-data.js';
@@ -34,12 +35,13 @@ export interface ChosenLayout {
 
 /** A new layout starts on the default paper and margins (`defaultLayoutSpec`), with no cells. */
 function blankTarget(): EditorTarget {
-  return { id: null, version: 0, name: '', visibility: 'private', spec: defaultLayoutSpec() };
+  return { id: null, version: 0, name: '', visibility: 'private', tag: null, spec: defaultLayoutSpec() };
 }
 
 /**
  * The layouts a person can use: their own, the ones shared with the workspace,
- * and the presets that come with the studio.
+ * and the presets that come with the studio — each list grouped by tag (ID,
+ * Photo Print, or whatever the workspace typed), the untagged last.
  *
  * - Only the owner edits a shared layout; anybody else duplicates it
  *   (PRINT-STUDIO-PLAN decision 15). A holder of `studio:manage_all` may edit
@@ -57,6 +59,7 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
 
   const mine = (layouts.data ?? []).filter((layout) => layout.mine);
   const shared = (layouts.data ?? []).filter((layout) => !layout.mine);
+  const byTag = (layout: StudioLayoutView) => layout.tag;
 
   async function run(action: () => Promise<unknown>) {
     if (await act.run(action)) await layouts.reload();
@@ -67,6 +70,7 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
       <LayoutEditor
         state={state}
         target={editing}
+        tags={studioTagSuggestions((layouts.data ?? []).map(byTag))}
         onCancel={() => setEditing(null)}
         onSaved={() => {
           setEditing(null);
@@ -82,6 +86,7 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
       version: layout.version,
       name: layout.name,
       visibility: layout.visibility === 'workspace' ? 'workspace' : 'private',
+      tag: layout.tag,
       spec: layout.spec,
     });
   const use = (layout: StudioLayoutView) =>
@@ -110,8 +115,8 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
               : 'You can use the shared layouts and the presets below.'}
           </EmptyState>
         ) : null}
-        <Cards>
-          {mine.map((layout) => (
+        <TagShelves groups={groupByStudioTag(mine, byTag)}>
+          {(layout) => (
             <LayoutCard
               key={layout.id}
               name={layout.name}
@@ -155,14 +160,14 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
                 </>
               ) : null}
             </LayoutCard>
-          ))}
-        </Cards>
+          )}
+        </TagShelves>
       </Group>
 
       {shared.length > 0 ? (
         <Group title="Shared with the workspace">
-          <Cards>
-            {shared.map((layout) => (
+          <TagShelves groups={groupByStudioTag(shared, byTag)}>
+            {(layout) => (
               <LayoutCard
                 key={layout.id}
                 name={layout.name}
@@ -196,35 +201,45 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
                   </CardMenu>
                 ) : null}
               </LayoutCard>
-            ))}
-          </Cards>
+            )}
+          </TagShelves>
         </Group>
       ) : null}
 
-      <Group title="Ready-made">
-        <Cards>
-          {STUDIO_PRESETS.map((preset) => (
-            <LayoutCard
-              key={preset.key}
-              name={preset.name}
-              spec={preset.spec}
-              badge="Preset"
-              onUse={() => onUse({ id: null, name: preset.name, spec: preset.spec, foreign: false })}
-            >
-              {state.can.write ? (
-                <CardButton
-                  icon={Copy}
-                  label="Copy and edit"
-                  disabled={act.busy}
-                  onClick={() =>
-                    setEditing({ id: null, version: 0, name: preset.name, visibility: 'private', spec: preset.spec })
-                  }
-                />
-              ) : null}
-            </LayoutCard>
-          ))}
-        </Cards>
-      </Group>
+      {studioPresetGroups().map((group) => (
+        <Group key={group.key} title={`Ready-made: ${group.label}`}>
+          <Cards>
+            {group.presets.map((preset) => (
+              <LayoutCard
+                key={preset.key}
+                name={preset.name}
+                spec={preset.spec}
+                badge="Preset"
+                onUse={() => onUse({ id: null, name: preset.name, spec: preset.spec, foreign: false })}
+              >
+                {state.can.write ? (
+                  <CardButton
+                    icon={Copy}
+                    label="Copy and edit"
+                    disabled={act.busy}
+                    onClick={() =>
+                      setEditing({
+                        id: null,
+                        version: 0,
+                        name: preset.name,
+                        visibility: 'private',
+                        // The copy stays filed where the preset was.
+                        tag: group.label,
+                        spec: preset.spec,
+                      })
+                    }
+                  />
+                ) : null}
+              </LayoutCard>
+            ))}
+          </Cards>
+        </Group>
+      ))}
 
       <ConfirmDialog
         open={confirming !== null}
@@ -269,8 +284,39 @@ function Group({ title, action, children }: { title: string; action?: ReactNode;
   );
 }
 
+/**
+ * A person's layouts under their tags. When none of them has a tag there is
+ * nothing to tell apart, so no heading is drawn at all.
+ */
+function TagShelves({
+  groups,
+  children,
+}: {
+  groups: StudioTagGroup<StudioLayoutView>[];
+  children: (layout: StudioLayoutView) => ReactNode;
+}) {
+  const tagged = groups.some((group) => group.key !== null);
+  return (
+    <>
+      {groups.map((group) => (
+        <div key={group.key ?? ''} className="flex flex-col gap-2">
+          {tagged ? <h3 className="text-xs font-semibold text-muted-foreground">{group.label ?? 'No tag'}</h3> : null}
+          <Cards>{group.items.map(children)}</Cards>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * ⚠ AS MANY COLUMNS AS FIT AT A CARD'S OWN WIDTH, not a count per breakpoint.
+ * A fixed count squeezed each card as the panel narrowed until its buttons
+ * ("Use", "Copy and edit", the menu) ran out over the next card (the
+ * operator, 2026-10-06). 13rem holds the widest row of buttons; `min(…, 100%)`
+ * keeps a single column inside a panel narrower than that.
+ */
 function Cards({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-2 gap-3 @lg:grid-cols-3 @3xl:grid-cols-4 @5xl:grid-cols-6">{children}</div>;
+  return <div className="grid grid-cols-[repeat(auto-fill,minmax(min(13rem,100%),1fr))] gap-3">{children}</div>;
 }
 
 /**
@@ -294,7 +340,7 @@ function LayoutCard({
   children?: ReactNode;
 }) {
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-xs">
+    <article className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-xs">
       <button
         type="button"
         aria-label={`Use ${name}`}
@@ -311,7 +357,8 @@ function LayoutCard({
           {badge}
         </span>
       </div>
-      <div className="mt-auto flex items-center gap-1">
+      {/* Wraps as a last resort, so a button is never drawn outside its card. */}
+      <div className="mt-auto flex flex-wrap items-center gap-1">
         <button type="button" className={buttonClass('primary', 'sm')} onClick={onUse}>
           <Printer aria-hidden="true" className="size-3.5" />
           Use

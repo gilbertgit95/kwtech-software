@@ -1,5 +1,6 @@
 import { STUDIO_CALIBRATION_NAME_MAX } from '../domain/calibration.js';
 import { STUDIO_CELLS_MAX, STUDIO_LAYOUT_NAME_MAX } from '../domain/layout.js';
+import { STUDIO_LAYOUT_TAG_MAX } from '../domain/tags.js';
 import type { StudioRefusal } from '../types.js';
 
 /**
@@ -46,6 +47,7 @@ const REFUSAL_MESSAGES: Record<StudioRefusal, string> = {
   conflict: STUDIO_CONFLICT_MESSAGE,
   limit_reached: 'You have reached the most layouts you can keep here',
   invalid_name: `A name is needed, of at most ${STUDIO_LAYOUT_NAME_MAX} characters for a layout and ${STUDIO_CALIBRATION_NAME_MAX} for a calibration profile`,
+  invalid_tag: `A tag is one line of at most ${STUDIO_LAYOUT_TAG_MAX} characters`,
   duplicate_name: 'You already have a calibration profile with that name',
   invalid_visibility: 'A layout is either private or shared with the workspace',
   invalid_spec: 'That layout could not be read — reload the page and try again',

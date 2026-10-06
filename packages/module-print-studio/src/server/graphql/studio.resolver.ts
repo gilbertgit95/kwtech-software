@@ -176,6 +176,7 @@ export class StudioResolver {
     const row = await this.writes.createLayout({ organizationId, workspaceId }, actorId, {
       name: input.name,
       visibility: input.visibility,
+      tag: input.tag,
       spec: specInput(input.spec),
     });
     return this.rendered(row, actorId);
@@ -195,6 +196,7 @@ export class StudioResolver {
     const row = await this.writes.updateLayout({ organizationId, workspaceId }, actorId, layoutId, expectedVersion, {
       name: input.name,
       spec: input.spec ? specInput(input.spec) : null,
+      tag: input.tag,
     });
     return this.rendered(row, actorId);
   }
@@ -312,6 +314,7 @@ export class StudioResolver {
       id: row.id,
       name: row.name,
       visibility: row.visibility,
+      tag: row.tag ?? null,
       version: row.version,
       mine: row.ownerId === viewerId,
       ownerId: row.ownerId,
