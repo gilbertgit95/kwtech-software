@@ -2,10 +2,25 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { Minus, Plus } from 'lucide-react';
-import { type DragEvent, type ReactNode, type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
-import { printableArea, type StudioLayoutSpec, sheetSize } from '../../domain/layout.js';
+import {
+  type DragEvent,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  printableArea,
+  type StudioLayoutSpec,
+  type StudioRect,
+  type StudioSize,
+  sheetSize,
+} from '../../domain/layout.js';
+import type { StudioRulerUnit } from '../view/ruler-ticks.js';
 import { cellLabelSize } from '../view/summary.js';
 import { STUDIO_VIEW_ZOOMS, stepViewZoom } from '../view/work.js';
+import { RulerCorner, STUDIO_RULER_PX, type StudioPaperGeometry, ViewRuler } from './sheet-rulers.js';
 
 /**
  * A layout drawn to scale: the sheet, the part of it that cannot print, and
@@ -250,6 +265,8 @@ export function SheetFrame({
   className,
   zoom = 1,
   onZoom,
+  tools,
+  rulers,
 }: {
   children: ReactNode;
   className?: string;
@@ -257,8 +274,17 @@ export function SheetFrame({
   zoom?: number;
   /** Given, the frame offers zoom controls. */
   onZoom?: (zoom: number) => void;
+  /** More controls for how the sheet is looked at (the rulers), in the same floating bar, before the zoom. */
+  tools?: ReactNode;
+  /**
+   * Rulers along the frame's top and left edges, measuring the paper inside it — the element marked
+   * `data-studio-paper`. A null unit is no rulers.
+   */
+  rulers?: { unit: StudioRulerUnit | null; sheet: StudioSize; highlight?: StudioRect | null };
 }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const unit = rulers?.unit ?? null;
+  const sheetWidth = rulers?.sheet.width ?? 0;
   /*
    * ⚠ A NATIVE LISTENER, NOT `onWheel`. React registers wheel handlers as
    * passive, and a passive handler cannot stop the browser zooming the whole
@@ -276,30 +302,149 @@ export function SheetFrame({
     return () => element.removeEventListener('wheel', wheel);
   }, [zoom, onZoom]);
 
+  /*
+   * Where the paper is under the rulers, measured rather than worked out: the
+   * frame centres it, pads it and scrolls it, and its own size follows the
+   * zoom. Read again on every scroll and whenever the view or the paper
+   * changes size; set only when it moved, so a scroll that changed nothing
+   * renders nothing.
+   */
+  const [geometry, setGeometry] = useState<StudioPaperGeometry | null>(null);
+  useEffect(() => {
+    const view = scroller.current;
+    if (!view || !unit) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const paper = view.querySelector('[data-studio-paper]');
+        if (!paper || !(sheetWidth > 0)) return setGeometry(null);
+        const box = view.getBoundingClientRect();
+        const sheetBox = paper.getBoundingClientRect();
+        const next: StudioPaperGeometry = {
+          left: sheetBox.left - box.left,
+          top: sheetBox.top - box.top,
+          perUnit: sheetBox.width / sheetWidth,
+          width: view.clientWidth,
+          height: view.clientHeight,
+        };
+        setGeometry((current) => (current && sameGeometry(current, next) ? current : next));
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(view);
+    const paper = view.querySelector('[data-studio-paper]');
+    if (paper) observer.observe(paper);
+    view.addEventListener('scroll', measure, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      view.removeEventListener('scroll', measure);
+    };
+  }, [unit, sheetWidth]);
+
+  /*
+   * Where the pointer is over the view, in pixels from its top left, for the
+   * marks on the rulers. Only while the rulers are on: otherwise a move
+   * re-renders nothing. Moves during a drag still arrive — a photo's drag
+   * captures the pointer on its cell, and the event bubbles up through here.
+   */
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  function track(event: ReactPointerEvent<HTMLDivElement>) {
+    const box = scroller.current?.getBoundingClientRect();
+    if (!box) return;
+    setPointer({ x: event.clientX - box.left, y: event.clientY - box.top });
+  }
+
+  /*
+   * ⚠ THE SHEET STAYS THE SAME ELEMENT WITH THE RULERS ON OR OFF. The rulers
+   * are grid cells beside it whose slots stay as null when off; moving the
+   * sheet in the tree instead would make React build a NEW canvas, blank,
+   * because nothing it draws has changed.
+   */
   return (
-    <div className={cn('relative min-h-0 min-w-0 flex-1', className)}>
-      <div className="size-full" style={{ containerType: 'size' }}>
-        <div ref={scroller} className="size-full overflow-auto">
+    <div
+      className={cn('relative grid min-h-0 min-w-0 flex-1', className)}
+      style={
+        unit
+          ? {
+              gridTemplateColumns: `${STUDIO_RULER_PX}px minmax(0, 1fr)`,
+              gridTemplateRows: `${STUDIO_RULER_PX}px minmax(0, 1fr)`,
+            }
+          : { gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 1fr)' }
+      }
+    >
+      {unit ? <RulerCorner unit={unit} /> : null}
+      {unit && rulers ? (
+        <ViewRuler
+          axis="x"
+          length={rulers.sheet.width}
+          unit={unit}
+          geometry={geometry}
+          highlight={rulers.highlight}
+          pointer={pointer?.x ?? null}
+        />
+      ) : null}
+      {unit && rulers ? (
+        <ViewRuler
+          axis="y"
+          length={rulers.sheet.height}
+          unit={unit}
+          geometry={geometry}
+          highlight={rulers.highlight}
+          pointer={pointer?.y ?? null}
+        />
+      ) : null}
+      {/*
+       * ⚠ `isolate`: the sheet's own layers (a selected cell is z-10) stack INSIDE the view and can never rise over
+       * the floating bar below — which they did, and its buttons could not be pressed with a photo under them.
+       */}
+      <div
+        ref={scroller}
+        className="isolate min-h-0 min-w-0 overflow-auto p-4"
+        onPointerMove={unit ? track : undefined}
+        onPointerLeave={unit ? () => setPointer(null) : undefined}
+      >
+        {/* The size the sheet is fitted to: the view less its padding (`fitWidth` reads it as `cqw` / `cqh`). */}
+        <div className="size-full" style={{ containerType: 'size' }}>
           {/* `w-fit` with auto margins: centred while it fits, and scrollable from its left edge once it does not. */}
           <div className="mx-auto w-fit">{children}</div>
         </div>
       </div>
-      {onZoom ? <ZoomControl zoom={zoom} onZoom={onZoom} /> : null}
+      {onZoom ? <ZoomControl zoom={zoom} onZoom={onZoom} tools={tools} /> : null}
     </div>
   );
 }
 
-function ZoomControl({ zoom, onZoom }: { zoom: number; onZoom: (zoom: number) => void }) {
+function sameGeometry(a: StudioPaperGeometry, b: StudioPaperGeometry): boolean {
+  return (
+    Math.abs(a.left - b.left) < 0.5 &&
+    Math.abs(a.top - b.top) < 0.5 &&
+    Math.abs(a.perUnit - b.perUnit) < 1e-9 &&
+    a.width === b.width &&
+    a.height === b.height
+  );
+}
+
+function ZoomControl({ zoom, onZoom, tools }: { zoom: number; onZoom: (zoom: number) => void; tools?: ReactNode }) {
   const first = STUDIO_VIEW_ZOOMS[0];
   const last = STUDIO_VIEW_ZOOMS[STUDIO_VIEW_ZOOMS.length - 1] ?? first;
   const button =
     'flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <fieldset
-      className="absolute right-2 bottom-2 flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-md"
+      // ⚠ z-30, over everything in the view: the controls must stay pressable whatever is drawn under them.
+      className="absolute right-2 bottom-2 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-0.5 shadow-md"
       title="Hold Ctrl (⌘ on a Mac) and turn the mouse wheel to zoom"
     >
       <legend className="sr-only">Zoom the view</legend>
+      {tools ? (
+        <>
+          {tools}
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+        </>
+      ) : null}
       <button
         type="button"
         aria-label="Zoom the view out"

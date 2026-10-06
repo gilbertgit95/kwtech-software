@@ -1,20 +1,7 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import {
-  ChevronDown,
-  ImagePlus,
-  Images,
-  LayoutTemplate,
-  Minus,
-  Plus,
-  RotateCcw,
-  RotateCw,
-  Rows3,
-  Square,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { ChevronDown, ImagePlus, Images, LayoutTemplate, Plus, Rows3, Square, Trash2, X } from 'lucide-react';
 import {
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
@@ -35,14 +22,17 @@ import {
   setCellPhoto,
   usedPhotoIds,
 } from '../../domain/fill.js';
-import { borderOf, printableArea, type StudioBorder, sheetSize } from '../../domain/layout.js';
+import { borderOf, cellOnSheet, type StudioBorder, sheetSize } from '../../domain/layout.js';
 import {
   DEFAULT_FRAME,
   effectiveDpi,
+  keepInCell,
   nextRotation,
   panFrame,
-  STUDIO_ZOOM_MAX,
+  resetFrame,
   type StudioFrame,
+  setFreePlacement,
+  zoomFrameBy,
 } from '../../domain/slot-fit.js';
 import { drawSheet, sheetPixels } from '../render/draw-sheet.js';
 import { loadPhoto, releasePhoto, type StudioPhoto } from '../render/photos.js';
@@ -78,7 +68,10 @@ import { buttonClass } from './controls.js';
 import { Alert } from './layout.js';
 import type { ChosenLayout } from './layouts-section.js';
 import { OutputBar, type StudioOutputCommands } from './output-bar.js';
+import { Pager } from './pager.js';
 import { isEdited, PhotoPanel } from './photo-tools.js';
+import { SelectionBar } from './selection-bar.js';
+import { RulerMenu, useRulerUnit } from './sheet-rulers.js';
 import { fitWidth, SheetFrame } from './sheet-view.js';
 import { ShortcutBar } from './shortcut-bar.js';
 
@@ -144,7 +137,6 @@ export function PhotoStudio({
   const spec = useMemo(() => ({ ...layout.spec, guides, border }), [layout.spec, guides, border]);
   const cells = spec.cells;
   const sheet = useMemo(() => sheetSize(spec), [spec]);
-  const area = useMemo(() => printableArea(spec), [spec]);
 
   const [photos, setPhotos] = useState<StudioPhoto[]>([]);
   const [pages, setPages] = useState<StudioPageFill[]>(() => planFill(cells, [], 'manual').pages);
@@ -164,6 +156,7 @@ export function PhotoStudio({
   const [loading, setLoading] = useState(false);
   /** How closely the sheet is being looked at. 1 fits the panel. */
   const [viewZoom, setViewZoom] = useState(1);
+  const [rulerUnit, setRulerUnit] = useRulerUnit();
 
   const loadCalibrations = useCallback(() => state.client.calibrations(state.scope), [state.client, state.scope]);
   const calibrations = useStudioData(loadCalibrations, 'Could not load the calibration profiles.');
@@ -201,6 +194,8 @@ export function PhotoStudio({
   // ── the sheet on screen ───────────────────────────────────────────────────
 
   const canvas = useRef<HTMLCanvasElement>(null);
+  /** The layer of buttons over the sheet: its size on screen is what a drag's pixels are measured against. */
+  const overlay = useRef<HTMLUListElement>(null);
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
@@ -347,12 +342,16 @@ export function PhotoStudio({
 
   // ── dragging a photo inside its cell ──────────────────────────────────────
 
-  /** A drag in progress: where it began, the frames it began from, and whether it has moved enough to count. */
+  /**
+   * A drag in progress: where it began, the sheet units one screen pixel was
+   * then, the cell pressed, the frames it began from, and whether it has moved
+   * enough to count.
+   */
   const drag = useRef<{
     x: number;
     y: number;
-    width: number;
-    height: number;
+    unitsPerPixel: number;
+    pressed: number;
     targets: StudioCellRef[];
     from: StudioFrames;
     moved: boolean;
@@ -366,12 +365,17 @@ export function PhotoStudio({
     const ref = { page: pageIndex, cell: cellIndex };
     // Dragging a cell that is part of the selection moves the whole selection; any other cell moves alone.
     const targets = hasCell(selection, ref) ? filledSelection : [ref];
-    const box = event.currentTarget.getBoundingClientRect();
+    /*
+     * Measured on the SHEET, not the button: a freely placed photo's button is
+     * the photo, not its cell, so its size says nothing about the cell's.
+     */
+    const sheetBox = overlay.current?.getBoundingClientRect();
+    if (!sheetBox || !(sheetBox.width > 0)) return;
     drag.current = {
       x: event.clientX,
       y: event.clientY,
-      width: box.width,
-      height: box.height,
+      unitsPerPixel: sheet.width / sheetBox.width,
+      pressed: cellIndex,
       targets,
       from: frames,
       moved: false,
@@ -392,8 +396,10 @@ export function PhotoStudio({
       const ref = { page: pageIndex, cell: cellIndex };
       if (!hasCell(selection, ref)) setSelection([ref]);
     }
-    // The same movement, as a share of the pressed cell, for every photo being moved — each from where IT started.
-    const move = { dx: dx / current.width, dy: dy / current.height };
+    const pressed = cells[current.pressed];
+    if (!pressed) return;
+    const across = dx * current.unitsPerPixel;
+    const down = dy * current.unitsPerPixel;
     let next = frames;
     for (const ref of current.targets) {
       const photo = photoMap.get(pages[ref.page]?.[ref.cell] ?? '');
@@ -401,12 +407,16 @@ export function PhotoStudio({
       if (!photo || !cell) continue;
       const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
       const start = frameOf(current.from, ref.page, ref.cell);
-      next = withFrame(
-        next,
-        ref.page,
-        ref.cell,
-        panFrame(photo, cell, start, move, edit.crop, { horizontal: edit.flipH, vertical: edit.flipV }),
-      );
+      /*
+       * Covering, the same movement as a share of the PRESSED cell for every
+       * photo, each from where it started. Free, the same distance on the
+       * sheet: the photo stays under the hand whatever its cell's size.
+       */
+      const move = start.free
+        ? { dx: across / cell.width, dy: down / cell.height }
+        : { dx: across / pressed.width, dy: down / pressed.height };
+      const moved = panFrame(photo, cell, start, move, edit.crop, { horizontal: edit.flipH, vertical: edit.flipV });
+      next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
     }
     setFrames(next);
   }
@@ -481,16 +491,13 @@ export function PhotoStudio({
         placeInSelection(null);
         break;
       case 'zoom':
-        reframe((frame) => ({
-          ...frame,
-          zoom: Math.min(Math.max(Math.round((frame.zoom + action.by) * 100) / 100, 1), STUDIO_ZOOM_MAX),
-        }));
+        reframe((frame) => zoomFrameBy(frame, action.by));
         break;
       case 'turn':
         reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }));
         break;
       case 'reset':
-        reframe(() => DEFAULT_FRAME);
+        reframe(resetFrame);
         break;
       case 'move':
         nudge(action.dx, action.dy);
@@ -522,7 +529,27 @@ export function PhotoStudio({
         const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
         const flip = { horizontal: edit.flipH, vertical: edit.flipV };
         const moved = panFrame(photo, cell, frameOf(current, ref.page, ref.cell), { dx, dy }, edit.crop, flip);
-        next = withFrame(next, ref.page, ref.cell, moved);
+        next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Free placement on or off for every selected photo, each converted so it
+   * stays where it is and as large as it is — only what it may do changes.
+   */
+  function setFree(free: boolean) {
+    setFrames((current) => {
+      let next = current;
+      for (const ref of filledSelection) {
+        const photo = photoMap.get(pages[ref.page]?.[ref.cell] ?? '');
+        const cell = cells[ref.cell];
+        if (!photo || !cell) continue;
+        const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
+        const flip = { horizontal: edit.flipH, vertical: edit.flipV };
+        const changed = setFreePlacement(photo, cell, frameOf(current, ref.page, ref.cell), free, edit.crop, flip);
+        next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, changed, edit.crop));
       }
       return next;
     });
@@ -540,6 +567,9 @@ export function PhotoStudio({
   const selectedPhoto = cellPhotoId ? photoMap.get(cellPhotoId) : undefined;
   const selectedCellSize = primary ? cells[primary.cell] : undefined;
   const selectedFrame = primary ? frameOf(frames, primary.page, primary.cell) : null;
+  // The pressed cell, marked on the rulers while it is on the page shown.
+  const selectedCell = primary && primary.page === pageIndex ? cells[primary.cell] : undefined;
+  const selectedOnSheet = selectedCell ? cellOnSheet(spec, selectedCell) : null;
   const warning =
     selectedPhoto && selectedCellSize && selectedFrame
       ? blurryWarning(
@@ -639,49 +669,58 @@ export function PhotoStudio({
 
         {/* ── the sheet ── */}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {primary ? (
-            <SelectionBar
-              count={selection.length}
-              filled={filledSelection.length}
-              frame={selectedPhoto ? selectedFrame : null}
-              warning={warning}
-              pickedPhoto={photoMap.get(activePhotoId ?? '')?.name ?? null}
-              onZoom={(zoom) => reframe((frame) => ({ ...frame, zoom }))}
-              onTurn={() => reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }))}
-              onReset={() => reframe(() => DEFAULT_FRAME)}
-              onSelectSamePhoto={selectedPhoto ? () => setSelection(cellsLike(pages, 'photo', primary)) : null}
-              onSelectAll={() => {
-                // From the pressed cell when it has a photo; from any filled cell otherwise.
-                const from = selectedPhoto ? primary : firstFilled(pages);
-                if (from) setSelection(cellsLike(pages, 'all', from));
-              }}
-              onPut={() => placeInSelection(activePhotoId)}
-              onClear={() => placeInSelection(null)}
-              onDone={() => setSelection([])}
-            />
-          ) : (
-            <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground">
-              {filled > 0
-                ? 'Press a photo on the sheet to zoom or turn it. Drag it to move it inside its cell.'
-                : 'Add photos on the left and they are placed for you.'}
-            </p>
-          )}
+          <SelectionBar
+            count={selection.length}
+            filled={filledSelection.length}
+            frame={selectedPhoto ? selectedFrame : null}
+            warning={warning}
+            pickedPhoto={photoMap.get(activePhotoId ?? '')?.name ?? null}
+            onZoom={(zoom) => reframe((frame) => ({ ...frame, zoom }))}
+            onTurn={() => reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }))}
+            onReset={() => reframe(resetFrame)}
+            onFree={setFree}
+            onSelectSamePhoto={selectedPhoto && primary ? () => setSelection(cellsLike(pages, 'photo', primary)) : null}
+            onSelectAll={() => {
+              // From the pressed cell when it has a photo; from any filled cell otherwise.
+              const from = selectedPhoto && primary ? primary : firstFilled(pages);
+              if (from) setSelection(cellsLike(pages, 'all', from));
+            }}
+            onPut={() => placeInSelection(activePhotoId)}
+            onClear={() => placeInSelection(null)}
+            onDone={() => setSelection([])}
+            idleHint={
+              filled > 0
+                ? 'Press a photo on the sheet to zoom, turn or place it freely. Drag it to move it.'
+                : 'Add photos on the left and they are placed for you.'
+            }
+          />
 
-          <div className="flex min-h-64 flex-1 rounded-xl border border-border bg-muted/30 p-4">
-            <SheetFrame zoom={viewZoom} onZoom={setViewZoom}>
-              <div className="relative shadow-md ring-1 ring-border" style={{ width: fitWidth(sheet, viewZoom) }}>
+          <div className="flex min-h-64 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+            <SheetFrame
+              zoom={viewZoom}
+              onZoom={setViewZoom}
+              tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
+              rulers={{ unit: rulerUnit, sheet, highlight: selectedOnSheet }}
+            >
+              <div
+                data-studio-paper
+                className="relative shadow-md ring-1 ring-border"
+                style={{ width: fitWidth(sheet, viewZoom) }}
+              >
                 <canvas ref={canvas} className="block h-auto w-full" />
                 {/*
                  * The cells, as real buttons laid over the drawing: each sits exactly on its cell, by
                  * percentages of the sheet, so the layer scales with the canvas under it.
                  */}
                 <ul
+                  ref={overlay}
                   aria-label={`Page ${pageIndex + 1} of ${layout.name}`}
                   className="absolute inset-0 m-0 list-none p-0"
                 >
                   {cells.map((cell, index) => {
                     const photo = photoMap.get(page[index] ?? '');
                     const chosen = hasCell(selection, { page: pageIndex, cell: index });
+                    const at = cellOnSheet(spec, cell);
                     return (
                       // Cells never overlap, so a cell's top left names it and no other.
                       <li key={`${cell.x}:${cell.y}`}>
@@ -690,10 +729,10 @@ export function PhotoStudio({
                           aria-label={`Cell ${index + 1}${cell.label ? `, ${cell.label}` : ''}: ${photo ? photo.name : 'empty'}`}
                           aria-pressed={chosen}
                           style={{
-                            left: `${((area.x + cell.x) / sheet.width) * 100}%`,
-                            top: `${((area.y + cell.y) / sheet.height) * 100}%`,
-                            width: `${(cell.width / sheet.width) * 100}%`,
-                            height: `${(cell.height / sheet.height) * 100}%`,
+                            left: `${(at.x / sheet.width) * 100}%`,
+                            top: `${(at.y / sheet.height) * 100}%`,
+                            width: `${(at.width / sheet.width) * 100}%`,
+                            height: `${(at.height / sheet.height) * 100}%`,
                             // A blue line with a white one inside it: seen on a light photo and on a dark one.
                             ...(chosen
                               ? {
@@ -746,35 +785,27 @@ export function PhotoStudio({
           </div>
 
           {pages.length > 1 || filled > 0 ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {pages.map((_one, at) => (
-                <button
-                  // Pages have no identity but their number: page 2 is whatever is second.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: a page is identified by its position
-                  key={at}
-                  type="button"
-                  aria-current={at === pageIndex ? 'page' : undefined}
-                  className={buttonClass(at === pageIndex ? 'primary' : 'secondary', 'sm')}
-                  // The selection is kept: it may span pages ("every cell with this photo").
-                  onClick={() => setPageIndex(at)}
-                >
-                  Page {at + 1}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-1.5 py-1 shadow-sm">
+              {/* The selection is kept across pages: it may span them ("every cell with this photo"). */}
+              <Pager count={pages.length} current={pageIndex} noun="Page" onChange={setPageIndex} />
+              <div className="flex items-center gap-0.5">
+                <button type="button" className={buttonClass('ghost', 'sm')} onClick={addOnePage}>
+                  <Plus aria-hidden="true" className="size-3.5" />
+                  Add a page
                 </button>
-              ))}
-              <button type="button" className={buttonClass('ghost', 'sm')} onClick={addOnePage}>
-                <Plus aria-hidden="true" className="size-3.5" />
-                Add a page
-              </button>
-              {pages.length > 1 ? (
-                <button
-                  type="button"
-                  className={cn(buttonClass('ghost', 'sm'), 'text-destructive')}
-                  onClick={removeCurrentPage}
-                >
-                  <Trash2 aria-hidden="true" className="size-3.5" />
-                  Remove this page
-                </button>
-              ) : null}
+                {pages.length > 1 ? (
+                  <button
+                    type="button"
+                    aria-label={`Remove page ${pageIndex + 1}`}
+                    title={`Remove page ${pageIndex + 1}`}
+                    className={cn(buttonClass('ghost', 'sm'), 'text-destructive hover:bg-destructive/10')}
+                    onClick={removeCurrentPage}
+                  >
+                    <Trash2 aria-hidden="true" className="size-3.5" />
+                    Remove
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -892,154 +923,6 @@ function FillTile({
       {label}
       <span className="sr-only">: {hint}</span>
     </button>
-  );
-}
-
-/**
- * The selection's toolbar, above the sheet where the eye already is.
- *
- * ⚠ EVERY ACTION HERE APPLIES TO EVERY SELECTED CELL. The count comes first,
- * so nothing moves that the person did not expect. Position is not here: the
- * photo is dragged on the sheet itself.
- */
-function SelectionBar({
-  count,
-  filled,
-  frame,
-  warning,
-  pickedPhoto,
-  onZoom,
-  onTurn,
-  onReset,
-  onSelectSamePhoto,
-  onSelectAll,
-  onPut,
-  onClear,
-  onDone,
-}: {
-  count: number;
-  /** How many of the selected cells hold a photo. */
-  filled: number;
-  /** The frame of the cell pressed last, or null when that cell is empty. */
-  frame: StudioFrame | null;
-  warning: string | null;
-  /** The name of the photo picked in the tray, when there is one to put in the selection. */
-  pickedPhoto: string | null;
-  onZoom: (zoom: number) => void;
-  onTurn: () => void;
-  onReset: () => void;
-  /** Null when the pressed cell is empty: there is no photo to match. */
-  onSelectSamePhoto: (() => void) | null;
-  onSelectAll: () => void;
-  onPut: () => void;
-  onClear: () => void;
-  onDone: () => void;
-}) {
-  const zoomId = useId();
-  const [more, setMore] = useState(false);
-  const zoom = frame?.zoom ?? 1;
-  const step = (by: number) => onZoom(Math.min(Math.max(Math.round((zoom + by) * 100) / 100, 1), 4));
-  const square = cn(buttonClass('secondary', 'sm'), 'size-8 px-0');
-  return (
-    <section
-      aria-label="Selected cells"
-      className="flex flex-col gap-1.5 rounded-xl border border-primary/50 bg-accent/40 px-3 py-2"
-    >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <p className="text-sm font-semibold">{count === 1 ? '1 cell selected' : `${count} cells selected`}</p>
-
-        {frame ? (
-          <>
-            <div className="flex items-center gap-1.5">
-              <label htmlFor={zoomId} className="text-xs font-medium text-muted-foreground">
-                Zoom
-              </label>
-              <button type="button" aria-label="Zoom out" className={square} onClick={() => step(-0.1)}>
-                <Minus aria-hidden="true" className="size-3.5" />
-              </button>
-              <input
-                id={zoomId}
-                type="range"
-                className="w-28 accent-primary"
-                min={1}
-                max={4}
-                step={0.01}
-                value={zoom}
-                onChange={(event) => onZoom(Number(event.target.value))}
-              />
-              <button type="button" aria-label="Zoom in" className={square} onClick={() => step(0.1)}>
-                <Plus aria-hidden="true" className="size-3.5" />
-              </button>
-              <span className="w-10 text-xs tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
-            </div>
-            <button type="button" className={buttonClass('secondary', 'sm')} onClick={onTurn}>
-              <RotateCw aria-hidden="true" className="size-3.5" />
-              Turn
-            </button>
-            <button type="button" className={buttonClass('ghost', 'sm')} onClick={onReset}>
-              <RotateCcw aria-hidden="true" className="size-3.5" />
-              Reset
-            </button>
-          </>
-        ) : null}
-
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-expanded={more}
-            className={buttonClass('ghost', 'sm')}
-            onClick={() => setMore(!more)}
-          >
-            Select more
-            <ChevronDown
-              aria-hidden="true"
-              className={cn('size-3.5 transition-transform', more ? 'rotate-180' : null)}
-            />
-          </button>
-          {filled > 0 ? (
-            <button type="button" className={cn(buttonClass('ghost', 'sm'), 'text-destructive')} onClick={onClear}>
-              <X aria-hidden="true" className="size-3.5" />
-              {count === 1 ? 'Empty it' : 'Empty them'}
-            </button>
-          ) : null}
-          <button type="button" className={buttonClass('secondary', 'sm')} onClick={onDone}>
-            Done
-          </button>
-        </div>
-      </div>
-
-      {more ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-1.5">
-          {onSelectSamePhoto ? (
-            <button type="button" className={buttonClass('secondary', 'sm')} onClick={onSelectSamePhoto}>
-              Every cell with this photo
-            </button>
-          ) : null}
-          <button type="button" className={buttonClass('secondary', 'sm')} onClick={onSelectAll}>
-            Every photo
-          </button>
-          {pickedPhoto ? (
-            <button type="button" className={cn(buttonClass('secondary', 'sm'), 'max-w-64')} onClick={onPut}>
-              <span className="truncate">
-                Put “{pickedPhoto}” in {count === 1 ? 'this cell' : `these ${count} cells`}
-              </span>
-            </button>
-          ) : null}
-          <span className="text-xs text-muted-foreground">
-            Or hold Ctrl (⌘ on a Mac) or Shift and press cells one by one.
-          </span>
-        </div>
-      ) : null}
-
-      {warning ? (
-        <p role="status" className="rounded-lg bg-status-warning px-2.5 py-1.5 text-xs text-status-warning-foreground">
-          {warning}
-        </p>
-      ) : null}
-      {frame && !warning ? (
-        <p className="text-xs text-muted-foreground">Drag the photo on the sheet to move it inside its cell.</p>
-      ) : null}
-    </section>
   );
 }
 

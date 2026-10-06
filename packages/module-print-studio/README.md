@@ -89,6 +89,9 @@ shows when the Layouts section is opened again.
 | **Private / shared** | `visibility`: `private` (the owner only, whatever keys anyone holds) or `workspace` |
 | **Preset** | a layout that ships with the studio: the operator's own ID packages and photo sheets on A4, written out exactly as they drew them. Each has a **tag** (`STUDIO_PRESET_TAGS`: ID, Photo Print, Page Grid — the last being whole-A4 grids of equal cells) and the screens show one Ready-made shelf per tag (`studioPresetGroups`). Using or copying one makes no row |
 | **Frame** | how a cell shows its photo: zoom, position, a quarter turn. Kept per cell, and changed for every SELECTED cell at once: several can be selected, on any page |
+| **Free placement** | a frame marked `free`: the photo no longer has to cover its cell. It can be any size down to 1% and anywhere in the cell, past the cell's edge too, but the CELL still cuts it: only the photo moves, never the layout. Off by default; switched per selection in the toolbar, and switching never moves the photo |
+| **Rulers** | optional rulers on the top and left EDGES of the Print preview's panel (photos and documents), in mm, cm or inches. They stay on the panel while the sheet scrolls and zooms under them, read from the paper's edge (the frame measures the element marked `data-studio-paper`), mark the selected cell, and follow the mouse: a line on each ruler where the pointer is, with a tag reading its exact distance from the paper's edge (`rulerReading`). Chosen from the view's floating bar, off by default, and held IN MEMORY only (the studio writes nothing to browser storage), so they are off again after a reload. Screen only: never printed |
+| **Pager** | the pages (or a document's sheets) under the preview: previous, at most seven numbers with "…" for the rest (`pagerItems`), next |
 | **Photo edit** | what was done to a PHOTO — crop, flips, lighting — followed by every cell holding it |
 | **Result** | the PDF made in the browser, held in memory until downloaded or cleared |
 | **Calibration profile** | one person's scale and shift for one printer and paper, from a measured ruler page |
@@ -112,7 +115,10 @@ shows when the Layouts section is opened again.
   or by hand.
 - **Framing and editing** (`slot-fit.ts`, `adjust.ts`): `sourceRect`,
   `panFrame` (a photo dragged inside its cell), `effectiveDpi`, and lighting as arithmetic on pixels so the preview and the
-  result agree.
+  result agree. Free placement: `freeRect` (where a free photo lies),
+  `keepInCell` (half of it always left in its cell), `setFreePlacement` (on or off
+  without the photo jumping), `zoomFrameBy` and `resetFrame` (which keep the
+  switch).
 - **Tags** (`tags.ts`): `prepareLayoutTag` (what may be saved),
   `groupByStudioTag` (the shelves) and `studioTagSuggestions` (what the editor
   offers). ⚠ On `updateStudioLayout`, leaving `tag` out keeps it and an EMPTY

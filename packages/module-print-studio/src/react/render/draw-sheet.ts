@@ -5,7 +5,7 @@ import { borderSegments } from '../../domain/border.js';
 import { applyCalibration, type StudioCalibration } from '../../domain/calibration.js';
 import type { StudioPageFill } from '../../domain/fill.js';
 import { borderOf, cellOnSheet, type StudioLayoutSpec, type StudioRect, sheetSize } from '../../domain/layout.js';
-import { sourceRect } from '../../domain/slot-fit.js';
+import { clampCrop, freeRect, type StudioFrame, type StudioSourceRect, sourceRect } from '../../domain/slot-fit.js';
 import { toPixels } from '../../domain/units.js';
 import { frameOf, NO_PHOTO_EDIT, type StudioFrames, type StudioPhotoEdit } from '../view/work.js';
 import type { StudioPhoto } from './photos.js';
@@ -125,8 +125,11 @@ function pixelRect(rect: StudioRect, dpi: number): StudioRect {
  * One photo into one cell: cut the source rectangle, turn and flip it, light
  * it, and place it.
  *
- * Drawn on a scratch canvas the size of the cell first, because lighting is
- * arithmetic on pixels (`adjustPixels`) and must touch this cell's pixels only.
+ * Drawn on a scratch canvas first, because lighting is arithmetic on pixels
+ * (`adjustPixels`) and must touch this photo's pixels only. Covering, the
+ * scratch is the cell. Placed freely, it is the part of the cell the photo
+ * covers: the cell still cuts it, and a photo shrunk inside it leaves the
+ * rest of the cell white paper.
  */
 function drawPhoto(
   context: Canvas2D,
@@ -138,22 +141,23 @@ function drawPhoto(
 ): void {
   const frame = frameOf(input.frames, input.pageIndex, index);
   const edit = input.edits.get(photo.id) ?? NO_PHOTO_EDIT;
-  const source = sourceRect(photo, cell, frame, edit.crop);
+  const placement = frame.free
+    ? freePlacement(photo, frame, edit, rect)
+    : coverPlacement(photo, frame, edit, cell, rect);
+  if (!placement) return;
+  const { target, centre, size, source } = placement;
   const bitmap = input.usePreview ? photo.preview : photo.bitmap;
   // The preview copy is smaller: the same rectangle, in its pixels.
   const shrink = bitmap.width / photo.width;
 
-  const scratch = scratchCanvas(rect.width, rect.height);
+  const scratch = scratchCanvas(target.width, target.height);
   const draw = scratch.getContext('2d', { willReadFrequently: true }) as Canvas2D | null;
   if (!draw) return;
   draw.imageSmoothingEnabled = true;
   draw.imageSmoothingQuality = 'high';
 
-  const sideways = frame.rotation === 90 || frame.rotation === 270;
-  const across = sideways ? rect.height : rect.width;
-  const down = sideways ? rect.width : rect.height;
   draw.save();
-  draw.translate(rect.width / 2, rect.height / 2);
+  draw.translate(centre.x, centre.y);
   // Flips mirror what the cell shows, so they come first; then the quarter turn.
   draw.scale(edit.flipH ? -1 : 1, edit.flipV ? -1 : 1);
   draw.rotate((frame.rotation * Math.PI) / 180);
@@ -163,19 +167,82 @@ function drawPhoto(
     source.y * shrink,
     source.width * shrink,
     source.height * shrink,
-    -across / 2,
-    -down / 2,
-    across,
-    down,
+    -size.across / 2,
+    -size.down / 2,
+    size.across,
+    size.down,
   );
   draw.restore();
 
   if (!isNeutralLighting(edit.lighting)) {
-    const pixels = draw.getImageData(0, 0, rect.width, rect.height);
+    const pixels = draw.getImageData(0, 0, target.width, target.height);
     adjustPixels(pixels.data, edit.lighting);
     draw.putImageData(pixels, 0, 0);
   }
-  context.drawImage(scratch, rect.x, rect.y);
+  context.drawImage(scratch, target.x, target.y);
+}
+
+/**
+ * Where one photo goes on the sheet, in pixels: the whole-pixel `target` it is
+ * drawn into, its centre inside that target, its size along its OWN width
+ * (`across`) and height (`down`) before the turn, and the source pixels cut.
+ */
+interface PhotoPlacement {
+  target: StudioRect;
+  centre: { x: number; y: number };
+  size: { across: number; down: number };
+  source: StudioSourceRect;
+}
+
+/** Covering: the source rectangle the frame chose, filling the cell. */
+function coverPlacement(
+  photo: StudioPhoto,
+  frame: StudioFrame,
+  edit: StudioPhotoEdit,
+  cell: { width: number; height: number },
+  rect: StudioRect,
+): PhotoPlacement {
+  const sideways = frame.rotation === 90 || frame.rotation === 270;
+  return {
+    target: rect,
+    centre: { x: rect.width / 2, y: rect.height / 2 },
+    size: { across: sideways ? rect.height : rect.width, down: sideways ? rect.width : rect.height },
+    source: sourceRect(photo, cell, frame, edit.crop),
+  };
+}
+
+/**
+ * Free: the whole kept part of the photo, measured from the cell's PIXEL
+ * rectangle (so calibration moves it with its cell), and ⚠ CUT AT THE CELL'S
+ * EDGE — only the photo is free, never the layout. Null when none of it is in
+ * the cell.
+ */
+function freePlacement(
+  photo: StudioPhoto,
+  frame: StudioFrame,
+  edit: StudioPhotoEdit,
+  rect: StudioRect,
+): PhotoPlacement | null {
+  const placed = freeRect(photo, rect, frame, edit.crop);
+  const left = Math.max(Math.floor(placed.x), rect.x);
+  const top = Math.max(Math.floor(placed.y), rect.y);
+  const right = Math.min(Math.ceil(placed.x + placed.width), rect.x + rect.width);
+  const bottom = Math.min(Math.ceil(placed.y + placed.height), rect.y + rect.height);
+  if (right - left < 1 || bottom - top < 1) return null;
+
+  const sideways = frame.rotation === 90 || frame.rotation === 270;
+  const crop = clampCrop(edit.crop);
+  return {
+    target: { x: left, y: top, width: right - left, height: bottom - top },
+    centre: { x: placed.x + placed.width / 2 - left, y: placed.y + placed.height / 2 - top },
+    size: { across: sideways ? placed.height : placed.width, down: sideways ? placed.width : placed.height },
+    source: {
+      x: crop.x * photo.width,
+      y: crop.y * photo.height,
+      width: crop.width * photo.width,
+      height: crop.height * photo.height,
+    },
+  };
 }
 
 /** A canvas nobody sees. `OffscreenCanvas` where there is one; an unattached element otherwise. */

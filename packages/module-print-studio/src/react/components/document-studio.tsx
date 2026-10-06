@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { ChevronLeft, ChevronRight, FileText, FileUp, X } from 'lucide-react';
+import { FileText, FileUp, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { printableArea, type StudioLayoutPaper, type StudioOrientation, sheetSize } from '../../domain/layout.js';
 import {
@@ -24,7 +24,9 @@ import { resultFileName } from '../view/work.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
 import { Alert, EmptyState } from './layout.js';
 import { OutputBar } from './output-bar.js';
+import { Pager } from './pager.js';
 import { defaultPaper, PaperPicker } from './paper-fields.js';
+import { RulerMenu, useRulerUnit } from './sheet-rulers.js';
 import { fitWidth, SheetFrame } from './sheet-view.js';
 
 const FIT_LABELS: Record<StudioPageFit, string> = {
@@ -69,6 +71,7 @@ export function DocumentStudio({ state }: { state: StudioAppState }) {
   /** Which sheet of the result is being looked at, from 0. */
   const [sheetIndex, setSheetIndex] = useState(0);
   const [viewZoom, setViewZoom] = useState(1);
+  const [rulerUnit, setRulerUnit] = useRulerUnit();
 
   // The drawing library holds the whole document: let go of it when another replaces it, and when the screen goes.
   useEffect(() => () => preview?.close(), [preview]);
@@ -245,12 +248,18 @@ export function DocumentStudio({ state }: { state: StudioAppState }) {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="flex min-h-64 flex-1 rounded-xl border border-border bg-muted/30 p-4">
-            <SheetFrame zoom={viewZoom} onZoom={setViewZoom}>
+          <div className="flex min-h-64 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+            <SheetFrame
+              zoom={viewZoom}
+              onZoom={setViewZoom}
+              tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
+              rulers={{ unit: rulerUnit, sheet }}
+            >
               {/* The sheet, to scale, with each page drawn where it will print. Paper is white in every theme. */}
               <div
                 role="img"
                 aria-label={`Sheet ${shown + 1} of ${sheets.length}: ${plural(onSheet.length, 'page')} on ${paperName(spec, 'mm')}`}
+                data-studio-paper
                 className="relative shadow-md ring-1 ring-border"
                 style={{
                   width: fitWidth(sheet, viewZoom),
@@ -299,28 +308,8 @@ export function DocumentStudio({ state }: { state: StudioAppState }) {
             </SheetFrame>
           </div>
           {sheets.length > 1 ? (
-            <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                className={buttonClass('secondary', 'sm')}
-                disabled={shown === 0}
-                onClick={() => setSheetIndex(shown - 1)}
-              >
-                <ChevronLeft aria-hidden="true" className="size-3.5" />
-                Previous
-              </button>
-              <span className="text-sm tabular-nums text-muted-foreground">
-                Sheet {shown + 1} of {sheets.length}
-              </span>
-              <button
-                type="button"
-                className={buttonClass('secondary', 'sm')}
-                disabled={shown >= sheets.length - 1}
-                onClick={() => setSheetIndex(shown + 1)}
-              >
-                Next
-                <ChevronRight aria-hidden="true" className="size-3.5" />
-              </button>
+            <div className="flex justify-center rounded-xl border border-border bg-card px-1.5 py-1 shadow-sm">
+              <Pager count={sheets.length} current={shown} noun="Sheet" onChange={setSheetIndex} />
             </div>
           ) : null}
           <OutputBar

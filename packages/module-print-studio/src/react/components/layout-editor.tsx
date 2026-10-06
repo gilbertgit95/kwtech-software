@@ -362,7 +362,7 @@ export function LayoutEditor({
               onRemove={removeSelected}
             />
           ) : null}
-          <div className="relative flex min-h-0 flex-1 rounded-xl border border-border bg-muted/30 p-4">
+          <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
             <SheetFrame zoom={viewZoom} onZoom={setViewZoom}>
               <SheetView
                 fit
