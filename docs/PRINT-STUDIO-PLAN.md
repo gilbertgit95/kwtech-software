@@ -283,7 +283,7 @@ also names the workspace. `userId`s are bare strings.
 | `layout.ts` | The spec, the printable area, `checkLayoutSpec`, name rules |
 | `place.ts` | The editor's tools: fill with a size, add some of a size, split into a grid, move, resize |
 | `fill.ts` | `planFill`: which photo goes in which cell of which page, for the four ways of filling |
-| `slot-fit.ts` | How a photo fills a cell (cover, offset, zoom, rotation) and its effective dpi |
+| `slot-fit.ts` | How a photo fills a cell (cover, offset, zoom, rotation), or is placed freely inside it, and its effective dpi |
 | `adjust.ts` | The lighting tools as arithmetic on pixels, so the preview and the result agree |
 | `calibration.ts` | Scale and offset from a measured ruler page |
 | `log.ts` | What a log entry may hold, and its caps |

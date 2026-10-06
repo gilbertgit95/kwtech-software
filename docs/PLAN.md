@@ -597,6 +597,61 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-06** — **The Print screen's selection toolbar, page buttons and preview were reworked: one grouped toolbar, a pager, and optional rulers.**
+
+  The operator found the selection controls awkward, the row of one button
+  per page unworkable past a handful, and wanted rulers on the preview.
+
+  - **The selection toolbar is one row of grouped controls** (`SelectionBar`):
+    the count as a chip that deselects, zoom, turn and reset as icon buttons
+    with hints, Free placement as a switch, and "Select" and "Empty" at the
+    end. With nothing selected it is the same card holding a hint, so
+    pressing a photo never pushes the sheet down.
+  - **Pages are a pager** (`pagerItems`): at most seven items, the first and
+    last always there and the current page with a neighbour each side. A
+    document's sheets use the same one.
+  - **Rulers are optional, in mm, cm or inches, off by default**, chosen from
+    the preview's floating bar, read from the paper's edge, and never printed.
+    They are fixed to the preview panel's top and left edges, not to the
+    paper: the sheet scrolls and zooms under them (the operator's correction,
+    the same day). A line on each ruler follows the mouse, with a tag
+    reading where it is on the paper (`rulerReading`: a tenth of a millimetre,
+    a hundredth of a centimetre or inch).
+  - **The view's floating controls are always on top** (`z-30`, and the
+    scrolling sheet `isolate`d): a selected cell, lifted to `z-10`, used to
+    rise over them and swallow the clicks.
+  - **Not done: remembering the ruler unit across a reload.** The studio
+    writes nothing to browser storage (PRINT-STUDIO-PLAN decision 8, checked
+    by a test), so the choice lives in memory for the open page. Remembering
+    it would mean a workspace or personal setting on the server, like the
+    shortcut keys.
+
+- **2026-10-06** — **A photo on the Print screen can be placed freely inside its cell: moved anywhere in it, and smaller than it. Off unless turned on.**
+
+  A photo always covered its cell, moving only through its own overhang. That
+  is right nearly every time (an ID photo with a white bar is a reprint), but
+  the operator sometimes needs a photo smaller than its box, or off to one
+  side of it, with white paper around it.
+
+  - **Only the photo is free, never the layout.** The cell still cuts the
+    photo: nothing is drawn outside it, so a free photo never covers a
+    neighbour or the margin, and the cells do not move. (A first version let
+    the photo out onto the whole paper; the operator corrected it the same
+    day: "only the content of the layout".)
+  - **A switch per cell, "Free placement", in the selection's toolbar**, applied
+    to every selected cell like the rest of that toolbar. Off by default, and
+    a photo put into a cell starts covering again.
+  - **It is a field of the frame (`StudioFrame.free`), so the result is still
+    a pure function of the frames.** Free, the offsets are the photo's centre
+    from its cell's, in cells, and the zoom goes down to 1%
+    (`STUDIO_FREE_ZOOM_MIN`). The whole crop is placed (`freeRect`) and cut at
+    the cell. Dragging stops when half the photo (or half the cell, if the photo
+    is larger) is left inside on each axis
+    (`keepInCell`), so a photo is never lost out of its cell.
+  - **Turning it on or off does not move the photo** (`setFreePlacement`):
+    same size, same spot. Off can only be as close as covering allows: a photo
+    shrunk below its cell grows back to fill it.
+
 - **2026-10-06** — **The print studio's ready-made layouts are the operator's own thirteen, and every layout can carry a tag the screens group by.**
 
   The seven A4 strips the studio shipped with were a guess at what a photo
