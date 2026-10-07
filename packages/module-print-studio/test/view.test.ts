@@ -3,8 +3,10 @@ import { findStudioPreset } from '../src/domain/presets.js';
 import { inches, mm } from '../src/domain/units.js';
 import { lengthText, parseLength, parsePercent, percentText, scaleText } from '../src/react/view/lengths.js';
 import {
+  cannotTurnNote,
   LAYOUT_PAPER_VALUE,
   otherPaperNote,
+  printPage,
   printPaperOptions,
   tooSmallPapersWarning,
 } from '../src/react/view/print-paper.js';
@@ -130,6 +132,61 @@ describe('the papers a print may go on', () => {
     expect(tooSmallPapersWarning(printPaperOptions(spec, 'mm'))).toBe(
       '1 paper is too small for this layout’s cells and cannot be chosen.',
     );
+  });
+});
+
+describe('turning one print', () => {
+  const A4 = { key: 'a4', label: 'A4', width: mm(210), height: mm(297) };
+  // Fixed cells across the top of A4: inside the sheet either way round.
+  const strip = { ...emptyLayoutSpec(A4, mm(5)), cells: [{ x: 0, y: 0, width: mm(200), height: mm(50) }] };
+  // Fixed cells down the whole sheet: they hang off the bottom of it turned.
+  const full = { ...emptyLayoutSpec(A4, mm(5)), cells: [{ x: 0, y: 0, width: mm(200), height: mm(287) }] };
+
+  it('starts as the layout says, with nothing changed', () => {
+    const page = printPage(strip, 'mm', null, null);
+    expect(page).toMatchObject({ paper: A4, orientation: 'portrait', paperValue: 'a4', changed: false });
+    expect(page.orientationOptions).toEqual([
+      { value: 'portrait', label: 'Portrait', own: true, fits: true },
+      { value: 'landscape', label: 'Landscape', own: false, fits: true },
+    ]);
+    expect(cannotTurnNote(page.orientationOptions)).toBeNull();
+  });
+
+  it('turns the sheet when the cells fit, and checks the papers that way round', () => {
+    const page = printPage(strip, 'mm', null, 'landscape');
+    expect(page).toMatchObject({ paper: A4, orientation: 'landscape', paperValue: 'a4', changed: true });
+    // A5 turned is 210 mm wide: the 200 mm strip and its margins need exactly that.
+    expect(page.paperOptions.find((option) => option.value === 'a5')?.fits).toBe(true);
+    expect(printPage(strip, 'mm', null, null).paperOptions.find((option) => option.value === 'a5')?.fits).toBe(false);
+  });
+
+  it('⚠ does not offer a way round the cells hang off, and says why', () => {
+    const page = printPage(full, 'mm', null, null);
+    expect(page.orientationOptions.find((option) => option.value === 'landscape')?.fits).toBe(false);
+    expect(cannotTurnNote(page.orientationOptions)).toBe(
+      'This layout’s cells do not fit on this paper turned landscape.',
+    );
+  });
+
+  it('⚠ falls back to the layout’s own page for a pick that does not fit', () => {
+    expect(printPage(full, 'mm', null, 'landscape')).toMatchObject({
+      paper: A4,
+      orientation: 'portrait',
+      changed: false,
+    });
+    // A paper too small the way the print is turned: the layout's own paper, turned the same way.
+    expect(printPage(strip, 'mm', '2r', 'landscape')).toMatchObject({ paperValue: 'a4', orientation: 'landscape' });
+  });
+
+  it('marks the layout’s own paper too small when it is, turned', () => {
+    const own = printPaperOptions(full, 'mm', 'landscape').find((option) => option.own);
+    expect(own).toMatchObject({ fits: false, label: 'A4 — 210 × 297 mm (the layout’s) — too small' });
+  });
+
+  it('turns a percent layout either way', () => {
+    const page = printPage({ ...full, sizing: 'percent' }, 'mm', null, 'landscape');
+    expect(page.orientation).toBe('landscape');
+    expect(cannotTurnNote(page.orientationOptions)).toBeNull();
   });
 });
 

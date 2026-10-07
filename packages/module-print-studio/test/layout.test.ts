@@ -193,6 +193,17 @@ describe('checkLayoutOnPaper', () => {
     );
   });
 
+  it('⚠ asks about the paper turned the other way when one print is turned', () => {
+    // A full portrait sheet of fixed cells hangs off the bottom of the same paper turned.
+    expect(checkLayoutOnPaper(full, A4, 'landscape')).toBe('cell_outside');
+    expect(checkLayoutOnPaper(full, A4, 'portrait')).toBeNull();
+    // A strip across the top is inside either way round.
+    const strip = { ...emptyLayoutSpec(A4, mm(5)), cells: [{ x: 0, y: 0, width: mm(200), height: mm(50) }] };
+    expect(checkLayoutOnPaper(strip, A4, 'landscape')).toBeNull();
+    // A percent layout is resized to the turned page, so it goes either way.
+    expect(checkLayoutOnPaper({ ...full, sizing: 'percent' }, A4, 'landscape')).toBeNull();
+  });
+
   it('refuses a paper the layout’s margins leave nothing of, even with no cells', () => {
     const margins = emptyLayoutSpec(A4, mm(40));
     expect(checkLayoutOnPaper(margins, { key: '2r', label: '2R', width: inches(2.5), height: inches(3.5) })).toBe(

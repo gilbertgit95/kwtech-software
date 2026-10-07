@@ -280,12 +280,14 @@ export function layoutOnPage(spec: StudioLayoutSpec, page: StudioPagePatch): Stu
 }
 
 /**
- * Whether a layout can be printed on ANOTHER paper: the same orientation and
- * the same margins, and its cells as `layoutOnPage` puts them there.
+ * Whether a layout can be printed on ANOTHER page: another paper, or the
+ * paper turned the other way, with the same margins and its cells as
+ * `layoutOnPage` puts them there.
  *
  * The Print screen lets one print go on a different paper than the layout was
  * made on (the operator, 2026-10-07: the shop ran out of A4 and had long
- * bond). A paper is refused, with the reason, when:
+ * bond), and turned the other way (the same day). A page is refused, with the
+ * reason, when:
  *
  *   no_printable_area — the margins leave nothing of it;
  *   cell_outside      — a `fixed` cell would hang over its edge;
@@ -294,8 +296,12 @@ export function layoutOnPage(spec: StudioLayoutSpec, page: StudioPagePatch): Stu
  * Overlaps are not asked again: they were settled when the layout was saved,
  * and neither keeping the cells nor scaling them per edge can make one.
  */
-export function checkLayoutOnPaper(spec: StudioLayoutSpec, paper: StudioLayoutPaper): StudioRefusal | null {
-  const onPaper = layoutOnPage(spec, { paper });
+export function checkLayoutOnPaper(
+  spec: StudioLayoutSpec,
+  paper: StudioLayoutPaper,
+  orientation: StudioOrientation = spec.orientation,
+): StudioRefusal | null {
+  const onPaper = layoutOnPage(spec, { paper, orientation });
   const refusal = checkPrintableArea(onPaper);
   if (refusal) return refusal;
   const area = printableArea(onPaper);

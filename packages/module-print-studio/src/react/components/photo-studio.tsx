@@ -34,7 +34,14 @@ import {
   setCellPhoto,
   usedPhotoIds,
 } from '../../domain/fill.js';
-import { borderOf, cellOnSheet, layoutOnPage, type StudioBorder, sheetSize } from '../../domain/layout.js';
+import {
+  borderOf,
+  cellOnSheet,
+  layoutOnPage,
+  type StudioBorder,
+  type StudioOrientation,
+  sheetSize,
+} from '../../domain/layout.js';
 import {
   DEFAULT_FRAME,
   effectiveDpi,
@@ -54,9 +61,10 @@ import { useStudioData } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { type PrintKeyContext, printKeyAction, printShortcutBar } from '../view/keys.js';
 import {
+  cannotTurnNote,
   otherPaperNote,
-  printPaperOptions,
-  type StudioPaperOption,
+  printPage,
+  type StudioPrintPage,
   tooSmallPapersWarning,
 } from '../view/print-paper.js';
 import { paperName, plural } from '../view/summary.js';
@@ -155,23 +163,30 @@ export function PhotoStudio({
   const [guides, setGuides] = useState(layout.spec.guides);
   const [border, setBorder] = useState<StudioBorder>(() => borderOf(layout.spec));
   /*
-   * The paper, for THIS print. It starts as the layout's and can be another —
-   * the shop is out of A4 today — without touching the layout. A fixed layout's
+   * The paper and which way round it is, for THIS print. They start as the
+   * layout's and can be another — the shop is out of A4 today, or the sheet
+   * goes through sideways — without touching the layout. A fixed layout's
    * cells stay exactly where they were drawn; a percent layout's are resized
-   * to the paper (`layoutOnPage`). Which cell is which never changes, so the
+   * to the page (`layoutOnPage`). Which cell is which never changes, so the
    * photos placed and how each is framed carry over.
-   * ⚠ ONLY A PAPER THE CELLS FIT ON CAN BE CHOSEN (`checkLayoutOnPaper`); the
-   * rest are listed, disabled, with the reason said under the list.
+   * ⚠ ONLY A PAGE THE CELLS FIT ON CAN BE CHOSEN (`checkLayoutOnPaper`); the
+   * rest are shown, disabled, with the reason said under them. Null, or a
+   * pick that no longer fits, is as the layout says (`printPage`).
    */
-  const paperOptions = useMemo(() => printPaperOptions(layout.spec, 'mm'), [layout.spec]);
   const [paperValue, setPaperValue] = useState<string | null>(null);
-  // Null, or anything that is not a choosable option, is the layout's own paper: never a sheet the cells hang off.
-  const chosenPaper = paperOptions.find((option) => option.value === paperValue && option.fits);
-  const paper = chosenPaper?.paper ?? layout.spec.paper;
-  /** The layout as it prints now: its cells on this print's paper, with this print's border. */
+  const [orientationValue, setOrientationValue] = useState<StudioOrientation | null>(null);
+  const printOn = useMemo(
+    () => printPage(layout.spec, 'mm', paperValue, orientationValue),
+    [layout.spec, paperValue, orientationValue],
+  );
+  /** The layout as it prints now: its cells on this print's page, with this print's border. */
   const spec = useMemo(
-    () => ({ ...layoutOnPage(layout.spec, { paper }), guides, border }),
-    [layout.spec, paper, guides, border],
+    () => ({
+      ...layoutOnPage(layout.spec, { paper: printOn.paper, orientation: printOn.orientation }),
+      guides,
+      border,
+    }),
+    [layout.spec, printOn, guides, border],
   );
   const cells = spec.cells;
   const sheet = useMemo(() => sheetSize(spec), [spec]);
@@ -642,9 +657,9 @@ export function PhotoStudio({
               </button>
             </section>
             <PaperChoice
-              options={paperOptions}
-              value={chosenPaper?.value ?? paperOptions.find((option) => option.own)?.value ?? ''}
-              onValue={setPaperValue}
+              page={printOn}
+              onPaper={setPaperValue}
+              onOrientation={setOrientationValue}
               otherPaperNote={otherPaperNote(layout.spec)}
             />
             {layout.foreign ? (
@@ -909,25 +924,28 @@ function firstFilled(pages: readonly StudioPageFill[]): StudioCellRef | null {
 }
 
 /**
- * The paper this print goes on. Every paper is listed; one the layout's cells
- * do not fit on cannot be picked, and the line under the list says so.
+ * The paper this print goes on, and which way round. Every paper is listed;
+ * one the layout's cells do not fit on cannot be picked, and the line under
+ * the list says so. Turning the sheet is the same: a way round the cells do
+ * not fit is drawn, not pressable, with the reason under it.
  */
 function PaperChoice({
-  options,
-  value,
-  onValue,
+  page,
+  onPaper,
+  onOrientation,
   otherPaperNote: note,
 }: {
-  options: readonly StudioPaperOption[];
-  value: string;
-  onValue: (value: string) => void;
-  /** What printing on another paper does to this layout, shown once another paper is chosen. */
+  page: StudioPrintPage;
+  onPaper: (value: string) => void;
+  onOrientation: (orientation: StudioOrientation) => void;
+  /** What printing on another page does to this layout, shown once another paper or way round is chosen. */
   otherPaperNote: string;
 }) {
   const inputId = useId();
   const noteId = useId();
-  const warning = tooSmallPapersWarning(options);
-  const changed = options.some((option) => option.value === value && !option.own);
+  const warnings = [tooSmallPapersWarning(page.paperOptions), cannotTurnNote(page.orientationOptions)].filter(
+    (warning) => warning !== null,
+  );
   return (
     <section className="flex flex-col gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5">
       <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground">
@@ -936,26 +954,46 @@ function PaperChoice({
       <select
         id={inputId}
         className={cn(INPUT_CLASS, 'h-9')}
-        value={value}
+        value={page.paperValue}
         aria-describedby={noteId}
-        onChange={(event) => onValue(event.target.value)}
+        onChange={(event) => onPaper(event.target.value)}
       >
-        {options.map((option) => (
+        {page.paperOptions.map((option) => (
           <option key={option.value} value={option.value} disabled={!option.fits}>
             {option.label}
           </option>
         ))}
       </select>
+      <fieldset className="flex min-w-0 rounded-lg border border-border bg-background p-0.5" aria-describedby={noteId}>
+        <legend className="sr-only">Orientation for this print</legend>
+        {page.orientationOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={option.value === page.orientation}
+            disabled={!option.fits}
+            className={cn(
+              'h-8 min-w-0 flex-1 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+              option.value === page.orientation
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground enabled:hover:bg-accent',
+            )}
+            onClick={() => onOrientation(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </fieldset>
       <div id={noteId} className="flex flex-col gap-1">
-        {changed ? <p className="text-xs text-muted-foreground">{note}</p> : null}
-        {warning ? (
-          <p className="flex items-start gap-1.5 text-xs">
+        {page.changed ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+        {warnings.map((warning) => (
+          <p key={warning} className="flex items-start gap-1.5 text-xs">
             <span className="mt-px flex size-4 shrink-0 items-center justify-center rounded-full bg-status-warning text-status-warning-foreground">
               <TriangleAlert aria-hidden="true" className="size-2.5" />
             </span>
             {warning}
           </p>
-        ) : null}
+        ))}
       </div>
     </section>
   );
