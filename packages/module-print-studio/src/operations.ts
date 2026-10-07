@@ -18,6 +18,7 @@ const SPEC = `spec {
       cells { x y width height label }
       guides
       border { style width color }
+      sizing
     }`;
 const LAYOUT = `id name visibility tag version mine ownerId ownerName updatedAt createdAt ${SPEC}`;
 const CALIBRATION = 'id name scaleX scaleY offsetX offsetY updatedAt';

@@ -107,6 +107,10 @@ export class StudioLayoutSpecType {
   /** How the border around the cells is drawn. Null: the default hairline. */
   @Field(() => StudioBorderType, { nullable: true })
   border!: StudioBorderType | null;
+
+  /** How the cells are measured: `fixed` or `percent`. Null: fixed. */
+  @Field(() => String, { nullable: true })
+  sizing!: string | null;
 }
 
 @ObjectType('StudioLayout')
@@ -234,6 +238,10 @@ export class StudioLayoutSpecInputType {
 
   @Field(() => StudioBorderInputType, { nullable: true })
   border?: StudioBorderInputType | null;
+
+  /** `fixed` or `percent`; absent is fixed. Checked by `prepareLayoutSpec`, like the rest of the spec. */
+  @Field(() => String, { nullable: true })
+  sizing?: string | null;
 }
 
 @InputType('CreateStudioLayoutInput')

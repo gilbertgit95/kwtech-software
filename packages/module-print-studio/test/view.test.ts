@@ -1,7 +1,13 @@
 import { emptyLayoutSpec } from '../src/domain/layout.js';
 import { findStudioPreset } from '../src/domain/presets.js';
 import { inches, mm } from '../src/domain/units.js';
-import { lengthText, parseLength, scaleText } from '../src/react/view/lengths.js';
+import { lengthText, parseLength, parsePercent, percentText, scaleText } from '../src/react/view/lengths.js';
+import {
+  LAYOUT_PAPER_VALUE,
+  otherPaperNote,
+  printPaperOptions,
+  tooSmallPapersWarning,
+} from '../src/react/view/print-paper.js';
 import { cellGroups, cellLabelSize, layoutSummary, paperName, plural, sizeName } from '../src/react/view/summary.js';
 
 describe('parseLength', () => {
@@ -88,5 +94,64 @@ describe('summarising a layout', () => {
     expect(plural(1, 'page')).toBe('1 page');
     expect(plural(3, 'page')).toBe('3 pages');
     expect(plural(2, 'copy', 'copies')).toBe('2 copies');
+  });
+});
+
+describe('the papers a print may go on', () => {
+  it('lists every built-in paper, marks the layout’s own, and disables the ones too small', () => {
+    const preset = findStudioPreset('a4-id-1x1');
+    if (!preset) throw new Error('The a4-id-1x1 preset is gone.');
+    const options = printPaperOptions(preset.spec, 'mm');
+    const byValue = new Map(options.map((option) => [option.value, option]));
+
+    expect(options.filter((option) => option.own).map((option) => option.value)).toEqual(['a4']);
+    expect(byValue.get('a4')?.label).toBe('A4 — 210 × 297 mm (the layout’s)');
+    expect(byValue.get('a4')?.fits).toBe(true);
+    // Seven 1 × 1s across do not fit on a 2.5 inch wide wallet print.
+    expect(byValue.get('2r')?.fits).toBe(false);
+    expect(byValue.get('2r')?.label).toBe('2R / Wallet — 2.5 × 3.5 in — too small');
+    expect(tooSmallPapersWarning(options)).toMatch(/too small for this layout’s cells and cannot be chosen\.$/u);
+  });
+
+  it('puts a typed paper first, as the layout’s own, and warns about nothing when all fit', () => {
+    const custom = emptyLayoutSpec({ key: null, label: '', width: mm(100), height: mm(150) }, 0);
+    const options = printPaperOptions(custom, 'mm');
+    expect(options[0]).toMatchObject({ value: LAYOUT_PAPER_VALUE, own: true, fits: true });
+    expect(options[0]?.label).toBe('100 × 150 mm (the layout’s)');
+    expect(options.filter((option) => option.own)).toHaveLength(1);
+    expect(tooSmallPapersWarning(options)).toBeNull();
+  });
+
+  it('says one paper in the singular', () => {
+    const spec = {
+      ...emptyLayoutSpec({ key: '3r', label: '3R', width: inches(3.5), height: inches(5) }, 0),
+      cells: [{ x: 0, y: 0, width: inches(3), height: inches(3) }],
+    };
+    expect(tooSmallPapersWarning(printPaperOptions(spec, 'mm'))).toBe(
+      '1 paper is too small for this layout’s cells and cannot be chosen.',
+    );
+  });
+});
+
+describe('percent layouts on the screens', () => {
+  it('shows and reads a length as a share of another', () => {
+    expect(percentText(mm(102), mm(204))).toBe('50');
+    expect(percentText(mm(68), mm(204))).toBe('33.33');
+    expect(percentText(mm(10), 0)).toBe('0');
+    expect(parsePercent('50', mm(204))).toBe(mm(102));
+    expect(parsePercent(' 33,33 % ', mm(204))).toBe(Math.round(0.3333 * mm(204)));
+    for (const text of ['', 'half', '-5', '50 mm', '1e2']) expect(parsePercent(text, mm(204))).toBeNull();
+  });
+
+  it('lets a page grid go on every paper, and says its cells are resized', () => {
+    const grid = findStudioPreset('a4-grid-2x2');
+    if (!grid) throw new Error('The a4-grid-2x2 preset is gone.');
+    const options = printPaperOptions(grid.spec, 'mm');
+    expect(options.every((option) => option.fits)).toBe(true);
+    expect(tooSmallPapersWarning(options)).toBeNull();
+    expect(otherPaperNote(grid.spec)).toMatch(/resized/u);
+
+    const fixed = findStudioPreset('a4-id-1x1');
+    expect(fixed ? otherPaperNote(fixed.spec) : '').toMatch(/keep their sizes/u);
   });
 });

@@ -1,7 +1,18 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { ChevronDown, ImagePlus, Images, LayoutTemplate, Plus, Rows3, Square, Trash2, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ImagePlus,
+  Images,
+  LayoutTemplate,
+  Plus,
+  Rows3,
+  Square,
+  Trash2,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import {
   type DragEvent,
   type ReactNode,
@@ -23,7 +34,7 @@ import {
   setCellPhoto,
   usedPhotoIds,
 } from '../../domain/fill.js';
-import { borderOf, cellOnSheet, type StudioBorder, sheetSize } from '../../domain/layout.js';
+import { borderOf, cellOnSheet, layoutOnPage, type StudioBorder, sheetSize } from '../../domain/layout.js';
 import {
   DEFAULT_FRAME,
   effectiveDpi,
@@ -42,6 +53,12 @@ import type { StudioAppState } from '../studio-state.js';
 import { useStudioData } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { type PrintKeyContext, printKeyAction, printShortcutBar } from '../view/keys.js';
+import {
+  otherPaperNote,
+  printPaperOptions,
+  type StudioPaperOption,
+  tooSmallPapersWarning,
+} from '../view/print-paper.js';
 import { paperName, plural } from '../view/summary.js';
 import {
   blurryWarning,
@@ -65,7 +82,7 @@ import {
   withFrames,
 } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
-import { buttonClass } from './controls.js';
+import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert, StudioSplit } from './layout.js';
 import type { ChosenLayout } from './layouts-section.js';
 import { OutputBar, type StudioOutputCommands } from './output-bar.js';
@@ -137,8 +154,25 @@ export function PhotoStudio({
    */
   const [guides, setGuides] = useState(layout.spec.guides);
   const [border, setBorder] = useState<StudioBorder>(() => borderOf(layout.spec));
-  /** The layout as it prints now: its own cells and paper, with this print's border. */
-  const spec = useMemo(() => ({ ...layout.spec, guides, border }), [layout.spec, guides, border]);
+  /*
+   * The paper, for THIS print. It starts as the layout's and can be another —
+   * the shop is out of A4 today — without touching the layout. A fixed layout's
+   * cells stay exactly where they were drawn; a percent layout's are resized
+   * to the paper (`layoutOnPage`). Which cell is which never changes, so the
+   * photos placed and how each is framed carry over.
+   * ⚠ ONLY A PAPER THE CELLS FIT ON CAN BE CHOSEN (`checkLayoutOnPaper`); the
+   * rest are listed, disabled, with the reason said under the list.
+   */
+  const paperOptions = useMemo(() => printPaperOptions(layout.spec, 'mm'), [layout.spec]);
+  const [paperValue, setPaperValue] = useState<string | null>(null);
+  // Null, or anything that is not a choosable option, is the layout's own paper: never a sheet the cells hang off.
+  const chosenPaper = paperOptions.find((option) => option.value === paperValue && option.fits);
+  const paper = chosenPaper?.paper ?? layout.spec.paper;
+  /** The layout as it prints now: its cells on this print's paper, with this print's border. */
+  const spec = useMemo(
+    () => ({ ...layoutOnPage(layout.spec, { paper }), guides, border }),
+    [layout.spec, paper, guides, border],
+  );
   const cells = spec.cells;
   const sheet = useMemo(() => sheetSize(spec), [spec]);
 
@@ -607,6 +641,12 @@ export function PhotoStudio({
                 Change
               </button>
             </section>
+            <PaperChoice
+              options={paperOptions}
+              value={chosenPaper?.value ?? paperOptions.find((option) => option.own)?.value ?? ''}
+              onValue={setPaperValue}
+              otherPaperNote={otherPaperNote(layout.spec)}
+            />
             {layout.foreign ? (
               <p className="-mt-1.5 px-1 text-xs text-muted-foreground">
                 Somebody else made this layout. Its margins were set for their printer and may not suit yours.
@@ -866,6 +906,59 @@ function firstFilled(pages: readonly StudioPageFill[]): StudioCellRef | null {
     if (cell >= 0) return { page, cell };
   }
   return null;
+}
+
+/**
+ * The paper this print goes on. Every paper is listed; one the layout's cells
+ * do not fit on cannot be picked, and the line under the list says so.
+ */
+function PaperChoice({
+  options,
+  value,
+  onValue,
+  otherPaperNote: note,
+}: {
+  options: readonly StudioPaperOption[];
+  value: string;
+  onValue: (value: string) => void;
+  /** What printing on another paper does to this layout, shown once another paper is chosen. */
+  otherPaperNote: string;
+}) {
+  const inputId = useId();
+  const noteId = useId();
+  const warning = tooSmallPapersWarning(options);
+  const changed = options.some((option) => option.value === value && !option.own);
+  return (
+    <section className="flex flex-col gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5">
+      <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground">
+        Paper for this print
+      </label>
+      <select
+        id={inputId}
+        className={cn(INPUT_CLASS, 'h-9')}
+        value={value}
+        aria-describedby={noteId}
+        onChange={(event) => onValue(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value} disabled={!option.fits}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <div id={noteId} className="flex flex-col gap-1">
+        {changed ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+        {warning ? (
+          <p className="flex items-start gap-1.5 text-xs">
+            <span className="mt-px flex size-4 shrink-0 items-center justify-center rounded-full bg-status-warning text-status-warning-foreground">
+              <TriangleAlert aria-hidden="true" className="size-2.5" />
+            </span>
+            {warning}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 /** The border for this print, folded to one line until wanted. */

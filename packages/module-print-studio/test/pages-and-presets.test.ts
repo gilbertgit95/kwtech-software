@@ -74,6 +74,11 @@ describe('the shipped presets', () => {
   it('⚠ are all on A4, portrait, with the operator’s margins: 24 mm clear at the bottom, or 3 mm all round a page grid', () => {
     for (const preset of STUDIO_PRESETS) {
       expect([preset.key, preset.spec.paper.key, preset.spec.orientation]).toEqual([preset.key, 'a4', 'portrait']);
+      // ⚠ Only the page grids follow the paper: the ID and photo sheets are exact sizes, cut on a cutter.
+      expect([preset.key, preset.spec.sizing]).toEqual([
+        preset.key,
+        preset.tag === 'page-grid' ? 'percent' : undefined,
+      ]);
       if (preset.tag === 'page-grid') {
         expect(preset.spec.margins).toEqual({ top: mm(3), right: mm(3), bottom: mm(3), left: mm(3) });
         continue;

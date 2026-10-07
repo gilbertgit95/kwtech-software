@@ -325,6 +325,7 @@ export class StudioResolver {
         ...spec,
         cells: spec.cells.map((cell) => ({ ...cell, label: cell.label ?? null })),
         border: spec.border ?? null,
+        sizing: spec.sizing ?? null,
       },
     };
   }
@@ -361,6 +362,7 @@ function specInput(input: StudioLayoutSpecInputType): unknown {
     })),
     guides: input.guides,
     border: input.border ? { style: input.border.style, width: input.border.width, color: input.border.color } : null,
+    sizing: input.sizing ?? null,
   };
 }
 

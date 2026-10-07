@@ -142,6 +142,10 @@ const GRID_MARGIN = mm(3);
  * was saved in, and so the order photos fill a grid in. They carry no label:
  * a grid cell is not a named size.
  *
+ * ⚠ PERCENT LAYOUTS (the operator, 2026-10-07): a grid is "the page in four",
+ * not four cells of a size, so on another paper it is still that paper in
+ * four. The numbers below are the grid on A4, where it was drawn.
+ *
  * ⚠ ONLY COUNTS THAT DIVIDE THE AREA EXACTLY. 204 × 291 mm divides by 1, 2
  * and 3 both ways; a count that left a remainder would leave a sliver at the
  * edge, and this throws rather than round it away.
@@ -159,7 +163,7 @@ function pageGrid(key: string, name: string, description: string, columns: numbe
   for (let column = 0; column < columns; column += 1) {
     for (let row = 0; row < rows; row += 1) cells.push({ x: column * width, y: row * height, width, height });
   }
-  return { key, tag: 'page-grid', name, description, spec: { ...base, margins, cells } };
+  return { key, tag: 'page-grid', name, description, spec: { ...base, margins, cells, sizing: 'percent' } };
 }
 
 /** A missing key here is a typo in this file, found the first time the module loads. */

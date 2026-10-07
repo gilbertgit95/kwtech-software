@@ -7,6 +7,7 @@ import {
   borderOf,
   checkCells,
   checkPrintableArea,
+  layoutOnPage,
   prepareLayoutName,
   printableArea,
   type StudioBorder,
@@ -14,7 +15,10 @@ import {
   type StudioLayoutSpec,
   type StudioMargins,
   type StudioOrientation,
+  type StudioPagePatch,
   type StudioSize,
+  type StudioSizing,
+  sizingOf,
 } from '../../domain/layout.js';
 import { findStudioPaper, STUDIO_PAPER_MAX, STUDIO_PAPER_MIN, STUDIO_PAPERS } from '../../domain/papers.js';
 import {
@@ -36,7 +40,7 @@ import type { StudioAppState } from '../studio-state.js';
 import { useStudioAction } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { editorKeyAction, editorShortcutBar } from '../view/keys.js';
-import { lengthText, parseLength, STUDIO_UNITS, type StudioUnit } from '../view/lengths.js';
+import { lengthText, parseLength, parsePercent, percentText, STUDIO_UNITS, type StudioUnit } from '../view/lengths.js';
 import { cellGroups, paperName, plural, sizeName } from '../view/summary.js';
 import { stepViewZoom } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
@@ -134,6 +138,15 @@ export function LayoutEditor({
 
   function change(patch: Partial<StudioLayoutSpec>) {
     setSpec((current) => ({ ...current, ...patch }));
+  }
+
+  /**
+   * The paper, its orientation or its margins changed. ⚠ THROUGH `layoutOnPage`,
+   * never a bare patch: a percent layout's cells follow the page here exactly
+   * as they will when a print goes on another paper.
+   */
+  function changePage(patch: StudioPagePatch) {
+    setSpec((current) => layoutOnPage(current, patch));
   }
 
   function setCells(cells: StudioCell[], message: string | null = null) {
@@ -335,7 +348,13 @@ export function LayoutEditor({
               setSelected(null);
             }}
           />
-          <PageSetup spec={spec} unit={unit} onUnit={setUnit} onChange={change} />
+          <PageSetup
+            spec={spec}
+            unit={unit}
+            onUnit={setUnit}
+            onChange={changePage}
+            onSizing={(sizing) => change({ sizing })}
+          />
           <MoreTools
             hasCells={spec.cells.length > 0}
             guides={spec.guides}
@@ -355,6 +374,7 @@ export function LayoutEditor({
             <SelectedCell
               cell={selectedCell}
               unit={unit}
+              percentOf={sizingOf(spec) === 'percent' ? area : null}
               onMove={(position) => tryCells(moveCell(area, spec.cells, selected, position))}
               onResize={(size) => tryCells(resizeCell(area, spec.cells, selected, size))}
               onRotate={() => tryCells(rotateCell(area, spec.cells, selected))}
@@ -542,6 +562,7 @@ function LengthField({
   onCommit,
   min = 0,
   max = STUDIO_PAPER_MAX,
+  of,
 }: {
   label: string;
   value: number;
@@ -549,25 +570,31 @@ function LengthField({
   onCommit: (value: number) => void;
   min?: number;
   max?: number;
+  /**
+   * The length this one is a PERCENTAGE of, in a percent layout: the field
+   * then shows and reads "50" for half of it. What is handed up is still units.
+   */
+  of?: number | undefined;
 }) {
   const id = useId();
-  const [text, setText] = useState(lengthText(value, unit));
+  const shown = of === undefined ? lengthText(value, unit) : percentText(value, of);
+  const [text, setText] = useState(shown);
   const [bad, setBad] = useState(false);
-  // The value changed from outside (a tool, a drag, another unit): show it.
+  // The value changed from outside (a tool, a drag, another unit, another page): show it.
   useEffect(() => {
-    setText(lengthText(value, unit));
+    setText(shown);
     setBad(false);
-  }, [value, unit]);
+  }, [shown]);
 
   function commit() {
-    const parsed = parseLength(text, unit);
+    const parsed = of === undefined ? parseLength(text, unit) : parsePercent(text, of);
     if (parsed === null || parsed < min || parsed > max) {
       setBad(true);
       return;
     }
     setBad(false);
     if (parsed !== value) onCommit(parsed);
-    else setText(lengthText(value, unit));
+    else setText(shown);
   }
 
   return (
@@ -589,7 +616,7 @@ function LengthField({
           }}
         />
         <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-muted-foreground">
-          {unit}
+          {of === undefined ? unit : '%'}
         </span>
       </div>
     </div>
@@ -1012,6 +1039,7 @@ function SizeRow({
 function SelectedCell({
   cell,
   unit,
+  percentOf,
   onMove,
   onResize,
   onRotate,
@@ -1020,6 +1048,8 @@ function SelectedCell({
 }: {
   cell: StudioCell;
   unit: StudioUnit;
+  /** The printable area, in a percent layout: the four numbers are then shares of it. Null shows lengths. */
+  percentOf: StudioSize | null;
   onMove: (position: { x: number; y: number }) => void;
   onResize: (size: StudioSize) => void;
   onRotate: () => void;
@@ -1037,6 +1067,7 @@ function SelectedCell({
         <LengthField
           label="Width"
           unit={unit}
+          of={percentOf?.width}
           min={STUDIO_CELL_MIN}
           value={cell.width}
           onCommit={(width) => onResize({ width, height: cell.height })}
@@ -1044,12 +1075,25 @@ function SelectedCell({
         <LengthField
           label="Height"
           unit={unit}
+          of={percentOf?.height}
           min={STUDIO_CELL_MIN}
           value={cell.height}
           onCommit={(height) => onResize({ width: cell.width, height })}
         />
-        <LengthField label="Left" unit={unit} value={cell.x} onCommit={(x) => onMove({ x, y: cell.y })} />
-        <LengthField label="Top" unit={unit} value={cell.y} onCommit={(y) => onMove({ x: cell.x, y })} />
+        <LengthField
+          label="Left"
+          unit={unit}
+          of={percentOf?.width}
+          value={cell.x}
+          onCommit={(x) => onMove({ x, y: cell.y })}
+        />
+        <LengthField
+          label="Top"
+          unit={unit}
+          of={percentOf?.height}
+          value={cell.y}
+          onCommit={(y) => onMove({ x: cell.x, y })}
+        />
       </div>
       <div className="ml-auto flex gap-1.5">
         <button type="button" className={buttonClass('secondary', 'sm')} onClick={onDuplicate}>
@@ -1080,13 +1124,16 @@ function PageSetup({
   unit,
   onUnit,
   onChange,
+  onSizing,
 }: {
   spec: StudioLayoutSpec;
   unit: StudioUnit;
   onUnit: (unit: StudioUnit) => void;
-  onChange: (patch: Partial<StudioLayoutSpec>) => void;
+  onChange: (patch: StudioPagePatch) => void;
+  onSizing: (sizing: StudioSizing) => void;
 }) {
   const id = useId();
+  const sizing = sizingOf(spec);
   const known = findStudioPaper(spec.paper.key);
   const { margins } = spec;
   const marginText = SIDES.map((side) => lengthText(margins[side], unit)).join(' / ');
@@ -1164,6 +1211,22 @@ function PageSetup({
           options={STUDIO_UNITS.map((one) => ({ value: one, label: one }))}
         />
       </div>
+
+      <p className="border-t border-border pt-2.5 text-xs font-semibold">How the cells are measured</p>
+      <Segmented<StudioSizing>
+        label="How the cells are measured"
+        value={sizing}
+        onChange={onSizing}
+        options={[
+          { value: 'fixed', label: 'Exact size' },
+          { value: 'percent', label: 'Percent of the page' },
+        ]}
+      />
+      <p className="text-xs text-muted-foreground">
+        {sizing === 'percent'
+          ? 'Each cell keeps its share of the printable area. Change the paper, here or when printing, and the cells are resized to match.'
+          : 'Each cell keeps its exact size on any paper. A paper too small for the cells cannot be printed on.'}
+      </p>
 
       <p className="border-t border-border pt-2.5 text-xs font-semibold">Margins — what the printer cannot reach</p>
       <div className="grid grid-cols-2 gap-2">

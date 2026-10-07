@@ -24,6 +24,20 @@ describe('creating a layout', () => {
     expect(layout.spec).toEqual(sampleSpec());
   });
 
+  it('keeps a percent layout a percent layout, and a fixed one without the word', async () => {
+    const { writes } = harness();
+    const percent = await writes.createLayout(SCOPE, ANA, {
+      name: 'grid',
+      spec: { ...sampleSpec(), sizing: 'percent' },
+    });
+    expect(percent.spec).toEqual({ ...sampleSpec(), sizing: 'percent' });
+    // Back to exact sizes on a save: stored as absent, the same as a layout that never had the choice.
+    const fixed = await writes.updateLayout(SCOPE, ANA, percent.id, percent.version, {
+      spec: { ...sampleSpec(), sizing: 'fixed' },
+    });
+    expect(fixed.spec).toEqual(sampleSpec());
+  });
+
   it('files it under a tidied tag, or under none', async () => {
     const { writes } = harness();
     expect(

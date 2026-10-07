@@ -69,7 +69,39 @@ export interface StudioLayoutSpec {
    * always did.
    */
   border?: StudioBorder;
+  /**
+   * How the cells are measured. Absent means `fixed`: a layout saved before
+   * there was a choice keeps every cell at its exact size on any paper.
+   */
+  sizing?: StudioSizing;
 }
+
+/**
+ * How a layout's cells are measured (the operator, 2026-10-07).
+ *
+ *   fixed   — exact sizes. A 2 × 2 is 2 × 2 inches on any paper; a paper too
+ *             small for the cells cannot be printed on.
+ *   percent — shares of the printable area. A cell that is half the page wide
+ *             is half of ANY page wide, so the layout follows the paper a
+ *             print goes on.
+ *
+ * ⚠ A PERCENT LAYOUT STILL STORES ITS CELLS IN UNITS, as they are on the paper
+ * it was made on. The percentages are those cells over that paper's printable
+ * area, worked out when another paper is asked for (`layoutOnPage`). Storing
+ * fractions instead would bring floats into every overlap check (`units.ts`),
+ * and would need a second renderer for a sheet that is drawn only one way.
+ */
+export type StudioSizing = 'fixed' | 'percent';
+
+export const STUDIO_SIZINGS = ['fixed', 'percent'] as const satisfies readonly StudioSizing[];
+
+/** How a layout's cells are measured, its own choice or the default. */
+export function sizingOf(spec: Pick<StudioLayoutSpec, 'sizing'>): StudioSizing {
+  return spec.sizing ?? 'fixed';
+}
+
+/** The parts of a layout that say what page it is on. Changing any of them changes the printable area. */
+export type StudioPagePatch = Partial<Pick<StudioLayoutSpec, 'paper' | 'orientation' | 'margins'>>;
 
 /** Whether the border is one unbroken line or a row of dashes. */
 export type StudioBorderStyle = 'solid' | 'dashed';
@@ -205,6 +237,76 @@ export function checkCells(cells: readonly StudioRect[], area: StudioSize): Stud
 }
 
 /**
+ * Cells drawn on an area of one size, as they are on an area of another: each
+ * keeps its share of the width and of the height.
+ *
+ * ⚠ ROUNDED PER EDGE, never per width: a cell's right edge and its
+ * neighbour's left edge are the same number before, so they are the same
+ * number after. Rounding the widths instead leaves two cells that touched a
+ * unit apart, or a unit over each other — and an overlap is a refused layout.
+ */
+export function scaleCells(cells: readonly StudioCell[], from: StudioSize, to: StudioSize): StudioCell[] {
+  if (!(from.width > 0) || !(from.height > 0)) return [...cells];
+  const across = (value: number): number => Math.round((value * to.width) / from.width);
+  const down = (value: number): number => Math.round((value * to.height) / from.height);
+  return cells.map((cell) => {
+    const x = across(cell.x);
+    const y = down(cell.y);
+    return { ...cell, x, y, width: across(cell.x + cell.width) - x, height: down(cell.y + cell.height) - y };
+  });
+}
+
+/**
+ * A layout on another page: another paper, turned the other way, or with
+ * other margins.
+ *
+ * A `fixed` layout keeps its cells exactly — a cutter is lined up against
+ * them — so only the page changes, and whether the cells still fit is asked
+ * separately (`checkLayoutOnPaper`). A `percent` layout's cells are scaled
+ * from the old printable area to the new one.
+ *
+ * ⚠ THE MARGINS ARE NEVER SCALED. They are what a printer cannot reach, in
+ * millimetres, whatever is printed.
+ *
+ * ⚠ A page with no room on it leaves the cells as they were, on either side
+ * of the change: scaling into nothing would flatten every cell to zero, and
+ * there is no way back from that. The caller's own check says what is wrong.
+ */
+export function layoutOnPage(spec: StudioLayoutSpec, page: StudioPagePatch): StudioLayoutSpec {
+  const next = { ...spec, ...page };
+  if (sizingOf(spec) === 'fixed') return next;
+  if (checkPrintableArea(spec) || checkPrintableArea(next)) return next;
+  return { ...next, cells: scaleCells(spec.cells, printableArea(spec), printableArea(next)) };
+}
+
+/**
+ * Whether a layout can be printed on ANOTHER paper: the same orientation and
+ * the same margins, and its cells as `layoutOnPage` puts them there.
+ *
+ * The Print screen lets one print go on a different paper than the layout was
+ * made on (the operator, 2026-10-07: the shop ran out of A4 and had long
+ * bond). A paper is refused, with the reason, when:
+ *
+ *   no_printable_area — the margins leave nothing of it;
+ *   cell_outside      — a `fixed` cell would hang over its edge;
+ *   cell_too_small    — a `percent` cell would shrink under the smallest cell.
+ *
+ * Overlaps are not asked again: they were settled when the layout was saved,
+ * and neither keeping the cells nor scaling them per edge can make one.
+ */
+export function checkLayoutOnPaper(spec: StudioLayoutSpec, paper: StudioLayoutPaper): StudioRefusal | null {
+  const onPaper = layoutOnPage(spec, { paper });
+  const refusal = checkPrintableArea(onPaper);
+  if (refusal) return refusal;
+  const area = printableArea(onPaper);
+  for (const cell of onPaper.cells) {
+    if (cell.width < STUDIO_CELL_MIN || cell.height < STUDIO_CELL_MIN) return 'cell_too_small';
+    if (!fitsInside(cell, area)) return 'cell_outside';
+  }
+  return null;
+}
+
+/**
  * A layout spec as it arrives — JSON from a client, or a row read back — as a
  * clean spec, or the reason it is not one.
  *
@@ -238,6 +340,9 @@ export function prepareLayoutSpec(value: unknown): { spec: StudioLayoutSpec } | 
   // Absent or null is "the default"; anything else must be a border, or the whole spec is refused.
   const border = value.border === undefined || value.border === null ? undefined : readBorder(value.border);
   if (border === null) return { refused: 'invalid_spec' };
+  // Absent or null is `fixed`, the default, and is stored as absent so the two never differ in a row.
+  const sizing = value.sizing ?? 'fixed';
+  if (!isSizing(sizing)) return { refused: 'invalid_spec' };
 
   const spec: StudioLayoutSpec = {
     version: 1,
@@ -247,6 +352,7 @@ export function prepareLayoutSpec(value: unknown): { spec: StudioLayoutSpec } | 
     cells,
     guides: value.guides,
     ...(border ? { border } : {}),
+    ...(sizing === 'percent' ? { sizing } : {}),
   };
   const refusal = checkPrintableArea(spec) ?? checkCells(cells, printableArea(spec));
   if (refusal) return { refused: refusal };
@@ -292,6 +398,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isOrientation(value: unknown): value is StudioOrientation {
   return (STUDIO_ORIENTATIONS as readonly unknown[]).includes(value);
+}
+
+function isSizing(value: unknown): value is StudioSizing {
+  return (STUDIO_SIZINGS as readonly unknown[]).includes(value);
 }
 
 function readPaper(value: unknown): StudioLayoutPaper | null {
