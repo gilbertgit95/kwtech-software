@@ -32,6 +32,7 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
+import { PRINT_FEATURE_REGISTRY, PRINT_LIMIT_REGISTRY } from '@kwtech/module-print';
 import { STUDIO_FEATURE_REGISTRY, STUDIO_LIMIT_REGISTRY, STUDIO_PROCESS_REGISTRY } from '@kwtech/module-print-studio';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE_REGISTRY, TASK_LIMIT_REGISTRY, TASK_PROCESS_REGISTRY } from '@kwtech/module-task';
@@ -175,6 +176,13 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
     limits: STUDIO_LIMIT_REGISTRY,
     processes: STUDIO_PROCESS_REGISTRY,
   },
+  /*
+   * ⚠ And the printing side's. Leave this out and anybody signed in can pair a
+   * computer of their own to any workspace — and a paired computer receives
+   * that workspace's print jobs — and the cap on computers is never mirrored
+   * for plans. It declares no background process.
+   */
+  { key: 'print', features: PRINT_FEATURE_REGISTRY, limits: PRINT_LIMIT_REGISTRY },
   /*
    * ⚠ THE BINDINGS ARE THE GUARD of tasks and the point of sale, as the
    * queue's are. Leaving a line out would leave that module's every operation

@@ -37,6 +37,7 @@
     "@kwtech/module-note": "workspace:*",
     "@kwtech/module-notification": "workspace:*",
     "@kwtech/module-permissions": "workspace:*",
+    "@kwtech/module-print": "workspace:*",
     "@kwtech/module-print-studio": "workspace:*",
     "@kwtech/module-basic-pos": "workspace:*",
     "@kwtech/module-basic-bookkeeping": "workspace:*",

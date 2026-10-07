@@ -4,6 +4,7 @@ import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
+import { PRINT_FEATURE, PRINT_LIMIT } from '@kwtech/module-print';
 import { STUDIO_FEATURE, STUDIO_LIMIT } from '@kwtech/module-print-studio';
 import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE, TASK_LIMIT } from '@kwtech/module-task';
@@ -240,6 +241,21 @@ const STUDIO = Object.values(STUDIO_FEATURE);
 /** Layouts kept per person per workspace. The same in every tier for now. */
 const STUDIO_CAPS = { [STUDIO_LIMIT.layouts]: 100 };
 
+/**
+ * Printing through a paired computer, sold where the print studio is: it is
+ * the studio's way onto paper, so a plan with one and not the other would sell
+ * half a feature. Both keys are workspace level.
+ *
+ * ⚠ The same `createPlanIfAbsent` caveat as the studio's: an environment
+ * seeded before this has neither key, and an operator adds them and the
+ * `print:agents` cap on `/admin/plans`. Until then the Printers app is not on
+ * the Apps page (not_entitled).
+ */
+const PRINT = Object.values(PRINT_FEATURE);
+
+/** Computers paired per workspace. The same in every tier for now. */
+const PRINT_CAPS = { [PRINT_LIMIT.agents]: 2 };
+
 /** Active items and variants per store. The same in every tier for now. */
 const POS_CAPS = { [POS_LIMIT.items]: 1000 };
 
@@ -295,6 +311,7 @@ const STARTER: PlanDefinition = {
     ...BOOKS,
     ...BOOKING,
     ...STUDIO,
+    ...PRINT,
     ...APPS_PAGE,
   ],
   limits: {
@@ -307,6 +324,7 @@ const STARTER: PlanDefinition = {
     ...POS_CAPS,
     ...BOOKING_CAPS,
     ...STUDIO_CAPS,
+    ...PRINT_CAPS,
   },
 };
 
@@ -341,6 +359,7 @@ const PRO: PlanDefinition = {
     ...BOOKS,
     ...BOOKING,
     ...STUDIO,
+    ...PRINT,
     ...APPS_PAGE,
   ],
   limits: {
@@ -353,6 +372,7 @@ const PRO: PlanDefinition = {
     ...POS_CAPS,
     ...BOOKING_CAPS,
     ...STUDIO_CAPS,
+    ...PRINT_CAPS,
   },
 };
 
@@ -393,6 +413,7 @@ const ENTERPRISE: PlanDefinition = {
     ...POS_CAPS,
     ...BOOKING_CAPS,
     ...STUDIO_CAPS,
+    ...PRINT_CAPS,
   },
 };
 

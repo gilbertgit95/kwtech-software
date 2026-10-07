@@ -8,6 +8,7 @@ import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
+import { PRINT_ROLE_PRESETS, type PrintRolePreset } from '@kwtech/module-print';
 import { STUDIO_ROLE_PRESETS, type StudioRolePreset } from '@kwtech/module-print-studio';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
 import { TASK_ROLE_PRESETS, type TaskRolePreset } from '@kwtech/module-task';
@@ -455,6 +456,20 @@ function studioPreset(key: string): StudioRolePreset {
 }
 
 /**
+ * A printing preset, read by key (PRINT-STUDIO-PLAN §10), and granted to the
+ * EXISTING workspace roles as the studio's are: every member sees which
+ * printers the workspace has (`print-user`), and a workspace admin can also
+ * pair a computer and revoke one (`print-admin`, which adds the privileged
+ * `print:manage_agents` — a paired computer receives the workspace's print
+ * jobs). THROWS if a preset is gone.
+ */
+function printPreset(key: string): PrintRolePreset {
+  const preset = PRINT_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-print no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * Runs one workspace.
  *
  * EMPTY, and the registry explains why: `workspaces:share` is the only
@@ -528,6 +543,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...bookingPreset('booking-manager').features,
     // The print studio: layouts, anybody's shared ones, and everybody's print history.
     ...studioPreset('studio-admin').features,
+    // Printing: seeing the printers, and pairing or revoking the computers that print.
+    ...printPreset('print-admin').features,
   ],
   limits: {},
 };
@@ -563,6 +580,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
     ...bookingPreset('booking-front-desk').features,
     // Lays photos out and keeps layouts of their own; sees their own print history only.
     ...studioPreset('studio-user').features,
+    // Sees which computers and printers the workspace has. Cannot pair or revoke one.
+    ...printPreset('print-user').features,
   ],
   limits: {},
 };

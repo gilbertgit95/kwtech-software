@@ -8,6 +8,7 @@ import { CHAT_OPERATIONS } from '@kwtech/module-chat';
 import { JOBS_OPERATIONS } from '@kwtech/module-jobs';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
+import { PRINT_OPERATIONS } from '@kwtech/module-print';
 import { STUDIO_OPERATIONS } from '@kwtech/module-print-studio';
 import { QUEUE_OPERATIONS } from '@kwtech/module-queuing-window';
 import { TASK_OPERATIONS } from '@kwtech/module-task';
@@ -65,6 +66,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   notification: NOTIFICATION_OPERATIONS,
   app_hub: APP_HUB_OPERATIONS,
   note: NOTE_OPERATIONS,
+  print: PRINT_OPERATIONS,
   studio: STUDIO_OPERATIONS,
   task: TASK_OPERATIONS,
   pos: POS_OPERATIONS,

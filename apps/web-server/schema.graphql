@@ -746,6 +746,7 @@ type Mutation {
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
   createPlan(input: PlanDraftInput!): PermissionPlanDetail!
   createPosOrder(label: String, organizationId: String!, workspaceId: String!): PosOrder!
+  createPrintPairingCode(name: String!, organizationId: String!, workspaceId: String!): PrintPairingCode!
   createQueueLine(endNumber: Int, name: String!, organizationId: String!, padTo: Int, prefix: String!, startNumber: Int, workspaceId: String!): QueueLine!
   createQueueWindow(name: String!, organizationId: String!, workspaceId: String!): QueueWindow!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
@@ -785,11 +786,13 @@ type Mutation {
   moveTaskChecklistItem(afterItemId: String, itemId: String!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   moveTaskColumn(afterColumnId: String, boardId: String!, columnId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   openQueueDisplay(code: String!, organizationKey: String!, workspaceKey: String!): QueueDisplayPass
+  pairPrintAgent(agentVersion: String, code: String!, hostName: String): PrintAgentPairing
   pauseJobProcess(processKey: String!, reason: String!): JobProcess!
   payLaterPosOrder(orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   payPosOrder(input: PayPosOrderInput!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   previewPlanClone(current: [String!]!, mode: String!, sourcePlanKey: String!): PlanClonePreview!
   previewRoleClone(current: [String!]!, level: String!, mode: String!, sourceRoleId: String!): RoleClonePreview!
+  printAgentHeartbeat: Boolean!
   recallNotificationBatch(batchId: String!): NotificationBatch!
   recallQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   recordBooksEntry(input: RecordBooksEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
@@ -808,6 +811,8 @@ type Mutation {
   removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  reportPrintAgentJob(jobId: String!, message: String, printed: Boolean!): Boolean!
+  reportPrintAgentPrinters(printers: [PrintReportedPrinterInput!]!): Boolean!
   requestPublicBooking(input: BookingPublicRequestInput!, linkId: String!): BookingPublicRequest!
   rescheduleBookingAppointment(appointmentId: String!, organizationId: String!, resourceId: String!, startsAt: String!, workspaceId: String!): BookingAppointment!
   reschedulePublicBooking(resourceId: String!, startsAt: String!, token: String!): BookingPublicBooking!
@@ -822,6 +827,7 @@ type Mutation {
   restoreTaskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   resumeJobProcess(processKey: String!): JobProcess!
   revokeInvitation(invitationId: String!, organizationId: String!): PermissionWriteResult!
+  revokePrintAgent(agentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   revokeRole(organizationId: String!, roleId: String!, userId: String!): PermissionWriteResult!
   revokeWorkspaceRole(organizationId: String!, roleId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   runJobProcessNow(processKey: String!): JobProcess!
@@ -884,6 +890,7 @@ type Mutation {
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   startDirectChat(userId: String!): ChatConversation!
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
+  startPrintJob(copies: Int!, mediaType: String, organizationId: String!, paperName: String, printerId: String!, quality: String, size: Int!, workspaceId: String!): PrintJobStart!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
   stopQueue(organizationId: String!, workspaceId: String!): Boolean!
   transferTaskBoard(boardId: String!, newOwnerId: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -1596,6 +1603,118 @@ type PosVariant {
   sortOrder: Int!
 }
 
+type PrintAgent {
+  agentVersion: String
+  hostName: String
+  id: String!
+  lastSeenAt: String
+  name: String!
+  online: Boolean!
+  pairedAt: String!
+  printers: [PrintPrinter!]!
+}
+
+type PrintAgentJob {
+  copies: Int!
+  jobId: String!
+  mediaType: String
+  paper: PrintPaper
+  printerName: String!
+  quality: String
+  size: Int!
+}
+
+type PrintAgentPairing {
+  agentId: String!
+  name: String!
+  secret: String!
+}
+
+type PrintJob {
+  failure: String
+  id: String!
+  message: String
+  status: String!
+}
+
+type PrintJobStart {
+  jobId: String!
+  ticket: String!
+}
+
+type PrintPairingCode {
+  code: String!
+  expiresAt: String!
+}
+
+type PrintPaper {
+  height: Int!
+  margins: PrintPaperMargins
+  name: String!
+  width: Int!
+}
+
+type PrintPaperMargins {
+  bottom: Int!
+  left: Int!
+  right: Int!
+  top: Int!
+}
+
+type PrintPrinter {
+  driver: String!
+  gone: Boolean!
+  id: String!
+  isDefault: Boolean!
+  mediaType: String
+  mediaTypes: [PrintSettingOption!]!
+  name: String!
+  papers: [PrintPaper!]!
+  qualities: [PrintSettingOption!]!
+  quality: String
+  status: String!
+}
+
+input PrintReportedMarginsInput {
+  bottom: Int!
+  left: Int!
+  right: Int!
+  top: Int!
+}
+
+input PrintReportedPaperInput {
+  height: Int!
+  margins: PrintReportedMarginsInput
+  name: String!
+  width: Int!
+}
+
+input PrintReportedPrinterInput {
+  driver: String!
+  isDefault: Boolean!
+  name: String!
+  papers: [PrintReportedPaperInput!]!
+  settings: PrintReportedSettingsInput
+  status: String!
+}
+
+input PrintReportedSettingOptionInput {
+  id: String!
+  label: String!
+}
+
+input PrintReportedSettingsInput {
+  mediaType: String
+  mediaTypes: [PrintReportedSettingOptionInput!]!
+  qualities: [PrintReportedSettingOptionInput!]!
+  quality: String
+}
+
+type PrintSettingOption {
+  id: String!
+  label: String!
+}
+
 type Query {
   adminUser(userId: String!): AdminUserDetail!
   adminUserSessions(userId: String!): [AdminUserSession!]!
@@ -1662,6 +1781,8 @@ type Query {
   posOrders(customerId: String, fromDay: String, organizationId: String!, search: String, tab: String!, toDay: String, workspaceId: String!): [PosOrderSummary!]!
   posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
   posSettings(organizationId: String!, workspaceId: String!): PosSettings!
+  printAgents(organizationId: String!, workspaceId: String!): [PrintAgent!]!
+  printJob(jobId: String!, organizationId: String!, workspaceId: String!): PrintJob
   publicBooking(token: String!): BookingPublicBooking
   publicBookingMoveSlots(day: String!, token: String!): [BookingPublicSlots!]
   publicBookingPage(linkId: String!): BookingPublicPage
@@ -2089,6 +2210,7 @@ type Subscription {
   notificationEvents: NotificationEvent!
   planChanged: PermissionPlanChanged!
   posEvents(organizationId: String!, workspaceId: String!): PosEvent!
+  printAgentJobs: PrintAgentJob!
   queueDisplay: QueueDisplayEvent!
   queueEvents(organizationId: String!, workspaceId: String!): QueueEvent!
   taskEvents(organizationId: String!, workspaceId: String!): TaskEvent!

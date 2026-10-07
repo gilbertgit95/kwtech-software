@@ -57,6 +57,10 @@ const EXCLUDED_TABLES: Record<string, string> = {
   // Six-digit codes: a hash of one is brute-forced offline in seconds.
   auth_mfa_email_code: 'second-factor email code hashes',
   queue_display_pass: 'live TV display credentials',
+  // ⚠ A paired computer's secret is a standing credential: its hash stays out, and so does everything that hangs off the row.
+  print_agent: 'paired computers: hashes of live agent secrets',
+  print_pairing_code: 'live pairing code hashes',
+  print_printer: 'rows of `print_agent`, which is not exported',
   // Personal data, not a secret: the names of files people printed are often customers' names.
   studio_log: 'print history: file names that are often customers’ names',
 };

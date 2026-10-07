@@ -41,6 +41,12 @@ import {
   type PermissionsWriteClient,
 } from '@kwtech/module-permissions/server';
 import {
+  PRINT_PRISMA,
+  PRINT_PRISMA_WRITE,
+  type PrintTransaction,
+  type PrintWriteClient,
+} from '@kwtech/module-print/server';
+import {
   STUDIO_PRISMA,
   STUDIO_PRISMA_WRITE,
   type StudioTransaction,
@@ -241,6 +247,28 @@ export const noteWritePrismaProvider: Provider = {
       notePin: prisma.notePin,
       noteRevision: prisma.noteRevision,
       notePreference: prisma.notePreference,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const printPrismaProvider: Provider = {
+  provide: PRINT_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const printWritePrismaProvider: Provider = {
+  provide: PRINT_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): PrintWriteClient =>
+    withTransaction<PrintTransaction, PrintWriteClient>(prisma, {
+      /*
+       * ⚠ Pairing claims the code, counts the workspace's computers and inserts
+       * one in a single transaction, and a report rewrites a computer's
+       * printers in one — both dispatched over these.
+       */
+      printAgent: prisma.printAgent,
+      printPairingCode: prisma.printPairingCode,
+      printPrinter: prisma.printPrinter,
     }),
 };
 

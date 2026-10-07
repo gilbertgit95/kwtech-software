@@ -63,6 +63,12 @@ import {
   permissionsServerModule,
 } from '@kwtech/module-permissions/server';
 import {
+  isPrintAgentHandshake,
+  PRINT_LIMIT_CHECKER,
+  PrintAgentService,
+  printServerModule,
+} from '@kwtech/module-print/server';
+import {
   STUDIO_ACCESS_CHECK,
   STUDIO_LIMIT_CHECKER,
   STUDIO_MEMBER_DIRECTORY,
@@ -138,6 +144,8 @@ import {
   permissionsWritePrismaProvider,
   posPrismaProvider,
   posWritePrismaProvider,
+  printPrismaProvider,
+  printWritePrismaProvider,
   queuePrismaProvider,
   queueWritePrismaProvider,
   studioPrismaProvider,
@@ -433,6 +441,26 @@ const POS_SERVER_MODULE: ServerModuleDescriptor = posServerModule({
 });
 
 /**
+ * The printing side — the computers paired to print for a workspace, the
+ * printers they report, and the relay a print job's file crosses on its way
+ * to one (PRINT-STUDIO-PLAN §10). ⚠ The relay is in this process's memory:
+ * one instance (PLAN §12.114).
+ *
+ * HOISTED like the queue's, and for the same reason: the GraphQL options need
+ * the SAME dynamic module object, to resolve `PrintAgentService` for the
+ * socket handshake — see `admitAnonymous` there.
+ */
+const PRINT_SERVER_MODULE: ServerModuleDescriptor = printServerModule({
+  prismaProvider: printPrismaProvider,
+  prismaWriteProvider: printWritePrismaProvider,
+
+  // The cap on paired computers, from the plan. Omitted, the module holds its declared default.
+  limitCheckerProvider: { provide: PRINT_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+  resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+});
+
+/**
  * Every module EXCEPT the background runner, which is appended below because
  * it is handed the processes these declare.
  */
@@ -683,6 +711,8 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
 
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
   }),
+
+  PRINT_SERVER_MODULE,
 
   NOTIFICATION_SERVER_MODULE,
 
@@ -975,8 +1005,9 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
       imports: [
         CHAT_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number],
         QUEUE_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number],
+        PRINT_SERVER_MODULE.nestModule as NonNullable<ModuleMetadata['imports']>[number],
       ],
-      inject: [TokenService, ChatPresenceService, QueueDisplayService],
+      inject: [TokenService, ChatPresenceService, QueueDisplayService, PrintAgentService],
       /*
        * ⚠ THE SEAM THAT KEEPS `graphql.options.ts` FREE OF MODULE NAMES.
        *
@@ -991,7 +1022,12 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
        * synchronous — it records the moment and lets the sweep decide, because
        * the grace period is the whole point.
        */
-      useFactory: (tokens: TokenService, presence: ChatPresenceService, displays: QueueDisplayService) =>
+      useFactory: (
+        tokens: TokenService,
+        presence: ChatPresenceService,
+        displays: QueueDisplayService,
+        printAgents: PrintAgentService,
+      ) =>
         graphqlOptions(
           tokens,
           {
@@ -1002,11 +1038,16 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
           /*
            * ⚠ A SOCKET WITH NO TICKET IS OFFERED TO THE QUEUE: a TV presenting its
            * display pass. What it admits carries no principal, so it reaches the
-           * public board and nothing else — see ./graphql/ws-context.ts. Another
-           * module wanting anonymous sockets would compose here, keyed on its own
-           * connection parameter.
+           * public board and nothing else — see ./graphql/ws-context.ts.
+           *
+           * ⚠ OR TO THE PRINTING SIDE, ROUTED BY CONNECTION PARAMETER: a socket
+           * presenting `printAgentSecret` is a paired computer and is offered to
+           * that module ONLY. Routed rather than tried in turn, so a secret one
+           * module refuses is never handed to the other, and a refusal costs one
+           * lookup. What each admits is tagged with its own `kind`, so neither
+           * module can read the other's admission as its own.
            */
-          (params) => displays.admit(params),
+          (params) => (isPrintAgentHandshake(params) ? printAgents.admit(params) : displays.admit(params)),
         ),
     }),
 
