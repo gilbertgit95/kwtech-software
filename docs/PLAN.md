@@ -597,6 +597,66 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-07** — **A layout may be measured in percent: its cells follow the paper. The Page Grid presets are.**
+
+  The operator, after the paper choice below: a layout should be able to adjust
+  by itself when the paper is changed at print time, and the page grids should
+  be the first to do so.
+
+  - **`spec.sizing`: `fixed` (the default, and what every saved layout is) or
+    `percent`.** Chosen in the editor under "Paper and margins". A fixed cell
+    keeps its exact size on any paper; a percent cell keeps its share of the
+    printable area.
+  - **A percent layout still stores its cells in whole units**, as they are on
+    the paper it was made on. The shares are those cells over that printable
+    area, worked out when another page is asked for (`layoutOnPage`). Stored
+    fractions would bring floats into every overlap check (PRINT-STUDIO-PLAN
+    decision 18) and need a second renderer. No migration: the column is JSON
+    and an absent `sizing` is `fixed`.
+  - **Scaled per edge, not per width** (`scaleCells`), so cells that touch
+    still touch and none overlap after rounding.
+  - **Margins are never scaled.** They are what the printer cannot reach.
+  - **On the Print screen** a percent layout is resized to the chosen paper,
+    always from the layout as saved, and the photos and their frames carry
+    over. Such a layout can go on any paper until a cell would be under 5 mm.
+  - **In the editor** a percent layout shows and reads the selected cell's
+    numbers in %, and changing its paper, orientation or margins resizes the
+    cells the same way.
+  - **The five Page Grid presets are percent.** The ID and photo-print presets
+    stay fixed: they are named sizes cut on a cutter.
+  - **Not done: converting layouts already saved from a page grid.** They are
+    people's rows; anyone can switch one to percent in the editor.
+  - **Not done: percent for gaps, the palette's sizes or the equal-grid tool.**
+    Those still take lengths; what they make is then held as shares.
+  - **Known cost:** in the editor, each change of page rounds the cells to
+    whole units (a hundredth of a millimetre), so many changes back and forth
+    can move an edge by a unit. Printing never accumulates this.
+
+- **2026-10-07** — **A print of a layout may go on another paper; a paper its cells do not fit on cannot be chosen.**
+
+  The operator asked to change the paper on the Print screen while using a
+  layout made for another one (A4 in the layout, long bond in the tray).
+
+  - **The paper is a choice of the print, not of the layout**, like the border:
+    held in the Print screen's memory, starting as the layout's own, and gone
+    when another layout is chosen. The layout row is never written.
+  - **Nothing of a fixed layout moves or scales** (a percent one, added the
+    same day, is the entry above). Same orientation, same margins,
+    every cell where it was drawn, measured from the top left. A shop lines
+    its cutter up against those cells (decision 14 of PRINT-STUDIO-PLAN).
+  - **A paper is choosable only when every cell fits inside its printable
+    area** (`checkLayoutOnPaper`, in the domain, by whole units). The ones
+    that do not fit stay in the list, disabled and marked "too small", and a
+    warning under the list says how many: a paper that went missing would
+    read as one the studio does not know.
+  - **The history records the paper printed on**, not the layout's.
+  - **Not done: a typed size, or turning the sheet, for one print.** The
+    built-in papers answer what was asked; a custom size or another
+    orientation is a different layout, made in the Layouts tab.
+  - **Not done: centring the cells on a larger paper.** That moves them, and
+    the extra paper is at the right and the bottom where it is cut off anyway.
+  - **Not done for PDF documents**, which already choose their paper.
+
 - **2026-10-07** — **The Print screen gives the sheet the panel's whole height: the tools moved beside it.**
 
   The operator had to scroll to see a whole page, and what did show was too
