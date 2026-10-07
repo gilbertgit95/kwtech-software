@@ -1,0 +1,129 @@
+// The printing side's slice of the data model (docs/PRINT-STUDIO-PLAN.md §10).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Print` and mapped to `print_*`.
+//
+//   agent          a computer paired to print for one workspace
+//   pairing code   the one-time code a person types on that computer
+//   printer        a printer that computer reported, with its papers
+//
+// ⚠ NO FILE IS EVER STORED. A print job crosses the server through an
+// in-memory relay (PLAN §13, 2026-10-07). There is no table here that could
+// hold one, on purpose.
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID FROM A PERSON ALSO NAMES THE WORKSPACE. The guard proves
+// the caller is a member of the workspace in the request, not that the row is
+// in it.
+//
+// ⚠ `userId`s are BARE STRINGS with no foreign key. `auth_user` belongs to
+// module-auth (PLAN §9).
+//
+// ⚠ EVERY LENGTH IS A WHOLE NUMBER OF HUNDREDTHS OF A MILLIMETRE, the unit the
+// print studio measures in, so a paper read here needs no conversion there.
+
+/// A computer paired to print for one workspace.
+model PrintAgent {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  /// The name a person gave it when making its pairing code ("Front desk PC").
+  name String
+  /// What the computer calls itself, as it said when pairing. Shown beside the
+  /// name so two computers given the same name can be told apart.
+  hostName String?
+  agentVersion String?
+
+  /// SHA-256 of the agent's secret, hex. ⚠ A bearer credential, so never
+  /// stored raw, exactly as the queue's display pass: nobody ever needs to read
+  /// one back. Unique, because it is what the socket handshake looks up by.
+  secretHash String @unique
+
+  pairedById String
+  /// The last heartbeat. Online is "within `PRINT_AGENT_ONLINE_SECONDS` of now",
+  /// worked out when read, so it is true on every replica without shared state.
+  lastSeenAt DateTime?
+  /// ⚠ Revoked, never deleted: the row is the record that this computer once
+  /// printed for the workspace. A revoked agent is refused at the handshake and
+  /// on its next heartbeat.
+  revokedAt   DateTime?
+  revokedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  printers PrintPrinter[]
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@map("print_agent")
+}
+
+/// A one-time code, typed on the computer being paired.
+model PrintPairingCode {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  /// SHA-256 of the code, hex. ⚠ Unique and looked up directly: the code alone
+  /// names the workspace, so the computer is never told an organization's name
+  /// and a wrong code matches nothing.
+  codeHash String @unique
+  /// The name the paired computer will have.
+  name String
+
+  createdById String
+  expiresAt   DateTime
+  /// ⚠ Set in the same statement that checks it is null (`updateMany` with
+  /// `usedAt: null`), so two computers racing one code cannot both pair.
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@map("print_pairing_code")
+}
+
+/// A printer a paired computer reported. A MIRROR of what that computer's
+/// operating system has installed, rewritten on every report.
+model PrintPrinter {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  agentId        String
+  agent          PrintAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  /// The queue's name in the operating system, which is what a job is sent to.
+  name      String
+  driver    String
+  isDefault Boolean @default(false)
+  /// `ready` | `offline` | `error` | `unknown` (`src/domain/printers.ts`). The
+  /// spooler's word, which is not a promise that paper will come out.
+  status String
+
+  /// `PrintPaper[]`, read back through `preparePapers` and never cast.
+  papers Json
+
+  /// `PrintPrinterSettings`: the paper types and qualities the driver offers and
+  /// its current choice of each, read back through `prepareSettings`. `{}` for
+  /// a printer reported before settings existed, which reads as "none offered".
+  settings Json @default("{}")
+
+  reportedAt DateTime
+  /// Set when a report no longer lists it, cleared when one does again.
+  /// ⚠ Not deleted: a printer unplugged for a day keeps its id, and what later
+  /// hangs off that id (a calibration) with it.
+  goneAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// ⚠ One row per queue per computer, kept by the database: two reports
+  /// arriving at once must not leave two rows for one printer.
+  @@unique([agentId, name])
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@map("print_printer")
+}
