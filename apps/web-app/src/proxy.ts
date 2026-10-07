@@ -77,8 +77,13 @@ export const config = {
    *                refresh token at once. Refresh is a conditional update and
    *                the loser is told the session was revoked; racing ourselves
    *                would sign people out at random.
+   *   /api/print — excluded because it carries a print job's FILE. Next reads
+   *                a request's body to run a proxy over it, up to a size
+   *                limit, and a file past the limit would arrive cut short.
+   *                No session is read there either: a one-time ticket is the
+   *                authorisation (see app/api/print/jobs/[jobId]/content).
    *   _next, static assets — no session is read while serving a file, and a
    *                refresh round trip per image would be absurd.
    */
-  matcher: ['/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)'],
+  matcher: ['/((?!api/auth|api/print|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)'],
 };

@@ -2,6 +2,8 @@
 
 import { RealtimeProvider, StatusProvider } from '@kwtech/module-kit/react';
 import { createRealtimeConnection } from '@kwtech/module-kit/realtime';
+import { createPrintTarget } from '@kwtech/module-print/react';
+import { StudioPrinterProvider } from '@kwtech/module-print-studio/react';
 import { ThemeProvider } from 'next-themes';
 import { type ReactNode, useMemo } from 'react';
 
@@ -38,6 +40,22 @@ import { THEME_STORAGE_KEY } from '@/lib/preferences';
  *
  * RealtimeProvider is here for BOTH reasons at once — see below.
  */
+/**
+ * The print studio's way onto the workspace's printers: its port, bound to
+ * `module-print` (PRINT-STUDIO-PLAN §10). Neither module knows the other; this
+ * line is where they meet, and the compiler checks the one still fits the
+ * other.
+ *
+ * ⚠ HERE, IN A CLIENT FILE, and not as an option in `modules.ts`: a sub-app's
+ * element is made on the server, and functions cannot be handed from there to
+ * a client component. Made once, at module level: it holds nothing until a
+ * person prints, and asks the API only from the studio's own screen.
+ *
+ * Both packages are `sideEffects: false`, so a page that never shows the
+ * studio bundles this small adapter and not the studio.
+ */
+const STUDIO_PRINTER = createPrintTarget();
+
 export function Providers({ children }: { children: ReactNode }) {
   /*
    * ⚠ ONE SOCKET PER TAB, OPENED HERE, and this is the only place in the whole
@@ -98,7 +116,9 @@ export function Providers({ children }: { children: ReactNode }) {
       storageKey={THEME_STORAGE_KEY}
     >
       <StatusProvider>
-        <RealtimeProvider connect={connect}>{children}</RealtimeProvider>
+        <RealtimeProvider connect={connect}>
+          <StudioPrinterProvider printer={STUDIO_PRINTER}>{children}</StudioPrinterProvider>
+        </RealtimeProvider>
       </StatusProvider>
     </ThemeProvider>
   );

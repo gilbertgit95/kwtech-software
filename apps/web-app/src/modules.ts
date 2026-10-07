@@ -9,6 +9,7 @@ import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
 import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
+import { printWebModule } from '@kwtech/module-print/react';
 import { studioWebModule } from '@kwtech/module-print-studio/react';
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
 import { taskWebModule } from '@kwtech/module-task/react';
@@ -50,6 +51,9 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   bookingWebModule(),
   // The print studio: photos laid out on paper at exact sizes, and documents — after booking.
   studioWebModule(),
+  // Printers: the computers paired to print for the workspace — beside the studio that will print through them.
+  // Its setup guide shows where a print agent finds the server: the same public socket address the queue's display uses.
+  printWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
   /*

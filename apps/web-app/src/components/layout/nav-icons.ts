@@ -47,6 +47,7 @@ import {
   Headset,
   History,
   IdCard,
+  Images,
   Inbox,
   Info,
   KeyRound,
@@ -201,6 +202,8 @@ export const ICONS: Record<string, LucideIcon> = {
   folder: Folder,
   file: FileText,
   printer: Printer,
+  // Photos laid out to be printed: the print studio, apart from the printers themselves.
+  images: Images,
   archive: Archive,
   inbox: Inbox,
   box: Box,
