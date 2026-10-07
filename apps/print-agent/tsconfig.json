@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // Inside dist/, deliberately: beside the tsconfig it outlives `rm -rf dist`,
+    // after which tsc concludes nothing changed and emits nothing.
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

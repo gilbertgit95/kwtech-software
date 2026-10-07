@@ -1,0 +1,37 @@
+{
+  "name": "@kwtech/print-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The print agent: a small program on a shop's computer that pairs with a workspace, reports the printers installed there, and prints what the workspace sends",
+  "type": "module",
+  "bin": {
+    "print-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node scripts/dev.mjs",
+    "start": "node dist/cli.js start",
+    "bundle": "pnpm build && esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --external:pdf-to-printer --outfile=dist/bundle/print-agent.mjs --log-level=warning",
+    "agent": "node dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "jest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@kwtech/module-print": "workspace:*",
+    "graphql-ws": "^6.2.1",
+    "pdf-to-printer": "^5.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "@types/node": "catalog:",
+    "esbuild": "^0.25.0",
+    "graphql": "catalog:",
+    "jest": "^30.4.2",
+    "typescript": "catalog:"
+  }
+}
