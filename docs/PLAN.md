@@ -597,6 +597,39 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-07** — **A print of a layout may be turned: portrait or landscape is a choice of the print, beside its paper.**
+
+  The operator, after the paper choice below: the Print tab should also let
+  the page's orientation be changed. That entry left turning out ("another
+  orientation is a different layout"); this reverses it, for the same reason
+  the paper became a choice: what is in the tray, and which way it goes
+  through, is a fact of today's print, not of the layout.
+
+  - **Portrait / Landscape under "Paper for this print"**, starting as the
+    layout's own, held in the Print screen's memory with the paper and gone
+    when another layout is chosen. The layout row is never written.
+  - **The same rule as the paper, through the same function**
+    (`checkLayoutOnPaper`, which now takes the orientation asked about): a
+    fixed layout's cells stay where they were drawn, measured from the top
+    left, so it turns only when every cell is still inside the printable
+    area; a percent layout is resized to the turned page.
+  - **Each choice is checked against the other as it stands now**: the papers
+    the way the print is turned, the orientations on the paper chosen. What
+    does not fit stays shown, disabled, with the reason under it. The
+    layout's own paper its own way round always fits, so there is always a
+    way back.
+  - **The history records the page printed on**: the paper's name says
+    "landscape" and the sizes are the sheet's as turned.
+  - **Not done: turning the CELLS with the sheet** (a quarter turn of the
+    whole layout). On paper that is the same print as before, fed the other
+    way; it would only matter to a printer that cannot take the paper one way
+    round, and nobody has asked for that.
+  - **Not done: picking a paper and an orientation that only fit together in
+    one step.** A paper that fits only turned is "too small" until the sheet
+    is turned, and the sheet turns only on a paper it fits on turned. From
+    the layout's own page, at most two picks reach any page that fits.
+  - **Not done for PDF documents**, which already choose their orientation.
+
 - **2026-10-07** — **A layout may be measured in percent: its cells follow the paper. The Page Grid presets are.**
 
   The operator, after the paper choice below: a layout should be able to adjust
