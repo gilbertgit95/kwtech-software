@@ -97,7 +97,21 @@ const filters = [
 ].map((name) => `--filter=${name}`);
 
 // Run through pnpm, so `turbo` is on PATH from node_modules/.bin.
-const turbo = spawn('turbo', ['run', 'dev', ...filters], { cwd: REPO_ROOT, stdio: 'inherit' });
+// GOGC=50 as the `dev` scripts in package.json set it: each watcher holds about
+// a third less memory (turbo.json, the `dev` task, has the numbers). A value
+// already in the environment wins, so it can still be tuned from the shell.
+//
+// --concurrency: turbo.json keeps the default low, for the sake of `pnpm test`
+// and `pnpm typecheck`, and turbo refuses to start unless the concurrency is
+// above the number of watchers, which never finish. So ask for exactly what
+// this run needs: the persistent tasks (one per filter) and two more for the
+// one-off builds before them.
+const concurrency = Math.max(4, filters.length + 2);
+const turbo = spawn('turbo', ['run', 'dev', `--concurrency=${concurrency}`, ...filters], {
+  cwd: REPO_ROOT,
+  stdio: 'inherit',
+  env: { GOGC: '50', ...process.env },
+});
 
 // Ctrl-C reaches turbo directly (same foreground group) and it tears its tasks
 // down itself. Dying here first would orphan them — the case dev-ports.mjs

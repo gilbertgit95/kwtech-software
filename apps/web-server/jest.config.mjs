@@ -15,6 +15,10 @@
  *                     design:paramtypes from it.
  */
 export default {
+  // Two workers, not jest's default of one per CPU core: turbo runs several
+  // packages' suites at once, and a dozen workers in each is what ran the
+  // machine out of memory (turbo.json, `concurrency`, has the numbers).
+  maxWorkers: 2,
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/test'],
   // The generated Prisma client is enormous and has no tests of its own.

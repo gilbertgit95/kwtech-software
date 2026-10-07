@@ -6,6 +6,10 @@
  * against src/ directly.
  */
 export default {
+  // Two workers, not jest's default of one per CPU core: turbo runs several
+  // packages' suites at once, and a dozen workers in each is what ran the
+  // machine out of memory (turbo.json, `concurrency`, has the numbers).
+  maxWorkers: 2,
   testEnvironment: 'node',
   roots: ['<rootDir>/test'],
   moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },

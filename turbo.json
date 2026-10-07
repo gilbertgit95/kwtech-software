@@ -9,12 +9,24 @@
   "globalDependencies": ["pnpm-workspace.yaml"],
   "globalEnv": ["NODE_ENV", "APP_ENV"],
 
-  // Above the number of PERSISTENT tasks `pnpm dev` starts: one watcher per
-  // package plus both apps (10 once module-app-hub landed). Turbo's default is
-  // 10 and it refuses to start at all when the persistent tasks reach it
-  // ("You have 10 persistent tasks but turbo is configured for concurrency of
-  // 10"). Headroom for the next few modules; raise it when adding one fails.
-  "concurrency": "20",
+  // How many tasks run at once, for EVERY turbo command that does not say
+  // otherwise. Low on purpose: `pnpm typecheck` and `pnpm test` run one task
+  // per package, there are 19 packages, and each task is heavy. One package's
+  // jest run starts a worker per CPU core and takes 0.6 to 1.2 GB; one
+  // typecheck takes about 0.3 GB. At the 20 this line used to say, `pnpm
+  // test` started some 230 Node processes asking for about 17 GB, in a 10 GB
+  // WSL VM: the machine stopped answering and VS Code dropped the connection
+  // (2026-10-07, twice, with no dev server running at all). At 4, with jest
+  // held to 2 workers by each package's jest.config, the whole suite peaks at
+  // 1.4 GB and is also FASTER (23 s against 34 s), because the processes no
+  // longer fight over the cores.
+  //
+  // The `dev` commands need more, and ask for it themselves with
+  // `--concurrency` (package.json, scripts/dev-focus.mjs): a watcher never
+  // finishes, so turbo refuses to start unless the concurrency is ABOVE the
+  // number of persistent tasks ("You have 10 persistent tasks but turbo is
+  // configured for concurrency of 10"). Raise it there, never here.
+  "concurrency": "4",
 
   "tasks": {
     "build": {
@@ -70,10 +82,19 @@
     // (see each package's dev script) so the two cannot race on it — a
     // collision there makes one of them conclude "nothing changed" and emit
     // nothing, which is the failure mode that is hardest to read.
+    //
+    // GOGC reaches the watchers (set by the root dev scripts and by
+    // scripts/dev-focus.mjs) because memory is what `pnpm dev` runs out of.
+    // `tsc` is a Go program that by default lets its heap double before
+    // collecting, and a watcher keeps what it grew to: 442 MB for one package,
+    // 293 MB at GOGC=50, for about 30 ms more per compile (measured
+    // 2026-10-07). Turbo passes a task only the variables it is told about, so
+    // without this line the setting stops here and nothing says so.
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": ["GOGC"]
     },
     "start": {
       "cache": false,
@@ -171,7 +192,7 @@
       "dependsOn": ["^build", "db:generate"],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["DATABASE_URL"]
+      "passThroughEnv": ["DATABASE_URL", "GOGC"]
     }
   }
 }

@@ -67,6 +67,11 @@ allowBuilds:
   # (PLAN §3: swc, not ts-jest); unrs-resolver arrives under it.
   '@swc/core': true
   unrs-resolver: true
+  # Denied, and it loses nothing: esbuild's install script only checks that the
+  # platform binary runs, and that binary arrives by itself as an optional
+  # dependency (@esbuild/linux-x64, ...). It bundles the print agent into one
+  # file (apps/print-agent, `pnpm bundle`).
+  esbuild: false
   # Denied, not merely unlisted, so the prompt does not come back every install
   # and the decision is on the record: @scarf/scarf's install script exists to
   # phone home with analytics about who is installing what. It arrives under
