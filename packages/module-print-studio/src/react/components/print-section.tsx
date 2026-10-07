@@ -70,7 +70,8 @@ export function PrintSection({
 
       {mode === 'photos' && !layout ? (
         <>
-          <div className="self-start">{modeSwitch}</div>
+          {/* A set width here, where nothing else holds it: room around both labels, and it does not jump as the mode changes. */}
+          <div className="w-full max-w-xs self-start">{modeSwitch}</div>
           <LayoutGallery state={state} onLayout={onLayout} onBrowseLayouts={onBrowseLayouts} />
         </>
       ) : null}
@@ -78,10 +79,19 @@ export function PrintSection({
   );
 }
 
-/** Photos or a document: two halves of one control, as wide as whatever holds it. */
+/**
+ * Photos or a document: two halves of one control.
+ *
+ * ⚠ A GRID OF EQUAL COLUMNS, NOT A FLEX ROW. Where the control is only as wide
+ * as its words (above the layout gallery), flex gave each half exactly half of
+ * the two labels together, and the longer one, "PDF document", ran out of its
+ * half and over the edge. Equal grid columns share whatever width the
+ * control is given, here and across the settings column, and neither label
+ * can leave its own.
+ */
 function ModeSwitch({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void }) {
   return (
-    <fieldset className="flex min-w-0 rounded-lg border border-border bg-background p-0.5">
+    <fieldset className="grid min-w-0 grid-cols-2 rounded-xl border border-border bg-background p-0.5 shadow-xs">
       <legend className="sr-only">What to print</legend>
       {(
         [
@@ -94,13 +104,16 @@ function ModeSwitch({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void
           type="button"
           aria-pressed={mode === option.key}
           className={cn(
-            'inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            mode === option.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
+            'inline-flex h-9 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-[0.625rem] px-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            mode === option.key
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
           )}
           onClick={() => onMode(option.key)}
         >
           <option.icon aria-hidden="true" className="size-4 shrink-0" />
-          {option.label}
+          {/* Cut with an ellipsis rather than run over the edge, should a column ever be narrower than the words. */}
+          <span className="min-w-0 truncate">{option.label}</span>
         </button>
       ))}
     </fieldset>
