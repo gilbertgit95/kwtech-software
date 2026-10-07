@@ -33,6 +33,11 @@ pnpm env:check           # templates hold no secrets; profiles lack no variable
 
 Pick the case that matches the machine.
 
+⚠ On Windows with WSL, first give WSL enough memory: `C:\Users\<you>\.wslconfig`
+is not in the repository and has to be made again on each computer. Without it
+`pnpm dev` and `pnpm test` can run WSL out of memory. The file, the numbers
+and the reasons are in [docs/SETUP.md, step 11](../docs/SETUP.md#11-memory-and-speed).
+
 ### A. It already has `apps/web-server/.env`
 
 This covers both a plain `.env` from before profiles and a `.env` link from

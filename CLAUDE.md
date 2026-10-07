@@ -8,7 +8,7 @@ link to the longer documents rather than copying them.
 | Read | For |
 |---|---|
 | [README.md](README.md) | overview, commands, the dev database |
-| [docs/SETUP.md](docs/SETUP.md) | a new computer, from `git clone` to signed in; database tasks; troubleshooting |
+| [docs/SETUP.md](docs/SETUP.md) | a new computer, from `git clone` to signed in; database tasks; troubleshooting; §11 the memory limits and why |
 | [docs/PLAN.md](docs/PLAN.md) | the plan. §9 module rules, §10 layout, §12 open decisions, §13 dated decision log |
 | [docs/DESIGN-NOTES.md](docs/DESIGN-NOTES.md) | why it is built this way. Part 7 is the principles that recur |
 | [packages/module-kit/README.md](packages/module-kit/README.md) | the module contract: descriptors, routes, nav, features, limits, defaults, scope |
@@ -28,6 +28,7 @@ A Turborepo + pnpm monorepo. Node >= 22, pnpm >= 11.
 ```
 apps/web-server/            NestJS API: GraphQL (code-first) + WebSocket + some REST   :8080
 apps/web-app/               Next.js (app router) frontend                              :8081
+apps/print-agent/           Node CLI on a shop's computer: pairs with a workspace, reports its printers (no port; it connects out)
 packages/module-kit/        the contract every module implements, and its composition
 packages/module-auth/       sign-in, sessions, MFA, password reset
 packages/module-permissions/ organizations, workspaces, roles, features, plans, limits
@@ -42,6 +43,7 @@ packages/module-basic-pos/  basic point-of-sale sub-app: items, orders, recorded
 packages/module-basic-bookkeeping/ books sub-app: cash on hand, investors, profit shares, payouts, loans, POS sales
 packages/module-booking/    booking sub-app: services, resources and their hours, the day's bookings, no double booking
 packages/module-print-studio/ print studio sub-app: layouts of cells on paper, photos placed at exact sizes, PDFs as whole pages; files stay in the browser
+packages/module-print/      printing side: paired computers (print agents), the printers they report, and a job's PDF relayed to one, never saved
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 
@@ -51,9 +53,10 @@ each ship a fragment of it.
 ## Commands
 
 ```bash
-pnpm dev                 # dev database + every package watcher + both apps
+pnpm dev                 # dev database + every package watcher + both apps (never apps/print-agent)
 pnpm dev:api | dev:web   # one side only
 pnpm dev:focus <package>…   # both apps, watching only the named packages (less memory)
+pnpm dev:print-agent | start:print-agent   # the print agent alone: rebuilt and restarted on edit | built, then run
 pnpm typecheck
 pnpm test                # jest in packages and web-server
 pnpm lint                # biome, then the package boundary check; pnpm check:fix writes the fixes
@@ -67,6 +70,30 @@ pnpm db:restore [--force]                      # load seed-data/snapshot.json
 pnpm env:show | env:use <name> | env:new <name> | env:check   # env profiles in envs/ (local by default)
 pnpm db:up | db:down                           # the kwtech-postgres Docker container
 ```
+
+**Running the app while developing: `pnpm dev:focus <the package being worked
+on>`, not `pnpm dev`.** This applies to Claude Code every time, and to anybody
+on a machine with 8 GB for WSL. `pnpm dev` starts one `tsc --watch` per package
+and each holds about 300 MB for as long as it runs, with the `GOGC=50` the
+dev scripts set (450 MB without it; measured 2026-10-07, when 16 of them took
+7.3 GB of a 7.6 GB WSL VM, the kernel started killing processes and WSL went
+down, three times that day). Name only the packages the task
+edits: `pnpm dev:focus print` for `module-print`, `pnpm dev:focus print
+print-studio` for both, with `--api` or `--web` when one side is enough. For
+the print agent, add `pnpm dev:print-agent` in a second terminal. Run plain
+`pnpm dev` only when asked to. Stop what you started when the check is done
+(`pnpm dev:stop`): a watcher left running is memory the next task does not
+have.
+
+**`pnpm typecheck`, `pnpm test` and `pnpm lint` one at a time, never two at
+once and never beside another heavy command.** Each runs a task per package,
+and a package's jest run alone starts a worker per CPU core. `turbo.json` holds
+them to 4 packages at a time and each package's `jest.config` holds jest to 2
+workers, which is what keeps the whole suite at 1.4 GB; do not pass a higher
+`--concurrency` or `--maxWorkers`. While working in one package, check that
+package (`pnpm turbo run typecheck test --filter=@kwtech/module-print`) and
+run the whole repository once, at the end. Unbounded, `pnpm test` asked for
+about 17 GB and took WSL down twice on 2026-10-07 with no dev server running.
 
 Before calling work done, run `pnpm typecheck`, `pnpm test` and `pnpm lint`.
 When the change can be seen, run the app too: several bugs in this repo

@@ -591,11 +591,133 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 109 | The print studio has no borderless printing, no text or borders on photos, no saved list of custom sizes, no phone or tablet editor, and no office documents | on request, each on its own | All five were left out by the operator's decision (PRINT-STUDIO-PLAN decisions 9, 11, 12, 20 and 7). A Word document is saved as a PDF first |
 | 110 | The print studio does not manage colour | if prints come out visibly off | Photos are drawn as sRGB. A wide-gamut phone photo can shift slightly; the printer's own driver does the rest |
 | 111 | Shared layouts are not live | if two people edit layouts at once in practice | No subscription. A stale save is refused, never merged, and a change shows on reopening |
-| 112 | The printing side is not built: a print agent on the shop computer, and receipts for other modules | next, as its own module `module-print` | PRINT-STUDIO-PLAN §10 and §11. ⚠ To decide then: the operator wants files never saved on the server, and reaching an agent means the result crosses it — an in-memory relay keeps the rule but cannot queue |
+| 112 | Printing through a paired computer is built, and proven on paper on A4 on both of the operator's printers (2026-10-07). Not built: calibration through the agent; a job's outcome in the studio's history (it records `sent_to_print` only, and not which printer); receipts for other modules | when the shop asks; a photo paper and a landscape sheet should be measured before either is relied on. An installer when a second shop is set up by somebody without this repository | PRINT-STUDIO-PLAN §10 and §11. ⚠ The agent must be online at the moment of printing and a job cannot wait in a queue (§13, 2026-10-07). A landscape sheet is matched to its paper turned, which no printer has proven. A job whose browser never sends holds that computer's queue for up to 30 s, because the agent takes one job at a time. The agent is NOT packaged: it is one built file, a library installed beside it with npm, and a settings file made by hand, and nothing starts it with Windows (`apps/print-agent/README.md`, "Setting up a computer"; the Printers page's Setup guide is the short form) |
+| 113 | The print agent keeps its secret in the clear, in one file in the user's profile folder (`apps/print-agent/src/state.ts`) | if a shop's computer is shared between people who should not all print as it; then the operating system's credential store (DPAPI on Windows) | It must be readable with nobody there to type anything. The file is mode 0600 where the system honours one; Windows relies on the profile folder. ⚠ Anybody who can read that user's files can act as this computer until it is revoked in the web app |
+| 114 | The print relay works on ONE server instance: a job, the browser's request, the computer's request and the computer's socket must all be in the same process (`print-relay.service.ts`) | before the API runs as more than one instance; then route a job's two requests to the instance holding the computer's socket | Deliberately not built on the pub/sub: publishing the news of a job would not move the two requests. Until then a job on another instance fails `agent_did_not_fetch` after 30 s, which reads as "the computer did not pick the job up" |
+| 115 | A job's paper type and quality are set on the Windows queue for the moment it prints, then put back (`apps/print-agent`, `WINDOWS_TICKET_SCRIPT`). Other settings (colour or greyscale, borderless, the tray) are not offered, and the web app is not told when a driver changed what was chosen | if a shop prints from Windows on the same queue while the agent does, or wants another setting; then print through the driver with a ticket of the job's own, which means drawing the PDF without SumatraPDF | SumatraPDF prints with the queue's settings as they stand and takes only a paper and a scale. ⚠ For those seconds another program printing on that queue as the same Windows user gets the job's settings, and an agent killed between the two steps leaves the queue changed. The agent prints one job at a time, so its own jobs never overlap. The driver's word is final on a combination: an Epson L110 prints plain paper at Standard whatever is asked, and only the agent's log says so. ⚠ Nor does anything notice a queue whose preferences in Windows RESIZE pages (fit to another paper): every job on it prints at the wrong size, silently. A check was built and removed on the operator's decision (§13, 2026-10-07); the ruler page is how a queue is verified |
+| 116 | One print agent is paired with ONE workspace. A computer that should print for several has to run a copy of the agent per workspace, each with its own folder and `PRINT_AGENT_STATE_DIR` (untried) | when a shop's one computer has to print for more than one workspace, as the operator expects it will (asked 2026-10-07, put off); then one agent holding several pairings, with every workspace's jobs in one line | The state file holds one pairing and `pair` refuses a second (`apps/print-agent/src/state.ts`, `cli.ts`); a socket is admitted as one agent of one workspace (`PrintAgentService.admit`). ⚠ Two copies on one computer do not know of each other: each prints one job at a time, but both can print on the same queue at once, and a job that sets a paper type or quality (§12.115) could then give its settings to the other's. Each pairing also counts against its own workspace's `print:agents` cap. To build: several pairings in the state file, a socket per pairing (or one socket admitting several), ONE queue across them all in `run.ts`, and the Printers page of each workspace showing the same computer |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-07** — **A print through the agent chooses its paper type and quality, from the driver's own lists, and the studio has a Printers button of its own.**
+
+  The operator, after printing photos through the agent: the L5290 came out
+  enlarged; every job used the printer's default settings, where glossy paper
+  at high quality and plain paper at standard are different jobs; and the
+  agent's printers should not share a control with the browser's window.
+
+  - **The enlarged print was the queue's own preferences in Windows, fitting
+    every page onto another paper.** `Epson L5290 Dye Ink` was saved with a
+    8.5 × 13 inch custom paper, and the driver enlarged an A4 page 2.8% to
+    fill it (a 4 × 6 one would have been doubled). The driver does it by
+    reporting another resolution, 740 dots per inch for 720, so the printing
+    program's "actual size" is not. The same printer's other queue, and the
+    USB printer's, do not. First taken for the "User-Defined" paper below,
+    which was a real fault but not this one: the print was still large
+    after it was fixed.
+  - **It is fixed in the printer's preferences, not by the agent.** A check
+    before each job, and printing from the queue's own defaults when it
+    would resize, was built and worked on the real queue; the operator had
+    it removed the same day: how a queue is set up in Windows is the
+    printer's settings to hold, and an app that overrides them hides the
+    cause. The operator set that queue's paper to A4, and its prints then
+    matched the USB printer's on paper. ⚠ So nothing here notices a queue set to resize (§12.115).
+  - **Windows' "User-Defined" paper is not reported any more**
+    (`WINDOWS_USER_PAPER_KIND`). One driver listed that slot as 210 × 297 mm,
+    ahead of the real A4, and the page was matched to it by size. It is a
+    slot whose size is whatever was last typed into the driver, not a paper.
+  - **The agent reports each printer's paper types and qualities**, read from
+    the driver's print capabilities with the names it shows a person, and the
+    one of each the queue is set to. A job may name one of each, by the
+    driver's id, and the server refuses one the printer never reported.
+  - **They are applied by setting the queue for that one job and putting it
+    back.** SumatraPDF, which prints, takes only a paper and a scale. The
+    cost is in §12.115. Tried on both of the operator's Epson drivers: set,
+    read back, restored.
+  - **The driver chooses the resolution**, from the paper type and quality.
+    Asking for a resolution as well was tried and the driver overrode the
+    quality with it.
+  - **The studio's port carries settings as a list to choose from**, with a
+    key each. The studio shows them and hands the choice back; it does not
+    know what a paper type is.
+  - **Print, Printers, Download.** Print is always the browser's window.
+    Printers is a menu of the workspace's printers by computer, and choosing
+    one opens its settings for this print, where Print sends it. This
+    replaces the "Print on" list of the entry below.
+  - **NOT done: other settings** (colour or greyscale, borderless, the tray),
+    and telling the person in the web app when a driver changed their choice
+    (§12.115).
+  - **NOT done: the Printers page's ruler button taking settings.** It
+    prints as the printer is set, which is what a ruler page should measure.
+
+- **2026-10-07** — **The print studio prints on a paired printer through a port bound in the browser, and the paper is found by the page's size.**
+
+  The relay below was built the same day, with the job and the ruler page,
+  and run for real with the agent's fake driver. What was left was the last
+  link: the studio's result on a printer.
+
+  - **The studio declares `StudioPrinterPort` and `module-print` offers
+    `createPrintTarget()`.** Neither imports the other; the web app binds
+    them. Unbound, or with no printer to offer, the studio is unchanged.
+  - **Bound through a React context in `providers.tsx`, not as an option of
+    `studioWebModule`** as the plan had it. A sub-app's element is made on the
+    server (`module-app-hub`), and an object of functions cannot be passed
+    from there to a client component.
+  - **The studio gives the sheet's size and the paper is matched to it**,
+    within 1 mm and either way round (`paperForSize`). A printer with no
+    paper of that size refuses, with a sentence. A job is never sent without
+    its paper: it would print on whatever is loaded, at the wrong size.
+  - **One copy is asked of the printer.** The studio's PDF already repeats
+    its pages for the copies.
+  - **NOT done: the history saying how the job ended, or on which printer.**
+    A sent job is `sent_to_print`, as the browser's window is; a refused one
+    is not recorded. It needs a column and a migration (§12.112).
+  - **Proven on paper the same day.** The agent, under Windows Node, printed
+    a ruler page on the L5290 and on the USB printer, on A4, and the operator
+    measured both as accurate (PRINT-STUDIO-PLAN §10 has the queues and
+    drivers). NOT proven: a paper other than A4, and a landscape sheet.
+
+- **2026-10-07** — **Turbo runs 4 tasks at a time unless a command asks for more, and jest 2 workers.**
+
+  `concurrency` had been raised to 20 so that `pnpm dev` could start its
+  watchers. It applied to everything: `pnpm test` ran every package's suite
+  at once, each with a worker per CPU core, about 230 processes asking for
+  some 17 GB in a 10 GB WSL VM. The machine stopped answering twice, with no
+  dev server running and no out-of-memory line in the kernel log.
+
+  - **4 in `turbo.json`, `maxWorkers: 2` in every `jest.config`.** The whole
+    suite peaks at 1.7 GB and takes 24 s; four at a time with default workers
+    measured 3.8 GB and 34 s.
+  - **The dev commands ask for their own concurrency** (`--concurrency` in
+    `package.json`, counted in `scripts/dev-focus.mjs`), because turbo wants
+    it above the number of watchers.
+  - **NOT done: one shared jest config.** Eighteen files carry the same line;
+    there is no shared preset to put it in, and none was made for one line.
+
+- **2026-10-07** — **A print job reaches the print agent through an in-memory relay: the file is never saved on the server.**
+
+  The print agent (PRINT-STUDIO-PLAN §10) was planned with one question left
+  open (§12.112): the studio's rule is that no file ever reaches the server,
+  and a job on its way to a shop computer has to cross it. The operator chose
+  the relay, and chose to prove exact-size printing on a real printer before
+  anything is built.
+
+  - **The server passes the bytes on and keeps none of them.** No blob store
+    and no job table holding a file, so §12.45 stays open, untouched, and
+    decision 8 of the studio's plan stands as written.
+  - **The agent must be online at the moment of printing.** With no agent
+    connected the print is refused, saying the computer is offline, and the
+    person tries again or downloads as today.
+  - **The proof comes first**: one ruler page through `pdf-to-printer` with
+    `noscale`, on the operator's Epson L5290, measured by hand. What it shows
+    is recorded in PRINT-STUDIO-PLAN §10.
+  - **NOT done: a queue.** A job cannot wait for a computer that is switched
+    off, because waiting means holding the file. Holding it in the database
+    until printed was the other choice and was turned down for that reason.
+  - **NOT done: anything built.** `module-print` and `apps/print-agent` do not
+    exist yet; this entry records the decision they will be built on.
 
 - **2026-10-07** — **A print of a layout may be turned: portrait or landscape is a choice of the print, beside its paper.**
 

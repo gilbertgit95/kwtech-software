@@ -15,10 +15,13 @@ step is in order; follow them top to bottom the first time.
 | [8. Everyday commands](#8-everyday-commands) | starting, stopping, checking before a commit |
 | [9. Optional services](#9-optional-services) | Redis, email, Google sign-in, browser tests |
 | [10. Troubleshooting](#10-troubleshooting) | fixes for the usual problems |
+| [11. Memory and speed](#11-memory-and-speed) | what keeps development inside the machine's memory, and the one part to redo on a new computer |
 
 Coming from another machine you already set up? Read
 [`envs/README.md` → Setting up another machine](../envs/README.md#setting-up-another-machine)
 instead: it moves your existing files into place without losing anything.
+⚠ On Windows with WSL, also redo [step 11](#11-memory-and-speed)'s `.wslconfig`:
+it is the one memory setting that is not in the repository.
 
 ---
 
@@ -243,6 +246,7 @@ says what you lose.
 | **Google sign-in** | the Google button is hidden | set all three: `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`, `AUTH_GOOGLE_REDIRECT_URI` (half-configured refuses to boot) |
 | **A demo user** | — | `SEED_DEMO_USER_*`, then `pnpm db:seed --only=demo:user` |
 | **Browser (e2e) tests** | — | see [`apps/web-app/e2e/README.md`](../apps/web-app/e2e/README.md): `playwright install chromium`, its system libraries (needs `sudo`), and the `E2E_*` variables |
+| **Printing on a shop's printers** | the Printers page has no computer to print through | set a computer up with the print agent: [apps/print-agent/README.md](../apps/print-agent/README.md), "Setting up a computer". The agent runs under Windows Node, not in WSL |
 
 Restart `pnpm dev` after changing a profile.
 
@@ -256,6 +260,8 @@ set the same variables in the host instead of using profile files.
 | Symptom | Fix |
 |---|---|
 | `pnpm install` fails on the engine | Node or pnpm is too old: `node -v` ≥ 22, `corepack enable`, `pnpm -v` ≥ 11 |
+| WSL closes or restarts while `pnpm dev` runs, or everything slows to a crawl | it ran out of memory: WSL gets half the PC's RAM and 2 GB of swap by default, and `pnpm dev` runs one compiler watcher per package (about 300 MB each). Use `pnpm dev:focus <package>` for the packages you are editing, and give WSL more room in `C:\Users\<you>\.wslconfig` (`[wsl2]`, `memory=10GB`, `swap=8GB` on a 16 GB PC), then `wsl --shutdown` from Windows. To confirm: `journalctl -k -b -1 \| grep -i "out of memory"` |
+| WSL stops answering or VS Code disconnects during `pnpm test` or `pnpm typecheck`, with no dev server running | too many at once: a task per package, and jest starts a worker per CPU core in each. `turbo.json` (`concurrency`) and each package's `jest.config` (`maxWorkers`) hold that down, so check neither was raised and that two of these commands are not running together. It leaves no "out of memory" line in the kernel log: the machine thrashes rather than kills |
 | `pnpm dev` says Docker is missing or not running | install it (step 1), or `sudo systemctl enable --now docker`; on WSL make sure the daemon is running in WSL |
 | `docker: permission denied` | `sudo usermod -aG docker $USER`, then log out and in |
 | `✗ db:restore failed on the new database` with `SEED_USER_EMAIL is required` | the sign-in was not filled before the first start. Fill `SEED_USER_*` (step 4), then `pnpm db:seed` |
@@ -267,3 +273,93 @@ set the same variables in the host instead of using profile files.
 | The notification bell shows a grey or amber dot | the live connection is down or reconnecting — is the API running? "Retry now" in the bell reconnects at once |
 | A package change does not show up | under `pnpm dev:focus`, only the packages you named are watched: name that one too. Otherwise the watcher may have stopped: restart `pnpm dev` (or `pnpm build` the package) |
 | Everything is strange | start the database over (section 7), and `pnpm install` again |
+
+## 11. Memory and speed
+
+Development here runs many Node processes at once, and on a small machine
+they take more memory than there is. On 2026-10-07 that brought WSL down five
+times on a 15.4 GB Windows PC before the causes were found. This section is
+what was changed, so it can be checked, and repeated, on another computer.
+
+### What travels with the repository, and what does not
+
+| Setting | Where | On a new computer |
+|---|---|---|
+| WSL's memory and swap | `C:\Users\<you>\.wslconfig`, on Windows | ⚠ **redo it by hand**: it is outside the repository |
+| 4 turbo tasks at a time | `turbo.json`, `concurrency` | nothing to do |
+| 2 jest workers per package | every `jest.config.*`, `maxWorkers` | nothing to do. A NEW package's config needs the line too |
+| The dev commands' own concurrency | `package.json` (`--concurrency=24`), `scripts/dev-focus.mjs` (counted) | nothing to do |
+| `GOGC=50` for the compiler's watchers | `package.json` dev scripts, `scripts/dev-focus.mjs`, `apps/print-agent/scripts/dev.mjs`; passed on by `turbo.json` (`passThroughEnv`) | nothing to do |
+| Watch only what is being edited | `pnpm dev:focus <package>…` | a habit, and a rule for Claude Code in `CLAUDE.md` |
+| The print agent left out of `pnpm dev` | a filter in the root `dev` and `start` scripts | nothing to do |
+
+### The one manual step: `.wslconfig`
+
+Without this file WSL takes half the PC's RAM and 2 GB of swap. On Windows,
+create `C:\Users\<you>\.wslconfig`:
+
+```ini
+[wsl2]
+memory=10GB
+swap=8GB
+```
+
+Then `wsl --shutdown` in PowerShell (or restart the PC) and reopen the
+terminal. Check inside WSL with `free -g`: about 9 of memory and 8 of swap.
+
+Those numbers are for a 16 GB PC: about two thirds of the RAM, so Windows,
+the browser and the editor keep the rest. On a 32 GB PC, `memory=20GB` is
+plenty and the swap can stay. On 8 GB, give WSL 5 GB and never run plain
+`pnpm dev`. Linux, macOS and a Windows PC without WSL have no such file: the
+processes use the machine's own memory.
+
+### What each thing costs (measured 2026-10-07, 12 CPU threads)
+
+| Running | Memory |
+|---|---|
+| One package's `tsc --watch` | about 300 MB with `GOGC=50`, 450 MB without |
+| `pnpm dev`, every watcher and both apps | 16 watchers took 7.3 GB before `GOGC` |
+| `pnpm dev:focus print --api` | about 1.6 GB |
+| `pnpm dev:focus print print-studio --web` | about 1.5 GB |
+| One package's `jest`, default workers (one per core) | 0.6 to 1.2 GB, about 14 processes |
+| One package's `jest`, 2 workers | about 0.35 GB |
+| `pnpm test`, as configured now | 1.7 GB at its peak, 24 s |
+| `pnpm typecheck`, as configured now | 1.6 GB at its peak, 19 s |
+| `pnpm test` at the old concurrency of 20 | about 17 GB and 230 processes (worked out from 4 at a time: 3.8 GB) |
+| VS Code's server in WSL, with its extensions | 1.5 GB |
+
+`tsc` here is TypeScript 7, a Go program: `GOGC=50` makes it collect its
+memory sooner, for about 30 ms more per compile. Lower concurrency did not
+make the checks slower: four suites with two workers each finish sooner than
+four with a dozen each, which fight over the cores.
+
+### The two ways it failed, and how to tell them apart
+
+| What happened | Cause | Evidence |
+|---|---|---|
+| WSL closed while `pnpm dev` ran | every package's watcher at once, in 7.6 GB | `journalctl -b -1 \| tail` ends in "Under memory pressure" with no clean shutdown |
+| WSL stopped answering during `pnpm test` or `pnpm typecheck`, with no dev server | every package's suite at once, each with a worker per core | no "out of memory" line anywhere: the machine thrashes rather than kills. `uptime` shows a load average far above the number of cores |
+
+To see how a boot ended: `journalctl --list-boots`, then
+`journalctl -b -1 | tail -20` for the one before this.
+
+### Keeping it that way
+
+- **Run `pnpm typecheck`, `pnpm test` and `pnpm lint` one at a time**, never
+  two together and never beside another heavy command.
+- **While working in one package, check that package**:
+  `pnpm turbo run typecheck test --filter=@kwtech/module-print`. Run the
+  whole repository once, at the end.
+- **Stop what you started**: `pnpm dev:stop`. A watcher left running is
+  memory the next command does not have.
+- **Do not raise `concurrency` in `turbo.json`.** If turbo refuses to start a
+  dev command ("You have N persistent tasks but turbo is configured for
+  concurrency of N"), raise the `--concurrency` on that command.
+- **On a machine with more cores, each default grows by itself**: jest's
+  workers and the compiler's threads follow the core count. The limits above
+  are fixed numbers for that reason.
+- **To measure a change**, watch `free -m` while the command runs and count
+  the processes (`pgrep -fc jest`). The numbers in the table came from that.
+
+The decision and what was not done: PLAN §13, 2026-10-07 ("Turbo runs 4 tasks
+at a time…").

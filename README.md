@@ -112,22 +112,32 @@ for each case are in
 Editing a `packages/*` file rebuilds it and the running apps pick the change up;
 there is no separate build step while developing.
 
-That is one `tsc --watch` per package, which is heavy on a machine with little
-memory. When the work is in one or two packages, `pnpm dev:focus module-task`
+That is one `tsc --watch` per package, about 300 MB each, which is heavy on a
+machine with little memory: on WSL at its default size it runs out and WSL
+goes down ([docs/SETUP.md](docs/SETUP.md), Troubleshooting, has the fix). When the work is in one or two packages, `pnpm dev:focus module-task`
 (add more names, or `--api` / `--web`) runs the apps and watches only those.
 Every other package is still built once at the start, but an edit to one of
 them does not show up until you name it too or go back to `pnpm dev`.
 
+`apps/print-agent` is left out of all of them, by a filter in the `dev` script:
+it is developed on its own, against a server that is already running, and a
+watcher for it would only cost memory here. Run it in a second terminal with
+`pnpm dev:print-agent` (see [apps/print-agent/README.md](apps/print-agent/README.md)).
+`pnpm start` leaves it out the same way, and `pnpm start:print-agent` runs the built
+one.
+
 ## Commands
 
 ```bash
-pnpm dev              # everything: package watchers + both apps
+pnpm dev              # everything but the print agent: package watchers + both apps
 pnpm dev:api          # just the API, and the packages it needs
 pnpm dev:web          # just the frontend, and the packages it needs
 pnpm dev:focus module-task   # both apps, watching ONLY the packages named (lighter)
+pnpm dev:print-agent        # the print agent alone, rebuilt and restarted on edit (not part of pnpm dev)
 
 pnpm build            # everything, in dependency order
-pnpm start            # run the built apps
+pnpm start            # run the built apps (not the print agent)
+pnpm start:print-agent      # build the print agent, then run it
 pnpm typecheck
 pnpm test
 pnpm lint             # biome — one tool, no eslint, no prettier

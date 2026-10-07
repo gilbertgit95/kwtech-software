@@ -1,7 +1,8 @@
 # `module-print-studio` — plan
 
 Status: **the studio is built, 2026-10-05** (§9 phases 1–8; checking it on real
-paper is the operator's). Steps 2 and 3 (§10, §11) are not built. The contract
+paper is the operator's). Step 2 (§10) is built except calibration through
+the agent; step 3 (§11) is not built. The contract
 is in `packages/module-print-studio/README.md` and the decision in PLAN §13.
 
 ## Built, and where it differs from this plan
@@ -324,7 +325,60 @@ HEIC on demand; `pdfjs-dist` reads PDFs for the whole-page mode.
 7. Whole-page mode for PDFs.
 8. README, PLAN §13 and §12, the other docs.
 
-## 10. Step 2, `module-print` and the print agent (not built)
+## 10. Step 2, `module-print` and the print agent (built; calibration through the agent is not)
+
+**Built (2026-10-07):** a computer is paired with a one-time code, connects
+out with its secret, says it is still there, and reports its printers with
+their papers and printable areas; the web app lists them and revokes a
+computer. A job is sent through the in-memory relay and its state read back;
+the Printers page prints a ruler page; and the studio prints a result on a
+chosen printer through its port (`StudioPrinterPort`, bound in the web app's
+`providers.tsx`, where this plan said `STUDIO_PRINTER`).
+
+**Checked for real (2026-10-07), with the agent's fake driver:** pairing, the
+socket, a 24 MB file through the web app's handler arriving byte for byte,
+every refusal, revoking; and the studio's Print pressed in a real browser
+against a stand-in for the API.
+
+**On paper, through the agent itself (2026-10-07, later the same day):** the
+agent ran under Windows Node, paired with the server in WSL over `localhost`
+(the socket too, which the proof below had not opened), and printed one ruler
+page on each of the operator's printers, on A4:
+
+| Queue | Driver | Paper the job named | Margins it reported |
+|---|---|---|---|
+| `L5290 Series(Network)` | EPSON L5290 Series | `A4 210 x 297 mm` | about 3 mm all round |
+| `EPSON L120 Series` (the USB printer) | Epson ESC/P Standard 10 V4 Class Driver, Windows' own | `A4` | 3 mm, and 14 mm at the bottom |
+
+The operator measured both and found them accurate (no figures were given).
+So the USB printer prints at exact size through Windows' generic driver, and
+the question left under "Seen in the printer list" below is answered for A4:
+`EPSON L120 Series` is the queue Windows binds to the device, and it works.
+⚠ The pairing code and the two jobs were made by a script calling the
+server's services, because a scripted sign-in is not possible; the buttons on
+the Printers page and in the studio were not pressed by it.
+
+**Paper type and quality, and the Printers button (2026-10-07, after the
+operator's first photos through the agent).** A job names a paper type and a
+quality from the driver's own lists; the studio has Print, Printers and
+Download, and choosing a printer opens its settings for that print. The first
+photos on `Epson L5290 Dye Ink` came out 2.8% enlarged because that queue's
+preferences in Windows fit every page onto a 8.5 × 13 inch paper. The
+operator set that queue back to A4, and its prints then came out the same
+size as the USB printer's (seen on paper, 2026-10-07); the agent does not
+check for this, on the operator's decision. (Windows' "User-Defined"
+paper slot, which the page had also been matched to, is no longer reported.)
+PLAN §13 has the decision and §12.115 its cost. ⚠ Paper type and quality
+were set, read back and restored on both Epson drivers; a photo printed with
+a chosen paper type has not been looked at on paper yet.
+
+**Not built:** calibration through the agent, a job's outcome in the studio's
+history (it records `sent_to_print` and nothing more). **Not proven on
+paper:** a landscape sheet, a paper other than A4, and the `EPSON L110 Series`
+queue (Epson's own driver for the USB printer, which offers 23 papers where
+the generic one offers 2). How to run what exists is in `apps/print-agent/README.md`
+and `packages/module-print/README.md`; where the sections below differ from
+them, the READMEs are right.
 
 A separate module, `module-print` (agents, printers, the job queue), and
 `apps/print-agent`, a Node CLI on the shop computer. The studio declares a
@@ -342,11 +396,162 @@ server, so the shop opens no port. Designed while planning:
 - **Exact-size printing through a Windows driver is the first thing to prove**,
   with the ruler page, on real printers. The agent must run under Windows Node:
   WSL does not see Windows printers.
-- ⚠ **To decide then**: decision 8 says files are never saved on the server.
-  Reaching an agent means the result crosses the server. An **in-memory relay**
-  keeps the rule, but the agent must be online at that moment and a job cannot
-  wait in a queue. Holding it in the database until printed allows queuing and
-  does save the file briefly.
+- **The result crosses the server through an in-memory relay** (decided
+  2026-10-07, PLAN §13). Decision 8 says files are never saved on the server,
+  and the relay keeps that: the server passes the bytes on and holds none.
+  ⚠ The cost: the agent must be online at that moment and a job cannot wait
+  in a queue. Holding it in the database until printed would allow queuing
+  and would save the file briefly; that was turned down.
+
+### The proof on a real printer (2026-10-07, passed on the L5290)
+
+Run from WSL against the operator's own Windows, with a throwaway script
+outside the repository.
+
+- **Windows → the server in WSL works through `localhost`**: a request from
+  the Windows side to `http://localhost:8080/api/v1/graphql` answered 200. The
+  socket was not opened.
+- **The .NET helper idea holds.** `System.Drawing.Printing.PrinterSettings`,
+  called through PowerShell, returned for `L5290 Series(Network)` the default
+  paper (A4), the printable area (about 3 mm in from every edge) and 28
+  papers.
+- ⚠ **`pdf-to-printer`'s `getPrinters()` returned only 4 of those 28 papers.**
+  It is not a source for a printer's papers; the helper is.
+- **One vector ruler page was sent** with `scale: "noscale"`, `paperSize:
+  "A4"`. The spooler took it (`Printing, Retained`, 1 page) and it left the
+  queue within seconds.
+- **It is exact.** The operator measured the two 100 mm lines and the 20 mm
+  and 30 mm distances from the paper's edges and found the page accurate (no
+  figures were given). So `pdf-to-printer` with `noscale` stands for printing
+  through Epson's own driver; the .NET helper need not draw pages.
+- **Not proven**: any other printer or driver, the USB printer among them,
+  and a paper other than A4.
+- **Seen in the printer list**: the USB printer appears as `EPSON L110 Series`
+  and as `EPSON L120 Series` on the same port, the second on Windows' generic
+  ESC/P class driver, and no queue is named L121. To sort out before that
+  printer is tested.
+
+### Packages (researched 2026-10-07, from READMEs and the npm registry; none run)
+
+Node has no printing API of its own, and no one package covers the agent. The
+recommendation is **`pdf-to-printer` for the pages, one small PowerShell/.NET
+helper for what it cannot do, and no native addon**. It is a recommendation,
+not a decision: the ruler page on real printers decides it.
+
+| Job | Choice | Why |
+|---|---|---|
+| Print the studio's PDF at exact size | `pdf-to-printer`, `scale: "noscale"` | Maintained (5.8.1, 2026-08); bundles SumatraPDF and prints through the real Windows driver, so USB and wireless alike |
+| List printers, read papers and printable areas | a PowerShell/.NET script the agent calls | No healthy Node package reads a printable area on Windows; `pdf-to-printer` returns paper NAMES only |
+| Know whether a job finished | the same script (`Get-PrintJob`) | The spooler's status means "the printer accepted it", not strictly "paper came out" |
+| Receipts (step 3) | `@point-of-sale/receipt-printer-encoder` | It only builds the bytes, so the renderer can live in `module-print` and the agent only delivers |
+| Deliver receipt bytes | Node's `net` (TCP 9100) for network printers, the .NET helper for USB ones | Still no native addon |
+
+- **Not the node-printer forks** (`printer`, `@thiagoelg/node-printer`,
+  `@grandchef/node-printer`, `@alexssmusica/node-printer`): the original is
+  abandoned since 2019 and the newest fork has almost no users. They are
+  compiled addons, and on Windows they send only `RAW` or `TEXT`: no PDF
+  through the driver, and reading a driver's papers is POSIX only.
+- **Not IPP first** (`ipp`, `@sealsystems/ipp`): it asks the printer itself
+  for media, margins and job states, with no driver, but only for printers
+  that speak it, which leaves out many USB-only ones. It can be added later.
+- **Not `node-thermal-printer`**: a healthy package, but it builds AND sends,
+  and sending to a printer installed in Windows brings a node-printer fork
+  back in.
+- **If `noscale` is not exact on real printers**, the .NET helper draws the
+  page itself. The helper exists anyway for margins and status, so that is an
+  extension of it and not a redesign.
+
+### Setting up a computer (as designed; command and page names are illustrative)
+
+Written for the operator's own two printers: an Epson L5290 on Wi-Fi and an
+Epson L121 on USB.
+
+**Needs.** A 64-bit Windows 10 or 11 computer that stays on while the shop
+prints, with both printers reachable from it; A4 paper and a millimetre ruler;
+Epson's own driver for each printer; Node >= 22 **for Windows**, pnpm and git.
+PowerShell and .NET ship with Windows, and SumatraPDF comes inside
+`pdf-to-printer`.
+
+1. **Install both printers in Windows with Epson's drivers.** Windows often
+   adds a wireless printer by itself with a generic Microsoft driver, which
+   may report other margins and scaling options; check the L5290's driver in
+   its properties and replace it if so.
+2. **Confirm Windows sees them**: a Windows test page from each, then
+   `Get-Printer` in PowerShell. A printer missing there is missing for the
+   agent too.
+3. **Install Node and pnpm on Windows**, and check `node -v` in PowerShell,
+   not in a WSL terminal.
+4. **Clone the repository to a Windows folder** (not a path inside WSL),
+   `pnpm install`, and build `apps/print-agent`.
+5. **Start the server as today**: check `pnpm env:show`, then `db:migrate`,
+   `db:sync` (so `module-print`'s keys exist) and `pnpm dev`.
+6. **Make a pairing code** in the web app: the workspace's printers page, add
+   a computer. It shows a one-time code.
+7. **Pair the agent**: `print-agent pair <code>`. The server is the one in
+   its `.env` (`API_URL`, `WS_URL`); there is no `--server`. It exchanges the
+   code for the long secret and stores it on the computer.
+   Windows normally reaches a server running in WSL through `localhost`.
+8. **Start it**: `print-agent start`. It connects out, reads the installed
+   printers and reports them; both appear in the web app with their papers
+   and margins, nothing typed by hand.
+9. **Print the ruler page on each printer and measure it.** Set that
+   printer's calibration if it is slightly off. Once per printer.
+10. **Print a real layout** from the studio to either printer. The history
+    now says how the job ended, not only `sent_to_print`.
+11. **Make it start with Windows**, as a startup task or a service.
+
+### The agent's `.env` (proposed)
+
+**As built**, the agent reads `APP_ENV`, `API_URL`, `WS_URL`,
+`PRINT_AGENT_STATE_DIR`, `PRINT_AGENT_EXCLUDE_PRINTERS` and
+`PRINT_AGENT_DRIVER` (`windows` or `fake`; not in the proposal). Two rows
+below differ: `PRINT_AGENT_NAME` was dropped, because the name is given in the
+web app with the pairing code, and `PRINT_AGENT_EXCLUDE_PRINTERS` left empty
+hides the printers Windows adds itself (`none` reports all).
+`PRINT_AGENT_TEMP_DIR`, `PRINT_AGENT_SUMATRA_PATH` and `LOG_LEVEL` arrive
+with printing, if at all. `WS_URL` must be on the same host and port as
+`API_URL`.
+
+Named as the two apps' templates are. It would get an
+`apps/print-agent/.env.example` and its validation in
+`apps/print-agent/src/config/env.ts`. Only `API_URL` and `WS_URL` are
+required.
+
+| Variable | Default when empty | For |
+|---|---|---|
+| `APP_ENV` | `local` | which profile this is, as in the other apps |
+| `API_URL` | none, required | the server, `http://localhost:8080/api/v1` locally |
+| `WS_URL` | none, required | its socket, `ws://localhost:8080/api/v1/graphql` locally |
+| `PRINT_AGENT_NAME` | the computer's hostname | the name this computer shows under in the web app |
+| `PRINT_AGENT_STATE_DIR` | `%APPDATA%\kwtech-print-agent` | where the agent keeps what pairing gave it |
+| `PRINT_AGENT_EXCLUDE_PRINTERS` | none hidden | printers to hide, comma separated: Windows lists virtual ones too (`Microsoft Print to PDF`, `Fax`) |
+| `PRINT_AGENT_TEMP_DIR` | the OS temp folder | where a PDF is written for the moment it prints |
+| `PRINT_AGENT_SUMATRA_PATH` | the bundled SumatraPDF | only to replace the bundled one |
+| `LOG_LEVEL` | `info` | |
+
+- **The agent's secret is NOT in it.** The server issues it at pairing, so
+  nobody types it; the agent stores it in its state folder, and revoking it in
+  the web app ends it. In a `.env` it would be copied between computers and
+  into backups.
+- **Nor is the pairing code**: it is one-time, so it is a command argument.
+- **Nor are the printers, their papers and margins**: the agent reads them
+  from Windows each time it starts.
+- **Nor is calibration**: it belongs to the printer and is stored on the
+  server, so it survives reinstalling the agent.
+- ⚠ **The temp folder touches decision 8.** `pdf-to-printer` prints from a
+  file path, so the PDF is on the shop computer's disk for a moment. That is
+  the shop's own computer and not the server, but the file must be deleted
+  right after the job, and when the job fails too.
+- **Outside `localhost` the URLs must be `https://` and `wss://`**: the agent
+  refuses to present its secret over a plain connection.
+
+### About the operator's two printers
+
+- **One agent serves both printers**: the computer is paired, not each printer.
+- **Both are reached through this computer's drivers**, the wireless one
+  too. With the computer off, both are offline to the app.
+- **Both are A4 inkjets, not receipt printers.** They serve the studio;
+  step 3 needs a thermal ESC/POS printer.
 
 ## 11. Step 3, receipts (not built)
 
