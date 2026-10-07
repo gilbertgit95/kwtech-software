@@ -11,8 +11,9 @@ memory only. **No file is ever uploaded or stored.** What the server keeps is
 layouts, calibration profiles and a print history of file **names**.
 
 The plan and the decisions behind it: `docs/PRINT-STUDIO-PLAN.md`. The decision:
-PLAN §13, 2026-10-05. Printing silently on a shop's own printers (a print
-agent) and receipts for other modules are a separate module, not built.
+PLAN §13, 2026-10-05. Printing on a shop's own printers is a separate module
+(`module-print` and the print agent), reached through a port: see "Printing
+on the workspace's printers" below. Receipts for other modules are not built.
 
 ## In a Next.js app
 
@@ -22,9 +23,10 @@ import { studioWebModule } from '@kwtech/module-print-studio/react';
 const FEATURE_MODULES = [..., studioWebModule()];
 ```
 
-It contributes one sub-app (key `studio`, "Print Studio", icon `printer`, order
+It contributes one sub-app (key `studio`, "Print Studio", icon `images`, order
 70), no routes and nothing in the drawer. The app must know the icon name
-`printer` (`apps/web-app/src/components/layout/nav-icons.ts`).
+`images` (`apps/web-app/src/components/layout/nav-icons.ts`). Not `printer`:
+that is the Printers app's, which sits beside this one.
 
 It lays out by the width of its BOX, not the screen. The layout editor is
 desktop-first and asks for more room in a narrow box.
@@ -139,6 +141,45 @@ shows when the Layouts section is opened again.
   `effectiveStudioKeymap` (a saved keymap over the defaults; never trusts what
   was stored), `studioKeyOfPress`. The arrows and Esc are fixed and not in the
   map.
+
+## Printing on the workspace's printers
+
+The studio declares a port, `StudioPrinterPort`, and the app binds it in a
+client file:
+
+```tsx
+// apps/web-app/src/app/providers.tsx
+import { createPrintTarget } from '@kwtech/module-print/react';
+import { StudioPrinterProvider } from '@kwtech/module-print-studio/react';
+
+const STUDIO_PRINTER = createPrintTarget();
+<StudioPrinterProvider printer={STUDIO_PRINTER}>{children}</StudioPrinterProvider>
+```
+
+| The port | Asked | Unbound means |
+|---|---|---|
+| `printers(scope)` | when the output bar appears, each time the menu opens, and after each print | no "Print on" choice: Download and the browser's print window only |
+| `print(scope, { printerId, pdf, width, height, settings })` | when Print is pressed in a printer's settings | — |
+
+- **Three buttons**: Print (the browser's own window, always), **Printers**,
+  and Download PDF. Printers exists only when the port is bound AND it has a
+  printer to offer. It opens a menu of them, by computer; one whose computer
+  is offline is listed and cannot be chosen.
+- **Choosing a printer opens its settings for this print**: whatever the
+  binder offers for it (a paper type and a quality, from `module-print`),
+  starting on what the printer is set to. Print there is what sends it. What
+  was chosen is remembered per printer, in the page's memory only.
+- ⚠ The studio does not know what a setting is: it shows a label and options
+  and hands back the key with the id chosen.
+- The studio hands over the result's PDF and the sheet's size. The paper, the
+  job and the wording of every refusal are the binder's.
+- ⚠ **This is the one way a result leaves the browser**, and only on that
+  press. It goes to the shop's own computer and is saved nowhere on the way
+  (PLAN §13, 2026-10-07).
+- A print that was sent is recorded as `sent_to_print`; one that was refused
+  is not recorded.
+- ⚠ Through context, not an option of `studioWebModule`: a sub-app's element
+  is made on the server, and functions cannot be passed from there.
 
 ## Rules worth knowing
 

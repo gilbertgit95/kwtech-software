@@ -184,14 +184,14 @@ export const STUDIO_ROLE_PRESETS: readonly StudioRolePreset[] = [
   {
     key: 'studio-user',
     label: 'Print studio user',
-    icon: 'printer',
+    icon: 'images',
     level: 'workspace',
     features: [STUDIO_FEATURE.read, STUDIO_FEATURE.write],
   },
   {
     key: 'studio-admin',
     label: 'Print studio admin',
-    icon: 'printer',
+    icon: 'images',
     level: 'workspace',
     features: [STUDIO_FEATURE.read, STUDIO_FEATURE.write, STUDIO_FEATURE.manageAll, STUDIO_FEATURE.manageSettings],
   },

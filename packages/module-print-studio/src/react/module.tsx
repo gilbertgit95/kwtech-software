@@ -25,7 +25,8 @@ export function studioWebModule(): WebModuleDescriptor {
         key: 'studio',
         label: 'Print Studio',
         description: 'Lay photos out on paper at exact sizes, and print documents.',
-        icon: 'printer',
+        // Photos, not a printer: the Printers app (`module-print`) sits beside this one and has that icon.
+        icon: 'images',
         feature: STUDIO_FEATURE.read,
         // After booking, the last of the sub-apps so far.
         order: 70,

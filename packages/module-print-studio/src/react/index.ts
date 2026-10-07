@@ -9,4 +9,12 @@
  */
 
 export { studioWebModule } from './module.js';
+export {
+  type StudioPrinterChoice,
+  type StudioPrinterJob,
+  type StudioPrinterOutcome,
+  type StudioPrinterPort,
+  StudioPrinterProvider,
+  type StudioPrinterSetting,
+} from './printer-port.js';
 export { StudioApp } from './studio-app.js';
