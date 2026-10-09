@@ -47,6 +47,28 @@ export function choiceAfterOpening(narrow: boolean, choice: boolean | null): boo
 }
 
 /**
+ * The note to open by itself when the app has just loaded its list, or null
+ * for none: the first in the list's order (pinned first), so the app opens on
+ * something to read and not on "Choose a note from the index" (the operator,
+ * 2026-10-09).
+ *
+ * Null when a note is already open: the person was quicker than the list, and
+ * what they picked or made is not replaced.
+ *
+ * ⚠ NULL IN A NARROW BOX. There the list and a note do not fit side by side,
+ * and an open note hides the list (`noteIndexLayout`): opening one unasked
+ * would put the list away before anybody saw it.
+ */
+export function noteToOpenOnLoad(input: {
+  ordered: readonly { id: string }[];
+  openId: string | null;
+  narrow: boolean;
+}): string | null {
+  if (input.narrow || input.openId !== null) return null;
+  return input.ordered[0]?.id ?? null;
+}
+
+/**
  * The note before or after the open one, in the list's order (pinned first) —
  * what the page-turn buttons open while the list is collapsed.
  *

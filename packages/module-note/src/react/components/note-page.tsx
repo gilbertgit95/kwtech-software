@@ -12,9 +12,9 @@ import {
   Tooltip,
 } from '@kwtech/web-ui/react';
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
-  Eye,
   History,
   MoreHorizontal,
   Pencil,
@@ -26,23 +26,27 @@ import {
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useId, useState } from 'react';
 import { NOTE_APPEARANCE_LABELS, NOTE_COLORS, type NoteLook, normalizeNoteColor } from '../../domain/appearance.js';
+import { normalizeNoteTitle, noteDisplayTitle } from '../../domain/notes.js';
 import type { NoteRevisionView } from '../note-client.js';
 import type { NotesState } from '../use-notes.js';
 import { notePaperColor } from '../view/appearance.js';
-import { parseTagField } from '../view/editing.js';
+import { type NoteMode, noteOpensIn, parseTagField } from '../view/editing.js';
 import { noteLinesStyle } from './paper.js';
 import { ProblemBanner } from './problem-banner.js';
 
-/** The parser is only needed to preview, and it is ESM-only — loaded on demand. */
+/** The parser is only needed to read a note, and it is ESM-only — loaded on demand. */
 const NoteMarkdown = lazy(async () => ({ default: (await import('./note-markdown.js')).NoteMarkdown }));
 
 /**
  * The open note: its title on the top rule, the body, tags, colour and the
  * save status in the footer ("Saved · p. 3 of 12").
  *
- * Read-only — preview, no inputs — in the trash, and for somebody without
- * `note:write`. The API would refuse the edit anyway; this only stops the
- * screen from offering it.
+ * ⚠ A NOTE OPENS TO BE READ (`noteOpensIn`): the rendered text, no inputs.
+ * The Edit button opens its fields; Done saves and goes back to reading.
+ *
+ * Read-only for good — no Edit button — in the trash, and for somebody
+ * without `note:write`. The API would refuse the edit anyway; this only stops
+ * the screen from offering it.
  */
 /** Page-turning, while the notes list is collapsed. Absent while the list is on screen. */
 export interface NotePager {
@@ -57,15 +61,17 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
   const titleId = useId();
   const tagsId = useId();
   const bodyId = useId();
-  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [mode, setMode] = useState<NoteMode>('read');
   const [tagField, setTagField] = useState('');
   const [confirm, setConfirm] = useState<'unshare' | 'delete' | null>(null);
   const [revisions, setRevisions] = useState<NoteRevisionView[] | null>(null);
 
   const noteId = note?.id ?? null;
-  // A different note opened: show its tags, and close anything open for the last one.
+  // A different note opened: show its tags, close anything open for the last one, and start it in its own mode —
+  // never the last note's, or reading one note after editing another would open it for writing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the note, not on every save of it.
   useEffect(() => {
+    setMode(note ? noteOpensIn(note) : 'read');
     setTagField(note ? note.tags.join(', ') : '');
     setRevisions(null);
     setConfirm(null);
@@ -80,12 +86,13 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
   }
 
   const trashed = note.trashedAt !== null;
+  /** May be edited at all. Whether its fields are open right now is `editing`. */
   const editable = state.canWrite && !trashed;
+  const editing = editable && mode === 'edit';
   const shared = note.visibility === 'workspace';
   const canBin = note.mine || (shared && state.canManageAll);
   const position = state.ordered.findIndex((row) => row.id === note.id);
   const total = `${state.ordered.length}${state.list?.nextCursor ? '+' : ''}`;
-  const showPreview = mode === 'preview' || !editable;
 
   const openRevisions = async () => {
     setRevisions((await state.client.revisions(state.scope, note.id).catch(() => null)) ?? []);
@@ -96,18 +103,22 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
       <div className="flex items-center gap-1 px-3 pt-2 font-sans">
         <div className="ml-auto flex items-center gap-1">
           {editable ? (
+            // Named, not an icon alone: it is the one way into the note's fields, and has to be found.
             <button
               type="button"
-              onClick={() => setMode(showPreview ? 'edit' : 'preview')}
-              aria-pressed={showPreview}
-              className={iconButton}
+              onClick={() => {
+                // Done is a moment the text is meant to be kept: saved now, not when the autosave next comes round.
+                if (editing) void editor.flush();
+                setMode(editing ? 'read' : 'edit');
+              }}
+              className={cn(iconButton, 'gap-1 px-2 text-sm', editing && 'text-primary')}
             >
-              {showPreview ? (
-                <Pencil aria-hidden="true" className="size-4" />
+              {editing ? (
+                <Check aria-hidden="true" className="size-4" />
               ) : (
-                <Eye aria-hidden="true" className="size-4" />
+                <Pencil aria-hidden="true" className="size-4" />
               )}
-              <span className="sr-only">{showPreview ? 'Edit' : 'Preview'}</span>
+              {editing ? 'Done' : 'Edit'}
             </button>
           ) : null}
           <button
@@ -188,7 +199,7 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
         <label htmlFor={titleId} className="sr-only">
           Title
         </label>
-        {editable ? (
+        {editing ? (
           <input
             id={titleId}
             value={draft.title}
@@ -199,7 +210,8 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
           />
         ) : (
           <h2 id={titleId} className="text-[1.35em] font-semibold leading-(--note-rule)">
-            {note.displayTitle}
+            {/* From what is on screen: just after Done the save may not be back yet, and the note's own title is the old one. */}
+            {noteDisplayTitle({ title: normalizeNoteTitle(draft.title), body: draft.body })}
           </h2>
         )}
       </div>
@@ -214,7 +226,7 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
           }}
           onClose={() => setRevisions(null)}
         />
-      ) : showPreview ? (
+      ) : !editing ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-3 leading-(--note-rule)" style={noteLinesStyle(look)}>
           {draft.body.trim() ? (
             <Suspense fallback={<p className="text-muted-foreground">Opening…</p>}>
@@ -243,7 +255,7 @@ export function NotePage({ state, look, pager }: { state: NotesState; look: Note
       )}
 
       <footer className="flex flex-wrap items-center gap-2 border-t border-border/60 px-3 py-1.5 font-sans text-xs text-muted-foreground">
-        {editable ? (
+        {editing ? (
           <>
             <label htmlFor={tagsId} className="sr-only">
               Tags, separated by commas

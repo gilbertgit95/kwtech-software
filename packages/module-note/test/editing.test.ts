@@ -7,6 +7,7 @@ import {
   copyTitle,
   editPatch,
   type NoteDraft,
+  noteOpensIn,
   type OpenNoteState,
   parseTagField,
   planNoteEvent,
@@ -135,5 +136,17 @@ describe('small helpers', () => {
 
   it('splits a tag field on commas, dropping empties', () => {
     expect(parseTagField(' ops, , rota ,')).toEqual(['ops', 'rota']);
+  });
+});
+
+describe('noteOpensIn', () => {
+  it('⚠ opens a note with anything in it to be read, never straight into its fields', () => {
+    expect(noteOpensIn({ title: 'Prices', body: '' })).toBe('read');
+    expect(noteOpensIn({ title: '', body: '- 2 × 2: 60' })).toBe('read');
+  });
+
+  it('opens a blank note for writing: there is nothing to read in the one New note just made', () => {
+    expect(noteOpensIn({ title: '', body: '' })).toBe('edit');
+    expect(noteOpensIn({ title: ' ', body: '\n' })).toBe('edit');
   });
 });

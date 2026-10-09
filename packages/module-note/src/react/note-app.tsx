@@ -17,6 +17,7 @@ import {
   NOTE_NARROW_REM,
   type NoteIndexLayout,
   noteIndexLayout,
+  noteToOpenOnLoad,
 } from './view/layout.js';
 
 const TABS: readonly { tab: NoteTab; label: string }[] = [
@@ -76,6 +77,22 @@ export function NoteApp({ organizationId, workspaceId, client }: AppProps & { cl
           next: adjacentNote(state.ordered, openId, 'next', hasMore) ? () => void turn('next') : null,
         }
       : undefined;
+
+  /*
+   * The first note, opened by itself when the list first arrives.
+   * ⚠ ONCE, on load, and never again: a note closed afterwards (deleted
+   * forever, unshared by its author) leaves the page empty on purpose, and
+   * a search or a tab that changes the list must not change the open note.
+   */
+  const openedOnLoad = useRef(false);
+  const listLoaded = state.list !== null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the list first arrives, not on every change to it.
+  useEffect(() => {
+    if (!listLoaded || openedOnLoad.current) return;
+    openedOnLoad.current = true;
+    const first = noteToOpenOnLoad({ ordered: state.ordered, openId, narrow });
+    if (first) void editor.open(first);
+  }, [listLoaded]);
 
   // Escape puts the slid-out list away — only while focus is inside it, so it
   // never steals Escape from the editor or a menu on the note.

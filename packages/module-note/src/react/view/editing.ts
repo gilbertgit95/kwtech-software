@@ -34,6 +34,23 @@ export function editPatch(saved: NoteDraft, draft: NoteDraft): Partial<NoteDraft
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
+/** How the open note is shown: to be read, or with its fields open for writing. */
+export type NoteMode = 'read' | 'edit';
+
+/**
+ * The mode a note OPENS in. A note is opened to be read far more often than to
+ * be changed, and opened straight into its fields a stray key writes into it
+ * and autosaves (the operator, 2026-10-09). So it opens for reading, and Edit
+ * is a press.
+ *
+ * ⚠ EXCEPT A NOTE WITH NOTHING IN IT, which opens for writing: that is the
+ * note "New note" just made, there is nothing to read, and making somebody
+ * press Edit on a blank page they asked for is a press for nothing.
+ */
+export function noteOpensIn(note: Pick<NoteDraft, 'title' | 'body'>): NoteMode {
+  return note.title.trim() === '' && note.body.trim() === '' ? 'edit' : 'read';
+}
+
 /**
  * ⚠ THE THROTTLE BUCKET IS SHARED. Every browser reaches the API through the
  * Next server, so every person behind it shares one 600-a-minute bucket

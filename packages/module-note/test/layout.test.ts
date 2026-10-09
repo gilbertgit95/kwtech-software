@@ -4,6 +4,7 @@ import {
   dropResult,
   keyboardMove,
   noteIndexLayout,
+  noteToOpenOnLoad,
 } from '../src/react/view/layout.js';
 
 describe('noteIndexLayout', () => {
@@ -78,5 +79,22 @@ describe('dropResult and keyboardMove', () => {
     expect(keyboardMove(ids, 'b', -1)).toEqual({ ids: ['b', 'a', 'c', 'd'], afterId: null });
     expect(keyboardMove(ids, 'a', -1)).toBeNull();
     expect(keyboardMove(ids, 'd', 1)).toBeNull();
+  });
+});
+
+describe('noteToOpenOnLoad', () => {
+  const ordered = [{ id: 'pinned' }, { id: 'second' }];
+
+  it('opens the first note of the list, pinned first', () => {
+    expect(noteToOpenOnLoad({ ordered, openId: null, narrow: false })).toBe('pinned');
+  });
+
+  it('opens nothing when there are no notes, or one is open already', () => {
+    expect(noteToOpenOnLoad({ ordered: [], openId: null, narrow: false })).toBeNull();
+    expect(noteToOpenOnLoad({ ordered, openId: 'second', narrow: false })).toBeNull();
+  });
+
+  it('⚠ opens nothing in a narrow box, where an open note would hide the list before it was seen', () => {
+    expect(noteToOpenOnLoad({ ordered, openId: null, narrow: true })).toBeNull();
   });
 });

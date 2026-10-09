@@ -97,6 +97,8 @@ its version and who acted.
 |---|---|
 | **Private / shared** | `visibility`: `private` (the author only, whatever keys anyone holds) or `workspace` |
 | **Revision** | the text a save REPLACED, kept when somebody other than the last editor saves a shared note (last 20). Restoring one always keeps the text it replaces |
+| **Reading / editing** | the open note's mode (`NoteMode`). A note OPENS to be read: the rendered Markdown, the title and tags as text, no inputs. **Edit** opens its title, body, tags and colour; **Done** saves at once and goes back to reading. Each note opened starts in its own mode, never the last one's (`noteOpensIn`). ⚠ A note with no title and no body opens for editing: it is the one "New note" just made. Pin, Share and the menu work in both. In the trash, and without `note:write`, there is no Edit button |
+| **First note on load** | when the app has loaded its list and no note is open, it opens the first one in the list's order, pinned first (`noteToOpenOnLoad`), for reading. Once, on load: a note closed later leaves the page empty, and a search or another tab never changes the open note. ⚠ Not in a narrow box, where an open note hides the list |
 | **Trash** | `trashedAt`. Read-only until restored. Delete forever only from here |
 | **Pin** | per person — nobody else's order moves |
 | **Order** | per person, `NotePreference.noteOrder`: the list shows YOUR order, arranged by dragging (or Ctrl+Shift+↑/↓; ←/→ on the sticky board), and never re-sorts itself by edits. Notes you have not placed — new ones, ones just shared with you — sit at the top, newest first (`orderNotes`). Previous and next walk this order. The trash is most recently binned first and cannot be reordered |

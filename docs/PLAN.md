@@ -601,6 +601,31 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-09** — **A note opens to be read. Edit is a button, and Done goes back.**
+
+  The operator: "when opening a note it should not be automatically in edit
+  mode." Until now every note opened with its title, body and tags as live
+  fields, so a note opened only to be looked at could be typed into by
+  accident, and autosave kept what was typed.
+
+  - **Reading is the mode a note opens in** (`noteOpensIn`, `NoteMode`): the
+    rendered Markdown, the title and tags as text, no inputs.
+  - **Edit and Done are a named button**, where an icon alone toggled a
+    preview. Done saves at once, not at the next autosave.
+  - **Each note starts in its own mode.** Editing one and opening another
+    opens the other for reading.
+  - **A blank note opens for editing.** It is the one "New note" just made,
+    and there is nothing in it to read.
+  - **The app opens on its first note** (`noteToOpenOnLoad`): the first in
+    the list's order, pinned first, for reading, where it used to say "Choose
+    a note from the index". Once, when the list first arrives. Not in a
+    narrow box, where an open note hides the list, and not remembered: it is
+    the first note, never the one last read.
+  - **NOT done: remembering the mode**, per person or per note. Nothing is
+    stored; a reload opens the note for reading again.
+  - **NOT done: a server change.** Who may edit is `note:write` and the
+    trash, as before; this is only which screen is shown first.
+
 - **2026-10-09** — **A layout wanted once is made, or adjusted, on the Print screen and never saved.**
 
   The operator: "sometimes a user or me have a custom layout to do once and I
