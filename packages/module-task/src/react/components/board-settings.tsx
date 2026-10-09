@@ -1,12 +1,29 @@
 'use client';
 
 import { ConfirmDialog } from '@kwtech/web-ui/react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, Lock, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { TASK_COLUMNS_MAX } from '../../domain/boards.js';
 import type { TaskBoardView, TaskColumnView } from '../task-client.js';
 import type { TasksState } from '../use-tasks.js';
-import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
+import { buttonClass, Checkbox, type Choice, ChoiceCards, Field, INPUT_CLASS, Modal } from './controls.js';
+import { Select } from './select.js';
+
+/** Who can open a board, each with what it means. Shared with the new-board form, so the two never word it differently. */
+export const BOARD_VISIBILITY_CHOICES: readonly Choice<'workspace' | 'private'>[] = [
+  {
+    value: 'workspace',
+    label: 'Everyone in this workspace',
+    description: 'Anyone who uses tasks here can see and work on it.',
+    icon: Users,
+  },
+  {
+    value: 'private',
+    label: 'Only me',
+    description: 'A private board. Nobody else can see it, admins included.',
+    icon: Lock,
+  },
+];
 
 /**
  * The owner's board settings: its name, private or shared, its columns, and
@@ -38,14 +55,15 @@ export function BoardSettings({
   const act = (action: () => Promise<unknown>) => void state.run(action);
 
   return (
-    <Modal open={open} title="Board settings" wide onClose={onClose}>
-      {/*
-       * Each change here is its own write, so closing loses nothing — except a
-       * board name typed but not yet renamed, which is why it is named.
-       */}
-      <p className="-mt-2 text-xs text-muted-foreground">
-        Changes save as you make them. A new board name saves when you press Rename.
-      </p>
+    <Modal
+      open={open}
+      title="Board settings"
+      // Each change here is its own write, so closing loses nothing — except a
+      // board name typed but not yet renamed, which is why it is named.
+      description="Changes save as you make them. A new board name saves when you press Rename."
+      wide
+      onClose={onClose}
+    >
       <form
         className="flex items-end gap-2"
         onSubmit={(event) => {
@@ -53,7 +71,7 @@ export function BoardSettings({
           if (name.trim() && name !== board.name) act(() => client.renameBoard(scope, board.id, name));
         }}
       >
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <Field label="Name">
             {(id) => (
               <input
@@ -76,35 +94,24 @@ export function BoardSettings({
         </button>
       </form>
 
-      <fieldset className="flex flex-col gap-1.5" disabled={archived}>
-        <legend className="mb-1 text-sm font-medium">Who can open it</legend>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="radio"
-            name="settings-visibility"
-            checked={board.visibility === 'workspace'}
-            onChange={() => act(() => client.setBoardVisibility(scope, board.id, 'workspace'))}
-          />
-          Everyone in this workspace
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="radio"
-            name="settings-visibility"
-            checked={board.visibility === 'private'}
-            onChange={() => {
-              if ((board.assignmentsOfOthers ?? 0) > 0) setConfirm('private');
-              else act(() => client.setBoardVisibility(scope, board.id, 'private'));
-            }}
-          />
-          Only me
-        </label>
-      </fieldset>
+      <ChoiceCards
+        legend="Who can open it"
+        value={board.visibility === 'private' ? 'private' : 'workspace'}
+        options={BOARD_VISIBILITY_CHOICES}
+        disabled={archived}
+        onChange={(visibility) => {
+          if (visibility === board.visibility) return;
+          // Other people's assignments go with it, so that is asked first.
+          if (visibility === 'private' && (board.assignmentsOfOthers ?? 0) > 0) setConfirm('private');
+          else act(() => client.setBoardVisibility(scope, board.id, visibility));
+        }}
+      />
 
       <section className="flex flex-col gap-2" aria-labelledby="board-columns-heading">
         <h3 id="board-columns-heading" className="text-sm font-medium">
           Columns
         </h3>
+        <p className="-mt-1 text-xs text-muted-foreground">A task in a Done column counts as finished.</p>
         <ol className="flex flex-col gap-1.5">
           {board.columns.map((column, index) => (
             <ColumnRow
@@ -156,7 +163,7 @@ export function BoardSettings({
         </form>
       </section>
 
-      <section className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+      <section className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 p-3">
         {archived ? (
           <>
             <button
@@ -164,9 +171,11 @@ export function BoardSettings({
               className={buttonClass('secondary')}
               onClick={() => act(() => client.restoreBoard(scope, board.id))}
             >
+              <RotateCcw aria-hidden="true" className="size-4" />
               Restore board
             </button>
             <button type="button" className={buttonClass('danger')} onClick={() => setConfirm('delete')}>
+              <Trash2 aria-hidden="true" className="size-4" />
               Delete forever
             </button>
           </>
@@ -178,6 +187,7 @@ export function BoardSettings({
               className={buttonClass('secondary')}
               onClick={() => act(() => client.archiveBoard(scope, board.id))}
             >
+              <Archive aria-hidden="true" className="size-4" />
               Archive board
             </button>
           </>
@@ -232,6 +242,10 @@ export function BoardSettings({
   );
 }
 
+/** A column's name inside its row: the row is the box, so the input draws none until it is in use. */
+export const ROW_INPUT_CLASS =
+  'h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm transition-colors placeholder:text-muted-foreground hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60';
+
 function ColumnRow({
   column,
   first,
@@ -258,10 +272,10 @@ function ColumnRow({
     else setName(column.name);
   };
   return (
-    <li className="flex items-center gap-1.5">
+    <li className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
       <input
         aria-label={`Name of the ${column.name} column`}
-        className={INPUT_CLASS}
+        className={ROW_INPUT_CLASS}
         value={name}
         maxLength={40}
         disabled={disabled}
@@ -272,15 +286,14 @@ function ColumnRow({
           if (event.key === 'Escape') setName(column.name);
         }}
       />
-      <label className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={column.done}
-          disabled={disabled}
-          onChange={(event) => onDone(event.target.checked)}
-        />
+      <Checkbox
+        className="px-1.5"
+        checked={column.done}
+        disabled={disabled}
+        onChange={(event) => onDone(event.target.checked)}
+      >
         Done
-      </label>
+      </Checkbox>
       <button
         type="button"
         aria-label={`Move ${column.name} earlier`}
@@ -331,40 +344,40 @@ export function RemoveColumn({
   const others = board.columns.filter((other) => other.id !== column.id);
   const [destination, setDestination] = useState(others[0]?.id ?? '');
   return (
-    <Modal open title={`Remove the ${column.name} column?`} onClose={onCancel}>
+    <Modal
+      open
+      title={`Remove the ${column.name} column?`}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" className={buttonClass('secondary')} onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={buttonClass('danger')}
+            disabled={busy}
+            onClick={() => onRemove(taskCount > 0 ? destination : null)}
+          >
+            Remove column
+          </button>
+        </>
+      }
+    >
       {taskCount > 0 ? (
         <Field label={`Move its ${taskCount} task(s) to`}>
           {(id) => (
-            <select
+            <Select
               id={id}
-              className={INPUT_CLASS}
               value={destination}
-              onChange={(event) => setDestination(event.target.value)}
-            >
-              {others.map((other) => (
-                <option key={other.id} value={other.id}>
-                  {other.name}
-                </option>
-              ))}
-            </select>
+              options={others.map((other) => ({ value: other.id, label: other.name }))}
+              onChange={setDestination}
+            />
           )}
         </Field>
       ) : (
         <p className="text-sm text-muted-foreground">It has no tasks.</p>
       )}
-      <div className="flex justify-end gap-2">
-        <button type="button" className={buttonClass('secondary')} onClick={onCancel}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={buttonClass('danger')}
-          disabled={busy}
-          onClick={() => onRemove(taskCount > 0 ? destination : null)}
-        >
-          Remove column
-        </button>
-      </div>
     </Modal>
   );
 }

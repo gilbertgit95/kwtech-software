@@ -601,6 +601,42 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-09** — **The tasks app draws its own selects, date picker, tick boxes and choices; no browser-drawn control is left in it.**
+
+  The operator: "it uses the default html selectors, please use custom", and
+  to make every tab and dialog of tasks more modern and easier to use. A
+  browser's `<select>` and `<input type="date">` open a list and a calendar
+  the theme cannot reach, so on a dark palette they were the one part of the
+  app that looked like another program.
+
+  - **`Select`, `DatePicker`, `Checkbox`, `ChoiceCards`** in `module-task`
+    replace every `<select>`, `<input type="date">`, bare checkbox and radio:
+    the board picker (grouped, a lock on a private board), the label, priority
+    and sort pickers, a task's column, board, priority and assignee, both
+    dates, the checklist, and who can open a board.
+  - **The open list is placed by a rule, not by the browser**
+    (`popoverPlacement`): below the trigger, above when there is no room, and
+    never off the screen.
+  - **It is drawn in the trigger's own `<dialog>` when it has one, else on
+    `<body>`.** A modal dialog is in the top layer and makes the rest of the
+    page inert, so a list on `<body>` opens behind it. This is why the select
+    is not built on Radix's dropdown, as `web-ui`'s menu is: its portal always
+    goes to `<body>`.
+  - **The keyboard is kept, not lost:** ↑ ↓ Home End through a list
+    (`LIST_KEYS`), a letter to jump, Enter to choose, Escape to close without
+    closing the dialog round it; in the calendar the arrows, Home, End and
+    Page Up / Down (`calendarKeyMove`).
+  - **"Today" in the calendar is the workspace's day**, as on the board.
+  - **A dialog's buttons stay in view** under its scrolling middle, and it
+    opens with the focus on its first field, not on Close.
+  - **NOT done: moving these into `web-ui`.** Every other module still uses
+    the browser's own controls, and nothing has asked for them yet (principle
+    9: a second consumer first). When a second module wants one, it moves, and
+    the others can follow.
+  - **NOT done: typing a date.** The picker is a calendar only. A date typed
+    as text would need a format, and the browser's followed the machine's
+    locale, not the workspace.
+
 - **2026-10-09** — **A note opens to be read. Edit is a button, and Done goes back.**
 
   The operator: "when opening a note it should not be automatically in edit

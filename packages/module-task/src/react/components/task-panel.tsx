@@ -2,7 +2,7 @@
 
 import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
-import { ArrowDown, ArrowUp, Check, Plus, X } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, Check, ListChecks, MessageSquare, RotateCcw, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { isScheduledAfterDue } from '../../domain/dates.js';
 import { TASK_CONFLICT_MESSAGE, TASK_PRIORITIES } from '../../domain/tasks.js';
@@ -10,7 +10,18 @@ import type { TaskCommentView, TaskView } from '../task-client.js';
 import type { TasksState } from '../use-tasks.js';
 import { PRIORITY_LABELS } from '../view/board.js';
 import { draftChanges, onStoredTask, parseLabels, type TaskDraft } from '../view/editing.js';
-import { Avatar, buttonClass, Field, INPUT_CLASS } from './controls.js';
+import {
+  Avatar,
+  buttonClass,
+  Checkbox,
+  Field,
+  INPUT_CLASS,
+  Initials,
+  PRIORITY_ICONS,
+  TEXTAREA_CLASS,
+} from './controls.js';
+import { DatePicker } from './date-picker.js';
+import { Select } from './select.js';
 
 /** How long typing pauses before the text saves itself. */
 const AUTOSAVE_IDLE_MS = 2000;
@@ -52,20 +63,20 @@ function OpenTask({ state, task, onClose }: { state: TasksState; task: TaskView;
 
   return (
     <aside aria-labelledby={titleId} className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+      <header className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+        <p className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
           {task.boardName}
           {task.archivedAt ? ' · Archived' : ''}
         </p>
         {editable ? <SaveState status={status} busy={state.busy} /> : null}
         <button type="button" aria-label="Close task" className={buttonClass('secondary', 'sm')} onClick={onClose}>
-          <X aria-hidden="true" className="size-4" />
+          <X aria-hidden="true" className="size-3.5" />
           Close
         </button>
       </header>
 
       {/* `relative`: clips its `sr-only` labels too — see the board's scroller. */}
-      <div className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <div className="relative flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         <TextEditor
           state={state}
           task={task}
@@ -94,9 +105,11 @@ function OpenTask({ state, task, onClose }: { state: TasksState; task: TaskView;
                   className={buttonClass('secondary', 'sm')}
                   onClick={() => act(() => client.restoreTask(scope, task.id))}
                 >
+                  <RotateCcw aria-hidden="true" className="size-3.5" />
                   Restore
                 </button>
                 <button type="button" className={buttonClass('danger', 'sm')} onClick={() => setConfirmDelete(true)}>
+                  <Trash2 aria-hidden="true" className="size-3.5" />
                   Delete forever
                 </button>
               </span>
@@ -106,6 +119,7 @@ function OpenTask({ state, task, onClose }: { state: TasksState; task: TaskView;
                 className={buttonClass('secondary', 'sm')}
                 onClick={() => act(() => client.archiveTask(scope, task.id))}
               >
+                <Archive aria-hidden="true" className="size-3.5" />
                 Archive
               </button>
             )
@@ -262,7 +276,7 @@ function TextEditor({
       </label>
       <input
         id={titleId}
-        className="w-full rounded-md border border-transparent bg-transparent px-1 text-lg font-semibold tracking-tight hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="-mx-2 w-[calc(100%+1rem)] rounded-lg border border-transparent bg-transparent px-2 py-1 text-xl font-semibold tracking-tight transition-colors hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring read-only:hover:border-transparent"
         value={draft.title}
         maxLength={200}
         readOnly={!editable}
@@ -274,7 +288,7 @@ function TextEditor({
       </label>
       <textarea
         id={descriptionId}
-        className="min-h-24 w-full rounded-md border border-border bg-background px-2.5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(TEXTAREA_CLASS, 'min-h-28')}
         value={draft.description}
         placeholder={editable ? 'Add some detail…' : 'No description.'}
         readOnly={!editable}
@@ -284,7 +298,7 @@ function TextEditor({
       {status === 'conflict' || status === 'changed' ? (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md bg-status-warning p-2.5 text-sm text-status-warning-foreground"
+          className="flex flex-col gap-2 rounded-lg bg-status-warning p-3 text-sm text-status-warning-foreground"
         >
           <p>
             {status === 'conflict'
@@ -332,7 +346,6 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
   useEffect(() => setLabels(task.labels.join(', ')), [task.labels]);
   const assigneeIds = task.assignees.map((person) => person.userId);
   const candidates = (state.assignable ?? []).filter((person) => !assigneeIds.includes(person.userId));
-  const [adding, setAdding] = useState(false);
   const warnDates = isScheduledAfterDue(task);
 
   const moveTo = async (boardId: string, columnId: string | null) => {
@@ -347,57 +360,55 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
   };
 
   return (
-    <section aria-label="Details" className="grid grid-cols-1 gap-3 @md:grid-cols-2">
+    <section
+      aria-label="Details"
+      className="grid grid-cols-1 gap-x-3 gap-y-4 rounded-xl border border-border bg-muted/30 p-3.5 @md:grid-cols-2"
+    >
       {columns.length > 0 ? (
         <Field label="Column">
           {(id) => (
-            <select
+            <Select
               id={id}
-              className={INPUT_CLASS}
               value={task.columnId}
               disabled={!editable}
-              onChange={(event) => act(() => moveTo(task.boardId, event.target.value))}
-            >
-              {columns.map((column) => (
-                <option key={column.id} value={column.id}>
-                  {column.name}
-                </option>
-              ))}
-            </select>
+              options={columns.map((column) => ({
+                value: column.id,
+                label: column.name,
+                ...(column.done ? { icon: <Check className="size-4 text-status-success" /> } : {}),
+              }))}
+              onChange={(columnId) => act(() => moveTo(task.boardId, columnId))}
+            />
           )}
         </Field>
       ) : null}
 
       <Field label="Board" hint="Moving to a private board keeps only its owner assigned.">
         {(id, describedBy) => (
-          <select
+          <Select
             id={id}
-            className={INPUT_CLASS}
             value={task.boardId}
             aria-describedby={describedBy}
             disabled={!editable}
-            onChange={(event) => act(() => moveTo(event.target.value, null))}
-          >
-            {(state.boards ?? []).some((board) => board.id === task.boardId) ? null : (
-              <option value={task.boardId}>{task.boardName}</option>
-            )}
-            {(state.boards ?? []).map((board) => (
-              <option key={board.id} value={board.id}>
-                {board.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              // The task's own board first when it is not among the listed ones (an archived board), so the trigger still names it.
+              ...((state.boards ?? []).some((board) => board.id === task.boardId)
+                ? []
+                : [{ value: task.boardId, label: task.boardName }]),
+              ...(state.boards ?? []).map((board) => ({ value: board.id, label: board.name })),
+            ]}
+            onChange={(boardId) => act(() => moveTo(boardId, null))}
+          />
         )}
       </Field>
 
-      <div className="flex flex-col gap-1 @md:col-span-2">
+      <div className="flex flex-col gap-1.5 @md:col-span-2">
         <span className="text-sm font-medium">Assigned</span>
         <ul className="flex flex-wrap gap-1.5">
           {task.assignees.length === 0 ? <li className="text-sm text-muted-foreground">Nobody yet.</li> : null}
           {task.assignees.map((person) => (
             <li
               key={person.userId}
-              className="flex items-center gap-1 rounded-full border border-border py-0.5 pr-1 pl-0.5 text-sm"
+              className="flex items-center gap-1.5 rounded-full border border-border bg-card py-0.5 pr-1 pl-0.5 text-sm shadow-xs"
             >
               <Avatar person={person} />
               {person.displayName ?? 'A former member'}
@@ -405,7 +416,7 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
                 <button
                   type="button"
                   aria-label={`Unassign ${person.displayName ?? 'this person'}`}
-                  className={buttonClass('ghost', 'sm')}
+                  className="grid size-5 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() =>
                     act(() =>
                       client.setAssignees(
@@ -424,34 +435,20 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
         </ul>
         {editable ? (
           state.canAssign ? (
-            task.assignees.length === 0 || adding ? (
-              <select
-                aria-label={task.assignees.length === 0 ? 'Assign to' : 'Assign another person'}
-                className={INPUT_CLASS}
-                value=""
-                onChange={(event) => {
-                  setAdding(false);
-                  if (event.target.value)
-                    act(() => client.setAssignees(scope, task.id, [...assigneeIds, event.target.value]));
-                }}
-              >
-                <option value="">{task.assignees.length === 0 ? 'Assign to…' : 'Add another…'}</option>
-                {candidates.map((person) => (
-                  <option key={person.userId} value={person.userId}>
-                    {person.displayName ?? person.userId}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <button
-                type="button"
-                className={cn(buttonClass('ghost', 'sm'), 'self-start')}
-                onClick={() => setAdding(true)}
-              >
-                <Plus aria-hidden="true" className="size-3.5" />
-                Add another
-              </button>
-            )
+            // Never holds a value: choosing a person assigns them at once, and the list is then one shorter.
+            <Select
+              aria-label={task.assignees.length === 0 ? 'Assign to' : 'Assign another person'}
+              className="border-dashed"
+              value={null}
+              placeholder={task.assignees.length === 0 ? 'Assign to…' : 'Add another…'}
+              emptyText="Everyone who can be assigned already is."
+              options={candidates.map((person) => ({
+                value: person.userId,
+                label: person.displayName ?? person.userId,
+                icon: <Initials name={person.displayName} />,
+              }))}
+              onChange={(userId) => act(() => client.setAssignees(scope, task.id, [...assigneeIds, userId]))}
+            />
           ) : (
             <p className="text-xs text-muted-foreground">
               You can assign yourself. Assigning other people is not part of your role or your organization’s plan.
@@ -462,9 +459,9 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
 
       <Field label="Scheduled" hint="The day someone plans to work on it.">
         {(id, describedBy) => (
-          <DateInput
+          <DatePicker
             id={id}
-            describedBy={describedBy}
+            aria-describedby={describedBy}
             value={task.scheduledOn}
             disabled={!editable}
             onChange={(day) => act(() => client.setDates(scope, task.id, day, task.dueOn))}
@@ -473,9 +470,9 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
       </Field>
       <Field label="Due" hint="The deadline." error={warnDates ? 'It is scheduled after it is due.' : null}>
         {(id, describedBy) => (
-          <DateInput
+          <DatePicker
             id={id}
-            describedBy={describedBy}
+            aria-describedby={describedBy}
             value={task.dueOn}
             disabled={!editable}
             onChange={(day) => act(() => client.setDates(scope, task.id, task.scheduledOn, day))}
@@ -485,19 +482,20 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
 
       <Field label="Priority">
         {(id) => (
-          <select
+          <Select
             id={id}
-            className={INPUT_CLASS}
             value={task.priority}
             disabled={!editable}
-            onChange={(event) => act(() => client.setPriority(scope, task.id, event.target.value))}
-          >
-            {TASK_PRIORITIES.map((priority) => (
-              <option key={priority} value={priority}>
-                {PRIORITY_LABELS[priority]}
-              </option>
-            ))}
-          </select>
+            options={TASK_PRIORITIES.map((priority) => {
+              const Icon = PRIORITY_ICONS[priority];
+              return {
+                value: priority,
+                label: PRIORITY_LABELS[priority] ?? priority,
+                icon: <Icon className="size-4" />,
+              };
+            })}
+            onChange={(priority) => act(() => client.setPriority(scope, task.id, priority))}
+          />
         )}
       </Field>
       <Field label="Labels" hint="Separate them with commas.">
@@ -523,65 +521,39 @@ function DetailsSection({ state, task, editable }: { state: TasksState; task: Ta
   );
 }
 
-/** A day picker with a clear button: either date may be empty (decision 11a). */
-function DateInput({
-  id,
-  describedBy,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  describedBy: string | undefined;
-  value: string | null;
-  disabled: boolean;
-  onChange: (day: string | null) => void;
-}) {
-  return (
-    <span className="flex gap-1">
-      <input
-        id={id}
-        type="date"
-        className={INPUT_CLASS}
-        value={value ?? ''}
-        aria-describedby={describedBy}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value || null)}
-      />
-      {value && !disabled ? (
-        <button
-          type="button"
-          aria-label="Clear the date"
-          className={buttonClass('ghost')}
-          onClick={() => onChange(null)}
-        >
-          <X aria-hidden="true" className="size-3.5" />
-        </button>
-      ) : null}
-    </span>
-  );
-}
-
 function Checklist({ state, task, editable }: { state: TasksState; task: TaskView; editable: boolean }) {
   const { client, scope } = state;
   const act = (action: () => Promise<unknown>) => void state.run(action);
   const [text, setText] = useState('');
   const headingId = useId();
+  const done = task.checklist.filter((item) => item.done).length;
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-1.5">
-      <h3 id={headingId} className="text-sm font-medium">
-        Checklist{' '}
+    <section aria-labelledby={headingId} className="flex flex-col gap-2">
+      <h3 id={headingId} className="flex items-center gap-1.5 text-sm font-semibold">
+        <ListChecks aria-hidden="true" className="size-4 text-muted-foreground" />
+        Checklist
         {task.checklist.length > 0 ? (
-          <span className="font-normal text-muted-foreground">
-            {task.checklist.filter((item) => item.done).length}/{task.checklist.length}
+          <span className="rounded-full bg-muted px-2 py-px text-xs font-medium text-muted-foreground">
+            {done}/{task.checklist.length}
           </span>
         ) : null}
       </h3>
-      <ul className="flex flex-col gap-1">
+      {task.checklist.length > 0 ? (
+        // Decorative: the heading already says "2/5".
+        <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-[width]"
+            style={{ width: `${(done / task.checklist.length) * 100}%` }}
+          />
+        </div>
+      ) : null}
+      <ul className="flex flex-col">
         {task.checklist.map((item, index) => (
-          <li key={item.id} className="group flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+          <li
+            key={item.id}
+            className="group -mx-1.5 flex items-center gap-2.5 rounded-lg px-1.5 py-1 text-sm hover:bg-accent/50"
+          >
+            <Checkbox
               aria-label={item.text}
               checked={item.done}
               disabled={!editable}
@@ -589,7 +561,9 @@ function Checklist({ state, task, editable }: { state: TasksState; task: TaskVie
                 act(() => client.updateChecklistItem(scope, task.id, item.id, { done: event.target.checked }))
               }
             />
-            <span className={cn('flex-1', item.done && 'text-muted-foreground line-through')}>{item.text}</span>
+            <span className={cn('min-w-0 flex-1 break-words', item.done && 'text-muted-foreground line-through')}>
+              {item.text}
+            </span>
             {editable ? (
               <span className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                 <button
@@ -664,14 +638,20 @@ function Comments({ state, task }: { state: TasksState; task: TaskView }) {
   const boxId = useId();
   const canComment = state.canWrite && task.archivedAt === null;
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className="text-sm font-medium">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <h3 id={headingId} className="flex items-center gap-1.5 text-sm font-semibold">
+        <MessageSquare aria-hidden="true" className="size-4 text-muted-foreground" />
         Comments
+        {state.comments && state.comments.length > 0 ? (
+          <span className="rounded-full bg-muted px-2 py-px text-xs font-medium text-muted-foreground">
+            {state.comments.length}
+          </span>
+        ) : null}
       </h3>
       {state.comments === null ? null : state.comments.length === 0 ? (
         <p className="text-sm text-muted-foreground">No comments yet.</p>
       ) : (
-        <ol className="flex flex-col gap-2">
+        <ol className="flex flex-col gap-3">
           {state.comments.map((comment) => (
             <CommentRow
               key={comment.id}
@@ -700,7 +680,7 @@ function Comments({ state, task }: { state: TasksState; task: TaskView }) {
           </label>
           <textarea
             id={boxId}
-            className="min-h-16 w-full rounded-md border border-border bg-background px-2.5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(TEXTAREA_CLASS, 'min-h-20')}
             placeholder="Write a comment…"
             value={body}
             maxLength={4000}
@@ -739,7 +719,7 @@ function CommentRow({
       <Avatar person={{ userId: comment.authorId, displayName: comment.authorName }} size="md" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{comment.authorName ?? 'A former member'}</span>{' '}
+          <span className="text-sm font-medium text-foreground">{comment.authorName ?? 'A former member'}</span>{' '}
           {new Date(comment.createdAt).toLocaleString(undefined, { timeZone })}
           {comment.editedAt ? ' · edited' : ''}
         </p>
@@ -757,7 +737,7 @@ function CommentRow({
           >
             <textarea
               aria-label="Edit your comment"
-              className={cn(INPUT_CLASS, 'h-auto min-h-16 py-2')}
+              className={cn(TEXTAREA_CLASS, 'min-h-16')}
               value={body}
               onChange={(event) => setBody(event.target.value)}
             />

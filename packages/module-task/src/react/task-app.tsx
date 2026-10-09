@@ -8,21 +8,28 @@ import {
   CalendarClock,
   ChevronsLeft,
   ChevronsRight,
+  CircleUserRound,
   Clock,
+  Eye,
+  KanbanSquare,
   LayoutGrid,
   List,
   Lock,
   Plus,
   Settings,
   TriangleAlert,
+  UserCheck,
+  Users,
+  WifiOff,
 } from 'lucide-react';
-import { type RefObject, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { TASK_SOON_DAYS, type TaskAttention, taskAttention, workspaceTaskDay } from '../domain/dates.js';
 import { BoardForm } from './components/board-form.js';
 import { BoardSettings } from './components/board-settings.js';
 import { BoardView } from './components/board-view.js';
-import { buttonClass, INPUT_CLASS } from './components/controls.js';
+import { buttonClass, Notice, PRIORITY_ICONS, SearchInput, Segmented, ToggleChip } from './components/controls.js';
 import { ListView, MyTasksView } from './components/list-view.js';
+import { Select, type SelectOption } from './components/select.js';
 import { TaskPanel } from './components/task-panel.js';
 import type { TaskClient } from './task-client.js';
 import { useTasks } from './use-tasks.js';
@@ -65,9 +72,23 @@ export function TaskApp({ organizationId, workspaceId, client }: AppProps & { cl
   const searchId = useId();
 
   const { board, selection } = state;
-  const selectValue = selection.kind === 'mine' ? MY_TASKS : selection.kind === 'board' ? selection.boardId : '';
-  const mine = (state.boards ?? []).filter((one) => one.mine);
-  const shared = (state.boards ?? []).filter((one) => !one.mine);
+  const selectValue = selection.kind === 'mine' ? MY_TASKS : selection.kind === 'board' ? selection.boardId : null;
+  // My tasks first, then the viewer's own boards, then the ones shared with them — a private board under a lock.
+  const boardOptions: SelectOption[] = [
+    { value: MY_TASKS, label: 'My tasks', icon: <CircleUserRound className="size-4" /> },
+    ...(state.boards ?? []).map((one) => ({
+      value: one.id,
+      label: one.name,
+      icon: one.visibility === 'private' ? <Lock className="size-4" /> : <Users className="size-4" />,
+      group: one.mine
+        ? state.showArchivedBoards
+          ? 'My archived boards'
+          : 'My boards'
+        : state.showArchivedBoards
+          ? 'Archived, shared with me'
+          : 'Shared with me',
+    })),
+  ];
   const taskCounts = new Map(state.lanes.map((lane) => [lane.column.id, lane.cards.length]));
 
   // Escape puts the slid-out panel away — only while focus is inside it, so it
@@ -88,38 +109,14 @@ export function TaskApp({ organizationId, workspaceId, client }: AppProps & { cl
         <label htmlFor={boardSelectId} className="sr-only">
           Board
         </label>
-        <select
+        <Select
           id={boardSelectId}
-          className={cn(INPUT_CLASS, 'w-auto max-w-[16rem] font-medium')}
+          className="w-auto max-w-[16rem] min-w-[11rem] font-medium shadow-xs"
           value={selectValue}
-          onChange={(event) =>
-            state.select(
-              event.target.value === MY_TASKS ? { kind: 'mine' } : { kind: 'board', boardId: event.target.value },
-            )
-          }
-        >
-          {selectValue === '' ? <option value="">Choose a board…</option> : null}
-          <option value={MY_TASKS}>My tasks</option>
-          {mine.length > 0 ? (
-            <optgroup label={state.showArchivedBoards ? 'My archived boards' : 'My boards'}>
-              {mine.map((one) => (
-                <option key={one.id} value={one.id}>
-                  {one.visibility === 'private' ? '🔒 ' : ''}
-                  {one.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          {shared.length > 0 ? (
-            <optgroup label={state.showArchivedBoards ? 'Archived, shared with me' : 'Shared with me'}>
-              {shared.map((one) => (
-                <option key={one.id} value={one.id}>
-                  {one.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-        </select>
+          options={boardOptions}
+          placeholder="Choose a board…"
+          onChange={(value) => state.select(value === MY_TASKS ? { kind: 'mine' } : { kind: 'board', boardId: value })}
+        />
         {state.canCreateBoards ? (
           <button type="button" className={buttonClass('secondary')} onClick={() => setCreating(true)}>
             <Plus aria-hidden="true" className="size-4" />
@@ -127,35 +124,43 @@ export function TaskApp({ organizationId, workspaceId, client }: AppProps & { cl
           </button>
         ) : null}
         {board?.board.mine ? (
-          <button
-            type="button"
-            aria-label="Board settings"
-            className={buttonClass('ghost')}
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings aria-hidden="true" className="size-4" />
-          </button>
+          <Tooltip text="Board settings" describes={false}>
+            {(tooltip) => (
+              <button
+                type="button"
+                aria-label="Board settings"
+                className={cn(buttonClass('ghost'), 'w-9 px-0 text-muted-foreground')}
+                onClick={() => setSettingsOpen(true)}
+                {...tooltip}
+              >
+                <Settings aria-hidden="true" className="size-4" />
+              </button>
+            )}
+          </Tooltip>
         ) : null}
         {board?.board.visibility === 'private' ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-muted-foreground">
             <Lock aria-hidden="true" className="size-3.5" />
             Private — only you can see it
           </span>
         ) : null}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={state.showArchivedBoards}
-            onChange={(event) => {
-              state.setShowArchivedBoards(event.target.checked);
-              state.select({ kind: 'none' });
-            }}
-          />
-          Archived boards
-        </label>
         {!state.live ? (
-          <span className="text-xs text-muted-foreground">Not live — changes show when you reload.</span>
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <WifiOff aria-hidden="true" className="size-3.5" />
+            Not live — changes show when you reload.
+          </span>
         ) : null}
+        <ToggleChip
+          className="ml-auto"
+          icon={Archive}
+          pressed={state.showArchivedBoards}
+          onChange={(pressed) => {
+            state.setShowArchivedBoards(pressed);
+            state.select({ kind: 'none' });
+          }}
+        >
+          Archived boards
+        </ToggleChip>
         {state.myTasks ? (
           <AttentionChip
             attention={taskAttention(
@@ -170,104 +175,84 @@ export function TaskApp({ organizationId, workspaceId, client }: AppProps & { cl
 
       {selection.kind === 'board' && board ? (
         <div className="flex flex-wrap items-center gap-2">
-          <fieldset className="flex rounded-md border border-border p-0.5">
-            <legend className="sr-only">View</legend>
-            <button
-              type="button"
-              aria-pressed={state.view === 'board'}
-              className={cn(buttonClass(state.view === 'board' ? 'primary' : 'ghost', 'sm'))}
-              onClick={() => state.setView('board')}
-            >
-              <LayoutGrid aria-hidden="true" className="size-3.5" />
-              Board
-            </button>
-            <button
-              type="button"
-              aria-pressed={state.view === 'list'}
-              className={cn(buttonClass(state.view === 'list' ? 'primary' : 'ghost', 'sm'))}
-              onClick={() => state.setView('list')}
-            >
-              <List aria-hidden="true" className="size-3.5" />
-              List
-            </button>
-          </fieldset>
+          <Segmented
+            label="View"
+            value={state.view}
+            options={[
+              { value: 'board', label: 'Board', icon: LayoutGrid },
+              { value: 'list', label: 'List', icon: List },
+            ]}
+            onChange={state.setView}
+          />
           <label htmlFor={searchId} className="sr-only">
             Search tasks
           </label>
-          <input
+          <SearchInput
             id={searchId}
-            type="search"
-            placeholder="Search"
-            className={cn(INPUT_CLASS, 'h-8 w-40')}
+            className="w-44"
+            placeholder="Search tasks"
             value={state.filter.search}
-            onChange={(event) => state.setFilter({ search: event.target.value })}
+            onChange={(search) => state.setFilter({ search })}
           />
-          <select
+          <Select
             aria-label="Label"
-            className={cn(INPUT_CLASS, 'h-8 w-auto')}
+            size="sm"
+            className={cn('w-auto max-w-[12rem]', state.filter.label ? FILTER_ON : null)}
             value={state.filter.label ?? ''}
-            onChange={(event) => state.setFilter({ label: event.target.value || null })}
-          >
-            <option value="">Any label</option>
-            {board.labels.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <select
+            options={[{ value: '', label: 'Any label' }, ...board.labels.map((label) => ({ value: label, label }))]}
+            onChange={(value) => state.setFilter({ label: value || null })}
+          />
+          <Select
             aria-label="Priority"
-            className={cn(INPUT_CLASS, 'h-8 w-auto')}
+            size="sm"
+            className={cn('w-auto', state.filter.priority ? FILTER_ON : null)}
             value={state.filter.priority ?? ''}
-            onChange={(event) => state.setFilter({ priority: event.target.value || null })}
+            options={[
+              { value: '', label: 'Any priority' },
+              ...Object.entries(PRIORITY_LABELS).map(([value, label]) => {
+                const Icon = PRIORITY_ICONS[value as keyof typeof PRIORITY_ICONS];
+                return { value, label, icon: <Icon className="size-3.5" /> };
+              }),
+            ]}
+            onChange={(value) => state.setFilter({ priority: value || null })}
+          />
+          <ToggleChip
+            icon={UserCheck}
+            pressed={state.filter.assignedToMe}
+            onChange={(assignedToMe) => state.setFilter({ assignedToMe })}
           >
-            <option value="">Any priority</option>
-            {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-1.5 text-sm">
-            <input
-              type="checkbox"
-              checked={state.filter.assignedToMe}
-              onChange={(event) => state.setFilter({ assignedToMe: event.target.checked })}
-            />
             Assigned to me
-          </label>
-          <button
-            type="button"
-            aria-pressed={state.filter.archived}
-            className={buttonClass(state.filter.archived ? 'primary' : 'ghost', 'sm')}
-            onClick={() => state.setFilter({ archived: !state.filter.archived })}
+          </ToggleChip>
+          <ToggleChip
+            icon={Archive}
+            pressed={state.filter.archived}
+            onChange={(archived) => state.setFilter({ archived })}
           >
-            <Archive aria-hidden="true" className="size-3.5" />
             Archived tasks
-          </button>
+          </ToggleChip>
         </div>
       ) : null}
 
       {!state.canWrite ? (
-        <p role="status" className="rounded-md bg-muted px-3 py-1.5 text-sm text-muted-foreground">
+        <Notice icon={Eye}>
           You can see tasks here, but your role or your organization’s plan does not include working on them.
-        </p>
+        </Notice>
       ) : null}
       {board?.board.archivedAt ? (
-        <p role="status" className="rounded-md bg-muted px-3 py-1.5 text-sm text-muted-foreground">
-          This board is archived. It is read-only until its owner restores it.
-        </p>
+        <Notice icon={Archive}>This board is archived. It is read-only until its owner restores it.</Notice>
       ) : null}
       {state.error ? (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-2 rounded-md bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
+        <Notice
+          tone="danger"
+          icon={TriangleAlert}
+          action={
+            <button type="button" className={buttonClass('ghost', 'sm')} onClick={state.dismissError}>
+              Dismiss
+            </button>
+          }
         >
           {state.error}
-          <button type="button" className={buttonClass('ghost', 'sm')} onClick={state.dismissError}>
-            Dismiss
-          </button>
-        </div>
+        </Notice>
       ) : null}
 
       {/*
@@ -305,7 +290,7 @@ export function TaskApp({ organizationId, workspaceId, client }: AppProps & { cl
             <div
               id={panelId}
               className={cn(
-                'flex min-h-0 flex-col rounded-lg border border-border bg-card text-card-foreground',
+                'flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm',
                 PANEL_WIDTH[layout],
               )}
             >
@@ -406,6 +391,9 @@ function AttentionChip({
   );
 }
 
+/** A filter's trigger while it is narrowing the list: tinted, as a pressed chip is. */
+const FILTER_ON = 'border-primary/50 bg-primary/10 text-primary';
+
 /** The bar-and-panel group, per layout. */
 const PANEL_WRAPPER: Record<TaskPanelLayout, string> = {
   beside: 'shrink-0',
@@ -417,7 +405,7 @@ const PANEL_WRAPPER: Record<TaskPanelLayout, string> = {
 
 const PANEL_WIDTH: Record<TaskPanelLayout, string> = {
   beside: 'w-[26rem]',
-  overlay: 'w-[min(26rem,82cqw)] shadow-lg shadow-foreground/15',
+  overlay: 'w-[min(26rem,82cqw)] shadow-xl shadow-foreground/15',
   hidden: 'hidden',
   none: '',
 };
@@ -474,28 +462,39 @@ function CollapseBar({
 
 /** Nothing to show — and why, so an empty app is never a mystery. */
 function EmptyState({ state, onCreate }: { state: ReturnType<typeof useTasks>; onCreate: () => void }) {
-  if (state.boards === null) return <p className="text-sm text-muted-foreground">Opening your boards…</p>;
-  if (state.boards.length > 0) return <p className="text-sm text-muted-foreground">Choose a board above.</p>;
-  if (state.showArchivedBoards) return <p className="text-sm text-muted-foreground">There are no archived boards.</p>;
+  if (state.boards === null) return <EmptyNote title="Opening your boards…" />;
+  if (state.boards.length > 0) {
+    return <EmptyNote title="Choose a board" text="Pick a board at the top, or open My tasks." />;
+  }
+  if (state.showArchivedBoards) return <EmptyNote title="There are no archived boards." />;
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-10 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">No boards yet</h1>
+    <EmptyNote
+      title="No boards yet"
+      text={
+        state.canCreateBoards
+          ? 'A board holds your team’s tasks in columns you choose. Share it with the workspace, or keep it to yourself.'
+          : 'Nobody has shared a board with this workspace yet, and your role or your organization’s plan does not include creating one.'
+      }
+    >
       {state.canCreateBoards ? (
-        <>
-          <p className="text-sm text-muted-foreground">
-            A board holds your team’s tasks in columns you choose. Share it with the workspace, or keep it to yourself.
-          </p>
-          <button type="button" className={buttonClass('primary')} onClick={onCreate}>
-            <Plus aria-hidden="true" className="size-4" />
-            Create a board
-          </button>
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Nobody has shared a board with this workspace yet, and your role or your organization’s plan does not include
-          creating one.
-        </p>
-      )}
+        <button type="button" className={buttonClass('primary')} onClick={onCreate}>
+          <Plus aria-hidden="true" className="size-4" />
+          Create a board
+        </button>
+      ) : null}
+    </EmptyNote>
+  );
+}
+
+function EmptyNote({ title, text, children }: { title: string; text?: string; children?: ReactNode }) {
+  return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-12 text-center">
+      <span aria-hidden="true" className="grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground">
+        <KanbanSquare className="size-6" />
+      </span>
+      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+      {text ? <p className="text-sm text-muted-foreground">{text}</p> : null}
+      {children}
     </div>
   );
 }

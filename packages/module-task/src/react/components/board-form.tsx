@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -10,7 +11,8 @@ import {
   TASK_DEFAULT_COLUMNS,
 } from '../../domain/boards.js';
 import type { NewBoardInput } from '../task-client.js';
-import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
+import { BOARD_VISIBILITY_CHOICES, ROW_INPUT_CLASS } from './board-settings.js';
+import { buttonClass, Checkbox, ChoiceCards, Field, INPUT_CLASS, Modal } from './controls.js';
 
 interface DraftColumn {
   /** Local only, for React keys: a column has no id before the board is saved. */
@@ -85,21 +87,37 @@ export function BoardForm({
     if (created) reset();
   };
 
+  const cancel = () => {
+    reset();
+    onCancel();
+  };
+
   return (
     <Modal
       open={open}
       title="New board"
+      description="Name it, choose who can open it, and set up its columns."
       wide
-      onClose={() => {
-        reset();
-        onCancel();
-      }}
+      onClose={cancel}
+      footer={
+        <>
+          <button type="button" className={buttonClass('secondary')} onClick={cancel}>
+            Cancel
+          </button>
+          <button type="button" className={buttonClass('primary')} disabled={busy} onClick={() => void submit()}>
+            {busy ? 'Creating…' : 'Create board'}
+          </button>
+        </>
+      }
     >
       <Field label="Name" error={errors.name ?? null}>
         {(id, describedBy) => (
           <input
             id={id}
             className={INPUT_CLASS}
+            // Where a new board starts: the dialog opens with the caret here (`Modal`).
+            data-autofocus=""
+            placeholder="For example, Shop opening"
             value={name}
             maxLength={80}
             aria-invalid={errors.name ? true : undefined}
@@ -109,39 +127,12 @@ export function BoardForm({
         )}
       </Field>
 
-      <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-sm font-medium">Who can open it</legend>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="radio"
-            name="board-visibility"
-            className="mt-1"
-            checked={visibility === 'workspace'}
-            onChange={() => setVisibility('workspace')}
-          />
-          <span>
-            Everyone in this workspace
-            <span className="block text-xs text-muted-foreground">
-              Anyone who uses tasks here can see and work on it.
-            </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="radio"
-            name="board-visibility"
-            className="mt-1"
-            checked={visibility === 'private'}
-            onChange={() => setVisibility('private')}
-          />
-          <span>
-            Only me
-            <span className="block text-xs text-muted-foreground">
-              A private board. Nobody else can see it, admins included.
-            </span>
-          </span>
-        </label>
-      </fieldset>
+      <ChoiceCards
+        legend="Who can open it"
+        value={visibility}
+        options={BOARD_VISIBILITY_CHOICES}
+        onChange={setVisibility}
+      />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 flex w-full items-center justify-between text-sm font-medium">
@@ -156,22 +147,22 @@ export function BoardForm({
         </legend>
         <ol className="flex flex-col gap-1.5">
           {columns.map((column, index) => (
-            <li key={column.key} className="flex items-center gap-1.5">
+            <li key={column.key} className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
               <input
                 aria-label={`Column ${index + 1} name`}
-                className={INPUT_CLASS}
+                placeholder="Column name"
+                className={ROW_INPUT_CLASS}
                 value={column.name}
                 maxLength={40}
                 onChange={(event) => update(column.key, { name: event.target.value })}
               />
-              <label className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={column.done}
-                  onChange={(event) => update(column.key, { done: event.target.checked })}
-                />
+              <Checkbox
+                className="px-1.5"
+                checked={column.done}
+                onChange={(event) => update(column.key, { done: event.target.checked })}
+              >
                 Done
-              </label>
+              </Checkbox>
               <button
                 type="button"
                 aria-label={`Move ${column.name || 'column'} up`}
@@ -213,7 +204,7 @@ export function BoardForm({
         )}
         <button
           type="button"
-          className={buttonClass('secondary', 'sm')}
+          className={cn(buttonClass('ghost', 'sm'), 'self-start border border-dashed border-border')}
           disabled={columns.length >= TASK_COLUMNS_MAX}
           onClick={() => setColumns((current) => [...current, { key: crypto.randomUUID(), name: '', done: false }])}
         >
@@ -221,22 +212,6 @@ export function BoardForm({
           Add column
         </button>
       </fieldset>
-
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          className={buttonClass('secondary')}
-          onClick={() => {
-            reset();
-            onCancel();
-          }}
-        >
-          Cancel
-        </button>
-        <button type="button" className={buttonClass('primary')} disabled={busy} onClick={() => void submit()}>
-          {busy ? 'Creating…' : 'Create board'}
-        </button>
-      </div>
     </Modal>
   );
 }

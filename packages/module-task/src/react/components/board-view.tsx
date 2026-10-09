@@ -143,7 +143,7 @@ export function BoardView({ state }: { state: TasksState }) {
               // dnd-kit sizes the overlay to the card being dragged; the card fills it.
               <DragOverlay>
                 {dragging ? (
-                  <div className="h-full w-full cursor-grabbing rounded-md border border-border bg-card p-2.5 text-card-foreground shadow-lg">
+                  <div className="h-full w-full rotate-1 cursor-grabbing rounded-lg border border-border bg-card p-3 text-card-foreground shadow-xl">
                     <TaskCardBody card={dragging} />
                   </div>
                 ) : null}
@@ -186,7 +186,7 @@ function Column({
     <section
       aria-labelledby={headingId}
       className={cn(
-        'flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted/40 p-2',
+        'flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-muted/50 p-2 transition-shadow',
         'w-[min(18rem,85cqw)] shrink-0',
         isOver && 'ring-2 ring-ring',
       )}
@@ -197,7 +197,9 @@ function Column({
             <CheckCircle2 aria-label="Done column" className="size-4 shrink-0 text-status-success" />
           ) : null}
           <span className="truncate">{column.name}</span>
-          <span className="text-xs font-normal text-muted-foreground">{cards.length}</span>
+          <span className="rounded-full bg-background px-1.5 py-px text-xs font-medium text-muted-foreground">
+            {cards.length}
+          </span>
         </h2>
         {owner ? <ColumnMenu state={state} column={column} lanes={lanes} index={index} /> : null}
       </header>
@@ -266,7 +268,7 @@ function SortableCard({
         style={{ transform: CSS.Translate.toString(transform), transition }}
         // While dragged, the card itself is the placeholder; the overlay is what moves.
         className={cn(
-          'w-full touch-manipulation rounded-md border border-border bg-card p-2.5 text-left text-card-foreground shadow-sm',
+          'w-full touch-manipulation rounded-lg border border-border bg-card p-3 text-left text-card-foreground shadow-xs transition-shadow hover:border-foreground/20 hover:shadow-md',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           open && 'ring-2 ring-primary',
           isDragging && 'opacity-40',
@@ -286,13 +288,18 @@ export function TaskCardBody({ card, showBoard = false }: { card: TaskCardView; 
   return (
     <span className="flex flex-col gap-1.5">
       {showBoard ? <span className="text-xs text-muted-foreground">{card.boardName}</span> : null}
-      <span className={cn('text-sm font-medium', card.completedAt !== null && 'text-muted-foreground line-through')}>
+      <span
+        className={cn(
+          'text-sm leading-snug font-medium',
+          card.completedAt !== null && 'text-muted-foreground line-through',
+        )}
+      >
         {card.title}
       </span>
       {card.labels.length > 0 ? (
         <span className="flex flex-wrap gap-1">
           {card.labels.map((label) => (
-            <span key={label} className="rounded bg-secondary px-1.5 text-xs text-secondary-foreground">
+            <span key={label} className="rounded-full bg-secondary px-2 py-px text-xs text-secondary-foreground">
               {label}
             </span>
           ))}
@@ -360,7 +367,11 @@ function QuickAdd({ state, column }: { state: TasksState; column: TaskColumnView
   const boardId = state.board?.board.id;
   if (!adding) {
     return (
-      <button type="button" className={cn(buttonClass('ghost', 'sm'), 'justify-start')} onClick={() => setAdding(true)}>
+      <button
+        type="button"
+        className={cn(buttonClass('ghost', 'sm'), 'h-8 justify-start text-muted-foreground')}
+        onClick={() => setAdding(true)}
+      >
         <Plus aria-hidden="true" className="size-3.5" />
         Add a task
       </button>
@@ -451,7 +462,11 @@ function ColumnMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button type="button" aria-label={`${column.name} column options`} className={buttonClass('ghost', 'sm')}>
+          <button
+            type="button"
+            aria-label={`${column.name} column options`}
+            className={cn(buttonClass('ghost', 'sm'), 'w-7 px-0 text-muted-foreground')}
+          >
             <MoreHorizontal aria-hidden="true" className="size-4" />
           </button>
         </DropdownMenuTrigger>
@@ -516,7 +531,10 @@ function AddColumn({ state, boardId, count }: { state: TasksState; boardId: stri
     return (
       <button
         type="button"
-        className={cn(buttonClass('ghost'), 'h-10 w-48 shrink-0 self-start justify-start')}
+        className={cn(
+          buttonClass('ghost'),
+          'h-11 w-56 shrink-0 justify-start self-start rounded-xl border border-dashed border-border text-muted-foreground',
+        )}
         onClick={() => setAdding(true)}
       >
         <Plus aria-hidden="true" className="size-4" />

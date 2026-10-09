@@ -43,6 +43,18 @@ overdue · 3 today · 1 soon* ("soon" is planned or due within
 is pressing. On cards, a due day that is overdue is red and one due today or
 soon is amber.
 
+Every control is the app's own, in the theme's colours — no browser-drawn
+`<select>`, date input, checkbox or radio (PLAN §13, 2026-10-09). They live in
+`src/react/components/` and stay there until a second module needs one:
+
+| Component | Instead of | Notes |
+|---|---|---|
+| `Select` | `<select>` | groups, an icon per option; ↑ ↓ Home End, a letter to jump, Enter, Escape |
+| `DatePicker` | `<input type="date">` | a calendar whose "today" is the workspace's day; *Today* and *Clear* |
+| `Checkbox` | a bare checkbox | still a real checkbox underneath, so labels and Space work |
+| `ChoiceCards` | a row of radios | each choice says what it means (who can open a board) |
+| `Popover` | — | what the two pickers open in: placed by `popoverPlacement`, and drawn inside the trigger's `<dialog>` when it has one, so it is never behind a modal |
+
 ## In a NestJS app
 
 ```ts
