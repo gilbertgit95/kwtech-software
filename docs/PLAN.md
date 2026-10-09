@@ -601,6 +601,38 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-09** — **A layout wanted once is made, or adjusted, on the Print screen and never saved.**
+
+  The operator: "sometimes a user or me have a custom layout to do once and I
+  don't want to create a new layout for it because I know it will be once."
+  Until now the only way to cells that no layout had was the Layouts section:
+  name it, save it, use it, and delete it afterwards or leave it on the shelf.
+
+  - **Two ways in, one editor.** The gallery has a "One-time layout" button
+    at its top, above every shelf, and the chosen layout's card has **Adjust** beside
+    Change. Both open `LayoutEditor` with the purpose `once`: no name, tag or
+    audience, and "Use for this print" where Save was. The cells are handed to
+    the print and to nothing else.
+  - **Adjust starts from the layout as it prints now**: this print's paper,
+    way round and border are part of what is edited, and what comes back.
+    The saved layout or preset is never touched.
+  - **The photos stay.** `refitPages` carries them to the new cells: untouched
+    when the number of cells is the same, else each page's one photo in every
+    cell, else one per cell in reading order. The studio stays mounted under
+    the editor, hidden, as Print does under the other sections.
+  - **It needs only `studio:read`.** Nothing is written, so there is nothing
+    for `studio:write` to guard and nothing counted against `studio:layouts`.
+  - **The history does not take it for the saved layout.** No layout id, and
+    the name "One-time layout" or "<name>, adjusted". The result's file is
+    named the same way.
+  - **NOT done: "save this one after all".** A one-time layout that turns out
+    to be wanted again has to be drawn again in the Layouts section. Add it
+    when somebody asks; it is `createLayout` with the spec in hand, for a
+    holder of `studio:write`.
+  - **NOT done: a server change.** No operation, key, limit or model was
+    added, and nothing is kept in browser storage (decision 8 of
+    PRINT-STUDIO-PLAN).
+
 - **2026-10-07** — **A print through the agent chooses its paper type and quality, from the driver's own lists, and the studio has a Printers button of its own.**
 
   The operator, after printing photos through the agent: the L5290 came out

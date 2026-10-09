@@ -1,6 +1,6 @@
 import { NEUTRAL_LIGHTING, type StudioLighting } from '../../domain/adjust.js';
-import type { StudioPageFill } from '../../domain/fill.js';
-import type { StudioSize } from '../../domain/layout.js';
+import { planFill, type StudioFillPlan, type StudioPageFill, usedPhotoIds } from '../../domain/fill.js';
+import type { StudioRect, StudioSize } from '../../domain/layout.js';
 import { DEFAULT_FRAME, FULL_CROP, type StudioCrop, type StudioFrame } from '../../domain/slot-fit.js';
 import { STUDIO_BLURRY_DPI, UNITS_PER_INCH } from '../../domain/units.js';
 
@@ -155,6 +155,58 @@ export function removePageFrames(frames: StudioFrames, removedPage: number): Stu
     kept[frameKey(page > removedPage ? page - 1 : page, cell)] = frame;
   }
   return kept;
+}
+
+/**
+ * What a layout made on the Print screen for ONE print is called: on the
+ * screen, in the print history and as the result's file name. It has no name
+ * of its own because nobody is asked for one (the operator, 2026-10-09: a
+ * layout used once should not have to be made, named and kept).
+ */
+export const STUDIO_ONCE_LAYOUT_NAME = 'One-time layout';
+
+/**
+ * The name a print goes under. A saved layout or a preset that was adjusted
+ * for this print says so: the history must not claim the sheet was the saved
+ * layout when its cells were moved for the day.
+ */
+export function printLayoutName(name: string, adjusted: boolean): string {
+  return adjusted ? `${name}, adjusted` : name;
+}
+
+/** The pages after a layout was adjusted under them, and whether the arrangement survived as it was. */
+export interface StudioRefit extends StudioFillPlan {
+  /** True when every photo is still in the cell it was in, so each cell's frame still belongs to its photo. */
+  kept: boolean;
+}
+
+/**
+ * The photos placed, carried over to a layout whose cells were just changed
+ * for this print, so adjusting a layout never costs the photos already chosen.
+ *
+ *   - The same NUMBER of cells (one was moved or resized): nothing moves.
+ *     A page names its cells by index, and every index still has a cell.
+ *   - Otherwise, when no page mixed photos (the same photo in every cell, or
+ *     one customer per page): each page keeps its photo, in every new cell.
+ *   - Otherwise: the photos in use, one per cell in reading order, as when
+ *     they were first added.
+ *
+ * ⚠ ONLY PHOTOS THAT WERE PLACED come back. One taken out of every cell by
+ * hand stays in the tray; putting it back on the sheet would undo that.
+ */
+export function refitPages(pages: readonly StudioPageFill[], cells: readonly StudioRect[]): StudioRefit {
+  if (pages.length > 0 && pages.every((page) => page.length === cells.length)) {
+    return { pages: pages.map((page) => [...page]), dropped: 0, kept: true };
+  }
+  const used = usedPhotoIds(pages);
+  if (used.length === 0) return { ...planFill(cells, [], 'manual'), kept: false };
+
+  const perPage = pages.map((page) => usedPhotoIds([page]));
+  if (perPage.every((photos) => photos.length <= 1)) {
+    const refilled = perPage.map((photos): StudioPageFill => cells.map(() => photos[0] ?? null));
+    return { pages: refilled, dropped: 0, kept: false };
+  }
+  return { ...planFill(cells, used, 'sequence'), kept: false };
 }
 
 /**

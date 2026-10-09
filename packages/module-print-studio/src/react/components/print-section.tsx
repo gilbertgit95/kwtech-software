@@ -1,16 +1,19 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { FileText, Images, Plus, UsersRound } from 'lucide-react';
+import { FileText, Images, PencilRuler, Plus, UsersRound } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
 import type { StudioLayoutSpec } from '../../domain/layout.js';
-import { studioPresetGroups } from '../../domain/presets.js';
+import { defaultLayoutSpec, studioPresetGroups } from '../../domain/presets.js';
 import { groupByStudioTag } from '../../domain/tags.js';
 import type { StudioAppState } from '../studio-state.js';
 import { useStudioData } from '../use-studio-data.js';
 import { cellGroups } from '../view/summary.js';
+import { STUDIO_ONCE_LAYOUT_NAME } from '../view/work.js';
+import { buttonClass } from './controls.js';
 import { DocumentStudio } from './document-studio.js';
 import { Alert } from './layout.js';
+import { LayoutEditor, onceEditorTarget } from './layout-editor.js';
 import type { ChosenLayout } from './layouts-section.js';
 import { PhotoStudio } from './photo-studio.js';
 import { SheetView } from './sheet-view.js';
@@ -27,6 +30,10 @@ type Mode = 'photos' | 'document';
  * the shared ones and the ready-made ones, each drawn to scale. The Layouts
  * tab is for MAKING and managing them; somebody who only wants to print should
  * never have to go there (the operator, 2026-10-05: "more user friendly").
+ *
+ * ⚠ A LAYOUT WANTED ONCE IS MADE HERE TOO, and never saved (the operator,
+ * 2026-10-09): the editor opens in place of the gallery and hands its cells
+ * straight to the print. Nothing is written, so it asks for no `studio:write`.
  */
 export function PrintSection({
   state,
@@ -42,6 +49,8 @@ export function PrintSection({
   onBrowseLayouts: () => void;
 }) {
   const [mode, setMode] = useState<Mode>('photos');
+  /** The editor is open on a layout for one print, in place of the gallery. */
+  const [makingOnce, setMakingOnce] = useState(false);
   /*
    * ⚠ THE SWITCH IS HANDED DOWN, not drawn above the screens: a row of its own
    * over a studio is height its sheet does not get. Each studio puts it at the
@@ -68,11 +77,31 @@ export function PrintSection({
         </div>
       ) : null}
 
-      {mode === 'photos' && !layout ? (
+      {mode === 'photos' && !layout && makingOnce ? (
+        <LayoutEditor
+          state={state}
+          target={onceEditorTarget(defaultLayoutSpec(), STUDIO_ONCE_LAYOUT_NAME)}
+          purpose={{
+            kind: 'once',
+            onUse: (spec) => {
+              setMakingOnce(false);
+              onLayout({ id: null, name: STUDIO_ONCE_LAYOUT_NAME, spec, foreign: false, once: true });
+            },
+          }}
+          onCancel={() => setMakingOnce(false)}
+        />
+      ) : null}
+
+      {mode === 'photos' && !layout && !makingOnce ? (
         <>
           {/* A set width here, where nothing else holds it: room around both labels, and it does not jump as the mode changes. */}
           <div className="w-full max-w-xs self-start">{modeSwitch}</div>
-          <LayoutGallery state={state} onLayout={onLayout} onBrowseLayouts={onBrowseLayouts} />
+          <LayoutGallery
+            state={state}
+            onLayout={onLayout}
+            onMakeOnce={() => setMakingOnce(true)}
+            onBrowseLayouts={onBrowseLayouts}
+          />
         </>
       ) : null}
     </div>
@@ -124,10 +153,13 @@ function ModeSwitch({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void
 function LayoutGallery({
   state,
   onLayout,
+  onMakeOnce,
   onBrowseLayouts,
 }: {
   state: StudioAppState;
   onLayout: (layout: ChosenLayout) => void;
+  /** Open the editor on a layout for this print only. */
+  onMakeOnce: () => void;
   onBrowseLayouts: () => void;
 }) {
   const load = useCallback(() => state.client.layouts(state.scope), [state.client, state.scope]);
@@ -138,9 +170,26 @@ function LayoutGallery({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Choose a layout</h2>
-        <p className="text-sm text-muted-foreground">Pick the sheet your photos will go on. You add the photos next.</p>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Choose a layout</h2>
+          <p className="text-sm text-muted-foreground">
+            Pick the sheet your photos will go on. You add the photos next.
+          </p>
+        </div>
+        {/*
+          ⚠ AT THE TOP, not after the last shelf: it is for the job no layout here fits, and somebody should not
+          have to scroll past every layout to learn that. Everybody's, since it writes nothing.
+        */}
+        <button
+          type="button"
+          title="Draw the cells for this print only. Nothing is saved."
+          className={buttonClass('secondary')}
+          onClick={onMakeOnce}
+        >
+          <PencilRuler aria-hidden="true" className="size-4" />
+          One-time layout
+        </button>
       </div>
       <Alert message={layouts.error} />
 

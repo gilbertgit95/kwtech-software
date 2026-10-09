@@ -6,6 +6,7 @@ import {
   ImagePlus,
   Images,
   LayoutTemplate,
+  PencilRuler,
   Plus,
   Rows3,
   Square,
@@ -39,6 +40,7 @@ import {
   cellOnSheet,
   layoutOnPage,
   type StudioBorder,
+  type StudioLayoutSpec,
   type StudioOrientation,
   sheetSize,
 } from '../../domain/layout.js';
@@ -76,7 +78,9 @@ import {
   hasCell,
   NO_PHOTO_EDIT,
   previewDpi,
+  printLayoutName,
   pruneFrames,
+  refitPages,
   removePageFrames,
   resultFileName,
   STUDIO_PHOTO_ACCEPT,
@@ -92,6 +96,7 @@ import {
 import { BorderControls, borderSummary } from './border-controls.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert, StudioSplit } from './layout.js';
+import { LayoutEditor, onceEditorTarget } from './layout-editor.js';
 import type { ChosenLayout } from './layouts-section.js';
 import { OutputBar, type StudioOutputCommands } from './output-bar.js';
 import { Pager } from './pager.js';
@@ -156,6 +161,19 @@ export function PhotoStudio({
   modeSwitch: ReactNode;
 }) {
   /*
+   * The layout as ADJUSTED FOR THIS PRINT, or null while it is as chosen. One
+   * customer wants the ID package with a 2 × 2 more: the cells are changed
+   * here, in the editor, and the saved layout is never touched (the operator,
+   * 2026-10-09). Held in memory like the photos, and gone with them.
+   */
+  const [adjusted, setAdjusted] = useState<StudioLayoutSpec | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
+  const chosen = adjusted ?? layout.spec;
+  // ⚠ A layout that was adjusted is no longer the saved one: the history gets no id for it, and a name that says so.
+  const layoutId = adjusted ? null : layout.id;
+  const layoutName = printLayoutName(layout.name, adjusted !== null && !layout.once);
+
+  /*
    * The border, for THIS print. It starts as the layout says and can be
    * changed here without touching the layout: a pale design wants a darker
    * line today, and the layout is not wrong for it.
@@ -176,17 +194,17 @@ export function PhotoStudio({
   const [paperValue, setPaperValue] = useState<string | null>(null);
   const [orientationValue, setOrientationValue] = useState<StudioOrientation | null>(null);
   const printOn = useMemo(
-    () => printPage(layout.spec, 'mm', paperValue, orientationValue),
-    [layout.spec, paperValue, orientationValue],
+    () => printPage(chosen, 'mm', paperValue, orientationValue),
+    [chosen, paperValue, orientationValue],
   );
   /** The layout as it prints now: its cells on this print's page, with this print's border. */
   const spec = useMemo(
     () => ({
-      ...layoutOnPage(layout.spec, { paper: printOn.paper, orientation: printOn.orientation }),
+      ...layoutOnPage(chosen, { paper: printOn.paper, orientation: printOn.orientation }),
       guides,
       border,
     }),
-    [layout.spec, printOn, guides, border],
+    [chosen, printOn, guides, border],
   );
   const cells = spec.cells;
   const sheet = useMemo(() => sheetSize(spec), [spec]);
@@ -518,6 +536,28 @@ export function PhotoStudio({
     setError(null);
   }
 
+  /**
+   * The editor's cells taken for this print. It was opened on the layout AS IT
+   * PRINTS NOW (this print's paper, way round and border), so those are part
+   * of what comes back and the choices beside the sheet start again from it.
+   * ⚠ THE PHOTOS STAY: they are refitted to the new cells (`refitPages`).
+   */
+  function applyAdjusted(next: StudioLayoutSpec) {
+    const refit = refitPages(pages, next.cells);
+    setAdjusted(next);
+    setGuides(next.guides);
+    setBorder(borderOf(next));
+    setPaperValue(null);
+    setOrientationValue(null);
+    setPages(refit.pages);
+    // Photos that moved to other cells start centred: a frame belongs to a photo IN a cell.
+    if (!refit.kept) setFrames({});
+    setPageIndex(Math.max(Math.min(pageIndex, refit.pages.length - 1), 0));
+    setSelection([]);
+    setError(refit.dropped > 0 ? `${plural(refit.dropped, 'photo')} did not fit in 50 pages.` : null);
+    setAdjusting(false);
+  }
+
   // ── shortcut keys ─────────────────────────────────────────────────────────
 
   const root = useRef<HTMLDivElement>(null);
@@ -636,279 +676,320 @@ export function PhotoStudio({
       : null;
 
   return (
-    <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3">
-      <Alert message={error} onDismiss={() => setError(null)} />
+    <>
+      {adjusting ? (
+        <LayoutEditor
+          state={state}
+          target={onceEditorTarget(spec, layoutName)}
+          purpose={{ kind: 'once', onUse: applyAdjusted }}
+          onCancel={() => setAdjusting(false)}
+        />
+      ) : null}
+      {/*
+       * ⚠ HIDDEN, NOT UNMOUNTED, under the editor: the sheet's canvas is drawn by an effect that runs when the
+       * arrangement changes, and one taken away and put back unchanged (Cancel) would come back blank. Hidden, the
+       * shortcut keys go quiet by themselves (`useStudioKeys`).
+       */}
+      <div ref={root} className={adjusting ? 'hidden' : 'flex min-h-0 flex-1 flex-col gap-3'}>
+        <Alert message={error} onDismiss={() => setError(null)} />
 
-      <StudioSplit
-        side={
-          <>
-            {/* ── photos, and how they go in ── */}
-            {modeSwitch}
-            <section className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
-              <div className="min-w-0">
-                <h3 className="truncate text-sm font-semibold">{layout.name}</h3>
-                <p className="truncate text-xs text-muted-foreground">
-                  {paperName(spec, 'mm')} · {plural(cells.length, 'cell')}
-                </p>
-              </div>
-              <button type="button" className={buttonClass('secondary', 'sm')} onClick={onChangeLayout}>
-                <LayoutTemplate aria-hidden="true" className="size-3.5" />
-                Change
-              </button>
-            </section>
-            <PaperChoice
-              page={printOn}
-              onPaper={setPaperValue}
-              onOrientation={setOrientationValue}
-              otherPaperNote={otherPaperNote(layout.spec)}
-            />
-            {layout.foreign ? (
-              <p className="-mt-1.5 px-1 text-xs text-muted-foreground">
-                Somebody else made this layout. Its margins were set for their printer and may not suit yours.
-              </p>
-            ) : null}
-
-            <PhotoTray
-              photos={photos}
-              activeId={activePhotoId}
-              edits={edits}
-              loading={loading}
-              onPick={setActivePhotoId}
-              onAdd={(files) => void addFiles(files)}
-              onRemove={removePhoto}
-            />
-
-            {photos.length > 0 ? (
-              <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
-                <h3 className="text-sm font-semibold">Arrange them</h3>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <FillTile
-                    icon={Square}
-                    label="Same photo"
-                    hint="The picked photo in every cell"
-                    onClick={() => fill('same')}
-                  />
-                  <FillTile
-                    icon={Rows3}
-                    label="One each"
-                    hint="One photo per cell, in order"
-                    onClick={() => fill('sequence')}
-                  />
-                  <FillTile
-                    icon={Images}
-                    label="Per page"
-                    hint="Each photo fills a page of its own"
-                    onClick={() => fill('per_page')}
-                  />
+        <StudioSplit
+          side={
+            <>
+              {/* ── photos, and how they go in ── */}
+              {modeSwitch}
+              <section className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold">{layoutName}</h3>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {paperName(spec, 'mm')} · {plural(cells.length, 'cell')}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Or drag a photo onto any cell. Press a photo above to pick which one “Same photo” uses.
-                </p>
-                {filled > 0 ? (
+                {/* Two acts that are easy to take for one another, so each says what it is: this layout's cells, or another layout. */}
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
-                    className={cn(buttonClass('ghost', 'sm'), 'self-start text-muted-foreground')}
-                    onClick={() => fill('manual')}
+                    title="Move, resize, add or remove cells for this print only. Your photos stay."
+                    className={buttonClass('secondary', 'sm')}
+                    onClick={() => setAdjusting(true)}
                   >
-                    <X aria-hidden="true" className="size-3.5" />
-                    Empty every cell
+                    <PencilRuler aria-hidden="true" className="size-3.5" />
+                    Adjust
                   </button>
+                  <button
+                    type="button"
+                    title="Choose another layout. This starts over."
+                    className={buttonClass('secondary', 'sm')}
+                    onClick={onChangeLayout}
+                  >
+                    <LayoutTemplate aria-hidden="true" className="size-3.5" />
+                    Change
+                  </button>
+                </div>
+                {layout.once || adjusted ? (
+                  <p className="text-xs text-muted-foreground">
+                    {layout.once
+                      ? 'For this print only. It is not saved.'
+                      : 'Adjusted for this print only. The saved layout is as it was.'}
+                  </p>
                 ) : null}
               </section>
-            ) : null}
-
-            <BorderCard guides={guides} border={border} onGuides={setGuides} onBorder={setBorder} />
-
-            {toolPhoto ? (
-              <PhotoPanel
-                name={toolPhoto.name}
-                edit={edits.get(toolPhoto.id) ?? NO_PHOTO_EDIT}
-                onChange={(edit) => setEdits((current) => new Map(current).set(toolPhoto.id, edit))}
+              <PaperChoice
+                page={printOn}
+                onPaper={setPaperValue}
+                onOrientation={setOrientationValue}
+                otherPaperNote={otherPaperNote(chosen)}
               />
-            ) : null}
-          </>
-        }
-        output={
-          <OutputBar
-            state={state}
-            summary={
-              filled === 0
-                ? 'Nothing to print yet.'
-                : `${plural(pages.length, 'page')} · ${plural(filled, 'photo')} placed`
-            }
-            copies={copies}
-            onCopies={setCopies}
-            calibrations={calibrations.data ?? []}
-            calibrationId={calibrationId}
-            onCalibration={setCalibrationId}
-            canMake={filled > 0}
-            result={result}
-            make={make}
-            fileName={resultFileName(layout.name)}
-            entry={(made) => ({
-              kind: 'layout',
-              layoutId: layout.id,
-              layoutName: layout.name,
-              paperLabel: paperName(spec, 'mm'),
-              paperWidth: sheet.width,
-              paperHeight: sheet.height,
-              pages: made.pages,
-              copies: made.copies,
-              fileNames: usedPhotoIds(pages).flatMap((id) => photoMap.get(id)?.name ?? []),
-            })}
-            hasWork={photos.length > 0}
-            onStartOver={clearEverything}
-            onError={setError}
-            commands={output}
-          />
-        }
-        footer={
-          <ShortcutBar entries={printShortcutBar(keyContext, state.keymap)} onPress={(key) => void performKey(key)} />
-        }
-      >
-        {/* ── the sheet: one card, its toolbar a rail down the left edge and everything else of it the paper ── */}
-        <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-xs">
-          <SelectionBar
-            count={selection.length}
-            filled={filledSelection.length}
-            frame={selectedPhoto ? selectedFrame : null}
-            warning={warning}
-            pickedPhoto={photoMap.get(activePhotoId ?? '')?.name ?? null}
-            onZoom={(zoom) => reframe((frame) => ({ ...frame, zoom }))}
-            onTurn={() => reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }))}
-            onReset={() => reframe(resetFrame)}
-            onFree={setFree}
-            onSelectSamePhoto={selectedPhoto && primary ? () => setSelection(cellsLike(pages, 'photo', primary)) : null}
-            onSelectAll={() => {
-              // From the pressed cell when it has a photo; from any filled cell otherwise.
-              const from = selectedPhoto && primary ? primary : firstFilled(pages);
-              if (from) setSelection(cellsLike(pages, 'all', from));
-            }}
-            onPut={() => placeInSelection(activePhotoId)}
-            onClear={() => placeInSelection(null)}
-            onDone={() => setSelection([])}
-            idleHint={
-              filled > 0
-                ? 'Press a photo on the sheet to zoom, turn or place it freely: its tools appear here. Drag it to move it.'
-                : 'Add photos on the left and they are placed for you.'
-            }
-          />
+              {layout.foreign ? (
+                <p className="-mt-1.5 px-1 text-xs text-muted-foreground">
+                  Somebody else made this layout. Its margins were set for their printer and may not suit yours.
+                </p>
+              ) : null}
 
-          <div className="flex min-h-0 min-w-0 flex-1 bg-muted/30">
-            <SheetFrame
-              zoom={viewZoom}
-              onZoom={setViewZoom}
-              tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
-              rulers={{ unit: rulerUnit, sheet, highlight: selectedOnSheet }}
-              dock={
-                pages.length > 1 || filled > 0 ? (
-                  <>
-                    {/* The selection is kept across pages: it may span them ("every cell with this photo"). */}
-                    <Pager count={pages.length} current={pageIndex} noun="Page" onChange={setPageIndex} />
-                    <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
-                    <button type="button" className={buttonClass('ghost', 'sm')} onClick={addOnePage}>
-                      <Plus aria-hidden="true" className="size-3.5" />
-                      Add a page
+              <PhotoTray
+                photos={photos}
+                activeId={activePhotoId}
+                edits={edits}
+                loading={loading}
+                onPick={setActivePhotoId}
+                onAdd={(files) => void addFiles(files)}
+                onRemove={removePhoto}
+              />
+
+              {photos.length > 0 ? (
+                <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+                  <h3 className="text-sm font-semibold">Arrange them</h3>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <FillTile
+                      icon={Square}
+                      label="Same photo"
+                      hint="The picked photo in every cell"
+                      onClick={() => fill('same')}
+                    />
+                    <FillTile
+                      icon={Rows3}
+                      label="One each"
+                      hint="One photo per cell, in order"
+                      onClick={() => fill('sequence')}
+                    />
+                    <FillTile
+                      icon={Images}
+                      label="Per page"
+                      hint="Each photo fills a page of its own"
+                      onClick={() => fill('per_page')}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Or drag a photo onto any cell. Press a photo above to pick which one “Same photo” uses.
+                  </p>
+                  {filled > 0 ? (
+                    <button
+                      type="button"
+                      className={cn(buttonClass('ghost', 'sm'), 'self-start text-muted-foreground')}
+                      onClick={() => fill('manual')}
+                    >
+                      <X aria-hidden="true" className="size-3.5" />
+                      Empty every cell
                     </button>
-                    {pages.length > 1 ? (
-                      <button
-                        type="button"
-                        aria-label={`Remove page ${pageIndex + 1}`}
-                        title={`Remove page ${pageIndex + 1}`}
-                        className={cn(buttonClass('ghost', 'sm'), 'px-2 text-destructive hover:bg-destructive/10')}
-                        onClick={removeCurrentPage}
-                      >
-                        <Trash2 aria-hidden="true" className="size-3.5" />
-                      </button>
-                    ) : null}
-                  </>
-                ) : undefined
+                  ) : null}
+                </section>
+              ) : null}
+
+              <BorderCard guides={guides} border={border} onGuides={setGuides} onBorder={setBorder} />
+
+              {toolPhoto ? (
+                <PhotoPanel
+                  name={toolPhoto.name}
+                  edit={edits.get(toolPhoto.id) ?? NO_PHOTO_EDIT}
+                  onChange={(edit) => setEdits((current) => new Map(current).set(toolPhoto.id, edit))}
+                />
+              ) : null}
+            </>
+          }
+          output={
+            <OutputBar
+              state={state}
+              summary={
+                filled === 0
+                  ? 'Nothing to print yet.'
+                  : `${plural(pages.length, 'page')} · ${plural(filled, 'photo')} placed`
               }
-            >
-              <div
-                data-studio-paper
-                className="relative shadow-md ring-1 ring-border"
-                style={{ width: fitWidth(sheet, viewZoom) }}
-              >
-                <canvas ref={canvas} className="block h-auto w-full" />
-                {/*
-                 * The cells, as real buttons laid over the drawing: each sits exactly on its cell, by
-                 * percentages of the sheet, so the layer scales with the canvas under it.
-                 */}
-                <ul
-                  ref={overlay}
-                  aria-label={`Page ${pageIndex + 1} of ${layout.name}`}
-                  className="absolute inset-0 m-0 list-none p-0"
-                >
-                  {cells.map((cell, index) => {
-                    const photo = photoMap.get(page[index] ?? '');
-                    const chosen = hasCell(selection, { page: pageIndex, cell: index });
-                    const at = cellOnSheet(spec, cell);
-                    return (
-                      // Cells never overlap, so a cell's top left names it and no other.
-                      <li key={`${cell.x}:${cell.y}`}>
+              copies={copies}
+              onCopies={setCopies}
+              calibrations={calibrations.data ?? []}
+              calibrationId={calibrationId}
+              onCalibration={setCalibrationId}
+              canMake={filled > 0}
+              result={result}
+              make={make}
+              fileName={resultFileName(layoutName)}
+              entry={(made) => ({
+                kind: 'layout',
+                layoutId,
+                layoutName,
+                paperLabel: paperName(spec, 'mm'),
+                paperWidth: sheet.width,
+                paperHeight: sheet.height,
+                pages: made.pages,
+                copies: made.copies,
+                fileNames: usedPhotoIds(pages).flatMap((id) => photoMap.get(id)?.name ?? []),
+              })}
+              hasWork={photos.length > 0}
+              onStartOver={clearEverything}
+              onError={setError}
+              commands={output}
+            />
+          }
+          footer={
+            <ShortcutBar entries={printShortcutBar(keyContext, state.keymap)} onPress={(key) => void performKey(key)} />
+          }
+        >
+          {/* ── the sheet: one card, its toolbar a rail down the left edge and everything else of it the paper ── */}
+          <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+            <SelectionBar
+              count={selection.length}
+              filled={filledSelection.length}
+              frame={selectedPhoto ? selectedFrame : null}
+              warning={warning}
+              pickedPhoto={photoMap.get(activePhotoId ?? '')?.name ?? null}
+              onZoom={(zoom) => reframe((frame) => ({ ...frame, zoom }))}
+              onTurn={() => reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }))}
+              onReset={() => reframe(resetFrame)}
+              onFree={setFree}
+              onSelectSamePhoto={
+                selectedPhoto && primary ? () => setSelection(cellsLike(pages, 'photo', primary)) : null
+              }
+              onSelectAll={() => {
+                // From the pressed cell when it has a photo; from any filled cell otherwise.
+                const from = selectedPhoto && primary ? primary : firstFilled(pages);
+                if (from) setSelection(cellsLike(pages, 'all', from));
+              }}
+              onPut={() => placeInSelection(activePhotoId)}
+              onClear={() => placeInSelection(null)}
+              onDone={() => setSelection([])}
+              idleHint={
+                filled > 0
+                  ? 'Press a photo on the sheet to zoom, turn or place it freely: its tools appear here. Drag it to move it.'
+                  : 'Add photos on the left and they are placed for you.'
+              }
+            />
+
+            <div className="flex min-h-0 min-w-0 flex-1 bg-muted/30">
+              <SheetFrame
+                zoom={viewZoom}
+                onZoom={setViewZoom}
+                tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
+                rulers={{ unit: rulerUnit, sheet, highlight: selectedOnSheet }}
+                dock={
+                  pages.length > 1 || filled > 0 ? (
+                    <>
+                      {/* The selection is kept across pages: it may span them ("every cell with this photo"). */}
+                      <Pager count={pages.length} current={pageIndex} noun="Page" onChange={setPageIndex} />
+                      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+                      <button type="button" className={buttonClass('ghost', 'sm')} onClick={addOnePage}>
+                        <Plus aria-hidden="true" className="size-3.5" />
+                        Add a page
+                      </button>
+                      {pages.length > 1 ? (
                         <button
                           type="button"
-                          aria-label={`Cell ${index + 1}${cell.label ? `, ${cell.label}` : ''}: ${photo ? photo.name : 'empty'}`}
-                          aria-pressed={chosen}
-                          style={{
-                            left: `${(at.x / sheet.width) * 100}%`,
-                            top: `${(at.y / sheet.height) * 100}%`,
-                            width: `${(at.width / sheet.width) * 100}%`,
-                            height: `${(at.height / sheet.height) * 100}%`,
-                            // A blue line with a white one inside it: seen on a light photo and on a dark one.
-                            ...(chosen
-                              ? {
-                                  outline: `3px solid ${SELECTED}`,
-                                  outlineOffset: '-3px',
-                                  boxShadow: 'inset 0 0 0 4px #ffffff',
-                                }
-                              : {}),
-                          }}
-                          className={cn(
-                            'absolute flex touch-none select-none items-center justify-center text-[10px] font-medium',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                            chosen ? 'z-10' : null,
-                            photo ? 'cursor-grab active:cursor-grabbing' : null,
-                          )}
-                          onClick={(event) => {
-                            if (dragged.current) return;
-                            pressCell(index, event.ctrlKey || event.metaKey || event.shiftKey);
-                          }}
-                          onPointerDown={(event) => beginDrag(event, index)}
-                          onPointerMove={(event) => duringDrag(event, index)}
-                          onPointerUp={endDrag}
-                          onPointerCancel={endDrag}
-                          onDragOver={(event) => {
-                            if (event.dataTransfer.types.includes(DRAG_TYPE)) event.preventDefault();
-                          }}
-                          onDrop={(event) => dropOnCell(event, index)}
+                          aria-label={`Remove page ${pageIndex + 1}`}
+                          title={`Remove page ${pageIndex + 1}`}
+                          className={cn(buttonClass('ghost', 'sm'), 'px-2 text-destructive hover:bg-destructive/10')}
+                          onClick={removeCurrentPage}
                         >
-                          {photo ? null : (
-                            // An empty cell, drawn on the white paper: literal colours, as the paper's are.
-                            <span
-                              // ⚠ `overflow-hidden`: a long label is cut at the cell's edge, never written across the next cell.
-                              className="flex size-full items-center justify-center overflow-hidden whitespace-nowrap border border-dashed"
-                              style={{
-                                borderColor: SELECTED,
-                                color: SELECTED,
-                                backgroundColor: 'rgba(37, 99, 235, 0.06)',
-                              }}
-                            >
-                              {cell.label ?? ''}
-                            </span>
-                          )}
+                          <Trash2 aria-hidden="true" className="size-3.5" />
                         </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </SheetFrame>
+                      ) : null}
+                    </>
+                  ) : undefined
+                }
+              >
+                <div
+                  data-studio-paper
+                  className="relative shadow-md ring-1 ring-border"
+                  style={{ width: fitWidth(sheet, viewZoom) }}
+                >
+                  <canvas ref={canvas} className="block h-auto w-full" />
+                  {/*
+                   * The cells, as real buttons laid over the drawing: each sits exactly on its cell, by
+                   * percentages of the sheet, so the layer scales with the canvas under it.
+                   */}
+                  <ul
+                    ref={overlay}
+                    aria-label={`Page ${pageIndex + 1} of ${layoutName}`}
+                    className="absolute inset-0 m-0 list-none p-0"
+                  >
+                    {cells.map((cell, index) => {
+                      const photo = photoMap.get(page[index] ?? '');
+                      const chosen = hasCell(selection, { page: pageIndex, cell: index });
+                      const at = cellOnSheet(spec, cell);
+                      return (
+                        // Cells never overlap, so a cell's top left names it and no other.
+                        <li key={`${cell.x}:${cell.y}`}>
+                          <button
+                            type="button"
+                            aria-label={`Cell ${index + 1}${cell.label ? `, ${cell.label}` : ''}: ${photo ? photo.name : 'empty'}`}
+                            aria-pressed={chosen}
+                            style={{
+                              left: `${(at.x / sheet.width) * 100}%`,
+                              top: `${(at.y / sheet.height) * 100}%`,
+                              width: `${(at.width / sheet.width) * 100}%`,
+                              height: `${(at.height / sheet.height) * 100}%`,
+                              // A blue line with a white one inside it: seen on a light photo and on a dark one.
+                              ...(chosen
+                                ? {
+                                    outline: `3px solid ${SELECTED}`,
+                                    outlineOffset: '-3px',
+                                    boxShadow: 'inset 0 0 0 4px #ffffff',
+                                  }
+                                : {}),
+                            }}
+                            className={cn(
+                              'absolute flex touch-none select-none items-center justify-center text-[10px] font-medium',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                              chosen ? 'z-10' : null,
+                              photo ? 'cursor-grab active:cursor-grabbing' : null,
+                            )}
+                            onClick={(event) => {
+                              if (dragged.current) return;
+                              pressCell(index, event.ctrlKey || event.metaKey || event.shiftKey);
+                            }}
+                            onPointerDown={(event) => beginDrag(event, index)}
+                            onPointerMove={(event) => duringDrag(event, index)}
+                            onPointerUp={endDrag}
+                            onPointerCancel={endDrag}
+                            onDragOver={(event) => {
+                              if (event.dataTransfer.types.includes(DRAG_TYPE)) event.preventDefault();
+                            }}
+                            onDrop={(event) => dropOnCell(event, index)}
+                          >
+                            {photo ? null : (
+                              // An empty cell, drawn on the white paper: literal colours, as the paper's are.
+                              <span
+                                // ⚠ `overflow-hidden`: a long label is cut at the cell's edge, never written across the next cell.
+                                className="flex size-full items-center justify-center overflow-hidden whitespace-nowrap border border-dashed"
+                                style={{
+                                  borderColor: SELECTED,
+                                  color: SELECTED,
+                                  backgroundColor: 'rgba(37, 99, 235, 0.06)',
+                                }}
+                              >
+                                {cell.label ?? ''}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </SheetFrame>
+            </div>
           </div>
-        </div>
-      </StudioSplit>
-    </div>
+        </StudioSplit>
+      </div>
+    </>
   );
 }
 

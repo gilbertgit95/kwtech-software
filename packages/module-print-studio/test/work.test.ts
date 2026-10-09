@@ -10,10 +10,13 @@ import {
   isPdfFile,
   isPhotoFile,
   previewDpi,
+  printLayoutName,
   pruneFrames,
   pruneSelection,
+  refitPages,
   removePageFrames,
   resultFileName,
+  STUDIO_ONCE_LAYOUT_NAME,
   setCellsPhoto,
   stepViewZoom,
   toggleCell,
@@ -172,5 +175,61 @@ describe('file kinds', () => {
     expect(isHeicFile({ name: 'a.jpg', type: 'image/jpeg' })).toBe(false);
     expect(isPdfFile({ name: 'scan.PDF', type: '' })).toBe(true);
     expect(isPdfFile({ name: 'a.docx', type: '' })).toBe(false);
+  });
+});
+
+describe('a layout adjusted for one print', () => {
+  const cell = (x: number, y: number) => ({ x, y, width: mm(40), height: mm(40) });
+  // Reading order is the order they are written in: two across, then the row under them.
+  const two = [cell(0, 0), cell(mm(50), 0)];
+  const three = [...two, cell(0, mm(50))];
+
+  it('leaves every photo in its cell when the cells were only moved or resized', () => {
+    const pages = [
+      ['ana', null],
+      ['ben', 'ana'],
+    ];
+    const moved = [cell(mm(5), mm(5)), cell(mm(60), 0)];
+    expect(refitPages(pages, moved)).toEqual({ pages, dropped: 0, kept: true });
+  });
+
+  it('gives each page its one photo in every new cell: the same photo, or a customer a page', () => {
+    const refit = refitPages(
+      [
+        ['ana', 'ana'],
+        ['ben', null],
+        [null, null],
+      ],
+      three,
+    );
+    expect(refit.kept).toBe(false);
+    expect(refit.pages).toEqual([
+      ['ana', 'ana', 'ana'],
+      ['ben', 'ben', 'ben'],
+      [null, null, null],
+    ]);
+  });
+
+  it('lays mixed photos out one per cell again, and only the ones that were placed', () => {
+    // "cy" was added to the tray and never put on the sheet: it stays there.
+    const refit = refitPages(
+      [
+        ['ana', 'ben'],
+        ['dan', null],
+      ],
+      three,
+    );
+    expect(refit).toEqual({ pages: [['ana', 'ben', 'dan']], dropped: 0, kept: false });
+  });
+
+  it('is one empty page when nothing was placed yet', () => {
+    expect(refitPages([[null, null]], three)).toEqual({ pages: [[null, null, null]], dropped: 0, kept: false });
+  });
+
+  it('is named so the history does not take it for the saved layout', () => {
+    expect(printLayoutName('ID package', true)).toBe('ID package, adjusted');
+    expect(printLayoutName('ID package', false)).toBe('ID package');
+    expect(resultFileName(printLayoutName('ID package', true))).toBe('ID-package-adjusted.pdf');
+    expect(resultFileName(STUDIO_ONCE_LAYOUT_NAME)).toBe('One-time-layout.pdf');
   });
 });

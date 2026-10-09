@@ -63,6 +63,29 @@ export interface EditorTarget {
   spec: StudioLayoutSpec;
 }
 
+/**
+ * What the editor is open FOR.
+ *
+ *   save — a layout that is kept: it is named, filed and shared, and written
+ *          through the API.
+ *   once — a layout for the print in hand (the operator, 2026-10-09). It is
+ *          handed back and never sent anywhere, so it has no name, tag or
+ *          audience to ask for, and needs no `studio:write`.
+ */
+export type EditorPurpose =
+  | {
+      kind: 'save';
+      /** Tags to offer while one is typed: the ones already in use, so a second spelling is not made by accident. */
+      tags: readonly string[];
+      onSaved: () => void;
+    }
+  | { kind: 'once'; onUse: (spec: StudioLayoutSpec) => void };
+
+/** What the editor is opened on for one print: the cells to start from, under the name the print goes by. */
+export function onceEditorTarget(spec: StudioLayoutSpec, name: string): EditorTarget {
+  return { id: null, version: 0, name, visibility: 'private', tag: null, spec };
+}
+
 /** Why a draft cannot be saved, in the editor's own words. */
 const PROBLEMS: Partial<Record<StudioRefusal, string>> = {
   no_printable_area: 'These margins leave nothing to print on.',
@@ -106,15 +129,12 @@ const NUDGE = mm(1);
 export function LayoutEditor({
   state,
   target,
-  tags,
-  onSaved,
+  purpose,
   onCancel,
 }: {
   state: StudioAppState;
   target: EditorTarget;
-  /** Tags to offer while one is typed: the ones already in use, so a second spelling is not made by accident. */
-  tags: readonly string[];
-  onSaved: () => void;
+  purpose: EditorPurpose;
   onCancel: () => void;
 }) {
   const nameId = useId();
@@ -250,6 +270,7 @@ export function LayoutEditor({
   useStudioKeys(root, performKey);
 
   async function submit() {
+    if (purpose.kind === 'once') return;
     const prepared = prepareLayoutName(name);
     if ('refused' in prepared) {
       setNameError(true);
@@ -276,53 +297,78 @@ export function LayoutEditor({
       // Sharing is its own act, and the owner's alone: only sent when it changed.
       if (visibility !== target.visibility) await state.client.setVisibility(state.scope, target.id, visibility);
     });
-    if (done) onSaved();
+    if (done) purpose.onSaved();
   }
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3">
       {/* ── the bar: what it is called, what it is filed under, who sees it, and the way out ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={nameId} className="sr-only">
-          Layout name
-        </label>
-        <input
-          id={nameId}
-          aria-invalid={nameError ? true : undefined}
-          className={cn(
-            INPUT_CLASS,
-            'h-10 min-w-48 flex-1 text-base font-medium',
-            nameError ? 'border-destructive' : null,
-          )}
-          value={name}
-          placeholder={nameError ? 'Give the layout a name to save it' : 'Name this layout — for example “ID package”'}
-          onChange={(event) => {
-            setName(event.target.value);
-            setNameError(false);
-          }}
-        />
-        <TagInput className="w-44 shrink-0" value={tag} onChange={setTag} tags={tags} />
-        <Segmented
-          label="Who can use this layout"
-          value={visibility}
-          onChange={setVisibility}
-          options={[
-            { value: 'private', label: 'Only me' },
-            { value: 'workspace', label: 'Everyone here' },
-          ]}
-        />
-        <button type="button" className={buttonClass('ghost')} disabled={save.busy} onClick={onCancel}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={buttonClass('primary')}
-          disabled={save.busy || problem !== null}
-          onClick={() => void submit()}
-        >
-          {save.busy ? 'Saving…' : 'Save layout'}
-        </button>
-      </div>
+      {purpose.kind === 'once' ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-48 flex-1">
+            <h2 className="text-base font-semibold">A layout for this print only</h2>
+            <p className="text-sm text-muted-foreground">
+              Nothing here is saved, and no saved layout is changed. It is gone when you start over.
+            </p>
+          </div>
+          <button type="button" className={buttonClass('ghost')} onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={buttonClass('primary')}
+            // ⚠ No cells is nothing to print on: a saved layout may wait for its cells, a print cannot.
+            disabled={problem !== null || spec.cells.length === 0}
+            onClick={() => purpose.onUse(spec)}
+          >
+            Use for this print
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor={nameId} className="sr-only">
+            Layout name
+          </label>
+          <input
+            id={nameId}
+            aria-invalid={nameError ? true : undefined}
+            className={cn(
+              INPUT_CLASS,
+              'h-10 min-w-48 flex-1 text-base font-medium',
+              nameError ? 'border-destructive' : null,
+            )}
+            value={name}
+            placeholder={
+              nameError ? 'Give the layout a name to save it' : 'Name this layout — for example “ID package”'
+            }
+            onChange={(event) => {
+              setName(event.target.value);
+              setNameError(false);
+            }}
+          />
+          <TagInput className="w-44 shrink-0" value={tag} onChange={setTag} tags={purpose.tags} />
+          <Segmented
+            label="Who can use this layout"
+            value={visibility}
+            onChange={setVisibility}
+            options={[
+              { value: 'private', label: 'Only me' },
+              { value: 'workspace', label: 'Everyone here' },
+            ]}
+          />
+          <button type="button" className={buttonClass('ghost')} disabled={save.busy} onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={buttonClass('primary')}
+            disabled={save.busy || problem !== null}
+            onClick={() => void submit()}
+          >
+            {save.busy ? 'Saving…' : 'Save layout'}
+          </button>
+        </div>
+      )}
       <Alert message={save.error} onDismiss={save.dismissError} />
 
       <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground @2xl:hidden">

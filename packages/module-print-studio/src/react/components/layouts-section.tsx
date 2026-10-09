@@ -23,7 +23,7 @@ import { Alert, Empty, EmptyState } from './layout.js';
 import { type EditorTarget, LayoutEditor } from './layout-editor.js';
 import { SheetView } from './sheet-view.js';
 
-/** A layout chosen to print with: a saved one, a preset, or one being tried before saving. */
+/** A layout chosen to print with: a saved one, a preset, or one made for this print only. */
 export interface ChosenLayout {
   /** The saved layout's id, or null for a preset. Recorded in the print history. */
   id: string | null;
@@ -31,6 +31,8 @@ export interface ChosenLayout {
   spec: StudioLayoutSpec;
   /** Somebody else's shared layout: its margins were set for THEIR printer. */
   foreign: boolean;
+  /** Made on the Print screen for this print and never saved: it has no row, and goes with the print. */
+  once?: boolean;
 }
 
 /** A new layout starts on the default paper and margins (`defaultLayoutSpec`), with no cells. */
@@ -70,12 +72,15 @@ export function LayoutsSection({ state, onUse }: { state: StudioAppState; onUse:
       <LayoutEditor
         state={state}
         target={editing}
-        tags={studioTagSuggestions((layouts.data ?? []).map(byTag))}
-        onCancel={() => setEditing(null)}
-        onSaved={() => {
-          setEditing(null);
-          void layouts.reload();
+        purpose={{
+          kind: 'save',
+          tags: studioTagSuggestions((layouts.data ?? []).map(byTag)),
+          onSaved: () => {
+            setEditing(null);
+            void layouts.reload();
+          },
         }}
+        onCancel={() => setEditing(null)}
       />
     );
   }
