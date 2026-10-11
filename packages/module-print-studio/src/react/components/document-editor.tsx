@@ -27,7 +27,6 @@ import {
   Plus,
   Redo2,
   RemoveFormatting,
-  Ruler,
   Save,
   SeparatorHorizontal,
   Strikethrough,
@@ -83,12 +82,15 @@ import {
 import { makeDocumentResult, type StudioDocument } from '../render/document.js';
 import type { StudioResult } from '../render/result.js';
 import type { StudioAppState } from '../studio-state.js';
+import type { StudioRulerUnit } from '../view/ruler-ticks.js';
 import { paperName, plural } from '../view/summary.js';
 import { resultFileName } from '../view/work.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
+import { type StudioEditorRulers, watchEditorRulers } from './document-rulers.js';
 import { Alert, StudioSplit } from './layout.js';
 import { OutputBar } from './output-bar.js';
 import { defaultPaper, PaperPicker } from './paper-fields.js';
+import { RulerMenu } from './sheet-rulers.js';
 
 /** A sheet with nothing taken off it: a written page is printed exactly the paper's size. */
 const NO_MARGINS = { top: 0, right: 0, bottom: 0, left: 0 } as const;
@@ -187,15 +189,20 @@ export function DocumentEditor({
    */
   const [result, setResult] = useState<StudioResult | null>(null);
   /**
-   * The rulers along the page's top and left edge, as in Google Docs: on to begin with, and held in memory only
-   * (the studio writes nothing to browser storage). A way of looking, so never saved in the document.
+   * The rulers along the page's top and left edge, as in Google Docs, and what they count in — null for none.
+   * On to begin with, in centimetres, and held in memory only (the studio writes nothing to browser storage).
+   * A way of looking, so never saved in the document.
+   *
+   * ⚠ Not the preview's choice (`useRulerUnit`), which starts OFF: sharing it would open every new document
+   * without the rulers its margins are dragged on.
    */
-  const [showRuler, setShowRuler] = useState(true);
+  const [rulerUnit, setRulerUnit] = useState<StudioRulerUnit | null>('cm');
+  const rulersRef = useRef<StudioEditorRulers | null>(null);
   // Read by the editor's callbacks, which are made once and would otherwise see the first render's values.
   const setupRef = useRef(setup);
   setupRef.current = setup;
-  const rulerRef = useRef(showRuler);
-  rulerRef.current = showRuler;
+  const rulerRef = useRef(rulerUnit);
+  rulerRef.current = rulerUnit;
 
   // The editor is made once, from the settings as they are then; later changes are sent to it by the effect below.
   const startRef = useRef({ setup, content: initial?.content ?? null });
@@ -211,7 +218,7 @@ export function DocumentEditor({
         made = new lib.Editor(
           host.current,
           editorData(start.content),
-          editorOptions(lib, start.setup, rulerRef.current, scrollId),
+          editorOptions(lib, start.setup, rulerRef.current !== null, scrollId),
         );
         /*
          * ⚠ A STYLE WITH NO `type` IS THE LIBRARY'S RESET, NOT THE CURSOR'S, and is ignored. On a mousedown anywhere
@@ -235,6 +242,13 @@ export function DocumentEditor({
         // pages would read "1 page". So the pages already drawn are counted once, here.
         setPageCount(Math.max(1, host.current.querySelectorAll('.ce-page-container > canvas').length));
         editorRef.current = made;
+        // The library's rulers count in centimetres only: they are painted over in the chosen unit after each draw.
+        const editor = made;
+        rulersRef.current = watchEditorRulers(host.current, () => {
+          const unit = rulerRef.current;
+          if (!unit) return null;
+          return { unit, scale: editor.command.getOptions().scale, margins: editor.command.getPaperMargin() };
+        });
         setReady(true);
       })
       .catch(() => {
@@ -267,6 +281,8 @@ export function DocumentEditor({
     return () => {
       cancelled = true;
       document.removeEventListener('mouseup', readMarginsBack);
+      rulersRef.current?.stop();
+      rulersRef.current = null;
       made?.destroy();
       editorRef.current = null;
     };
@@ -284,15 +300,18 @@ export function DocumentEditor({
      * its margins and its Chinese menus. Seen on 2026-10-11. The page size and margins go after it, by their
      * own commands, which also lay the pages out again.
      */
-    editor.command.executeUpdateOptions(updatableOptions(lib, setup, rulerRef.current));
+    editor.command.executeUpdateOptions(updatableOptions(lib, setup, rulerRef.current !== null));
     editor.command.executePaperSize(toEditorPixels(sheet.width), toEditorPixels(sheet.height));
     editor.command.executeSetPaperMargin(marginPixels(setup.margins));
   }, [ready, setup]);
 
   // Shown or hidden by the library's own command, which keeps the option it reads in step.
+  // ⚠ That command does nothing when the rulers already show, so a change of unit alone is painted here.
   useEffect(() => {
-    if (ready) editorRef.current?.command.executeToggleRuler(showRuler);
-  }, [ready, showRuler]);
+    if (!ready) return;
+    editorRef.current?.command.executeToggleRuler(rulerUnit !== null);
+    rulersRef.current?.repaint();
+  }, [ready, rulerUnit]);
 
   /** Run a command on the editor, when there is one. Every toolbar button goes through here. */
   function run(apply: (command: EditorCommand, lib: CanvasEditorLib) => void) {
@@ -587,8 +606,8 @@ export function DocumentEditor({
             style={style}
             points={points}
             scale={scale}
-            ruler={showRuler}
-            onRuler={() => setShowRuler((current) => !current)}
+            rulerUnit={rulerUnit}
+            onRulerUnit={setRulerUnit}
             disabled={!ready}
             run={run}
             onDone={focusEditor}
@@ -752,8 +771,8 @@ function Toolbar({
   style,
   points,
   scale,
-  ruler,
-  onRuler,
+  rulerUnit,
+  onRulerUnit,
   disabled,
   run,
   onDone,
@@ -763,9 +782,9 @@ function Toolbar({
   /** The font size at the cursor, in points. */
   points: number;
   scale: number;
-  /** The rulers are showing. */
-  ruler: boolean;
-  onRuler: () => void;
+  /** What the rulers count in, or null while they are hidden. */
+  rulerUnit: StudioRulerUnit | null;
+  onRulerUnit: (unit: StudioRulerUnit | null) => void;
   disabled: boolean;
   run: (apply: (command: EditorCommand, lib: CanvasEditorLib) => void) => void;
   /** Give the keyboard back to the document without changing anything. */
@@ -1003,7 +1022,7 @@ function Toolbar({
         disabled={disabled}
         onPress={() => run((c) => c.executePageScaleAdd())}
       />
-      <ToolButton icon={Ruler} label="Show the rulers" pressed={ruler} disabled={disabled} onPress={onRuler} />
+      <RulerMenu unit={rulerUnit} onUnit={onRulerUnit} side="bottom" disabled={disabled} onClosed={onDone} />
     </div>
   );
 }
@@ -1268,7 +1287,7 @@ function updatableOptions(lib: CanvasEditorLib, setup: StudioDocumentSetup, rule
     background: backgroundOption(lib, setup),
     // ⚠ The library numbers every page unless told not to; Google Docs does not.
     pageNumber: { disabled: !setup.pageNumbers, font: STUDIO_DEFAULT_FONT },
-    // In mm, with the margins' markers to drag. Here too, or an update of the other options would hide it.
+    // With the margins' markers to drag. Here too, or an update of the other options would hide it.
     ruler: { disabled: !ruler },
     /*
      * Here and not by `executeSetColumns`, which sets the same option: an update of the others would otherwise

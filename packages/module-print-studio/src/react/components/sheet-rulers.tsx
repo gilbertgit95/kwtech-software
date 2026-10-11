@@ -235,13 +235,27 @@ export function RulerCorner({ unit }: { unit: StudioRulerUnit }) {
   );
 }
 
-/** The rulers' switch, for the view's toolbar: none, or one of the units. */
+/**
+ * The rulers' switch, for a toolbar: none, or one of the units. Under the
+ * preview it opens upwards, the bar being at the bottom; the document
+ * editor's toolbar is at the top, so there it opens downwards.
+ */
 export function RulerMenu({
   unit,
   onUnit,
+  side = 'top',
+  disabled = false,
+  onClosed,
 }: {
   unit: StudioRulerUnit | null;
   onUnit: (unit: StudioRulerUnit | null) => void;
+  side?: 'top' | 'bottom';
+  disabled?: boolean;
+  /**
+   * Called when the menu closes, INSTEAD of the focus going back to its button: the document editor gives the
+   * keyboard back to the page. Omitted, the button takes the focus again, as a menu's does.
+   */
+  onClosed?: () => void;
 }) {
   const choices: { value: StudioRulerUnit | null; label: string }[] = [
     { value: null, label: 'No rulers' },
@@ -252,16 +266,29 @@ export function RulerMenu({
       <DropdownMenuTrigger
         aria-label={unit ? `Rulers in ${STUDIO_RULER_UNIT_LABELS[unit].toLowerCase()}` : 'Rulers: off'}
         title="Rulers"
+        disabled={disabled}
         className={cn(
-          'flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors hover:bg-accent',
+          'flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors hover:bg-accent',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'disabled:pointer-events-none disabled:opacity-40',
           unit ? 'text-primary' : 'text-foreground',
         )}
       >
         <Ruler aria-hidden="true" className="size-4" />
         {unit ?? 'Off'}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top">
+      <DropdownMenuContent
+        align="end"
+        side={side}
+        {...(onClosed
+          ? {
+              onCloseAutoFocus: (event: Event) => {
+                event.preventDefault();
+                onClosed();
+              },
+            }
+          : {})}
+      >
         {choices.map((choice) => (
           <DropdownMenuItem key={choice.value ?? 'off'} onSelect={() => onUnit(choice.value)}>
             <Check aria-hidden="true" className={cn(choice.value === unit ? 'opacity-100' : 'opacity-0')} />
