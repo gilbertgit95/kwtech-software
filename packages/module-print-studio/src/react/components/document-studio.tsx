@@ -1,8 +1,9 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { FileText, FileUp, X } from 'lucide-react';
+import { FilePen, FileText, FileUp, FolderOpen, X } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { StudioDocumentFile } from '../../domain/custom-document.js';
 import { printableArea, type StudioLayoutPaper, type StudioOrientation, sheetSize } from '../../domain/layout.js';
 import {
   groupIntoSheets,
@@ -15,6 +16,7 @@ import {
   sheetSlots,
 } from '../../domain/page-layout.js';
 import { mm } from '../../domain/units.js';
+import { readDocumentFile } from '../render/custom-document.js';
 import { loadDocument, makeDocumentResult, type StudioDocument } from '../render/document.js';
 import { openPdfPreview, type StudioPdfPreview } from '../render/pdf-preview.js';
 import type { StudioResult } from '../render/result.js';
@@ -22,6 +24,7 @@ import type { StudioAppState } from '../studio-state.js';
 import { paperName, plural } from '../view/summary.js';
 import { resultFileName } from '../view/work.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
+import { DocumentEditor } from './document-editor.js';
 import { Alert, EmptyState, StudioSplit } from './layout.js';
 import { OutputBar } from './output-bar.js';
 import { Pager } from './pager.js';
@@ -53,6 +56,14 @@ const DOCUMENT_GAP = mm(4);
  * sees which pages they are printing and how they sit on the paper. That
  * drawing is for looking only — the result copies the pages themselves. A page
  * that cannot be drawn shows as its number in a box, and still prints.
+ *
+ * ## A document can be WRITTEN here too (the operator, 2026-10-11)
+ *
+ * "Create a document" opens the editor (`DocumentEditor`) in place of this
+ * screen, and prints and downloads by itself, with this screen's output bar:
+ * nothing written ever comes back here. It is kept only as a file the person
+ * saves (`.kwdoc`), and opened again with "Open a saved document", which
+ * hands the file to the editor as `draft`.
  */
 export function DocumentStudio({
   state,
@@ -79,6 +90,11 @@ export function DocumentStudio({
   const [sheetIndex, setSheetIndex] = useState(0);
   const [viewZoom, setViewZoom] = useState(1);
   const [rulerUnit, setRulerUnit] = useRulerUnit();
+  const savedInputId = useId();
+  /** A saved document to open the editor on, or null for a new one. */
+  const [draft, setDraft] = useState<StudioDocumentFile | null>(null);
+  /** The editor is open, in place of this screen. */
+  const [editing, setEditing] = useState(false);
 
   // The drawing library holds the whole document: let go of it when another replaces it, and when the screen goes.
   useEffect(() => () => preview?.close(), [preview]);
@@ -129,6 +145,17 @@ export function DocumentStudio({
     return made;
   }
 
+  async function openSaved(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    try {
+      setDraft(await readDocumentFile(file));
+      setEditing(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not open that document.');
+    }
+  }
+
   function clearEverything() {
     setDocument(null);
     setPreview(null);
@@ -156,14 +183,61 @@ export function DocumentStudio({
     </>
   );
 
+  if (editing) {
+    return (
+      <DocumentEditor
+        state={state}
+        initial={draft}
+        modeSwitch={modeSwitch}
+        onClose={() => {
+          setEditing(false);
+          setDraft(null);
+        }}
+      />
+    );
+  }
+
   if (!document) {
     return (
       <div className="flex flex-col gap-3">
         <div className="self-start">{modeSwitch}</div>
         <Alert message={error} onDismiss={() => setError(null)} />
-        <EmptyState icon={FileText} title="Print a document" action={picker}>
-          Choose a PDF to print as whole pages. It stays on this computer: nothing is uploaded or saved. A Word document
-          needs saving as a PDF first.
+        <EmptyState
+          icon={FileText}
+          title="Print a document"
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              {picker}
+              <button
+                type="button"
+                className={buttonClass('secondary')}
+                onClick={() => {
+                  setDraft(null);
+                  setEditing(true);
+                }}
+              >
+                <FilePen aria-hidden="true" className="size-4" />
+                Create a document
+              </button>
+              <label htmlFor={savedInputId} className={cn(buttonClass('ghost'), 'cursor-pointer')}>
+                <FolderOpen aria-hidden="true" className="size-4" />
+                Open a saved document
+              </label>
+              <input
+                id={savedInputId}
+                type="file"
+                accept=".kwdoc"
+                className="sr-only"
+                onChange={(event) => {
+                  void openSaved(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+              />
+            </div>
+          }
+        >
+          Choose a PDF to print as whole pages, or write one here: a letter, a notice, a form, on the paper you choose.
+          It stays on this computer: nothing is uploaded or saved. A Word document needs saving as a PDF first.
         </EmptyState>
       </div>
     );

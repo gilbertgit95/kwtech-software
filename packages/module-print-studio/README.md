@@ -4,7 +4,8 @@ A layout studio for a print shop, run as a **sub-app** on the workspace's Apps
 page (`module-app-hub`). Staff make a **layout** — a paper, its printable area,
 and the cells that divide it — then put photos in the cells and get a PDF at
 exact physical sizes: sheets of ID photos, photo sizes, combinations. A PDF
-document is printed as whole pages instead.
+document is printed as whole pages instead, and a document can be **written**
+here and printed the same way (see "Writing a document" below).
 
 It is **print and go**: photos, documents and the result live in the browser's
 memory only. **No file is ever uploaded or stored.** What the server keeps is
@@ -139,6 +140,10 @@ shows when the Layouts section is opened again.
   check, and no key overrides that.
 - **Documents** (`page-layout.ts`): `parsePageRange`, `sheetSlots`,
   `placeInSlot`.
+- **Written documents** (`custom-document.ts`): `toEditorPixels` and the point
+  conversions, `checkDocumentSetup` (margins that leave room for the text, on
+  the sheet as turned), `defaultDocumentSetup`, `fitImageToPage`, and
+  `prepareDocumentFile`, the only way a saved file is read back.
 - **Calibration and the history** (`calibration.ts`, `log.ts`).
 - **Shortcut keys** (`keymap.ts`): `STUDIO_KEY_ACTIONS`, `STUDIO_DEFAULT_KEYMAP`,
   `validateStudioKeymap` (run by the settings screen AND the server),
@@ -184,6 +189,60 @@ const STUDIO_PRINTER = createPrintTarget();
   is not recorded.
 - ⚠ Through context, not an option of `studioWebModule`: a sub-app's element
   is made on the server, and functions cannot be passed from there.
+
+## Writing a document
+
+On the **PDF document** side of the Print screen, beside "Choose a PDF", are
+**Create a document** and **Open a saved document**. The editor is
+`@hufe921/canvas-editor` (MIT), a dependency of this package, loaded only when
+a document is first opened. It draws real pages on canvases, so the paper, the
+margins and the page breaks on screen are the print's.
+
+- **The toolbar is laid out like Google Docs':** undo and redo, text style
+  (Normal, Heading 1–4), font, font size in points (picked from a list of 8 to
+  400, typed and sent with Enter, or − / +; a typed size not sent is dropped
+  when the box is left). − and + go to the next size in the list
+  (`nextFontSize`), so a press shows on large letters; a selection of mixed
+  sizes grows or shrinks each piece from its own size instead,
+  bold, italic, underline, strikethrough, text and highlight colour, clear
+  formatting, alignment, line spacing, bulleted and numbered lists, a picture,
+  a 3 × 3 table, a page break, zoom, and the **rulers** (on by default; in cm,
+  along the page's top and left edge, with a marker at each margin to drag —
+  a dragged margin is read back into the margin boxes when the press ends). Tab moves to the next tab stop. A
+  picture is resized by its handles and floated from the right-click menu
+  (the library's, in English).
+- ⚠ **Every toolbar choice gives the keyboard back to the page**, where the
+  cursor and the selection still are. Otherwise the next step is a click into
+  the page, and that click moves the cursor and loses the selection and the
+  style picked for the next words.
+- **The page settings are in the settings column:** a built-in paper,
+  portrait or landscape, four margins in mm (an inch by default), page numbers
+  (off by default), and a **background picture** behind every page, covering it
+  or fitted inside.
+- **Fonts are the computer's.** None is downloaded, so the list is what a
+  Windows computer has (`STUDIO_FONTS`).
+- **Print, Printers and Download PDF are in the editor** (the PDF side's own
+  output bar, with Copies) and act at once, without leaving it: the browser's
+  print dialog, a paired printer, or the file. The pages are drawn at 300 dpi,
+  each on a sheet of the document's own paper at exactly its size (no margin
+  added), and each is recorded in the history under the document's name.
+- **Pages per sheet, a page range and scaling are the browser's**: its print
+  dialog has them (Print), as does any PDF reader for the downloaded file. A
+  second way to print on the PDF screen was tried and taken out: a step that
+  confused more than it gave. ⚠ A paired printer (Printers) gets every page.
+- ⚠ **The pages are pictures in the PDF, not text.** The library has no PDF
+  writer; 300 dpi prints as sharp as text, and the cost is a larger file, held
+  in memory only.
+- ⚠ **A document is kept only as a file**, saved with "Save to this computer"
+  (`.kwdoc`, JSON with the pictures inside it) and opened again later. Nothing
+  is uploaded or stored, as with every other file here. Close asks first when
+  something was not saved. The document stays while Photos is open: the
+  document side is hidden, not unmounted.
+- **A saved file is anybody's**, so it is rebuilt on opening
+  (`prepareDocumentFile`): a built-in paper's size comes from the studio, the
+  margins must leave room for the text, and the background must be a picture
+  held in the file, never a web address. The text and pictures inside are the
+  editor's own data, which the studio does not read.
 
 ## Rules worth knowing
 

@@ -61,7 +61,13 @@ export function PrintSection({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-      {mode === 'document' ? <DocumentStudio state={state} modeSwitch={modeSwitch} /> : null}
+      {/*
+        ⚠ HIDDEN, NOT UNMOUNTED, while photos are open, as the photos are below: it holds a PDF chosen, or a
+        document being WRITTEN (2026-10-11), in memory and nowhere else, and a look at the photos must not lose it.
+      */}
+      <div className={mode === 'document' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+        <DocumentStudio state={state} modeSwitch={modeSwitch} />
+      </div>
 
       {layout ? (
         // ⚠ HIDDEN, NOT UNMOUNTED, while a document is open: it holds the chosen photos, in memory and nowhere else.

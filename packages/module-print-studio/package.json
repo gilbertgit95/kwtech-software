@@ -50,6 +50,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
+    "@hufe921/canvas-editor": "1.0.4",
     "@kwtech/module-kit": "workspace:*",
     "heic2any": "^0.0.4",
     "pdf-lib": "^1.17.1",

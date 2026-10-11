@@ -601,6 +601,51 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-11** — **A document can be written in the print studio, on the PDF side, with `@hufe921/canvas-editor`, and printed as a PDF is.**
+
+  The operator asked for "document design, like Word": a paper size, fonts and
+  sizes, bold, italic and underline, margins and tabs, pictures that can be
+  resized, a picture as the page background, print or PDF, and a file that can
+  be opened and edited again — "a bit similar to google docs", as "an
+  additional option to create a custom document" on the PDF part of the print
+  studio.
+
+  - **The editor is `@hufe921/canvas-editor` (MIT, no dependencies).** It
+    draws real pages on canvases, with paper size, margins, page background,
+    tab stops, resizable and floating pictures, tables, lists and headings
+    built in, and is not tied to a UI framework.
+  - **Rejected:** SuperDoc and ONLYOFFICE (AGPL: the product's source would
+    have to be published, or a licence bought; ONLYOFFICE also needs its own
+    document server). Tiptap's own paged layout and PDF export, CKEditor's and
+    TinyMCE's pagination (paid). Tiptap with a community pagination extension
+    (no licence stated, pagination rougher) is the fallback. Univer's document
+    editor keeps import and export in its paid tier.
+  - **Inside the print studio, not a module of its own** (the operator's
+    choice): "Create a document" and "Open a saved document" sit beside
+    "Choose a PDF".
+  - **Print, Printers and Download act from the editor itself**, with the PDF
+    side's own output bar (copies, the paired printers, the history), and the
+    screen never changes (the operator: "it will not change view"). Each page
+    prints on the document's paper at exactly its size.
+  - **NOT done: pages per sheet, a page range or scaling in the studio.** A
+    "More print options" link to the PDF screen offered them and was taken out
+    the same day: a second way to print, on another screen, "just add more step
+    and add a bit of confusion". The browser's print dialog and any PDF reader
+    have all three. ⚠ A paired printer gets every page; a "Pages" field on the
+    editor's bar is the answer if that is ever needed.
+  - **Kept only as a file on the person's computer** (`.kwdoc`, the operator's
+    choice), as the studio keeps nothing it is given. Rebuilt and checked when
+    opened (`prepareDocumentFile`).
+  - **The PDF's pages are pictures at 300 dpi**, since the library writes no
+    PDF. Sharp on paper; larger than a text PDF.
+  - **NOT done: documents saved in the workspace.** That would need a table,
+    and storage for the pictures inside them. Not asked for yet.
+  - **NOT done: opening or saving Word files.** The library's plugins offer it;
+    the trial first proves the editor on the shops' work.
+  - **NOT done: checking the pictures inside a saved file's text.** The editor
+    reads its own data, so a hand-edited file could make it load a picture from
+    a web address. Only the background is checked.
+
 - **2026-10-09** — **The tasks app draws its own selects, date picker, tick boxes and choices; no browser-drawn control is left in it.**
 
   The operator: "it uses the default html selectors, please use custom", and
