@@ -66,6 +66,11 @@ export function previousBooksDay(day: BooksDay): BooksDay {
   return new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 }
 
+/** `day` plus `count` calendar days (negative goes back). Zone-free, as `previousBooksDay`. */
+export function shiftBooksDay(day: BooksDay, count: number): BooksDay {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + count * 86_400_000).toISOString().slice(0, 10);
+}
+
 /** The month of a day, `YYYY-MM`. */
 export function monthOfDay(day: BooksDay): string {
   return day.slice(0, 7);
@@ -74,6 +79,20 @@ export function monthOfDay(day: BooksDay): string {
 /** Whether `raw` is a month, `YYYY-MM`, from 2000 on. */
 export function isBooksMonth(raw: string): boolean {
   return isBooksDay(`${raw}-01`) && raw.length === 7;
+}
+
+/**
+ * A run of days the ledger is read for, both ends included, or why it is
+ * refused: two real days, the first not after the last. A range reaching
+ * past today is allowed — it simply finds nothing there — so "this year" is
+ * one range all year long.
+ */
+export function prepareBooksRange(
+  fromDay: string,
+  toDay: string,
+): { fromDay: BooksDay; toDay: BooksDay } | { refused: BooksRefusal } {
+  if (!isBooksDay(fromDay) || !isBooksDay(toDay) || fromDay > toDay) return { refused: 'invalid_range' };
+  return { fromDay, toDay };
 }
 
 /** The first and last day of a month `YYYY-MM`. */

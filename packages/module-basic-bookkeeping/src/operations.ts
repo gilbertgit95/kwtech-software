@@ -43,9 +43,9 @@ export const BOOKS_OPERATIONS = {
     }
   }`,
 
-  /** One month of the ledger (`month`), or one investor's or one loan's entries. Voided ones included. */
-  booksEntries: `query BooksEntries(${SCOPE_VARS}, $month: String, $investorId: String, $loanId: String) {
-    booksEntries(${SCOPE_ARGS}, month: $month, investorId: $investorId, loanId: $loanId) {
+  /** One month of the ledger (`month`), a run of days (`fromDay`–`toDay`), or one investor's or one loan's entries. Voided ones included. */
+  booksEntries: `query BooksEntries(${SCOPE_VARS}, $month: String, $fromDay: String, $toDay: String, $investorId: String, $loanId: String) {
+    booksEntries(${SCOPE_ARGS}, month: $month, fromDay: $fromDay, toDay: $toDay, investorId: $investorId, loanId: $loanId) {
       entries { ${ENTRY} } opening truncated
     }
   }`,

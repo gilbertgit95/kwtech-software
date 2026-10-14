@@ -234,7 +234,13 @@ export interface BooksClient {
   overview(scope: BooksScopeView): Promise<BooksOverviewView>;
   entries(
     scope: BooksScopeView,
-    filter: { month?: string | null; investorId?: string | null; loanId?: string | null },
+    filter: {
+      month?: string | null;
+      fromDay?: string | null;
+      toDay?: string | null;
+      investorId?: string | null;
+      loanId?: string | null;
+    },
   ): Promise<BooksEntriesView>;
   record(scope: BooksScopeView, input: RecordBooksEntryInput): Promise<BooksEntryView>;
   lend(scope: BooksScopeView, input: LendBooksMoneyInput): Promise<BooksLoanView>;
@@ -294,6 +300,8 @@ export function createBooksClient(options: { graphqlPath?: string } = {}): Books
     entries: (scope, filter) =>
       call('booksEntries', scope, {
         month: filter.month ?? null,
+        fromDay: filter.fromDay ?? null,
+        toDay: filter.toDay ?? null,
         investorId: filter.investorId ?? null,
         loanId: filter.loanId ?? null,
       }),

@@ -93,6 +93,8 @@ export function booksRefusalMessage(reason: BooksRefusal): string {
       return 'What is kept in the business is from ₱0 to the whole profit';
     case 'invalid_period':
       return 'Choose a last day from the first day not yet covered, up to today, and at most a year';
+    case 'invalid_range':
+      return 'Choose a first day on or before the last day, and read the ledger by one month, one range of days, one investor or one loan';
     case 'sales_not_recorded':
       return 'Bring in the point of sale’s sales up to that day first, so the profit is complete';
     case 'pos_not_connected':

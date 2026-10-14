@@ -50,10 +50,12 @@ Every control is the app's own, in the theme's colours — no browser-drawn
 | Component | Instead of | Notes |
 |---|---|---|
 | `Select` | `<select>` | groups, an icon per option; ↑ ↓ Home End, a letter to jump, Enter, Escape |
-| `DatePicker` | `<input type="date">` | a calendar whose "today" is the workspace's day; *Today* and *Clear* |
+| `DatePicker` | `<input type="date">` | `web-ui`'s `DatePicker`, given the workspace's day as "today"; *Today* and *Clear* |
 | `Checkbox` | a bare checkbox | still a real checkbox underneath, so labels and Space work |
 | `ChoiceCards` | a row of radios | each choice says what it means (who can open a board) |
-| `Popover` | — | what the two pickers open in: placed by `popoverPlacement`, and drawn inside the trigger's `<dialog>` when it has one, so it is never behind a modal |
+
+The calendar, `Popover` and `popoverPlacement` moved to `@kwtech/web-ui/react`
+when the books' Money tab became their second user (PLAN §13, 2026-10-15).
 
 ## In a NestJS app
 

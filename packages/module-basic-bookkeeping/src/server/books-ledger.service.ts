@@ -7,6 +7,7 @@ import {
   monthOfDay,
   monthsEndingWith,
   nextBooksDay,
+  prepareBooksRange,
   previousBooksDay,
 } from '../domain/days.js';
 import { nextShareFrom, profitBetween, profitByMonth } from '../domain/profit.js';
@@ -130,24 +131,43 @@ export class BooksLedgerService {
   }
 
   /**
-   * One month of the ledger, or one investor's or one loan's entries — voided
-   * ones INCLUDED, so the history explains itself. Exactly one filter; with
-   * none, the month is the workspace's current one.
+   * One month of the ledger, a run of days (`fromDay`–`toDay`, both ends
+   * included, the Money tab's range), or one investor's or one loan's entries
+   * — voided ones INCLUDED, so the history explains itself. Exactly one filter
+   * (a range is one: both its ends, or neither); with none, the month is the
+   * workspace's current one.
    */
   async entries(
     scope: InScope,
-    filter: { month?: string | null; investorId?: string | null; loanId?: string | null },
+    filter: {
+      month?: string | null;
+      fromDay?: string | null;
+      toDay?: string | null;
+      investorId?: string | null;
+      loanId?: string | null;
+    },
     now: Date,
   ): Promise<BooksEntriesView> {
-    const given = [filter.month, filter.investorId, filter.loanId].filter((value) => value != null && value !== '');
-    if (given.length > 1) throw refusalError('invalid_period');
+    const present = (value: string | null | undefined): value is string => value != null && value !== '';
+    // Half a range is refused, not read as "from then on": the screen always sends both.
+    if (present(filter.fromDay) !== present(filter.toDay)) throw refusalError('invalid_range');
+    const given = [filter.month, filter.fromDay, filter.investorId, filter.loanId].filter(present);
+    if (given.length > 1) throw refusalError('invalid_range');
 
     if (filter.investorId) return this.page(scope, { ...scope, investorId: filter.investorId }, 0);
     if (filter.loanId) return this.page(scope, { ...scope, loanId: filter.loanId }, 0);
 
-    const month = filter.month ?? monthOfDay((await this.zones.today(scope, now)).today);
-    if (!isBooksMonth(month)) throw refusalError('invalid_period');
-    const { fromDay, toDay } = monthBounds(month);
+    let period: { fromDay: string; toDay: string };
+    if (present(filter.fromDay) && present(filter.toDay)) {
+      const range = prepareBooksRange(filter.fromDay, filter.toDay);
+      if ('refused' in range) throw refusalError(range.refused);
+      period = range;
+    } else {
+      const month = filter.month ?? monthOfDay((await this.zones.today(scope, now)).today);
+      if (!isBooksMonth(month)) throw refusalError('invalid_period');
+      period = monthBounds(month);
+    }
+    const { fromDay, toDay } = period;
     const { entries } = await liveLedger(this.prisma, scope);
     const opening = moneyOnHand(entries, previousBooksDay(fromDay)).total;
     return this.page(scope, { ...scope, day: { gte: booksDayToDate(fromDay), lte: booksDayToDate(toDay) } }, opening);

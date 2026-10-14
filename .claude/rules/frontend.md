@@ -120,8 +120,8 @@ Client, no codegen, no react-query and no redux. Do not add them.**
   `text-2xl font-semibold tracking-tight`; a section is
   `rounded-lg border border-border p-4`.
 - **Icons:** lucide-react. Nav icons are string names (`nav: { icon: 'megaphone' }`).
-- **`web-ui` exports** ConfirmDialog, DataGrid, DropdownMenu, IconPicker,
-  MultiSelect, StatusBar, ThemeSwitcher, TreeSelect, useDebouncedValue, the
+- **`web-ui` exports** ConfirmDialog, DataGrid, DatePicker (give it the
+  workspace's `today`), DropdownMenu, IconPicker, MultiSelect, Popover, StatusBar, ThemeSwitcher, TreeSelect, useDebouncedValue, the
   list keys (`LIST_KEYS`, `LIST_ITEM`, `searchIntoList`) and `cn`.
   Check there before building a primitive. A component moves into `web-ui` only
   when a second module needs it.

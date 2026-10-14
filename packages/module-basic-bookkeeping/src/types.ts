@@ -104,6 +104,7 @@ export type BooksRefusal =
   | 'no_profit'
   | 'invalid_kept'
   | 'invalid_period'
+  | 'invalid_range'
   | 'sales_not_recorded'
   | 'pos_not_connected'
   | 'pos_nothing_new'

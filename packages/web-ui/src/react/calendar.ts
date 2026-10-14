@@ -1,15 +1,18 @@
-import { addDays, type TaskDay } from '../../domain/dates.js';
-
 /**
  * The date picker's calendar rules — pure, and tested
- * (`test/calendar.test.ts`), so the component only draws.
+ * (`test/calendar.test.ts`), so the component only draws. Moved here from
+ * `module-task` when the books' Money tab became its second user (PLAN §13,
+ * 2026-10-15).
  *
  * ⚠ Everything here is a calendar DAY (`YYYY-MM-DD`) or a month (`YYYY-MM`),
  * with no zone of its own. The arithmetic is done at UTC midnight and read back
  * with the UTC getters, so the machine's zone never moves a day. Which day is
  * "today" is not decided here: the caller passes the workspace's
- * (`workspaceTaskDay`).
+ * (`workspaceTaskDay`, `workspaceBooksDay`).
  */
+
+/** A calendar day, `YYYY-MM-DD`, with no zone. */
+export type CalendarDay = string;
 
 /** A calendar month, `YYYY-MM`. */
 export type CalendarMonth = string;
@@ -27,12 +30,19 @@ export const WEEKDAY_LABELS: readonly { short: string; long: string }[] = [
 
 const DAYS_IN_WEEK = 7;
 
-function utcDate(day: TaskDay): Date {
+function utcDate(day: CalendarDay): Date {
   return new Date(`${day}T00:00:00.000Z`);
 }
 
+/** `day` plus `count` calendar days. */
+export function addDays(day: CalendarDay, count: number): CalendarDay {
+  const date = utcDate(day);
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+}
+
 /** The month a day is in. */
-export function monthOf(day: TaskDay): CalendarMonth {
+export function monthOf(day: CalendarDay): CalendarMonth {
   return day.slice(0, 7);
 }
 
@@ -45,7 +55,7 @@ export function shiftMonth(month: CalendarMonth, count: number): CalendarMonth {
 
 /** One cell of the month's grid: a day, and whether it belongs to the month shown. */
 export interface CalendarCell {
-  day: TaskDay;
+  day: CalendarDay;
   inMonth: boolean;
 }
 
@@ -72,7 +82,7 @@ export function monthCells(month: CalendarMonth): CalendarCell[] {
  * some browsers put after the weekday ("Fri, 9 Oct") is dropped, so the label
  * is the same words everywhere.
  */
-function inWords(day: TaskDay, options: Intl.DateTimeFormatOptions): string {
+function inWords(day: CalendarDay, options: Intl.DateTimeFormatOptions): string {
   return utcDate(day)
     .toLocaleDateString('en-GB', { ...options, timeZone: 'UTC' })
     .replace(/,/gu, '');
@@ -84,17 +94,17 @@ export function monthLabel(month: CalendarMonth): string {
 }
 
 /** "Fri 9 Oct 2026" — what the picker's button shows. */
-export function shortDayLabel(day: TaskDay): string {
+export function shortDayLabel(day: CalendarDay): string {
   return inWords(day, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** "Friday 9 October 2026" — a day's full name, for a screen reader. */
-export function longDayLabel(day: TaskDay): string {
+export function longDayLabel(day: CalendarDay): string {
   return inWords(day, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 /** The same day of the month `count` months on, or that month's last day when it is shorter (31 Jan → 28 Feb). */
-function addMonths(day: TaskDay, count: number): TaskDay {
+function addMonths(day: CalendarDay, count: number): CalendarDay {
   const month = shiftMonth(monthOf(day), count);
   const lastDay = Number(addDays(`${shiftMonth(month, 1)}-01`, -1).slice(8));
   const wanted = Math.min(Number(day.slice(8)), lastDay);
@@ -106,7 +116,7 @@ function addMonths(day: TaskDay, count: number): TaskDay {
  * week, Home and End the week's first and last day, Page Up and Page Down a
  * month. Null for any other key, which stays the browser's.
  */
-export function calendarKeyMove(day: TaskDay, key: string): TaskDay | null {
+export function calendarKeyMove(day: CalendarDay, key: string): CalendarDay | null {
   switch (key) {
     case 'ArrowLeft':
       return addDays(day, -1);

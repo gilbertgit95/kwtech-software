@@ -1,9 +1,8 @@
 'use client';
 
-import { cn, focusFirstListItem, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
+import { cn, focusFirstListItem, LIST_ITEM, LIST_KEYS, Popover, type PopoverCloseReason } from '@kwtech/web-ui/react';
 import { Check, ChevronDown } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { Popover, type PopoverCloseReason } from './popover.js';
 
 /** One choice of a `Select`. */
 export interface SelectOption<T extends string = string> {

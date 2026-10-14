@@ -1728,7 +1728,7 @@ type Query {
   bookingRequests(organizationId: String!, workspaceId: String!): [BookingAppointment!]!
   bookingSettings(organizationId: String!, workspaceId: String!): BookingSettings!
   bookingSlots(day: String!, forAppointmentId: String, organizationId: String!, serviceId: String!, workspaceId: String!): [BookingResourceSlots!]!
-  booksEntries(investorId: String, loanId: String, month: String, organizationId: String!, workspaceId: String!): BooksEntries!
+  booksEntries(fromDay: String, investorId: String, loanId: String, month: String, organizationId: String!, toDay: String, workspaceId: String!): BooksEntries!
   booksOverview(organizationId: String!, workspaceId: String!): BooksOverview!
   booksPosSalesPreview(organizationId: String!, toDay: String!, workspaceId: String!): BooksPosSales!
   booksProfitSharePreview(kept: Float!, organizationId: String!, toDay: String!, workspaceId: String!): BooksProfitSharePlan!

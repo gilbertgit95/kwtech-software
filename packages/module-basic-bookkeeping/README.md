@@ -23,6 +23,14 @@ Investors, Loans, and Settings for `books:manage_investors`. The investors and
 loans lists take ↑ ↓ and Enter (`LIST_KEYS` from `@kwtech/web-ui/react`, on the
 list; `RowButton` is its choice).
 
+**Money** reads any run of days: quick periods (this month, last month, last 7
+and 30 days, this year), or two days from `web-ui`'s `DatePicker` (given the
+workspace's today), stepped with ← →. `booksEntries(fromDay, toDay)` answers
+it, with `opening` the cash on hand the day before. Filters — words, kind,
+place, money in or out, voided shown or hidden — run in the browser and only
+hide lines: cash on hand after each line is the whole book's. The rules are
+`src/react/view/money-tab.ts`, tested in `test/money-tab.test.ts`.
+
 ## In a NestJS app
 
 ```ts

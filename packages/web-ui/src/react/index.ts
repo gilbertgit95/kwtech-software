@@ -15,6 +15,20 @@
  * where that cost a debugging session.
  */
 
+export {
+  addDays,
+  type CalendarCell,
+  type CalendarDay,
+  type CalendarMonth,
+  calendarKeyMove,
+  longDayLabel,
+  monthCells,
+  monthLabel,
+  monthOf,
+  shiftMonth,
+  shortDayLabel,
+  WEEKDAY_LABELS,
+} from './calendar.js';
 export { ConfirmDialog, type ConfirmDialogProps } from './confirm-dialog.js';
 export {
   DataGrid,
@@ -23,6 +37,7 @@ export {
   DEFAULT_PAGE_SIZE,
   PAGE_SIZES,
 } from './data-grid.js';
+export { DatePicker } from './date-picker.js';
 export {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +67,16 @@ export {
 } from './list-keys.js';
 export { type ListNeighbours, listNeighbours } from './list-neighbours.js';
 export { MultiSelect, type MultiSelectProps } from './multi-select.js';
+export { Popover, type PopoverCloseReason } from './popover.js';
+export {
+  POPOVER_EDGE_PX,
+  POPOVER_GAP_PX,
+  type PopoverAlign,
+  type PopoverAnchor,
+  type PopoverPlacement,
+  type PopoverSize,
+  popoverPlacement,
+} from './popover-placement.js';
 export { QrCode } from './qr-code.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
 export { type ThemeMode, ThemeSwitcher, type ThemeSwitcherProps } from './theme-switcher.js';

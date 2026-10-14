@@ -1,4 +1,4 @@
-import { POPOVER_EDGE_PX, POPOVER_GAP_PX, popoverPlacement } from '../src/react/view/popover.js';
+import { POPOVER_EDGE_PX, POPOVER_GAP_PX, popoverPlacement } from '../src/react/popover-placement.js';
 
 const VIEWPORT = { width: 1000, height: 800 };
 

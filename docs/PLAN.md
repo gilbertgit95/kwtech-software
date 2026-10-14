@@ -601,6 +601,35 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-15** — **The books' Money tab reads any run of days, with filters, and the date picker moved to `web-ui`.**
+
+  The operator asked to choose the Money tab's dates instead of a month at a
+  time, using the date picker the tasks app already has, and to filter the
+  list.
+  - **`booksEntries` takes `fromDay` and `toDay`** (both ends included), a
+    fourth way to read the ledger beside `month`, `investorId` and `loanId`;
+    still exactly one. Half a range, a backwards one, or a range with another
+    filter is refused as `invalid_range`, a reason of its own, because
+    `invalid_period`'s sentence is about sharing profit. `opening` is the cash on
+    hand the day before `fromDay`, as it was for a month.
+  - **Quick periods** (this month, last month, last 7 and 30 days, this year)
+    and ← → stepping a month by months, a year by years, anything else by its
+    own length, never past the workspace's today (`view/money-tab.ts`).
+  - **Filters run in the browser on the page already read**: words, kind,
+    place (a transfer matches either end), money in or out by the kind, and
+    voided lines hidden or shown. Cash on hand after each line is still the
+    WHOLE book's, so a filtered line prints the same balance as unfiltered.
+    Money in and out on the tiles are the lines shown; the two balances are not.
+  - **`DatePicker`, `Popover`, `popoverPlacement` and the calendar helpers moved
+    from `module-task` to `@kwtech/web-ui/react`** (the frontend rule: a second
+    module needing it). `web-ui` knows no workspace, so the picker takes
+    `today` from its caller; it also gained `min` / `max` and `clearable`. The
+    task module keeps a thin `DatePicker` that passes the workspace's day.
+  - **Not done:** filtering on the server. A range is one read capped at
+    `BOOKS_LEDGER_MAX` with `truncated` saying so, and a small business's year
+    fits in it. The task module's `Select` stays in the task module: the books
+    filters use `web-ui`'s `MultiSelect`, so it has no second user yet.
+
 - **2026-10-11** — **A document can be written in the print studio, on the PDF side, with `@hufe921/canvas-editor`, and printed as a PDF is.**
 
   The operator asked for "document design, like Word": a paper size, fonts and

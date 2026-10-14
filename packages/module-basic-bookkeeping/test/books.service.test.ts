@@ -70,6 +70,30 @@ describe('cash on hand and the overview', () => {
   });
 });
 
+describe('the Money tab’s range', () => {
+  it('reads a run of days, with the cash on hand brought forward into it', async () => {
+    const h = harness();
+    await record(h, { kind: 'sales', amount: 10_000, day: '2026-09-20' });
+    await record(h, { kind: 'expense', amount: 2_000, day: '2026-09-28' });
+    await record(h, { kind: 'sales', amount: 5_000, day: '2026-10-02' });
+
+    const page = await h.ledger.entries(SCOPE, { fromDay: '2026-09-25', toDay: '2026-10-02' }, NOW);
+    expect(page.opening).toBe(10_000);
+    expect(page.entries.map((entry) => entry.day)).toEqual(['2026-09-28', '2026-10-02']);
+  });
+
+  it('refuses half a range, a range backwards, and a range with another filter', async () => {
+    const h = harness();
+    await refusedWith(h.ledger.entries(SCOPE, { fromDay: '2026-10-01' }, NOW), 'invalid_range');
+    await refusedWith(h.ledger.entries(SCOPE, { fromDay: '2026-10-02', toDay: '2026-10-01' }, NOW), 'invalid_range');
+    await refusedWith(h.ledger.entries(SCOPE, { fromDay: '2026-02-30', toDay: '2026-03-01' }, NOW), 'invalid_range');
+    await refusedWith(
+      h.ledger.entries(SCOPE, { month: '2026-10', fromDay: '2026-10-01', toDay: '2026-10-02' }, NOW),
+      'invalid_range',
+    );
+  });
+});
+
 describe('paying investors', () => {
   it('⚠ pays out at most what they are owed — unless marked an advance', async () => {
     const h = harness();

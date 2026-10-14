@@ -60,18 +60,30 @@ export class BooksResolver {
     return this.ledger.overview({ organizationId, workspaceId }, new Date());
   }
 
-  /** One month (`YYYY-MM`), one investor's or one loan's entries — exactly one. None: this month. */
+  /**
+   * One month (`YYYY-MM`), a run of days (`fromDay` and `toDay`, both
+   * `YYYY-MM-DD`, both ends included), one investor's or one loan's entries —
+   * exactly one. None: this month.
+   */
   @Query(() => BooksEntriesType, { name: 'booksEntries' })
   async booksEntries(
     @Args('organizationId') organizationId: string,
     @Args('workspaceId') workspaceId: string,
     @Args('month', { type: () => String, nullable: true }) month?: string | null,
+    @Args('fromDay', { type: () => String, nullable: true }) fromDay?: string | null,
+    @Args('toDay', { type: () => String, nullable: true }) toDay?: string | null,
     @Args('investorId', { type: () => String, nullable: true }) investorId?: string | null,
     @Args('loanId', { type: () => String, nullable: true }) loanId?: string | null,
   ): Promise<BooksEntriesType> {
     return this.ledger.entries(
       { organizationId, workspaceId },
-      { month: month ?? null, investorId: investorId ?? null, loanId: loanId ?? null },
+      {
+        month: month ?? null,
+        fromDay: fromDay ?? null,
+        toDay: toDay ?? null,
+        investorId: investorId ?? null,
+        loanId: loanId ?? null,
+      },
       new Date(),
     );
   }

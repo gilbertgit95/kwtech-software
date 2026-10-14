@@ -344,7 +344,7 @@ export class BooksEntriesType {
   @Field(() => [BooksEntryType])
   entries!: BooksEntryType[];
 
-  /** Cash on hand before the first entry, for a month; 0 for an investor's or a loan's entries. */
+  /** Cash on hand before the first entry, for a month or a run of days; 0 for an investor's or a loan's entries. */
   @Field(() => Float)
   opening!: number;
 

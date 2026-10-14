@@ -1,6 +1,5 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -11,7 +10,8 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { type PopoverAlign, type PopoverPlacement, popoverPlacement } from '../view/popover.js';
+import { type PopoverAlign, type PopoverPlacement, popoverPlacement } from './popover-placement.js';
+import { cn } from './utils.js';
 
 /** Why a popover closed: only a key hands the focus back to the trigger. */
 export type PopoverCloseReason = 'key' | 'outside';
@@ -38,8 +38,8 @@ export type PopoverCloseReason = 'key' | 'outside';
  * - ⚠ Escape stops here. Without that the same key would also close the dialog
  *   the select is in, or put the task panel away.
  *
- * Kept in this module and not in `web-ui` because nothing else uses it yet
- * (frontend rules: a second consumer first).
+ * Moved here from `module-task` when the books' Money tab became the date
+ * picker's second user (frontend rules: a second consumer first).
  */
 export function Popover({
   open,

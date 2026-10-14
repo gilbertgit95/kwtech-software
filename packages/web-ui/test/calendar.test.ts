@@ -6,7 +6,7 @@ import {
   monthOf,
   shiftMonth,
   shortDayLabel,
-} from '../src/react/view/calendar.js';
+} from '../src/react/calendar.js';
 
 describe('monthCells', () => {
   it('fills whole weeks from Sunday, marking the neighbouring months’ days', () => {

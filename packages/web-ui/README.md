@@ -620,6 +620,35 @@ ignores the theme, takes over a second to appear and never shows for a keyboard.
 
 Used by notes and the Apps page.
 
+## The date picker
+
+A day is picked with `DatePicker`, never `<input type="date">`, whose calendar
+ignores the theme and whose typed format follows the machine's locale.
+
+```tsx
+<DatePicker
+  aria-label="First day"
+  value={fromDay}                 // 'YYYY-MM-DD' or null
+  today={workspaceToday}          // ⚠ the WORKSPACE's day, from the caller
+  max={toDay}                     // min / max: inclusive, days outside greyed out
+  clearable={false}               // hides *Clear* where a day is required
+  onChange={(day) => day && setFromDay(day)}
+/>
+```
+
+- ⚠ **`today` is required.** `web-ui` knows no workspace, so the caller passes
+  `zonedDayKey(now, useWorkspaceTimeZone())` or its module's own helper
+  (`workspaceTaskDay`). The browser's day would disagree with what the module
+  calls today for anyone in another zone.
+- ← → a day, ↑ ↓ a week, Home / End, Page Up / Page Down a month; Enter picks.
+- It opens in `Popover`: fixed, placed by `popoverPlacement` (pure, tested),
+  flipping above the trigger when there is no room below, and drawn inside the
+  trigger's `<dialog>` when it has one, so it is never behind a modal.
+- The calendar's rules (`monthCells`, `calendarKeyMove`, `addDays`, the labels)
+  are exported and tested in `test/calendar.test.ts`.
+
+Used by tasks and the books' Money tab.
+
 ## A list and its detail drawer
 
 A view that opens on a list and shows one row's detail uses `ListDrawer`: the
