@@ -34,7 +34,7 @@ import {
 import { buttonClass } from './controls.js';
 import { Alert, Empty, Tabs } from './layout.js';
 import { PeriodPicker } from './period-picker.js';
-import { printHtml } from './till.js';
+import { downloadCsv, printHtml } from './till.js';
 
 const REPORT_TABS = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -714,22 +714,12 @@ function CsvButton({ table, report }: { table: ReportTable; report: PosReportVie
     <button
       type="button"
       className={buttonClass('secondary', 'sm')}
-      onClick={() => download(csvFileName(table, report), toCsv(reportCsvRows(table, report, new Date())))}
+      onClick={() => downloadCsv(csvFileName(table, report), toCsv(reportCsvRows(table, report, new Date())))}
     >
       <Download aria-hidden="true" className="size-4" />
       CSV
     </button>
   );
-}
-
-function download(fileName: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  // After the click has started the download: revoking first would cancel it in some browsers.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 const TH = 'px-2 py-1.5 text-left text-xs font-medium text-muted-foreground';

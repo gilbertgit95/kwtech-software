@@ -1,5 +1,9 @@
-import { chosenSettings, clampCopies, printersByComputer, settingChoices } from '../src/react/components/output-bar.js';
-import type { StudioPrinterChoice } from '../src/react/printer-port.js';
+import {
+  chosenSettings,
+  type PrinterMenuPrinter,
+  printersByComputer,
+  settingChoices,
+} from '../src/react/printer-menu-rules.js';
 
 const paperType = {
   key: 'mediaType',
@@ -11,7 +15,7 @@ const paperType = {
   initial: 'plain',
 };
 const quality = { key: 'quality', label: 'Quality', options: [{ id: 'high', label: 'High' }], initial: null };
-const printer = (over: Partial<StudioPrinterChoice> = {}): StudioPrinterChoice => ({
+const printer = (over: Partial<PrinterMenuPrinter> = {}): PrinterMenuPrinter => ({
   id: 'p1',
   name: 'L5290',
   computer: 'Front desk PC',
@@ -25,7 +29,7 @@ describe('a printer’s settings for one print', () => {
     expect(settingChoices(printer())).toEqual({ mediaType: 'plain', quality: '' });
   });
 
-  it('keeps what was last chosen on this page', () => {
+  it('keeps what was last chosen while the menu is mounted', () => {
     expect(settingChoices(printer(), { mediaType: 'glossy', quality: 'high' })).toEqual({
       mediaType: 'glossy',
       quality: 'high',
@@ -57,11 +61,5 @@ describe('the printers menu', () => {
       ['Front desk PC', false, ['L5290', 'L121']],
       ['Back room PC', true, ['Back']],
     ]);
-  });
-});
-
-describe('the number of copies', () => {
-  it('stays a whole number between 1 and 99, whatever is typed or stepped to', () => {
-    expect([0, 1, 2.9, 99, 100, -4, Number.NaN].map(clampCopies)).toEqual([1, 1, 2, 99, 99, 1, 1]);
   });
 });

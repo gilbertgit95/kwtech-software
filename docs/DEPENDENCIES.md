@@ -43,7 +43,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-app-hub` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
 | `module-note` | module-kit | web-ui, Nest, React | both apps |
 | `module-task` | module-kit (and `@dnd-kit/*`) | web-ui, Nest, React | both apps |
-| `module-basic-pos` | module-kit | web-ui, Nest, React | both apps |
+| `module-basic-pos` | module-kit (and `pdf-lib`, for the price list on a printer, browser only) | web-ui, Nest, React | both apps |
 | `module-basic-bookkeeping` | module-kit | web-ui, Nest, React | both apps |
 | `module-jobs` | module-kit | web-ui, Nest, React | both apps |
 | `module-booking` | module-kit | web-ui, Nest, React | both apps |
@@ -89,6 +89,7 @@ has a documented, fail-closed meaning — see each module's README.
 | Email a person | `CHAT_NOTIFIER`, auth's and permissions' mail callbacks | `chat/notify-mail.ts`, `auth/*-mail.ts`, `permissions/invitation-mail.ts` |
 | Tell a person something (in the app) | `X_NOTIFIER` declared by the producing module — the first is `TASK_NOTIFIER` (`task/notifier.ts`), then `BOOKING_NOTIFIER` (`booking/notifier.ts`) | an adapter calling module-notification's `NotificationSender` — see its README |
 
+| Print a PDF on one of the workspace's printers (browser) | module-kit's ONE `PrinterPort`, read with `usePrinters(scope)` and shown with web-ui's `PrinterMenu` — the print studio, the POS's price list | `PrinterProvider` in `apps/web-app/src/app/providers.tsx`, bound to `module-print`'s `createPrintTarget()` |
 | Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today`, then `booking.upcoming_sessions`, then `studio.prune_logs` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
 | Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans and subscriptions) |
 | Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |

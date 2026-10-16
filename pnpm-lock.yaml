@@ -563,6 +563,9 @@ importers:
       '@kwtech/module-kit':
         specifier: workspace:*
         version: link:../module-kit
+      pdf-lib:
+        specifier: ^1.17.1
+        version: 1.17.1
     devDependencies:
       '@kwtech/web-ui':
         specifier: workspace:*

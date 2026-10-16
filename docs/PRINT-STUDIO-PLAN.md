@@ -333,7 +333,8 @@ their papers and printable areas; the web app lists them and revokes a
 computer. A job is sent through the in-memory relay and its state read back;
 the Printers page prints a ruler page; and the studio prints a result on a
 chosen printer through its port (`StudioPrinterPort`, bound in the web app's
-`providers.tsx`, where this plan said `STUDIO_PRINTER`).
+`providers.tsx`, where this plan said `STUDIO_PRINTER`; since 2026-10-17 the
+shared `PrinterPort` of `module-kit`, PLAN §13).
 
 **Checked for real (2026-10-07), with the agent's fake driver:** pairing, the
 socket, a 24 MB file through the web app's handler arriving byte for byte,

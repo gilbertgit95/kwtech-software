@@ -21,6 +21,7 @@ import { priceRange } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS } from './controls.js';
 import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
+import { PriceListButtons } from './price-list-buttons.js';
 
 type ItemsTab = 'items' | 'categories';
 
@@ -125,10 +126,17 @@ function ItemsPanel({
               New item
             </button>
           </div>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
-            Show archived
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(event) => setShowArchived(event.target.checked)}
+              />
+              Show archived
+            </label>
+            <PriceListButtons state={state} catalogue={catalogue} />
+          </div>
           <ul ref={listRef} className="flex min-h-0 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
             {items.length === 0 ? (
               <li>

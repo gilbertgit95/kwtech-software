@@ -601,6 +601,51 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-17** — **One printer port for every module: `PrinterPort` and `usePrinters` in `module-kit`, `PrinterMenu` in `web-ui`.**
+
+  Asked the same day, after the POS's price list copied the print studio's
+  port: make printing on the workspace's printers reusable by any module.
+  - **`module-kit`** holds the contract (`src/printers.ts`, types only) and
+    `PrinterProvider`, `usePrinter`, `usePrinters(scope)` (`src/react/printers.tsx`),
+    which reads the list, re-reads it on `refresh()` and after each print, and
+    turns a throw into an outcome.
+  - **`web-ui`** holds `PrinterMenu`, the studio's menu and settings dialog,
+    with `printersByComputer`, `settingChoices`, `chosenSettings` and their
+    tests (moved from the studio). It knows printers by shape only, since
+    `web-ui` imports nothing of this repo; module-kit's `PrinterChoice` fits it.
+  - **`StudioPrinterPort`/`StudioPrinterProvider` and `PosPrinterPort`/
+    `PosPrinterProvider` are gone**, not deprecated: the app was their only
+    binder. `providers.tsx` binds `createPrintTarget()` once, to `PrinterProvider`.
+  - **What a module still does itself:** make its PDF and say what the dialog's
+    first line is. The studio keeps its "at actual size" line; the POS adds a
+    paper-size field through `fields`.
+  - **Not done:** a shared "pages drawn on a canvas → PDF" helper. The POS and
+    the studio's written documents each have one of about 15 lines, at sizes
+    of their own; shared when a third needs it.
+
+- **2026-10-17** — **The POS prints its price list on the workspace's printers through a port of its own, bound to the same `module-print` target as the studio.**
+
+  The operator asked for a hard copy of every item and price from the Items
+  tab, then for the print studio's "send to a printer" there too.
+  - **Items → Print price list, Printers, CSV** (`view/price-list.ts`): what
+    the till can sell, by category, never costs, whatever the search box says.
+    Print uses the receipt's hidden frame; the CSV the reports' download, moved
+    beside `printHtml` so both share it.
+  - **`PosPrinterPort` is a structural copy of `StudioPrinterPort`** (PLAN §9
+    rule 10), bound in `apps/web-app/src/app/providers.tsx` to the ONE
+    `createPrintTarget()` the studio already uses; the compiler checks it fits
+    both. Unbound, or no printer this person may use, and the menu is absent.
+  - **The PDF's pages are pictures at 300 dpi** (`render/price-list-pdf.ts`),
+    as the studio's written documents: pdf-lib's built-in fonts cannot write
+    "₱" or whatever a person typed. About 170 KB a page, sent and kept nowhere.
+  - **The person picks A4 or Letter**: the port takes a page size, not a
+    paper, and `module-print` refuses one the printer did not report.
+  - **Not done here, done later the same day (the entry above): moving the port and the menu's helpers into `module-kit`.** Two
+    consumers now hold the same shapes and three small helpers
+    (`printersByComputer`, `settingChoices`, `chosenSettings`). Principle 9
+    allows the move; it would also rename the studio's port, which this change
+    did not need. Worth doing if a third app prints.
+
 - **2026-10-15** — **The books' Money tab reads any run of days, with filters, and the date picker moved to `web-ui`.**
 
   The operator asked to choose the Money tab's dates instead of a month at a

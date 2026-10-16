@@ -77,6 +77,14 @@ export {
   type PopoverSize,
   popoverPlacement,
 } from './popover-placement.js';
+export { PRINTER_MENU_SELECT_CLASS, PrinterMenu, type PrinterMenuProps } from './printer-menu.js';
+export {
+  chosenSettings,
+  type PrinterMenuPrinter,
+  type PrinterMenuSetting,
+  printersByComputer,
+  settingChoices,
+} from './printer-menu-rules.js';
 export { QrCode } from './qr-code.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
 export { type ThemeMode, ThemeSwitcher, type ThemeSwitcherProps } from './theme-switcher.js';

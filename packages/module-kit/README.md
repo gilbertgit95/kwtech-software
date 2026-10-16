@@ -468,6 +468,42 @@ everyone in it sees the same today (PLAN §13, 2026-09-29).
   (the POS's `POS_WORKSPACE_TIME_ZONE`) and the app answers it. When it is
   unbound, fall back to `DEFAULT_TIME_ZONE`, never to UTC.
 
+## Printing on a workspace's printers
+
+Any module that makes a PDF can offer the workspace's own printers (printers on
+a shop computer paired through the print agent) without knowing `module-print`.
+There is ONE port for all of them (PLAN §13, 2026-10-17).
+
+- **Root** (`src/printers.ts`, types only): `PrinterPort`, `PrinterChoice`,
+  `PrinterSetting`, `PrinterJob`, `PrinterOutcome`, `PrinterScope`. A job
+  carries the page's size in hundredths of a millimetre, never a paper name:
+  the binder finds the printer's paper of that size, or refuses with a
+  sentence.
+- **React**: the app wraps pages in `PrinterProvider` with `module-print`'s
+  `createPrintTarget()` (`apps/web-app/src/app/providers.tsx`). A screen calls
+  `usePrinters(scope)` → `{ printers, refresh, print }`: the list is read when
+  the screen appears, on `refresh()` and after each print; `print` never
+  throws, and hands back `{ sent, message }`. Pass a stable `scope` (from
+  `useMemo`), since it is a dependency.
+- **The menu** is `PrinterMenu` from `@kwtech/web-ui/react`: printers by
+  computer, then a dialog of the chosen one's settings.
+
+```tsx
+const printing = usePrinters(scope);
+<PrinterMenu
+  printers={printing.printers}
+  onOpen={printing.refresh}
+  onPrint={async (printer, settings) => {
+    const outcome = await printing.print({ printerId: printer.id, pdf, width, height, settings });
+    show(outcome.message);
+  }}
+/>
+```
+
+⚠ Unbound, or no printer this person may use, and `printers` is empty and the
+menu renders nothing: the screen is what it was without it. Making the PDF is
+the module's own work, since only it knows what it prints.
+
 ## The status channel
 
 The global status bar's vocabulary lives here for the same reason

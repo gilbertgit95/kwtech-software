@@ -1,18 +1,11 @@
 'use client';
 
-import {
-  ConfirmDialog,
-  cn,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@kwtech/web-ui/react';
-import { ChevronDown, Download, Minus, Monitor, Plus, Printer, RotateCcw } from 'lucide-react';
+import type { PrinterChoice } from '@kwtech/module-kit';
+import { usePrinters } from '@kwtech/module-kit/react';
+import { ConfirmDialog, cn, PrinterMenu } from '@kwtech/web-ui/react';
+import { Download, Minus, Plus, Printer, RotateCcw } from 'lucide-react';
 import { type RefObject, useEffect, useId, useState } from 'react';
 import type { StudioLogEntry } from '../../domain/log.js';
-import { type StudioPrinterChoice, useStudioPrinter } from '../printer-port.js';
 import { downloadResult, printResult, type StudioResult } from '../render/result.js';
 import type { StudioAppState } from '../studio-state.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
@@ -41,12 +34,13 @@ export interface StudioOutputCommands {
  *                 the layout says; the browser's own print dialog may rescale.
  *   Print       — the browser's dialog, for when that is good enough.
  *   Printers    — one of the workspace's own printers, through the computer
- *                 it is connected to (`printer-port.tsx`). A menu of them,
- *                 by computer; choosing one opens that printer's settings
- *                 for this print (paper type, quality), and Print there
- *                 sends it. ⚠ The button exists only when the app bound the
- *                 port AND there is a printer to offer; otherwise this bar
- *                 is what it always was.
+ *                 it is connected to: `usePrinters` from module-kit and
+ *                 `PrinterMenu` from web-ui, shared with every module that
+ *                 prints. A menu of them, by computer; choosing one opens
+ *                 that printer's settings for this print (paper type,
+ *                 quality), and Print there sends it. ⚠ The button exists
+ *                 only when the app bound the port AND there is a printer to
+ *                 offer; otherwise this bar is what it always was.
  *   Start over  — clears the photos and the result. ⚠ Asks once whether to
  *                 download first when that has not happened: it is the last
  *                 moment the file exists.
@@ -105,36 +99,10 @@ export function OutputBar({
   const [said, setSaid] = useState<string | null>(null);
 
   /*
-   * The workspace's printers, when the app bound a way to reach them. Read
-   * when the bar appears, each time the menu is opened and after each print,
-   * so a computer switched on since shows without leaving the page.
+   * The workspace's printers, when the app bound a way to reach them: read
+   * when the bar appears, each time the menu opens and after each print.
    */
-  const port = useStudioPrinter();
-  const scope = state.scope;
-  const [printers, setPrinters] = useState<readonly StudioPrinterChoice[]>([]);
-  const [printersRead, setPrintersRead] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `printersRead` is the "read again" signal, not a value used.
-  useEffect(() => {
-    if (!port) return;
-    let current = true;
-    void port.printers(scope).then((found) => {
-      if (current) setPrinters(found);
-    });
-    return () => {
-      current = false;
-    };
-  }, [port, scope, printersRead]);
-
-  /*
-   * The printer whose settings are open, and what was last chosen on each.
-   *
-   * ⚠ REMEMBERED FOR THIS PAGE ONLY, per printer: the second sheet of glossy
-   * should not need the choice made again, and a choice kept past the page
-   * would outlive the paper in the tray.
-   */
-  const [picked, setPicked] = useState<StudioPrinterChoice | null>(null);
-  const [choices, setChoices] = useState<Readonly<Record<string, Readonly<Record<string, string>>>>>({});
-  const pickedChoices = picked ? settingChoices(picked, choices[picked.id]) : {};
+  const printing = usePrinters(state.scope);
 
   // ⚠ The last guard: closing or reloading the page loses work that was never saved.
   const atRisk = hasWork && !downloaded;
@@ -151,10 +119,9 @@ export function OutputBar({
     setBusy(action === 'downloaded' ? 'Making the PDF…' : 'Getting ready to print…');
     try {
       const ready = result ?? (await make());
-      if (action === 'sent_to_print' && port && target) {
+      if (action === 'sent_to_print' && target) {
         setSaid('Reaching the printer…');
-        const outcome = await port.print(
-          scope,
+        const outcome = await printing.print(
           {
             printerId: target.printer.id,
             pdf: new Uint8Array(await ready.pdf.arrayBuffer()),
@@ -164,7 +131,6 @@ export function OutputBar({
           },
           setSaid,
         );
-        setPrintersRead((count) => count + 1);
         if (!outcome.sent) {
           // ⚠ Not recorded: the history says what was sent to a printer, and this was not.
           setSaid(null);
@@ -294,45 +260,23 @@ export function OutputBar({
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          className={cn(buttonClass('secondary'), 'min-w-0 px-2', port && printers.length > 0 ? '' : 'col-span-2')}
+          className={cn(buttonClass('secondary'), 'min-w-0 px-2', printing.printers.length > 0 ? '' : 'col-span-2')}
           disabled={disabled}
           onClick={() => void run('sent_to_print')}
         >
           <Printer aria-hidden="true" className="size-4" />
           Print
         </button>
-        {port && printers.length > 0 ? (
-          <DropdownMenu onOpenChange={(open) => (open ? setPrintersRead((count) => count + 1) : undefined)}>
-            <DropdownMenuTrigger asChild>
-              <button type="button" className={cn(buttonClass('secondary'), 'min-w-0 px-2')} disabled={disabled}>
-                <Monitor aria-hidden="true" className="size-4" />
-                Printers
-                <ChevronDown aria-hidden="true" className="size-3.5 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-w-xs">
-              {printersByComputer(printers).map((group) => (
-                <div key={group.computer}>
-                  <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-                    {group.computer}
-                    {group.blocked ? ' — cannot print now' : ''}
-                  </DropdownMenuLabel>
-                  {group.printers.map((printer) => (
-                    <DropdownMenuItem
-                      key={printer.id}
-                      disabled={printer.blocked !== null}
-                      title={printer.blocked ?? undefined}
-                      onSelect={() => setPicked(printer)}
-                    >
-                      <Printer aria-hidden="true" />
-                      <span className="min-w-0 truncate">{printer.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </div>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+        <PrinterMenu
+          printers={printing.printers}
+          onOpen={printing.refresh}
+          disabled={disabled}
+          triggerClassName={cn(buttonClass('secondary'), 'min-w-0 px-2')}
+          describe={(printer) =>
+            `${summary.replace(/\.$/u, '')}, on the computer “${printer.computer}”, at actual size.`
+          }
+          onPrint={(printer, settings) => void run('sent_to_print', { printer, settings })}
+        />
         <button
           type="button"
           className={cn(buttonClass('primary'), 'col-span-2 min-w-0')}
@@ -348,61 +292,6 @@ export function OutputBar({
           {said}
         </p>
       ) : null}
-
-      {/* The printer's settings for this one print. Opened from the menu; Print here is what sends it. */}
-      <ConfirmDialog
-        open={picked !== null}
-        danger={false}
-        title={picked ? `Print on ${picked.name}` : 'Print'}
-        confirmLabel="Print"
-        description={
-          picked ? (
-            <div className="flex flex-col gap-3">
-              <p>
-                {summary.replace(/\.$/u, '')}, on the computer “{picked.computer}”, at actual size.
-              </p>
-              {picked.settings.map((setting) => (
-                <label key={setting.key} className="flex flex-col gap-1 text-xs font-medium">
-                  {setting.label}
-                  <select
-                    className={cn(INPUT_CLASS, 'h-9 text-sm font-normal text-foreground')}
-                    value={pickedChoices[setting.key] ?? ''}
-                    onChange={(event) =>
-                      setChoices((all) => ({
-                        ...all,
-                        [picked.id]: { ...settingChoices(picked, all[picked.id]), [setting.key]: event.target.value },
-                      }))
-                    }
-                  >
-                    {/* Offered only when what the printer is set to is not known: otherwise that is where it starts. */}
-                    {setting.initial === null ? <option value="">As the printer is set</option> : null}
-                    {setting.options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                        {option.id === setting.initial ? ' (the printer’s own)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-              {picked.settings.length === 0 ? (
-                <p>This printer offers no settings here. It prints as it is set on its computer.</p>
-              ) : (
-                <p className="text-xs">
-                  These apply to this print only. Load that paper first: the printer cannot tell what is in its tray.
-                </p>
-              )}
-            </div>
-          ) : null
-        }
-        onCancel={() => setPicked(null)}
-        onConfirm={() => {
-          if (!picked) return;
-          const target = { printer: picked, settings: chosenSettings(pickedChoices) };
-          setPicked(null);
-          void run('sent_to_print', target);
-        }}
-      />
 
       <ConfirmDialog
         open={asking}
@@ -440,44 +329,6 @@ export function clampCopies(value: number): number {
 
 /** One of the workspace's printers and what was chosen for this print on it. */
 interface StudioPrintTarget {
-  printer: StudioPrinterChoice;
+  printer: PrinterChoice;
   settings: Readonly<Record<string, string>>;
-}
-
-/**
- * Where each of a printer's settings stands: what was last chosen on this
- * page, while the printer still offers it, else what the printer is set to.
- * '' is "leave it as the printer is set".
- */
-export function settingChoices(
-  printer: Pick<StudioPrinterChoice, 'settings'>,
-  kept: Readonly<Record<string, string>> = {},
-): Record<string, string> {
-  const choices: Record<string, string> = {};
-  for (const setting of printer.settings) {
-    const last = kept[setting.key];
-    const offered = last !== undefined && (last === '' || setting.options.some((option) => option.id === last));
-    choices[setting.key] = offered ? last : (setting.initial ?? '');
-  }
-  return choices;
-}
-
-/** The choices to send: the ones left "as the printer is set" are not sent at all. */
-export function chosenSettings(choices: Readonly<Record<string, string>>): Record<string, string> {
-  return Object.fromEntries(Object.entries(choices).filter(([, id]) => id !== ''));
-}
-
-/** The printers under the computer each is on, in the order they came. A computer is blocked when all of its are. */
-export function printersByComputer(
-  printers: readonly StudioPrinterChoice[],
-): { computer: string; blocked: boolean; printers: StudioPrinterChoice[] }[] {
-  const groups = new Map<string, StudioPrinterChoice[]>();
-  for (const printer of printers) {
-    groups.set(printer.computer, [...(groups.get(printer.computer) ?? []), printer]);
-  }
-  return [...groups].map(([computer, list]) => ({
-    computer,
-    blocked: list.every((printer) => printer.blocked !== null),
-    printers: list,
-  }));
 }

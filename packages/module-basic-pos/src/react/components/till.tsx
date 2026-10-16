@@ -1075,6 +1075,20 @@ export function printHtml(html: string): void {
   frame.contentWindow.print();
 }
 
+/**
+ * Saves CSV text as a file. The reports' tables and the Items price list,
+ * so both download the same way.
+ */
+export function downloadCsv(fileName: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  // After the click has started the download: revoking first would cancel it in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 /** Where the cashier is, for the keys and the bar (`TillZone`). */
 function tillZone(dialog: Dialog, finished: boolean, lineSelected: boolean): TillZone {
   if (dialog.kind === 'pay') return 'payment';

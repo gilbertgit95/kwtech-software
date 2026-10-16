@@ -48,12 +48,13 @@ export const { PUT } = createPrintRelayRouteHandlers();
 
 `createPrintTarget()` is this module as somewhere another module can print to:
 the printers a person may choose, and "put this PDF on that one". The print
-studio declares a port of that shape and the app binds the two, in a client
-file (`apps/web-app/src/app/providers.tsx`):
+studio, the POS's price list and any module after them use `module-kit`'s one
+port of that shape (`PrinterPort`, read with `usePrinters`), and the app binds
+this to it once, in a client file (`apps/web-app/src/app/providers.tsx`):
 
 ```tsx
-const STUDIO_PRINTER = createPrintTarget();
-<StudioPrinterProvider printer={STUDIO_PRINTER}>{children}</StudioPrinterProvider>
+const PRINT_TARGET = createPrintTarget();
+<PrinterProvider printer={PRINT_TARGET}>{children}</PrinterProvider>
 ```
 
 - Each printer comes with its **settings** for one print: a list of things

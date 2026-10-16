@@ -11,13 +11,14 @@ import { cannotPrintReason, jobStatusText, paperSizeText } from './view.js';
  *
  * ## Why it exists
  *
- * The print studio makes a PDF and wants it on paper. A module may not import
- * a module (PLAN §9), so the studio declares what it needs as a port and the
- * web app binds this to it, in a client file:
+ * The print studio, the POS's price list and any module after them make a
+ * PDF and want it on paper. A module may not import a module (PLAN §9), so
+ * `module-kit` declares ONE port for all of them (`PrinterPort`, read with
+ * `usePrinters`) and the web app binds this to it, in a client file:
  *
- *   <StudioPrinterProvider printer={PRINT_TARGET}>   // const PRINT_TARGET = createPrintTarget()
+ *   <PrinterProvider printer={PRINT_TARGET}>   // const PRINT_TARGET = createPrintTarget()
  *
- * The shapes below are this module's own. They fit the studio's port because
+ * The shapes below are this module's own. They fit module-kit's port because
  * the two were written to, and the app's compiler checks that they still do.
  *
  * ⚠ THE CALLER NEVER NAMES A PAPER. It says how large its page is, and the

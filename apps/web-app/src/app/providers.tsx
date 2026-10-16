@@ -1,9 +1,8 @@
 'use client';
 
-import { RealtimeProvider, StatusProvider } from '@kwtech/module-kit/react';
+import { PrinterProvider, RealtimeProvider, StatusProvider } from '@kwtech/module-kit/react';
 import { createRealtimeConnection } from '@kwtech/module-kit/realtime';
 import { createPrintTarget } from '@kwtech/module-print/react';
-import { StudioPrinterProvider } from '@kwtech/module-print-studio/react';
 import { ThemeProvider } from 'next-themes';
 import { type ReactNode, useMemo } from 'react';
 
@@ -41,20 +40,21 @@ import { THEME_STORAGE_KEY } from '@/lib/preferences';
  * RealtimeProvider is here for BOTH reasons at once — see below.
  */
 /**
- * The print studio's way onto the workspace's printers: its port, bound to
- * `module-print` (PRINT-STUDIO-PLAN §10). Neither module knows the other; this
- * line is where they meet, and the compiler checks the one still fits the
- * other.
+ * The way onto the workspace's printers for EVERY module that prints (the
+ * print studio, the POS's price list): module-kit's one `PrinterPort`, bound
+ * to `module-print`'s target. A module reads it with `usePrinters(scope)` and
+ * shows web-ui's `PrinterMenu`; none of them knows `module-print`, and this
+ * line is where they meet, the compiler checking the target fits the port.
  *
  * ⚠ HERE, IN A CLIENT FILE, and not as an option in `modules.ts`: a sub-app's
  * element is made on the server, and functions cannot be handed from there to
  * a client component. Made once, at module level: it holds nothing until a
- * person prints, and asks the API only from the studio's own screen.
+ * person prints, and asks the API only from the screens that print.
  *
- * Both packages are `sideEffects: false`, so a page that never shows the
- * studio bundles this small adapter and not the studio.
+ * `module-print` is `sideEffects: false`, so a page that never prints bundles
+ * this small adapter and not the Printers page.
  */
-const STUDIO_PRINTER = createPrintTarget();
+const PRINT_TARGET = createPrintTarget();
 
 export function Providers({ children }: { children: ReactNode }) {
   /*
@@ -117,7 +117,7 @@ export function Providers({ children }: { children: ReactNode }) {
     >
       <StatusProvider>
         <RealtimeProvider connect={connect}>
-          <StudioPrinterProvider printer={STUDIO_PRINTER}>{children}</StudioPrinterProvider>
+          <PrinterProvider printer={PRINT_TARGET}>{children}</PrinterProvider>
         </RealtimeProvider>
       </StatusProvider>
     </ThemeProvider>

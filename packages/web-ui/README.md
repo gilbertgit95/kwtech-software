@@ -540,6 +540,26 @@ The height is capped at `calc(100dvh - 4rem)` with `overflow-y-auto`, because th
 UA caps a modal's height but does not make the overflow reachable — a long list
 would be clipped with the buttons underneath it out of reach.
 
+## The printer menu
+
+`<PrinterMenu>` is the "Printers ▾" button every module that prints shows: the
+workspace's printers grouped by computer (a blocked one disabled, with its
+reason as the title), and on choosing one a `ConfirmDialog` of that printer's
+settings for this one print. It knows printers only by shape
+(`PrinterMenuPrinter`) and sends nothing: `onPrint(printer, settings)` does,
+through `usePrinters` from `@kwtech/module-kit/react` (its README, "Printing on
+a workspace's printers").
+
+- **Renders nothing when `printers` is empty**, so an unbound app shows nothing.
+- `settings` holds only what was chosen; one left "as the printer is set" is
+  not in it. Choices are remembered per printer while the menu is mounted.
+- `triggerClassName` takes the caller's own button look; `describe(printer)`
+  is the dialog's first line; `fields` are the caller's own inputs above the
+  printer's settings (the POS's paper size), styled with
+  `PRINTER_MENU_SELECT_CLASS`.
+- The rules are pure and tested: `printersByComputer`, `settingChoices`,
+  `chosenSettings` (`test/printer-menu.test.ts`).
+
 ## The multi-select
 
 A filter facet as a dropdown, showing only how many are chosen.

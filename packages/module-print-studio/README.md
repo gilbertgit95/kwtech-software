@@ -153,16 +153,18 @@ shows when the Layouts section is opened again.
 
 ## Printing on the workspace's printers
 
-The studio declares a port, `StudioPrinterPort`, and the app binds it in a
-client file:
+The studio uses the one printer port every module shares: `usePrinters(scope)`
+from `@kwtech/module-kit/react` and `PrinterMenu` from `@kwtech/web-ui/react`
+(module-kit README, "Printing on a workspace's printers"). The app binds it
+once, in a client file:
 
 ```tsx
 // apps/web-app/src/app/providers.tsx
+import { PrinterProvider } from '@kwtech/module-kit/react';
 import { createPrintTarget } from '@kwtech/module-print/react';
-import { StudioPrinterProvider } from '@kwtech/module-print-studio/react';
 
-const STUDIO_PRINTER = createPrintTarget();
-<StudioPrinterProvider printer={STUDIO_PRINTER}>{children}</StudioPrinterProvider>
+const PRINT_TARGET = createPrintTarget();
+<PrinterProvider printer={PRINT_TARGET}>{children}</PrinterProvider>
 ```
 
 | The port | Asked | Unbound means |

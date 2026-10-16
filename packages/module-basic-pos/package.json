@@ -50,7 +50,8 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "@kwtech/module-kit": "workspace:*"
+    "@kwtech/module-kit": "workspace:*",
+    "pdf-lib": "^1.17.1"
   },
   "peerDependencies": {
     "@kwtech/web-ui": "workspace:*",

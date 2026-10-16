@@ -12,6 +12,13 @@ export {
   useHoldsAllFeatures,
   useHoldsFeature,
 } from './feature-access.js';
+export {
+  PrinterProvider,
+  type PrinterProviderProps,
+  type PrintersState,
+  usePrinter,
+  usePrinters,
+} from './printers.js';
 export { RealtimeProvider, type RealtimeProviderProps, useRealtime, useRealtimeStatus } from './realtime-context.js';
 export {
   PublishStatus,
