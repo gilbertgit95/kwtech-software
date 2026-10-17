@@ -1,6 +1,7 @@
 import {
   checkDocumentSetup,
   defaultDocumentSetup,
+  documentColumnWidth,
   documentFileName,
   documentName,
   documentSheet,
@@ -11,6 +12,7 @@ import {
   nextFontSize,
   pointsToEditorPixels,
   prepareDocumentFile,
+  STUDIO_DOCUMENT_COLUMN_GAP_DEFAULT,
   STUDIO_DOCUMENT_FORMAT,
   STUDIO_DOCUMENT_UNTITLED,
   STUDIO_DOCUMENT_VERSION,
@@ -164,6 +166,67 @@ describe('page numbers', () => {
     expect('refused' in numbered ? null : numbered.setup.pageNumbers).toBe(true);
     const missing = prepareDocumentFile(savedFile({ setup: { ...defaultDocumentSetup(a4()), pageNumbers: 'yes' } }));
     expect('refused' in missing ? null : missing.setup.pageNumbers).toBe(false);
+  });
+});
+
+describe('columns', () => {
+  it('starts as one column, with half an inch ready for a gap', () => {
+    expect(defaultDocumentSetup(a4()).columns).toEqual({ count: 1, gap: inches(0.5), separator: false });
+  });
+
+  it('splits the width inside the margins between the columns, less the gaps', () => {
+    const setup = {
+      ...defaultDocumentSetup(a4()),
+      margins: { top: mm(20), right: mm(20), bottom: mm(20), left: mm(20) },
+    };
+    expect(documentColumnWidth(setup)).toBe(mm(170));
+    // 170 − 10 = 160 mm, in two.
+    expect(documentColumnWidth({ ...setup, columns: { count: 2, gap: mm(10), separator: true } })).toBe(mm(80));
+    expect(checkDocumentSetup({ ...setup, columns: { count: 3, gap: mm(10), separator: false } })).toBeNull();
+  });
+
+  it('refuses columns narrower than the text’s minimum, and a gap out of range', () => {
+    const narrow = {
+      ...defaultDocumentSetup(a4()),
+      margins: { top: mm(10), right: mm(80), bottom: mm(10), left: mm(80) },
+    };
+    // 50 mm inside: one column fits, two of 20 mm with a 10 mm gap fit, three do not.
+    expect(checkDocumentSetup(narrow)).toBeNull();
+    expect(checkDocumentSetup({ ...narrow, columns: { count: 2, gap: mm(10), separator: false } })).toBeNull();
+    expect(checkDocumentSetup({ ...narrow, columns: { count: 3, gap: mm(10), separator: false } })).toBe(
+      'columns_too_narrow',
+    );
+    const wide = defaultDocumentSetup(a4());
+    for (const gap of [mm(51), -1, 0.5]) {
+      expect(checkDocumentSetup({ ...wide, columns: { count: 2, gap, separator: false } })).toBe(
+        'column_gap_out_of_range',
+      );
+    }
+    // With one column the gap is not used, so it is not checked.
+    expect(checkDocumentSetup({ ...wide, columns: { count: 1, gap: mm(51), separator: false } })).toBeNull();
+  });
+
+  it('reads back as saved, and a file saved before columns opens as one', () => {
+    const columns = { count: 2, gap: mm(8), separator: true };
+    const read = prepareDocumentFile(savedFile({ setup: { ...defaultDocumentSetup(a4()), columns } }));
+    expect('refused' in read ? null : read.setup.columns).toEqual(columns);
+
+    const { columns: _dropped, ...older } = defaultDocumentSetup(a4());
+    const opened = prepareDocumentFile(savedFile({ setup: older }));
+    expect('refused' in opened ? null : opened.setup.columns).toEqual({
+      count: 1,
+      gap: STUDIO_DOCUMENT_COLUMN_GAP_DEFAULT,
+      separator: false,
+    });
+  });
+
+  it('reads a count it does not offer as one column, and refuses a saved gap out of range', () => {
+    const odd = prepareDocumentFile(
+      savedFile({ setup: { ...defaultDocumentSetup(a4()), columns: { count: 7, gap: mm(5), separator: 'yes' } } }),
+    );
+    expect('refused' in odd ? null : odd.setup.columns).toEqual({ count: 1, gap: mm(5), separator: false });
+    const far = { ...defaultDocumentSetup(a4()), columns: { count: 2, gap: mm(80), separator: false } };
+    expect(prepareDocumentFile(savedFile({ setup: far }))).toEqual({ refused: 'damaged' });
   });
 });
 

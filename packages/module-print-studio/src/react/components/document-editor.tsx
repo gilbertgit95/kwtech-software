@@ -42,6 +42,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import {
   checkDocumentSetup,
   defaultDocumentSetup,
+  documentColumnWidth,
   documentName,
   documentSheet,
   editorPixelsToPoints,
@@ -51,9 +52,12 @@ import {
   pointsToEditorPixels,
   STUDIO_DEFAULT_FONT,
   STUDIO_DEFAULT_FONT_POINTS,
+  STUDIO_DOCUMENT_COLUMN_COUNTS,
+  STUDIO_DOCUMENT_COLUMN_GAP_MAX,
   STUDIO_DOCUMENT_FORMAT,
   STUDIO_DOCUMENT_NAME_MAX,
   STUDIO_DOCUMENT_PRINT_DPI,
+  STUDIO_DOCUMENT_SETUP_MESSAGES,
   STUDIO_DOCUMENT_UNTITLED,
   STUDIO_DOCUMENT_VERSION,
   STUDIO_EDITOR_DPI,
@@ -62,6 +66,7 @@ import {
   STUDIO_FONT_SIZES,
   STUDIO_FONTS,
   STUDIO_LINE_SPACINGS,
+  type StudioDocumentColumns,
   type StudioDocumentContent,
   type StudioDocumentFile,
   type StudioDocumentSetup,
@@ -479,11 +484,10 @@ export function DocumentEditor({
                 />
                 Page numbers at the foot of each page
               </label>
+              <ColumnFields columns={setup.columns} onColumns={(columns) => changeSetup({ columns })} />
               {setupProblem ? (
                 <p role="alert" className="text-xs text-destructive">
-                  {setupProblem === 'no_room_for_text'
-                    ? 'These margins leave no room for the text. Make them smaller.'
-                    : 'A margin must be between 0 and 100 mm.'}
+                  {STUDIO_DOCUMENT_SETUP_MESSAGES[setupProblem]}
                 </p>
               ) : null}
             </section>
@@ -628,6 +632,75 @@ export function DocumentEditor({
         onCancel={() => setConfirmClose(false)}
       />
     </div>
+  );
+}
+
+/**
+ * How many columns the text runs in, the space between them and a line down
+ * it. The gap and the line are shown only for two or three columns: with one
+ * there is nothing for them to do.
+ */
+function ColumnFields({
+  columns,
+  onColumns,
+}: {
+  columns: StudioDocumentColumns;
+  onColumns: (columns: StudioDocumentColumns) => void;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 text-xs font-medium text-muted-foreground">Columns</legend>
+      {/* The studio's segmented choice, as the border controls' (`aria-pressed`). */}
+      <div className="inline-flex self-start rounded-lg border border-border bg-background p-0.5">
+        {STUDIO_DOCUMENT_COLUMN_COUNTS.map((count) => (
+          <button
+            key={count}
+            type="button"
+            aria-pressed={columns.count === count}
+            aria-label={count === 1 ? 'One column' : `${count} columns`}
+            className={cn(
+              'h-7 w-9 rounded-md text-xs font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              columns.count === count ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
+            )}
+            onClick={() => onColumns({ ...columns, count })}
+          >
+            {count}
+          </button>
+        ))}
+      </div>
+      {columns.count > 1 ? (
+        <>
+          <Field label="Gap between columns (mm)">
+            {(id) => (
+              <input
+                id={id}
+                type="number"
+                min={0}
+                max={toMm(STUDIO_DOCUMENT_COLUMN_GAP_MAX)}
+                step={0.5}
+                className={cn(INPUT_CLASS, 'h-9')}
+                value={toMm(columns.gap)}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  // An emptied box is left alone, not read as 0: the person is about to type a number.
+                  if (event.target.value === '' || !Number.isFinite(value)) return;
+                  onColumns({ ...columns, gap: mm(Math.round(value * 100) / 100) });
+                }}
+              />
+            )}
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={columns.separator}
+              onChange={(event) => onColumns({ ...columns, separator: event.target.checked })}
+            />
+            A line between the columns
+          </label>
+        </>
+      ) : null}
+    </fieldset>
   );
 }
 
@@ -1176,6 +1249,15 @@ function updatableOptions(lib: CanvasEditorLib, setup: StudioDocumentSetup, rule
     pageNumber: { disabled: !setup.pageNumbers, font: STUDIO_DEFAULT_FONT },
     // In mm, with the margins' markers to drag. Here too, or an update of the other options would hide it.
     ruler: { disabled: !ruler },
+    /*
+     * Here and not by `executeSetColumns`, which sets the same option: an update of the others would otherwise
+     * put back the library's one column. The library lays the text down the first column, then the next.
+     */
+    column: {
+      count: setup.columns.count,
+      gap: toEditorPixels(setup.columns.gap),
+      separator: setup.columns.separator,
+    },
   };
 }
 
@@ -1210,11 +1292,14 @@ function backgroundOption(lib: CanvasEditorLib, setup: StudioDocumentSetup): Non
   };
 }
 
-/** The room inside the margins, in editor pixels: the largest a picture is placed at. */
+/**
+ * The room for a picture, in editor pixels: one column across (the editor would squeeze a wider one into the
+ * column anyway, but only after placing it), the page inside the margins down.
+ */
 function textRoom(setup: StudioDocumentSetup): { width: number; height: number } {
   const sheet = documentSheet(setup);
   return {
-    width: toEditorPixels(sheet.width - setup.margins.left - setup.margins.right),
+    width: toEditorPixels(documentColumnWidth(setup)),
     height: toEditorPixels(sheet.height - setup.margins.top - setup.margins.bottom),
   };
 }

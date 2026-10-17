@@ -108,7 +108,38 @@ export interface StudioDocumentSetup {
   backgroundFit: StudioBackgroundFit;
   /** A number at the foot of every page. Off by default, as in Google Docs. */
   pageNumbers: boolean;
+  /** The text in newspaper columns: down the first, then the next, then on to the next page. */
+  columns: StudioDocumentColumns;
 }
+
+/** How many columns a page may have. More than three leaves words a few letters wide on A4. */
+export const STUDIO_DOCUMENT_COLUMN_COUNTS = [1, 2, 3] as const;
+export type StudioDocumentColumnCount = (typeof STUDIO_DOCUMENT_COLUMN_COUNTS)[number];
+
+/**
+ * Columns for the WHOLE document (the operator, 2026-10-17: "it will fill
+ * first the first column then the second column"). The editor has no
+ * sections, so a page cannot be one column at the top and two below, as in
+ * Word.
+ */
+export interface StudioDocumentColumns {
+  count: StudioDocumentColumnCount;
+  /** The space between two columns. Units. */
+  gap: number;
+  /** A thin line down the middle of each gap. */
+  separator: boolean;
+}
+
+/** The space between columns to begin with: half an inch, Google Docs' default. */
+export const STUDIO_DOCUMENT_COLUMN_GAP_DEFAULT = inches(0.5);
+/** The widest gap between columns. */
+export const STUDIO_DOCUMENT_COLUMN_GAP_MAX = mm(50);
+/** One column, as every document had before columns were offered: what a file without them opens as. */
+export const STUDIO_DOCUMENT_ONE_COLUMN: StudioDocumentColumns = {
+  count: 1,
+  gap: STUDIO_DOCUMENT_COLUMN_GAP_DEFAULT,
+  separator: false,
+};
 
 /** A new document's margins: an inch all round, Word's and Google Docs' default. */
 export const STUDIO_DOCUMENT_MARGIN_DEFAULT = inches(1);
@@ -118,17 +149,34 @@ export const STUDIO_DOCUMENT_MARGIN_MAX = mm(100);
 export const STUDIO_DOCUMENT_TEXT_MIN = mm(20);
 
 /** Why page settings cannot be used. */
-export type StudioDocumentSetupRefusal = 'margin_out_of_range' | 'no_room_for_text';
+export type StudioDocumentSetupRefusal =
+  | 'margin_out_of_range'
+  | 'no_room_for_text'
+  | 'column_gap_out_of_range'
+  | 'columns_too_narrow';
+
+export const STUDIO_DOCUMENT_SETUP_MESSAGES: Record<StudioDocumentSetupRefusal, string> = {
+  margin_out_of_range: 'A margin must be between 0 and 100 mm.',
+  no_room_for_text: 'These margins leave no room for the text. Make them smaller.',
+  column_gap_out_of_range: 'The gap between columns must be between 0 and 50 mm.',
+  columns_too_narrow: 'The columns would be too narrow. Use fewer columns, a smaller gap or smaller margins.',
+};
+
+/** What `checkDocumentSetup` reads. No `columns` is one column. */
+type CheckedSetup = Pick<StudioDocumentSetup, 'paper' | 'orientation' | 'margins'> & {
+  columns?: StudioDocumentColumns;
+};
 
 /**
- * Whether the margins fit the paper. `null` when they do.
+ * Whether the margins and the columns fit the paper. `null` when they do.
  *
  * ⚠ CHECKED ON THE SHEET AS TURNED: a margin that fits A4 upright may leave no
- * room for the text across it in landscape, and the other way round.
+ * room for the text across it in landscape, and the other way round. Each
+ * column must keep the room the whole text must (`STUDIO_DOCUMENT_TEXT_MIN`):
+ * the editor would otherwise shrink the gap to fit, and lay out a column a
+ * letter wide.
  */
-export function checkDocumentSetup(
-  setup: Pick<StudioDocumentSetup, 'paper' | 'orientation' | 'margins'>,
-): StudioDocumentSetupRefusal | null {
+export function checkDocumentSetup(setup: CheckedSetup): StudioDocumentSetupRefusal | null {
   const { top, right, bottom, left } = setup.margins;
   for (const margin of [top, right, bottom, left]) {
     if (!isWholeNumber(margin) || margin < 0 || margin > STUDIO_DOCUMENT_MARGIN_MAX) return 'margin_out_of_range';
@@ -136,7 +184,21 @@ export function checkDocumentSetup(
   const sheet = documentSheet(setup);
   if (sheet.width - left - right < STUDIO_DOCUMENT_TEXT_MIN) return 'no_room_for_text';
   if (sheet.height - top - bottom < STUDIO_DOCUMENT_TEXT_MIN) return 'no_room_for_text';
+  const columns = setup.columns ?? STUDIO_DOCUMENT_ONE_COLUMN;
+  if (columns.count === 1) return null;
+  if (!isWholeNumber(columns.gap) || columns.gap < 0 || columns.gap > STUDIO_DOCUMENT_COLUMN_GAP_MAX) {
+    return 'column_gap_out_of_range';
+  }
+  if (documentColumnWidth(setup) < STUDIO_DOCUMENT_TEXT_MIN) return 'columns_too_narrow';
   return null;
+}
+
+/** The width of one column of text, in units: the whole width inside the margins when there is one column. */
+export function documentColumnWidth(setup: CheckedSetup): number {
+  const sheet = documentSheet(setup);
+  const inside = sheet.width - setup.margins.left - setup.margins.right;
+  const columns = setup.columns ?? STUDIO_DOCUMENT_ONE_COLUMN;
+  return (inside - columns.gap * (columns.count - 1)) / columns.count;
 }
 
 /** The sheet as turned, in units. (The same rule as `sheetSize`, which takes a whole layout spec.) */
@@ -155,6 +217,7 @@ export function defaultDocumentSetup(paper: StudioLayoutPaper): StudioDocumentSe
     background: null,
     backgroundFit: 'cover',
     pageNumbers: false,
+    columns: STUDIO_DOCUMENT_ONE_COLUMN,
   };
 }
 
@@ -262,8 +325,23 @@ function prepareSetup(value: unknown): StudioDocumentSetup | null {
     background: typeof value.background === 'string' && isImageDataUrl(value.background) ? value.background : null,
     backgroundFit: value.backgroundFit === 'contain' ? 'contain' : 'cover',
     pageNumbers: value.pageNumbers === true,
+    columns: prepareColumns(value.columns),
   };
   return checkDocumentSetup(setup) === null ? setup : null;
+}
+
+/**
+ * The columns as saved. ⚠ A FILE WITHOUT THEM IS NOT DAMAGED: every document
+ * saved before columns were offered has none, and opens as one column, so the
+ * file's version did not change. A count that is not 1, 2 or 3 is one column;
+ * a gap that is not a whole unit is the default, and one out of range is
+ * refused by `checkDocumentSetup`.
+ */
+function prepareColumns(value: unknown): StudioDocumentColumns {
+  if (!isRecord(value)) return STUDIO_DOCUMENT_ONE_COLUMN;
+  const count = STUDIO_DOCUMENT_COLUMN_COUNTS.find((one) => one === value.count) ?? 1;
+  const gap = isWholeNumber(value.gap) ? value.gap : STUDIO_DOCUMENT_COLUMN_GAP_DEFAULT;
+  return { count, gap, separator: value.separator === true };
 }
 
 function preparePaper(value: unknown): StudioLayoutPaper | null {

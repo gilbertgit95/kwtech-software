@@ -601,6 +601,27 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-17** — **Written documents get columns, for the whole document, saved in the page settings; and the toolbar ignores the editor's reset style.**
+
+  The operator found line spacing would not go back to 1 after 1.5, and asked
+  for the other tools to be checked, then for two columns that fill one after
+  the other.
+  - **The toolbar bug was one cause for all of them:** `@hufe921/canvas-editor`
+    treats a mousedown outside its pages as a click away and sends its default
+    style while the cursor stays. A list then already showed the default, so
+    choosing it sent nothing; − / + stepped from 11 pt; a list could not be
+    turned off; a heading could not go back to Normal. The listener now drops a
+    style with no `type` (only the reset has none), and the toolbar and the size
+    menu carry the library's `editor-component` mark.
+  - **Columns are `setup.columns`** (`count` 1–3, `gap` in units, `separator`),
+    sent with every other option to `executeUpdateOptions`, never by
+    `executeSetColumns` alone, which the next options update would undo.
+  - **The file's version stays 1:** a file without columns opens as one column,
+    and an older studio ignores the field.
+  - **Not done:** columns for part of a page, or a column break. The library
+    has neither sections nor a column-break element; a page break is the
+    nearest.
+
 - **2026-10-17** — **One printer port for every module: `PrinterPort` and `usePrinters` in `module-kit`, `PrinterMenu` in `web-ui`.**
 
   Asked the same day, after the POS's price list copied the print studio's

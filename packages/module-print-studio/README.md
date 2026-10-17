@@ -213,14 +213,28 @@ margins and the page breaks on screen are the print's.
   a dragged margin is read back into the margin boxes when the press ends). Tab moves to the next tab stop. A
   picture is resized by its handles and floated from the right-click menu
   (the library's, in English).
+- ⚠ **The toolbar shows the style at the cursor, never the library's
+  defaults.** On a press anywhere outside its pages, or when the window loses
+  focus, the library sends its defaults (a style with no `type`) while the
+  cursor stays put; that is ignored. Otherwise a list showed line spacing 1 on
+  a paragraph at 1.5, and picking 1 was no change, so nothing was sent. The
+  toolbar and the size menu carry the library's `editor-component` mark, so
+  pressing them does not hide the cursor either.
 - ⚠ **Every toolbar choice gives the keyboard back to the page**, where the
   cursor and the selection still are. Otherwise the next step is a click into
   the page, and that click moves the cursor and loses the selection and the
   style picked for the next words.
 - **The page settings are in the settings column:** a built-in paper,
   portrait or landscape, four margins in mm (an inch by default), page numbers
-  (off by default), and a **background picture** behind every page, covering it
-  or fitted inside.
+  (off by default), **columns** (1, 2 or 3, a gap in mm, half an inch by
+  default, and a line between them if wanted), and a **background picture**
+  behind every page, covering it or fitted inside.
+- **Columns are newspaper columns for the whole document:** the text runs down
+  the first, then the next, then on to the next page. The library has no
+  sections, so one page cannot mix one column and two. Each column must keep
+  20 mm of text (`columns_too_narrow`), and a picture is fitted to a column. A
+  file saved before columns existed opens as one column; the file's version
+  did not change.
 - **Fonts are the computer's.** None is downloaded, so the list is what a
   Windows computer has (`STUDIO_FONTS`).
 - **Print, Printers and Download PDF are in the editor** (the PDF side's own
