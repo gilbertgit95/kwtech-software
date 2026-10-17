@@ -208,7 +208,18 @@ export function DocumentEditor({
           editorData(start.content),
           editorOptions(lib, start.setup, rulerRef.current, scrollId),
         );
-        made.listener.rangeStyleChange = (next: IRangeStyle) => setStyle(next);
+        /*
+         * ⚠ A STYLE WITH NO `type` IS THE LIBRARY'S RESET, NOT THE CURSOR'S, and is ignored. On a mousedown anywhere
+         * outside its pages (a toolbar list, the size menu, the page settings) or when the window loses focus, it
+         * sends its DEFAULTS (`recoveryRangeStyle`) while the cursor and the selection stay where they were. The
+         * toolbar then showed line spacing 1, the default font and size, no list, no heading: picking 1 again on
+         * a paragraph at 1.5 was no change to the list, so nothing was sent (the operator, 2026-10-17), "+" on a
+         * 30 pt title stepped from 11 pt, and the list button added a list instead of taking it off. The style
+         * at a real cursor always has a type (it falls back to "text"), so this drops the reset only.
+         */
+        made.listener.rangeStyleChange = (next: IRangeStyle) => {
+          if (next.type !== null) setStyle(next);
+        };
         made.listener.pageScaleChange = (next: number) => setScale(next);
         made.listener.contentChange = () => {
           setDirty(true);
@@ -697,6 +708,8 @@ function Toolbar({
 
   return (
     <div
+      // The library's mark for its own controls: a press here is not a click away, so the cursor stays drawn.
+      {...EDITOR_COMPONENT}
       role="toolbar"
       aria-label="Formatting"
       className="flex flex-wrap items-center gap-0.5 border-b border-border bg-card px-2 py-1.5"
@@ -921,6 +934,12 @@ function Toolbar({
   );
 }
 
+/**
+ * The attribute the editor reads, on a mousedown outside its pages, to tell its own controls from a click away
+ * (`editor-component`, any value). Without it every press on the toolbar hid the cursor.
+ */
+const EDITOR_COMPONENT = { 'editor-component': 'menu' } as const;
+
 const TOOL_BUTTON_CLASS =
   'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-primary/15 aria-pressed:text-primary';
 const TOOL_SELECT_CLASS =
@@ -1063,6 +1082,8 @@ function FontSizeBox({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
+          // Portalled to <body>, outside the toolbar, so it needs the library's mark of its own.
+          {...EDITOR_COMPONENT}
           align="start"
           className="max-h-72 min-w-16 overflow-y-auto"
           // Back to the document, not to this button: see `focusEditor`.
