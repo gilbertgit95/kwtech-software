@@ -245,15 +245,17 @@ function Dashboard({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">
+      {/* One row when wide, however many cards there are: profit shows only when costs were entered. */}
+      <div className="grid grid-cols-2 gap-2 @3xl:auto-cols-fr @3xl:grid-flow-col @3xl:grid-cols-none">
         {kpis(report).map((card) => (
           <div key={card.key} className="flex flex-col gap-0.5 rounded-lg border border-border p-3">
             <span className="text-xs text-muted-foreground">{card.label}</span>
             <span className="text-xl font-semibold">{card.value}</span>
             <span className="text-xs text-muted-foreground">
               {/* Text in text tokens, never green/red alone: the arrow says which way. */}
-              {deltaText(card.delta)} {comparisonText(report)}
+              {card.deltaLabel ?? deltaText(card.delta)} {comparisonText(report)}
             </span>
+            {card.note ? <span className="text-xs text-muted-foreground">{card.note}</span> : null}
           </div>
         ))}
       </div>
@@ -742,7 +744,7 @@ function SummaryReport({ report, timeZone }: { report: PosReportView; timeZone: 
       </div>
       <table className="w-full text-sm">
         <tbody>
-          {summaryLines(report.summary).map((line) => (
+          {summaryLines(report.summary, report).map((line) => (
             <tr key={line.label} className={cn('border-b border-border', line.strong && 'font-semibold')}>
               <td className={cn(TD, line.indent && 'pl-6 text-muted-foreground')}>{line.label}</td>
               <td className={cn(TD, NUM)}>{line.value}</td>

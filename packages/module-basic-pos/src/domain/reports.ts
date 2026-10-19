@@ -357,6 +357,58 @@ export function salesByHour(
   return hours;
 }
 
+/** How many store days of a period had no sale, out of how many could have had one. */
+export interface PosZeroDays {
+  /** Counted days on which nothing was paid. */
+  zeroDays: number;
+  /**
+   * The days counted: the period, from the store's first sale (or its first
+   * day, if later) to today (or its last day, if earlier). 0 when none of it
+   * is — before the first sale, after today, or no sale ever.
+   */
+  countedDays: number;
+  /**
+   * The store's first sale day, or null if it has never sold: where counting
+   * starts, so a period that begins before it can say why it counts fewer days.
+   */
+  firstSaleDay: string | null;
+}
+
+/**
+ * Days with no sale (issue #1), counted only from the day the store FIRST
+ * sold anything. A store that opened on the 10th did not have nine bad days
+ * before it, and a day that has not happened yet has not been a zero day.
+ *
+ * A day with a sale is one with a paid order paid on it — the counting rule
+ * above; a refund does not make a day a zero day, nor a sale undone by one.
+ *
+ * `orders` may hold orders from outside the span (the report reads the owed
+ * ones from any time); only a sale ON a counted day counts.
+ */
+export function zeroDays(
+  orders: readonly PosReportOrder[],
+  timeZone: string,
+  span: { fromDay: string; toDay: string; firstSaleDay: string | null; today: string },
+): PosZeroDays {
+  const none = { zeroDays: 0, countedDays: 0, firstSaleDay: span.firstSaleDay };
+  if (span.firstSaleDay === null) return none;
+  const start = span.firstSaleDay > span.fromDay ? span.firstSaleDay : span.fromDay;
+  const end = span.today < span.toDay ? span.today : span.toDay;
+  if (end < start) return none;
+  const saleDays = new Set(
+    orders
+      .filter((order) => order.status === 'paid' && order.paidAt !== null)
+      .map((order) => zonedDayKey(order.paidAt ?? new Date(0), timeZone)),
+  );
+  let zero = 0;
+  let counted = 0;
+  for (let day = start; day <= end; day = shiftDayKey(day, 1)) {
+    counted += 1;
+    if (!saleDays.has(day)) zero += 1;
+  }
+  return { zeroDays: zero, countedDays: counted, firstSaleDay: span.firstSaleDay };
+}
+
 /** Report 6: what is owed, either way, as of `now`, oldest first. */
 export interface PosOutstanding {
   /** The customer owes the store. */

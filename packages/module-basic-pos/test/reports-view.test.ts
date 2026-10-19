@@ -20,6 +20,7 @@ import {
   summaryHtml,
   summaryLines,
   toCsv,
+  zeroDaysText,
 } from '../src/react/view/reports.js';
 
 const NONE = { count: 0, amount: 0 };
@@ -54,6 +55,8 @@ function report(over: Partial<PosReportView> = {}): PosReportView {
     previousFromDay: '2026-09-23',
     previousToDay: '2026-09-23',
     granularity: 'day',
+    zeroDays: { zeroDays: 0, countedDays: 1, firstSaleDay: '2026-06-02' },
+    previousZeroDays: { zeroDays: 1, countedDays: 1, firstSaleDay: '2026-06-02' },
     series: [],
     previousSeries: [],
     byItem: [],
@@ -227,13 +230,57 @@ describe('comparing', () => {
   });
 
   it('shows profit only when some sold line had a cost', () => {
-    expect(kpis(report()).map((card) => card.key)).toEqual(['netSales', 'orders', 'averageOrder', 'profit']);
+    expect(kpis(report()).map((card) => card.key)).toEqual([
+      'netSales',
+      'orders',
+      'averageOrder',
+      'profit',
+      'zeroDays',
+    ]);
     expect(kpis(report({ summary: { ...SUMMARY, profit: null } })).map((card) => card.key)).toEqual([
       'netSales',
       'orders',
       'averageOrder',
+      'zeroDays',
     ]);
     expect(kpis(report())[0]).toMatchObject({ value: '₱950.00', delta: { direction: 'up', basisPoints: 9000 } });
+  });
+});
+
+describe('the zero days card', () => {
+  const card = (over: Partial<PosReportView>) => kpis(report(over)).find((kpi) => kpi.key === 'zeroDays');
+  const FIRST = '2026-06-02';
+
+  it('says the zero days out of the days counted, and the change in days, not percent', () => {
+    expect(
+      card({
+        zeroDays: { zeroDays: 3, countedDays: 30, firstSaleDay: FIRST },
+        previousZeroDays: { zeroDays: 1, countedDays: 30, firstSaleDay: FIRST },
+      }),
+    ).toMatchObject({ value: '3 of 30', deltaLabel: '▲ 2 days' });
+    expect(
+      card({
+        zeroDays: { zeroDays: 0, countedDays: 30, firstSaleDay: FIRST },
+        previousZeroDays: { zeroDays: 1, countedDays: 30, firstSaleDay: FIRST },
+      }),
+    ).toMatchObject({ value: '0 of 30', deltaLabel: '▼ 1 day' });
+    expect(card({ previousZeroDays: { zeroDays: 0, countedDays: 1, firstSaleDay: FIRST } })).toMatchObject({
+      deltaLabel: 'no change',
+    });
+  });
+
+  it('shows a dash before the first sale, and has nothing to compare with when the previous period had none', () => {
+    const before = { zeroDays: 0, countedDays: 0, firstSaleDay: FIRST };
+    expect(
+      card({ fromDay: '2026-05-01', toDay: '2026-05-31', zeroDays: before, previousZeroDays: before }),
+    ).toMatchObject({ value: '—', deltaLabel: 'no sales yet', note: 'First sale Jun 2, 2026' });
+  });
+
+  it('names the first sale when the period starts before it, and only then', () => {
+    const zero = { zeroDays: 2, countedDays: 28, firstSaleDay: '2026-06-03' };
+    expect(card({ fromDay: '2026-06-01', toDay: '2026-06-30', zeroDays: zero })?.note).toBe('First sale Jun 3, 2026');
+    expect(card({ fromDay: '2026-06-03', toDay: '2026-06-30', zeroDays: zero })?.note).toBeUndefined();
+    expect(card({ zeroDays: { zeroDays: 0, countedDays: 0, firstSaleDay: null } })?.note).toBe('No sale recorded yet');
   });
 });
 
@@ -320,13 +367,29 @@ describe('the tables', () => {
   });
 
   it('writes every line of the daily summary, discounts and refunds as what they take off', () => {
-    const lines = summaryLines(SUMMARY);
+    const lines = summaryLines(
+      SUMMARY,
+      report({ zeroDays: { zeroDays: 2, countedDays: 7, firstSaleDay: '2026-06-02' } }),
+    );
     expect(lines.find((line) => line.label === 'Discounts')?.value).toBe('-₱100.00');
     expect(lines.find((line) => line.label === 'Net sales')).toMatchObject({ value: '₱950.00', strong: true });
     expect(lines.find((line) => line.label === 'Profit')?.value).toBe('₱400.00 (costs cover 80% of sales)');
-    expect(summaryLines({ ...SUMMARY, profit: null }).find((line) => line.label === 'Profit')?.value).toBe(
+    expect(summaryLines({ ...SUMMARY, profit: null }, report()).find((line) => line.label === 'Profit')?.value).toBe(
       'No costs entered',
     );
+    expect(lines.find((line) => line.label.startsWith('Zero days'))?.value).toBe('2 of 7 days');
+  });
+
+  it('says the zero days with the first sale when the period starts before it, or why none were counted', () => {
+    const text = (fromDay: string, toDay: string, zeroDays: number, countedDays: number, firstSaleDay: string | null) =>
+      zeroDaysText({ fromDay, toDay, zeroDays: { zeroDays, countedDays, firstSaleDay } });
+    expect(text('2026-06-01', '2026-06-30', 2, 28, '2026-06-03')).toBe(
+      '2 of 28 days, from the first sale on Jun 3, 2026',
+    );
+    expect(text('2026-06-03', '2026-06-30', 2, 28, '2026-06-03')).toBe('2 of 28 days');
+    expect(text('2026-05-01', '2026-05-31', 0, 0, '2026-06-03')).toBe('None counted — the first sale was Jun 3, 2026');
+    expect(text('2026-11-01', '2026-11-30', 0, 0, '2026-06-03')).toBe('None counted — still to come');
+    expect(text('2026-06-01', '2026-06-30', 0, 0, null)).toBe('None counted — no sale recorded yet');
   });
 
   it('prints the summary with the period and when it was printed, in the store zone', () => {

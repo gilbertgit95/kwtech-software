@@ -438,6 +438,22 @@ describe('what the API answers', () => {
     // One day compares with the same weekday last week, whose series is its own — empty here.
     expect(report.series).toEqual([{ key: day, orders: 1, sales: 15_000, refunds: 0 }]);
     expect(report.previousSeries).toEqual([]);
+    // The sale is the store's first and was today: one day counted, and it had a sale.
+    expect(report.zeroDays).toEqual({ zeroDays: 0, countedDays: 1, firstSaleDay: day });
+    // Last week was before the first sale, so it counts nothing.
+    expect(report.previousZeroDays).toEqual({ zeroDays: 0, countedDays: 0, firstSaleDay: day });
+  });
+
+  it('counts zero days from the first sale, never before it', async () => {
+    const { writes, reports, magnet } = await shop();
+    let order = await writes.create(SCOPE, BEN, null);
+    order = await writes.addLine(SCOPE, BEN, ref(order), { itemId: magnet.id, quantity: 1 });
+    order = await writes.pay(SCOPE, BEN, ref(order), cash(2000));
+    const day = (order.paidAt ?? new Date()).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const monthAgo = new Date(Date.parse(`${day}T00:00:00Z`) - 30 * 86_400_000).toISOString().slice(0, 10);
+    // Thirty days before the first sale and the sale's own day: only the sale's day is counted.
+    const report = await reports.report(SCOPE, monthAgo, day);
+    expect(report.zeroDays).toEqual({ zeroDays: 0, countedDays: 1, firstSaleDay: day });
   });
 
   it("draws the previous period's series from the previous period's sales", async () => {

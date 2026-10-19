@@ -1551,12 +1551,14 @@ type PosReport {
   previousFromDay: String!
   previousSeries: [PosSeriesPoint!]!
   previousToDay: String!
+  previousZeroDays: PosZeroDays!
   series: [PosSeriesPoint!]!
   summary: PosSummary!
   timeZone: String!
   toDay: String!
   truncated: Boolean!
   unpaid: [PosOwed!]!
+  zeroDays: PosZeroDays!
 }
 
 type PosSeriesPoint {
@@ -1601,6 +1603,12 @@ type PosVariant {
   name: String!
   price: Float!
   sortOrder: Int!
+}
+
+type PosZeroDays {
+  countedDays: Int!
+  firstSaleDay: String
+  zeroDays: Int!
 }
 
 type PrintAgent {

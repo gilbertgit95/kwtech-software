@@ -24,6 +24,7 @@ const COUNT = 'count amount';
 const SUMMARY = `orders gross discounts refunds netSales averageOrder tips cash ewallet card cashExpected profit costCoverage unpaidReleased { ${COUNT} } unpaidCollected { ${COUNT} } changeOwedOutstanding { ${COUNT} } cancelled { ${COUNT} }`;
 const BREAKDOWN = 'key label quantity net cost profit';
 const OWED = 'orderId number customerName amount since';
+const ZERO_DAYS = 'zeroDays countedDays firstSaleDay';
 const ORDER_VARS = '$orderId: String!, $version: Int!';
 const ORDER_ARGS = 'orderId: $orderId, version: $version';
 const SCOPE_VARS = '$organizationId: String!, $workspaceId: String!';
@@ -172,6 +173,7 @@ export const POS_OPERATIONS = {
   posReport: `query PosReport(${SCOPE_VARS}, $fromDay: String!, $toDay: String!) {
     posReport(${SCOPE_ARGS}, fromDay: $fromDay, toDay: $toDay) {
       fromDay toDay timeZone summary { ${SUMMARY} } previous { ${SUMMARY} } previousFromDay previousToDay granularity
+      zeroDays { ${ZERO_DAYS} } previousZeroDays { ${ZERO_DAYS} }
       series { key orders sales refunds } previousSeries { key orders sales refunds }
       byItem { ${BREAKDOWN} } byCategory { ${BREAKDOWN} } byStaff { ${BREAKDOWN} }
       byHour { hour orders sales } unpaid { ${OWED} } changeOwed { ${OWED} } truncated
