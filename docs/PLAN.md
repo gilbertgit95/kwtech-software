@@ -601,6 +601,30 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-19** — **POS reports count zero days (no sale), from the store's first sale to today, never before it.**
+
+  Issue #1 asked for a zero days count on the POS reports; the operator settled
+  where it starts: at the first recorded sale.
+  - **Counted days are the period clipped to [first sale, today]:** a period
+    wholly inside that window counts all its days; one that starts before the
+    first sale counts from it; days after today are not counted. "This year"
+    for a store that opened in June says 21 of 140, not 21 of 292.
+  - **A zero day has no paid order paid on it**, by the reports' counting rule
+    (D13): a refund, a cancelled or voided order does not change it. The day
+    is the workspace's. Pure in `zeroDays` (`src/domain/reports.ts`).
+  - **The first sale is read once per report** (one row by
+    `(workspaceId, paidAt)`), so the comparison period counts from the same
+    day; before it, the card says "no sales yet" rather than "new".
+  - **Shown** as a dashboard card ("3 of 18", its change in days, not percent)
+    and a daily summary line, so the print and the CSV carry it.
+  - **A period that starts before the first sale names it** ("First sale
+    Jun 2, 2026" on the card; "…, from the first sale on Jun 2, 2026" in the
+    summary), so a count shorter than the period explains itself. The report
+    carries `firstSaleDay` with the count.
+  - **Not done:** days the store is closed. The POS has no opening days, so a
+    Sunday it is shut counts as a zero day. Listing which days, beyond the
+    chart's empty columns, was not asked for.
+
 - **2026-10-17** — **Written documents get columns, for the whole document, saved in the page settings; and the toolbar ignores the editor's reset style.**
 
   The operator found line spacing would not go back to 1 after 1.5, and asked

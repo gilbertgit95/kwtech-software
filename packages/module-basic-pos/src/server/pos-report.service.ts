@@ -1,4 +1,4 @@
-import { nextDayKey, zonedStartOfDay } from '@kwtech/module-kit';
+import { nextDayKey, zonedDayKey, zonedStartOfDay } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   outstanding,
@@ -10,6 +10,7 @@ import {
   type PosReportRefund,
   type PosSeriesPoint,
   type PosSummary,
+  type PosZeroDays,
   periodDayCount,
   salesByCategory,
   salesByHour,
@@ -18,6 +19,7 @@ import {
   salesSeries,
   shiftDayKey,
   summarize,
+  zeroDays,
 } from '../domain/reports.js';
 import type { PosMemberDirectory } from './ports.js';
 import { type PosWriteError, refusalError } from './pos.errors.js';
@@ -50,6 +52,9 @@ export interface PosReport {
    */
   previousSeries: readonly PosSeriesPoint[];
   granularity: 'day' | 'month';
+  /** Days with no sale, counted from the store's first sale up to today (`zeroDays`). */
+  zeroDays: PosZeroDays;
+  previousZeroDays: PosZeroDays;
   byItem: readonly PosBreakdownRow[];
   byCategory: readonly PosBreakdownRow[];
   byStaff: readonly (PosBreakdownRow & { name: string | null })[];
@@ -81,7 +86,13 @@ export class PosReportService {
     const previousToDay = days === 1 ? shiftDayKey(toDay, -7) : shiftDayKey(fromDay, -1);
     const previousPeriod = this.period(previousFromDay, previousToDay, timeZone);
 
-    const [current, previous] = await Promise.all([this.read(scope, period), this.read(scope, previousPeriod)]);
+    const [current, previous, firstSale] = await Promise.all([
+      this.read(scope, period),
+      this.read(scope, previousPeriod),
+      this.firstSale(scope),
+    ]);
+    const firstSaleDay = firstSale ? zonedDayKey(firstSale, timeZone) : null;
+    const today = zonedDayKey(new Date(), timeZone);
     const granularity = days > 62 ? 'month' : 'day';
     const staff = salesByStaff(current.orders, period);
     const names = await this.names(staff.map((row) => row.key));
@@ -96,6 +107,13 @@ export class PosReportService {
       series: salesSeries(current.orders, current.refunds, period, timeZone, granularity),
       previousSeries: salesSeries(previous.orders, previous.refunds, previousPeriod, timeZone, granularity),
       granularity,
+      zeroDays: zeroDays(current.orders, timeZone, { fromDay, toDay, firstSaleDay, today }),
+      previousZeroDays: zeroDays(previous.orders, timeZone, {
+        fromDay: previousFromDay,
+        toDay: previousToDay,
+        firstSaleDay,
+        today,
+      }),
       byItem: salesByItem(current.orders, period),
       byCategory: salesByCategory(current.orders, period),
       byStaff: staff.map((row) => ({ ...row, name: names.get(row.key) ?? null })),
@@ -169,6 +187,20 @@ export class PosReportService {
       refunds: refunds.map(toReportRefund),
       truncated,
     };
+  }
+
+  /**
+   * When the store first sold anything, or null if it never has: where zero
+   * days start counting. One row, by `(workspaceId, paidAt)`. A voided order
+   * was never a sale (`salesOf`), so it does not start the count either.
+   */
+  private async firstSale(scope: InScope): Promise<Date | null> {
+    const [first] = await this.prisma.posOrder.findMany({
+      where: { ...scope, status: 'paid' },
+      orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
+      take: 1,
+    });
+    return first?.paidAt ?? null;
   }
 
   /** Lines of many orders, in chunks: an `IN` list of 20,000 ids is one statement too many. */

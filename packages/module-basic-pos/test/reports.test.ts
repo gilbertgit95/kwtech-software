@@ -8,6 +8,7 @@ import {
   salesByStaff,
   salesSeries,
   summarize,
+  zeroDays,
 } from '../src/domain/reports.js';
 
 const TZ = 'Asia/Manila';
@@ -193,5 +194,61 @@ describe('outstanding', () => {
     const owed = outstanding(ORDERS);
     expect(owed.unpaid.map((row) => [row.number, row.customerName, row.amount])).toEqual([[3, 'Juan', 5000]]);
     expect(owed.changeOwed.map((row) => [row.number, row.customerName, row.amount])).toEqual([[5, 'Maria', 10_000]]);
+  });
+});
+
+describe('zeroDays', () => {
+  // Paid Oct 1 and Oct 3 (Manila). Oct 3 07:00 Manila is still Oct 2 in UTC.
+  const SALES = [
+    order({ id: 'z1', paidAt: new Date('2026-10-01T10:00:00+08:00') }),
+    order({ id: 'z2', paidAt: new Date('2026-10-03T07:00:00+08:00') }),
+  ];
+  const span = (fromDay: string, toDay: string, firstSaleDay: string | null = '2026-10-01', today = '2026-10-31') => ({
+    fromDay,
+    toDay,
+    firstSaleDay,
+    today,
+  });
+
+  it('counts every day of a period that lies between the first sale and today', () => {
+    expect(zeroDays(SALES, TZ, span('2026-10-01', '2026-10-05'))).toMatchObject({ zeroDays: 3, countedDays: 5 });
+  });
+
+  it('starts counting at the first sale, not at the start of the period, and says which day that was', () => {
+    expect(zeroDays(SALES, TZ, span('2026-09-20', '2026-10-05'))).toEqual({
+      zeroDays: 3,
+      countedDays: 5,
+      firstSaleDay: '2026-10-01',
+    });
+  });
+
+  it('stops counting at today: a day still to come is not a zero day', () => {
+    expect(zeroDays(SALES, TZ, span('2026-10-01', '2026-10-31', '2026-10-01', '2026-10-04'))).toMatchObject({
+      zeroDays: 2,
+      countedDays: 4,
+    });
+  });
+
+  it('counts nothing before the first sale, after today, or with no sale ever', () => {
+    const none = { zeroDays: 0, countedDays: 0, firstSaleDay: '2026-10-01' };
+    expect(zeroDays(SALES, TZ, span('2026-09-01', '2026-09-30'))).toEqual(none);
+    expect(zeroDays(SALES, TZ, span('2026-11-01', '2026-11-05'))).toEqual(none);
+    expect(zeroDays([], TZ, span('2026-10-01', '2026-10-05', null))).toEqual({ ...none, firstSaleDay: null });
+  });
+
+  it("puts a sale on the store's day, not UTC's", () => {
+    // In Manila the second sale is Oct 3, so Oct 2 had none; in UTC it is Oct 2, and Oct 3 had none.
+    expect(zeroDays(SALES, TZ, span('2026-10-02', '2026-10-03'))).toMatchObject({ zeroDays: 1, countedDays: 2 });
+    expect(zeroDays(SALES, 'UTC', span('2026-10-02', '2026-10-02'))).toMatchObject({ zeroDays: 0, countedDays: 1 });
+    expect(zeroDays(SALES, TZ, span('2026-10-02', '2026-10-02'))).toMatchObject({ zeroDays: 1, countedDays: 1 });
+  });
+
+  it('does not count a cancelled, voided or unpaid order as a sale', () => {
+    const notSales = [
+      order({ id: 'c', status: 'cancelled', paidAt: null, cancelledAt: at('10:00') }),
+      order({ id: 'v', status: 'voided', paidAt: at('10:00') }),
+      order({ id: 'u', status: 'unpaid', paidAt: null, finalisedAt: at('10:00') }),
+    ];
+    expect(zeroDays(notSales, TZ, span('2026-10-01', '2026-10-01'))).toMatchObject({ zeroDays: 1, countedDays: 1 });
   });
 });

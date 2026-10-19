@@ -533,6 +533,8 @@ function renderReport(report: PosReport): PosReportType {
     previousFromDay: report.previousFromDay,
     previousToDay: report.previousToDay,
     granularity: report.granularity,
+    zeroDays: { ...report.zeroDays },
+    previousZeroDays: { ...report.previousZeroDays },
     series: [...report.series],
     previousSeries: [...report.previousSeries],
     byItem: [...report.byItem],

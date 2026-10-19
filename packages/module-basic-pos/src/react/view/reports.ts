@@ -234,17 +234,24 @@ export function deltaText(delta: Delta): string {
 }
 
 export interface Kpi {
-  key: 'netSales' | 'orders' | 'averageOrder' | 'profit';
+  key: 'netSales' | 'orders' | 'averageOrder' | 'profit' | 'zeroDays';
   label: string;
   value: string;
   delta: Delta;
+  /** Said instead of `deltaText(delta)`, where a percentage would mislead. */
+  deltaLabel?: string;
+  /** A line under the figure saying what it rests on: "First sale Jun 2, 2026". */
+  note?: string;
 }
 
 /**
- * The dashboard's cards (D22): net sales, orders, average order — and profit
- * ONLY when some sold line had a cost: "no profit figure" is not "₱0 profit".
+ * The dashboard's cards (D22): net sales, orders, average order — profit
+ * ONLY when some sold line had a cost: "no profit figure" is not "₱0 profit"
+ * — and the zero days, last.
  */
-export function kpis(report: Pick<PosReportView, 'summary' | 'previous'>): Kpi[] {
+export function kpis(
+  report: Pick<PosReportView, 'fromDay' | 'summary' | 'previous' | 'zeroDays' | 'previousZeroDays'>,
+): Kpi[] {
   const { summary: now, previous: before } = report;
   const cards: Kpi[] = [
     {
@@ -261,11 +268,76 @@ export function kpis(report: Pick<PosReportView, 'summary' | 'previous'>): Kpi[]
       delta: compare(now.averageOrder, before.averageOrder),
     },
   ];
-  if (now.profit === null) return cards;
-  return [
-    ...cards,
-    { key: 'profit', label: 'Profit', value: formatPeso(now.profit), delta: compare(now.profit, before.profit ?? 0) },
-  ];
+  const profit: Kpi[] =
+    now.profit === null
+      ? []
+      : [
+          {
+            key: 'profit',
+            label: 'Profit',
+            value: formatPeso(now.profit),
+            delta: compare(now.profit, before.profit ?? 0),
+          },
+        ];
+  return [...cards, ...profit, zeroDaysKpi(report)];
+}
+
+/**
+ * The zero days card. Its change is said in DAYS, not percent: "▲ 2 days"
+ * reads at a glance, "▲ 200%" over one day to three does not. A previous
+ * period with no counted days (all before the first sale) has nothing to
+ * compare with, and says so rather than "new".
+ */
+function zeroDaysKpi(report: Pick<PosReportView, 'fromDay' | 'zeroDays' | 'previousZeroDays'>): Kpi {
+  const { zeroDays: now, previousZeroDays: before } = report;
+  const delta = compare(now.zeroDays, before.zeroDays);
+  const change = Math.abs(now.zeroDays - before.zeroDays);
+  const deltaLabel =
+    before.countedDays === 0
+      ? 'no sales yet'
+      : delta.direction === 'flat'
+        ? 'no change'
+        : `${delta.direction === 'up' ? '▲' : '▼'} ${daysText(change)}`;
+  return {
+    key: 'zeroDays',
+    label: 'Zero days',
+    value: now.countedDays === 0 ? '—' : `${now.zeroDays} of ${now.countedDays}`,
+    delta,
+    deltaLabel,
+    ...firstSaleNote(report),
+  };
+}
+
+/**
+ * Why the card counts fewer days than the period has, when it does: the
+ * period starts before the first sale (or there has been none). A period
+ * that starts on or after the first sale needs no note.
+ */
+function firstSaleNote(report: Pick<PosReportView, 'fromDay' | 'zeroDays'>): { note?: string } {
+  const first = report.zeroDays.firstSaleDay;
+  if (first === null) return { note: 'No sale recorded yet' };
+  if (report.fromDay < first) return { note: `First sale ${dayText(first)}` };
+  return {};
+}
+
+/**
+ * The zero days as one line: "3 of 18 days", with the first sale's day when
+ * the period starts before it, or why none were counted. The summary, its
+ * print and its CSV all say it this way.
+ */
+export function zeroDaysText(report: Pick<PosReportView, 'fromDay' | 'toDay' | 'zeroDays'>): string {
+  const { zeroDays: zero, fromDay, toDay } = report;
+  const first = zero.firstSaleDay;
+  if (first === null) return 'None counted — no sale recorded yet';
+  if (zero.countedDays === 0) {
+    return first > toDay ? `None counted — the first sale was ${dayText(first)}` : 'None counted — still to come';
+  }
+  const counted = `${zero.zeroDays} of ${daysText(zero.countedDays)}`;
+  return fromDay < first ? `${counted}, from the first sale on ${dayText(first)}` : counted;
+}
+
+function daysText(days: number): string {
+  return days === 1 ? '1 day' : `${days} days`;
 }
 
 // ── the charts ──────────────────────────────────────────────────────────────
@@ -375,10 +447,14 @@ export interface SummaryLine {
  * page, the print and the CSV, so none of them can drop a line the others
  * show. Discounts and refunds are written as what they take off.
  */
-export function summaryLines(summary: PosSummaryView): SummaryLine[] {
+export function summaryLines(
+  summary: PosSummaryView,
+  zero: Pick<PosReportView, 'fromDay' | 'toDay' | 'zeroDays'>,
+): SummaryLine[] {
   const countAmount = (entry: { count: number; amount: number }) => `${entry.count} · ${formatPeso(entry.amount)}`;
   return [
     { label: 'Orders', value: String(summary.orders) },
+    { label: 'Zero days (no sale, since the first sale)', value: zeroDaysText(zero) },
     { label: 'Gross sales', value: formatPeso(summary.gross) },
     { label: 'Discounts', value: formatPeso(-summary.discounts) },
     { label: 'Refunds', value: formatPeso(-summary.refunds) },
@@ -409,11 +485,11 @@ export function summaryLines(summary: PosSummaryView): SummaryLine[] {
  * the same hidden frame as a receipt. ⚠ ESCAPED: the store name is typed.
  */
 export function summaryHtml(
-  report: Pick<PosReportView, 'fromDay' | 'toDay' | 'summary'>,
+  report: Pick<PosReportView, 'fromDay' | 'toDay' | 'summary' | 'zeroDays'>,
   printedAt: Date,
   timeZone: string,
 ): string {
-  const rows = summaryLines(report.summary)
+  const rows = summaryLines(report.summary, report)
     .map(
       (line) =>
         `<tr${line.strong ? ' class="b"' : ''}><td${line.indent ? ' class="i"' : ''}>${escapeHtml(line.label)}</td><td class="r">${escapeHtml(line.value)}</td></tr>`,
@@ -474,7 +550,7 @@ export function csvFileName(table: ReportTable, report: Pick<PosReportView, 'fro
 export function reportCsvRows(table: ReportTable, report: PosReportView, now: Date): CsvCell[][] {
   switch (table) {
     case 'summary':
-      return [['Figure', 'Value'], ...summaryLines(report.summary).map((line) => [line.label, line.value])];
+      return [['Figure', 'Value'], ...summaryLines(report.summary, report).map((line) => [line.label, line.value])];
     case 'item':
       return breakdownRows('Item', report.byItem);
     case 'category':

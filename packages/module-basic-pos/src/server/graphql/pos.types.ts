@@ -684,6 +684,21 @@ export class PosSeriesPointType {
   refunds!: number;
 }
 
+/** Days with no sale, counted from the store's first sale up to today. */
+@ObjectType('PosZeroDays')
+export class PosZeroDaysType {
+  @Field(() => Int)
+  zeroDays!: number;
+
+  /** The days counted; 0 when the period is all before the first sale or after today. */
+  @Field(() => Int)
+  countedDays!: number;
+
+  /** `YYYY-MM-DD`, the store's first sale day; null when it has never sold. */
+  @Field(() => String, { nullable: true })
+  firstSaleDay!: string | null;
+}
+
 @ObjectType('PosHourPoint')
 export class PosHourPointType {
   @Field(() => Int)
@@ -741,6 +756,13 @@ export class PosReportType {
   /** `day` or `month`. */
   @Field()
   granularity!: string;
+
+  @Field(() => PosZeroDaysType)
+  zeroDays!: PosZeroDaysType;
+
+  /** The comparison period's, counted the same way: from the same first sale. */
+  @Field(() => PosZeroDaysType)
+  previousZeroDays!: PosZeroDaysType;
 
   @Field(() => [PosSeriesPointType])
   series!: PosSeriesPointType[];

@@ -227,6 +227,14 @@ export interface PosSeriesPointView {
   refunds: number;
 }
 
+/** Days with no sale, counted from the store's first sale up to today; `countedDays` 0 when none could be. */
+export interface PosZeroDaysView {
+  zeroDays: number;
+  countedDays: number;
+  /** `YYYY-MM-DD`; null when the store has never sold. */
+  firstSaleDay: string | null;
+}
+
 export interface PosReportView {
   fromDay: string;
   toDay: string;
@@ -236,6 +244,8 @@ export interface PosReportView {
   previousFromDay: string;
   previousToDay: string;
   granularity: string;
+  zeroDays: PosZeroDaysView;
+  previousZeroDays: PosZeroDaysView;
   series: PosSeriesPointView[];
   /** The comparison period's, bucketed the same way; lined up with `series` by position. */
   previousSeries: PosSeriesPointView[];
