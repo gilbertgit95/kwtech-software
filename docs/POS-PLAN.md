@@ -257,7 +257,8 @@ The app can be tried in the browser after phase 6.
 
 ## 7. Later, one at a time
 
-Not planned yet; each gets its own short plan when it is wanted.
+Not planned yet; each gets its own short plan when it is wanted. **Stock**
+(counts, receiving, refunds returning stock, suppliers) now has one: §8.
 
 **Capital, reinvestment, expenses, investors and their payouts** are not POS:
 they are a separate bookkeeping app, drafted in `docs/BOOKKEEPING-PLAN.md`,
@@ -265,6 +266,164 @@ which reads POS's sales and profit (the unit cost each line keeps, D15)
 through a port.
 
 Add-ons (groups per item, pick rules, priced or free, attached to their line;
-D10); automatic promotions and coupon codes; tax (VAT breakdown, senior/PWD); a supervisor approving a cashier's refund or discount; refunds returning stock; partial and split payments (D13); loyalty, credit limits and merging duplicate customers; stock
-(counts, receiving, suppliers); shifts and cash counts; the busy-times heatmap, goals and forecasts; barcodes;
+D10); automatic promotions and coupon codes; tax (VAT breakdown, senior/PWD); a supervisor approving a cashier's refund or discount; partial and split payments (D13); loyalty, credit limits and merging duplicate customers; shifts and cash counts; the busy-times heatmap, goals and forecasts; barcodes;
 open-price items (a custom job typed with its own price); printer and cash drawer; per-person keymaps; typo-tolerant search; offline selling; payment gateway; BIR.
+
+## 8. Stock (draft, 2026-10-20 — issue #10)
+
+Status: **drafted, not decided.** S1–S7 below are open; nothing is built.
+Raised after the books were built: the books treat a purchase of stock as
+money out and take cost of goods from the POS (BOOKKEEPING-PLAN §7), but
+nothing counts how many of anything the store has.
+
+### Where it lives: inside this module, not `module-inventory`
+
+Stock here means **what the till sells**: a count of `PosItem` and
+`PosItemVariant` rows, which this module already owns with their prices and
+costs (D15). Inside the POS, a sale and the stock it takes are written in
+**one transaction**, so the count cannot drift from the sales. A separate
+module would learn of each sale afterwards, through a port, and would need
+its own idempotent record of the lines it had counted (as the books' POS
+import does).
+
+The alternative — a `module-inventory` with its own stock items, linked to
+POS items through a port — is right only if the store also tracks what it
+**uses up but never sells** (paper, ink, lamination film in a print shop).
+Those have no `PosItem` to hang on, and forcing them into the catalogue would
+bend the till. That is decision S1; this draft assumes "for sale only".
+Moving stock out of the POS later would be a migration and new ports, so S1
+is settled first.
+
+### The rules
+
+- **On hand is added up from movements, never stored**, as cash on hand is in
+  the books (principle 5): Σ quantity over a variant's (or a variant-less
+  item's) live `PosStockMove` rows. A count cannot disagree with its history,
+  and every change carries who, when and why.
+- **Nothing is edited or deleted.** A wrong movement is corrected by another
+  (an adjustment), with its reason.
+- **Only products are counted.** A `service` (D4) never has stock, and
+  `trackStock` is refused on one.
+- **An item with variants is counted per variant**, as it is priced and costed
+  per variant (D9, D15). Its own count is unused, like its own price.
+- **Tracking is off by default.** A store that never turns it on sees no
+  change; turning it on for an item asks for the opening quantity, recorded as
+  the first movement (`opening`).
+- **Stock leaves when the goods leave**: in the transaction that numbers the
+  order — paid, or released unpaid (D13) — one `sale` movement per counted
+  line, inside the order's version check (guard rules). Voiding an unpaid order
+  whose items came back writes them back (`void_return`). Cancelling an open
+  order writes nothing: nothing left the store. (S2.)
+- **A refund by line asks whether the units go back on the shelf**
+  (`refund_return`); a damaged return does not. A refund by amount moves no
+  stock.
+- **A stock take is one confirmed set of adjustments**: the count sheet is
+  read, the differences shown, and confirming writes one `count` movement per
+  line that differs, compared against on hand at confirmation, not when the
+  sheet was opened (a sale in between is not lost).
+- **Quantities are whole units** (`Int`), as order lines are. Selling by
+  weight or length is later.
+
+### Movements (`PosStockMove`)
+
+| Kind | Quantity | Made by |
+|---|---|---|
+| `opening` | + | turning tracking on |
+| `received` | + | Receive stock (with unit cost, supplier text, reference) |
+| `sale` | − | finalising an order |
+| `void_return` | + | voiding an unpaid order |
+| `refund_return` | + | a refund line marked "put back in stock" |
+| `adjustment` | ± | Adjust stock: damaged, lost, used in-house, found (reason required) |
+| `count` | ± | confirming a stock take |
+
+Each row: `organizationId`, `workspaceId`, `itemId`, `variantId?`, kind,
+quantity (signed), `unitCost?` (received only), `orderId?` / `refundId?` /
+`takeId?`, reason, reference, `clientId` (`@@unique([workspaceId,
+clientId])`, so a double press records once), who and when. Indexed by
+`[workspaceId, itemId, variantId]` and `[workspaceId, createdAt]`.
+`PosStockTake` holds a count's header (who, when, which categories,
+confirmed or abandoned). `PosItem` and `PosItemVariant` gain `trackStock`
+(Boolean, default false) and `lowStockAt` (Int?, null: no alert).
+
+### Views
+
+1. **Stock** — a new section (D23), beside Items: each tracked product and
+   variant with on hand, low-stock level and stock value at cost; filtered by
+   category, low and out of stock; ↑ ↓ and Enter as the other lists. Opening a
+   line shows its movements.
+2. **Receive stock** — item or variant, quantity, unit cost, supplier (free
+   text in phase 1), reference.
+3. **Adjust stock** — item or variant, quantity in or out, reason.
+4. **Stock take** — a count sheet by category: type what is on the shelf, see
+   each difference, confirm.
+
+And on the screens that exist:
+
+- **Items**: "Track stock", the low-stock level, the opening quantity.
+- **Till**: "3 left" and "Out of stock" on the item tiles and in search;
+  selling past zero warns or is refused (S3).
+- **Refund**: "Put back in stock?" per refunded line.
+- **Reports**: stock value, the low-stock list, what was received in the
+  period.
+- **Settings**: whether the till may sell past zero (S3).
+- **Orders**: nothing changes.
+
+### Keys
+
+| Key | Grants |
+|---|---|
+| `pos:manage_stock` | receive, adjust, run and confirm a stock take, turn tracking on and set low-stock levels |
+
+Seeing quantities comes with `pos:read`, or with a key of its own if
+cashiers should not see them (S5). `pos-manager` gains `pos:manage_stock`;
+`app-roles.ts` and `plans.ts` follow the preset. Every new operation is bound
+(`surface-coverage.test.ts`).
+
+### What it touches
+
+- **`pos-order-write.service.ts`, the riskiest change.** `pay()` and
+  `payLater()` carry the optimistic concurrency and the gapless number; the
+  `sale` movements are written inside the same `change(...)` transaction,
+  after the version check, so a retried payment writes them once. `void()`
+  writes the returns. Service tests against the fake client: a sale takes
+  stock once; a retried payment does not take it twice; a void puts it back; a
+  cancel moves nothing; a service line is never counted.
+- **`pos-refund.service.ts`**: the optional return per line.
+- **Realtime**: a movement publishes the POS's event, so another till's "3
+  left" updates.
+- **The books: nothing in phase 1.** Cost of goods still comes from the unit
+  cost each line copies (D15). Two follow-ups, each a decision: receiving
+  updates the item's cost (S4), and receiving records a "Stock for resale"
+  purchase in the books through a port (S7).
+- **Low-stock alerts are phase 2**: a `module-jobs` process that sweeps
+  tracked items under their level, and a `POS_NOTIFIER` port bound to
+  `module-notification` (the POS has neither today).
+- **Migration**: new tables and two columns per item table, defaults off. No
+  data rewrite.
+- **The README**: `packages/module-basic-pos/README.md` still describes the
+  2026-09-27 placeholder; it is rewritten in the same change.
+
+### Open decisions
+
+| # | Question | Draft answer |
+|---|---|---|
+| S1 | For sale only, or consumables too? | For sale only — then it lives here. Consumables mean `module-inventory` instead |
+| S2 | When does stock leave: at numbering (paid or pay later) or only at payment? | At numbering: with pay later the goods have left |
+| S3 | Selling past zero: warn or refuse? | Warn, by default; refusing is a setting. A till that stops a sale because the count is wrong stops the business |
+| S4 | Does receiving at a new cost change the item's cost? | Ask on the form, default yes. Average cost is later |
+| S5 | May cashiers see quantities? | Yes, with `pos:read` |
+| S6 | Phase 1 scope | Tracking, receiving, adjusting, stock takes, the till's counts, refund returns. Phase 2: alerts, suppliers, purchase orders |
+| S7 | Does receiving also record the purchase in the books? | Not in phase 1; a port later, as POS sales reach the books |
+
+### Phases (once S1–S7 are settled)
+
+1. `feat(module-basic-pos)`: `src/domain/stock.ts` (on hand, low stock, a
+   take's differences, may this sell), with tests; keys and presets.
+2. `feat(module-basic-pos)`: the schema; `db:migrate`.
+3. `feat(module-basic-pos)`: the stock service and resolver; the sale, void
+   and refund paths; service tests.
+4. `feat(web-server)`: grants, `db:sync`, boot.
+5. `feat(module-basic-pos)`: the Stock section and its dialogs; the changes to
+   Items, Till, Refund, Reports and Settings.
+6. `docs`: the README, PLAN §13, and this section's "Built, and where it
+   differs".
