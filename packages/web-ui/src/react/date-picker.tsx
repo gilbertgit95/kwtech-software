@@ -77,6 +77,8 @@ export function DatePicker({
   onChange: (day: CalendarDay | null) => void;
   'aria-label'?: string | undefined;
   'aria-describedby'?: string | undefined;
+  /** A form's error on this day, read out with the trigger. */
+  'aria-invalid'?: boolean | undefined;
 }) {
   const outside = (day: CalendarDay) => (min !== undefined && day < min) || (max !== undefined && day > max);
   const [open, setOpen] = useState(false);
@@ -139,6 +141,7 @@ export function DatePicker({
           'hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'disabled:pointer-events-none disabled:opacity-60',
           open && 'border-ring',
+          aria['aria-invalid'] && 'border-destructive',
           className,
         )}
         {...aria}

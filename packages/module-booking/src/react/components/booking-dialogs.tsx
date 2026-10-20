@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, DatePicker } from '@kwtech/web-ui/react';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import {
   BOOKING_CUSTOMER_NAME_MAX,
@@ -256,13 +256,15 @@ export function NewBookingDialog({
             </Field>
             <Field label="Day">
               {(id) => (
-                <input
+                <DatePicker
                   id={id}
-                  type="date"
-                  className={INPUT_CLASS}
-                  value={day}
-                  onChange={(event) => {
-                    setDay(event.target.value);
+                  value={day || null}
+                  today={workspaceBookingDay(new Date(), state.timeZone)}
+                  clearable={false}
+                  className="h-10"
+                  onChange={(picked) => {
+                    if (!picked) return;
+                    setDay(picked);
                     setSlot(null);
                   }}
                 />
@@ -359,13 +361,15 @@ export function RescheduleDialog({
         </p>
         <Field label="New day">
           {(id) => (
-            <input
+            <DatePicker
               id={id}
-              type="date"
-              className={INPUT_CLASS}
-              value={day}
-              onChange={(event) => {
-                setDay(event.target.value);
+              value={day || null}
+              today={workspaceBookingDay(new Date(), state.timeZone)}
+              clearable={false}
+              className="h-10"
+              onChange={(picked) => {
+                if (!picked) return;
+                setDay(picked);
                 setSlot(null);
               }}
             />

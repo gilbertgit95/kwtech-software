@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, DatePicker } from '@kwtech/web-ui/react';
 import type { ReactNode } from 'react';
 import { BOOKS_PLACES } from '../../domain/entries.js';
 import { PLACE_LABEL } from '../view/labels.js';
@@ -78,7 +78,11 @@ export function AmountField(props: {
   );
 }
 
-/** A day of the workspace's calendar. `max` is its today: nothing is dated in the future. */
+/**
+ * A day of the workspace's calendar. `max` is its today: nothing is dated in
+ * the future, so it is also the calendar's ring on today. web-ui's calendar,
+ * not `<input type="date">`, whose calendar ignores the theme (issue #4).
+ */
 export function DayField({
   label = 'Date',
   value,
@@ -97,15 +101,15 @@ export function DayField({
   return (
     <Field label={label} hint={hint} error={error ?? null}>
       {(id, describedBy) => (
-        <input
+        <DatePicker
           id={id}
-          type="date"
-          className={INPUT_CLASS}
-          value={value}
+          value={value || null}
+          today={max}
           max={max}
+          clearable={false}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(day) => day && onChange(day)}
         />
       )}
     </Field>

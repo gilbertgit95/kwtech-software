@@ -1,9 +1,8 @@
 'use client';
 
-import { cn, LIST_ITEM, LIST_KEYS, ListDrawer, listNeighbours } from '@kwtech/web-ui/react';
+import { cn, DatePicker, LIST_ITEM, LIST_KEYS, ListDrawer, listNeighbours } from '@kwtech/web-ui/react';
 import {
   CalendarClock,
-  CalendarDays,
   CalendarPlus,
   Check,
   ChevronLeft,
@@ -21,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { type ReactNode, useCallback, useState } from 'react';
-import { addBookingDays, prepareBookingDay, workspaceBookingDay } from '../../domain/time.js';
+import { addBookingDays, workspaceBookingDay } from '../../domain/time.js';
 import type { BookingAppointmentView } from '../booking-client.js';
 import type { BookingAppState } from '../booking-state.js';
 import { useBookingAction, useBookingData } from '../use-booking-data.js';
@@ -194,19 +193,15 @@ function DayPicker({ day, today, onDay }: { day: string; today: string; onDay: (
       >
         <ChevronLeft aria-hidden="true" className="size-4" />
       </button>
-      <label className="flex items-center gap-2 border-x border-border px-2.5">
-        <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-primary" />
-        <span className="sr-only">Go to a day</span>
-        <input
-          type="date"
-          className="h-10 min-w-0 bg-transparent text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={day}
-          onChange={(event) => {
-            // Cleared, or half typed: the day showing stays until there is a real one.
-            if ('day' in prepareBookingDay(event.target.value)) onDay(event.target.value);
-          }}
-        />
-      </label>
+      {/* web-ui's calendar, not `<input type="date">`, whose calendar ignores the theme (issue #4). A day always shows, so no *Clear*. */}
+      <DatePicker
+        aria-label="Go to a day"
+        value={day}
+        today={today}
+        clearable={false}
+        className="h-10 rounded-none border-0 border-x border-border bg-transparent px-2.5 hover:bg-accent"
+        onChange={(picked) => picked && onDay(picked)}
+      />
       <button
         type="button"
         aria-label="Next day"

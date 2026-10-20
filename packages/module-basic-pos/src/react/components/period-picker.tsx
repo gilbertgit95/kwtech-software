@@ -2,6 +2,7 @@
 
 import {
   cn,
+  DatePicker,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -20,9 +21,8 @@ import {
 } from '../view/reports.js';
 import { buttonClass } from './controls.js';
 
-/** A date field inside the custom range's one frame: the frame draws the border, so the field has none. */
-const DAY_INPUT_CLASS =
-  'h-7 rounded bg-transparent px-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+/** A day's trigger inside the custom range's one frame: the frame draws the border, so the trigger has none. */
+const DAY_TRIGGER_CLASS = 'h-7 rounded border-0 bg-transparent px-1.5 hover:bg-accent';
 
 /**
  * The period picker (D22), for the reports and the Orders list: one control
@@ -162,27 +162,34 @@ export function PeriodPicker({
       {editing ? (
         <fieldset className="m-0 flex h-9 min-w-0 items-center gap-1 rounded-lg border border-border bg-card px-1.5 shadow-sm">
           <legend className="sr-only">Custom range</legend>
-          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+          {/* web-ui's calendar, not `<input type="date">`, whose calendar ignores the theme (issue #4). Both ends are required, so no *Clear*. */}
+          <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
             From
-            <input
-              type="date"
-              className={DAY_INPUT_CLASS}
-              value={custom.fromDay}
+            <DatePicker
+              aria-label="First day"
+              value={custom.fromDay || null}
+              today={today}
               max={custom.toDay || today}
-              onChange={(event) => onCustom({ ...custom, fromDay: event.target.value })}
+              clearable={false}
+              placeholder="First day"
+              className={DAY_TRIGGER_CLASS}
+              onChange={(day) => day && onCustom({ ...custom, fromDay: day })}
             />
-          </label>
-          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+          </span>
+          <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
             to
-            <input
-              type="date"
-              className={DAY_INPUT_CLASS}
-              value={custom.toDay}
-              min={custom.fromDay}
+            <DatePicker
+              aria-label="Last day"
+              value={custom.toDay || null}
+              today={today}
+              min={custom.fromDay || undefined}
               max={today}
-              onChange={(event) => onCustom({ ...custom, toDay: event.target.value })}
+              clearable={false}
+              placeholder="Last day"
+              className={DAY_TRIGGER_CLASS}
+              onChange={(day) => day && onCustom({ ...custom, toDay: day })}
             />
-          </label>
+          </span>
           {/* Closing keeps the days: only the fields go. With no valid period there is nothing to keep, so no way out but fixing it. */}
           {days ? (
             <button

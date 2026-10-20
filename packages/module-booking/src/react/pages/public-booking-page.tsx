@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, DatePicker } from '@kwtech/web-ui/react';
 import { Check, Clock, Copy } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { BOOKING_CUSTOMER_NAME_MAX, prepareBookingCustomer } from '../../domain/appointments.js';
@@ -283,16 +283,19 @@ function RequestForm({
           </div>
           <Field label="Or pick a date" hint={`Bookings are taken up to ${dayText(page.lastDay)}.`}>
             {(id, describedBy) => (
-              <input
+              <DatePicker
                 id={id}
-                type="date"
-                className={INPUT_CLASS}
-                value={day}
+                value={day || null}
+                today={page.today}
                 min={page.today}
                 max={page.lastDay}
+                clearable={false}
+                placeholder="Choose a day"
+                className="h-10"
                 aria-describedby={describedBy}
-                onChange={(event) => {
-                  setDay(event.target.value);
+                onChange={(picked) => {
+                  if (!picked) return;
+                  setDay(picked);
                   setSlot(null);
                 }}
               />

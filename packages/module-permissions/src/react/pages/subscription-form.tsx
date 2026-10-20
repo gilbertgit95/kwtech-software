@@ -1,5 +1,6 @@
 'use client';
 
+import { DatePicker } from '@kwtech/web-ui/react';
 import { useId, useMemo, useState } from 'react';
 import {
   type SubscriptionDraft,
@@ -263,12 +264,18 @@ export function SubscriptionForm({
         hint="Recorded, not enforced. Nothing reads this to decide entitlement — status does that, so a lapsed date cannot switch access off without a row saying so."
       >
         {(id) => (
-          <input
+          // web-ui's calendar, not `<input type="date">`, whose calendar ignores the theme (issue #4).
+          // ⚠ Today is the UTC day: a subscription belongs to no workspace, so there is no zone to
+          // follow, and `subscriptionPeriodField` reads the stored date in UTC too — the two agree.
+          // Empty means no renewal date, so *Clear* stays on.
+          <DatePicker
             id={id}
-            type="date"
-            value={draft.currentPeriodEnd}
-            onChange={(event) => edit((current) => ({ ...current, currentPeriodEnd: event.target.value }))}
-            className={inputClass(Boolean(errors.currentPeriodEnd))}
+            value={draft.currentPeriodEnd || null}
+            today={subscriptionPeriodField(new Date())}
+            placeholder="No renewal date"
+            className="w-full"
+            aria-invalid={errors.currentPeriodEnd ? true : undefined}
+            onChange={(day) => edit((current) => ({ ...current, currentPeriodEnd: day ?? '' }))}
           />
         )}
       </Field>
