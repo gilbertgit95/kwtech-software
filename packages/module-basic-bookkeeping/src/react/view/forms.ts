@@ -77,7 +77,8 @@ export type EntryField =
   | 'category'
   | 'description'
   | 'reference'
-  | 'loanId';
+  | 'loanId'
+  | 'investorId';
 
 /** The "record money" form. */
 export interface EntryDraft {
@@ -90,6 +91,10 @@ export interface EntryDraft {
   description: string;
   reference: string;
   loanId: string;
+  /** The investor kinds only (`MONEY_TAB_INVESTOR_KINDS`): whose money it is. */
+  investorId: string;
+  /** A payout only: paid ahead of profit. */
+  advance: boolean;
 }
 
 export function emptyEntryDraft(kind: BooksEntryKind, today: string): EntryDraft {
@@ -103,7 +108,72 @@ export function emptyEntryDraft(kind: BooksEntryKind, today: string): EntryDraft
     description: '',
     reference: '',
     loanId: '',
+    investorId: '',
+    advance: false,
   };
+}
+
+/**
+ * The investors' kinds the Money tab's record form also offers, so capital put
+ * in or a payout is recorded where the cash is counted. Each moves money in or
+ * out of a place. `reinvest` is left to the investor's page: no money moves,
+ * and the cash book would show a line that changes nothing.
+ */
+export const MONEY_TAB_INVESTOR_KINDS = ['capital', 'payout', 'capital_return'] as const;
+
+export type MoneyTabInvestorKind = (typeof MONEY_TAB_INVESTOR_KINDS)[number];
+
+export function isMoneyTabInvestorKind(kind: BooksEntryKind): kind is MoneyTabInvestorKind {
+  return (MONEY_TAB_INVESTOR_KINDS as readonly BooksEntryKind[]).includes(kind);
+}
+
+/** Nobody chosen yet: never sent, only checked against. */
+const NO_INVESTOR: BooksInvestorView = {
+  id: '',
+  name: '',
+  contact: null,
+  note: null,
+  agreedShare: null,
+  formerAt: null,
+  putIn: 0,
+  reinvested: 0,
+  capitalReturned: 0,
+  capital: Number.MAX_SAFE_INTEGER,
+  profitShared: 0,
+  paidOut: 0,
+  owed: Number.MAX_SAFE_INTEGER,
+  share: null,
+};
+
+/**
+ * The record form, for an investor's kind → the input for
+ * `recordBooksInvestorEntry`, or why not. The checks are the investor form's
+ * own (`validateInvestorEntryDraft`), against the investor chosen; with none
+ * chosen, that is the error.
+ */
+export function validateInvestorMoneyDraft(
+  draft: EntryDraft & { kind: MoneyTabInvestorKind },
+  investor: BooksInvestorView | null,
+  context: { today: string; clientId: string },
+): Validated<RecordBooksInvestorEntryInput, EntryField> {
+  const checked = validateInvestorEntryDraft(
+    {
+      kind: draft.kind,
+      amount: draft.amount,
+      place: draft.place,
+      day: draft.day,
+      description: draft.description,
+      reference: draft.reference,
+      advance: draft.advance,
+    },
+    // A stand-in that passes the balance checks, so the other fields still say what is wrong.
+    investor ?? NO_INVESTOR,
+    context,
+  );
+  if (investor) return checked;
+  const errors: FieldErrors<EntryField> = 'errors' in checked ? { ...checked.errors } : {};
+  errors.investorId = 'Choose whose money it is.';
+  return { errors };
 }
 
 /**

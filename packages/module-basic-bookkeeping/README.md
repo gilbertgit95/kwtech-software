@@ -31,6 +31,13 @@ place, money in or out, voided shown or hidden — run in the browser and only
 hide lines: cash on hand after each line is the whole book's. The rules are
 `src/react/view/money-tab.ts`, tested in `test/money-tab.test.ts`.
 
+**Record money** on the Money tab also lists an **Investors** group (capital
+in, payout, capital returned) to whoever holds `books:manage_investors`, with
+a choice of current investor. It sends `recordBooksInvestorEntry`, checked as
+the investor's own form checks it (`validateInvestorMoneyDraft` in
+`src/react/view/forms.ts`). Reinvesting stays on the investor's page: no money
+moves, so it has no place in the cash book's form.
+
 ## In a NestJS app
 
 ```ts

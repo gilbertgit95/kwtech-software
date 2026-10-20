@@ -416,6 +416,7 @@ export function MoneySection({
       <RecordEntryDialog
         open={recording}
         kind="expense"
+        canManage={canManage}
         books={books}
         overview={overview}
         onClose={() => setRecording(false)}
