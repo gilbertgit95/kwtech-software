@@ -608,6 +608,7 @@ export function DocumentEditor({
           <div id={scrollId} className="min-h-0 flex-1 overflow-auto p-4">
             {/* ⚠ The library owns everything inside: React renders nothing in this element. */}
             <div ref={host} className="mx-auto w-max" />
+            <style>{TEXT_CURSOR_CSS}</style>
             {ready ? null : <p className="text-center text-sm text-muted-foreground">Opening the editor…</p>}
           </div>
         </div>
@@ -1012,6 +1013,26 @@ function Toolbar({
  * (`editor-component`, any value). Without it every press on the toolbar hid the cursor.
  */
 const EDITOR_COMPONENT = { 'editor-component': 'menu' } as const;
+
+/**
+ * The mouse pointer over the pages: a black I-beam outlined in white, 24 px, its hot spot in the middle.
+ *
+ * ⚠ THE SYSTEM'S TEXT CURSOR CAN BE WHITE (the operator, 2026-10-17: "hard to see the cursor because it is
+ * white"): Windows draws it in the colours of its pointer scheme, not against what is under it, and on white
+ * paper it disappears. The black and white are the paper's, not the app's, so no theme token: the page is white
+ * in a dark theme too, and the white edge keeps it visible over a dark background picture.
+ */
+const TEXT_CURSOR_SVG =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round'>" +
+  "<path d='M8.5 3.5h7M8.5 20.5h7M12 3.5v17' stroke='white' stroke-width='4'/>" +
+  "<path d='M8.5 3.5h7M8.5 20.5h7M12 3.5v17' stroke='black' stroke-width='1.75'/>" +
+  '</svg>';
+/**
+ * Only while the library's own cursor on a page is `text`: it sets the pages' cursor INLINE and swaps it for
+ * its other jobs (resizing a table's columns, a picture's handles, the format painter's "copy"), so `!important`
+ * on every canvas would hide those. `text` after the picture is the fallback should it not load.
+ */
+const TEXT_CURSOR_CSS = `.ce-page-container canvas[style*="cursor: text"] { cursor: url("data:image/svg+xml,${encodeURIComponent(TEXT_CURSOR_SVG)}") 12 12, text !important; }`;
 
 const TOOL_BUTTON_CLASS =
   'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-primary/15 aria-pressed:text-primary';
