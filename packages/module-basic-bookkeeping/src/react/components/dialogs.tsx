@@ -23,11 +23,14 @@ import {
   type InvestorDraft,
   type InvestorEntryDraft,
   type InvestorField,
+  isMoneyTabInvestorKind,
   type LendDraft,
+  MONEY_TAB_INVESTOR_KINDS,
   newClientId,
   validateEntryDraft,
   validateInvestorDraft,
   validateInvestorEntryDraft,
+  validateInvestorMoneyDraft,
   validateLendDraft,
 } from '../view/forms.js';
 import { formatDay, formatDays, KIND_HINT, KIND_LABEL } from '../view/labels.js';
@@ -59,6 +62,16 @@ const RECORD_OPTIONS = BOOKS_RECORDED_KINDS.map((kind) => ({
   group: recordGroup(kind),
 }));
 
+/**
+ * The same, with the investors' money as a group of its own — offered only to
+ * whoever holds `books:manage_investors`, the key `recordBooksInvestorEntry`
+ * is bound to. Anybody else would pick one and be refused on Record.
+ */
+const RECORD_OPTIONS_WITH_INVESTORS = [
+  ...RECORD_OPTIONS,
+  ...MONEY_TAB_INVESTOR_KINDS.map((kind) => ({ value: kind, label: KIND_LABEL[kind], group: 'Investors' })),
+];
+
 /** The suggested categories for a kind: what it was for. None for kinds that take none. */
 function categoriesFor(kind: BooksEntryKind): readonly string[] {
   if (kind === 'expense') return BOOKS_EXPENSE_CATEGORIES;
@@ -79,11 +92,17 @@ function useClientId(open: boolean): string {
   return useMemo(() => newClientId(), [open]);
 }
 
-/** Recording the day's money: sales, refunds, expenses, purchases, transfers, count adjustments, repayments. */
+/**
+ * Recording the day's money: sales, refunds, expenses, purchases, transfers,
+ * count adjustments, repayments — and, for whoever manages investors, an
+ * investor's capital in, payout or capital returned, sent as the investor
+ * form would send it.
+ */
 export function RecordEntryDialog({
   open,
   kind,
   loanId,
+  canManage = false,
   books,
   overview,
   onClose,
@@ -93,6 +112,8 @@ export function RecordEntryDialog({
   kind: BooksEntryKind;
   /** A repayment opened from a loan: that loan, fixed. */
   loanId?: string | undefined;
+  /** Holds `books:manage_investors`: the investors' kinds are offered too. */
+  canManage?: boolean | undefined;
   books: BooksContext;
   overview: BooksOverviewView;
   onClose: () => void;
@@ -112,17 +133,28 @@ export function RecordEntryDialog({
   const set = (patch: Partial<EntryDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const openLoans = overview.loans.filter((loan) => loan.outstanding > 0);
   const loan = overview.loans.find((candidate) => candidate.id === draft.loanId) ?? null;
+  // Current investors only: a former one is refused capital, and has none left to return.
+  const investors = overview.investors.filter((candidate) => candidate.formerAt === null);
+  const investor = investors.find((candidate) => candidate.id === draft.investorId) ?? null;
+  const forInvestor = isMoneyTabInvestorKind(draft.kind);
   const categories = categoriesFor(draft.kind);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const checked = validateEntryDraft(draft, { today: overview.today, clientId, loan });
-    if ('errors' in checked) {
-      setErrors(checked.errors);
+    const context = { today: overview.today, clientId };
+    const send = isMoneyTabInvestorKind(draft.kind)
+      ? checkedSend(validateInvestorMoneyDraft({ ...draft, kind: draft.kind }, investor, context), (input) =>
+          books.client.recordInvestor(books.scope, input),
+        )
+      : checkedSend(validateEntryDraft(draft, { ...context, loan }), (input) =>
+          books.client.record(books.scope, input),
+        );
+    if ('errors' in send) {
+      setErrors(send.errors);
       return;
     }
     setErrors({});
-    const saved = await action.run(() => books.client.record(books.scope, checked.input), 'Could not record it.');
+    const saved = await action.run(send.run, 'Could not record it.');
     if (!saved) return;
     onDone();
     onClose();
@@ -135,12 +167,26 @@ export function RecordEntryDialog({
           label="What happened"
           value={draft.kind}
           onChange={(next) => set({ kind: next, category: '' })}
-          options={RECORD_OPTIONS}
-          hint={KIND_HINT[draft.kind]}
+          options={canManage ? RECORD_OPTIONS_WITH_INVESTORS : RECORD_OPTIONS}
+          hint={isMoneyTabInvestorKind(draft.kind) ? INVESTOR_HINT[draft.kind] : KIND_HINT[draft.kind]}
         />
-        <AmountField value={draft.amount} onChange={(amount) => set({ amount })} error={errors.amount} autoFocus />
+        {forInvestor ? (
+          <InvestorPicker
+            investors={investors}
+            value={draft.investorId}
+            onChange={(investorId) => set({ investorId })}
+            error={errors.investorId}
+          />
+        ) : null}
+        <AmountField
+          value={draft.amount}
+          onChange={(amount) => set({ amount })}
+          error={errors.amount}
+          hint={isMoneyTabInvestorKind(draft.kind) && investor ? investorLimit(draft.kind, investor) : undefined}
+          autoFocus
+        />
         <PlaceField
-          label={draft.kind === 'transfer' ? 'From' : 'Where'}
+          label={recordPlaceLabel(draft.kind)}
           value={draft.place}
           onChange={(place) => set({ place })}
           error={errors.place}
@@ -160,6 +206,9 @@ export function RecordEntryDialog({
             onChange={(next) => set({ loanId: next })}
             error={errors.loanId}
           />
+        ) : null}
+        {draft.kind === 'payout' ? (
+          <AdvanceField checked={draft.advance} onChange={(advance) => set({ advance })} />
         ) : null}
         {categories.length > 0 || draft.kind === 'adjustment_in' ? (
           <>
@@ -200,6 +249,73 @@ export function RecordEntryDialog({
         />
       </form>
     </Modal>
+  );
+}
+
+/** The record form's checked input with how to send it, or its errors: the two operations, one submit. */
+function checkedSend<I, K extends string, R>(
+  checked: { input: I } | { errors: FieldErrors<K> },
+  send: (input: I) => Promise<R>,
+): { run: () => Promise<R> } | { errors: FieldErrors<K> } {
+  if ('errors' in checked) return checked;
+  return { run: () => send(checked.input) };
+}
+
+/** What the record form calls the place, by which way the money went. */
+function recordPlaceLabel(kind: BooksEntryKind): string {
+  if (kind === 'transfer') return 'From';
+  if (kind === 'capital') return 'Put into';
+  if (kind === 'payout' || kind === 'capital_return') return 'Paid from';
+  return 'Where';
+}
+
+/** Whose money an investor's entry is — or why there is nobody to choose. */
+function InvestorPicker({
+  investors,
+  value,
+  onChange,
+  error,
+}: {
+  investors: readonly BooksInvestorView[];
+  value: string;
+  onChange: (investorId: string) => void;
+  error?: string | undefined;
+}) {
+  if (investors.length === 0)
+    return (
+      <p role={error ? 'alert' : undefined} className="text-sm text-muted-foreground">
+        There is no current investor. Add one on the Investors tab first.
+      </p>
+    );
+  return (
+    <SelectField
+      label="Investor"
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: '', label: 'Choose…' },
+        ...investors.map((candidate) => ({
+          value: candidate.id,
+          label: `${candidate.name} — ${formatPeso(candidate.capital)} in, owed ${formatPeso(candidate.owed)}`,
+        })),
+      ]}
+      error={error}
+    />
+  );
+}
+
+/** A payout made ahead of profit. */
+function AdvanceField({ checked, onChange }: { checked: boolean; onChange: (advance: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        className="mt-0.5"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>An advance — paid ahead of profit. It leaves them owing, and comes off their next share.</span>
+    </label>
   );
 }
 
@@ -316,17 +432,7 @@ export function InvestorEntryDialog({
             error={errors.place}
           />
         )}
-        {kind === 'payout' ? (
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={draft.advance}
-              onChange={(event) => set({ advance: event.target.checked })}
-            />
-            <span>An advance — paid ahead of profit. It leaves them owing, and comes off their next share.</span>
-          </label>
-        ) : null}
+        {kind === 'payout' ? <AdvanceField checked={draft.advance} onChange={(advance) => set({ advance })} /> : null}
         <DayField value={draft.day} onChange={(day) => set({ day })} error={errors.day} max={today} />
         <TextField
           label="Note (optional)"
