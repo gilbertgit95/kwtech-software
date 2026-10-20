@@ -667,7 +667,13 @@ ignores the theme and whose typed format follows the machine's locale.
 - The calendar's rules (`monthCells`, `calendarKeyMove`, `addDays`, the labels)
   are exported and tested in `test/calendar.test.ts`.
 
-Used by tasks and the books' Money tab.
+- `aria-invalid` marks a day a form refused: the trigger takes the destructive
+  border, and a screen reader hears it with the field.
+
+Used by tasks, the books (the Money tab and every dated form), the point of
+sale's custom range, booking (the day list, its dialogs, closing a day and both
+public pages) and the subscription form's renewal date. There is no
+`<input type="date">` left in the repository (issue #4); keep it that way.
 
 ## A list and its detail drawer
 

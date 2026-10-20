@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { cn, DatePicker } from '@kwtech/web-ui/react';
 import { CalendarClock, Clock, MapPin, RefreshCw, X } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { BOOKING_REASON_MAX } from '../../domain/appointments.js';
@@ -323,16 +323,19 @@ function MoveCard({
         </p>
         <Field label="New day" hint={`Up to ${dayText(booking.lastDay)}.`}>
           {(id, describedBy) => (
-            <input
+            <DatePicker
               id={id}
-              type="date"
-              className={INPUT_CLASS}
-              value={day}
+              value={day || null}
+              today={booking.today}
               min={booking.today}
               max={booking.lastDay}
+              clearable={false}
+              placeholder="Choose a day"
+              className="h-10"
               aria-describedby={describedBy}
-              onChange={(event) => {
-                setDay(event.target.value);
+              onChange={(picked) => {
+                if (!picked) return;
+                setDay(picked);
                 setSlot(null);
               }}
             />

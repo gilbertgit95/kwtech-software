@@ -1,6 +1,6 @@
 'use client';
 
-import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
+import { ConfirmDialog, cn, DatePicker } from '@kwtech/web-ui/react';
 import {
   Archive,
   ArchiveRestore,
@@ -623,13 +623,14 @@ function ClosureForm({
         </Field>
         <Field label="Day">
           {(id) => (
-            <input
+            <DatePicker
               id={id}
-              type="date"
-              className={INPUT_CLASS}
-              value={day}
+              value={day || null}
+              today={today}
               min={today}
-              onChange={(event) => setDay(event.target.value)}
+              clearable={false}
+              className="h-10"
+              onChange={(picked) => picked && setDay(picked)}
             />
           )}
         </Field>
