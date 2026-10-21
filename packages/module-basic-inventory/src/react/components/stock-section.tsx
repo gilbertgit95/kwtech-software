@@ -1,7 +1,30 @@
 'use client';
 
 import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
-import { ConfirmDialog, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
+import { ConfirmDialog, cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
+import {
+  Archive,
+  Boxes,
+  CircleSlash,
+  ClipboardCheck,
+  Flag,
+  History as HistoryIcon,
+  Import,
+  Info,
+  Layers,
+  type LucideIcon,
+  Package,
+  PackagePlus,
+  Pencil,
+  Plus,
+  Search,
+  ShoppingCart,
+  SlidersHorizontal,
+  Trash2,
+  TriangleAlert,
+  Undo2,
+  Wallet,
+} from 'lucide-react';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
 import type { StockItemView, StockMoveView, StockOverviewView, StockSourceItemView } from '../../views.js';
 import { type StockContext, useStockAction, useStockData } from '../use-stock.js';
@@ -11,15 +34,16 @@ import {
   MOVE_LABEL,
   quantityText,
   reasonLabel,
+  type StatusTone,
   signedQuantityText,
   whenText,
   whoText,
 } from '../view/labels.js';
-import { filterItems, type StockFilter } from '../view/lists.js';
+import { filterItems, levelFill, plural, type StockFilter, stockSummary } from '../view/lists.js';
 import { formatPeso } from '../view/money.js';
-import { buttonClass, INPUT_CLASS } from './controls.js';
+import { buttonClass, IconButton, INPUT_CLASS } from './controls.js';
 import { AdjustDialog, CreateFromPosDialog, ItemDialog, ReceiveDialog, WasteDialog } from './dialogs.js';
-import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
+import { Alert, Callout, EmptyState, Meter, RowButton, StatCard, StatusChip, Tabs } from './layout.js';
 
 type Dialog =
   | { kind: 'none' }
@@ -82,10 +106,55 @@ export function StockSection({
     onChanged();
   };
 
+  const summary = stockSummary(overview);
+  const counts: Readonly<Record<StockFilter, number>> = {
+    all: summary.items,
+    low: filterItems(overview.items, 'low', null, '').length,
+    out: summary.out,
+    materials: filterItems(overview.items, 'materials', null, '').length,
+    for_sale: filterItems(overview.items, 'for_sale', null, '').length,
+  };
+
   const list = (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="grid grid-cols-2 gap-2 @2xl:grid-cols-4">
+        <StatCard
+          label="Worth at cost"
+          value={formatPeso(summary.value)}
+          hint={summary.unvalued > 0 ? `${plural(summary.unvalued, 'item')} with no cost` : 'Every item has a cost'}
+          icon={Wallet}
+          tone="info"
+        />
+        <StatCard
+          label="Items counted"
+          value={String(summary.items)}
+          hint="Show all"
+          icon={Boxes}
+          active={filter === 'all'}
+          onClick={() => setFilter('all')}
+        />
+        <StatCard
+          label="Running low"
+          value={String(summary.low)}
+          hint="At or under their low level"
+          icon={TriangleAlert}
+          tone={summary.low > 0 ? 'warning' : 'neutral'}
+          active={filter === 'low'}
+          onClick={() => setFilter('low')}
+        />
+        <StatCard
+          label="Out or count off"
+          value={String(summary.out)}
+          hint="Nothing left, or below zero"
+          icon={CircleSlash}
+          tone={summary.out > 0 ? 'danger' : 'neutral'}
+          active={filter === 'out'}
+          onClick={() => setFilter('out')}
+        />
+      </div>
+
       {canReceive || canManage ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canReceive ? (
             <>
               <button
@@ -93,6 +162,7 @@ export function StockSection({
                 className={buttonClass('primary', 'sm')}
                 onClick={() => setDialog({ kind: 'receive', itemId: null })}
               >
+                <PackagePlus aria-hidden="true" className="size-3.5" />
                 Receive stock
               </button>
               <button
@@ -100,6 +170,7 @@ export function StockSection({
                 className={buttonClass('secondary', 'sm')}
                 onClick={() => setDialog({ kind: 'waste', itemId: null })}
               >
+                <Trash2 aria-hidden="true" className="size-3.5" />
                 Record waste
               </button>
               <button
@@ -107,50 +178,53 @@ export function StockSection({
                 className={buttonClass('secondary', 'sm')}
                 onClick={() => setDialog({ kind: 'adjust', itemId: null })}
               >
+                <SlidersHorizontal aria-hidden="true" className="size-3.5" />
                 Adjust
               </button>
             </>
           ) : null}
           {canManage ? (
-            <>
-              <button
-                type="button"
-                className={buttonClass('secondary', 'sm')}
-                onClick={() => setDialog({ kind: 'item', item: null })}
-              >
-                New item
-              </button>
+            <span className="flex flex-wrap gap-2 @xl:ml-auto">
               {overview.hasSource ? (
                 <button
                   type="button"
                   className={buttonClass('ghost', 'sm')}
                   onClick={() => setDialog({ kind: 'fromPos' })}
                 >
-                  Create from POS products
+                  <Import aria-hidden="true" className="size-3.5" />
+                  From POS products
                 </button>
               ) : null}
-            </>
+              <button
+                type="button"
+                className={buttonClass('secondary', 'sm')}
+                onClick={() => setDialog({ kind: 'item', item: null })}
+              >
+                <Plus aria-hidden="true" className="size-3.5" />
+                New item
+              </button>
+            </span>
           ) : null}
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs
-          label="Show"
-          tabs={[
-            { key: 'all', label: 'All' },
-            { key: 'low', label: 'Low and out' },
-            { key: 'out', label: 'Out' },
-            { key: 'materials', label: 'Materials' },
-            { key: 'for_sale', label: 'For sale' },
-          ]}
-          current={filter}
-          onChange={setFilter}
-        />
+      <div className="flex flex-col gap-2 @xl:flex-row @xl:items-center">
+        <label className="relative flex min-w-0 flex-1 items-center">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 size-4 text-muted-foreground" />
+          <span className="sr-only">Search stock</span>
+          <input
+            type="search"
+            placeholder="Search by name or code"
+            className={`${INPUT_CLASS} pl-8`}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={searchIntoList(listRef)}
+          />
+        </label>
         {categories.length > 0 ? (
           <select
             aria-label="Category"
-            className={`${INPUT_CLASS} h-7 w-auto text-xs`}
+            className={`${INPUT_CLASS} @xl:w-48`}
             value={categoryId ?? ''}
             onChange={(event) => setCategoryId(event.target.value || null)}
           >
@@ -163,53 +237,64 @@ export function StockSection({
           </select>
         ) : null}
       </div>
-      <input
-        type="search"
-        aria-label="Search stock"
-        placeholder="Search by name or code"
-        className={INPUT_CLASS}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        onKeyDown={searchIntoList(listRef)}
+      <Tabs
+        label="Show"
+        tabs={[
+          { key: 'all', label: `All ${counts.all}` },
+          { key: 'low', label: `Low and out ${counts.low}` },
+          { key: 'out', label: `Out ${counts.out}` },
+          { key: 'materials', label: `Materials ${counts.materials}` },
+          { key: 'for_sale', label: `For sale ${counts.for_sale}` },
+        ]}
+        current={filter}
+        onChange={setFilter}
       />
-      <p className="text-xs text-muted-foreground">
-        Worth {formatPeso(overview.totalValue)} at cost
-        {overview.unvalued > 0 ? `, not counting ${overview.unvalued} item(s) with no cost entered` : ''}.
-      </p>
 
-      <div ref={listRef} className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
+      <div ref={listRef} className="flex min-h-0 flex-col gap-1.5 overflow-y-auto pb-2" {...LIST_KEYS}>
         {live.length === 0 ? (
-          <Empty>
-            Nothing is counted yet.{' '}
-            {canManage
-              ? overview.hasSource
-                ? 'Add an item, or create them from the point of sale’s products.'
-                : 'Add an item to start.'
-              : 'Somebody who manages stock adds the items.'}
-          </Empty>
-        ) : null}
-        {live.length > 0 && shown.length === 0 ? <Empty>Nothing matches.</Empty> : null}
-        {shown.map((item) => {
-          const level = LEVEL_LABEL[item.level];
-          return (
-            <RowButton key={item.id} selected={item.id === selectedId} onClick={() => setSelectedId(item.id)}>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate font-medium">{item.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {KIND_LABEL[item.kind]}
-                  {item.usedBy > 0 ? ` · on ${item.usedBy} list(s)` : ''}
-                  {item.value === null ? '' : ` · ${formatPeso(item.value)}`}
+          <EmptyState
+            icon={Boxes}
+            title="Nothing is counted yet"
+            action={
+              canManage ? (
+                <span className="flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    className={buttonClass('primary', 'sm')}
+                    onClick={() => setDialog({ kind: 'item', item: null })}
+                  >
+                    <Plus aria-hidden="true" className="size-3.5" />
+                    New item
+                  </button>
+                  {overview.hasSource ? (
+                    <button
+                      type="button"
+                      className={buttonClass('secondary', 'sm')}
+                      onClick={() => setDialog({ kind: 'fromPos' })}
+                    >
+                      <Import aria-hidden="true" className="size-3.5" />
+                      From POS products
+                    </button>
+                  ) : null}
                 </span>
-              </span>
-              <span className="flex shrink-0 flex-col items-end gap-0.5">
-                <span className="text-sm tabular-nums">{quantityText(item.onHand, item.unit)}</span>
-                {item.level === 'ok' ? null : <StatusChip label={level.label} tone={level.tone} />}
-              </span>
-            </RowButton>
-          );
-        })}
+              ) : null
+            }
+          >
+            {canManage
+              ? 'Add what you stock — paper, boards, mugs — or bring in the point of sale’s products.'
+              : 'Somebody who manages stock adds the items.'}
+          </EmptyState>
+        ) : null}
+        {live.length > 0 && shown.length === 0 ? (
+          <EmptyState icon={Search} title="Nothing matches">
+            Try another word, or show every item.
+          </EmptyState>
+        ) : null}
+        {shown.map((item) => (
+          <StockRow key={item.id} item={item} selected={item.id === selectedId} onOpen={() => setSelectedId(item.id)} />
+        ))}
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -321,6 +406,40 @@ export function SourceLoader({
   return <>{children(source.data)}</>;
 }
 
+/** One row of the stock list: what it is, how much is left, and how it stands. */
+function StockRow({ item, selected, onOpen }: { item: StockItemView; selected: boolean; onOpen: () => void }) {
+  const level = LEVEL_LABEL[item.level];
+  const fill = levelFill(item);
+  const KindIcon = item.kind === 'for_sale' ? Package : Layers;
+  return (
+    <RowButton selected={selected} onClick={onOpen}>
+      <span className="flex min-w-0 flex-1 items-center gap-3">
+        <span
+          className={cn(
+            'grid size-9 shrink-0 place-items-center rounded-lg',
+            item.kind === 'for_sale' ? 'bg-status-info text-status-info-foreground' : 'bg-muted text-muted-foreground',
+          )}
+        >
+          <KindIcon aria-hidden="true" className="size-4" />
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium">{item.name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {KIND_LABEL[item.kind]}
+            {item.usedBy > 0 ? ` · on ${plural(item.usedBy, 'list')}` : ''}
+            {item.value === null ? '' : ` · ${formatPeso(item.value)}`}
+          </span>
+        </span>
+      </span>
+      <span className="flex w-28 shrink-0 flex-col items-end gap-1 @md:w-36">
+        <span className="font-medium tabular-nums">{quantityText(item.onHand, item.unit)}</span>
+        {fill === null ? null : <Meter fill={fill} tone={level.tone} />}
+        {item.level === 'ok' ? null : <StatusChip label={level.label} tone={level.tone} />}
+      </span>
+    </RowButton>
+  );
+}
+
 /** One item: what is on hand, what it costs, what uses it, and its history. */
 function ItemDetail({
   stock,
@@ -343,11 +462,15 @@ function ItemDetail({
   const uses = overview.uses.filter((use) => use.stockItemId === item.id);
   const category = overview.categories.find((one) => one.id === item.categoryId) ?? null;
   const level = LEVEL_LABEL[item.level];
+  const fill = levelFill(item);
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold tracking-tight">{item.name}</h2>
+    <div className="flex flex-col gap-5">
+      <header className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">{item.name}</h2>
+          <StatusChip label={level.label} tone={level.tone} />
+        </div>
         <p className="text-sm text-muted-foreground">
           {KIND_LABEL[item.kind]}
           {category ? ` · ${category.name}` : ''}
@@ -356,34 +479,35 @@ function ItemDetail({
         </p>
       </header>
 
-      <dl className="grid grid-cols-2 gap-3 text-sm @md:grid-cols-4">
-        <div>
-          <dt className="text-xs text-muted-foreground">On hand</dt>
-          <dd className="text-lg font-semibold tabular-nums">{quantityText(item.onHand, item.unit)}</dd>
-          <dd>
-            <StatusChip label={level.label} tone={level.tone} />
-          </dd>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+          <span className="text-xs font-medium text-muted-foreground">On hand</span>
+          <span className="text-2xl font-semibold tracking-tight tabular-nums">
+            {quantityText(item.onHand, item.unit)}
+          </span>
+          {fill === null ? null : (
+            <>
+              <Meter fill={fill} tone={level.tone} />
+              <span className="text-xs text-muted-foreground">
+                Low at {quantityText(item.lowStockAt ?? 0, item.unit)}
+              </span>
+            </>
+          )}
         </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Cost per unit</dt>
-          <dd className="tabular-nums">{item.unitCost === null ? 'Not entered' : formatPeso(item.unitCost)}</dd>
+        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-3">
+          <span className="text-xs font-medium text-muted-foreground">Cost per unit</span>
+          <span className="font-semibold tabular-nums">{item.unitCost === null ? '—' : formatPeso(item.unitCost)}</span>
         </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Worth</dt>
-          <dd className="tabular-nums">{item.value === null ? '—' : formatPeso(item.value)}</dd>
+        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-3">
+          <span className="text-xs font-medium text-muted-foreground">Worth</span>
+          <span className="font-semibold tabular-nums">{item.value === null ? '—' : formatPeso(item.value)}</span>
         </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Low at</dt>
-          <dd className="tabular-nums">
-            {item.lowStockAt === null ? 'No alert' : quantityText(item.lowStockAt, item.unit)}
-          </dd>
-        </div>
-      </dl>
+      </div>
       {item.level === 'negative' ? (
-        <p className="rounded-md bg-status-error px-3 py-2 text-sm text-status-error-foreground">
+        <Callout icon={TriangleAlert} tone="danger">
           More was used than was ever recorded, so the count is off. Sales are never stopped for it — count the shelf
           with a stock take, or receive what arrived.
-        </p>
+        </Callout>
       ) : null}
 
       {item.archivedAt ? null : (
@@ -395,6 +519,7 @@ function ItemDetail({
                 className={buttonClass('primary', 'sm')}
                 onClick={() => onDialog({ kind: 'receive', itemId: item.id })}
               >
+                <PackagePlus aria-hidden="true" className="size-3.5" />
                 Receive
               </button>
               <button
@@ -402,54 +527,48 @@ function ItemDetail({
                 className={buttonClass('secondary', 'sm')}
                 onClick={() => onDialog({ kind: 'waste', itemId: item.id })}
               >
-                Record waste
+                <Trash2 aria-hidden="true" className="size-3.5" />
+                Waste
               </button>
               <button
                 type="button"
                 className={buttonClass('secondary', 'sm')}
                 onClick={() => onDialog({ kind: 'adjust', itemId: item.id })}
               >
+                <SlidersHorizontal aria-hidden="true" className="size-3.5" />
                 Adjust
               </button>
             </>
           ) : null}
           {canManage ? (
-            <>
-              <button
-                type="button"
-                className={buttonClass('ghost', 'sm')}
-                onClick={() => onDialog({ kind: 'item', item })}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className={buttonClass('ghost', 'sm')}
-                onClick={() => onDialog({ kind: 'archive', item })}
-              >
-                Archive
-              </button>
-            </>
+            <span className="ml-auto flex gap-1">
+              <IconButton label="Edit item" onClick={() => onDialog({ kind: 'item', item })}>
+                <Pencil aria-hidden="true" className="size-4" />
+              </IconButton>
+              <IconButton label="Archive item" onClick={() => onDialog({ kind: 'archive', item })}>
+                <Archive aria-hidden="true" className="size-4" />
+              </IconButton>
+            </span>
           ) : null}
         </div>
       )}
 
-      <section className="flex flex-col gap-1.5">
-        <h3 className="text-sm font-medium">Used by</h3>
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold">Used by</h3>
         {uses.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <Callout icon={Info}>
             No product uses it, so only deliveries, adjustments, waste and stock takes move it.{' '}
-            <button type="button" className="underline" onClick={onOpenProducts}>
-              Materials lists are under Products.
+            <button type="button" className="font-medium text-foreground underline" onClick={onOpenProducts}>
+              Set up materials lists under Products
             </button>
-          </p>
+          </Callout>
         ) : (
-          <ul className="flex flex-col gap-1 text-sm">
+          <ul className="flex flex-col divide-y divide-border rounded-xl border border-border text-sm">
             {uses.map((use) => (
-              <li key={use.id} className="flex justify-between gap-2">
+              <li key={use.id} className="flex items-center justify-between gap-2 px-3 py-2">
                 <span className="truncate">
                   {use.refLabel}
-                  {use.refKind === 'item' ? <span className="text-muted-foreground"> (every size)</span> : null}
+                  {use.refKind === 'item' ? <span className="text-muted-foreground"> · every size</span> : null}
                 </span>
                 <span className="shrink-0 tabular-nums text-muted-foreground">
                   {quantityText(use.quantityPerUnit, item.unit)} each
@@ -465,7 +584,26 @@ function ItemDetail({
   );
 }
 
-/** An item's movements, newest first, a page at a time. Re-read on every stock event, as everything is. */
+/** Each movement's icon and tone in the history. */
+const MOVE_ICON: Readonly<Record<StockMoveView['kind'], { icon: LucideIcon; tone: StatusTone }>> = {
+  opening: { icon: Flag, tone: 'info' },
+  received: { icon: PackagePlus, tone: 'success' },
+  used: { icon: ShoppingCart, tone: 'neutral' },
+  returned: { icon: Undo2, tone: 'info' },
+  adjustment: { icon: SlidersHorizontal, tone: 'neutral' },
+  wasted: { icon: Trash2, tone: 'danger' },
+  count: { icon: ClipboardCheck, tone: 'info' },
+};
+
+const DOT: Readonly<Record<StatusTone, string>> = {
+  neutral: 'bg-muted text-muted-foreground',
+  success: 'bg-status-success text-status-success-foreground',
+  warning: 'bg-status-warning text-status-warning-foreground',
+  danger: 'bg-status-error text-status-error-foreground',
+  info: 'bg-status-info text-status-info-foreground',
+};
+
+/** An item's movements, newest first, a page at a time, as a timeline. Re-read on every stock event. */
 function History({ stock, item, timeZone }: { stock: StockContext; item: StockItemView; timeZone: string }) {
   const [older, setOlder] = useState<StockMoveView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -489,33 +627,55 @@ function History({ stock, item, timeZone }: { stock: StockContext; item: StockIt
   };
 
   return (
-    <section className="flex flex-col gap-1.5">
-      <h3 className="text-sm font-medium">History</h3>
+    <section className="flex flex-col gap-2">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+        <HistoryIcon aria-hidden="true" className="size-4 text-muted-foreground" />
+        History
+      </h3>
       <Alert message={first.error ?? action.error} />
       {first.data && moves.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing has moved yet.</p>
       ) : null}
-      <ul className="flex flex-col divide-y divide-border text-sm">
-        {moves.map((move) => (
-          <li key={move.id} className="flex items-start justify-between gap-3 py-1.5">
-            <span className="flex min-w-0 flex-col">
-              <span>
-                {MOVE_LABEL[move.kind]}
-                {move.wasteRefLabel ? ` — ${move.wasteRefLabel}` : ''}
-                {move.reason ? <span className="text-muted-foreground"> · {reasonLabel(move.reason)}</span> : null}
+      <ol className="flex flex-col">
+        {moves.map((move, index) => {
+          const look = MOVE_ICON[move.kind];
+          const Icon = look.icon;
+          return (
+            <li key={move.id} className="relative flex gap-3 pb-3">
+              {index < moves.length - 1 ? (
+                <span aria-hidden="true" className="absolute top-8 bottom-0 left-[15px] w-px bg-border" />
+              ) : null}
+              <span className={cn('z-0 grid size-8 shrink-0 place-items-center rounded-full', DOT[look.tone])}>
+                <Icon aria-hidden="true" className="size-3.5" />
               </span>
-              <span className="text-xs text-muted-foreground">
-                {whenText(move.createdAt, timeZone)} · {whoText(move)}
-                {move.supplier ? ` · ${move.supplier}` : ''}
-                {move.reference ? ` · ref ${move.reference}` : ''}
-                {move.unitCost === null ? '' : ` · ${formatPeso(move.unitCost)} each`}
-                {move.note ? ` · “${move.note}”` : ''}
+              <span className="flex min-w-0 flex-1 flex-col pt-1">
+                <span className="flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0">
+                    <span className="font-medium">{MOVE_LABEL[move.kind]}</span>
+                    {move.wasteRefLabel ? <span className="text-muted-foreground"> · {move.wasteRefLabel}</span> : null}
+                    {move.reason ? <span className="text-muted-foreground"> · {reasonLabel(move.reason)}</span> : null}
+                  </span>
+                  <span
+                    className={cn(
+                      'shrink-0 font-medium tabular-nums',
+                      move.quantity > 0 ? 'text-status-success-foreground' : 'text-destructive',
+                    )}
+                  >
+                    {signedQuantityText(move.quantity, item.unit)}
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {whenText(move.createdAt, timeZone)} · {whoText(move)}
+                  {move.supplier ? ` · ${move.supplier}` : ''}
+                  {move.reference ? ` · ref ${move.reference}` : ''}
+                  {move.unitCost === null ? '' : ` · ${formatPeso(move.unitCost)} each`}
+                </span>
+                {move.note ? <span className="text-xs italic text-muted-foreground">“{move.note}”</span> : null}
               </span>
-            </span>
-            <span className="shrink-0 tabular-nums">{signedQuantityText(move.quantity, item.unit)}</span>
-          </li>
-        ))}
-      </ul>
+            </li>
+          );
+        })}
+      </ol>
       {cursor ? (
         <button
           type="button"

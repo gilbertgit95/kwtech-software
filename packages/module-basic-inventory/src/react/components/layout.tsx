@@ -267,3 +267,120 @@ export function RowButton({
     </button>
   );
 }
+
+/**
+ * One figure across the top of a section: a label, the number, a quiet line
+ * under it. With `onClick` it is a filter — pressed while `active` — so the
+ * card that says "4 low" is also the way to see them.
+ */
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = 'neutral',
+  active = false,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string | undefined;
+  icon: LucideIcon;
+  tone?: StatusTone;
+  active?: boolean;
+  onClick?: (() => void) | undefined;
+}) {
+  const body = (
+    <>
+      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        {label}
+        <span className={cn('grid size-7 place-items-center rounded-full', TONE_CLASS[tone])}>
+          <Icon aria-hidden="true" className="size-3.5" />
+        </span>
+      </span>
+      <span className="text-xl font-semibold tracking-tight tabular-nums">{value}</span>
+      {hint ? <span className="truncate text-xs text-muted-foreground">{hint}</span> : null}
+    </>
+  );
+  const frame = cn(
+    'flex min-w-0 flex-col gap-1 rounded-xl border bg-card p-3 text-left shadow-xs',
+    active ? 'border-primary ring-1 ring-primary' : 'border-border',
+  );
+  if (!onClick) return <div className={frame}>{body}</div>;
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        frame,
+        'transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      )}
+      onClick={onClick}
+    >
+      {body}
+    </button>
+  );
+}
+
+/** A thin bar, 0–1 full, in a status tone. Decorative: the number beside it says the same. */
+export function Meter({ fill, tone }: { fill: number; tone: StatusTone }) {
+  const bar: Readonly<Record<StatusTone, string>> = {
+    neutral: 'bg-muted-foreground/40',
+    success: 'bg-status-success-foreground',
+    warning: 'bg-status-warning-foreground',
+    danger: 'bg-status-error-foreground',
+    info: 'bg-status-info-foreground',
+  };
+  return (
+    <span aria-hidden="true" className="block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <span className={cn('block h-full rounded-full', bar[tone])} style={{ width: `${Math.round(fill * 100)}%` }} />
+    </span>
+  );
+}
+
+/** A quiet note with an icon: a tip, or a warning in its tone. Wraps, never truncates. */
+export function Callout({
+  icon: Icon,
+  tone = 'neutral',
+  children,
+}: {
+  icon: LucideIcon;
+  tone?: StatusTone;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-2 rounded-lg px-3 py-2 text-sm',
+        tone === 'neutral' ? 'bg-muted/60 text-muted-foreground' : TONE_CLASS[tone],
+      )}
+    >
+      <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/** An empty list that says what to do next, with the way to do it. */
+export function EmptyState({
+  icon: Icon,
+  title,
+  children,
+  action,
+}: {
+  icon: LucideIcon;
+  title: string;
+  children?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-10 text-center">
+      <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
+        <Icon aria-hidden="true" className="size-5" />
+      </span>
+      <p className="font-medium">{title}</p>
+      {children ? <p className="max-w-sm text-sm text-muted-foreground">{children}</p> : null}
+      {action ?? null}
+    </div>
+  );
+}

@@ -2,7 +2,7 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { X } from 'lucide-react';
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { type InputHTMLAttributes, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 /*
  * The stock app's controls — the books', copied structurally: a module never
@@ -150,5 +150,109 @@ export function Field({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A number box with its unit inside, on the right ("12 | sheets"), so what is
+ * typed is never read as the wrong unit. Every other prop goes to the input.
+ */
+export function QuantityInput({
+  suffix,
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { suffix: string | null }) {
+  return (
+    <span className={cn('relative flex items-center', className)}>
+      <input
+        inputMode="decimal"
+        autoComplete="off"
+        {...props}
+        className={cn(INPUT_CLASS, 'tabular-nums', suffix ? 'pr-14' : null)}
+      />
+      {suffix ? (
+        <span className="pointer-events-none absolute right-2.5 text-xs text-muted-foreground">{suffix}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** A small button that is only an icon, named for screen readers and shown on hover. */
+export function IconButton({
+  label,
+  onClick,
+  children,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      className={cn(buttonClass('ghost', 'sm'), 'size-8 shrink-0 p-0 text-muted-foreground hover:text-foreground')}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * A choice of a few, as pills in a row — a radio group the eye takes in at
+ * once, where a select hides the options until it is opened. Arrow keys move
+ * between them, as native radios do, because they ARE native radios.
+ */
+export function ChoiceChips<K extends string>({
+  legend,
+  options,
+  value,
+  onChange,
+  error,
+}: {
+  legend: string;
+  options: readonly { key: K; label: string }[];
+  value: string;
+  onChange: (key: K) => void;
+  error?: string | undefined;
+}) {
+  const name = useId();
+  return (
+    <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
+      <legend className="mb-1.5 text-sm font-medium">{legend}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => (
+          <label
+            key={option.key}
+            className={cn(
+              'inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-sm transition-colors',
+              'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
+              value === option.key
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-background hover:bg-accent',
+            )}
+          >
+            <input
+              type="radio"
+              name={name}
+              className="sr-only"
+              checked={value === option.key}
+              onChange={() => onChange(option.key)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </fieldset>
   );
 }

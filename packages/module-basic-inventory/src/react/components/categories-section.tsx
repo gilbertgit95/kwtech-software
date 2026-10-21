@@ -1,11 +1,13 @@
 'use client';
 
+import { Archive, ArchiveRestore, Pencil, Plus, Tag } from 'lucide-react';
 import { useState } from 'react';
 import type { StockCategoryView, StockOverviewView } from '../../views.js';
 import { type StockContext, useStockAction } from '../use-stock.js';
-import { buttonClass } from './controls.js';
+import { plural } from '../view/lists.js';
+import { buttonClass, IconButton } from './controls.js';
 import { CategoryDialog } from './dialogs.js';
-import { Alert, Empty, StatusChip } from './layout.js';
+import { Alert, EmptyState, StatusChip } from './layout.js';
 
 /**
  * Categories group the stock list and a stock take's sheet ("count the paper
@@ -23,6 +25,11 @@ export function CategoriesSection({
   const [editing, setEditing] = useState<StockCategoryView | 'new' | null>(null);
   const action = useStockAction();
   const count = (id: string) => overview.items.filter((item) => item.categoryId === id && !item.archivedAt).length;
+  const uncategorised = overview.items.filter((item) => !item.archivedAt && item.categoryId === null).length;
+  // Live first, then archived; each by its order, then name.
+  const categories = [...overview.categories].sort(
+    (a, b) => Number(a.archivedAt !== null) - Number(b.archivedAt !== null) || a.sortOrder - b.sortOrder,
+  );
 
   const setArchived = async (category: StockCategoryView, archived: boolean) => {
     const done = await action.run(
@@ -34,36 +41,51 @@ export function CategoriesSection({
 
   return (
     <section className="flex min-h-0 flex-col gap-3">
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          Group items to filter the list and to count one shelf at a time.
+          {uncategorised > 0 ? ` ${plural(uncategorised, 'item')} ${uncategorised === 1 ? 'has' : 'have'} none.` : ''}
+        </p>
         <button type="button" className={buttonClass('primary', 'sm')} onClick={() => setEditing('new')}>
+          <Plus aria-hidden="true" className="size-3.5" />
           New category
         </button>
       </div>
       <Alert message={action.error} onDismiss={action.dismissError} />
-      {overview.categories.length === 0 ? <Empty>No categories yet.</Empty> : null}
-      <ul className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
-        {overview.categories.map((category) => (
+      {categories.length === 0 ? (
+        <EmptyState icon={Tag} title="No categories yet">
+          Try “Boards”, “Paper and film”, “Mugs and blanks” — whatever matches how your shelves are laid out.
+        </EmptyState>
+      ) : null}
+      <ul className="grid min-h-0 grid-cols-1 content-start gap-2 overflow-y-auto pb-2 @xl:grid-cols-2 @4xl:grid-cols-3">
+        {categories.map((category) => (
           <li
             key={category.id}
-            className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-xs"
           >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium">{category.name}</span>
-              <span className="text-xs text-muted-foreground">{count(category.id)} item(s)</span>
-              {category.archivedAt ? <StatusChip label="Archived" tone="neutral" /> : null}
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+              <Tag aria-hidden="true" className="size-4" />
             </span>
-            <span className="flex shrink-0 gap-1">
-              <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => setEditing(category)}>
-                Rename
-              </button>
-              <button
-                type="button"
-                className={buttonClass('ghost', 'sm')}
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate font-medium">{category.name}</span>
+              <span className="text-xs text-muted-foreground">{plural(count(category.id), 'item')}</span>
+            </span>
+            {category.archivedAt ? <StatusChip label="Archived" tone="neutral" /> : null}
+            <span className="flex shrink-0">
+              <IconButton label={`Rename ${category.name}`} onClick={() => setEditing(category)}>
+                <Pencil aria-hidden="true" className="size-4" />
+              </IconButton>
+              <IconButton
+                label={category.archivedAt ? `Restore ${category.name}` : `Archive ${category.name}`}
                 disabled={action.busy}
                 onClick={() => void setArchived(category, category.archivedAt === null)}
               >
-                {category.archivedAt ? 'Restore' : 'Archive'}
-              </button>
+                {category.archivedAt ? (
+                  <ArchiveRestore aria-hidden="true" className="size-4" />
+                ) : (
+                  <Archive aria-hidden="true" className="size-4" />
+                )}
+              </IconButton>
             </span>
           </li>
         ))}

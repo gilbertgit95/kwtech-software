@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { STOCK_ADJUST_REASONS, STOCK_WASTE_REASONS } from '../../domain/moves.js';
-import { STOCK_UNITS } from '../../domain/quantities.js';
+import { parseStockQuantity, STOCK_UNITS } from '../../domain/quantities.js';
 import type { StockUnit } from '../../types.js';
 import type { StockCategoryView, StockItemView, StockOverviewView, StockSourceItemView } from '../../views.js';
 import { type StockContext, useStockAction } from '../use-stock.js';
@@ -18,8 +18,16 @@ import {
   type WasteDraft,
   type WasteLineDraft,
 } from '../view/forms.js';
-import { ADJUST_REASON_LABEL, KIND_LABEL, quantityText, UNIT_LABEL, WASTE_REASON_LABEL } from '../view/labels.js';
-import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
+import {
+  ADJUST_REASON_LABEL,
+  afterText,
+  KIND_LABEL,
+  quantityText,
+  UNIT_LABEL,
+  UNIT_SUFFIX,
+  WASTE_REASON_LABEL,
+} from '../view/labels.js';
+import { buttonClass, ChoiceChips, Field, INPUT_CLASS, Modal, QuantityInput } from './controls.js';
 import { Alert } from './layout.js';
 
 /*
@@ -45,25 +53,35 @@ function liveItems(overview: StockOverviewView): StockItemView[] {
   return overview.items.filter((item) => !item.archivedAt).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** A stock item picker: a native select, so ↑ ↓ and typing to jump work everywhere. */
+/**
+ * A stock item picker: a native select, so ↑ ↓ and typing to jump work
+ * everywhere. Where the count helps (what arrived, what to adjust) each option
+ * shows what is on hand; on a materials list it shows the unit instead.
+ */
 export function ItemSelect({
   id,
+  label,
   describedBy,
   items,
   value,
   onChange,
+  showOnHand = true,
   autoFocus = false,
 }: {
   id: string;
+  /** The accessible name when no visible label points at `id`. */
+  label?: string;
   describedBy?: string | undefined;
   items: readonly StockItemView[];
   value: string;
   onChange: (id: string) => void;
+  showOnHand?: boolean;
   autoFocus?: boolean;
 }) {
   return (
     <select
       id={id}
+      aria-label={label}
       aria-describedby={describedBy}
       // biome-ignore lint/a11y/noAutofocus: a dialog opens on the choice made first (POS-PLAN D20).
       autoFocus={autoFocus}
@@ -71,13 +89,34 @@ export function ItemSelect({
       value={value}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value="">Choose…</option>
+      <option value="">Choose an item…</option>
       {items.map((item) => (
         <option key={item.id} value={item.id}>
-          {item.name} — {quantityText(item.onHand, item.unit)}
+          {showOnHand
+            ? `${item.name} (${quantityText(item.onHand, item.unit)} on hand)`
+            : `${item.name} · ${UNIT_LABEL[item.unit]}`}
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * "On hand 6 → 16 pieces" under a movement's form, as it is typed: what Save
+ * will leave, so a slip of a zero is seen before it is recorded. Nothing until
+ * an item is chosen and the amount reads as one.
+ */
+function AfterLine({ item, text, sign }: { item: StockItemView | null; text: string; sign: 1 | -1 }) {
+  if (!item) return <span />;
+  const parsed = parseStockQuantity(text, item.unit);
+  if ('refused' in parsed) {
+    return <span className="text-xs text-muted-foreground">On hand {quantityText(item.onHand, item.unit)}</span>;
+  }
+  const after = item.onHand + sign * parsed.quantity;
+  return (
+    <span className={`text-xs tabular-nums ${after < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+      On hand {afterText(item.onHand, sign * parsed.quantity, item.unit)}
+    </span>
   );
 }
 
@@ -315,16 +354,14 @@ export function ReceiveDialog({
         )}
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={item ? `How many (${UNIT_LABEL[item.unit].toLowerCase()})` : 'How many'} error={errors.quantity}>
+        <Field label="How many" error={errors.quantity}>
           {(id, describedBy) => (
-            <input
+            <QuantityInput
               id={id}
               aria-describedby={describedBy}
               aria-invalid={errors.quantity !== undefined}
-              inputMode="decimal"
-              // biome-ignore lint/a11y/noAutofocus: opened from an item, the quantity is what is typed first.
               autoFocus={itemId !== null}
-              className={INPUT_CLASS}
+              suffix={item ? UNIT_SUFFIX[item.unit] : null}
               value={draft.quantity}
               onChange={(event) => set({ quantity: event.target.value })}
             />
@@ -376,7 +413,8 @@ export function ReceiveDialog({
         <input type="checkbox" checked={draft.opening} onChange={(event) => set({ opening: event.target.checked })} />
         This is the stock already on the shelf when we started counting
       </label>
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <AfterLine item={item} text={draft.quantity} sign={1} />
         <button type="button" className={buttonClass('primary')} disabled={action.busy} onClick={() => void save()}>
           {action.busy ? 'Recording…' : 'Record delivery'}
         </button>
@@ -451,53 +489,36 @@ export function AdjustDialog({
         )}
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="In or out">
-          {(id) => (
-            <select
-              id={id}
-              className={INPUT_CLASS}
-              value={draft.direction}
-              onChange={(event) => set({ direction: event.target.value === 'in' ? 'in' : 'out' })}
-            >
-              <option value="out">Out — less on the shelf</option>
-              <option value="in">In — more on the shelf</option>
-            </select>
-          )}
-        </Field>
+        <ChoiceChips
+          legend="In or out"
+          options={[
+            { key: 'out', label: 'Out — less' },
+            { key: 'in', label: 'In — more' },
+          ]}
+          value={draft.direction}
+          onChange={(direction) => set({ direction })}
+        />
         <Field label="How many" error={errors.quantity}>
           {(id, describedBy) => (
-            <input
+            <QuantityInput
               id={id}
               aria-describedby={describedBy}
               aria-invalid={errors.quantity !== undefined}
-              inputMode="decimal"
-              // biome-ignore lint/a11y/noAutofocus: opened from an item, the quantity is what is typed first.
               autoFocus={itemId !== null}
-              className={INPUT_CLASS}
+              suffix={item ? UNIT_SUFFIX[item.unit] : null}
               value={draft.quantity}
               onChange={(event) => set({ quantity: event.target.value })}
             />
           )}
         </Field>
       </div>
-      <Field label="Reason" error={errors.reason}>
-        {(id, describedBy) => (
-          <select
-            id={id}
-            aria-describedby={describedBy}
-            className={INPUT_CLASS}
-            value={draft.reason}
-            onChange={(event) => set({ reason: event.target.value })}
-          >
-            <option value="">Choose…</option>
-            {STOCK_ADJUST_REASONS.map((reason) => (
-              <option key={reason} value={reason}>
-                {ADJUST_REASON_LABEL[reason]}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
+      <ChoiceChips
+        legend="Reason"
+        options={STOCK_ADJUST_REASONS.map((reason) => ({ key: reason, label: ADJUST_REASON_LABEL[reason] }))}
+        value={draft.reason}
+        onChange={(reason) => set({ reason })}
+        error={errors.reason}
+      />
       <Field label="Note" hint={draft.reason === 'other' ? 'Required for “Other”.' : 'Optional.'} error={errors.note}>
         {(id, describedBy) => (
           <input
@@ -510,7 +531,8 @@ export function AdjustDialog({
           />
         )}
       </Field>
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <AfterLine item={item} text={draft.quantity} sign={draft.direction === 'out' ? -1 : 1} />
         <button type="button" className={buttonClass('primary')} disabled={action.busy} onClick={() => void save()}>
           {action.busy ? 'Recording…' : 'Record adjustment'}
         </button>
@@ -602,10 +624,15 @@ export function WasteDialog({
         {draft.lines.map((line, index) => {
           const item = items.find((one) => one.id === line.stockItemId) ?? null;
           return (
-            <div key={line.key} className="flex items-end gap-2">
+            <div key={line.key} className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 {of ? (
-                  <p className="truncate pb-2 text-sm">{item?.name ?? 'An archived item'}</p>
+                  <p className="truncate text-sm">
+                    {item?.name ?? 'An archived item'}
+                    {item ? (
+                      <span className="text-muted-foreground"> · {quantityText(item.onHand, item.unit)} on hand</span>
+                    ) : null}
+                  </p>
                 ) : (
                   <ItemSelect
                     id={`waste-item-${index}`}
@@ -616,17 +643,15 @@ export function WasteDialog({
                   />
                 )}
               </div>
-              <label className="flex w-36 flex-col gap-1 text-xs text-muted-foreground">
-                {item ? UNIT_LABEL[item.unit] : 'Amount'}
-                <input
-                  inputMode="decimal"
-                  // biome-ignore lint/a11y/noAutofocus: opened on a product or an item, the first amount is what is checked first.
-                  autoFocus={index === 0 && (of !== null || itemId !== null)}
-                  className={INPUT_CLASS}
-                  value={line.quantity}
-                  onChange={(event) => setLine(index, { quantity: event.target.value })}
-                />
-              </label>
+              <QuantityInput
+                className="w-36"
+                aria-label={`Wasted, ${item?.name ?? 'item'}`}
+                placeholder="0"
+                autoFocus={index === 0 && (of !== null || itemId !== null)}
+                suffix={item ? UNIT_SUFFIX[item.unit] : null}
+                value={line.quantity}
+                onChange={(event) => setLine(index, { quantity: event.target.value })}
+              />
             </div>
           );
         })}
@@ -650,24 +675,13 @@ export function WasteDialog({
           </button>
         )}
       </fieldset>
-      <Field label="Reason" error={errors.reason}>
-        {(id, describedBy) => (
-          <select
-            id={id}
-            aria-describedby={describedBy}
-            className={INPUT_CLASS}
-            value={draft.reason}
-            onChange={(event) => setDraft({ ...draft, reason: event.target.value })}
-          >
-            <option value="">Choose…</option>
-            {STOCK_WASTE_REASONS.map((reason) => (
-              <option key={reason} value={reason}>
-                {WASTE_REASON_LABEL[reason]}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
+      <ChoiceChips
+        legend="Reason"
+        options={STOCK_WASTE_REASONS.map((reason) => ({ key: reason, label: WASTE_REASON_LABEL[reason] }))}
+        value={draft.reason}
+        onChange={(reason) => setDraft({ ...draft, reason })}
+        error={errors.reason}
+      />
       <Field label="Note" hint={draft.reason === 'other' ? 'Required for “Other”.' : 'Optional.'} error={errors.note}>
         {(id, describedBy) => (
           <input

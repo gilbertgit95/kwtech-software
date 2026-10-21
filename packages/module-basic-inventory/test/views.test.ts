@@ -6,14 +6,25 @@ import {
   validateUseList,
   validateWasteDraft,
 } from '../src/react/view/forms.js';
-import { quantityText, reasonLabel, signedQuantityText, whenText, whoText } from '../src/react/view/labels.js';
+import {
+  afterText,
+  quantityText,
+  reasonLabel,
+  signedQuantityText,
+  whenText,
+  whoText,
+} from '../src/react/view/labels.js';
 import {
   canMake,
   filterItems,
+  levelFill,
+  limitedBy,
   materialsCost,
   needsAttention,
   overlapNames,
+  plural,
   productRows,
+  stockSummary,
   wasteLinesFor,
 } from '../src/react/view/lists.js';
 import { formatPeso, parsePeso } from '../src/react/view/money.js';
@@ -243,5 +254,32 @@ describe('labels and money', () => {
     expect(parsePeso('₱1,500.50')).toBe(150_050);
     expect(parsePeso('-1')).toBeNull();
     expect(formatPeso(420)).toBe('₱4.20');
+  });
+});
+
+describe('the new summaries', () => {
+  it('names the material a product runs out of first', () => {
+    expect(limitedBy({ items: ITEMS, uses: USES }, 'sintra', 'a3')).toBe('Vinyl');
+    expect(limitedBy({ items: ITEMS, uses: USES }, 'nothing', null)).toBeNull();
+  });
+
+  it('sums the stock list and fills a bar against twice the low level', () => {
+    expect(stockSummary({ items: ITEMS, totalValue: 100, unvalued: 1 })).toEqual({
+      items: 4,
+      low: 1,
+      out: 1,
+      value: 100,
+      unvalued: 1,
+    });
+    expect(levelFill({ onHand: 5000, lowStockAt: 5000 })).toBe(0.5);
+    expect(levelFill({ onHand: 50_000, lowStockAt: 5000 })).toBe(1);
+    expect(levelFill({ onHand: -1000, lowStockAt: 5000 })).toBe(0);
+    expect(levelFill({ onHand: 5000, lowStockAt: null })).toBeNull();
+  });
+
+  it('says counts with their noun, and what a movement leaves', () => {
+    expect(plural(1, 'list')).toBe('1 list');
+    expect(plural(3, 'list')).toBe('3 lists');
+    expect(afterText(6000, 10_000, 'piece')).toBe('6 → 16 pieces');
   });
 });

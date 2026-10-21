@@ -2,15 +2,17 @@
 
 import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, LIST_KEYS, ListDrawer, listNeighbours } from '@kwtech/web-ui/react';
+import { Check, ClipboardCheck, ClipboardList, Info, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { formatStockQuantity } from '../../domain/quantities.js';
+import type { StockUnit } from '../../types.js';
 import type { StockOverviewView, StockTakeView } from '../../views.js';
 import { type StockContext, useStockAction, useStockData } from '../use-stock.js';
 import { parseCount } from '../view/forms.js';
-import { quantityText, signedQuantityText, whenText } from '../view/labels.js';
-import { buttonClass, INPUT_CLASS } from './controls.js';
+import { quantityText, signedQuantityText, UNIT_SUFFIX, whenText } from '../view/labels.js';
+import { buttonClass, QuantityInput } from './controls.js';
 import { StartTakeDialog } from './dialogs.js';
-import { Alert, Empty, RowButton, StatusChip } from './layout.js';
+import { Alert, Callout, Meter, RowButton, StatusChip } from './layout.js';
 
 const STATUS: Readonly<Record<StockTakeView['status'], { label: string; tone: 'info' | 'success' | 'neutral' }>> = {
   open: { label: 'Counting', tone: 'info' },
@@ -46,38 +48,68 @@ export function TakesSection({
   );
 
   const list = (
-    <>
-      <div className="flex flex-wrap gap-2">
-        {open ? (
-          <button type="button" className={buttonClass('primary', 'sm')} onClick={() => setSelectedId(open.id)}>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {open ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-primary/40 bg-card p-3 shadow-xs">
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 font-medium">
+              <ClipboardList aria-hidden="true" className="size-4 text-primary" />A count is open
+            </span>
+            <StatusChip label="Counting" tone="info" />
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Started {whenText(open.createdAt, timeZone)} by {open.createdByName ?? 'a team member'}
+            {open.note ? ` · ${open.note}` : ''}
+          </span>
+          <button
+            type="button"
+            className={`${buttonClass('primary', 'sm')} self-start`}
+            onClick={() => setSelectedId(open.id)}
+          >
             Continue counting
           </button>
-        ) : (
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-border p-3">
+          <span className="text-sm text-muted-foreground">
+            Count the shelf to correct what the history says. Sales can go on while you count.
+          </span>
           <button type="button" className={buttonClass('primary', 'sm')} onClick={() => setStarting(true)}>
+            <Plus aria-hidden="true" className="size-3.5" />
             Start a stock take
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <Alert message={takes.error} />
-      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
-        {takes.data && rows.length === 0 ? <Empty>No stock take yet.</Empty> : null}
-        {rows.map((take) => {
-          const status = STATUS[take.status];
-          return (
-            <RowButton key={take.id} selected={take.id === selectedId} onClick={() => setSelectedId(take.id)}>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate font-medium">{whenText(take.createdAt, timeZone)}</span>
-                <span className="text-xs text-muted-foreground">
-                  {take.createdByName ?? 'A team member'}
-                  {take.note ? ` · ${take.note}` : ''}
+      <h3 className="text-sm font-semibold">Past counts</h3>
+      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto pb-2" {...LIST_KEYS}>
+        {takes.data && rows.filter((take) => take.status !== 'open').length === 0 ? (
+          <p className="text-sm text-muted-foreground">None yet.</p>
+        ) : null}
+        {rows
+          .filter((take) => take.status !== 'open')
+          .map((take) => {
+            const status = STATUS[take.status];
+            return (
+              <RowButton key={take.id} selected={take.id === selectedId} onClick={() => setSelectedId(take.id)}>
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                    <ClipboardCheck aria-hidden="true" className="size-4" />
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate font-medium">{whenText(take.createdAt, timeZone)}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {take.createdByName ?? 'A team member'}
+                      {take.note ? ` · ${take.note}` : ''}
+                    </span>
+                  </span>
                 </span>
-              </span>
-              <StatusChip label={status.label} tone={status.tone} />
-            </RowButton>
-          );
-        })}
+                <StatusChip label={status.label} tone={status.tone} />
+              </RowButton>
+            );
+          })}
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -188,84 +220,81 @@ function TakeSheet({
     onChanged();
   };
 
+  const total = view.lines.length;
   return (
-    <div className="flex flex-col gap-3">
-      <header>
-        <h2 className="text-lg font-semibold tracking-tight">Stock take</h2>
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">Stock take</h2>
+          <StatusChip label={STATUS[view.status].label} tone={STATUS[view.status].tone} />
+        </div>
         <p className="text-sm text-muted-foreground">
-          {STATUS[view.status].label}
+          {view.createdByName ?? 'A team member'}
           {view.note ? ` · ${view.note}` : ''}
-          {editable ? ` · ${counted} of ${view.lines.length} counted` : ''}
         </p>
       </header>
       {editable ? (
-        <p className="text-sm text-muted-foreground">
-          Type what is on the shelf; leave a line empty to leave it alone. Counts are saved as you go. “On hand” moves
-          if something sells while you count — confirming compares with it then.
-        </p>
+        <div className="flex flex-col gap-1.5">
+          <span className="flex justify-between text-xs text-muted-foreground">
+            <span>
+              {counted} of {total} counted
+            </span>
+            <span>{total === 0 ? 0 : Math.round((counted / total) * 100)}%</span>
+          </span>
+          <Meter fill={total === 0 ? 0 : counted / total} tone="info" />
+        </div>
+      ) : null}
+      {editable ? (
+        <Callout icon={Info}>
+          Type what is on the shelf; leave a line empty to leave it alone. Counts save as you go. If something sells
+          while you count, “On hand” moves — confirming compares with it then.
+        </Callout>
       ) : null}
       <Alert message={action.error ?? take.error} onDismiss={action.dismissError} />
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs text-muted-foreground">
-            <th className="py-1 font-medium">Item</th>
-            <th className="py-1 text-right font-medium">On hand</th>
-            <th className="py-1 text-right font-medium">Counted</th>
-            <th className="py-1 text-right font-medium">Difference</th>
-          </tr>
-        </thead>
-        <tbody>
-          {view.lines.map((line) => {
-            const item = itemOf(line.stockItemId);
-            const unit = item?.unit ?? 'piece';
-            const typedCount = parseCount(typed[line.stockItemId] ?? '', unit);
-            const count = 'counted' in typedCount ? typedCount.counted : null;
-            const typedDifference = count === null ? null : count - line.onHand;
-            const difference = editable ? typedDifference : line.difference;
-            return (
-              <tr key={line.stockItemId} className="border-t border-border align-top">
-                <td className="py-1.5 pr-2">
-                  {item?.name ?? 'An archived item'}
-                  {problems[line.stockItemId] ? (
-                    <span role="alert" className="block text-xs text-destructive">
-                      {problems[line.stockItemId]}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="py-1.5 text-right tabular-nums">{quantityText(line.onHand, unit)}</td>
-                <td className="py-1.5 text-right">
-                  {editable ? (
-                    <input
-                      aria-label={`Counted, ${item?.name ?? 'item'}`}
-                      inputMode="decimal"
-                      className={`${INPUT_CLASS} ml-auto h-8 w-24 text-right`}
-                      value={typed[line.stockItemId] ?? ''}
-                      onChange={(event) => setTyped({ ...typed, [line.stockItemId]: event.target.value })}
-                      onBlur={() => void saveLine(line.stockItemId)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') void saveLine(line.stockItemId);
-                      }}
-                    />
-                  ) : (
-                    <span className="tabular-nums">
-                      {line.counted === null ? '—' : quantityText(line.counted, unit)}
-                    </span>
-                  )}
-                </td>
-                <td className="py-1.5 text-right tabular-nums">
-                  {difference === null || difference === 0 ? (
-                    <span className="text-muted-foreground">{difference === 0 ? 'Matches' : '—'}</span>
-                  ) : (
-                    <span className={difference < 0 ? 'text-destructive' : undefined}>
-                      {signedQuantityText(difference, unit)}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ul className="flex flex-col divide-y divide-border rounded-xl border border-border">
+        {view.lines.map((line) => {
+          const item = itemOf(line.stockItemId);
+          const unit = item?.unit ?? 'piece';
+          const typedCount = parseCount(typed[line.stockItemId] ?? '', unit);
+          const count = 'counted' in typedCount ? typedCount.counted : null;
+          const typedDifference = count === null ? null : count - line.onHand;
+          const difference = editable ? typedDifference : line.difference;
+          return (
+            <li key={line.stockItemId} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium">{item?.name ?? 'An archived item'}</span>
+                <span className="text-xs text-muted-foreground">On hand {quantityText(line.onHand, unit)}</span>
+                {problems[line.stockItemId] ? (
+                  <span role="alert" className="text-xs text-destructive">
+                    {problems[line.stockItemId]}
+                  </span>
+                ) : null}
+              </span>
+              {editable ? (
+                <QuantityInput
+                  className="w-32"
+                  aria-label={`Counted, ${item?.name ?? 'item'}`}
+                  placeholder="Count"
+                  suffix={UNIT_SUFFIX[unit]}
+                  value={typed[line.stockItemId] ?? ''}
+                  onChange={(event) => setTyped({ ...typed, [line.stockItemId]: event.target.value })}
+                  onBlur={() => void saveLine(line.stockItemId)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void saveLine(line.stockItemId);
+                  }}
+                />
+              ) : (
+                <span className="w-32 text-right text-sm tabular-nums">
+                  {line.counted === null ? 'Not counted' : quantityText(line.counted, unit)}
+                </span>
+              )}
+              <span className="flex w-28 justify-end">
+                <DifferenceChip difference={difference} unit={unit} />
+              </span>
+            </li>
+          );
+        })}
+      </ul>
       {editable ? (
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className={buttonClass('ghost')} onClick={() => setConfirming('abandon')}>
@@ -277,7 +306,8 @@ function TakeSheet({
             disabled={action.busy || counted === 0}
             onClick={() => setConfirming('confirm')}
           >
-            Confirm counts
+            <Check aria-hidden="true" className="size-4" />
+            Confirm {counted} {counted === 1 ? 'count' : 'counts'}
           </button>
         </div>
       ) : null}
@@ -302,4 +332,11 @@ function TakeSheet({
       />
     </div>
   );
+}
+
+/** A line's difference as a chip: matches, more on the shelf, or less. Nothing until it is counted. */
+function DifferenceChip({ difference, unit }: { difference: number | null; unit: StockUnit }) {
+  if (difference === null) return <span className="text-xs text-muted-foreground">—</span>;
+  if (difference === 0) return <StatusChip label="Matches" tone="success" />;
+  return <StatusChip label={signedQuantityText(difference, unit)} tone={difference < 0 ? 'danger' : 'warning'} />;
 }

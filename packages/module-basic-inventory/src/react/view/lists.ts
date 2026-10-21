@@ -140,3 +140,64 @@ export function materialsCost(
   }
   return any ? total : null;
 }
+
+/** "1 product", "3 products": the noun follows the count. */
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/** The figures across the top of the Stock section, over live items. */
+export interface StockSummary {
+  items: number;
+  /** At or under their low level, with some left. */
+  low: number;
+  /** Nothing left, or counted wrong (below zero). */
+  out: number;
+  value: number;
+  unvalued: number;
+}
+
+export function stockSummary(overview: Pick<StockOverviewView, 'items' | 'totalValue' | 'unvalued'>): StockSummary {
+  const live = overview.items.filter((item) => !item.archivedAt);
+  return {
+    items: live.length,
+    low: live.filter((item) => item.level === 'low').length,
+    out: live.filter((item) => OUT_OR_WORSE.has(item.level)).length,
+    value: overview.totalValue,
+    unvalued: overview.unvalued,
+  };
+}
+
+/**
+ * How full an item's bar is, 0–1, measured against twice its low level — so
+ * the low level sits at the bar's middle, where the eye reads "half way to
+ * empty". Null when no level is set: a bar against nothing would mean nothing.
+ */
+export function levelFill(item: Pick<StockItemView, 'onHand' | 'lowStockAt'>): number | null {
+  if (item.lowStockAt === null || item.lowStockAt <= 0) return null;
+  if (item.onHand <= 0) return 0;
+  return Math.min(1, item.onHand / (item.lowStockAt * 2));
+}
+
+/**
+ * The material that runs out first for a product or variant — what "3 left"
+ * is waiting on — or null when it uses nothing counted. Ties go to the first
+ * by name, so the answer does not flicker between reloads.
+ */
+export function limitedBy(
+  overview: Pick<StockOverviewView, 'items' | 'uses'>,
+  itemId: string,
+  variantId: string | null,
+): string | null {
+  const items = new Map(overview.items.map((item) => [item.id, item]));
+  let best: { name: string; makes: number } | null = null;
+  for (const line of proposeWaste(overview.uses, { itemId, variantId }, 1)) {
+    const item = items.get(line.stockItemId);
+    if (!item) continue;
+    const makes = item.onHand <= 0 ? 0 : Math.floor(item.onHand / line.quantity);
+    if (best === null || makes < best.makes || (makes === best.makes && item.name < best.name)) {
+      best = { name: item.name, makes };
+    }
+  }
+  return best?.name ?? null;
+}

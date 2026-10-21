@@ -107,3 +107,20 @@ export function whoText(move: { createdById: string | null; createdByName: strin
   if (move.createdById === null) return 'Point of sale';
   return move.createdByName ?? 'A team member';
 }
+
+/** "On hand 6 → 16 pieces": what a movement will leave, shown on its form before Save. */
+export function afterText(onHand: number, change: number, unit: StockUnit): string {
+  return `${formatStockQuantity(onHand)} → ${quantityText(onHand + change, unit)}`;
+}
+
+/** A unit as the short suffix inside a box: "pcs", "sheets", "m". */
+export const UNIT_SUFFIX: Readonly<Record<StockUnit, string>> = {
+  piece: 'pcs',
+  sheet: 'sheets',
+  pack: 'packs',
+  ml: 'ml',
+  l: 'l',
+  g: 'g',
+  kg: 'kg',
+  m: 'm',
+};
