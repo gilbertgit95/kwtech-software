@@ -275,7 +275,7 @@ Stock is no longer planned inside this module. The first draft here
 (2026-10-20) counted only what the till sells. On 2026-10-21 the operator moved
 it into **`module-basic-inventory`**, because the shop also uses up materials it
 never sells, and a service should take its materials off stock when it is sold.
-The plan is **`docs/INVENTORY-PLAN.md`** (decided 2026-10-21, I1–I17).
+The plan is **`docs/INVENTORY-PLAN.md`** (decided and built 2026-10-21, I1–I17; PLAN §13).
 
 What the POS adds for it, all optional ports, so a store without Stock sees no
 change (INVENTORY-PLAN §5, §6):

@@ -41,6 +41,7 @@ packages/module-note/       notes sub-app: private or shared Markdown notes, liv
 packages/module-task/       tasks sub-app: owner-configured boards, private or shared, assignees, live
 packages/module-basic-pos/  basic point-of-sale sub-app: items, orders, recorded payment (placeholder)
 packages/module-basic-bookkeeping/ books sub-app: cash on hand, investors, profit shares, payouts, loans, POS sales
+packages/module-basic-inventory/ stock sub-app: goods and materials, what each POS product uses up, deliveries, waste, stock takes
 packages/module-booking/    booking sub-app: services, resources and their hours, the day's bookings, no double booking
 packages/module-print-studio/ print studio sub-app: layouts of cells on paper, photos placed at exact sizes, PDFs as whole pages; files stay in the browser
 packages/module-print/      printing side: paired computers (print agents), the printers they report, and a job's PDF relayed to one, never saved

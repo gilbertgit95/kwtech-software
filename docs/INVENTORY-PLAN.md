@@ -1,12 +1,13 @@
 # `module-basic-inventory` — plan
 
-Status: **decided (operator, 2026-10-21, issue #10); being built.** I1–I17
+Status: **built (2026-10-21, issue #10) as `packages/module-basic-inventory`.** I1–I17
 (§9) are settled. This replaces the first draft, which kept stock
 inside the POS (POS-PLAN §8, 2026-10-20). The operator moved it into a module of
 its own on 2026-10-21 for two reasons: the shop also uses up **materials** it
 never sells (paper, ink, lamination pouches, blank mugs), and a service it sells
 should take its materials off stock when it is sold. Once built, the decision
-goes to PLAN §13 and this file gets a "Built, and where it differs" section.
+is PLAN §13, 2026-10-21; what was built, and where it differs from this plan,
+is §11.
 
 ## 1. Why a module of its own
 
@@ -287,3 +288,37 @@ Every operation is bound (`surface-coverage.test.ts`).
    the dialogs, stock takes.
 7. `docs`: both READMEs, PLAN §13, POS-PLAN §8, and "Built, and where it
    differs".
+
+## 11. Built, and where it differs (2026-10-21)
+
+Built as planned: the schema of §4, the movements, the keys and presets, the
+POS's two ports and the catch-up, the till's counts, refund returns, waste by
+product, "Create from POS products", stock takes, and the Stock app's four
+sections (Stock, Products, Stock takes, Categories). The module's contract is
+its README. Where it differs:
+
+- **No `StockSettings`.** I8 settled that cashiers see counts through
+  `pos:read`, so there is no setting; the catch-up's cursor is its own table,
+  `stock_feed_cursor`, started when the store first hangs a list on a product.
+- **A list's label** is the POS's name as it was when the list was saved, not
+  refreshed when the POS renames the product: saving the list again refreshes
+  it. The Products section reads the POS's current names.
+- **The unit is fixed once stock has moved** (refused as `unit_in_use`):
+  every movement is a number of thousandths of the unit it was recorded in.
+- **One open stock take per store** (`take_open`): two sheets on the same
+  shelf would each correct the other.
+- **The feed is read back from the POS's own orders and refunds**
+  (`PosStockService.eventsSince`, at or after a time), so the POS stores nothing
+  extra; it gained `pos_refund_line.restock` and an index on
+  `(workspaceId, voidedAt)`.
+- **"Put back in stock?"** is asked for PRODUCT lines only, ticked by default:
+  a service is made, not shelved. What comes back is the line's for-sale stock.
+- **The POS reaches stock's intake through a bridge** that finds it with
+  `ModuleRef` (`apps/web-server/src/stock/pos-stock-bridge.ts`): stock imports
+  the POS's module, so the POS cannot import stock's.
+- **An archived stock item is still taken** by a list that names it, so the
+  history stays true; archiving says to take it off those lists first.
+- **Not built** (phase 2, PLAN §12.117–119): bookings and print jobs as
+  sources, low-stock alerts, reports (waste, deliveries, value over time),
+  suppliers and purchase orders, receiving into the books, a service's cost from
+  its materials (shown read-only on Products).

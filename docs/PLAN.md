@@ -566,7 +566,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 84 | Who may be assigned is worked out one member at a time | when a workspace has hundreds of members | `listAssignable` loads a permission context per active member, capped at 200 — the queue's staff directory does the same. A grants query that answers "who holds `task:write` here" in one read is the fix |
 | 85 | One workspace role per member, while a workspace holds several sub-apps | when combined roles in `seed/app-roles.ts` multiply, or a customer needs a combination the platform has not declared | §12.32 settled one workspace role per member before sub-apps existed. A cashier who also supervises the queue needs one role carrying both presets, and the number of such roles multiplies with every app. **Interim:** combined roles declared in `app-roles.ts` as a union of module presets, never cloned on the Roles screen, so a preset change reaches them on sync (`.claude/rules/database.md`, "Combined workspace roles"). **Proposed:** one role per APP per member: a `scope` on `PermRole` (`workspace` or a module key), the same on `PermWorkspaceMemberRole` with `@@unique([workspaceMemberId, scope])` and a composite FK `(roleId, scope)`, and a service check that an app role holds only its module's keys. **Considered and not preferred:** role groups (a role that includes other roles) fix drift but not the multiplying combinations, and need a "one role per app inside a group" rule, which is the per-app slot again. Cheapest before `module-basic-pos` has real grants |
 | 86 | The books add every balance up in memory, from every live entry | when one workspace's books pass `BOOKS_LEDGER_MAX` (50,000 live entries) — a busy store recording by hand for years | Balances are never stored, so they cannot disagree with the entries (BOOKKEEPING-PLAN). Each overview reads every live entry and sums them in `src/domain/`; past the cap the answer says `truncated`. Fix: sums in the database (`aggregate`/`groupBy` per kind, place and investor), keeping the domain as the rule the SQL is tested against |
-| 87 | The controls (`buttonClass`, `Modal`, `Field`) and the app frame now exist in three modules | now — this is the third copy (tasks, POS, books) | Copied structurally because a module may not import another. The rule says the third copy moves them to `web-ui`; not done inside the books change, so it is a refactor of its own across three modules |
+| 87 | The controls (`buttonClass`, `Modal`, `Field`) and the app frame now exist in four modules | now — the third copy (tasks, POS, books) was the point to move them, and stock (2026-10-21) made a fourth | Copied structurally because a module may not import another. The rule says the third copy moves them to `web-ui`; not done inside the books change, nor inside stock's, so it is a refactor of its own across four modules |
 | 88 | Sales brought in from the POS are dated the last day of the run they cover | when somebody shares profit for a period that ends in the middle of an import | One import is one entry per place, dated its last day, so profit by day sees the whole run on that day. Sharing waits until the POS is in through the share's last day (`sales_not_recorded`), so a run never straddles a share — but a month table counts a run from Sep 28 to Oct 3 in October. Importing day by day fixes it at three entries a day |
 | 89 | The books keep one bookkeeper role inside the owner role | when a business has a bookkeeper who is not an owner | `workspace-admin` holds `books-owner`; `workspace-user` holds no book key. A bookkeeper who records money but must not pay the owners needs a combined role (§12.85) built from `books-bookkeeper` |
 | 90 | A cart left on a till that never comes back stays in the database, listed nowhere | when open, never-held `pos_order` rows pile up — a till's browser storage is cleared, or a cashier walks away from a cart for good | Only Hold makes a pending order (§13, 2026-10-03), and a till remembers its open cart in the browser to put it back after a reload. A cart whose till forgot it is still saved and reachable by id, but no list shows it. It counts in no report (those read paid orders). Cancelling open, unheld carts older than a day is a job for the job runner (§12.40) |
@@ -596,10 +596,51 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 114 | The print relay works on ONE server instance: a job, the browser's request, the computer's request and the computer's socket must all be in the same process (`print-relay.service.ts`) | before the API runs as more than one instance; then route a job's two requests to the instance holding the computer's socket | Deliberately not built on the pub/sub: publishing the news of a job would not move the two requests. Until then a job on another instance fails `agent_did_not_fetch` after 30 s, which reads as "the computer did not pick the job up" |
 | 115 | A job's paper type and quality are set on the Windows queue for the moment it prints, then put back (`apps/print-agent`, `WINDOWS_TICKET_SCRIPT`). Other settings (colour or greyscale, borderless, the tray) are not offered, and the web app is not told when a driver changed what was chosen | if a shop prints from Windows on the same queue while the agent does, or wants another setting; then print through the driver with a ticket of the job's own, which means drawing the PDF without SumatraPDF | SumatraPDF prints with the queue's settings as they stand and takes only a paper and a scale. ⚠ For those seconds another program printing on that queue as the same Windows user gets the job's settings, and an agent killed between the two steps leaves the queue changed. The agent prints one job at a time, so its own jobs never overlap. The driver's word is final on a combination: an Epson L110 prints plain paper at Standard whatever is asked, and only the agent's log says so. ⚠ Nor does anything notice a queue whose preferences in Windows RESIZE pages (fit to another paper): every job on it prints at the wrong size, silently. A check was built and removed on the operator's decision (§13, 2026-10-07); the ruler page is how a queue is verified |
 | 116 | One print agent is paired with ONE workspace. A computer that should print for several has to run a copy of the agent per workspace, each with its own folder and `PRINT_AGENT_STATE_DIR` (untried) | when a shop's one computer has to print for more than one workspace, as the operator expects it will (asked 2026-10-07, put off); then one agent holding several pairings, with every workspace's jobs in one line | The state file holds one pairing and `pair` refuses a second (`apps/print-agent/src/state.ts`, `cli.ts`); a socket is admitted as one agent of one workspace (`PrintAgentService.admit`). ⚠ Two copies on one computer do not know of each other: each prints one job at a time, but both can print on the same queue at once, and a job that sets a paper type or quality (§12.115) could then give its settings to the other's. Each pairing also counts against its own workspace's `print:agents` cap. To build: several pairings in the state file, a socket per pairing (or one socket admitting several), ONE queue across them all in `run.ts`, and the Printers page of each workspace showing the same computer |
+| 117 | Stock is taken by point-of-sale sales only. A booking marked done, a print job relayed to a printer, and work done in-house use materials that no sale records | when bookings or print jobs should take their materials (INVENTORY-PLAN I9, phase 2) | `StockSource` is `pos` alone. Each new source is its own decision: a port in that module after its commit (as `POS_STOCK_EVENTS`), a feed for the catch-up, and a `source` value. `module-print` keeps no job rows, so a print job's key would be the relay's id and its feed the agent's report. Until then, in-house use and spoiled prints are recorded as adjustments or waste |
+| 118 | Stock has no alerts and no reports: nobody is told an item is low, and waste, deliveries and stock value over a period are not summed | when the store wants to be told, or to see what it wasted in a month (INVENTORY-PLAN I11, phase 2) | Low and out show in the list (a count on the Stock section) and on the till. Alerts would be a `module-jobs` process sweeping items under their level and a `STOCK_NOTIFIER` bound to `module-notification`. Waste is its own movement kind (`wasted`, with a reason and the product), so the report is a sum over what is already stored |
+| 119 | Stock does not reach the books or the POS's costs: receiving is not recorded as a purchase, and a service's cost is not worked out from its materials | when entering a delivery twice (stock and books) or a service's cost by hand is felt (INVENTORY-PLAN I7, I10) | The Products section shows each product's materials cost per sale, read-only. Receiving into the books would be a port from stock to the books (supplies, or stock for resale); a service's cost would be proposed to the POS, never written behind the manager's back |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-21** — **Stock is its own module, `module-basic-inventory`: goods and materials, a materials list per POS item and per variant, and sales take stock after the POS's commit.**
+
+  Issue #10 first planned stock inside the POS (POS-PLAN §8, 2026-10-20). The
+  operator moved it out: the shop uses up materials it never sells, a service
+  must take its materials when sold, and a multi-app suite keeps inventory
+  apart (Odoo, ERPNext). INVENTORY-PLAN I1–I17 are the decisions.
+  - **Quantities are integer thousandths of the item's unit**, as money is
+    centavos: 0.5 m is `500`, one sheet `1000`. Parsed from text, never a float;
+    piece, sheet and pack are whole in the UI. The unit is fixed once stock has
+    moved.
+  - **On hand is the sum of movements**, never stored. Movements are never
+    edited; corrections are adjustments, spoiled work is `wasted` (I15), a
+    count is a stock take confirmed against on hand at that moment.
+  - **A materials list sits on the POS item and on each variant** (I14); a sale
+    takes both. An optional material is a variant of its own (I13). A product
+    sold as it is uses one of itself; "Create from POS products" makes those
+    (I17).
+  - **The POS tells stock after its commit** (`POS_STOCK_EVENTS`), and a
+    failure never fails the sale. A line takes stock ONCE, by its source key
+    under a unique index; `stock.catch_up` replays the POS's feed
+    (`PosStockService.eventsSince`) for a lost push. Stock leaves at numbering,
+    paid or pay later (I4). A void returns everything; a refund line marked
+    "Put back in stock" returns only for-sale stock.
+  - **Never refused past zero** (I5): the till warns, and the item shows
+    "Count is off". The till's counts come through the POS's own
+    `POS_STOCK_LEVELS` and query, under `pos:read` (I8).
+  - **Keys** `stock:read`, `stock:receive` (staff: deliveries, corrections,
+    waste), `stock:manage` (items, lists, stock takes); `workspace-user` holds
+    `stock-keeper`, `workspace-admin` `stock-manager`. The latest receipt's cost
+    becomes the item's (I16).
+  - **The cycle**: stock imports the POS's Nest module (to read its items and
+    feed), so the POS's ports reach stock's intake through `ModuleRef` in the
+    app's bridge, as the jobs runner finds a handler.
+  - **Not done:** bookings and print jobs taking materials (§12.117), alerts and
+    reports (§12.118), the books and service costs (§12.119), suppliers and
+    purchase orders, average cost, a per-order materials override, moving the
+    copied controls to `web-ui` (§12.87, now four copies).
 
 - **2026-10-19** — **POS reports count zero days (no sale), from the store's first sale to today, never before it.**
 
