@@ -117,6 +117,9 @@ importers:
       '@kwtech/module-basic-bookkeeping':
         specifier: workspace:*
         version: link:../../packages/module-basic-bookkeeping
+      '@kwtech/module-basic-inventory':
+        specifier: workspace:*
+        version: link:../../packages/module-basic-inventory
       '@kwtech/module-basic-pos':
         specifier: workspace:*
         version: link:../../packages/module-basic-pos
@@ -238,6 +241,9 @@ importers:
       '@kwtech/module-basic-bookkeeping':
         specifier: workspace:*
         version: link:../../packages/module-basic-bookkeeping
+      '@kwtech/module-basic-inventory':
+        specifier: workspace:*
+        version: link:../../packages/module-basic-inventory
       '@kwtech/module-basic-pos':
         specifier: workspace:*
         version: link:../../packages/module-basic-pos

@@ -25,6 +25,7 @@
     "@kwtech/module-print-studio": "workspace:*",
     "@kwtech/module-basic-pos": "workspace:*",
     "@kwtech/module-basic-bookkeeping": "workspace:*",
+    "@kwtech/module-basic-inventory": "workspace:*",
     "@kwtech/module-queuing-window": "workspace:*",
     "@kwtech/module-task": "workspace:*",
     "@kwtech/web-ui": "workspace:*",
