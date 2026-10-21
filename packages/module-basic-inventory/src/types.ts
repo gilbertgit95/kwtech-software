@@ -97,6 +97,7 @@ export type StockRefusal =
   | 'not_permitted'
   | 'archived'
   | 'invalid_name'
+  | 'invalid_kind'
   | 'invalid_code'
   | 'code_taken'
   | 'invalid_text'
@@ -109,5 +110,8 @@ export type StockRefusal =
   | 'duplicate_use'
   | 'no_change'
   | 'take_closed'
+  | 'take_open'
+  | 'unit_in_use'
+  | 'category_archived'
   | 'limit_reached'
   | 'no_source';

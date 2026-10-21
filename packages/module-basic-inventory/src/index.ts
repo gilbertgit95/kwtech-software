@@ -10,6 +10,7 @@
  * even where a form also uses it to say why before Save.
  */
 
+export * from './domain/guards.js';
 export * from './domain/levels.js';
 export * from './domain/moves.js';
 export * from './domain/quantities.js';
@@ -19,4 +20,7 @@ export * from './domain/takes.js';
 export * from './domain/text.js';
 export * from './domain/uses.js';
 export * from './feature-keys.js';
+export * from './operations.js';
+export * from './processes.js';
 export * from './types.js';
+export * from './views.js';
