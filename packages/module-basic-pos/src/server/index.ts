@@ -26,5 +26,6 @@ export * from './pos-order-write.service.js';
 export * from './pos-refund.service.js';
 export * from './pos-report.service.js';
 export * from './pos-settings.service.js';
+export * from './pos-stock.service.js';
 export * from './pos-time-zone.service.js';
 export * from './server-module.js';

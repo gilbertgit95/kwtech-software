@@ -7,6 +7,12 @@ import {
   type BooksWriteClient,
 } from '@kwtech/module-basic-bookkeeping/server';
 import {
+  STOCK_PRISMA,
+  STOCK_PRISMA_WRITE,
+  type StockTransaction,
+  type StockWriteClient,
+} from '@kwtech/module-basic-inventory/server';
+import {
   POS_PRISMA,
   POS_PRISMA_WRITE,
   type PosTransaction,
@@ -375,6 +381,33 @@ export const booksWritePrismaProvider: Provider = {
       booksSalesImport: prisma.booksSalesImport,
       booksProfitShare: prisma.booksProfitShare,
       booksSettings: prisma.booksSettings,
+    }),
+};
+
+/** Reads need no adapter — the delegates fit outright. */
+export const stockPrismaProvider: Provider = {
+  provide: STOCK_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const stockWritePrismaProvider: Provider = {
+  provide: STOCK_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): StockWriteClient =>
+    withTransaction<StockTransaction, StockWriteClient>(prisma, {
+      /*
+       * ⚠ A sale's movements and the check that its key is not taken yet, a
+       * stock take closed with its count movements, and a list replaced line
+       * for line — each move together, inside the transaction `withTransaction`
+       * dispatches. A delegate missing here would write outside it.
+       */
+      stockCategory: prisma.stockCategory,
+      stockItem: prisma.stockItem,
+      stockUse: prisma.stockUse,
+      stockMove: prisma.stockMove,
+      stockTake: prisma.stockTake,
+      stockTakeLine: prisma.stockTakeLine,
+      stockFeedCursor: prisma.stockFeedCursor,
     }),
 };
 

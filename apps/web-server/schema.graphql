@@ -2,6 +2,14 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input AdjustStockInput {
+  clientId: String!
+  note: String
+  quantity: Int!
+  reason: String!
+  stockItemId: String!
+}
+
 type AdminUser {
   createdAt: String!
   displayName: String
@@ -712,6 +720,7 @@ type MfaFactor {
 }
 
 type Mutation {
+  abandonStockTake(organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
   acceptInvitation(token: String!): PermissionWriteResult!
   addBookingException(input: BookingExceptionInput!, organizationId: String!, workspaceId: String!): BookingException!
   addMember(organizationId: String!, userId: String!): PermissionWriteResult!
@@ -719,6 +728,7 @@ type Mutation {
   addTaskChecklistItem(organizationId: String!, taskId: String!, text: String!, workspaceId: String!): Task!
   addTaskColumn(afterColumnId: String, boardId: String!, done: Boolean, name: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   addTaskComment(body: String!, organizationId: String!, taskId: String!, workspaceId: String!): TaskComment!
+  adjustStock(input: AdjustStockInput!, organizationId: String!, workspaceId: String!): StockMove!
   adminRemoveUserTwoFactor(userId: String!): AdminUserWriteResult!
   adminRevokeUserSessions(userId: String!): AdminUserWriteResult!
   adminSendPasswordReset(userId: String!): AdminUserWriteResult!
@@ -741,6 +751,7 @@ type Mutation {
   clearQueueNickname(organizationId: String!, userId: String!, workspaceId: String!): Boolean!
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   confirmBookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointment!
+  confirmStockTake(organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
   createBookingAppointment(input: BookingAppointmentInput!, organizationId: String!, workspaceId: String!): BookingAppointment!
   createNote(input: CreateNoteInput!, organizationId: String!, workspaceId: String!): Note!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
@@ -750,6 +761,7 @@ type Mutation {
   createQueueLine(endNumber: Int, name: String!, organizationId: String!, padTo: Int, prefix: String!, startNumber: Int, workspaceId: String!): QueueLine!
   createQueueWindow(name: String!, organizationId: String!, workspaceId: String!): QueueWindow!
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
+  createStockFromSource(organizationId: String!, picks: [StockSourcePickInput!]!, workspaceId: String!): StockOverview!
   createStudioLayout(input: CreateStudioLayoutInput!, organizationId: String!, workspaceId: String!): StudioLayout!
   createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
   createTask(boardId: String!, input: CreateTaskInput!, organizationId: String!, workspaceId: String!): Task!
@@ -795,9 +807,11 @@ type Mutation {
   printAgentHeartbeat: Boolean!
   recallNotificationBatch(batchId: String!): NotificationBatch!
   recallQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
+  receiveStock(input: ReceiveStockInput!, organizationId: String!, workspaceId: String!): StockMove!
   recordBooksEntry(input: RecordBooksEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
   recordBooksInvestorEntry(input: RecordBooksInvestorEntryInput!, organizationId: String!, workspaceId: String!): BooksEntry!
   recordBooksPosSales(clientId: String!, organizationId: String!, toDay: String!, workspaceId: String!): BooksSalesImport!
+  recordStockWaste(input: RecordStockWasteInput!, organizationId: String!, workspaceId: String!): [StockMove!]!
   recordStudioPrint(input: StudioPrintInput!, organizationId: String!, workspaceId: String!): Boolean!
   refreshPosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   refundPosOrder(input: RefundPosOrderInput!, orderId: String!, organizationId: String!, workspaceId: String!): PosOrder!
@@ -842,6 +856,9 @@ type Mutation {
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
   savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
+  saveStockCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): StockCategory!
+  saveStockItem(input: SaveStockItemInput!, organizationId: String!, workspaceId: String!): StockItem!
+  saveStockTakeCounts(counts: [StockTakeCountInput!]!, organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
   saveStudioCalibration(input: StudioCalibrationInput!, organizationId: String!, workspaceId: String!): StudioCalibration!
   saveStudioSettings(keymap: String, organizationId: String!, workspaceId: String!): StudioSettings!
   saveWorkspaceAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -878,6 +895,9 @@ type Mutation {
   setQueueWindowArchived(archived: Boolean!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setQueueWindowLines(lineIds: [String!]!, organizationId: String!, windowId: String!, workspaceId: String!): QueueWindow!
   setRoleDisabled(disabled: Boolean!, organizationId: String, roleId: String!): PermissionRoleDetail!
+  setStockCategoryArchived(archived: Boolean!, categoryId: String!, organizationId: String!, workspaceId: String!): StockCategory!
+  setStockItemArchived(archived: Boolean!, organizationId: String!, stockItemId: String!, workspaceId: String!): StockItem!
+  setStockUses(lines: [StockUseLineInput!]!, organizationId: String!, refId: String!, refItemId: String!, refKind: String!, workspaceId: String!): [StockUse!]!
   setStudioLayoutVisibility(layoutId: String!, organizationId: String!, visibility: String!, workspaceId: String!): StudioLayout!
   setTaskAssignees(organizationId: String!, taskId: String!, userIds: [String!]!, workspaceId: String!): Task!
   setTaskBoardVisibility(boardId: String!, organizationId: String!, visibility: String!, workspaceId: String!): TaskBoard!
@@ -892,6 +912,7 @@ type Mutation {
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
   startPrintJob(copies: Int!, mediaType: String, organizationId: String!, paperName: String, printerId: String!, quality: String, size: Int!, workspaceId: String!): PrintJobStart!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
+  startStockTake(categoryIds: [String!]!, note: String, organizationId: String!, workspaceId: String!): StockTake!
   stopQueue(organizationId: String!, workspaceId: String!): Boolean!
   transferTaskBoard(boardId: String!, newOwnerId: String!, organizationId: String!, workspaceId: String!): Boolean!
   trashNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
@@ -1537,6 +1558,7 @@ type PosRefund {
 input PosRefundLineInput {
   lineId: String!
   quantity: Int!
+  restock: Boolean
 }
 
 type PosReport {
@@ -1572,6 +1594,17 @@ type PosSettings {
   keymap: String!
   timeZone: String!
   version: Int!
+}
+
+type PosStockLevel {
+  itemId: String!
+  left: Int
+  variantId: String
+}
+
+type PosStockLevels {
+  counts: Boolean!
+  levels: [PosStockLevel!]!
 }
 
 type PosSummary {
@@ -1789,6 +1822,7 @@ type Query {
   posOrders(customerId: String, fromDay: String, organizationId: String!, search: String, tab: String!, toDay: String, workspaceId: String!): [PosOrderSummary!]!
   posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
   posSettings(organizationId: String!, workspaceId: String!): PosSettings!
+  posStockLevels(organizationId: String!, workspaceId: String!): PosStockLevels!
   printAgents(organizationId: String!, workspaceId: String!): [PrintAgent!]!
   printJob(jobId: String!, organizationId: String!, workspaceId: String!): PrintJob
   publicBooking(token: String!): BookingPublicBooking
@@ -1799,6 +1833,12 @@ type Query {
   queueDisplayCode(organizationId: String!, workspaceId: String!): QueueDisplayCode
   queueStaffCandidates(organizationId: String!, workspaceId: String!): [QueueStaffMember!]!
   session: SessionInfo
+  stockItem(organizationId: String!, stockItemId: String!, workspaceId: String!): StockItem!
+  stockItems(includeArchived: Boolean, organizationId: String!, workspaceId: String!): StockOverview!
+  stockMoves(cursor: String, organizationId: String!, stockItemId: String!, workspaceId: String!): StockMoves!
+  stockSourceItems(organizationId: String!, workspaceId: String!): [StockSourceItem!]!
+  stockTake(organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
+  stockTakes(organizationId: String!, workspaceId: String!): [StockTake!]!
   studioCalibrations(organizationId: String!, workspaceId: String!): [StudioCalibration!]!
   studioLayout(layoutId: String!, organizationId: String!, workspaceId: String!): StudioLayout
   studioLayouts(organizationId: String!, workspaceId: String!): [StudioLayout!]!
@@ -1955,6 +1995,16 @@ type QueueWindow {
   sortOrder: Int!
 }
 
+input ReceiveStockInput {
+  clientId: String!
+  opening: Boolean
+  quantity: Int!
+  reference: String
+  stockItemId: String!
+  supplier: String
+  unitCost: Int
+}
+
 input RecordBooksEntryInput {
   amount: Float!
   category: String
@@ -1978,6 +2028,15 @@ input RecordBooksInvestorEntryInput {
   kind: String!
   place: String
   reference: String
+}
+
+input RecordStockWasteInput {
+  clientId: String!
+  lines: [StockWasteLineInput!]!
+  note: String
+  ofRefId: String
+  ofRefLabel: String
+  reason: String!
 }
 
 input RefundPosOrderInput {
@@ -2050,11 +2109,142 @@ input SavePosVariantInput {
   price: Float!
 }
 
+input SaveStockItemInput {
+  categoryId: String
+  code: String
+  id: String
+  kind: String!
+  lowStockAt: Int
+  name: String!
+  unit: String!
+  unitCost: Int
+}
+
 type SessionInfo {
   accessTokenTtl: Int!
   expiresAt: Int!
   scope: String!
   userId: String!
+}
+
+type StockCategory {
+  archivedAt: String
+  id: String!
+  name: String!
+  sortOrder: Int!
+}
+
+type StockEvent {
+  actorId: String
+  kind: String!
+}
+
+type StockItem {
+  archivedAt: String
+  categoryId: String
+  code: String
+  id: String!
+  kind: String!
+  level: String!
+  lowStockAt: Int
+  name: String!
+  onHand: Float!
+  unit: String!
+  unitCost: Int
+  usedBy: Int!
+  value: Float
+}
+
+type StockMove {
+  createdAt: String!
+  createdById: String
+  createdByName: String
+  id: String!
+  kind: String!
+  note: String
+  quantity: Int!
+  reason: String
+  reference: String
+  sourceKey: String
+  stockItemId: String!
+  supplier: String
+  takeId: String
+  unitCost: Int
+  wasteRefLabel: String
+}
+
+type StockMoves {
+  moves: [StockMove!]!
+  nextCursor: String
+}
+
+type StockOverview {
+  categories: [StockCategory!]!
+  hasSource: Boolean!
+  items: [StockItem!]!
+  totalValue: Float!
+  unvalued: Int!
+  uses: [StockUse!]!
+}
+
+type StockSourceItem {
+  archived: Boolean!
+  code: String
+  itemId: String!
+  itemName: String!
+  kind: String!
+  label: String!
+  variantId: String
+  variantName: String
+}
+
+input StockSourcePickInput {
+  itemId: String!
+  variantId: String
+}
+
+type StockTake {
+  categoryIds: [String!]!
+  closedAt: String
+  createdAt: String!
+  createdById: String!
+  createdByName: String
+  id: String!
+  lines: [StockTakeLine!]!
+  note: String
+  status: String!
+}
+
+input StockTakeCountInput {
+  counted: Int
+  stockItemId: String!
+}
+
+type StockTakeLine {
+  counted: Int
+  difference: Float
+  onHand: Float!
+  stockItemId: String!
+}
+
+type StockUse {
+  id: String!
+  quantityPerUnit: Int!
+  refId: String!
+  refItemId: String!
+  refKind: String!
+  refLabel: String!
+  stockItemId: String!
+}
+
+input StockUseLineInput {
+  quantityPerUnit: Int!
+  stockItemId: String!
+}
+
+input StockWasteLineInput {
+  quantity: Int!
+  stockItemId: String!
 }
 
 type StudioBorder {
@@ -2221,6 +2411,7 @@ type Subscription {
   printAgentJobs: PrintAgentJob!
   queueDisplay: QueueDisplayEvent!
   queueEvents(organizationId: String!, workspaceId: String!): QueueEvent!
+  stockEvents(organizationId: String!, workspaceId: String!): StockEvent!
   taskEvents(organizationId: String!, workspaceId: String!): TaskEvent!
 }
 
