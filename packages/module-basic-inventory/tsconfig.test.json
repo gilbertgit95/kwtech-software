@@ -1,0 +1,12 @@
+{
+  // The build config compiles src/ into dist/. This one adds test/ and emits
+  // nothing, so the suite is typechecked by the same strict options as the code
+  // it tests.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node", "jest"]
+  },
+  "include": ["src", "test"]
+}
