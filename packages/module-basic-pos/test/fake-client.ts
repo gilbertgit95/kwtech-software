@@ -151,7 +151,7 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     updatedAt: now,
   }),
   posRefund: (id, now) => ({ id, refundedAt: now }),
-  posRefundLine: (id) => ({ id }),
+  posRefundLine: (id) => ({ id, restock: false }),
   posCounter: () => ({ nextNumber: 1 }),
   posSettings: (_id, now) => ({ keymap: null, version: 1, createdAt: now, updatedAt: now }),
 };

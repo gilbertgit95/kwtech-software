@@ -258,8 +258,15 @@ export interface PosReportView {
   truncated: boolean;
 }
 
+/** How many of each item and variant the stock app says are left (INVENTORY-PLAN §6). */
+export interface PosStockLevelsView {
+  /** False when no stock app is connected: the till shows no counts. */
+  counts: boolean;
+  levels: { itemId: string; variantId: string | null; left: number | null }[];
+}
+
 export interface PosEventView {
-  /** `sync`, `catalogue`, `customers`, `settings` or `order`. */
+  /** `sync`, `catalogue`, `customers`, `settings`, `order` or `stock`. */
   kind: string;
   orderId: string | null;
   actorId: string | null;
@@ -300,7 +307,8 @@ export interface PosDiscountInput {
 }
 
 export interface PosRefundInput {
-  lines?: { lineId: string; quantity: number }[] | null;
+  /** `restock`: the units went back on the shelf ("Put back in stock?"). */
+  lines?: { lineId: string; quantity: number; restock?: boolean }[] | null;
   amount?: number | null;
   method: string;
   reason: string;
@@ -310,6 +318,7 @@ export interface PosRefundInput {
 /** One method per operation. Every error is a sentence for a person. */
 export interface PosClient {
   catalogue(scope: PosScopeView, includeArchived?: boolean): Promise<PosCatalogueView>;
+  stockLevels(scope: PosScopeView): Promise<PosStockLevelsView>;
   saveItem(scope: PosScopeView, input: PosItemInput): Promise<PosItemView>;
   setItemArchived(scope: PosScopeView, itemId: string, archived: boolean): Promise<PosItemView>;
   saveCategory(
@@ -431,6 +440,7 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
 
   return {
     catalogue: (scope, includeArchived = false) => call('posCatalogue', scope, { includeArchived }),
+    stockLevels: (scope) => call('posStockLevels', scope, {}),
     saveItem: (scope, input) => call('savePosItem', scope, { input }),
     setItemArchived: (scope, itemId, archived) => call('setPosItemArchived', scope, { itemId, archived }),
     saveCategory: (scope, name, categoryId = null, sortOrder = null) =>

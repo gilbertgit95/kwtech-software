@@ -40,6 +40,11 @@ export const POS_OPERATIONS = {
     }
   }`,
 
+  /** The till's "3 left": how many of each item and variant the stock app says are left. */
+  posStockLevels: `query PosStockLevels(${SCOPE_VARS}) {
+    posStockLevels(${SCOPE_ARGS}) { counts levels { itemId variantId left } }
+  }`,
+
   savePosItem: `mutation SavePosItem(${SCOPE_VARS}, $input: SavePosItemInput!) {
     savePosItem(${SCOPE_ARGS}, input: $input) { ${ITEM} }
   }`,

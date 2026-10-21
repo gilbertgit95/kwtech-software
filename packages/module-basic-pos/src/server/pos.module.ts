@@ -9,6 +9,8 @@ import {
   POS_MEMBER_DIRECTORY,
   POS_OPTIONS,
   POS_PUBSUB,
+  POS_STOCK_EVENTS,
+  POS_STOCK_LEVELS,
   POS_WORKSPACE_TIME_ZONE,
 } from './pos.tokens.js';
 import { PosAccessService } from './pos-access.service.js';
@@ -19,6 +21,7 @@ import { PosOrderWriteService } from './pos-order-write.service.js';
 import { PosRefundService } from './pos-refund.service.js';
 import { PosReportService } from './pos-report.service.js';
 import { PosSettingsService } from './pos-settings.service.js';
+import { PosStockService } from './pos-stock.service.js';
 import { PosTimeZoneService } from './pos-time-zone.service.js';
 
 const SERVICES = [
@@ -31,6 +34,7 @@ const SERVICES = [
   PosOrderWriteService,
   PosRefundService,
   PosReportService,
+  PosStockService,
   PosEventPublisher,
 ] as const;
 
@@ -57,6 +61,8 @@ export class PosModule {
       [options.memberDirectoryProvider, POS_MEMBER_DIRECTORY],
       [options.workspaceTimeZoneProvider, POS_WORKSPACE_TIME_ZONE],
       [options.pubsubProvider, POS_PUBSUB],
+      [options.stockEventsProvider, POS_STOCK_EVENTS],
+      [options.stockLevelsProvider, POS_STOCK_LEVELS],
     ];
     for (const [provider, token] of optional) {
       providers.push(provider ? (provider as Provider) : { provide: token, useValue: undefined });

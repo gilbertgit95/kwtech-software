@@ -558,6 +558,34 @@ export class PosRefundLineInputType {
 
   @Field(() => Int)
   quantity!: number;
+
+  /** The units went back on the shelf ("Put back in stock?"). Omitted: not. */
+  @Field(() => Boolean, { nullable: true })
+  restock?: boolean | null;
+}
+
+/** How many of an item or variant the stock app says are left (INVENTORY-PLAN §6). */
+@ObjectType('PosStockLevel')
+export class PosStockLevelType {
+  @Field()
+  itemId!: string;
+
+  @Field(() => String, { nullable: true })
+  variantId!: string | null;
+
+  /** Whole units the shelf can still make; null when the store does not count this one. */
+  @Field(() => Int, { nullable: true })
+  left!: number | null;
+}
+
+@ObjectType('PosStockLevels')
+export class PosStockLevelsType {
+  /** False when no stock app is connected: the till shows no counts at all. */
+  @Field()
+  counts!: boolean;
+
+  @Field(() => [PosStockLevelType])
+  levels!: PosStockLevelType[];
 }
 
 @InputType('RefundPosOrderInput')

@@ -21,8 +21,9 @@ export const POS_EVENT = {
  *   customers — the customer list
  *   settings  — the time zone or the keymap
  *   order     — one order (`orderId`): pending, unpaid and today's lists reload
+ *   stock     — the stock app's counts moved: the till's "3 left" reloads
  */
-export type PosChange = 'catalogue' | 'customers' | 'settings' | 'order';
+export type PosChange = 'catalogue' | 'customers' | 'settings' | 'order' | 'stock';
 
 /**
  * One change, as it travels.

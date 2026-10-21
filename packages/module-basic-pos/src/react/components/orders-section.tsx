@@ -586,6 +586,7 @@ export function OrderDetail({
       <RefundDialog
         open={dialog.kind === 'refund'}
         order={order}
+        countsStock={state.stock !== null}
         onRefund={(input) => run(() => client.refund(scope, order.id, input), 'Could not record the refund.')}
         onClose={() => setDialog({ kind: 'none' })}
       />
@@ -629,16 +630,21 @@ function LineNotes({ line }: { line: PosOrderLineView }) {
 function RefundDialog({
   open,
   order,
+  countsStock,
   onRefund,
   onClose,
 }: {
   open: boolean;
   order: PosOrderView;
+  /** The store counts stock: each product line asks "Put back in stock?" (INVENTORY-PLAN §6). */
+  countsStock: boolean;
   onRefund: (input: PosRefundInput) => Promise<void>;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<'lines' | 'amount'>('lines');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  /** Lines NOT going back on the shelf (damaged). Every other product line is put back: the usual case. */
+  const [damaged, setDamaged] = useState<Record<string, boolean>>({});
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState(order.paymentMethod ?? 'cash');
   const [reason, setReason] = useState('');
@@ -650,14 +656,18 @@ function RefundDialog({
     clientId.current = globalThis.crypto.randomUUID();
     setMode('lines');
     setQuantities({});
+    setDamaged({});
     setAmount('');
     setMethod(order.paymentMethod ?? 'cash');
     setReason('');
     setProblem(null);
   }, [open, order.paymentMethod]);
 
+  /** A service is made, not shelved: only a product line can go back in stock. */
+  const restocks = (lineId: string) =>
+    countsStock && order.lines.some((line) => line.id === lineId && line.kind === 'product') && !damaged[lineId];
   const wanted = Object.entries(quantities)
-    .map(([lineId, text]) => ({ lineId, quantity: Number(text) }))
+    .map(([lineId, text]) => ({ lineId, quantity: Number(text), restock: restocks(lineId) }))
     .filter((line) => Number.isInteger(line.quantity) && line.quantity > 0);
   const soFar = {
     quantities: Object.fromEntries(order.lines.map((line) => [line.id, line.refundedQuantity])),
@@ -707,6 +717,12 @@ function RefundDialog({
         current={mode}
         onChange={setMode}
       />
+      {mode === 'lines' && countsStock ? (
+        <p className="text-xs text-muted-foreground">
+          Untick “Put back in stock” for anything damaged. Only goods go back; materials a print or service used stay
+          used.
+        </p>
+      ) : null}
       {mode === 'lines' ? (
         <ul className="flex flex-col gap-1.5">
           {order.lines.map((line) => {
@@ -720,6 +736,16 @@ function RefundDialog({
                     · {most} of {line.quantity} can come back
                   </span>
                 </label>
+                {countsStock && line.kind === 'product' && Number(quantities[line.id] ?? 0) > 0 ? (
+                  <label className="flex shrink-0 items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={!damaged[line.id]}
+                      onChange={(event) => setDamaged({ ...damaged, [line.id]: !event.target.checked })}
+                    />
+                    Put back in stock
+                  </label>
+                ) : null}
                 <input
                   id={`refund-${line.id}`}
                   type="number"

@@ -43,3 +43,13 @@ export const POS_WORKSPACE_TIME_ZONE = 'kwtech:pos-workspace-time-zone';
  * not see each other's publishes.
  */
 export const POS_PUBSUB = 'kwtech:pos-pubsub';
+
+/**
+ * A `PosStockEvents`. Unbound means THE STORE COUNTS NO STOCK: paying, voiding
+ * and refunding work exactly as before. ⚠ Bound, a failure is logged and never
+ * fails the sale; the stock app's catch-up reads the events again.
+ */
+export const POS_STOCK_EVENTS = 'kwtech:pos-stock-events';
+
+/** A `PosStockLevels`. Unbound means the till shows no "3 left" and no "Out of stock". */
+export const POS_STOCK_LEVELS = 'kwtech:pos-stock-levels';

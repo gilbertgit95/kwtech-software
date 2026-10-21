@@ -34,6 +34,7 @@ import type {
 import { POS_PRISMA_WRITE } from './pos.tokens.js';
 import { PosAccessService } from './pos-access.service.js';
 import { isUniqueViolation } from './pos-catalogue.service.js';
+import { PosStockService } from './pos-stock.service.js';
 
 /** How many lines one order may have. Past this it is a delivery note, not a sale at a counter. */
 export const POS_ORDER_LINES_MAX = 200;
@@ -92,6 +93,7 @@ export class PosOrderWriteService {
     @Inject(POS_PRISMA_WRITE) private readonly prisma: PosWriteClient,
     private readonly events: PosEventPublisher,
     private readonly access: PosAccessService,
+    private readonly stock: PosStockService,
   ) {}
 
   /**
@@ -384,9 +386,15 @@ export class PosOrderWriteService {
     const already = await this.prisma.posOrder.findFirst({ where: { ...scope, paymentClientId: clientId } });
     if (already) return this.samePayment(already, ref.orderId);
 
+    /*
+     * Whether THIS payment finalised the order. An unpaid order paid now left the
+     * store when it was released (pay later), and stock already took it then.
+     */
+    let finalisedNow = false;
     try {
-      return await this.change(scope, actorId, ref, ['open', 'unpaid'], async (tx, order, lines) => {
+      const paid = await this.change(scope, actorId, ref, ['open', 'unpaid'], async (tx, order, lines) => {
         if (lines.length === 0) throw refusalError('invalid_transition');
+        finalisedNow = order.finalisedAt === null;
         const { change } = unwrap(
           planPayment(order.total, payment, { name: order.customerName, contact: order.customerContact }),
         );
@@ -411,6 +419,9 @@ export class PosOrderWriteService {
           },
         };
       });
+      // After the commit, and never failing the payment (INVENTORY-PLAN §5).
+      if (finalisedNow) await this.stock.finalised(scope, paid);
+      return paid;
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
       const raced = await this.prisma.posOrder.findFirst({ where: { ...scope, paymentClientId: clientId } });
@@ -424,7 +435,7 @@ export class PosOrderWriteService {
    * customer's name and contact, and records who released it (guard rules).
    */
   async payLater(scope: InScope, actorId: string, ref: PosOrderRef): Promise<PosOrderRow> {
-    return this.change(scope, actorId, ref, ['open'], async (tx, order, lines) => {
+    const released = await this.change(scope, actorId, ref, ['open'], async (tx, order, lines) => {
       refuse(checkPayLater({ name: order.customerName, contact: order.customerContact }, lines.length));
       const status = unwrap(nextOrderStatus(order.status, 'pay_later')).status;
       return {
@@ -437,6 +448,9 @@ export class PosOrderWriteService {
         },
       };
     });
+    // ⚠ The goods leave now, not when it is paid (I4): stock takes them after this commit.
+    await this.stock.finalised(scope, released);
+    return released;
   }
 
   /**
@@ -455,10 +469,13 @@ export class PosOrderWriteService {
   /** Voids an unpaid order whose items came back (D17). Bound to `pos:refund`. Keeps its number. */
   async void(scope: InScope, actorId: string, ref: PosOrderRef, rawReason: string): Promise<PosOrderRow> {
     const { reason } = unwrap(preparePosReason(rawReason));
-    return this.change(scope, actorId, ref, ['unpaid'], async (_tx, order) => {
+    const voided = await this.change(scope, actorId, ref, ['unpaid'], async (_tx, order) => {
       const status = unwrap(nextOrderStatus(order.status, 'void')).status;
       return { data: { status, voidedAt: new Date(), voidedById: actorId, voidReason: reason } };
     });
+    // Its goods came back whole: stock puts back what the release took.
+    await this.stock.voided(scope, voided);
+    return voided;
   }
 
   /**
