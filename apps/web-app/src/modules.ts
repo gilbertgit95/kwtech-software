@@ -1,6 +1,7 @@
 import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
 import { booksWebModule } from '@kwtech/module-basic-bookkeeping/react';
+import { stockWebModule } from '@kwtech/module-basic-inventory/react';
 import { posWebModule } from '@kwtech/module-basic-pos/react';
 import { bookingWebModule } from '@kwtech/module-booking/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
@@ -45,6 +46,8 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   noteWebModule(),
   taskWebModule(),
   posWebModule(),
+  // Stock: what is on the shelf, what each product uses up, deliveries, waste and stock takes — after the POS.
+  stockWebModule(),
   // The books: cash on hand, investors, profit shares and loans — after the POS on the Apps page.
   booksWebModule(),
   // Booking: services, who performs them and when, and the day's reservations — after the books.

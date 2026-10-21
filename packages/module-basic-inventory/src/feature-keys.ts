@@ -145,14 +145,14 @@ export const STOCK_ROLE_PRESETS: readonly StockRolePreset[] = [
   {
     key: 'stock-keeper',
     label: 'Stock keeper',
-    icon: 'package',
+    icon: 'boxes',
     level: 'workspace',
     features: [STOCK_FEATURE.read, STOCK_FEATURE.receive],
   },
   {
     key: 'stock-manager',
     label: 'Stock manager',
-    icon: 'package',
+    icon: 'boxes',
     level: 'workspace',
     features: [STOCK_FEATURE.read, STOCK_FEATURE.receive, STOCK_FEATURE.manage],
   },
