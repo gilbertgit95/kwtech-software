@@ -13,16 +13,20 @@ import type {
 } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../view/money.js';
+import { leftOf, type PosStockMap } from '../view/stock.js';
 import { liveVariants, nextOption } from '../view/till.js';
-import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
+import { buttonClass, Field, INPUT_CLASS, Modal, StockBadge } from './controls.js';
 
 /** The variants of one item, in order (D9). Picking one adds it. */
 export function VariantPicker({
   item,
+  stock,
   onPick,
   onClose,
 }: {
   item: PosItemView | null;
+  /** How many are left of each, from the stock app; null shows no counts. */
+  stock: PosStockMap | null;
   onPick: (variantId: string) => void;
   onClose: () => void;
 }) {
@@ -40,7 +44,10 @@ export function VariantPicker({
               className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => onPick(variant.id)}
             >
-              <span>{variant.name}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                {variant.name}
+                <StockBadge left={item ? leftOf(stock, item.id, variant.id) : null} />
+              </span>
               <span className="tabular-nums text-muted-foreground">{formatPeso(variant.price)}</span>
             </button>
           </li>

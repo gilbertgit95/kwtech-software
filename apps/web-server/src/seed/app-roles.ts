@@ -1,6 +1,7 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
 import { BOOKS_ROLE_PRESETS, type BooksRolePreset } from '@kwtech/module-basic-bookkeeping';
+import { STOCK_ROLE_PRESETS, type StockRolePreset } from '@kwtech/module-basic-inventory';
 import { POS_ROLE_PRESETS, type PosRolePreset } from '@kwtech/module-basic-pos';
 import { BOOKING_ROLE_PRESETS, type BookingRolePreset } from '@kwtech/module-booking';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
@@ -429,6 +430,20 @@ function booksPreset(key: string): BooksRolePreset {
 }
 
 /**
+ * A stock preset, read by key (INVENTORY-PLAN §8). Folded into the two
+ * workspace roles, as the point of sale's are (operator, 2026-10-21): a
+ * workspace admin is `stock-manager` (items, materials lists, stock takes) and
+ * a workspace user `stock-keeper` (records deliveries, corrections and waste at
+ * the counter). THROWS if a preset is gone.
+ */
+function stockPreset(key: string): StockRolePreset {
+  const preset = STOCK_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset)
+    throw new Error(`module-basic-inventory no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * A booking preset, read by key (BOOKING-PLAN §5). The shops taking bookings
  * have no separate front desk yet, so its keys fold into the two workspace
  * roles, as the point of sale's do: a workspace admin is `booking-manager`
@@ -539,6 +554,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...posPreset('pos-manager').features,
     // The books: cash on hand, recording money, investors and sharing profit.
     ...booksPreset('books-owner').features,
+    // Stock: what is counted, what each product uses up, deliveries, waste and stock takes.
+    ...stockPreset('stock-manager').features,
     // Booking: the day, the bookings, and what can be booked when.
     ...bookingPreset('booking-manager').features,
     // The print studio: layouts, anybody's shared ones, and everybody's print history.
@@ -576,6 +593,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
     ...taskPreset('task-user').features,
     // Sells at the listed price: no discounts, refunds, costs or reports.
     ...posPreset('pos-cashier').features,
+    // Records deliveries, corrections and waste. No items, materials lists or stock takes.
+    ...stockPreset('stock-keeper').features,
     // Works the bookings: sees the day, makes, moves and cancels them. No services, hours or settings.
     ...bookingPreset('booking-front-desk').features,
     // Lays photos out and keeps layouts of their own; sees their own print history only.

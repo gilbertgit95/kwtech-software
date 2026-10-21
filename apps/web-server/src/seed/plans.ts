@@ -1,5 +1,6 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
+import { STOCK_FEATURE, STOCK_LIMIT } from '@kwtech/module-basic-inventory';
 import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
@@ -214,6 +215,17 @@ const POS = Object.values(POS_FEATURE);
 const BOOKS = Object.values(BOOKS_FEATURE);
 
 /**
+ * Stock, sold where the point of sale is: every tier except free. All three
+ * keys are workspace level.
+ *
+ * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
+ * seeded before stock has none of these keys, and an operator adds them and the
+ * `stock:items` cap on `/admin/plans`. Until then the app is not on the Apps
+ * page (not_entitled), and the catch-up reaches no workspace.
+ */
+const STOCK = Object.values(STOCK_FEATURE);
+
+/**
  * Booking, sold where the point of sale is: every tier except free. All five
  * keys are workspace level.
  *
@@ -258,6 +270,9 @@ const PRINT_CAPS = { [PRINT_LIMIT.agents]: 2 };
 
 /** Active items and variants per store. The same in every tier for now. */
 const POS_CAPS = { [POS_LIMIT.items]: 1000 };
+
+/** Active stock items per store, goods and materials together. The same in every tier for now. */
+const STOCK_CAPS = { [STOCK_LIMIT.items]: 1000 };
 
 /** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
 const QUEUE_CAPS = {
@@ -309,6 +324,7 @@ const STARTER: PlanDefinition = {
     ...TASKS,
     ...POS,
     ...BOOKS,
+    ...STOCK,
     ...BOOKING,
     ...STUDIO,
     ...PRINT,
@@ -322,6 +338,7 @@ const STARTER: PlanDefinition = {
     ...NOTE_CAPS,
     ...TASK_CAPS,
     ...POS_CAPS,
+    ...STOCK_CAPS,
     ...BOOKING_CAPS,
     ...STUDIO_CAPS,
     ...PRINT_CAPS,
@@ -357,6 +374,7 @@ const PRO: PlanDefinition = {
     ...TASKS,
     ...POS,
     ...BOOKS,
+    ...STOCK,
     ...BOOKING,
     ...STUDIO,
     ...PRINT,
@@ -370,6 +388,7 @@ const PRO: PlanDefinition = {
     ...NOTE_CAPS,
     ...TASK_CAPS,
     ...POS_CAPS,
+    ...STOCK_CAPS,
     ...BOOKING_CAPS,
     ...STUDIO_CAPS,
     ...PRINT_CAPS,
@@ -411,6 +430,7 @@ const ENTERPRISE: PlanDefinition = {
     ...NOTE_CAPS,
     ...TASK_CAPS,
     ...POS_CAPS,
+    ...STOCK_CAPS,
     ...BOOKING_CAPS,
     ...STUDIO_CAPS,
     ...PRINT_CAPS,

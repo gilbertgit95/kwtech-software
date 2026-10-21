@@ -3,6 +3,7 @@
 import { cn } from '@kwtech/web-ui/react';
 import { X } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { stockBadge } from '../view/stock.js';
 
 /*
  * The POS's controls — module-task's, copied structurally: a module never
@@ -148,5 +149,27 @@ export function Field({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * "3 left" or "Out of stock" beside an item, from the stock app
+ * (INVENTORY-PLAN §6). Nothing for an item the store does not count. Text, not
+ * colour alone, so it reads the same to everyone.
+ */
+export function StockBadge({ left }: { left: number | null }) {
+  const badge = stockBadge(left);
+  if (!badge) return null;
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded px-1 text-[11px] font-medium tabular-nums',
+        badge.tone === 'muted' && 'text-muted-foreground',
+        badge.tone === 'warning' && 'bg-status-warning text-status-warning-foreground',
+        badge.tone === 'danger' && 'bg-status-error text-status-error-foreground',
+      )}
+    >
+      {badge.text}
+    </span>
   );
 }

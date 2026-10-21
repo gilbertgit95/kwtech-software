@@ -22,6 +22,7 @@ import type { TillState } from '../use-till.js';
 import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
 import { receiptHtml } from '../view/receipt.js';
+import { leftOf, type PosStockMap, stockWarning, tileLeft } from '../view/stock.js';
 import {
   gridCategories,
   gridItems,
@@ -34,7 +35,7 @@ import {
   QUANTITY_PROBLEM,
   searchCatalogue,
 } from '../view/till.js';
-import { buttonClass, INPUT_CLASS } from './controls.js';
+import { buttonClass, INPUT_CLASS, StockBadge } from './controls.js';
 import { CustomerDialog, DiscountDialog, PendingDialog, TextDialog, VariantPicker } from './dialogs.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
@@ -67,6 +68,11 @@ export function Till({ state }: { state: TillState }) {
   const [activeResult, setActiveResult] = useState(0);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' });
+  /**
+   * Said after a line goes past what the stock app counts (INVENTORY-PLAN §6).
+   * ⚠ A WARNING: the line is already on the order, and the sale goes through (I5).
+   */
+  const [stockNotice, setStockNotice] = useState<string | null>(null);
   /** The line the cart's keys act on (D20); null while the cashier is in search. */
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -136,7 +142,13 @@ export function Till({ state }: { state: TillState }) {
     const done = await state.act((current) => client.addLine(scope, current, itemId, variantId, count), {
       create: true,
     });
-    if (done) setQuery('');
+    if (done) {
+      setQuery('');
+      const same = done.lines.filter((line) => line.itemId === itemId && line.variantId === variantId);
+      const inCart = same.reduce((sum, line) => sum + line.quantity, 0);
+      const name = same[0] ? lineLabel(same[0]) : 'This item';
+      setStockNotice(stockWarning(name, leftOf(state.stock, itemId, variantId), inCart));
+    }
     close();
   };
 
@@ -356,9 +368,26 @@ export function Till({ state }: { state: TillState }) {
               {QUANTITY_PROBLEM}
             </p>
           ) : null}
+          {stockNotice ? (
+            <p
+              role="status"
+              className="flex items-start justify-between gap-2 rounded-md bg-status-warning px-2 py-1 text-xs text-status-warning-foreground"
+            >
+              <span>{stockNotice}</span>
+              <button type="button" className="shrink-0 underline" onClick={() => setStockNotice(null)}>
+                OK
+              </button>
+            </p>
+          ) : null}
 
           {query.trim() && !('refused' in parsed) && parsed.text.trim() ? (
-            <SearchResults results={results} active={active} quantity={quantity ?? 1} onPick={pick} />
+            <SearchResults
+              results={results}
+              active={active}
+              quantity={quantity ?? 1}
+              stock={state.stock}
+              onPick={pick}
+            />
           ) : (
             <ItemGrid
               state={state}
@@ -399,6 +428,7 @@ export function Till({ state }: { state: TillState }) {
 
         <VariantPicker
           item={dialog.kind === 'variant' ? dialog.item : null}
+          stock={state.stock}
           onPick={(variantId) => {
             if (dialog.kind === 'variant') void add(dialog.item.id, variantId, dialog.quantity);
           }}
@@ -499,12 +529,15 @@ function SearchResults({
   results,
   active,
   quantity,
+  stock,
   onPick,
 }: {
   results: readonly PosSearchResult[];
   /** The match the search box's ↑ ↓ are on: outlined here, and what Enter adds. */
   active: number;
   quantity: number;
+  /** How many are left, from the stock app; null shows no counts. */
+  stock: PosStockMap | null;
   onPick: (itemId: string, variantId: string | null, quantity: number) => void;
 }) {
   const listRef = useRef<HTMLUListElement>(null);
@@ -536,6 +569,11 @@ function SearchResults({
               {result.label}
               {result.opensPicker ? ' ▾' : ''}
               {result.code ? <span className="ml-2 text-xs text-muted-foreground">{result.code}</span> : null}
+              {result.opensPicker ? null : (
+                <span className="ml-2">
+                  <StockBadge left={leftOf(stock, result.itemId, result.variantId)} />
+                </span>
+              )}
             </span>
             <span className="shrink-0 tabular-nums text-muted-foreground">
               {result.price.min === result.price.max
@@ -617,7 +655,10 @@ function ItemGrid({
                     onClick={() => onPick(item.id)}
                     {...tooltip}
                   >
-                    <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
+                    <span className="flex w-full items-start justify-between gap-1">
+                      <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
+                      <StockBadge left={tileLeft(state.stock, item)} />
+                    </span>
                     {item.description ? (
                       <span className="line-clamp-2 text-xs text-muted-foreground">{item.description}</span>
                     ) : null}

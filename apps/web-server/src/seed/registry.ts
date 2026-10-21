@@ -1,6 +1,7 @@
 import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
 import { BOOKS_FEATURE_REGISTRY } from '@kwtech/module-basic-bookkeeping';
+import { STOCK_FEATURE_REGISTRY, STOCK_LIMIT_REGISTRY, STOCK_PROCESS_REGISTRY } from '@kwtech/module-basic-inventory';
 import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE_REGISTRY, BOOKING_LIMIT_REGISTRY, BOOKING_PROCESS_REGISTRY } from '@kwtech/module-booking';
 import {
@@ -195,6 +196,17 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * every bookkeeping operation is reachable by anybody signed in.
    */
   { key: 'books', features: BOOKS_FEATURE_REGISTRY },
+  /*
+   * ⚠ And stock's — a confirmed stock take overwrites on hand. Leave this out
+   * and every stock operation is reachable by anybody signed in, the item cap
+   * is never mirrored for plans, and the catch-up from the POS never runs.
+   */
+  {
+    key: 'stock',
+    features: STOCK_FEATURE_REGISTRY,
+    limits: STOCK_LIMIT_REGISTRY,
+    processes: STOCK_PROCESS_REGISTRY,
+  },
   /*
    * ⚠ And booking's — every booking carries a customer's name and phone. Leave
    * this out and they are readable by anybody signed in, the resource cap is

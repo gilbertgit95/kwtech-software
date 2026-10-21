@@ -54,3 +54,29 @@ Follow `module-queuing-window`, file for file:
    The bindings are this module's guard: an unbound operation is reachable by
    anybody signed in. Split keys by risk (`pos:sell`, `pos:manage_items`).
 4. Keep the app key `pos`. It is saved in people's layouts.
+
+## Stock (issue #10)
+
+Stock is its own module, `module-basic-inventory` (`docs/INVENTORY-PLAN.md`).
+The POS meets it through two optional ports of its own, so a store without it
+works exactly as before:
+
+| Port (option) | Told / asks | Unbound means |
+|---|---|---|
+| `PosStockEvents` (`stockEventsProvider`, `POS_STOCK_EVENTS`) | after the commit: each line of an order paid from open or released unpaid (`finalised`), each line of a voided order (`voided`), each refund line marked "Put back in stock" (`returned`) | the store counts no stock |
+| `PosStockLevels` (`stockLevelsProvider`, `POS_STOCK_LEVELS`) | how many of each live item and variant are left | the till shows no counts |
+
+- ⚠ **Stock never stops a sale.** The events go after the commit and a failure
+  is logged, never thrown; the till's counts are a warning, never a refusal.
+- **`PosStockService`** (exported) holds the POS's side: `eventsSince(scope,
+  since, limit)` reads the same events back from the orders and refunds, for the
+  stock app's catch-up (inclusive of `since`, a sale before its void or refund
+  at one instant); `catalogue(scope)` lists items and variants, archived ones
+  too, for materials lists; `tillLevels(scope)` answers `posStockLevels`.
+- **`posStockLevels`** (`pos:read`) gives the till `{ counts, levels }`; the
+  till shows "3 left" / "Out of stock" on tiles, search and the variant picker,
+  and a warning after a line goes past what is left. A `stock` event
+  (`PosChange`) makes it read again.
+- **Refunds by line** take `restock` per line (`pos_refund_line.restock`,
+  default false). The dialog asks "Put back in stock" for product lines when the
+  store counts stock, ticked unless the item came back damaged.

@@ -260,6 +260,8 @@ model PosOrder {
   /// Sales of a period: a sale counts on the day it is paid.
   @@index([workspaceId, paidAt])
   @@index([workspaceId, finalisedAt])
+  /// The stock feed: voids since its cursor (INVENTORY-PLAN §5).
+  @@index([workspaceId, voidedAt])
   @@index([customerId])
   @@index([organizationId])
   @@map("pos_order")
@@ -353,6 +355,9 @@ model PosRefundLine {
 
   quantity Int
   amount   Int
+  /// The units went back on the shelf ("Put back in stock?", INVENTORY-PLAN §6). False for a
+  /// damaged return, and for every refund made before stock existed.
+  restock  Boolean @default(false)
 
   refund    PosRefund    @relation(fields: [refundId], references: [id], onDelete: Restrict)
   orderLine PosOrderLine @relation(fields: [orderLineId], references: [id], onDelete: Restrict)

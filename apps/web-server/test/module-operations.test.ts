@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
 import { BOOKS_OPERATIONS } from '@kwtech/module-basic-bookkeeping';
+import { STOCK_OPERATIONS } from '@kwtech/module-basic-inventory';
 import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
 import { BOOKING_OPERATIONS } from '@kwtech/module-booking';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
@@ -71,6 +72,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   task: TASK_OPERATIONS,
   pos: POS_OPERATIONS,
   books: BOOKS_OPERATIONS,
+  stock: STOCK_OPERATIONS,
   booking: BOOKING_OPERATIONS,
   jobs: JOBS_OPERATIONS,
 };

@@ -15,6 +15,7 @@ import {
   type PosOrderView,
   type PosScopeView,
 } from './pos-client.js';
+import { type PosStockMap, stockMap } from './view/stock.js';
 
 /** How long after the last event the till reads again — a burst of events is one read. */
 const REREAD_DEBOUNCE_MS = 200;
@@ -52,6 +53,8 @@ export interface TillState {
   scope: PosScopeView;
   client: PosClient;
   catalogue: PosCatalogueView | null;
+  /** How many are left per item and variant, from the stock app; null when the store counts no stock. */
+  stock: PosStockMap | null;
   keymap: PosKeymap;
   timeZone: string;
   /** The order on the till: open, or just finished (its receipt). Null for a clear till. */
@@ -100,6 +103,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const canRefund = useHoldsFeature(POS_FEATURE.refund);
 
   const [catalogue, setCatalogue] = useState<PosCatalogueView | null>(null);
+  const [stock, setStock] = useState<PosStockMap | null>(null);
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
   // The workspace's zone, from the app's shell: receipts and "today" follow it.
   const timeZone = useWorkspaceTimeZone();
@@ -150,6 +154,15 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     }
   }, [client, scope]);
 
+  const loadStock = useCallback(async () => {
+    try {
+      setStock(stockMap(await client.stockLevels(scope)));
+    } catch {
+      // Counts are a courtesy: a till that cannot read them sells without them (I5).
+      setStock(null);
+    }
+  }, [client, scope]);
+
   const reloadPending = useCallback(async () => {
     try {
       setPending(await client.orders(scope, 'pending'));
@@ -191,8 +204,9 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   useEffect(() => {
     void loadCatalogue();
     void loadSettings();
+    void loadStock();
     void reloadPending();
-  }, [loadCatalogue, loadSettings, reloadPending]);
+  }, [loadCatalogue, loadSettings, loadStock, reloadPending]);
 
   // ── live ──────────────────────────────────────────────────────────────────
 
@@ -207,12 +221,14 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
         kinds.current = new Set();
         const all = seen.has('sync');
         if (all || seen.has('catalogue')) void loadCatalogue();
+        // A sale here or at another till, a delivery, a count: the stock app says `stock` once it has moved.
+        if (all || seen.has('catalogue') || seen.has('stock')) void loadStock();
         if (all || seen.has('settings')) void loadSettings();
         if (all || seen.has('order') || seen.has('current')) void reloadPending();
         if (all || seen.has('current')) void reloadOrder();
       }, REREAD_DEBOUNCE_MS);
     },
-    [loadCatalogue, loadSettings, reloadPending, reloadOrder],
+    [loadCatalogue, loadSettings, loadStock, reloadPending, reloadOrder],
   );
 
   useEffect(() => {
@@ -291,6 +307,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     scope,
     client,
     catalogue,
+    stock,
     keymap,
     timeZone,
     order,

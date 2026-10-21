@@ -8,10 +8,15 @@ import type { InScope, PosRefundRow, PosWriteClient } from './pos.repository.js'
 import { POS_PRISMA_WRITE } from './pos.tokens.js';
 import { isUniqueViolation } from './pos-catalogue.service.js';
 import { isPosPaymentMethod } from './pos-order-write.service.js';
+import { PosStockService } from './pos-stock.service.js';
 
 export interface PosRefundInput {
-  /** By line: which lines and how many. Omitted or empty with `amount`: a refund by amount. */
-  lines?: readonly { lineId: string; quantity: number }[] | null | undefined;
+  /**
+   * By line: which lines and how many, and whether the units went back on the
+   * shelf (`restock`, INVENTORY-PLAN §6; omitted: not). Omitted or empty with
+   * `amount`: a refund by amount, which moves no stock.
+   */
+  lines?: readonly { lineId: string; quantity: number; restock?: boolean | null | undefined }[] | null | undefined;
   /** By amount: centavos back, nothing returned. */
   amount?: number | null | undefined;
   /** How the money went back: `cash`, `ewallet` or `card`. */
@@ -32,6 +37,7 @@ export class PosRefundService {
   constructor(
     @Inject(POS_PRISMA_WRITE) private readonly prisma: PosWriteClient,
     private readonly events: PosEventPublisher,
+    private readonly stock: PosStockService,
   ) {}
 
   async refund(scope: InScope, actorId: string, orderId: string, input: PosRefundInput): Promise<PosRefundRow> {
@@ -42,6 +48,7 @@ export class PosRefundService {
     if (!clientId || clientId.length > 100) {
       throw new Error('A refund needs the till’s clientId (crypto.randomUUID), so a retry is not a second refund.');
     }
+    const restock = new Set((input.lines ?? []).filter((line) => line.restock).map((line) => line.lineId));
     const request: PosRefundRequest =
       input.lines && input.lines.length > 0
         ? { kind: 'lines', lines: input.lines }
@@ -88,12 +95,15 @@ export class PosRefundService {
               orderLineId: line.lineId,
               quantity: line.quantity,
               amount: line.amount,
+              restock: restock.has(line.lineId),
             },
           });
         }
         return created;
       });
       await this.events.changed(scope, 'order', actorId, orderId);
+      // After the commit, and never failing the refund: the shelf gets back what was put back.
+      if (restock.size > 0) await this.stock.returned(scope, refund.id, orderId, refund.refundedAt);
       return refund;
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;

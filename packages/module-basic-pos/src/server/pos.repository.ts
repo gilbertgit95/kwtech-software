@@ -182,6 +182,8 @@ export interface PosRefundLineRow extends InScope {
   orderLineId: string;
   quantity: number;
   amount: number;
+  /** The units went back on the shelf (INVENTORY-PLAN §6): stock takes them back. */
+  restock: boolean;
 }
 
 export interface PosCounterRow {
@@ -231,7 +233,9 @@ export interface PosOrderListWhere extends InScope {
   changeOwed?: { gt: number };
   changeSettledAt?: null;
   paidAt?: { gte: Date; lt: Date } | { lt: Date };
-  finalisedAt?: { gte: Date; lt: Date };
+  /** `{ gte }` alone: the stock feed, everything finalised since its cursor. */
+  finalisedAt?: { gte: Date; lt: Date } | { gte: Date };
+  voidedAt?: { gte: Date };
   cancelledAt?: { gte: Date; lt: Date };
   OR?: Array<
     | { paidAt: { gte: Date; lt: Date } }
@@ -349,6 +353,7 @@ export interface PosTransaction {
         | { createdAt: SortOrder }
         | { paidAt: SortOrder }
         | { finalisedAt: SortOrder }
+        | { voidedAt: SortOrder }
         | { number: SortOrder }
         | { id: SortOrder }
       >;
@@ -384,7 +389,11 @@ export interface PosTransaction {
   posRefund: {
     findFirst(args: { where: InScope & { clientId: string } }): Promise<PosRefundRow | null>;
     findMany(args: {
-      where: (InScope & { orderId: string | { in: string[] } }) | (InScope & { refundedAt: { gte: Date; lt: Date } });
+      where:
+        | (InScope & { orderId: string | { in: string[] } })
+        | (InScope & { refundedAt: { gte: Date; lt: Date } })
+        /** The stock feed: every refund since its cursor. */
+        | (InScope & { refundedAt: { gte: Date } });
       orderBy: Array<{ refundedAt: SortOrder } | { id: SortOrder }>;
       take: number;
     }): Promise<PosRefundRow[]>;
@@ -401,9 +410,9 @@ export interface PosTransaction {
   };
 
   posRefundLine: {
-    findMany(args: { where: { refundId: { in: string[] } } }): Promise<PosRefundLineRow[]>;
+    findMany(args: { where: { refundId: { in: string[] }; restock?: true } }): Promise<PosRefundLineRow[]>;
     create(args: {
-      data: InScope & { refundId: string; orderLineId: string; quantity: number; amount: number };
+      data: InScope & { refundId: string; orderLineId: string; quantity: number; amount: number; restock: boolean };
     }): Promise<PosRefundLineRow>;
   };
 

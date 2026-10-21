@@ -11,6 +11,7 @@ import { PosAccessService } from '../pos-access.service.js';
 import { type PosCatalogueItem, PosCatalogueService } from '../pos-catalogue.service.js';
 import { PosCustomerService } from '../pos-customer.service.js';
 import { PosSettingsService, type PosStoreSettings } from '../pos-settings.service.js';
+import { PosStockService } from '../pos-stock.service.js';
 import {
   PosCatalogueType,
   PosCategoryType,
@@ -18,6 +19,7 @@ import {
   PosEventType,
   PosItemType,
   PosSettingsType,
+  PosStockLevelsType,
   PosVariantType,
   SavePosCustomerInputType,
   SavePosItemInputType,
@@ -47,6 +49,7 @@ export class PosCatalogueResolver {
     private readonly customers: PosCustomerService,
     private readonly settings: PosSettingsService,
     private readonly access: PosAccessService,
+    private readonly stock: PosStockService,
     @Inject(POS_OPTIONS) private readonly options: PosModuleOptions,
     /** Absent means not live: `posEvents` sends `sync` and ends. */
     @Optional() @Inject(POS_PUBSUB) private readonly pubsub?: PosPubSub,
@@ -62,6 +65,20 @@ export class PosCatalogueResolver {
    * server, for everybody else: hiding them on screen is not enough, because
    * the API answer is readable by whoever is signed in (guard rules).
    */
+  /**
+   * "3 left" and "Out of stock" for the till, from the stock app (INVENTORY-PLAN
+   * §6). A count, never a cost; a warning, never a refusal. Re-read on a `stock`
+   * event.
+   */
+  @Query(() => PosStockLevelsType, { name: 'posStockLevels' })
+  async posStockLevels(
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+  ): Promise<PosStockLevelsType> {
+    const levels = await this.stock.tillLevels({ organizationId, workspaceId });
+    return { counts: this.stock.counts, levels };
+  }
+
   @Query(() => PosCatalogueType, { name: 'posCatalogue' })
   async posCatalogue(
     @Context() gql: { req?: unknown },

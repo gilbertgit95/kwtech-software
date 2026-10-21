@@ -1,6 +1,7 @@
 import type { AppHubPrismaClient } from '@kwtech/module-app-hub/server';
 import type { AuthTransaction } from '@kwtech/module-auth/server';
 import type { BooksPrismaClient, BooksTransaction } from '@kwtech/module-basic-bookkeeping/server';
+import type { StockPrismaClient, StockTransaction } from '@kwtech/module-basic-inventory/server';
 import type { PosPrismaClient, PosTransaction } from '@kwtech/module-basic-pos/server';
 import type { BookingPrismaClient, BookingTransaction } from '@kwtech/module-booking/server';
 import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
@@ -73,6 +74,8 @@ export const _posReadClientFits: PosPrismaClient = client;
 export const _posWriteDelegatesFit: PosTransaction = client;
 export const _booksReadClientFits: BooksPrismaClient = client;
 export const _booksWriteDelegatesFit: BooksTransaction = client;
+export const _stockReadClientFits: StockPrismaClient = client;
+export const _stockWriteDelegatesFit: StockTransaction = client;
 export const _bookingReadClientFits: BookingPrismaClient = client;
 export const _bookingWriteDelegatesFit: BookingTransaction = client;
 export const _notificationReadClientFits: NotificationPrismaClient = client;

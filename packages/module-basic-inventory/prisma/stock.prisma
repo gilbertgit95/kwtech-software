@@ -1,0 +1,273 @@
+// The stock app's slice of the data model (docs/INVENTORY-PLAN.md).
+//
+// Composed into each consuming app's Prisma schema at generate time — this file
+// is the source. Models are prefixed `Stock` and mapped to `stock_*`.
+//
+//   category ◀── item ◀── move ──▶ take ◀── take line
+//                  ▲
+//                  └── use (a materials list line: a POS item or variant uses so much of it)
+//   feed cursor: per workspace and source, where the catch-up process got to
+//
+// ⚠ ON HAND IS ADDED UP FROM `StockMove`, NEVER STORED. A stored count could
+// disagree with its history, and then nobody could say which was right
+// (src/domain/levels.ts).
+//
+// ⚠ A QUANTITY IS AN INTEGER NUMBER OF THOUSANDTHS of its item's unit: 1 sheet
+// is 1000, 0.5 m is 500. A movement is capped at a million units
+// (`STOCK_QUANTITY_MAX`, 10^9), inside an `Int`; the server sums them as a
+// `BIGINT` in the database and reads the sum back as a number.
+//
+// ⚠ EVERY ROW CARRIES `workspaceId` AND `organizationId`, denormalised, and
+// EVERY LOOKUP BY ID ALSO NAMES THE WORKSPACE. The guard proves the caller is a
+// member of the workspace in the request, not that the row is in it.
+//
+// ⚠ NOTHING IS EDITED OR DELETED in the history. A wrong movement is corrected
+// by another. The POS's item and variant ids, and every `userId`, are bare
+// strings with no foreign key: they belong to other modules (PLAN §9).
+
+/// What a stock item is for. A refund puts back only `for_sale` stock.
+enum StockItemKind {
+  for_sale
+  material
+}
+
+/// What it is counted in. piece, sheet and pack are whole in the UI.
+enum StockUnit {
+  piece
+  sheet
+  pack
+  ml
+  l
+  g
+  kg
+  m
+}
+
+/// Why on hand changed (INVENTORY-PLAN §4).
+enum StockMoveKind {
+  opening
+  received
+  used
+  returned
+  adjustment
+  wasted
+  count
+}
+
+/// Which module's catalogue a materials list hangs on. Only the POS in v1.
+enum StockSource {
+  pos
+}
+
+/// A list on the POS item (every variant uses it) or on one variant (I14).
+enum StockUseRefKind {
+  item
+  variant
+}
+
+enum StockTakeStatus {
+  open
+  confirmed
+  abandoned
+}
+
+model StockCategory {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name      String
+  sortOrder Int    @default(0)
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  items StockItem[]
+
+  @@index([workspaceId, archivedAt])
+  @@index([organizationId])
+  @@map("stock_category")
+}
+
+/// Something the store counts: goods it sells, or a material it uses up.
+model StockItem {
+  id             String  @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  categoryId     String?
+
+  kind StockItemKind
+  name String
+  /// Upper case, no spaces (`prepareStockCode`). Unique per store.
+  code String?
+  unit StockUnit
+  /// Centavos per WHOLE unit, or null when not entered. The latest receipt's (I16).
+  unitCost   Int?
+  /// Thousandths. Null: no low-stock alert.
+  lowStockAt Int?
+
+  archivedAt  DateTime?
+  createdById String
+  updatedById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  category StockCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  moves    StockMove[]
+  uses     StockUse[]
+  counts   StockTakeLine[]
+
+  @@unique([workspaceId, code])
+  /// The list the app loads, and the count behind `stock:items`.
+  @@index([workspaceId, archivedAt])
+  @@index([categoryId])
+  @@index([organizationId])
+  @@map("stock_item")
+}
+
+/// One line of a materials list: one unit of a POS item (or variant) sold uses so much of a stock item.
+model StockUse {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  source      StockSource
+  refKind     StockUseRefKind
+  /// The POS item's id (`item`) or variant's (`variant`). No foreign key.
+  refId       String
+  /// The POS item's id for both kinds: what "every list of this product" is looked up by.
+  refItemId   String
+  /// The name as the POS last reported it, for showing the list without asking the POS.
+  refLabel    String
+  stockItemId String
+  /// Thousandths of the stock item's unit, per ONE unit sold.
+  quantityPerUnit Int
+
+  createdById String
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  /// ⚠ One line per stock item per list: two lines for the hook would make "how much does this use" a sum nobody typed.
+  @@unique([workspaceId, source, refId, stockItemId])
+  /// What a sale reads: every line of a product's lists, item and variants together.
+  @@index([workspaceId, source, refItemId])
+  @@index([stockItemId])
+  @@index([organizationId])
+  @@map("stock_use")
+}
+
+/// One change to on hand. On hand is the sum of these.
+model StockMove {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  stockItemId    String
+
+  kind     StockMoveKind
+  /// Signed thousandths: positive in, negative out.
+  quantity Int
+  /// Centavos per whole unit, on a receipt only.
+  unitCost Int?
+
+  /// Another module's event (`pos:line:<id>`, src/domain/sources.ts), or null for a movement made here.
+  sourceKey     String?
+  /// The POS order line a `used` or `returned` movement is about, so a void or a refund finds what it took.
+  sourceLineId  String?
+  takeId        String?
+  /// What a waste was OF (I15): the POS item or variant, and its name then.
+  wasteRefId    String?
+  wasteRefLabel String?
+
+  /// An adjustment's or a waste's reason (`StockAdjustReason`, `StockWasteReason`), as text.
+  reason    String?
+  note      String?
+  supplier  String?
+  reference String?
+
+  /// The id the client sent with a move made by hand, so a double press records once.
+  clientId    String?
+  /// Null for a movement another module's event made.
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  stockItem StockItem  @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+  take      StockTake? @relation(fields: [takeId], references: [id], onDelete: Restrict)
+
+  /// ⚠ AN EVENT TAKES STOCK ONCE. The push and the catch-up can both deliver it; only the first writes.
+  @@unique([workspaceId, sourceKey, stockItemId])
+  /// ⚠ A double press records once (one move, or one waste's several moves with the same id).
+  @@unique([workspaceId, clientId, stockItemId])
+  /// On hand, and an item's history, newest first.
+  @@index([workspaceId, stockItemId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, sourceLineId])
+  @@index([takeId])
+  @@index([organizationId])
+  @@map("stock_move")
+}
+
+/// A count of the shelf: opened, typed in, then confirmed or abandoned.
+model StockTake {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  status      StockTakeStatus @default(open)
+  /// The categories on the sheet; empty means every category.
+  categoryIds String[]
+  note        String?
+
+  createdById String
+  closedById  String?
+  createdAt   DateTime        @default(now())
+  closedAt    DateTime?
+  updatedAt   DateTime        @updatedAt
+
+  lines StockTakeLine[]
+  moves StockMove[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([organizationId])
+  @@map("stock_take")
+}
+
+/// One line of a count sheet.
+model StockTakeLine {
+  takeId      String
+  stockItemId String
+  workspaceId String
+
+  /// Thousandths typed, or null: not counted yet (left alone on confirmation).
+  counted Int?
+  /// On hand when the take was CONFIRMED, kept to show the difference afterwards.
+  onHandAtConfirm Int?
+
+  updatedById String
+  updatedAt   DateTime @updatedAt
+
+  take      StockTake @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  @@id([takeId, stockItemId])
+  @@index([stockItemId])
+  @@map("stock_take_line")
+}
+
+/// Where the catch-up process got to in a source's feed, per workspace (INVENTORY-PLAN §5).
+model StockFeedCursor {
+  workspaceId    String
+  source         StockSource
+  organizationId String
+
+  /// The feed's time of the last event replayed. The next run reads back a little before it.
+  through   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@id([workspaceId, source])
+  @@index([organizationId])
+  @@map("stock_feed_cursor")
+}

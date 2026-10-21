@@ -21,6 +21,13 @@ export interface PosModuleOptions {
   /** A `PosMemberDirectory` provider. Unbound: nobody has a name. */
   memberDirectoryProvider?: unknown;
   /**
+   * A `PosStockEvents` provider: what left the store, told to the stock app after
+   * each commit. ⚠ Omitting it means the store counts no stock.
+   */
+  stockEventsProvider?: unknown;
+  /** A `PosStockLevels` provider: the till's "3 left". Unbound: the till shows no counts. */
+  stockLevelsProvider?: unknown;
+  /**
    * A `PosPubSub` provider. ⚠ Omitting it means NOT LIVE: a till sees another
    * till's change only when it reads again. Bind the app's one engine.
    */

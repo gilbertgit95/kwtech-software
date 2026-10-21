@@ -60,6 +60,8 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
        * catalogue, not its costs.
        */
       op('Query.posCatalogue'),
+      /* Counts only, from the stock app, never a cost: every till shows "3 left" (INVENTORY-PLAN I8). */
+      op('Query.posStockLevels'),
       op('Query.posCustomers'),
       op('Query.posCustomer'),
       /* Every till reads the keymap and time zone; only `manage_settings` writes them. */

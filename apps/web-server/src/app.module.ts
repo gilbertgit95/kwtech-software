@@ -9,12 +9,25 @@ import {
   booksServerModule,
 } from '@kwtech/module-basic-bookkeeping/server';
 import {
+  STOCK_CHANGE_LISTENER,
+  STOCK_LIMIT_CHECKER,
+  STOCK_MEMBER_DIRECTORY,
+  STOCK_PUBSUB,
+  STOCK_SALE_FEED,
+  STOCK_SOURCE_CATALOGUE,
+  stockServerModule,
+} from '@kwtech/module-basic-inventory/server';
+import {
   POS_ACCESS_CHECK,
   POS_LIMIT_CHECKER,
   POS_MEMBER_DIRECTORY,
   POS_PUBSUB,
+  POS_STOCK_EVENTS,
+  POS_STOCK_LEVELS,
   POS_WORKSPACE_TIME_ZONE,
+  PosEventPublisher,
   PosReportService,
+  PosStockService,
   posServerModule,
 } from '@kwtech/module-basic-pos/server';
 import {
@@ -93,7 +106,7 @@ import {
 } from '@kwtech/module-task/server';
 import type { ApolloDriverConfig } from '@nestjs/apollo';
 import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
-import { APP_GUARD, RouterModule } from '@nestjs/core';
+import { APP_GUARD, ModuleRef, RouterModule } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
@@ -148,6 +161,8 @@ import {
   printWritePrismaProvider,
   queuePrismaProvider,
   queueWritePrismaProvider,
+  stockPrismaProvider,
+  stockWritePrismaProvider,
   studioPrismaProvider,
   studioWritePrismaProvider,
   taskPrismaProvider,
@@ -161,6 +176,10 @@ import { QueueWorkspaceLocatorAdapter } from './queue/workspace-locator.js';
 import { realtimePubSub } from './realtime/realtime.pubsub.js';
 import { NORMAL_USER_KEY } from './seed/app-roles.js';
 import { ALL_DEFAULT_MOMENTS, ALL_DEFAULTS, ALL_FEATURES, ALL_LIMITS } from './seed/registry.js';
+import { StockToPosChangeListener } from './stock/change-listener.js';
+import { StockMemberDirectoryAdapter } from './stock/member-directory.js';
+import { StockPosSource } from './stock/pos-source.js';
+import { PosStockBridge } from './stock/pos-stock-bridge.js';
 import { StudioManageAllAccess } from './studio/access-check.js';
 import { StudioMemberDirectoryAdapter } from './studio/member-directory.js';
 import { TaskKeyAccess } from './task/access-check.js';
@@ -432,6 +451,23 @@ const POS_SERVER_MODULE: ServerModuleDescriptor = posServerModule({
     provide: POS_WORKSPACE_TIME_ZONE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService) => new PosWorkspaceTimeZoneAdapter(prisma),
+  },
+
+  /*
+   * Stock: each line that left the store or came back, told after its commit,
+   * and the till's "3 left". ⚠ Through a bridge that finds stock's intake
+   * late (`stock/pos-stock-bridge.ts`): stock imports this module, so this
+   * module cannot import stock's. Without them the store counts no stock.
+   */
+  stockEventsProvider: {
+    provide: POS_STOCK_EVENTS,
+    inject: [ModuleRef],
+    useFactory: (moduleRef: ModuleRef) => new PosStockBridge(moduleRef),
+  },
+  stockLevelsProvider: {
+    provide: POS_STOCK_LEVELS,
+    inject: [ModuleRef],
+    useFactory: (moduleRef: ModuleRef) => new PosStockBridge(moduleRef),
   },
 
   resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
@@ -810,6 +846,56 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
 
     // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent ledger.
     pubsubProvider: { provide: BOOKS_PUBSUB, useValue: realtimePubSub() },
+  }),
+
+  /*
+   * Stock — a workspace sub-app: what the store counts, goods and materials,
+   * what each product uses up, deliveries, waste and stock takes
+   * (INVENTORY-PLAN). Its ports read names and the POS's items and feed, and
+   * tell the till when stock moved. The adapters are in ./stock/. It declares
+   * a BACKGROUND PROCESS too (`stock.catch_up`, run by the runner below).
+   */
+  stockServerModule({
+    prismaProvider: stockPrismaProvider,
+    prismaWriteProvider: stockWritePrismaProvider,
+
+    // The `stock:items` cap from the plan. Omitted, the module holds its declared default.
+    limitCheckerProvider: { provide: STOCK_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+    // Without it, the history names nobody.
+    memberDirectoryProvider: {
+      provide: STOCK_MEMBER_DIRECTORY,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new StockMemberDirectoryAdapter(prisma),
+    },
+
+    /*
+     * ⚠ THE POS'S OWN MODULE INSTANCE, imported so its services can be injected —
+     * the same descriptor object that is in this list, never a second
+     * `posServerModule()`, as the books do. Without the catalogue no list can be
+     * hung on a product; without the feed a lost push is never caught up;
+     * without the listener the till re-reads its counts only on its own.
+     */
+    imports: [POS_SERVER_MODULE.nestModule],
+    sourceCatalogueProvider: {
+      provide: STOCK_SOURCE_CATALOGUE,
+      inject: [PosStockService],
+      useFactory: (pos: PosStockService) => new StockPosSource(pos),
+    },
+    saleFeedProvider: {
+      provide: STOCK_SALE_FEED,
+      inject: [PosStockService],
+      useFactory: (pos: PosStockService) => new StockPosSource(pos),
+    },
+    changeListenerProvider: {
+      provide: STOCK_CHANGE_LISTENER,
+      inject: [PosEventPublisher],
+      useFactory: (events: PosEventPublisher) => new StockToPosChangeListener(events),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent stockroom.
+    pubsubProvider: { provide: STOCK_PUBSUB, useValue: realtimePubSub() },
   }),
 
   /*
