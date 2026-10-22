@@ -16,7 +16,10 @@ import {
   type StudioRect,
   type StudioSize,
   sheetSize,
+  textsOf,
 } from '../../domain/layout.js';
+import { fontFamilyOf, STUDIO_FONT_WEIGHT_CSS, textLines } from '../../domain/texts.js';
+import { lineMiddle, lineWidths, measureText, textDecorations } from '../render/texts.js';
 import type { StudioRulerUnit } from '../view/ruler-ticks.js';
 import { cellLabelSize } from '../view/summary.js';
 import { STUDIO_VIEW_ZOOMS, stepViewZoom } from '../view/work.js';
@@ -46,6 +49,12 @@ export interface SheetViewProps {
   onMove?: (index: number, position: { x: number; y: number }) => void;
   /** A resize in progress: the cell's wanted size, in units. */
   onResize?: (index: number, size: { width: number; height: number }) => void;
+  /** The selected text's id, in the editor. A text and a cell are never selected at once. */
+  selectedText?: string | null;
+  /** Given, the texts can be picked and dragged. Without it they are drawn and take no presses (a thumbnail). */
+  onSelectText?: (id: string) => void;
+  /** A text being dragged: its wanted top left, in units from the printable area's. */
+  onMoveText?: (id: string, position: { x: number; y: number }) => void;
   /**
    * Given, something may be dropped on the sheet (a size from the editor's palette). Called with the point it was
    * dropped at, in units from the printable area's top left. `accepts` says whether a drag is one of ours.
@@ -69,12 +78,14 @@ export interface SheetViewProps {
 /** What a drag is doing, held in a ref so a pointer move never re-renders by itself. */
 interface Drag {
   index: number;
-  kind: 'move' | 'resize';
+  /** Set when a TEXT is dragged rather than a cell; `index` is then unused. */
+  textId: string | null;
+  kind: 'move' | 'resize' | 'text';
   /** Units per screen pixel, measured when the drag began. */
   scale: number;
   startX: number;
   startY: number;
-  /** The cell's x/y (a move) or width/height (a resize) when the drag began. */
+  /** The cell's or text's x/y (a move) or the cell's width/height (a resize) when the drag began. */
   fromA: number;
   fromB: number;
 }
@@ -94,6 +105,9 @@ export function SheetView({
   onSelect,
   onMove,
   onResize,
+  selectedText = null,
+  onSelectText,
+  onMoveText,
   onDropAt,
   accepts,
   labels = true,
@@ -118,7 +132,7 @@ export function SheetView({
    * the cell would be dropped with it on the first move. The drawing itself
    * outlives the drag.
    */
-  function begin(event: ReactPointerEvent<SVGElement>, index: number, kind: Drag['kind']) {
+  function begin(event: ReactPointerEvent<SVGElement>, index: number, kind: 'move' | 'resize') {
     if (!interactive) return;
     const cell = spec.cells[index];
     const box = svg.current?.getBoundingClientRect();
@@ -128,6 +142,7 @@ export function SheetView({
     onSelect?.(index);
     drag.current = {
       index,
+      textId: null,
       kind,
       scale: sheet.width / box.width,
       startX: event.clientX,
@@ -137,12 +152,33 @@ export function SheetView({
     };
   }
 
+  /** A text picked up. The same capture as a cell's, for the same reason: the text is redrawn on every step. */
+  function beginText(event: ReactPointerEvent<SVGElement>, id: string, from: { x: number; y: number }) {
+    if (!onSelectText) return;
+    const box = svg.current?.getBoundingClientRect();
+    if (!box || box.width === 0) return;
+    event.stopPropagation();
+    svg.current?.setPointerCapture(event.pointerId);
+    onSelectText(id);
+    drag.current = {
+      index: -1,
+      textId: id,
+      kind: 'text',
+      scale: sheet.width / box.width,
+      startX: event.clientX,
+      startY: event.clientY,
+      fromA: from.x,
+      fromB: from.y,
+    };
+  }
+
   function during(event: ReactPointerEvent<SVGElement>) {
     const current = drag.current;
     if (!current) return;
     const a = current.fromA + (event.clientX - current.startX) * current.scale;
     const b = current.fromB + (event.clientY - current.startY) * current.scale;
-    if (current.kind === 'move') onMove?.(current.index, { x: a, y: b });
+    if (current.kind === 'text' && current.textId !== null) onMoveText?.(current.textId, { x: a, y: b });
+    else if (current.kind === 'move') onMove?.(current.index, { x: a, y: b });
     else onResize?.(current.index, { width: a, height: b });
   }
 
@@ -237,6 +273,69 @@ export function SheetView({
                   onPointerDown={(event) => begin(event, index, 'resize')}
                 >
                   <title>Drag to resize</title>
+                </rect>
+              ) : null}
+            </g>
+          );
+        })}
+
+        {/* The texts, over the cells as they print, each in its own ink whatever the theme. */}
+        {textsOf(spec).map((text) => {
+          const chosen = text.id === selectedText;
+          const box = measureText(text);
+          const lines = textLines(text);
+          const decorations = textDecorations(text);
+          const widths = decorations.length > 0 ? lineWidths(text) : [];
+          return (
+            <g key={text.id}>
+              <text
+                x={text.x}
+                fontSize={text.size}
+                fontFamily={fontFamilyOf(text.font)}
+                fontWeight={STUDIO_FONT_WEIGHT_CSS[text.weight]}
+                fontStyle={text.italic ? 'italic' : 'normal'}
+                dominantBaseline="central"
+                fill={text.color}
+                pointerEvents="none"
+                // SVG folds runs of spaces into one; the canvas that prints it does not.
+                style={{ whiteSpace: 'pre' }}
+              >
+                {lines.map((line, index) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: lines are positional and re-made on every edit.
+                  <tspan key={index} x={text.x} y={text.y + text.size * lineMiddle(index)}>
+                    {line}
+                  </tspan>
+                ))}
+              </text>
+              {lines.flatMap((_, index) =>
+                decorations.map((decoration) => (
+                  <rect
+                    // biome-ignore lint/suspicious/noArrayIndexKey: a line is its place in the text, as above.
+                    key={`${index}:${decoration.top}`}
+                    x={text.x}
+                    y={text.y + text.size * (lineMiddle(index) + decoration.top)}
+                    width={widths[index] ?? 0}
+                    height={text.size * decoration.thickness}
+                    fill={text.color}
+                    pointerEvents="none"
+                  />
+                )),
+              )}
+              {onSelectText ? (
+                // What is pressed: the text's whole box, so a press between two letters still picks it up.
+                <rect
+                  x={text.x}
+                  y={text.y}
+                  width={Math.max(box.width, hair * 4)}
+                  height={box.height}
+                  fill="transparent"
+                  stroke={chosen ? CELL : 'none'}
+                  strokeWidth={hair * 2}
+                  strokeDasharray={`${hair * 6} ${hair * 4}`}
+                  className="cursor-move hover:stroke-[#2563eb]"
+                  onPointerDown={(event) => beginText(event, text.id, { x: text.x, y: text.y })}
+                >
+                  <title>Drag to move this text</title>
                 </rect>
               ) : null}
             </g>

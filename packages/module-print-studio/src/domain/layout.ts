@@ -1,6 +1,7 @@
 import type { StudioRefusal } from '../types.js';
 import { STUDIO_PAPER_MAX, STUDIO_PAPER_MIN } from './papers.js';
 import { STUDIO_CELL_MIN } from './sizes.js';
+import { checkTexts, readText, STUDIO_TEXTS_MAX, type StudioText, textsOnArea } from './texts.js';
 import { isWholeNumber } from './units.js';
 
 /**
@@ -74,6 +75,17 @@ export interface StudioLayoutSpec {
    * there was a choice keeps every cell at its exact size on any paper.
    */
   sizing?: StudioSizing;
+  /**
+   * Text printed on the sheet, set in the editor and fixed when printing
+   * (`texts.ts`). Absent means none: a layout saved before there was text
+   * reads as it always did, and an empty list is stored as absent.
+   */
+  texts?: StudioText[];
+}
+
+/** A layout's texts, or none. */
+export function textsOf(spec: Pick<StudioLayoutSpec, 'texts'>): readonly StudioText[] {
+  return spec.texts ?? [];
 }
 
 /**
@@ -274,9 +286,14 @@ export function scaleCells(cells: readonly StudioCell[], from: StudioSize, to: S
  */
 export function layoutOnPage(spec: StudioLayoutSpec, page: StudioPagePatch): StudioLayoutSpec {
   const next = { ...spec, ...page };
-  if (sizingOf(spec) === 'fixed') return next;
   if (checkPrintableArea(spec) || checkPrintableArea(next)) return next;
-  return { ...next, cells: scaleCells(spec.cells, printableArea(spec), printableArea(next)) };
+  const from = printableArea(spec);
+  const to = printableArea(next);
+  const percent = sizingOf(spec) === 'percent';
+  // Texts follow the page like the cells, and are pulled back inside it either way (`textsOnArea`).
+  const texts = spec.texts ? { texts: textsOnArea(spec.texts, from, to, percent) } : {};
+  if (!percent) return { ...next, ...texts };
+  return { ...next, cells: scaleCells(spec.cells, from, to), ...texts };
 }
 
 /**
@@ -343,6 +360,19 @@ export function prepareLayoutSpec(value: unknown): { spec: StudioLayoutSpec } | 
     cells.push(cell);
   }
 
+  // Absent or null is none. Bounded before it is walked, like the cells.
+  const textValues = value.texts ?? [];
+  if (!Array.isArray(textValues)) return { refused: 'invalid_spec' };
+  if (textValues.length > STUDIO_TEXTS_MAX) return { refused: 'too_many_texts' };
+  const texts: StudioText[] = [];
+  for (const entry of textValues) {
+    const text = readText(entry);
+    if (!text) return { refused: 'invalid_spec' };
+    texts.push(text);
+  }
+  // Two texts with one id would be one text to the editor's drag.
+  if (new Set(texts.map((text) => text.id)).size !== texts.length) return { refused: 'invalid_spec' };
+
   // Absent or null is "the default"; anything else must be a border, or the whole spec is refused.
   const border = value.border === undefined || value.border === null ? undefined : readBorder(value.border);
   if (border === null) return { refused: 'invalid_spec' };
@@ -359,8 +389,10 @@ export function prepareLayoutSpec(value: unknown): { spec: StudioLayoutSpec } | 
     guides: value.guides,
     ...(border ? { border } : {}),
     ...(sizing === 'percent' ? { sizing } : {}),
+    ...(texts.length > 0 ? { texts } : {}),
   };
-  const refusal = checkPrintableArea(spec) ?? checkCells(cells, printableArea(spec));
+  const refusal =
+    checkPrintableArea(spec) ?? checkCells(cells, printableArea(spec)) ?? checkTexts(texts, printableArea(spec));
   if (refusal) return { refused: refusal };
   return { spec };
 }

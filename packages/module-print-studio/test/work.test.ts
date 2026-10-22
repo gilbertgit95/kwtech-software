@@ -9,6 +9,7 @@ import {
   isHeicFile,
   isPdfFile,
   isPhotoFile,
+  photoBatches,
   previewDpi,
   printLayoutName,
   pruneFrames,
@@ -19,6 +20,7 @@ import {
   STUDIO_ONCE_LAYOUT_NAME,
   setCellsPhoto,
   stepViewZoom,
+  tagUpload,
   toggleCell,
   withFrame,
   withFrames,
@@ -231,5 +233,40 @@ describe('a layout adjusted for one print', () => {
     expect(printLayoutName('ID package', false)).toBe('ID package');
     expect(resultFileName(printLayoutName('ID package', true))).toBe('ID-package-adjusted.pdf');
     expect(resultFileName(STUDIO_ONCE_LAYOUT_NAME)).toBe('One-time-layout.pdf');
+  });
+});
+
+describe('photo batches', () => {
+  it('numbers an upload’s photos by their place in the selection, gaps and all', () => {
+    expect([
+      ...tagUpload(
+        [
+          { id: 'a', index: 0 },
+          { id: 'b', index: 2 },
+        ],
+        3,
+      ),
+    ]).toEqual([
+      ['a', { batch: 3, number: 1 }],
+      ['b', { batch: 3, number: 3 }],
+    ]);
+  });
+
+  it('groups photos by batch, oldest first, each in the order chosen', () => {
+    const tags = new Map([
+      ['c', { batch: 2, number: 1 }],
+      ['a', { batch: 1, number: 2 }],
+      ['b', { batch: 1, number: 1 }],
+    ]);
+    const batches = photoBatches([{ id: 'c' }, { id: 'a' }, { id: 'b' }], tags);
+    expect(batches.map((one) => [one.batch, one.photos.map((entry) => entry.photo.id)])).toEqual([
+      [1, ['b', 'a']],
+      [2, ['c']],
+    ]);
+  });
+
+  it('keeps a batch’s number when an earlier batch is emptied, and lists an untagged photo last', () => {
+    const tags = new Map([['x', { batch: 2, number: 1 }]]);
+    expect(photoBatches([{ id: 'loose' }, { id: 'x' }], tags).map((one) => one.batch)).toEqual([2, 0]);
   });
 });

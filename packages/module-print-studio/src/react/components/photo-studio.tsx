@@ -2,7 +2,9 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import {
+  ArrowDownToLine,
   ChevronDown,
+  GripVertical,
   ImagePlus,
   Images,
   LayoutTemplate,
@@ -25,10 +27,12 @@ import {
   useRef,
   useState,
 } from 'react';
+import { newBackground, type StudioBackground } from '../../domain/background.js';
 import { NO_CALIBRATION } from '../../domain/calibration.js';
 import {
   addPage,
   filledCellCount,
+  fillFromCell,
   planFill,
   type StudioFillMode,
   type StudioPageFill,
@@ -39,11 +43,13 @@ import {
   borderOf,
   cellOnSheet,
   layoutOnPage,
+  printableArea,
   type StudioBorder,
   type StudioLayoutSpec,
   type StudioOrientation,
   sheetSize,
 } from '../../domain/layout.js';
+import { readingOrder } from '../../domain/place.js';
 import {
   DEFAULT_FRAME,
   effectiveDpi,
@@ -77,6 +83,7 @@ import {
   frameOf,
   hasCell,
   NO_PHOTO_EDIT,
+  photoBatches,
   previewDpi,
   printLayoutName,
   pruneFrames,
@@ -88,11 +95,14 @@ import {
   type StudioCellRef,
   type StudioFrames,
   type StudioPhotoEdit,
+  type StudioPhotoTag,
   setCellsPhoto,
+  tagUpload,
   toggleCell,
   withFrame,
   withFrames,
 } from '../view/work.js';
+import { BackgroundCard, BackgroundMover } from './background-controls.js';
 import { BorderControls, borderSummary } from './border-controls.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert, StudioSplit } from './layout.js';
@@ -111,6 +121,9 @@ const PREVIEW_PIXELS = 1000;
 
 /** What a photo is carried as while it is dragged from the tray onto a cell. */
 const DRAG_TYPE = 'application/x-kwtech-studio-photo';
+
+/** What a whole batch is carried as while it is dragged from the tray onto the sheet: its batch number. */
+const BATCH_DRAG_TYPE = 'application/x-kwtech-studio-batch';
 
 /** How far the pointer must travel, in pixels, before a press on a cell is a drag of its photo and not a click. */
 const DRAG_START = 4;
@@ -210,6 +223,14 @@ export function PhotoStudio({
   const sheet = useMemo(() => sheetSize(spec), [spec]);
 
   const [photos, setPhotos] = useState<StudioPhoto[]>([]);
+  /** Which upload each photo came in and its number in that selection (`StudioPhotoTag`), shown in the tray. */
+  const [photoTags, setPhotoTags] = useState<ReadonlyMap<string, StudioPhotoTag>>(new Map());
+  /**
+   * The next upload's batch number. Never reused while the photos are held; 1 again after Start over.
+   * ⚠ A REF, taken the moment an upload finishes reading: two uploads read at once (a drop while the last is
+   * still reading) must never be given one number, which a state read when each began would do.
+   */
+  const nextBatch = useRef(1);
   const [pages, setPages] = useState<StudioPageFill[]>(() => planFill(cells, [], 'manual').pages);
   const [frames, setFrames] = useState<StudioFrames>({});
   const [edits, setEdits] = useState<ReadonlyMap<string, StudioPhotoEdit>>(new Map());
@@ -228,6 +249,16 @@ export function PhotoStudio({
   /** How closely the sheet is being looked at. 1 fits the panel. */
   const [viewZoom, setViewZoom] = useState(1);
   const [rulerUnit, setRulerUnit] = useRulerUnit();
+  /*
+   * A picture behind every page, for THIS print (the operator, 2026-10-22):
+   * decoded like a photo and held like one, never part of the layout. Its
+   * place is in sheet coordinates, so it stays put when the paper changes.
+   * While `movingBackground` is on, a layer over the sheet takes the presses
+   * and the photos are held still.
+   */
+  const [background, setBackground] = useState<{ photo: StudioPhoto; placement: StudioBackground } | null>(null);
+  const [movingBackground, setMovingBackground] = useState(false);
+  const [loadingBackground, setLoadingBackground] = useState(false);
 
   const loadCalibrations = useCallback(() => state.client.calibrations(state.scope), [state.client, state.scope]);
   const calibrations = useStudioData(loadCalibrations, 'Could not load the calibration profiles.');
@@ -242,9 +273,13 @@ export function PhotoStudio({
   const filled = filledCellCount(pages);
   const filledSelection = filledCells(pages, selection);
 
+  /** The photos as last rendered or added, for an upload that finishes after another (`addFiles`). */
+  const latestPhotos = useRef(photos);
+  latestPhotos.current = photos;
+
   // ⚠ Every photo is released when the studio goes, whatever made it go.
   const held = useRef<StudioPhoto[]>([]);
-  held.current = photos;
+  held.current = background ? [...photos, background.photo] : photos;
   useEffect(
     () => () => {
       for (const photo of held.current) releasePhoto(photo);
@@ -260,7 +295,7 @@ export function PhotoStudio({
   // biome-ignore lint/correctness/useExhaustiveDependencies: the dependencies ARE the arrangement; the effect only reacts to them
   useEffect(() => {
     setResult(null);
-  }, [pages, frames, edits, copies, calibration, spec]);
+  }, [pages, frames, edits, copies, calibration, spec, background]);
 
   // ── the sheet on screen ───────────────────────────────────────────────────
 
@@ -289,10 +324,38 @@ export function PhotoStudio({
         calibration,
         dpi,
         usePreview: true,
+        background,
       });
     });
     return () => cancelAnimationFrame(handle);
-  }, [spec, sheet, pages, pageIndex, frames, photoMap, edits, calibration, viewZoom]);
+  }, [spec, sheet, pages, pageIndex, frames, photoMap, edits, calibration, viewZoom, background]);
+
+  // ── the background picture ────────────────────────────────────────────────
+
+  /** A picture chosen for the background: it fills the printable area, and is ready to be moved. */
+  async function chooseBackground(file: File) {
+    setLoadingBackground(true);
+    setError(null);
+    try {
+      const photo = await loadPhoto(file);
+      if (background) releasePhoto(background.photo);
+      setBackground({
+        photo,
+        placement: newBackground({ width: photo.width, height: photo.height }, printableArea(spec)),
+      });
+      setMovingBackground(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `“${file.name}” could not be read.`);
+    } finally {
+      setLoadingBackground(false);
+    }
+  }
+
+  function removeBackground() {
+    if (background) releasePhoto(background.photo);
+    setBackground(null);
+    setMovingBackground(false);
+  }
 
   // ── photos ────────────────────────────────────────────────────────────────
 
@@ -301,19 +364,34 @@ export function PhotoStudio({
     setLoading(true);
     setError(null);
     const added: StudioPhoto[] = [];
+    /** Each added photo's place in the files as chosen: its number in this batch. */
+    const chosenAt: { id: string; index: number }[] = [];
     const problems: string[] = [];
-    const room = STUDIO_PHOTOS_MAX - photos.length;
+    const room = STUDIO_PHOTOS_MAX - latestPhotos.current.length;
     // In order, one at a time: each decode holds a full-size bitmap, and a dozen at once is a dozen in memory.
-    for (const file of files.slice(0, Math.max(room, 0))) {
+    for (const [index, file] of files.slice(0, Math.max(room, 0)).entries()) {
       try {
-        added.push(await loadPhoto(file));
+        const photo = await loadPhoto(file);
+        added.push(photo);
+        chosenAt.push({ id: photo.id, index });
       } catch (caught) {
         problems.push(caught instanceof Error ? caught.message : `“${file.name}” could not be read.`);
       }
     }
+    // One upload is one batch; an upload where nothing could be read makes none, so batch numbers have no gap.
+    if (added.length > 0) {
+      const batch = nextBatch.current;
+      nextBatch.current += 1;
+      setPhotoTags((current) => new Map([...current, ...tagUpload(chosenAt, batch)]));
+    }
     if (files.length > room) problems.push(`Only ${STUDIO_PHOTOS_MAX} photos can be held at once.`);
-    const all = [...photos, ...added];
-    setPhotos(all);
+    /*
+     * ⚠ ONTO THE PHOTOS AS THEY ARE NOW, not as they were when this began: an upload dropped while another was
+     * still reading finishes after it, and adding to the older list would throw the first upload's photos away.
+     */
+    const all = [...latestPhotos.current, ...added];
+    latestPhotos.current = all;
+    setPhotos((current) => [...current, ...added]);
     if (added[0] && activePhotoId === null) setActivePhotoId(added[0].id);
     /*
      * ⚠ THE FIRST PHOTOS FILL THE SHEET BY THEMSELVES. Somebody who adds one
@@ -340,6 +418,11 @@ export function PhotoStudio({
     setPages(cleared);
     setFrames((current) => pruneFrames(current, cleared));
     setPhotos((current) => current.filter((other) => other.id !== photo.id));
+    setPhotoTags((current) => {
+      const next = new Map(current);
+      next.delete(photo.id);
+      return next;
+    });
     if (activePhotoId === photo.id) setActivePhotoId(null);
     releasePhoto(photo);
   }
@@ -360,6 +443,45 @@ export function PhotoStudio({
         ? `${plural(plan.dropped, 'photo')} did not fit: a result has at most ${plural(plan.pages.length, 'page')}.`
         : null,
     );
+  }
+
+  /**
+   * A batch's photos, in the order they were chosen, into the empty cells
+   * from a cell onwards (`fillFromCell`). Dropped on a cell, from that cell
+   * (the operator, 2026-10-22); dropped elsewhere on the sheet, or by its
+   * Place button, from the selected cell, else the first cell of the page in
+   * view. The page its first photo went on is shown.
+   */
+  function placeBatch(batch: number, from: StudioCellRef | null = null) {
+    const ids = photoBatches(photos, photoTags)
+      .find((group) => group.batch === batch)
+      ?.photos.map((entry) => entry.photo.id);
+    if (!ids || ids.length === 0) return;
+    const start = from ?? primary ?? { page: pageIndex, cell: readingOrder(cells)[0] ?? 0 };
+    const plan = fillFromCell(cells, pages, ids, start);
+    setPages(plan.pages);
+    if (plan.firstPage !== null) setPageIndex(plan.firstPage);
+    setSelection([]);
+    setError(
+      plan.dropped > 0
+        ? `${plural(plan.dropped, 'photo')} of batch ${batch} did not fit: a result has at most 50 pages.`
+        : null,
+    );
+  }
+
+  /** The batch a drop carries, or null for any other drag. */
+  function droppedBatch(event: DragEvent): number | null {
+    if (!event.dataTransfer.types.includes(BATCH_DRAG_TYPE)) return null;
+    const batch = Number(event.dataTransfer.getData(BATCH_DRAG_TYPE));
+    return Number.isInteger(batch) && batch >= 1 ? batch : null;
+  }
+
+  /** A batch dropped on the sheet but on no cell (a margin, a gap): from the start of the page in view. */
+  function dropBatch(event: DragEvent) {
+    const batch = droppedBatch(event);
+    if (batch === null) return;
+    event.preventDefault();
+    placeBatch(batch, { page: pageIndex, cell: readingOrder(cells)[0] ?? 0 });
   }
 
   function place(cellIndex: number, photoId: string | null) {
@@ -393,6 +515,14 @@ export function PhotoStudio({
   }
 
   function dropOnCell(event: DragEvent, cellIndex: number) {
+    // A whole batch, from this cell onwards. ⚠ Stopped here, or the sheet under the cell takes the drop as well.
+    const batch = droppedBatch(event);
+    if (batch !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      placeBatch(batch, { page: pageIndex, cell: cellIndex });
+      return;
+    }
     const photoId = event.dataTransfer.getData(DRAG_TYPE);
     if (!photoId || !photoMap.has(photoId)) return;
     event.preventDefault();
@@ -518,14 +648,26 @@ export function PhotoStudio({
   // ── the result ────────────────────────────────────────────────────────────
 
   async function make(): Promise<StudioResult> {
-    const made = await makeLayoutResult({ spec, pages, frames, photos: photoMap, edits, calibration, copies });
+    const made = await makeLayoutResult({
+      spec,
+      pages,
+      frames,
+      photos: photoMap,
+      edits,
+      calibration,
+      copies,
+      background,
+    });
     setResult(made);
     return made;
   }
 
   function clearEverything() {
     for (const photo of photos) releasePhoto(photo);
+    removeBackground();
     setPhotos([]);
+    setPhotoTags(new Map());
+    nextBatch.current = 1;
     setPages(planFill(cells, [], 'manual').pages);
     setFrames({});
     setEdits(new Map());
@@ -577,6 +719,11 @@ export function PhotoStudio({
    * cannot disagree. Answers whether it did anything.
    */
   function performKey(key: string): boolean {
+    // Esc ends moving the picture first: the photos are held still until then.
+    if (movingBackground && key === 'Escape') {
+      setMovingBackground(false);
+      return true;
+    }
     const action = printKeyAction(key, keyContext, state.keymap);
     if (!action) return false;
     switch (action.kind) {
@@ -748,6 +895,8 @@ export function PhotoStudio({
 
               <PhotoTray
                 photos={photos}
+                tags={photoTags}
+                onPlaceBatch={placeBatch}
                 activeId={activePhotoId}
                 edits={edits}
                 loading={loading}
@@ -797,6 +946,19 @@ export function PhotoStudio({
 
               <BorderCard guides={guides} border={border} onGuides={setGuides} onBorder={setBorder} />
 
+              <BackgroundCard
+                photo={background?.photo ?? null}
+                placement={background?.placement ?? null}
+                area={printableArea(spec)}
+                sheet={sheet}
+                moving={movingBackground}
+                loading={loadingBackground}
+                onChoose={(file) => void chooseBackground(file)}
+                onRemove={removeBackground}
+                onChange={(placement) => setBackground((current) => (current ? { ...current, placement } : current))}
+                onMoving={setMovingBackground}
+              />
+
               {toolPhoto ? (
                 <PhotoPanel
                   name={toolPhoto.name}
@@ -810,16 +972,19 @@ export function PhotoStudio({
             <OutputBar
               state={state}
               summary={
-                filled === 0
-                  ? 'Nothing to print yet.'
-                  : `${plural(pages.length, 'page')} · ${plural(filled, 'photo')} placed`
+                filled > 0
+                  ? `${plural(pages.length, 'page')} · ${plural(filled, 'photo')} placed`
+                  : background
+                    ? `${plural(pages.length, 'page')} · the background picture only`
+                    : 'Nothing to print yet.'
               }
               copies={copies}
               onCopies={setCopies}
               calibrations={calibrations.data ?? []}
               calibrationId={calibrationId}
               onCalibration={setCalibrationId}
-              canMake={filled > 0}
+              // A background alone is something to print: a design on its own sheet.
+              canMake={filled > 0 || background !== null}
               result={result}
               make={make}
               fileName={resultFileName(layoutName)}
@@ -832,9 +997,12 @@ export function PhotoStudio({
                 paperHeight: sheet.height,
                 pages: made.pages,
                 copies: made.copies,
-                fileNames: usedPhotoIds(pages).flatMap((id) => photoMap.get(id)?.name ?? []),
+                fileNames: [
+                  ...usedPhotoIds(pages).flatMap((id) => photoMap.get(id)?.name ?? []),
+                  ...(background ? [background.photo.name] : []),
+                ],
               })}
-              hasWork={photos.length > 0}
+              hasWork={photos.length > 0 || background !== null}
               onStartOver={clearEverything}
               onError={setError}
               commands={output}
@@ -905,10 +1073,16 @@ export function PhotoStudio({
                   ) : undefined
                 }
               >
-                <div
+                <section
                   data-studio-paper
+                  aria-label="The sheet: drop a batch of photos here"
                   className="relative shadow-md ring-1 ring-border"
                   style={{ width: fitWidth(sheet, viewZoom) }}
+                  // A batch dropped on the sheet but on no cell; one dropped on a cell is that cell's (`dropOnCell`).
+                  onDragOver={(event) => {
+                    if (event.dataTransfer.types.includes(BATCH_DRAG_TYPE)) event.preventDefault();
+                  }}
+                  onDrop={dropBatch}
                 >
                   <canvas ref={canvas} className="block h-auto w-full" />
                   {/*
@@ -960,7 +1134,8 @@ export function PhotoStudio({
                             onPointerUp={endDrag}
                             onPointerCancel={endDrag}
                             onDragOver={(event) => {
-                              if (event.dataTransfer.types.includes(DRAG_TYPE)) event.preventDefault();
+                              const types = event.dataTransfer.types;
+                              if (types.includes(DRAG_TYPE) || types.includes(BATCH_DRAG_TYPE)) event.preventDefault();
                             }}
                             onDrop={(event) => dropOnCell(event, index)}
                           >
@@ -983,7 +1158,18 @@ export function PhotoStudio({
                       );
                     })}
                   </ul>
-                </div>
+                  {background && movingBackground ? (
+                    <BackgroundMover
+                      placement={background.placement}
+                      image={{ width: background.photo.width, height: background.photo.height }}
+                      sheet={sheet}
+                      onChange={(placement) =>
+                        setBackground((current) => (current ? { ...current, placement } : current))
+                      }
+                      onDone={() => setMovingBackground(false)}
+                    />
+                  ) : null}
+                </section>
               </SheetFrame>
             </div>
           </div>
@@ -1153,6 +1339,8 @@ function FillTile({
  */
 function PhotoTray({
   photos,
+  tags,
+  onPlaceBatch,
   activeId,
   edits,
   loading,
@@ -1161,6 +1349,10 @@ function PhotoTray({
   onRemove,
 }: {
   photos: readonly StudioPhoto[];
+  /** Each photo's batch and number (`photoBatches`). */
+  tags: ReadonlyMap<string, StudioPhotoTag>;
+  /** A batch into the empty cells from a cell onwards: its press starts at the selected cell, or the first of the page. */
+  onPlaceBatch: (batch: number) => void;
   activeId: string | null;
   edits: ReadonlyMap<string, StudioPhotoEdit>;
   loading: boolean;
@@ -1227,42 +1419,90 @@ function PhotoTray({
               {loading ? 'Reading…' : 'Add more'}
             </label>
           </div>
-          <ul className="grid max-h-56 grid-cols-4 gap-1.5 overflow-y-auto">
-            {photos.map((photo) => (
-              <li key={photo.id} className="group relative">
-                <button
-                  type="button"
-                  draggable
-                  aria-pressed={photo.id === activeId}
-                  title={photo.name}
-                  className={cn(
-                    'block aspect-square w-full overflow-hidden rounded-lg border-2 bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    photo.id === activeId ? 'border-primary' : 'border-transparent hover:border-border',
-                  )}
-                  onClick={() => onPick(photo.id)}
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData(DRAG_TYPE, photo.id);
-                    event.dataTransfer.effectAllowed = 'copy';
-                  }}
-                >
-                  <img src={photo.url} alt={photo.name} className="size-full object-cover" draggable={false} />
-                </button>
-                {isEdited(edits.get(photo.id)) ? (
-                  <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-primary px-1 text-[9px] font-medium text-primary-foreground">
-                    Edited
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label={`Remove ${photo.name}`}
-                  className="absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full bg-card text-foreground shadow-sm ring-1 ring-border group-focus-within:flex group-hover:flex"
-                  onClick={() => onRemove(photo)}
-                >
-                  <X aria-hidden="true" className="size-3" />
-                </button>
-              </li>
+          {/*
+           * One group per upload (the operator, 2026-10-22): "Batch 2" is the second time photos were added, and
+           * each photo's number is its place in that selection, so the tray can be checked against the folder.
+           */}
+          <div className="flex max-h-72 flex-col gap-2.5 overflow-y-auto pr-0.5">
+            {photoBatches(photos, tags).map((group) => (
+              <section key={group.batch} aria-label={group.batch === 0 ? 'Other photos' : `Batch ${group.batch}`}>
+                {group.batch === 0 ? (
+                  <h4 className="mb-1 text-xs font-semibold">Other photos</h4>
+                ) : (
+                  /*
+                   * The header is the handle for the whole batch: drag it onto the sheet, or press Place. Either
+                   * puts its photos, in order, into the empty cells from the cell it is dropped on, or the selected one.
+                   */
+                  <button
+                    type="button"
+                    draggable
+                    title="Drag onto a cell to fill the empty cells from there, in order. Press to start at the selected cell, or the first cell of this page"
+                    className="group/batch mb-1 flex w-full cursor-grab items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                    onClick={() => onPlaceBatch(group.batch)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData(BATCH_DRAG_TYPE, String(group.batch));
+                      event.dataTransfer.effectAllowed = 'copy';
+                    }}
+                  >
+                    <GripVertical aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/70" />
+                    <span className="min-w-0 flex-1 text-xs font-semibold">
+                      Batch {group.batch}{' '}
+                      <span className="font-normal text-muted-foreground">
+                        · {plural(group.photos.length, 'photo')}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground group-hover/batch:text-primary">
+                      <ArrowDownToLine aria-hidden="true" className="size-3.5" />
+                      Place
+                    </span>
+                  </button>
+                )}
+                <ul className="grid grid-cols-4 gap-1.5">
+                  {group.photos.map(({ photo, number }) => (
+                    <li key={photo.id} className="group relative">
+                      <button
+                        type="button"
+                        draggable
+                        aria-pressed={photo.id === activeId}
+                        aria-label={number > 0 ? `${number}. ${photo.name}` : photo.name}
+                        title={number > 0 ? `${number}. ${photo.name}` : photo.name}
+                        className={cn(
+                          'block aspect-square w-full overflow-hidden rounded-lg border-2 bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          photo.id === activeId ? 'border-primary' : 'border-transparent hover:border-border',
+                        )}
+                        onClick={() => onPick(photo.id)}
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData(DRAG_TYPE, photo.id);
+                          event.dataTransfer.effectAllowed = 'copy';
+                        }}
+                      >
+                        <img src={photo.url} alt="" className="size-full object-cover" draggable={false} />
+                      </button>
+                      {number > 0 ? (
+                        // Its place in the files as chosen, readable on a light photo and a dark one.
+                        <span className="pointer-events-none absolute top-1 left-1 min-w-4 rounded bg-card/90 px-1 text-center text-[10px] font-semibold tabular-nums text-foreground shadow-sm ring-1 ring-border">
+                          {number}
+                        </span>
+                      ) : null}
+                      {isEdited(edits.get(photo.id)) ? (
+                        <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                          Edited
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${photo.name}`}
+                        className="absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full bg-card text-foreground shadow-sm ring-1 ring-border group-focus-within:flex group-hover:flex"
+                        onClick={() => onRemove(photo)}
+                      >
+                        <X aria-hidden="true" className="size-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         </>
       )}
     </section>

@@ -292,3 +292,59 @@ export const STUDIO_PHOTO_PIXELS_MAX = 80_000_000;
 
 /** The most photos held at once. Each is a decoded bitmap in memory. */
 export const STUDIO_PHOTOS_MAX = 200;
+
+/**
+ * Which upload a photo came in, and where it was in that upload's selection
+ * (the operator, 2026-10-22): each press of Add photos, or each drop, is a
+ * BATCH, numbered from 1, and each photo is numbered from 1 in the order the
+ * files were chosen — so "batch 2, number 7" is the seventh file picked in
+ * the second upload, and a customer's folder can be checked against the tray.
+ *
+ * ⚠ The number is the place in the SELECTION, not among the photos that
+ * loaded: a file that could not be read leaves its gap (1, 2, 4), which shows
+ * that one is missing.
+ */
+export interface StudioPhotoTag {
+  batch: number;
+  number: number;
+}
+
+/** One upload's photos, in the order they were chosen. */
+export interface StudioPhotoBatch<T> {
+  batch: number;
+  photos: { photo: T; number: number }[];
+}
+
+/**
+ * The photos grouped by the upload they came in, oldest batch first, each in
+ * the order its files were chosen. ⚠ A batch number is never reused: the
+ * second upload stays "Batch 2" when every photo of the first is removed.
+ * A photo with no tag (none is made without one) is listed last, unnumbered
+ * as batch 0, rather than hidden.
+ */
+export function photoBatches<T extends { id: string }>(
+  photos: readonly T[],
+  tags: ReadonlyMap<string, StudioPhotoTag>,
+): StudioPhotoBatch<T>[] {
+  const byBatch = new Map<number, { photo: T; number: number }[]>();
+  for (const photo of photos) {
+    const tag = tags.get(photo.id) ?? { batch: 0, number: 0 };
+    const list = byBatch.get(tag.batch) ?? [];
+    list.push({ photo, number: tag.number });
+    byBatch.set(tag.batch, list);
+  }
+  return [...byBatch.entries()]
+    .sort(([a], [b]) => (a === 0 ? 1 : b === 0 ? -1 : a - b))
+    .map(([batch, list]) => ({ batch, photos: [...list].sort((a, b) => a.number - b.number) }));
+}
+
+/**
+ * The tags for one upload: the files as chosen, the ones that loaded (by their
+ * index in that choice), and the batch number this upload gets.
+ */
+export function tagUpload(
+  loaded: readonly { id: string; index: number }[],
+  batch: number,
+): Map<string, StudioPhotoTag> {
+  return new Map(loaded.map((one) => [one.id, { batch, number: one.index + 1 }]));
+}

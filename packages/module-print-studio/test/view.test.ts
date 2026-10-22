@@ -1,7 +1,14 @@
 import { emptyLayoutSpec } from '../src/domain/layout.js';
 import { findStudioPreset } from '../src/domain/presets.js';
 import { inches, mm } from '../src/domain/units.js';
-import { lengthText, parseLength, parsePercent, percentText, scaleText } from '../src/react/view/lengths.js';
+import {
+  lengthText,
+  parseLength,
+  parsePercent,
+  parseSignedLength,
+  percentText,
+  scaleText,
+} from '../src/react/view/lengths.js';
 import {
   cannotTurnNote,
   LAYOUT_PAPER_VALUE,
@@ -11,6 +18,15 @@ import {
   tooSmallPapersWarning,
 } from '../src/react/view/print-paper.js';
 import { cellGroups, cellLabelSize, layoutSummary, paperName, plural, sizeName } from '../src/react/view/summary.js';
+
+describe('parseSignedLength', () => {
+  it('reads an offset either way', () => {
+    expect(parseSignedLength('2', 'mm')).toBe(mm(2));
+    expect(parseSignedLength(' -2.5 ', 'mm')).toBe(-mm(2.5));
+    expect(parseSignedLength('-1 in', 'mm')).toBe(-2540);
+    expect(parseSignedLength('--2', 'mm')).toBeNull();
+  });
+});
 
 describe('parseLength', () => {
   it('reads a bare number in the field’s own unit', () => {

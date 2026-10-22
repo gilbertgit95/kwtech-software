@@ -30,6 +30,14 @@ export function parseLength(text: string, unit: StudioUnit): number | null {
   return asInches ? inches(value) : mm(value);
 }
 
+/** A length that may be negative ("-2"), as `parseLength` reads the rest: an offset, not a size. */
+export function parseSignedLength(text: string, unit: StudioUnit): number | null {
+  const negative = /^\s*-/u.test(text);
+  const length = parseLength(negative ? text.replace('-', '') : text, unit);
+  if (length === null) return null;
+  return negative ? -length : length;
+}
+
 /** A length as the text of an input: the number only, without trailing zeros. */
 export function lengthText(units: number, unit: StudioUnit): string {
   const value = unit === 'mm' ? toMm(units) : toInches(units);

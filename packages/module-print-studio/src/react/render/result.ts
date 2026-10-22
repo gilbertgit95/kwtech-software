@@ -5,7 +5,7 @@ import type { StudioPageFill } from '../../domain/fill.js';
 import { type StudioLayoutSpec, type StudioSize, sheetSize } from '../../domain/layout.js';
 import { STUDIO_RENDER_DPI, toMm, toPoints } from '../../domain/units.js';
 import type { StudioFrames, StudioPhotoEdit } from '../view/work.js';
-import { canvasToJpeg, drawSheet, scratchCanvas, sheetPixels } from './draw-sheet.js';
+import { canvasToJpeg, drawSheet, type StudioSheetBackground, scratchCanvas, sheetPixels } from './draw-sheet.js';
 import type { StudioPhoto } from './photos.js';
 
 /**
@@ -35,6 +35,8 @@ export interface LayoutResultInput {
   edits: ReadonlyMap<string, StudioPhotoEdit>;
   calibration: StudioCalibration;
   copies: number;
+  /** A picture behind every sheet, for this print. */
+  background?: StudioSheetBackground | null | undefined;
   /** Called as each sheet is drawn, so a long job can say where it is. */
   onProgress?: (done: number, total: number) => void;
 }
