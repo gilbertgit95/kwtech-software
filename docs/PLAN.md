@@ -604,6 +604,39 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-22** — **A print studio layout carries text: placed, styled and dragged in the editor, printed as it is on the Print screen.**
+
+  Issue #12. The operator wanted words on a layout (a shop name, a date, "cut
+  here", a name under a photo) set once and never retyped per print.
+  - **Stored in the spec, `spec.texts`**, absent for none, so no migration and
+    every saved layout reads as it did. A text has words (lines), a position
+    from the printable area's top left like a cell, a size in units (shown in
+    points), one of eight system fonts, a weight (light to bold), italic,
+    underline, strikethrough and any `#rrggbb` colour.
+  - **One renderer.** `drawSheet` draws the texts over the photos and the
+    border, so the Print preview and the PDF agree. Underline and strike are
+    rectangles the studio draws (`textDecorations`), not CSS, so the editor's SVG
+    and the paper put them in the same place.
+  - **Static when printing.** The Print screen only draws them. The one-time
+    layout and Adjust are the same editor, with the same text tools, and change
+    nothing saved.
+  - **On another paper** a percent layout's text keeps its share of the page and
+    a fixed one keeps its place; either way it is pulled back inside the
+    printable area, and its font size never scales.
+  - **A background picture, for one print** (the same day): chosen on the Print
+    screen, never saved with a layout and never uploaded — it is a photo like the
+    others, held in the tab. Opacity, size at its own shape, Fill / Fit /
+    Centre, and a move mode over the sheet (the photos held still until Done,
+    so a press is never both). Drawn first, cut at the printable area. On every
+    page; not one per page, which nobody asked for.
+  - **Copies go beside**: a cell's copy at its top right corner, a text's at its
+    bottom left, each plus an offset the editor holds for the session.
+  - **Not done:** the domain checks where a text STARTS, not its width — width
+    is the browser's font. The editor keeps the whole text inside by measuring
+    it, and the renderer cuts what runs into the margin. No text fields filled
+    in per print, no rotation or alignment. "As many as needed" is bounded at
+    1,000 only because the spec is JSON a client sends.
+
 - **2026-10-21** — **Stock is its own module, `module-basic-inventory`: goods and materials, a materials list per POS item and per variant, and sales take stock after the POS's commit.**
 
   Issue #10 first planned stock inside the POS (POS-PLAN §8, 2026-10-20). The
