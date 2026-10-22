@@ -90,3 +90,41 @@ export function rulerReading(units: number, unit: StudioRulerUnit): string {
   // `+ 0` turns a −0 (a hair left of the edge, rounded) into 0.
   return (Number(value.toFixed(digits)) + 0).toFixed(digits);
 }
+
+/** One mark on the document editor's ruler, in the editor's screen pixels. */
+export interface StudioEditorRulerMark {
+  /** Pixels from the page's edge. */
+  at: number;
+  /** How long the mark is, in pixels. */
+  size: number;
+  label?: string;
+}
+
+/** How long each level of mark is drawn on the editor's ruler, in pixels: the library's own three lengths. */
+const EDITOR_MARK_PX = { major: 10, mid: 7, minor: 4 } as const;
+
+/** A number closer than this to either end of the editor's ruler would be cut off, so it is left out. */
+const EDITOR_LABEL_EDGE_PX = 8;
+
+/**
+ * The marks along the document editor's ruler, which is `lengthPx` screen
+ * pixels long at `pixelsPerUnit`: the same ticks as the preview's rulers
+ * (`rulerTicks`), placed in pixels.
+ *
+ * No number at 0 or hard against an end, as the editor's own ruler has none:
+ * half of it would be off the ruler.
+ */
+export function editorRulerMarks(
+  lengthPx: number,
+  unit: StudioRulerUnit,
+  pixelsPerUnit: number,
+): StudioEditorRulerMark[] {
+  if (!(lengthPx > 0) || !(pixelsPerUnit > 0)) return [];
+  return rulerTicks(lengthPx / pixelsPerUnit, unit, pixelsPerUnit).map((tick) => {
+    const at = tick.at * pixelsPerUnit;
+    const mark: StudioEditorRulerMark = { at, size: EDITOR_MARK_PX[tick.level] };
+    const room = at >= EDITOR_LABEL_EDGE_PX && at <= lengthPx - EDITOR_LABEL_EDGE_PX;
+    if (tick.label !== undefined && room) mark.label = tick.label;
+    return mark;
+  });
+}

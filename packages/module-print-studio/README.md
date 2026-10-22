@@ -218,9 +218,14 @@ margins and the page breaks on screen are the print's.
   sizes grows or shrinks each piece from its own size instead,
   bold, italic, underline, strikethrough, text and highlight colour, clear
   formatting, alignment, line spacing, bulleted and numbered lists, a picture,
-  a 3 × 3 table, a page break, zoom, and the **rulers** (on by default; in cm,
-  along the page's top and left edge, with a marker at each margin to drag —
-  a dragged margin is read back into the margin boxes when the press ends). Tab moves to the next tab stop. A
+  a 3 × 3 table, a page break, zoom, and the **rulers** (a menu: off, mm, cm
+  or inches; on by default, in cm; along the page's top and left edge, with a
+  marker at each margin to drag — a dragged margin is read back into the
+  margin boxes when the press ends). ⚠ The library's ruler counts in
+  centimetres only, so its two canvases are painted over in the chosen unit
+  after each of its draws (`document-rulers.ts`, marks from
+  `editorRulerMarks`); the markers and their dragging stay the library's.
+  The choice lasts while the editor is open and is not saved in the document. Tab moves to the next tab stop. A
   picture is resized by its handles and floated from the right-click menu
   (the library's, in English).
 - ⚠ **The toolbar shows the style at the cursor, never the library's

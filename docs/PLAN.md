@@ -794,6 +794,33 @@ Decisions 1, 2, 3 and 5 gate the next step.
     fits in it. The task module's `Select` stays in the task module: the books
     filters use `web-ui`'s `MultiSelect`, so it has no second user yet.
 
+- **2026-10-11** — **The document editor's rulers count in millimetres, centimetres or inches, by painting over the library's own.**
+
+  The operator asked whether the ruler's unit could be changed, with several
+  to choose from. `@hufe921/canvas-editor`'s ruler has no such option: it
+  marks millimetres and numbers centimetres, and `IRulerOption` is only
+  `disabled` and `height`.
+
+  - **The library's two ruler canvases are painted over, whole, after each of
+    its draws** (`document-rulers.ts`). It sets each canvas's `width` on every
+    draw, which a `MutationObserver` sees before the browser paints, so its
+    centimetres never show. The marks are the preview rulers' own
+    (`rulerTicks`, through `editorRulerMarks`), so a unit reads the same on
+    both.
+  - **The margin markers and their dragging stay the library's.** They read
+    only where the pointer is, never what was drawn, and are painted back
+    where it had them.
+  - **One menu in the toolbar** (off, mm, cm, inches — the preview's
+    `RulerMenu`) in place of the on/off button. It starts in centimetres, as
+    before, lasts while the editor is open, and is not saved in the document.
+  - **Not done: a ruler of our own with the library's off.** It would mean
+    writing the margin dragging and its clamping again to change some
+    numbers. **The cost:** this leans on the library's class names
+    (`ce-ruler-x`, `ce-ruler-y`) and on its drawing by setting `width`; the
+    version is pinned (1.0.4), and an upgrade must look at the rulers again.
+  - **Not done: sharing the preview's ruler choice.** That one starts off, and
+    a new document would open without the rulers its margins are dragged on.
+
 - **2026-10-11** — **A document can be written in the print studio, on the PDF side, with `@hufe921/canvas-editor`, and printed as a PDF is.**
 
   The operator asked for "document design, like Word": a paper size, fonts and
