@@ -144,6 +144,48 @@ pnpm lint             # biome — one tool, no eslint, no prettier
 pnpm check:fix        # lint + format, writing fixes
 ```
 
+**In the background, under pm2.** `ecosystem.config.cjs` runs the API (:8080)
+and the web app (:8081) from their built output as pm2 services, which keep
+running after the terminal closes and come back if they crash. `pnpm pm2:start`
+only starts what is already built. It does not build, start the database or
+check the env profile, so do those first:
+
+```bash
+pnpm build            # once, and again after every change: nothing is watched
+pnpm db:up            # if the database is the local Docker container
+pnpm pm2:start        # start both, or reload them if they are already running
+pnpm pm2:save         # remember what is running now; this is what comes back at boot
+pnpm pm2:status       # are they online, and how often have they restarted
+pnpm pm2:logs         # follow both logs (~/.pm2/logs/)
+pnpm pm2:stop         # stop both and remove them from pm2
+```
+
+Each app reads its own `.env.local`, so the active profile (`pnpm env:show`)
+decides what they connect to. Stop the pm2 services before `pnpm dev`, because
+both use the same ports.
+
+**Starting at boot** takes three things, each done once:
+
+1. `pnpm exec pm2 startup` prints a `sudo env PATH=… pm2 startup systemd …`
+   command. Run it to install a systemd service that starts pm2 at boot. It
+   needs `systemd=true` in `/etc/wsl.conf`.
+2. `pnpm pm2:start`, then `pnpm pm2:save`. At boot pm2 restores the last
+   saved list, so a `pnpm pm2:stop` followed by a save leaves it empty. Boot
+   runs the last build, never a new one.
+3. **On WSL only**, Linux boots when something first opens WSL, not when
+   Windows starts, and it shuts down when it has been idle for a while.
+   Start it at logon with a hidden script in the Windows Startup folder
+   (`shell:startup`, which needs no admin, unlike an `ONLOGON` scheduled task),
+   `start-wsl-ubuntu.vbs`:
+   `CreateObject("WScript.Shell").Run "wsl.exe -d Ubuntu --exec /bin/true", 0, False`.
+   Keep it running with `vmIdleTimeout=-1` under `[wsl2]` in
+   `%USERPROFILE%\.wslconfig`.
+
+The Postgres container comes back at boot by itself: `scripts/dev-db.mjs`
+creates it with `--restart unless-stopped`, and Docker is a systemd service.
+The systemd service starts pm2 from this checkout's `node_modules`, so after
+the repository moves, or after pm2 is upgraded, run step 1 again.
+
 Database (all scoped to `apps/web-server`, which owns the schema — PLAN §12.2):
 
 ```bash

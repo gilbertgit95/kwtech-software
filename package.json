@@ -12,6 +12,11 @@
     "build": "turbo run build",
     "start": "turbo run start --filter=!@kwtech/print-agent",
     "start:print-agent": "turbo run start --filter=@kwtech/print-agent",
+    "pm2:start": "pm2 startOrReload ecosystem.config.cjs --update-env",
+    "pm2:stop": "pm2 delete ecosystem.config.cjs",
+    "pm2:save": "pm2 save",
+    "pm2:status": "pm2 status",
+    "pm2:logs": "pm2 logs",
     "dev": "node scripts/env.mjs ensure && node scripts/dev-ports.mjs && node scripts/dev-db.mjs && GOGC=50 turbo run dev --concurrency=24 --filter=!@kwtech/print-agent",
     "dev:api": "node scripts/env.mjs ensure && node scripts/dev-ports.mjs --ports=8080 && node scripts/dev-db.mjs && GOGC=50 turbo run dev --concurrency=24 --filter=@kwtech/web-server...",
     "dev:web": "node scripts/env.mjs ensure && node scripts/dev-ports.mjs --ports=8081 && GOGC=50 turbo run dev --concurrency=24 --filter=@kwtech/web-app...",
@@ -49,6 +54,7 @@
     "@commitlint/cli": "21.2.1",
     "@commitlint/config-conventional": "21.2.0",
     "lefthook": "2.1.10",
+    "pm2": "7.0.4",
     "turbo": "2.10.8",
     "typescript": "catalog:"
   }
