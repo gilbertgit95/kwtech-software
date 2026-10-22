@@ -10,6 +10,7 @@
 
 export * from './domain/access.js';
 export * from './domain/adjust.js';
+export * from './domain/background.js';
 export * from './domain/border.js';
 export * from './domain/calibration.js';
 export * from './domain/custom-document.js';
@@ -24,6 +25,7 @@ export * from './domain/presets.js';
 export * from './domain/sizes.js';
 export * from './domain/slot-fit.js';
 export * from './domain/tags.js';
+export * from './domain/texts.js';
 export * from './domain/units.js';
 export * from './feature-keys.js';
 export * from './operations.js';

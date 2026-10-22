@@ -110,29 +110,35 @@ export interface StudioClient {
   recordPrint(scope: StudioScopeView, entry: StudioLogEntry): Promise<void>;
 }
 
-/** A spec as the schema's input takes it: a cell's absent label, and an absent border or sizing, are sent as null. */
+/**
+ * A spec as the schema's input takes it: a cell's absent label, and an absent border or sizing, are sent as null;
+ * absent texts as none.
+ */
 function specInput(spec: StudioLayoutSpec) {
   return {
     ...spec,
     cells: spec.cells.map((cell) => ({ ...cell, label: cell.label ?? null })),
     border: spec.border ?? null,
     sizing: spec.sizing ?? null,
+    texts: spec.texts ?? [],
   };
 }
 
-/** A spec as the domain holds it: the API's null label, border or sizing is an absent one. */
+/** A spec as the domain holds it: the API's null label, border or sizing is an absent one, and so is no text. */
 function specFromApi(
-  spec: Omit<StudioLayoutSpec, 'border' | 'sizing'> & {
+  spec: Omit<StudioLayoutSpec, 'border' | 'sizing' | 'texts'> & {
     border?: StudioLayoutSpec['border'] | null;
     sizing?: StudioLayoutSpec['sizing'] | null;
+    texts?: StudioLayoutSpec['texts'] | null;
   },
 ): StudioLayoutSpec {
-  const { border, sizing, ...rest } = spec;
+  const { border, sizing, texts, ...rest } = spec;
   return {
     ...rest,
     cells: spec.cells.map(({ label, ...cell }) => (label ? { ...cell, label } : cell)),
     ...(border ? { border } : {}),
     ...(sizing ? { sizing } : {}),
+    ...(texts && texts.length > 0 ? { texts } : {}),
   };
 }
 

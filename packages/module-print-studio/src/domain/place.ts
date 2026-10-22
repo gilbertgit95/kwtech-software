@@ -1,6 +1,7 @@
 import type { StudioRefusal } from '../types.js';
 import {
   checkCells,
+  fitsInside,
   rectsOverlap,
   STUDIO_CELLS_MAX,
   type StudioCell,
@@ -250,11 +251,43 @@ export function addAt(
   return addBlock(area, cells, size, { rows: 1, columns: 1, point, ...(label ? { label } : {}) });
 }
 
-/** A copy of one cell — same size, same label — in the first free place. */
-export function duplicateCell(area: StudioSize, cells: readonly StudioCell[], index: number): StudioPlacement {
+/** Where a copy goes from the copied cell's TOP RIGHT corner, in units: right (`x`) and down (`y`), either signed. */
+export interface StudioCopyOffset {
+  x: number;
+  y: number;
+}
+
+/** The copy's default place: touching the copied cell's right edge, on the same top. */
+export const STUDIO_COPY_BESIDE: StudioCopyOffset = { x: 0, y: 0 };
+
+/**
+ * A copy of one cell — same size, same label — BESIDE it (the operator,
+ * 2026-10-22): its top left at the copied cell's top right corner plus
+ * `offset`, so by default it touches the cell's right edge on the same top,
+ * and pressing Copy again on the copy builds a row. The person drags it from
+ * there.
+ *
+ * Where that place is off the area or on another cell, the copy goes to the
+ * first free place instead, as every copy once did, and `beside` says which
+ * happened so the editor can say so.
+ */
+export function duplicateCell(
+  area: StudioSize,
+  cells: readonly StudioCell[],
+  index: number,
+  offset: StudioCopyOffset = STUDIO_COPY_BESIDE,
+): StudioPlacement & { beside: boolean } {
   const cell = cells[index];
-  if (!cell) return { cells: [...cells], placed: 0, left: 1 };
-  return addOfSize(area, cells, cell, 1, { allowRotate: false, ...(cell.label ? { label: cell.label } : {}) });
+  if (!cell) return { cells: [...cells], placed: 0, left: 1, beside: false };
+  const copy: StudioCell = { ...cell, x: cell.x + cell.width + offset.x, y: cell.y + offset.y };
+  const fits =
+    cells.length < STUDIO_CELLS_MAX && fitsInside(copy, area) && !cells.some((other) => rectsOverlap(copy, other));
+  if (fits) return { cells: [...cells, copy], placed: 1, left: 0, beside: true };
+  const elsewhere = addOfSize(area, cells, cell, 1, {
+    allowRotate: false,
+    ...(cell.label ? { label: cell.label } : {}),
+  });
+  return { ...elsewhere, beside: false };
 }
 
 /**

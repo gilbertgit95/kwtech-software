@@ -145,3 +145,55 @@ export function usedPhotoIds(pages: readonly StudioPageFill[]): string[] {
   }
   return [...seen];
 }
+
+/** A batch put in from a cell onwards: the pages as they now are, where the first photo landed, and what did not fit. */
+export interface StudioFillFromPlan extends StudioFillPlan {
+  /** The page the first photo went on, to show it; null when none was placed. */
+  firstPage: number | null;
+  placed: number;
+}
+
+/**
+ * Photos put into the empty cells FROM A CELL ONWARDS (the operator,
+ * 2026-10-22: a batch goes where it is dropped), one per cell in reading order
+ * — top row first, left to right — on through the pages after it, adding
+ * pages when they run out.
+ *
+ * `from` is a cell by its index in the spec, on a page; the cells before it in
+ * reading order, and the pages before, are left as they are. ⚠ IT NEVER TAKES
+ * A FILLED CELL: one in the way is stepped over, and a drop on a filled cell
+ * starts at the next empty one — a drop must never throw a placed photo away.
+ * Past `STUDIO_PAGES_MAX` pages the rest are `dropped`.
+ */
+export function fillFromCell(
+  cells: readonly StudioRect[],
+  pages: readonly StudioPageFill[],
+  photoIds: readonly string[],
+  from: { page: number; cell: number },
+): StudioFillFromPlan {
+  const next = pages.map((page) => [...page]);
+  if (cells.length === 0 || photoIds.length === 0) {
+    return { pages: next, dropped: photoIds.length, firstPage: null, placed: 0 };
+  }
+  const order = readingOrder(cells);
+  const slots = cells.length;
+  const slot = Math.max(order.indexOf(from.cell), 0);
+
+  let firstPage: number | null = null;
+  let placed = 0;
+  let position = Math.max(from.page, 0) * slots + slot;
+  while (placed < photoIds.length) {
+    const page = Math.floor(position / slots);
+    const cellIndex = order[position % slots];
+    if (page >= STUDIO_PAGES_MAX || cellIndex === undefined) break;
+    while (next.length <= page) next.push(cells.map(() => null));
+    const row = next[page];
+    if (!row) break;
+    position += 1;
+    if (row[cellIndex]) continue;
+    row[cellIndex] = photoIds[placed] ?? null;
+    firstPage ??= page;
+    placed += 1;
+  }
+  return { pages: next, dropped: photoIds.length - placed, firstPage, placed };
+}

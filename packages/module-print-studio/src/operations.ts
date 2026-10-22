@@ -19,6 +19,7 @@ const SPEC = `spec {
       guides
       border { style width color }
       sizing
+      texts { id text x y size font weight italic underline strike color }
     }`;
 const LAYOUT = `id name visibility tag version mine ownerId ownerName updatedAt createdAt ${SPEC}`;
 const CALIBRATION = 'id name scaleX scaleY offsetX offsetY updatedAt';

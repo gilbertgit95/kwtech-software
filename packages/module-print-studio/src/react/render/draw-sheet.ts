@@ -1,14 +1,23 @@
 'use client';
 
 import { adjustPixels, isNeutralLighting } from '../../domain/adjust.js';
+import type { StudioBackground } from '../../domain/background.js';
 import { borderSegments } from '../../domain/border.js';
 import { applyCalibration, type StudioCalibration } from '../../domain/calibration.js';
 import type { StudioPageFill } from '../../domain/fill.js';
-import { borderOf, cellOnSheet, type StudioLayoutSpec, type StudioRect, sheetSize } from '../../domain/layout.js';
+import {
+  borderOf,
+  cellOnSheet,
+  printableArea,
+  type StudioLayoutSpec,
+  type StudioRect,
+  sheetSize,
+} from '../../domain/layout.js';
 import { clampCrop, freeRect, type StudioFrame, type StudioSourceRect, sourceRect } from '../../domain/slot-fit.js';
 import { toPixels } from '../../domain/units.js';
 import { frameOf, NO_PHOTO_EDIT, type StudioFrames, type StudioPhotoEdit } from '../view/work.js';
 import type { StudioPhoto } from './photos.js';
+import { drawTexts } from './texts.js';
 
 /**
  * One sheet, drawn to a canvas.
@@ -34,6 +43,14 @@ export interface DrawSheetInput {
   dpi: number;
   /** Draw from each photo's small preview copy. True on screen, false for the result. */
   usePreview: boolean;
+  /** A picture behind everything, for this print. Absent or null: plain paper. */
+  background?: StudioSheetBackground | null | undefined;
+}
+
+/** A background picture and where it goes: the picture decoded like a photo, and its place and strength. */
+export interface StudioSheetBackground {
+  photo: StudioPhoto;
+  placement: StudioBackground;
 }
 
 type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -62,6 +79,8 @@ export function drawSheet(context: Canvas2D, input: DrawSheetInput): void {
   context.fillRect(0, 0, size.width, size.height);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
+
+  if (input.background) drawBackground(context, input, input.background);
 
   const rects = spec.cells.map((cell) =>
     pixelRect(applyCalibration(cellOnSheet(spec, cell), sheet, input.calibration), dpi),
@@ -100,6 +119,31 @@ export function drawSheet(context: Canvas2D, input: DrawSheetInput): void {
     context.stroke();
     context.setLineDash([]);
   }
+  // Last, over the photos and the border: a caption laid over a photo must be read, not covered.
+  drawTexts(context, spec, dpi, input.calibration);
+  context.restore();
+}
+
+/**
+ * The background picture, first, so the photos, the border and the texts are
+ * drawn over it. Moved by the calibration profile like a cell, so it keeps its
+ * place among them. ⚠ CUT AT THE PRINTABLE AREA: what lies in the margin
+ * would not print, and the screen must not show what the paper will not.
+ */
+function drawBackground(context: Canvas2D, input: DrawSheetInput, background: StudioSheetBackground): void {
+  const { spec, dpi } = input;
+  const { photo, placement } = background;
+  if (placement.opacity <= 0) return;
+  const area = pixelRect(printableArea(spec), dpi);
+  const rect = pixelRect(applyCalibration(placement.rect, sheetSize(spec), input.calibration), dpi);
+  if (rect.width < 1 || rect.height < 1 || area.width < 1 || area.height < 1) return;
+  const bitmap = input.usePreview ? photo.preview : photo.bitmap;
+  context.save();
+  context.beginPath();
+  context.rect(area.x, area.y, area.width, area.height);
+  context.clip();
+  context.globalAlpha = placement.opacity / 100;
+  context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
   context.restore();
 }
 

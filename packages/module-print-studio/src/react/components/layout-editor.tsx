@@ -1,7 +1,22 @@
 'use client';
 
 import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
-import { ChevronDown, Copy, Grid2x2, GripVertical, LayoutGrid, Minus, Plus, RotateCw, Trash2 } from 'lucide-react';
+import {
+  Bold,
+  ChevronDown,
+  Copy,
+  Grid2x2,
+  GripVertical,
+  Italic,
+  LayoutGrid,
+  Minus,
+  Plus,
+  RotateCw,
+  Strikethrough,
+  Trash2,
+  Type,
+  Underline,
+} from 'lucide-react';
 import { type DragEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   borderOf,
@@ -19,6 +34,7 @@ import {
   type StudioSize,
   type StudioSizing,
   sizingOf,
+  textsOf,
 } from '../../domain/layout.js';
 import { findStudioPaper, STUDIO_PAPER_MAX, STUDIO_PAPER_MIN, STUDIO_PAPERS } from '../../domain/papers.js';
 import {
@@ -29,18 +45,47 @@ import {
   removeCell,
   resizeCell,
   rotateCell,
+  STUDIO_COPY_BESIDE,
+  type StudioCopyOffset,
   snapPosition,
   splitIntoGrid,
 } from '../../domain/place.js';
 import { STUDIO_CELL_MIN, STUDIO_ID_SIZES, type StudioCellSize } from '../../domain/sizes.js';
 import { prepareLayoutTag } from '../../domain/tags.js';
+import {
+  checkTexts,
+  newText,
+  placeText,
+  STUDIO_FONT_WEIGHTS,
+  STUDIO_TEXT_CHARS_MAX,
+  STUDIO_TEXT_FONTS,
+  STUDIO_TEXT_SIZE_MAX,
+  STUDIO_TEXT_SIZE_MIN,
+  STUDIO_TEXT_SWATCHES,
+  STUDIO_TEXTS_MAX,
+  type StudioFontKey,
+  type StudioFontWeight,
+  type StudioText,
+  textCopyPosition,
+  textPoints,
+  textUnits,
+} from '../../domain/texts.js';
 import { formatSize, mm } from '../../domain/units.js';
 import type { StudioRefusal } from '../../types.js';
+import { measureText } from '../render/texts.js';
 import type { StudioAppState } from '../studio-state.js';
 import { useStudioAction } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { editorKeyAction, editorShortcutBar } from '../view/keys.js';
-import { lengthText, parseLength, parsePercent, percentText, STUDIO_UNITS, type StudioUnit } from '../view/lengths.js';
+import {
+  lengthText,
+  parseLength,
+  parsePercent,
+  parseSignedLength,
+  percentText,
+  STUDIO_UNITS,
+  type StudioUnit,
+} from '../view/lengths.js';
 import { cellGroups, paperName, plural, sizeName } from '../view/summary.js';
 import { stepViewZoom } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
@@ -93,12 +138,15 @@ const PROBLEMS: Partial<Record<StudioRefusal, string>> = {
   cell_overlap: 'Two cells overlap.',
   cell_too_small: 'A cell is too small to hold a photo.',
   too_many_cells: 'There are too many cells.',
+  too_many_texts: `A layout can hold at most ${STUDIO_TEXTS_MAX} texts.`,
+  text_empty: 'A text is empty — type something in it, or remove it.',
+  text_outside: 'A text starts outside the printable area — drag it back in.',
 };
 
 /** What a size is carried as while it is dragged from the palette onto the sheet. */
 const SIZE_DRAG_TYPE = 'application/x-kwtech-studio-size';
 
-/** How far one step of an arrow key moves the selected cell: 1 mm. With Shift the key asks for five steps. */
+/** How far one step of an arrow key moves the selected cell or text: 1 mm. With Shift the key asks for five steps. */
 const NUDGE = mm(1);
 
 /**
@@ -118,6 +166,9 @@ const NUDGE = mm(1);
  *           resize it; arrow keys nudge, Delete removes.
  *   PAGE    the paper and its margins, folded into one line until wanted —
  *           most layouts never change them.
+ *   TEXT    words printed on the sheet (the operator, 2026-10-22, issue #12):
+ *           added from the palette, dragged anywhere in the printable area,
+ *           styled in a column beside the sheet. Fixed once the layout is used.
  *
  * Every tool is still a pure function from `place.ts`, and every change is
  * checked by the same `checkCells` the server runs — so what this editor lets
@@ -144,17 +195,39 @@ export function LayoutEditor({
   const [spec, setSpec] = useState(target.spec);
   const [unit, setUnit] = useState<StudioUnit>('mm');
   const [selected, setSelected] = useState<number | null>(null);
+  /** The selected text's id. ⚠ A cell and a text are never selected at once: one set clears the other (`pick*`). */
+  const [selectedText, setSelectedText] = useState<string | null>(null);
   /** What the last action did, said plainly: "Added a 2 × 2." */
   const [note, setNote] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
+  /**
+   * Where a copied cell goes from the copied one's top right corner. Beside it
+   * by default; held for this editor only, as a way of working rather than a
+   * part of the layout.
+   */
+  const [copyOffset, setCopyOffset] = useState<StudioCopyOffset>(STUDIO_COPY_BESIDE);
+  /** The same for a copied text, from the copied one's BOTTOM LEFT corner (`textCopyPosition`). */
+  const [textCopyOffset, setTextCopyOffset] = useState<StudioCopyOffset>({ x: 0, y: 0 });
   /** How closely the sheet is being looked at. 1 fits the panel. */
   const [viewZoom, setViewZoom] = useState(1);
   const save = useStudioAction('Could not save the layout.');
 
   const area = useMemo(() => printableArea(spec), [spec]);
-  const problem = checkPrintableArea(spec) ?? checkCells(spec.cells, area);
+  const texts = textsOf(spec);
+  const problem = checkPrintableArea(spec) ?? checkCells(spec.cells, area) ?? checkTexts(texts, area);
   const groups = cellGroups(spec.cells, unit);
   const selectedCell = selected === null ? undefined : spec.cells[selected];
+  const chosenText = selectedText === null ? undefined : texts.find((text) => text.id === selectedText);
+
+  function pickCell(index: number | null) {
+    setSelected(index);
+    setSelectedText(null);
+  }
+
+  function pickText(id: string | null) {
+    setSelectedText(id);
+    setSelected(null);
+  }
 
   function change(patch: Partial<StudioLayoutSpec>) {
     setSpec((current) => ({ ...current, ...patch }));
@@ -191,7 +264,7 @@ export function LayoutEditor({
     const what = placed.placed === 1 ? label : `${placed.placed} of ${label}`;
     setCells(placed.cells, `Added ${what}.${left} Drag a cell to move it.`);
     // One cell is selected, ready to be moved; a block is left unselected.
-    setSelected(placed.placed === 1 ? placed.cells.length - 1 : null);
+    pickCell(placed.placed === 1 ? placed.cells.length - 1 : null);
   }
 
   function fillWith(size: StudioSize, label: string, gap: number) {
@@ -204,14 +277,14 @@ export function LayoutEditor({
    * both come through here. Answers whether it did anything.
    */
   function performKey(key: string): boolean {
-    const action = editorKeyAction(key, selectedCell !== undefined, state.keymap);
+    const action = editorKeyAction(key, selectedCell !== undefined || chosenText !== undefined, state.keymap);
     if (!action) return false;
     switch (action.kind) {
       case 'view':
         setViewZoom(viewAfter(viewZoom, action.zoom));
         return true;
       case 'deselect':
-        setSelected(null);
+        pickCell(null);
         return true;
       case 'move':
       case 'remove':
@@ -219,6 +292,7 @@ export function LayoutEditor({
       case 'turn':
         break;
     }
+    if (chosenText) return performTextKey(chosenText.id, action);
     if (selected === null || !selectedCell) return false;
     switch (action.kind) {
       case 'move': {
@@ -252,6 +326,102 @@ export function LayoutEditor({
     return true;
   }
 
+  /** A key while a text is selected: the same keys as for a cell, but a text is not turned. */
+  function performTextKey(
+    id: string,
+    action: { kind: 'move'; dx: number; dy: number } | { kind: 'remove' | 'copy' | 'turn' },
+  ) {
+    switch (action.kind) {
+      case 'move':
+        // From the texts as they are when this runs, for the same reason as a held arrow on a cell.
+        setSpec((current) => {
+          const currentArea = printableArea(current);
+          return withTexts(current, (text) =>
+            text.id === id
+              ? {
+                  ...text,
+                  ...placeText(currentArea, measureText(text), {
+                    x: text.x + action.dx * NUDGE,
+                    y: text.y + action.dy * NUDGE,
+                  }),
+                }
+              : text,
+          );
+        });
+        return true;
+      case 'remove':
+        removeText(id);
+        return true;
+      case 'copy':
+        copyText(id);
+        return true;
+      case 'turn':
+        return false;
+    }
+  }
+
+  /** Change the texts and say what happened. An empty list is stored as none. */
+  function setTexts(next: StudioText[], message: string | null = null) {
+    setSpec((current) => withTextList(current, next));
+    setNote(message);
+  }
+
+  function addText() {
+    if (texts.length >= STUDIO_TEXTS_MAX) return setNote(`A layout can hold at most ${STUDIO_TEXTS_MAX} texts.`);
+    const fresh = newText(crypto.randomUUID());
+    const box = measureText(fresh);
+    // In the middle of the printable area, where it is seen at once; dragged from there.
+    const at = placeText(area, box, { x: (area.width - box.width) / 2, y: (area.height - box.height) / 2 });
+    setTexts(
+      [...texts, { ...fresh, ...at }],
+      'Added a text. Type in the box beside the sheet, and drag it where it goes.',
+    );
+    pickText(fresh.id);
+  }
+
+  /**
+   * A change to one text from its panel. ⚠ Kept inside the printable area
+   * AFTER the change: a larger size or a longer line pushes it back in rather
+   * than over the margin.
+   */
+  function changeText(id: string, patch: Partial<Omit<StudioText, 'id'>>) {
+    setTexts(
+      texts.map((text) => {
+        if (text.id !== id) return text;
+        const next = { ...text, ...patch };
+        return { ...next, ...placeText(area, measureText(next), next) };
+      }),
+    );
+  }
+
+  function moveText(id: string, to: { x: number; y: number }) {
+    setTexts(texts.map((text) => (text.id === id ? { ...text, ...placeText(area, measureText(text), to) } : text)));
+  }
+
+  function removeText(id: string) {
+    setTexts(
+      texts.filter((text) => text.id !== id),
+      'Removed the text.',
+    );
+    pickText(null);
+  }
+
+  function copyText(id: string) {
+    const from = texts.find((text) => text.id === id);
+    if (!from) return;
+    if (texts.length >= STUDIO_TEXTS_MAX) return setNote(`A layout can hold at most ${STUDIO_TEXTS_MAX} texts.`);
+    const copy = { ...from, id: crypto.randomUUID() };
+    const wanted = textCopyPosition(from, textCopyOffset);
+    const at = placeText(area, measureText(copy), wanted);
+    setTexts(
+      [...texts, { ...copy, ...at }],
+      at.x === wanted.x && at.y === wanted.y
+        ? 'Made a copy under it. Drag it where you want it.'
+        : 'Made a copy, moved inside the printable area: there was no room under it. Drag it where you want it.',
+    );
+    pickText(copy.id);
+  }
+
   function removeSelected() {
     if (selected === null) return;
     setCells(removeCell(spec.cells, selected), 'Removed the cell.');
@@ -260,10 +430,15 @@ export function LayoutEditor({
 
   function copySelected() {
     if (selected === null) return;
-    const copy = duplicateCell(area, spec.cells, selected);
+    const copy = duplicateCell(area, spec.cells, selected, copyOffset);
     if (copy.placed === 0) return setNote('There is no room left for a copy.');
-    setCells(copy.cells, 'Made a copy. Drag it where you want it.');
-    setSelected(copy.cells.length - 1);
+    setCells(
+      copy.cells,
+      copy.beside
+        ? 'Made a copy beside it. Drag it where you want it.'
+        : 'There was no room beside it, so the copy went to the first free place. Drag it where you want it.',
+    );
+    pickCell(copy.cells.length - 1);
   }
 
   const root = useRef<HTMLDivElement>(null);
@@ -394,6 +569,7 @@ export function LayoutEditor({
               setSelected(null);
             }}
           />
+          <TextTools count={texts.length} onAdd={addText} />
           <PageSetup
             spec={spec}
             unit={unit}
@@ -426,6 +602,8 @@ export function LayoutEditor({
               onRotate={() => tryCells(rotateCell(area, spec.cells, selected))}
               onDuplicate={copySelected}
               onRemove={removeSelected}
+              copyOffset={copyOffset}
+              onCopyOffset={setCopyOffset}
             />
           ) : null}
           <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
@@ -436,7 +614,10 @@ export function LayoutEditor({
                 spec={spec}
                 label={`${name || 'New layout'}: ${plural(spec.cells.length, 'cell')}`}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={pickCell}
+                selectedText={selectedText}
+                onSelectText={pickText}
+                onMoveText={moveText}
                 onMove={(index, position) =>
                   tryCells(moveCell(area, spec.cells, index, snapPosition(area, spec.cells, index, position)), true)
                 }
@@ -450,7 +631,7 @@ export function LayoutEditor({
                 }}
               />
             </SheetFrame>
-            {spec.cells.length === 0 ? (
+            {spec.cells.length === 0 && texts.length === 0 ? (
               <div className="pointer-events-none absolute inset-x-0 top-1/3 flex justify-center px-6">
                 <p className="max-w-xs rounded-xl border border-dashed border-border bg-card/95 px-4 py-3 text-center text-sm text-muted-foreground shadow-sm">
                   <span className="block font-semibold text-foreground">This sheet is empty</span>
@@ -464,6 +645,7 @@ export function LayoutEditor({
               {groups.length === 0
                 ? paperName(spec, unit)
                 : `${paperName(spec, unit)} · ${groups.map((group) => `${group.count} of ${group.label}`).join(', ')}`}
+              {texts.length > 0 ? ` · ${plural(texts.length, 'text')}` : null}
             </p>
             {problem ? (
               <p role="alert" className="text-destructive">
@@ -471,15 +653,37 @@ export function LayoutEditor({
               </p>
             ) : (
               <p role="status" className="text-muted-foreground">
-                {note ?? 'Drag a cell to move it, or its corner to resize it.'}
+                {note ?? 'Drag a cell or a text to move it, or a cell’s corner to resize it.'}
               </p>
             )}
           </div>
           <ShortcutBar
-            entries={editorShortcutBar(selectedCell !== undefined, state.keymap)}
+            entries={editorShortcutBar(selectedCell !== undefined || chosenText !== undefined, state.keymap).filter(
+              // A text is not turned, so its bar does not offer it.
+              (entry) => !chosenText || entry.press !== state.keymap.turnCell,
+            )}
             onPress={(key) => void performKey(key)}
           />
         </div>
+
+        {/*
+         * ── the selected text, beside the sheet ──
+         * A column of its own, not a panel above the sheet (the operator, 2026-10-22): the sheet keeps its full
+         * height, and a portrait page is limited by height, not width.
+         */}
+        {chosenText ? (
+          <SelectedText
+            key={chosenText.id}
+            text={chosenText}
+            unit={unit}
+            onChange={(patch) => changeText(chosenText.id, patch)}
+            onMove={(position) => moveText(chosenText.id, position)}
+            onDuplicate={() => copyText(chosenText.id)}
+            onRemove={() => removeText(chosenText.id)}
+            copyOffset={textCopyOffset}
+            onCopyOffset={setTextCopyOffset}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -495,6 +699,17 @@ function viewAfter(zoom: number, change: 'in' | 'out' | 'fit'): number {
     case 'fit':
       return 1;
   }
+}
+
+/** A spec with this list of texts. ⚠ An empty list is NO `texts`, the same as a layout saved before there was text. */
+function withTextList(spec: StudioLayoutSpec, texts: StudioText[]): StudioLayoutSpec {
+  const { texts: _old, ...rest } = spec;
+  return texts.length > 0 ? { ...rest, texts } : rest;
+}
+
+/** A spec with each of its texts changed by `change`. */
+function withTexts(spec: StudioLayoutSpec, change: (text: StudioText) => StudioText): StudioLayoutSpec {
+  return withTextList(spec, textsOf(spec).map(change));
 }
 
 /** How many cells one press or one drop adds: rows × columns, with a gap between them. */
@@ -569,14 +784,22 @@ function Segmented<T extends string>({
   options,
   value,
   onChange,
+  stretch = false,
 }: {
   label: string;
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
+  /** Fill the width it is given, the choices sharing it — in a narrow column, where four would not fit at their own width. */
+  stretch?: boolean;
 }) {
   return (
-    <fieldset className="inline-flex shrink-0 rounded-lg border border-border bg-background p-0.5">
+    <fieldset
+      className={cn(
+        'inline-flex shrink-0 rounded-lg border border-border bg-background p-0.5',
+        stretch ? 'flex w-full' : null,
+      )}
+    >
       <legend className="sr-only">{label}</legend>
       {options.map((option) => (
         <button
@@ -584,7 +807,8 @@ function Segmented<T extends string>({
           type="button"
           aria-pressed={option.value === value}
           className={cn(
-            'h-8 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'h-8 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            stretch ? 'min-w-0 flex-1 px-1' : 'px-3',
             option.value === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
           )}
           onClick={() => onChange(option.value)}
@@ -606,9 +830,10 @@ function LengthField({
   value,
   unit,
   onCommit,
-  min = 0,
+  min,
   max = STUDIO_PAPER_MAX,
   of,
+  signed = false,
 }: {
   label: string;
   value: number;
@@ -621,8 +846,11 @@ function LengthField({
    * then shows and reads "50" for half of it. What is handed up is still units.
    */
   of?: number | undefined;
+  /** An offset rather than a size: a leading minus is read, and the lowest is `-max` unless `min` says otherwise. */
+  signed?: boolean;
 }) {
   const id = useId();
+  const lowest = min ?? (signed ? -max : 0);
   const shown = of === undefined ? lengthText(value, unit) : percentText(value, of);
   const [text, setText] = useState(shown);
   const [bad, setBad] = useState(false);
@@ -633,8 +861,9 @@ function LengthField({
   }, [shown]);
 
   function commit() {
-    const parsed = of === undefined ? parseLength(text, unit) : parsePercent(text, of);
-    if (parsed === null || parsed < min || parsed > max) {
+    const parsed =
+      of !== undefined ? parsePercent(text, of) : signed ? parseSignedLength(text, unit) : parseLength(text, unit);
+    if (parsed === null || parsed < lowest || parsed > max) {
       setBad(true);
       return;
     }
@@ -1091,6 +1320,8 @@ function SelectedCell({
   onRotate,
   onDuplicate,
   onRemove,
+  copyOffset,
+  onCopyOffset,
 }: {
   cell: StudioCell;
   unit: StudioUnit;
@@ -1101,6 +1332,9 @@ function SelectedCell({
   onRotate: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  /** Where Copy puts the copy, from this cell's top right corner. */
+  copyOffset: StudioCopyOffset;
+  onCopyOffset: (offset: StudioCopyOffset) => void;
 }) {
   return (
     // Above the sheet, where the eye already is: what is selected, its exact numbers, and what can be done to it.
@@ -1141,8 +1375,31 @@ function SelectedCell({
           onCommit={(y) => onMove({ x: cell.x, y })}
         />
       </div>
+      {/* Beside Copy, because it is where Copy puts the copy: from this cell's top right corner. */}
+      <fieldset className="grid w-44 grid-cols-2 gap-2" title="Where a copy goes, from this cell’s top right corner">
+        <legend className="sr-only">Where a copy goes, from this cell’s top right corner</legend>
+        <LengthField
+          label="Copy: right"
+          unit={unit}
+          signed
+          value={copyOffset.x}
+          onCommit={(x) => onCopyOffset({ ...copyOffset, x })}
+        />
+        <LengthField
+          label="Copy: down"
+          unit={unit}
+          signed
+          value={copyOffset.y}
+          onCommit={(y) => onCopyOffset({ ...copyOffset, y })}
+        />
+      </fieldset>
       <div className="ml-auto flex gap-1.5">
-        <button type="button" className={buttonClass('secondary', 'sm')} onClick={onDuplicate}>
+        <button
+          type="button"
+          className={buttonClass('secondary', 'sm')}
+          title="A copy beside this cell, at the offset on the left"
+          onClick={onDuplicate}
+        >
           <Copy aria-hidden="true" className="size-3.5" />
           Copy
         </button>
@@ -1156,6 +1413,333 @@ function SelectedCell({
         </button>
       </div>
     </section>
+  );
+}
+
+// ── text ─────────────────────────────────────────────────────────────────────
+
+/** Where texts are added: one button, and what a text is for. */
+function TextTools({ count, onAdd }: { count: number; onAdd: () => void }) {
+  return (
+    <Card title="Text">
+      <p className="text-xs text-muted-foreground">
+        Words printed on every sheet — a shop name, a date, “cut here”. Add as many as you need, and drag each anywhere
+        on the sheet. They cannot be changed when printing.
+      </p>
+      <button
+        type="button"
+        className={buttonClass('secondary', 'sm')}
+        disabled={count >= STUDIO_TEXTS_MAX}
+        onClick={onAdd}
+      >
+        <Type aria-hidden="true" className="size-3.5" />
+        Add text
+      </button>
+    </Card>
+  );
+}
+
+const WEIGHT_LABELS: Record<StudioFontWeight, string> = {
+  light: 'Light',
+  regular: 'Regular',
+  semibold: 'Semibold',
+  bold: 'Bold',
+};
+
+/**
+ * The selected text: its words, font, size, weight, style and colour, exactly
+ * where it is, and where a copy goes. A COLUMN BESIDE THE SHEET, top to bottom
+ * in the order a text is made, so the sheet keeps its height (the operator,
+ * 2026-10-22). Keyed by the text's id, so the fields start fresh for each text.
+ */
+function SelectedText({
+  text,
+  unit,
+  onChange,
+  onMove,
+  onDuplicate,
+  onRemove,
+  copyOffset,
+  onCopyOffset,
+}: {
+  text: StudioText;
+  unit: StudioUnit;
+  onChange: (patch: Partial<Omit<StudioText, 'id'>>) => void;
+  onMove: (position: { x: number; y: number }) => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+  /** Where Copy puts the copy, from this text's bottom left corner. */
+  copyOffset: StudioCopyOffset;
+  onCopyOffset: (offset: StudioCopyOffset) => void;
+}) {
+  const wordsId = useId();
+  const fontId = useId();
+  const group = 'flex flex-col gap-2 border-t border-border pt-3';
+  const heading = 'text-xs font-semibold';
+  return (
+    <aside
+      aria-label="Selected text"
+      className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto rounded-xl border border-primary/50 bg-accent/40 p-3"
+    >
+      <div className="flex flex-col gap-1">
+        <label htmlFor={wordsId} className="text-sm font-semibold">
+          Text
+        </label>
+        <textarea
+          id={wordsId}
+          rows={Math.min(Math.max(text.text.split('\n').length, 2), 6)}
+          maxLength={STUDIO_TEXT_CHARS_MAX}
+          className={cn(INPUT_CLASS, 'min-h-9 resize-y py-1.5')}
+          value={text.text}
+          // The text is the first thing anyone changes, so it is ready to type over.
+          onFocus={(event) => {
+            if (event.target.value === 'Text') event.target.select();
+          }}
+          onChange={(event) => onChange({ text: event.target.value })}
+        />
+      </div>
+
+      <div className={group}>
+        <div className="flex items-end gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor={fontId} className="text-xs font-medium text-muted-foreground">
+              Font
+            </label>
+            <select
+              id={fontId}
+              className={cn(INPUT_CLASS, 'h-9')}
+              value={text.font}
+              onChange={(event) => onChange({ font: event.target.value as StudioFontKey })}
+            >
+              {STUDIO_TEXT_FONTS.map((font) => (
+                <option key={font.key} value={font.key} style={{ fontFamily: font.family }}>
+                  {font.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-20 shrink-0">
+            <PointField value={text.size} onCommit={(size) => onChange({ size })} />
+          </div>
+        </div>
+        <Segmented<StudioFontWeight>
+          label="How heavy the letters are"
+          stretch
+          value={text.weight}
+          onChange={(weight) => onChange({ weight })}
+          options={STUDIO_FONT_WEIGHTS.map((weight) => ({ value: weight, label: WEIGHT_LABELS[weight] }))}
+        />
+        <TextStyleToggles text={text} onChange={onChange} />
+        <TextColor value={text.color} onChange={(color) => onChange({ color })} />
+      </div>
+
+      <div className={group}>
+        <p className={heading}>Position</p>
+        <div className="grid grid-cols-2 gap-2">
+          <LengthField label="Left" unit={unit} value={text.x} onCommit={(x) => onMove({ x, y: text.y })} />
+          <LengthField label="Top" unit={unit} value={text.y} onCommit={(y) => onMove({ x: text.x, y })} />
+        </div>
+      </div>
+
+      <div className={group}>
+        <p className={heading}>Copy</p>
+        {/* With Copy, because it is where Copy puts the copy: from this text's bottom left corner. */}
+        <fieldset className="grid grid-cols-2 gap-2">
+          <legend className="sr-only">Where a copy goes, from this text’s bottom left corner</legend>
+          <LengthField
+            label="Right"
+            unit={unit}
+            signed
+            value={copyOffset.x}
+            onCommit={(x) => onCopyOffset({ ...copyOffset, x })}
+          />
+          <LengthField
+            label="Down"
+            unit={unit}
+            signed
+            value={copyOffset.y}
+            onCommit={(y) => onCopyOffset({ ...copyOffset, y })}
+          />
+        </fieldset>
+        <p className="text-xs text-muted-foreground">From the text’s bottom left corner. 0 and 0 is right under it.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className={buttonClass('secondary', 'sm')} onClick={onDuplicate}>
+            <Copy aria-hidden="true" className="size-3.5" />
+            Copy
+          </button>
+          <button type="button" className={cn(buttonClass('secondary', 'sm'), 'text-destructive')} onClick={onRemove}>
+            <Trash2 aria-hidden="true" className="size-3.5" />
+            Remove
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/**
+ * Bold, italic, underline and strikethrough as one row of toggles, the way
+ * every word processor shows them. Bold is the weight's last step: pressed it
+ * sets Bold, pressed again Regular; the weights beside it stay for the steps
+ * between.
+ */
+function TextStyleToggles({
+  text,
+  onChange,
+}: {
+  text: StudioText;
+  onChange: (patch: Partial<Omit<StudioText, 'id'>>) => void;
+}) {
+  const bold = text.weight === 'bold';
+  const toggles = [
+    { key: 'bold', label: 'Bold', on: bold, icon: Bold, patch: { weight: bold ? 'regular' : 'bold' } as const },
+    { key: 'italic', label: 'Italic', on: text.italic, icon: Italic, patch: { italic: !text.italic } },
+    {
+      key: 'underline',
+      label: 'Underline',
+      on: text.underline,
+      icon: Underline,
+      patch: { underline: !text.underline },
+    },
+    { key: 'strike', label: 'Strikethrough', on: text.strike, icon: Strikethrough, patch: { strike: !text.strike } },
+  ];
+  return (
+    <fieldset className="inline-flex shrink-0 rounded-lg border border-border bg-background p-0.5">
+      <legend className="sr-only">Text style</legend>
+      {toggles.map((toggle) => (
+        <button
+          key={toggle.key}
+          type="button"
+          aria-pressed={toggle.on}
+          aria-label={toggle.label}
+          title={toggle.label}
+          className={cn(
+            'flex size-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            toggle.on ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
+          )}
+          onClick={() => onChange(toggle.patch)}
+        >
+          <toggle.icon aria-hidden="true" className="size-4" />
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
+const SWATCH_NAMES: Record<(typeof STUDIO_TEXT_SWATCHES)[number], string> = {
+  '#000000': 'Black',
+  '#ffffff': 'White',
+  '#6b7280': 'Grey',
+  '#dc2626': 'Red',
+  '#2563eb': 'Blue',
+  '#16a34a': 'Green',
+};
+
+/**
+ * A text's colour: the common ones as one press, and the browser's own picker
+ * for any other. ⚠ The swatches are LITERAL colours, like the paper: they are
+ * ink, and a theme token would print a different colour in each theme.
+ */
+function TextColor({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const pickerId = useId();
+  const custom = !(STUDIO_TEXT_SWATCHES as readonly string[]).includes(value);
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-xs font-medium text-muted-foreground">Colour</legend>
+      <div className="flex h-9 items-center gap-1">
+        {STUDIO_TEXT_SWATCHES.map((swatch) => (
+          <button
+            key={swatch}
+            type="button"
+            aria-pressed={swatch === value}
+            aria-label={SWATCH_NAMES[swatch]}
+            title={SWATCH_NAMES[swatch]}
+            className={cn(
+              'size-6 rounded-full border border-border shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              swatch === value ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : null,
+            )}
+            style={{ backgroundColor: swatch }}
+            onClick={() => onChange(swatch)}
+          />
+        ))}
+        <label
+          htmlFor={pickerId}
+          title="Another colour"
+          className={cn(
+            'relative size-6 cursor-pointer overflow-hidden rounded-full border border-border shadow-xs',
+            custom ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : null,
+          )}
+          // A wheel of colours when one of the swatches is chosen; the chosen colour itself otherwise.
+          style={{
+            background: custom
+              ? value
+              : 'conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)',
+          }}
+        >
+          <span className="sr-only">Another colour</span>
+          <input
+            id={pickerId}
+            type="color"
+            className="absolute inset-0 size-full cursor-pointer opacity-0"
+            value={value}
+            onChange={(event) => onChange(event.target.value.toLowerCase())}
+          />
+        </label>
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * A font size, typed in points — what people know a font size in — and handed
+ * up in units. Holds its own text while typed, like `LengthField`.
+ */
+function PointField({ value, onCommit }: { value: number; onCommit: (value: number) => void }) {
+  const id = useId();
+  const shown = String(textPoints(value));
+  const [text, setText] = useState(shown);
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    setText(shown);
+    setBad(false);
+  }, [shown]);
+
+  function commit() {
+    const points = Number(text.trim().replace(',', '.'));
+    const units = Number.isFinite(points) ? textUnits(points) : Number.NaN;
+    if (!(units >= STUDIO_TEXT_SIZE_MIN && units <= STUDIO_TEXT_SIZE_MAX)) {
+      setBad(true);
+      return;
+    }
+    setBad(false);
+    if (units !== value) onCommit(units);
+    else setText(shown);
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        Size
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          inputMode="decimal"
+          aria-invalid={bad ? true : undefined}
+          title={`${textPoints(STUDIO_TEXT_SIZE_MIN)} to ${textPoints(STUDIO_TEXT_SIZE_MAX)} points`}
+          className={cn(INPUT_CLASS, 'h-9 pr-7', bad ? 'border-destructive' : null)}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commit();
+          }}
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-muted-foreground">
+          pt
+        </span>
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { STUDIO_CALIBRATION_NAME_MAX } from '../domain/calibration.js';
 import { STUDIO_CELLS_MAX, STUDIO_LAYOUT_NAME_MAX } from '../domain/layout.js';
 import { STUDIO_LAYOUT_TAG_MAX } from '../domain/tags.js';
+import { STUDIO_TEXTS_MAX } from '../domain/texts.js';
 import type { StudioRefusal } from '../types.js';
 
 /**
@@ -58,6 +59,9 @@ const REFUSAL_MESSAGES: Record<StudioRefusal, string> = {
   cell_too_small: 'A cell is too small to hold a photo',
   cell_outside: 'A cell reaches outside the printable area',
   cell_overlap: 'Two cells overlap',
+  too_many_texts: `A layout can have at most ${STUDIO_TEXTS_MAX} texts`,
+  text_empty: 'A text on the layout is empty',
+  text_outside: 'A text starts outside the printable area',
   invalid_calibration:
     'That calibration is too far from 100% to be a printer’s tolerance — check that the page was printed at actual size',
   invalid_log: 'That print could not be recorded',

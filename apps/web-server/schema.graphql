@@ -2316,6 +2316,7 @@ type StudioLayoutSpec {
   orientation: String!
   paper: StudioPaperSpec!
   sizing: String
+  texts: [StudioText!]!
   version: Int!
 }
 
@@ -2327,6 +2328,7 @@ input StudioLayoutSpecInput {
   orientation: String!
   paper: StudioPaperSpecInput!
   sizing: String
+  texts: [StudioTextInput!]
   version: Int!
 }
 
@@ -2398,6 +2400,34 @@ input StudioPrintInput {
 type StudioSettings {
   keymap: String!
   version: Int!
+}
+
+type StudioText {
+  color: String!
+  font: String!
+  id: String!
+  italic: Boolean!
+  size: Int!
+  strike: Boolean!
+  text: String!
+  underline: Boolean!
+  weight: String!
+  x: Int!
+  y: Int!
+}
+
+input StudioTextInput {
+  color: String!
+  font: String!
+  id: String!
+  italic: Boolean!
+  size: Int!
+  strike: Boolean!
+  text: String!
+  underline: Boolean!
+  weight: String!
+  x: Int!
+  y: Int!
 }
 
 type Subscription {

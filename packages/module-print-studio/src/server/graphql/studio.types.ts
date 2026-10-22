@@ -83,6 +83,50 @@ export class StudioBorderType {
   color!: string;
 }
 
+@ObjectType('StudioText')
+export class StudioTextType {
+  /** Made by the editor, to tell texts apart. */
+  @Field()
+  id!: string;
+
+  /** What is printed; lines separated by a newline. */
+  @Field()
+  text!: string;
+
+  /** The top left of its first line, from the printable area's top left. */
+  @Field(() => Int)
+  x!: number;
+
+  @Field(() => Int)
+  y!: number;
+
+  /** The font size, in hundredths of a millimetre like every length. */
+  @Field(() => Int)
+  size!: number;
+
+  /** A key of `STUDIO_FONTS`: `arial`, `times`… */
+  @Field()
+  font!: string;
+
+  /** `light`, `regular`, `semibold` or `bold`. */
+  @Field()
+  weight!: string;
+
+  @Field()
+  italic!: boolean;
+
+  @Field()
+  underline!: boolean;
+
+  /** Struck through. */
+  @Field()
+  strike!: boolean;
+
+  /** `#rrggbb`, lower case. */
+  @Field()
+  color!: string;
+}
+
 @ObjectType('StudioLayoutSpec')
 export class StudioLayoutSpecType {
   @Field(() => Int)
@@ -111,6 +155,10 @@ export class StudioLayoutSpecType {
   /** How the cells are measured: `fixed` or `percent`. Null: fixed. */
   @Field(() => String, { nullable: true })
   sizing!: string | null;
+
+  /** Text printed on the sheet. Empty: none. */
+  @Field(() => [StudioTextType])
+  texts!: StudioTextType[];
 }
 
 @ObjectType('StudioLayout')
@@ -216,6 +264,42 @@ export class StudioBorderInputType {
   color!: string;
 }
 
+@InputType('StudioTextInput')
+export class StudioTextInputType {
+  @Field()
+  id!: string;
+
+  @Field()
+  text!: string;
+
+  @Field(() => Int)
+  x!: number;
+
+  @Field(() => Int)
+  y!: number;
+
+  @Field(() => Int)
+  size!: number;
+
+  @Field()
+  font!: string;
+
+  @Field()
+  weight!: string;
+
+  @Field()
+  italic!: boolean;
+
+  @Field()
+  underline!: boolean;
+
+  @Field()
+  strike!: boolean;
+
+  @Field()
+  color!: string;
+}
+
 @InputType('StudioLayoutSpecInput')
 export class StudioLayoutSpecInputType {
   @Field(() => Int)
@@ -242,6 +326,10 @@ export class StudioLayoutSpecInputType {
   /** `fixed` or `percent`; absent is fixed. Checked by `prepareLayoutSpec`, like the rest of the spec. */
   @Field(() => String, { nullable: true })
   sizing?: string | null;
+
+  /** Absent or empty: no text. Checked by `prepareLayoutSpec` (`readText`, `checkTexts`). */
+  @Field(() => [StudioTextInputType], { nullable: true })
+  texts?: StudioTextInputType[] | null;
 }
 
 @InputType('CreateStudioLayoutInput')

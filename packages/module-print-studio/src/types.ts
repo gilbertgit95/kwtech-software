@@ -43,6 +43,9 @@ export type StudioRefusal =
   | 'cell_too_small'
   | 'cell_outside'
   | 'cell_overlap'
+  | 'too_many_texts'
+  | 'text_empty'
+  | 'text_outside'
   | 'invalid_calibration'
   | 'invalid_log'
   | 'invalid_keymap';

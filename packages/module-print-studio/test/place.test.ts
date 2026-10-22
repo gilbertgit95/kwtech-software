@@ -225,6 +225,30 @@ describe('duplicating and turning a cell', () => {
     expect(copy.cells[1]).toEqual({ x: mm(35), y: 0, width: mm(35), height: mm(45), label: 'Passport' });
   });
 
+  it('puts a copy beside the cell, on the same top, touching its right edge', () => {
+    const lower: StudioCell[] = [{ x: mm(5), y: mm(30), width: mm(35), height: mm(45), label: 'Passport' }];
+    const copy = duplicateCell(area, lower, 0);
+    expect(copy.beside).toBe(true);
+    expect(copy.cells[1]).toEqual({ x: mm(40), y: mm(30), width: mm(35), height: mm(45), label: 'Passport' });
+  });
+
+  it('puts a copy at an offset from the cell’s top right corner, either way', () => {
+    const lower: StudioCell[] = [{ x: mm(5), y: mm(30), width: mm(35), height: mm(45) }];
+    expect(duplicateCell(area, lower, 0, { x: mm(2), y: mm(-5) }).cells[1]).toMatchObject({ x: mm(42), y: mm(25) });
+  });
+
+  it('puts the copy in the first free place when there is no room beside the cell', () => {
+    const edge: StudioCell[] = [{ x: mm(70), y: mm(30), width: mm(20), height: mm(20) }];
+    const copy = duplicateCell(area, edge, 0);
+    expect(copy.beside).toBe(false);
+    expect(copy.cells[1]).toMatchObject({ x: 0, y: 0 });
+    const blocked: StudioCell[] = [
+      { x: mm(30), y: 0, width: mm(20), height: mm(20) },
+      { x: mm(50), y: mm(10), width: mm(20), height: mm(20) },
+    ];
+    expect(duplicateCell(area, blocked, 0).beside).toBe(false);
+  });
+
   it('turns a cell a quarter and keeps its label', () => {
     expect(rotateCell(area, cells, 0)).toEqual({
       cells: [{ x: 0, y: 0, width: mm(45), height: mm(35), label: 'Passport' }],
