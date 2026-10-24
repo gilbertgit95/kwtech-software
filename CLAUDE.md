@@ -67,7 +67,8 @@ pnpm --filter @kwtech/web-server db:migrate    # compose module fragments + pris
 pnpm --filter @kwtech/web-server db:generate   # compose + generate the client
 pnpm --filter @kwtech/web-server db:sync       # reference data (features, roles, defaults)
 pnpm --filter @kwtech/web-server db:seed       # sync + first user, plans, demo user
-pnpm db:restore [--force]                      # load seed-data/snapshot.json
+pnpm db:restore [--force]                      # load seed-data/snapshot.json (local, gitignored)
+pnpm db:backup [--no-open]                     # full pg_dump to backups/ (gitignored), then shown in Explorer
 pnpm env:show | env:use <name> | env:new <name> | env:check   # env profiles in envs/ (local by default)
 pnpm db:up | db:down                           # the kwtech-postgres Docker container
 ```
@@ -271,8 +272,9 @@ answer *how many*. The details are in DESIGN-NOTES Part 4 and
   `apps/web-server/prisma/_modules/`, `apps/web-app/next-env.d.ts`.
 - Seeders are idempotent (upsert, never create blindly) and never delete
   reference rows; they deprecate them instead.
-- `apps/web-server/seed-data/snapshot.json` is public. Never put real customer
-  data or credentials in the dev database.
+- No database data is committed: `apps/web-server/seed-data/` (the
+  `db:snapshot` export), `backups/` and `*.dump` are gitignored. Never put
+  real customer data or credentials in the dev database all the same.
 - Secrets live in env profiles, `envs/<name>/*.env` (gitignored), which
   `pnpm env:use` links to `.env.local` in each app (`apps/web-server/.env.local`,
   `apps/web-app/.env.local`).

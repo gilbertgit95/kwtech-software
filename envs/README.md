@@ -72,8 +72,8 @@ pnpm env:new local   # creates envs/local/ from the templates, with fresh secret
 ```
 
 Fill in `SEED_USER_*` in `envs/local/web-server.env` (your sign-in) BEFORE the
-first `pnpm dev`: on a new database it restores the data snapshot and runs the
-seeders, and the first-user seeder refuses to run without them. If you already
+first `pnpm dev`: on a new database it runs the seeders, and the first-user
+seeder refuses to run without them. If you already
 started without them, fill them in and run `pnpm db:seed`. The full walkthrough
 is [docs/SETUP.md](../docs/SETUP.md).
 

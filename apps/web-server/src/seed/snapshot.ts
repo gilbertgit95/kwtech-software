@@ -6,13 +6,15 @@ import pg from 'pg';
 import { env } from '../config/env.js';
 
 /**
- * A copy of a dev database's DATA, committed, so another machine can pick the
- * work up where this one left off.
+ * A scrubbed copy of a dev database's DATA, kept on this machine.
+ * `seed-data/` is gitignored (PLAN §13, 2026-10-24): the repository carries no
+ * rows, and a full copy for another computer is `pg_dump` (docs/SETUP.md §7).
  *
  *   pnpm db:snapshot           this database → seed-data/snapshot.json
  *   pnpm db:restore            snapshot.json → an EMPTY, migrated database,
  *                              then `--phase=seed`
  *   pnpm db:restore --force    the same, truncating whatever is there first
+ *   pnpm db:snapshot --no-open  export without showing the file afterwards
  *
  * ## Why this is not a Seeder
  *
@@ -26,7 +28,8 @@ import { env } from '../config/env.js';
  *
  * ## What is left out, and why
  *
- * The repository is PUBLIC. Nothing that lets somebody sign in is exported —
+ * A snapshot can still be handed to somebody, so nothing that lets anyone sign
+ * in is exported —
  * see `EXCLUDED_TABLES` and `SCRUBBED_COLUMNS`. After a restore the accounts
  * exist with no password: `pnpm db:seed` (which restore runs) gives the
  * SEED_USER_* and SEED_DEMO_USER_* ones theirs, and any other account uses
@@ -194,6 +197,26 @@ async function exportSnapshot(client: pg.ClientBase) {
   console.log(`Left out: ${Object.keys(EXCLUDED_TABLES).join(', ')}.`);
 }
 
+/**
+ * Shows the snapshot just written in the file manager (Explorer, from WSL), so
+ * it can be copied straight away, through the repository's one helper,
+ * `scripts/reveal.mjs`, which `pnpm db:backup` shares. Run as a command
+ * rather than imported: this file is built into dist/ and a repo-root script
+ * is outside what this app compiles or ships.
+ *
+ * Never a step that can fail the export: the file is on disk when this runs,
+ * so a failed spawn is a warning. Skipped without a terminal (a script, CI) and
+ * with `--no-open`, checked HERE because the child's own stdout is not the
+ * terminal and its argv does not carry ours.
+ */
+function revealSnapshot() {
+  if (!process.stdout.isTTY || process.env.CI || process.argv.includes('--no-open')) return;
+  const script = fileURLToPath(new URL('../../../../scripts/reveal.mjs', import.meta.url));
+  if (!existsSync(script)) return;
+  const result = spawnSync(process.execPath, [script, SNAPSHOT_PATH], { stdio: 'inherit' });
+  if (result.status !== 0) console.warn('Could not open the file manager.');
+}
+
 interface Snapshot {
   format: number;
   migration: string;
@@ -295,8 +318,9 @@ async function main() {
   /*
    * ⚠ Guarded by environment, before a connection is opened.
    *
-   * Export writes a file that is committed to a PUBLIC repository, so it reads
-   * only a local database: staging and production hold real people's data.
+   * Export writes a file meant to be handed around (it is gitignored, but it
+   * is still a copy of the rows), so it reads only a local database: staging
+   * and production hold real people's data.
    * Restore replaces data wholesale, so it never touches production. Both read
    * APP_ENV, which the active profile sets (scripts/env.mjs).
    */
@@ -315,6 +339,10 @@ async function main() {
   } finally {
     await client.end();
   }
+
+  // After the connection closes, and only once the export has succeeded: a
+  // throw above skips this, so a failed snapshot never opens a stale file.
+  if (mode === 'export') revealSnapshot();
 
   if (mode === 'restore') {
     /*

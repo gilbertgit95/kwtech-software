@@ -604,6 +604,33 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-24** — **The repository carries no database data: the dev snapshot is no longer committed.**
+
+  The operator asked for it out of git. `seed-data/snapshot.json` was a
+  scrubbed copy of a dev database's rows (users' names and emails, chat,
+  queue tickets, notifications), last refreshed 2026-09-25 and 24 migrations
+  behind; credentials were already left out, but the rows themselves were
+  public with the repository.
+  - **Deleted, and `apps/web-server/seed-data/` gitignored**, so the next
+    `pnpm db:snapshot` cannot be committed by accident. `db:snapshot` and
+    `db:restore` still work, against this machine's own file.
+  - **A fresh clone seeds instead of restoring.** `scripts/dev-db.mjs` already
+    chose `db:seed` when the file is absent, so the first `pnpm dev` still ends
+    signed-in-able, with the `SEED_USER_*` account and no shared demo rows.
+  - **Moving a database between computers is `pg_dump` / `pg_restore`**, a full
+    copy with credentials, kept in the gitignored `backups/` (and `*.dump`
+    anywhere) and carried privately. docs/SETUP.md §7 has the commands, and
+    the one trap: the other machine needs the same `AUTH_MFA_SECRET_KEY`, or
+    every 2FA account is locked out.
+  - **Not done:** the file is still in git HISTORY (`396bceb` and earlier).
+    Removing it from there means rewriting history and force-pushing `main`,
+    which every clone would have to re-fetch; not done without being asked.
+  - **`pnpm db:backup`** (scripts/db-backup.mjs) writes that dump, under a
+    `.partial` name until `pg_dump` exits 0, and then shows it in the file
+    manager, as `db:snapshot` now does too (scripts/reveal.mjs, shared: one
+    WSL-to-Explorer rule, not two). `--no-open` and a missing terminal skip
+    the window.
+
 - **2026-10-22** — **A print studio layout carries text: placed, styled and dragged in the editor, printed as it is on the Print screen.**
 
   Issue #12. The operator wanted words on a layout (a shop name, a date, "cut

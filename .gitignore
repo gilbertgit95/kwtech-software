@@ -25,6 +25,19 @@ envs/*
 .env.local
 .env.*.local
 
+# database backups
+# Full pg_dump copies of a database: password hashes, sessions, MFA secrets and
+# every customer row. Never committed, unlike seed-data/snapshot.json, which
+# leaves credentials out on purpose. `*.dump` as well, so a backup written
+# anywhere else in the tree is not one `git add .` away from being public.
+backups/
+*.dump
+# `pnpm db:snapshot`'s export. It used to be committed as shared dev data and
+# was taken out on 2026-10-24 (PLAN §13): a dev database's rows (names, emails,
+# chat, tickets) do not belong in the repository, scrubbed or not. The file is
+# now this machine's own; `pnpm dev` seeds a new database when it is absent.
+apps/web-server/seed-data/
+
 # logs
 *.log
 npm-debug.log*
