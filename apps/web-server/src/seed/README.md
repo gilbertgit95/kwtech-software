@@ -35,8 +35,9 @@ node dist/seed/run.js --phase=seed --only=demo:tenant
 ## Dev data snapshot
 
 `pnpm db:snapshot` / `pnpm db:restore` ([`snapshot.ts`](./snapshot.ts)) copy a
-dev database's rows through `seed-data/snapshot.json`, so another machine can
-continue from the same data. It is **not a seeder**, on purpose: a seeder
+dev database's rows through `seed-data/snapshot.json`, a scrubbed copy kept on
+this machine (the folder is gitignored; a full copy for another computer is
+`pg_dump`, docs/SETUP.md §7). It is **not a seeder**, on purpose: a seeder
 converges on any database, while a snapshot's rows carry their own ids that
 other rows point at. If the sync seeders ran first and created `super-admin`
 under a fresh id, the snapshot's copy would be skipped and every grant that

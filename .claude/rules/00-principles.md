@@ -69,8 +69,9 @@ and the rule is stale. Say so, and fix the rule in the same change.
   `local` profile. Before running anything that writes to a database, check the
   active profile (`pnpm env:show`); never switch to staging or production unless
   asked.
-- `apps/web-server/seed-data/snapshot.json` is public: no real customer data or
-  credentials in the dev database.
+- No database data is committed: the `db:snapshot` export
+  (`apps/web-server/seed-data/`), `backups/` and `*.dump` are gitignored. No
+  real customer data or credentials in the dev database regardless.
 
 ## Done means
 

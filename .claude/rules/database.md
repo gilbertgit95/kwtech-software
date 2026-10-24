@@ -94,7 +94,8 @@ removed), check the combined roles that use it, and run `db:sync`.
 
 - `pnpm db:snapshot` writes `seed-data/snapshot.json`, and `pnpm db:restore
   [--force]` loads it into an empty, migrated database, then runs the seeders.
-- **The repository is public.** The snapshot excludes credentials, sessions and
-  tokens (`EXCLUDED_TABLES` / `SCRUBBED_COLUMNS` in `src/seed/snapshot.ts`). A
-  new table holding a secret MUST be added there in the same change that creates
-  it.
+- **The snapshot is gitignored** (since 2026-10-24) and stays on the machine
+  that wrote it; never force-add it. It still excludes credentials, sessions and
+  tokens, so it can be handed to someone (`EXCLUDED_TABLES` /
+  `SCRUBBED_COLUMNS` in `src/seed/snapshot.ts`). A new table holding a secret
+  MUST be added there in the same change that creates it.

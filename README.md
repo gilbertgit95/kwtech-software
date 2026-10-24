@@ -210,23 +210,25 @@ pnpm db:up            # start (or create) the container without starting the app
 pnpm db:down          # stop it; the data stays in the volume
 ```
 
-**Shared dev data.** `apps/web-server/seed-data/snapshot.json` is a committed
-copy of a dev database's rows, so a second machine starts where the first left
-off. A brand-new container restores it automatically; against a native
-Postgres, or to catch up with a newer snapshot, run it yourself:
+**Dev data snapshot.** `pnpm db:snapshot` writes a scrubbed copy of a dev
+database's rows to `apps/web-server/seed-data/snapshot.json`, which is
+**gitignored**: the repository carries no data, and a fresh clone is seeded.
+A brand-new container restores this machine's snapshot when there is one. To
+move a whole database, credentials included, to another computer, use
+`pg_dump` (docs/SETUP.md §7, "Moving a database to another computer").
 
 ```bash
-pnpm db:snapshot          # this database → snapshot.json (commit it)
+pnpm db:backup            # a full pg_dump → backups/ (credentials included), for another computer
+pnpm db:snapshot          # this database → snapshot.json (stays on this machine)
 pnpm db:restore           # snapshot.json → an empty, migrated database, then db:seed
 pnpm db:restore --force   # the same, emptying the database first
 ```
 
-The repository is public, so the snapshot carries **no credentials**: no
-password hashes, MFA secrets, sessions or reset tokens. After a restore the
-`SEED_USER_*` and `SEED_DEMO_USER_*` accounts sign in with the passwords in your
-`.env`; any other account uses forgot-password, whose link is printed in the
-API console while `SMTP_URL` is unset. Everything else in it — names, emails,
-chat messages — is readable by anyone, so keep real customer data out of dev.
+The snapshot carries **no credentials**: no password hashes, MFA secrets,
+sessions or reset tokens. After a restore the `SEED_USER_*` and
+`SEED_DEMO_USER_*` accounts sign in with the passwords in your `.env`; any other
+account uses forgot-password, whose link is printed in the API console while
+`SMTP_URL` is unset. Keep real customer data out of dev all the same.
 
 Docker Engine inside WSL2, once (`/etc/wsl.conf` needs `systemd=true`):
 

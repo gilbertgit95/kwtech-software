@@ -11,10 +11,11 @@
  *   3. Docker is available → start the `kwtech-postgres` container, creating it
  *      (and its `kwtech-pgdata` volume) the first time, then wait until it
  *      accepts TCP connections.
- *   4. The volume was new → apply the committed migrations, then restore the
- *      committed data snapshot (apps/web-server/seed-data/snapshot.json, which
- *      runs the seeders too) or, without one, just seed — so a fresh checkout
- *      goes from nothing to a sign-in-able app in one `pnpm dev`.
+ *   4. The volume was new → apply the committed migrations, then seed — or,
+ *      when this machine has a local data snapshot
+ *      (apps/web-server/seed-data/snapshot.json, gitignored, written by
+ *      `pnpm db:snapshot`), restore that, which runs the seeders too — so a
+ *      fresh checkout goes from nothing to a sign-in-able app in one `pnpm dev`.
  *
  * Anything else — no Docker, daemon down, no permission on the socket — fails
  * with the fix spelled out, rather than letting the API die later on a
@@ -176,8 +177,9 @@ while (!(await portOpen('127.0.0.1', port)) || docker('exec', CONTAINER, 'pg_isr
 console.log(`  ✓ postgres ready on localhost:${port}`);
 
 if (freshVolume) {
-  // The committed dev data when there is some (restore runs the seeders too);
-  // the bare seeders otherwise.
+  // This machine's own snapshot when it has one (restore runs the seeders too);
+  // the bare seeders otherwise, which is every fresh clone — the snapshot is
+  // gitignored and no longer travels with the repository.
   const fill = existsSync(resolve(SERVER_DIR, 'seed-data/snapshot.json')) ? 'db:restore' : 'db:seed';
   if (fromExample) {
     console.log(

@@ -141,9 +141,10 @@ The first run does all of this, in order:
    `localhost:5432`, data in the Docker volume `kwtech-pgdata`). If the volume
    is new it also:
    - applies every committed migration, then
-   - **restores the committed dev data** (`apps/web-server/seed-data/snapshot.json`)
-     and runs the seeders: features, roles, plans, defaults, and your account
-     from `SEED_USER_*`.
+   - runs the seeders: features, roles, plans, defaults, and your account
+     from `SEED_USER_*`. (If this machine has a local snapshot,
+     `apps/web-server/seed-data/snapshot.json`, it restores that first. The
+     repository does not carry one.)
 4. **Builds and watches** every package, and starts both apps.
 
 When it settles:
@@ -166,9 +167,11 @@ Open http://localhost:8081/auth/signin and sign in with `SEED_USER_EMAIL` (or
 set to the same address you are the platform administrator: every
 Administration page is yours.
 
-Other accounts in the restored data have **no password** — the snapshot never
-contains credentials. To use one, go to "Forgot password": with no `SMTP_URL`
-set, the reset link is printed in the `pnpm dev` output instead of emailed.
+If you restored a snapshot, its other accounts have **no password** — a
+snapshot never contains credentials. To use one, go to "Forgot password": with
+no `SMTP_URL` set, the reset link is printed in the `pnpm dev` output instead
+of emailed. To bring a database over from another machine with everything,
+passwords included, see "Moving a database to another computer" in §7.
 
 To see notifications working straight away:
 
@@ -188,8 +191,9 @@ The schema is owned by `apps/web-server`; each module ships a fragment of it
 | `pnpm db:generate` | compose + regenerate the Prisma client | after pulling someone else's schema change |
 | `pnpm db:sync` | reference data the CODE owns: feature keys, app roles, defaults. Idempotent | after adding a feature key, and on every deploy |
 | `pnpm db:seed` | `db:sync` plus once-per-environment data: plans, your account from `SEED_USER_*` (⚠ this RESETS its password to `SEED_USER_PASSWORD`), the optional demo user | first setup, or to reset your password |
-| `pnpm db:snapshot` | export the dev data to `seed-data/snapshot.json`. **Local only.** Credentials, sessions and codes are left out | to share dev data through git |
-| `pnpm db:restore [--force]` | load the snapshot into an empty, migrated database, then run the seeders. `--force` empties it first. Never against production | to reset to the shared data |
+| `pnpm db:snapshot [--no-open]` | export the dev data to `seed-data/snapshot.json` (gitignored), then show it in Explorer. **Local only.** Credentials, sessions and codes are left out | to keep a scrubbed copy of the data on this machine |
+| `pnpm db:restore [--force]` | load that snapshot into an empty, migrated database, then run the seeders. `--force` empties it first. Never against production | to go back to it |
+| `pnpm db:backup [--no-open]` | a FULL copy of the local database (`pg_dump`, credentials included) to `backups/<db>-<date>-<time>.dump`, gitignored, then shown in Explorer. **Local only** | to carry the database to another computer |
 | `pnpm db:studio` | Prisma Studio, a browser UI over the tables | to look at data |
 | `pnpm db:deploy` | apply committed migrations, no new ones | deploys |
 
@@ -204,6 +208,22 @@ pnpm dev:stop
 docker rm -f kwtech-postgres && docker volume rm kwtech-pgdata
 pnpm dev          # a new volume: migrate + restore + seed, as on the first run
 ```
+
+**Moving a database to another computer.** A full copy, passwords and all,
+with Postgres's own tools. The file holds password hashes and every row, so it
+stays out of git (`backups/` and `*.dump` are ignored) and travels privately:
+
+```bash
+# here: writes backups/kwtech-<date>-<time>.dump and opens Explorer on it
+pnpm db:backup
+# there, on the same git commit, before or after its first `pnpm dev`
+pnpm db:up
+docker exec -i kwtech-postgres pg_restore -U postgres -d kwtech --clean --if-exists --no-owner < backups/kwtech-YYYY-MM-DD.dump
+```
+
+⚠ Give the other machine's profile the same `AUTH_MFA_SECRET_KEY`: it
+encrypts the stored 2FA secrets, and with a different key every account with
+2FA on is locked out. A different `AUTH_JWT_SECRET` only signs everybody out.
 
 ⚠ `envs/local/` is never touched by any of this. Before running anything that
 writes to a database, `pnpm env:show` tells you which one you are pointed at.
