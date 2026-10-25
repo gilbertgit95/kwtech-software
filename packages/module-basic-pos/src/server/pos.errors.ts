@@ -1,6 +1,13 @@
 import { POS_PRICE_MAX, POS_QUANTITY_MAX } from '../domain/money.js';
 import { POS_CONFLICT_MESSAGE } from '../domain/orders.js';
-import { POS_CODE_MAX, POS_DESCRIPTION_MAX, POS_NAME_MAX, POS_NOTE_MAX, POS_REASON_MAX } from '../domain/text.js';
+import {
+  POS_CODE_MAX,
+  POS_DESCRIPTION_MAX,
+  POS_LABEL_MAX,
+  POS_NAME_MAX,
+  POS_NOTE_MAX,
+  POS_REASON_MAX,
+} from '../domain/text.js';
 import type { PosRefusal } from '../types.js';
 
 /**
@@ -74,7 +81,7 @@ function refusalMessage(reason: PosRefusal): string {
     case 'invalid_note':
       return `A note is one line of at most ${POS_NOTE_MAX} characters`;
     case 'invalid_label':
-      return 'A label is one short line';
+      return `An order reference is one line of at most ${POS_LABEL_MAX} characters: a table number, a name, a code`;
     case 'invalid_contact':
       return 'A contact is one short line: a phone number or an email';
     case 'invalid_phone':

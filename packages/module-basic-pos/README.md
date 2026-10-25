@@ -55,6 +55,24 @@ Follow `module-queuing-window`, file for file:
    anybody signed in. Split keys by risk (`pos:sell`, `pos:manage_items`).
 4. Keep the app key `pos`. It is saved in people's layouts.
 
+## Order reference (issue #24)
+
+An order can carry one optional **reference**: free text, letters or numbers,
+at most 40 characters (`POS_LABEL_MAX`), checked by `preparePosLabel`. A
+restaurant puts the table number in it ("Table 5"); another store a pickup
+tag or a job code. Nothing about it is restaurant-specific, and a store that
+never uses it sees one muted "Add a reference" line under the customer.
+
+- **It is the order's `label`**, the same column Hold has always asked for
+  (D8). The GraphQL names (`label`, `setPosOrderLabel`) are unchanged; only
+  the words on screen say "reference".
+- **Set on the till** for any open order (the line under the customer), or
+  when holding it. Setting it on a clear till starts the order, as adding a
+  customer does.
+- **Shown** in the cart's heading, the on-screen receipt and the order's
+  details; **printed** on the receipt as "Order ref: …", apart from a
+  payment's own "Reference"; **found** by the Orders search.
+
 ## Stock (issue #10)
 
 Stock is its own module, `module-basic-inventory` (`docs/INVENTORY-PLAN.md`).

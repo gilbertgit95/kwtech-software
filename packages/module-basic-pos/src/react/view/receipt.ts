@@ -50,6 +50,8 @@ export function receiptHtml(
 
   const payment = paymentRows(order, row);
 
+  // The order's own reference (issue #24: "table 5"), apart from a payment's reference further down.
+  const reference = order.label ? `<p class="ref">Order ref: ${escapeHtml(order.label)}</p>` : '';
   const customer = order.customerName
     ? `<p>${escapeHtml(order.customerName)}${order.customerContact ? ` · ${escapeHtml(order.customerContact)}` : ''}</p>`
     : '';
@@ -62,13 +64,13 @@ body{font:12px/1.4 ui-monospace,Menlo,monospace;margin:0;padding:8px;width:72mm;
 h1{font-size:14px;text-align:center;margin:0 0 4px}p{margin:0 0 4px;text-align:center}
 table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}.r{text-align:right;white-space:nowrap}
 .muted td{color:#444}.total td{font-weight:700;border-top:1px dashed #000;padding-top:3px}
-.reprint{font-weight:700;border:1px solid #000;padding:2px}hr{border:0;border-top:1px dashed #000}
+.ref{font-weight:700}.reprint{font-weight:700;border:1px solid #000;padding:2px}hr{border:0;border-top:1px dashed #000}
 @page{margin:0;size:80mm auto}
 </style></head><body>
 ${options.storeName ? `<h1>${escapeHtml(options.storeName)}</h1>` : ''}
 <p>${escapeHtml(title)}${order.number !== null ? ` #${order.number}` : ''}</p>
 <p>${escapeHtml(when(order.paidAt ?? order.finalisedAt ?? order.createdAt))}</p>
-${customer}${reprint}<hr>
+${reference}${customer}${reprint}<hr>
 <table>${lines}</table><hr><table>${totals}${payment}</table>
 <p style="margin-top:8px">Thank you!</p>
 </body></html>`;
