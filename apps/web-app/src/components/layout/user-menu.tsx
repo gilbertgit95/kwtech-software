@@ -10,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
-import { ChevronDown, LogOut } from 'lucide-react';
-import { useRef } from 'react';
+import { ChevronDown, LogOut, Smartphone } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { isRunningInstalled } from '@/components/install/install-platform';
 import { iconFor } from '@/components/layout/nav-icons';
 import { RoleBadge } from '@/components/layout/role-badge';
 
@@ -74,6 +75,14 @@ export function UserMenu({ name, email, accountNav = [], roles = [] }: UserMenuP
   // and it comes from a nullable column.
   const display = name?.trim() || email;
   const signOutForm = useRef<HTMLFormElement>(null);
+  /*
+   * Hidden inside the installed app, where "Install app" would be a link to
+   * instructions for what the person has already done. Decided in an effect:
+   * the server cannot know, and starting at `false` means the browser tab —
+   * the common case — never shows the entry appearing late.
+   */
+  const [installed, setInstalled] = useState(false);
+  useEffect(() => setInstalled(isRunningInstalled()), []);
 
   return (
     <>
@@ -157,6 +166,23 @@ export function UserMenu({ name, email, accountNav = [], roles = [] }: UserMenuP
               <DropdownMenuSeparator className="my-1" />
             </>
           ) : null}
+
+          {/*
+           * The way onto a phone's home screen (app/install). Here rather than
+           * in the drawer because it is about this person's device, not about
+           * a feature they hold — and so it needs no feature key.
+           */}
+          {installed ? null : (
+            <>
+              <DropdownMenuItem asChild className="gap-2.5 rounded-lg px-2 py-2">
+                <a href="/install">
+                  <Smartphone aria-hidden className="opacity-80" />
+                  Install app
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1" />
+            </>
+          )}
 
           <DropdownMenuItem
             onSelect={(event) => {

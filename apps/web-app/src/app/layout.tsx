@@ -40,7 +40,18 @@ const noteSerif = Literata({ variable: '--note-font-serif', subsets: ['latin'], 
  */
 export function generateMetadata(): Metadata {
   const { name, tagline } = appBrand();
-  return { title: name, description: tagline ? `${name} — ${tagline}` : name };
+  return {
+    title: name,
+    description: tagline ? `${name} — ${tagline}` : name,
+    /*
+     * The iPhone half of being installable (the manifest is the rest, see
+     * manifest.ts). Safari still reads its own tags for a home-screen app: the
+     * name under the icon, and whether it opens without Safari's bar.
+     * `default` keeps the status bar opaque above the page, which therefore
+     * needs no safe-area padding of its own.
+     */
+    appleWebApp: { capable: true, title: name, statusBarStyle: 'default' },
+  };
 }
 
 /**

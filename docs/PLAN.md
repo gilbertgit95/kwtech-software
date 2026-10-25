@@ -599,10 +599,40 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 117 | Stock is taken by point-of-sale sales only. A booking marked done, a print job relayed to a printer, and work done in-house use materials that no sale records | when bookings or print jobs should take their materials (INVENTORY-PLAN I9, phase 2) | `StockSource` is `pos` alone. Each new source is its own decision: a port in that module after its commit (as `POS_STOCK_EVENTS`), a feed for the catch-up, and a `source` value. `module-print` keeps no job rows, so a print job's key would be the relay's id and its feed the agent's report. Until then, in-house use and spoiled prints are recorded as adjustments or waste |
 | 118 | Stock has no alerts and no reports: nobody is told an item is low, and waste, deliveries and stock value over a period are not summed | when the store wants to be told, or to see what it wasted in a month (INVENTORY-PLAN I11, phase 2) | Low and out show in the list (a count on the Stock section) and on the till. Alerts would be a `module-jobs` process sweeping items under their level and a `STOCK_NOTIFIER` bound to `module-notification`. Waste is its own movement kind (`wasted`, with a reason and the product), so the report is a sum over what is already stored |
 | 119 | Stock does not reach the books or the POS's costs: receiving is not recorded as a purchase, and a service's cost is not worked out from its materials | when entering a delivery twice (stock and books) or a service's cost by hand is felt (INVENTORY-PLAN I7, I10) | The Products section shows each product's materials cost per sale, read-only. Receiving into the books would be a port from stock to the books (supplies, or stock for resale); a service's cost would be proposed to the POS, never written behind the manager's back |
+| 120 | The installed app has no offline handling: opened without a connection it shows the browser's own error page, not one of ours | when someone uses it where the connection drops (a shop floor, a delivery) | No service worker on purpose (§13, 2026-10-25): a worker that caches pages can serve a signed-out person a signed-in page, or yesterday's build. The first one should cache NOTHING but an offline page and the icons, and never a document or `/api/*` |
+| 121 | No web push: notifications reach a person only while a page is open | when someone must be told with the app closed (a booking, a queue call) | A service worker plus a delivery channel in `module-notification` (a `notify_push_subscription` per device, VAPID keys in the env profile, `sendSafely` fanning out). iPhone delivers only to an app on the home screen, iOS 16.4 and later |
+| 122 | The installed app is the whole site: there is no phone-first section with only a few screens | when the features for a mobile app are chosen | A `/m` section in this app with its own layout and its own manifest (`start_url: '/m'`, a separate `id`), reusing the modules' pages. A native app (Expo, `apps/mobile-app` + `/native` subpaths, §10) only if a device feature the browser lacks is needed; auth already allows it (the API sets no cookies) |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-25** — **The web app is installable as a phone app (a PWA), with no app store.**
+
+  The operator wants the app on phones, as an app, without publishing to a
+  store. A manifest is what makes a phone treat a site as an app: Android's
+  Chrome builds a WebAPK (in the app drawer and Settings → Apps), and an
+  iPhone's home-screen icon opens without Safari's bar. Sign-in, roles and
+  plans needed nothing: it is the same site, so the httpOnly cookies and the
+  API's guards apply unchanged.
+  - **`app/manifest.ts`, dynamic**, so `APP_NAME` stays a runtime value as in
+    `generateMetadata()`. `id` and `start_url` are `/`, `display` is
+    `standalone`, and the colours are the icon tile's `#3a3a3c`: a manifest is
+    read once at install and cannot follow the palette picked later.
+  - **Icons in `public/icons/`** (192, 512, and a maskable 512 with the mark at
+    60% so Android's circle crop misses it), made from `logo-full.png`'s mark
+    on the same tile as `apple-icon.png`.
+  - **`appleWebApp` in the root metadata** for the iPhone's own tags.
+  - **`/install`, public**: the steps for the device in hand, a one-tap Install
+    where Chrome offers `beforeinstallprompt`, and a QR code on a computer.
+    "Install app" in the account menu links to it, hidden inside the installed
+    app. `e2e/install.spec.ts` checks the manifest, that its icons load, and
+    the page signed out.
+  - **Not done: a service worker** (§12.120). Chrome no longer needs one to
+    install, and caching pages is how a signed-out person is shown a
+    signed-in page. It arrives with offline support or web push (§12.121).
+  - **Not done: a store app or a phone-only section** (§12.122). A native app
+    or a `/m` section waits for the features a mobile app should have.
 
 - **2026-10-24** — **The repository carries no database data: the dev snapshot is no longer committed.**
 
