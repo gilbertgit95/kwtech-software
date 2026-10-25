@@ -23,6 +23,8 @@ What runs:
 | console to TV | Start queuing shows a code and QR; a second, signed-out browser opens the display from the link, the code leaves the address bar, **Call next appears on the TV live**, and **Stop returns the TV to its code prompt** |
 | workspace voice | the Announcements settings save and survive a reload (the original pitch is put back) |
 | wrong code | a TV with a bad code gets the one refusal sentence |
+| installable | the manifest is linked, says `standalone`, and every icon it names loads |
+| install page | a signed-out iPhone gets `/install` with the iPhone steps |
 
 Without the `E2E_*` variables the first two are **skipped** with that reason, not
 failed. The wrong-code test needs no account and always runs. Locally, the seed
