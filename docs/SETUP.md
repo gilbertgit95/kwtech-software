@@ -266,6 +266,7 @@ says what you lose.
 | **Google sign-in** | the Google button is hidden | set all three: `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`, `AUTH_GOOGLE_REDIRECT_URI` (half-configured refuses to boot) |
 | **A demo user** | — | `SEED_DEMO_USER_*`, then `pnpm db:seed --only=demo:user` |
 | **Browser (e2e) tests** | — | see [`apps/web-app/e2e/README.md`](../apps/web-app/e2e/README.md): `playwright install chromium`, its system libraries (needs `sudo`), and the `E2E_*` variables |
+| **HTTPS on the local network** | phones and tablets on the Wi-Fi cannot stay signed in to the BUILT app (its cookies are `Secure`) and cannot install it; in development plain `http://<address>:8081` still works | install Caddy, `pnpm https:setup`, then `pnpm https` beside `pnpm dev` or `pnpm build && pnpm pm2:start` for the built apps; trust the certificate once per phone. All of it: README.md, "HTTPS on the local network" |
 | **Printing on a shop's printers** | the Printers page has no computer to print through | set a computer up with the print agent: [apps/print-agent/README.md](../apps/print-agent/README.md), "Setting up a computer". The agent runs under Windows Node, not in WSL |
 
 Restart `pnpm dev` after changing a profile.
@@ -292,6 +293,10 @@ set the same variables in the host instead of using profile files.
 | A page refuses you ("not available to you") | your roles lack the key. Set `SEED_SUPER_ADMIN_EMAIL` to your address and `pnpm db:seed`, or grant a role in Administration |
 | The notification bell shows a grey or amber dot | the live connection is down or reconnecting — is the API running? "Retry now" in the bell reconnects at once |
 | A package change does not show up | under `pnpm dev:focus`, only the packages you named are watched: name that one too. Otherwise the watcher may have stopped: restart `pnpm dev` (or `pnpm build` the package) |
+| A phone says the connection is not private / not secure | it has not trusted the certificate yet (iPhone: both Install AND Certificate Trust Settings), or the server's address changed — run `pnpm https:setup` again and rebuild (the phones need nothing new: they trust the authority, not the address), and reserve the address on the router |
+| A phone cannot sign in to the built app over the network | it is on `http://`: the built app's cookies need `https://`. Open `https://<address>` (README.md, "HTTPS on the local network") |
+| `pnpm pm2:status` shows `kwtech-https` errored | Caddy is not installed, or (Linux) may not use port 443: `pnpm https:setup` says which. `pnpm pm2:logs kwtech-https` shows its error |
+| Live updates stop over HTTPS (the bell's dot stays grey) | `NEXT_PUBLIC_WS_URL` is still `ws://…` or names the old address: `pnpm https:setup`, then `pnpm build` (the value is baked into the build) |
 | Everything is strange | start the database over (section 7), and `pnpm install` again |
 
 ## 11. Memory and speed

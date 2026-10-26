@@ -15,6 +15,10 @@
  * CommonJS (.cjs) because pm2 loads this file with require().
  */
 const { resolve } = require('node:path');
+const { caddyLaunch, httpsHost } = require('./deploy/https/host.cjs');
+
+/** The address phones open over HTTPS, or null: the API's FRONTEND_URL (deploy/https/host.cjs). */
+const HTTPS_HOST = httpsHost();
 
 module.exports = {
   apps: [
@@ -48,5 +52,27 @@ module.exports = {
       min_uptime: '10s',
       restart_delay: 2000,
     },
+    /*
+     * HTTPS in front of both, on 443 (deploy/https/Caddyfile), only when
+     * FRONTEND_URL is https://. ⚠ `caddy` must be installed on the machine
+     * (README.md); without it this one service shows `errored` and the other
+     * two run as before. On Linux it needs leave to bind 443 without root:
+     * `sudo setcap cap_net_bind_service=+ep "$(command -v caddy)"`.
+     */
+    ...(HTTPS_HOST
+      ? [
+          {
+            name: 'kwtech-https',
+            cwd: __dirname,
+            script: caddyLaunch(HTTPS_HOST).command,
+            args: caddyLaunch(HTTPS_HOST).args,
+            interpreter: 'none',
+            env: caddyLaunch(HTTPS_HOST).env,
+            max_restarts: 10,
+            min_uptime: '10s',
+            restart_delay: 2000,
+          },
+        ]
+      : []),
   ],
 };

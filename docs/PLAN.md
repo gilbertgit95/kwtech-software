@@ -607,6 +607,30 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-26** — **HTTPS on the shop's own network: Caddy in front of both apps, with its own local certificate authority.**
+
+  The operator asked for HTTPS on the locally hosted server, for devices on
+  the local network only, with no domain. Without it, a phone on the Wi-Fi
+  could not stay signed in to the BUILT app (its session cookies are
+  `Secure`, which a browser drops on plain http:// away from localhost), and
+  could not install the app (the PWA).
+  - **Caddy on 443** (`deploy/https/Caddyfile`): `/api/v1/*` (GraphQL and the
+    live-updates socket) to the API, everything else to the web app. No code
+    changes; the web app's own `/api/*` routes are not under `/api/v1`.
+  - **Its own authority (`tls internal`)**, stored in the gitignored `.caddy/`,
+    and the root certificate served over plain HTTP at
+    `/kwtech-local-ca.crt` so each device can install and trust it once.
+    `default_sni`, because a browser opening a bare address sends no name.
+  - **One switch**: the API's `FRONTEND_URL` being an `https://` address on
+    the network makes pm2 run Caddy as a third service (`kwtech-https`), and
+    `pnpm https` runs it beside the dev servers. Both read it through
+    `deploy/https/host.cjs`. `NEXT_PUBLIC_WS_URL` becomes `wss://…` and the
+    web app is rebuilt.
+  - **Not done:** a public certificate (needs a domain; switching later is the
+    Caddyfile alone), Google sign-in on a bare address (Google refuses one),
+    the print agent through HTTPS (it still reaches the API at :8080 on the
+    network), and trusting the authority on devices automatically.
+
 - **2026-10-26** — **People can make the app larger or smaller: a text size and a spacing, kept on the account (issue #20).**
 
   The operator asked for settings so older users see things more clearly,

@@ -1,0 +1,60 @@
+# HTTPS for the shop's own network (no domain, no internet): Caddy in front of
+# both apps on 443, with a certificate from its OWN local authority. Started by
+# pm2 from ecosystem.config.cjs when the API's FRONTEND_URL is https://; see
+# README.md, "HTTPS on the local network".
+#
+# Why it is needed at all: the production build marks the session cookies
+# Secure, and a browser drops a Secure cookie on plain http:// anywhere but
+# localhost — a phone on the Wi-Fi could not stay signed in. Installing the
+# app on a phone (the PWA) needs HTTPS too.
+#
+# Set by ecosystem.config.cjs:
+#   KWTECH_HTTPS_HOST     the address phones use, from FRONTEND_URL: 192.168.1.186
+#   KWTECH_CADDY_STORAGE  <repo>/.caddy (gitignored): the local authority's key
+#                         and certificates live there, at a path that does not
+#                         depend on the OS
+
+{
+	storage file_system {
+		root {$KWTECH_CADDY_STORAGE}
+	}
+	# A browser that opens an IP address sends no server name (SNI); without
+	# this Caddy would not know which certificate to answer with.
+	default_sni {$KWTECH_HTTPS_HOST}
+	# Never add the local authority to THIS machine's trust store on its own
+	# (that asks for a password at boot, under pm2). Trusting it is a step
+	# done once per device, on purpose: README.md says how.
+	skip_install_trust
+}
+
+https://{$KWTECH_HTTPS_HOST}, https://localhost {
+	tls internal
+
+	# The API: its GraphQL, its REST routes and the live-updates socket
+	# (wss://…/api/v1/graphql). Everything the browser reaches the API by
+	# directly is under /api/v1; the web app's own routes are /api/auth,
+	# /api/print, /api/backups and /api/health, which go to the web app below.
+	handle /api/v1/* {
+		reverse_proxy localhost:8080
+	}
+
+	handle {
+		reverse_proxy localhost:8081
+	}
+}
+
+# Plain HTTP: the one thing served without TLS is the local authority's
+# certificate, so a phone can fetch it before it trusts anything. Everything
+# else is sent to HTTPS.
+http://{$KWTECH_HTTPS_HOST} {
+	handle /kwtech-local-ca.crt {
+		root * {$KWTECH_CADDY_STORAGE}/pki/authorities/local
+		rewrite * /root.crt
+		# The type an iPhone opens as a profile to install, and Android as a certificate.
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}

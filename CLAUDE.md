@@ -71,6 +71,7 @@ pnpm db:restore [--force]                      # load seed-data/snapshot.json (l
 pnpm db:backup [--no-open]                     # full pg_dump to backups/ (gitignored), then shown in Explorer
 pnpm env:show | env:use <name> | env:new <name> | env:check   # env profiles in envs/ (local by default)
 pnpm db:up | db:down                           # the kwtech-postgres Docker container
+pnpm https:setup [--off] | https               # HTTPS on the local network (Caddy): set up | run beside pnpm dev; README "HTTPS on the local network"
 ```
 
 **Running the app while developing: `pnpm dev:focus <the package being worked

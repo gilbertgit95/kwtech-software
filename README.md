@@ -186,6 +186,106 @@ creates it with `--restart unless-stopped`, and Docker is a systemd service.
 The systemd service starts pm2 from this checkout's `node_modules`, so after
 the repository moves, or after pm2 is upgraded, run step 1 again.
 
+### HTTPS on the local network
+
+Phones and tablets on the shop's Wi-Fi need **HTTPS**: the built app marks its
+session cookies `Secure`, which a browser drops on plain `http://` anywhere but
+`localhost` (so nobody could stay signed in), and installing the app on a phone
+needs it too. With no domain, **Caddy** sits in front of both apps on port 443
+with a certificate from its **own local authority**, which each device trusts
+once (`deploy/https/Caddyfile`, PLAN §13 2026-10-26).
+
+```
+https://<address>/api/v1/*  →  API :8080   (and the live-updates socket, wss://)
+https://<address>/*         →  web app :8081
+http://<address>/kwtech-local-ca.crt  →  the certificate, for phones to install
+```
+
+**Quick way:** install Caddy (step 2 below), then
+
+```bash
+pnpm https:setup        # finds this machine's address, writes the profile, checks Caddy
+pnpm build && pnpm pm2:start && pnpm pm2:save
+```
+
+`pnpm https:setup` does steps 2's `setcap`, 4 and the check of the Caddyfile,
+and prints what is left for THIS machine (the router, WSL's Windows settings,
+each phone). `--address=192.168.1.186` skips the detection, `--yes` the
+questions, and `--off` puts the profile back to plain `http://localhost`. Run
+it again when the address changes. The steps it automates, by hand:
+
+**Once, on the machine that serves the shop:**
+
+1. **A fixed address.** On the router, reserve the server's address (a DHCP
+   reservation, e.g. 192.168.1.186). The site's certificate names it, so a new
+   address is a warning on every device until `pnpm https:setup` is run again
+   — phones trust the AUTHORITY, so they need nothing new after that.
+2. **Install Caddy** (2.8 or newer): `brew install caddy` on a Mac;
+   `sudo apt install caddy` on Ubuntu/WSL (Caddy's own apt repository, see
+   caddyserver.com/docs/install), then `sudo systemctl disable --now caddy` —
+   pm2 runs it, not the system service — and
+   `sudo setcap cap_net_bind_service=+ep "$(command -v caddy)"` so it may use
+   ports 80 and 443 without root.
+3. **On Windows with WSL only**, other devices reach Windows, not WSL: in
+   `%USERPROFILE%\.wslconfig` set `networkingMode=mirrored` under `[wsl2]`
+   (Windows 11), run `wsl --shutdown`, and allow ports 80 and 443 in through
+   Windows Defender Firewall. The address is then the Windows PC's.
+4. **The profile** (`envs/<name>/`, then `pnpm env:use <name>`):
+   - `web-server.env`: `FRONTEND_URL="https://192.168.1.186"` — this is what
+     turns HTTPS on.
+   - `web-app.env`: `NEXT_PUBLIC_WS_URL="wss://192.168.1.186/api/v1/graphql"`.
+     ⚠ Baked into the web app when it is BUILT: `pnpm build` again after
+     changing it.
+5. `pnpm build`, then `pnpm pm2:start`: pm2 runs a third service,
+   `kwtech-https`. `pnpm pm2:save` so it comes back at boot.
+
+**Once on each phone or tablet**, on the shop's Wi-Fi, open
+`http://192.168.1.186/kwtech-local-ca.crt`:
+
+- **iPhone / iPad:** allow the download, then Settings → *Profile Downloaded*
+  → Install. Then Settings → General → About → **Certificate Trust Settings**
+  → turn on **Caddy Local Authority**. Both steps are needed.
+- **Android:** Settings → Security (or *Security & privacy* → *More*) →
+  **Encryption & credentials** → Install a certificate → **CA certificate** →
+  pick the downloaded file.
+- **A Mac:** ⚠ double-clicking the file can fail with "Unable to import …
+  Error: -25294" (the dialog picks a keychain it cannot write to). Instead,
+  on the server itself:
+  `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db .caddy/pki/authorities/local/root.crt`
+  (macOS asks for the password), or on another Mac: Keychain Access → File →
+  Import Items → the downloaded file, **Destination: login**, then open it →
+  Trust → *Always Trust*. Quit and reopen the browser. Firefox has its own
+  list: Settings → Privacy & Security → Certificates → Import.
+- **Windows:** open the file → Install Certificate → *Local Machine* → *Place
+  all certificates in the following store* → **Trusted Root Certification
+  Authorities**.
+
+Then open `https://192.168.1.186`. ⚠ The authority's private key is in
+`.caddy/` (gitignored): copy it to a new server with the rest, or every device
+must trust a new one. Google sign-in does not work on a bare address (Google
+accepts only a real domain); passwords and two-step verification do.
+
+**Running the built version** with HTTPS on (the pm2 section above, with
+Caddy as a third service):
+
+```bash
+pnpm build && pnpm pm2:start   # first start, and after every change, pull or profile edit
+pnpm pm2:save                  # keep all three for the next boot
+pnpm pm2:status                # kwtech-web-server, kwtech-web-app and kwtech-https: online
+pnpm pm2:logs kwtech-https     # Caddy's own log
+pnpm pm2:stop                  # all three, e.g. before pnpm dev (same ports)
+```
+
+A new address (another network, a new router): `pnpm https:setup` again, then
+`pnpm build && pnpm pm2:start`. The phones need nothing new: they trust the
+authority in `.caddy/`, which signs a certificate for the new address too.
+Turning it off: `pnpm https:setup --off`, then `pnpm build && pnpm pm2:start`.
+
+**In development**, the same: set the two profile values, run `pnpm dev:focus
+…` as usual and `pnpm https` in a second terminal (Ctrl+C stops it). Plain
+`http://<address>:8081` keeps working in dev, because dev cookies are not
+`Secure`; HTTPS there is for trying what a phone gets in production.
+
 Database (all scoped to `apps/web-server`, which owns the schema — PLAN §12.2):
 
 ```bash
