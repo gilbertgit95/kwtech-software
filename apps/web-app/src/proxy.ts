@@ -82,8 +82,11 @@ export const config = {
    *                limit, and a file past the limit would arrive cut short.
    *                No session is read there either: a one-time ticket is the
    *                authorisation (see app/api/print/jobs/[jobId]/content).
+   *   /api/backups — excluded for the same reason in the other direction: a
+   *                backup's file, streamed out, admitted by a one-time ticket
+   *                (app/api/backups/download). Nothing there reads a session.
    *   _next, static assets — no session is read while serving a file, and a
    *                refresh round trip per image would be absurd.
    */
-  matcher: ['/((?!api/auth|api/print|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)'],
+  matcher: ['/((?!api/auth|api/print|api/backups|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)'],
 };

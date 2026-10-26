@@ -1,5 +1,18 @@
 import { appHubServerModule } from '@kwtech/module-app-hub/server';
-import { authServerModule, JwtAuthGuard, TokenService } from '@kwtech/module-auth/server';
+import {
+  AuthAdminService,
+  AuthService,
+  authServerModule,
+  JwtAuthGuard,
+  TokenService,
+} from '@kwtech/module-auth/server';
+import {
+  BACKUP_END_SESSIONS,
+  BACKUP_PASSWORD_CHECK,
+  BACKUP_STORE,
+  BackupMaintenanceGuard,
+  backupServerModule,
+} from '@kwtech/module-backup/server';
 import {
   BOOKS_ACCESS_CHECK,
   BOOKS_MEMBER_DIRECTORY,
@@ -51,6 +64,7 @@ import {
 import { JOBS_ACTOR_DIRECTORY, JOBS_ENTITLED_WORKSPACES, jobsServerModule } from '@kwtech/module-jobs/server';
 import {
   composeProcesses,
+  DEFAULT_TIME_ZONE,
   type ServerModuleDescriptor,
   serverModuleImports,
   serverRoutePrefixes,
@@ -113,6 +127,7 @@ import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendMfaEmailCode } from './auth/mfa-code-mail.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
 import { resolvePrincipal } from './auth/resolve-principal.js';
+import { createBackupStore } from './backup/backup-store.js';
 import { BookingMemberDirectoryAdapter } from './booking/member-directory.js';
 import { BookingNotifierAdapter } from './booking/notifier.js';
 import { BookingWorkspaceTimeZoneAdapter } from './booking/workspace-time-zone.js';
@@ -953,6 +968,31 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
     prismaProvider: appHubPrismaProvider,
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
   }),
+
+  /*
+   * Database → Backups (issue #2), and the daily 9 PM backup. Files in
+   * BACKUP_DIR, nothing in the database; the audit trail is the log. Its
+   * `BackupMaintenanceGuard` is this app's FIRST global guard (below).
+   */
+  backupServerModule({
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+    // Passed explicitly: the defaults live in this app's zod schema, which never reaches `process.env`.
+    timeZone: env.BACKUP_TIME_ZONE ?? DEFAULT_TIME_ZONE,
+    keep: env.BACKUP_KEEP,
+    storeProvider: { provide: BACKUP_STORE, useFactory: () => createBackupStore(env) },
+    // The restore's step-up: module-auth checks the password, as for adding a second factor.
+    passwordCheckProvider: {
+      provide: BACKUP_PASSWORD_CHECK,
+      inject: [AuthService],
+      useFactory: (auth: AuthService) => (userId: string, password: string) => auth.confirmPassword(userId, password),
+    },
+    // After a restore: every account signed out, every earlier access token refused (module-auth).
+    endSessionsProvider: {
+      provide: BACKUP_END_SESSIONS,
+      inject: [AuthAdminService],
+      useFactory: (admin: AuthAdminService) => () => admin.endEverySession(),
+    },
+  }),
 ];
 
 /**
@@ -1160,6 +1200,11 @@ const ROUTE_PREFIXES = serverRoutePrefixes(SERVER_MODULES) as Parameters<typeof 
     // provided, because Nest only auto-provides it in the root injector and
     // each module supplies its own. The guards these modules already export are
     // fully wired; this just points APP_GUARD at them.
+    /*
+     * ⚠ FIRST: while a restore replaces the database, every request is
+     * answered 503 before anything reads a session from it (module-backup).
+     */
+    { provide: APP_GUARD, useExisting: BackupMaintenanceGuard },
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useClass: CredentialThrottlerGuard },
     { provide: APP_GUARD, useExisting: FeatureGuard },

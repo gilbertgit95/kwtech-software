@@ -1,5 +1,6 @@
 import { APP_HUB_FEATURE_REGISTRY } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
+import { BACKUP_FEATURE_REGISTRY, BACKUP_PROCESS_REGISTRY } from '@kwtech/module-backup';
 import { BOOKS_FEATURE_REGISTRY } from '@kwtech/module-basic-bookkeeping';
 import { STOCK_FEATURE_REGISTRY, STOCK_LIMIT_REGISTRY, STOCK_PROCESS_REGISTRY } from '@kwtech/module-basic-inventory';
 import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY } from '@kwtech/module-basic-pos';
@@ -234,6 +235,12 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * for every organization, or force a run.
    */
   { key: 'jobs', features: JOBS_FEATURE_REGISTRY },
+  /*
+   * ⚠ And the backups' — APP level, held by `super-admin` and nobody else.
+   * Leave the keys out and anybody signed in could download or restore the
+   * whole database; leave the process out and the 9 PM backup never runs.
+   */
+  { key: 'backup', features: BACKUP_FEATURE_REGISTRY, processes: BACKUP_PROCESS_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

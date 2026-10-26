@@ -1560,6 +1560,23 @@ export class AuthService {
    * hold, or to strip the one they do. This is the check that keeps a session
    * compromise from becoming an account takeover.
    */
+  /**
+   * Whether `password` is this active user's current one — the same step-up
+   * `requirePassword` makes, as a yes or no for a check another module asks
+   * through a port (module-backup's restore). False for a suspended account,
+   * one with no password, and a wrong password alike: the caller gets no
+   * reason to tell them apart.
+   */
+  async confirmPassword(userId: string, password: string): Promise<boolean> {
+    try {
+      await this.requireActiveUser(userId);
+      await this.requirePassword(userId, password);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async requirePassword(userId: string, password: unknown): Promise<void> {
     const supplied = requireString(password, 'password');
     const credential = await this.client().authCredential.findFirst({

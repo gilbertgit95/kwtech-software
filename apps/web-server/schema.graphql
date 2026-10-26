@@ -58,6 +58,22 @@ type AppHubLayouts {
   workspace: String
 }
 
+type BackupFile {
+  createdAt: String!
+  kind: String!
+  name: String!
+  sizeBytes: Float!
+}
+
+type BackupState {
+  activity: String!
+  database: String!
+  files: [BackupFile!]!
+  keep: Float!
+  maintenance: Boolean!
+  timeZone: String!
+}
+
 type BookingAppointment {
   createdAt: String!
   createdById: String
@@ -757,6 +773,7 @@ type Mutation {
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   confirmBookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointment!
   confirmStockTake(organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
+  createBackup: BackupFile!
   createBookingAppointment(input: BookingAppointmentInput!, organizationId: String!, workspaceId: String!): BookingAppointment!
   createNote(input: CreateNoteInput!, organizationId: String!, workspaceId: String!): Note!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
@@ -774,6 +791,7 @@ type Mutation {
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   declineBookingAppointment(appointmentId: String!, organizationId: String!, reason: String, workspaceId: String!): BookingAppointment!
   declineInvitation(token: String!): InvitationDeclineResult!
+  deleteBackup(name: String!): Boolean!
   deleteChatMessage(messageId: String!): ChatMessage!
   deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteStudioCalibration(calibrationId: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -788,6 +806,7 @@ type Mutation {
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
   inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
+  issueBackupDownload(name: String!): String!
   leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
   lendBooksMoney(input: LendBooksMoneyInput!, organizationId: String!, workspaceId: String!): BooksLoan!
@@ -840,6 +859,7 @@ type Mutation {
   resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   resetWorkspaceAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
+  restoreBackup(confirmation: String!, name: String!, password: String!): Boolean!
   restoreNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
   restoreNoteRevision(expectedVersion: Int!, noteId: String!, organizationId: String!, revisionId: String!, workspaceId: String!): Note!
   restoreTask(organizationId: String!, taskId: String!, workspaceId: String!): Task!
@@ -1767,6 +1787,7 @@ type Query {
   adminUserSessions(userId: String!): [AdminUserSession!]!
   adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
   appHubLayouts(organizationId: String!, workspaceId: String!): AppHubLayouts!
+  backups: BackupState!
   bookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointmentDetail
   bookingCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): BookingCatalogue!
   bookingDay(day: String!, organizationId: String!, workspaceId: String!): BookingDay!

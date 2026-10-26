@@ -47,7 +47,7 @@
     "db:seed": "pnpm --filter @kwtech/web-server db:seed",
     "db:snapshot": "pnpm --filter @kwtech/web-server db:snapshot",
     "db:restore": "pnpm --filter @kwtech/web-server db:restore",
-    "db:backup": "node scripts/env.mjs --require=local && node scripts/db-backup.mjs",
+    "db:backup": "node scripts/env.mjs --require=local && pnpm --filter @kwtech/web-server backup:create --open",
     "prepare": "lefthook install"
   },
   "devDependencies": {

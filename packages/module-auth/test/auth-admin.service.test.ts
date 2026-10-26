@@ -189,6 +189,15 @@ describe('suspension', () => {
   });
 });
 
+describe('ending every session (after a database restore)', () => {
+  it('signs out every account and refuses each one’s earlier tokens', async () => {
+    const { admin, writes } = harness({ users: [user({ id: 'u1' }), user({ id: 'u2' })], sessions: 2 });
+    await expect(admin.endEverySession()).resolves.toBe(4);
+    expect(writes.revokedBefore).toEqual(['u1', 'u2']);
+    expect(writes.sessionUpdates).toHaveLength(2);
+  });
+});
+
 describe('credentials', () => {
   it('sends a reset through the one path that mints reset tokens', async () => {
     const { admin, writes } = harness();

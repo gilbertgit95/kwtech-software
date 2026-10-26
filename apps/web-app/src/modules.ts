@@ -1,5 +1,6 @@
 import { appHubWebModule } from '@kwtech/module-app-hub/react';
 import { authWebModule } from '@kwtech/module-auth/react';
+import { backupWebModule } from '@kwtech/module-backup/react';
 import { booksWebModule } from '@kwtech/module-basic-bookkeeping/react';
 import { stockWebModule } from '@kwtech/module-basic-inventory/react';
 import { posWebModule } from '@kwtech/module-basic-pos/react';
@@ -66,7 +67,14 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
    * import none of them, so it cannot know. Add a module's here when it
    * declares its first process; without one it is headed by its key.
    */
-  jobsWebModule({ moduleLabels: { task: 'Tasks', booking: 'Booking', studio: 'Print Studio' } }),
+  jobsWebModule({
+    moduleLabels: { task: 'Tasks', booking: 'Booking', studio: 'Print Studio', backup: 'Backups' },
+  }),
+  /*
+   * Database → Backups (issue #2): the server's backup folder, super admins
+   * only. Its file downloads go through app/api/backups/download.
+   */
+  backupWebModule(),
 ];
 
 /*

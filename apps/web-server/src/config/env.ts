@@ -1,6 +1,7 @@
 // Loads apps/web-server/.env.local, and must be the first import here so the
 // file is on process.env before the schema below parses it. See load-env.ts.
 import './load-env.js';
+import { isValidTimeZone } from '@kwtech/module-kit';
 import { z } from 'zod';
 import { parseTrustProxy } from './trust-proxy.js';
 
@@ -213,6 +214,32 @@ const envSchema = z
      * recorded rather than assumed.
      */
     REDIS_URL: optionalText,
+
+    /**
+     * ── backups (module-backup, issue #2) ───────────────────────────────────
+     *
+     * The folder backups live in. Relative to this app's directory, so the
+     * default is the repository's gitignored `backups/` — where `pnpm
+     * db:backup` has always written. In production, an absolute path on a disk
+     * with room for BACKUP_KEEP copies, outside the deployed code.
+     */
+    BACKUP_DIR: z.string().trim().min(1).default('../../backups'),
+    /**
+     * Run pg_dump and pg_restore INSIDE this Docker container rather than from
+     * the PATH: `kwtech-postgres` for the local dev database, so the tools
+     * always match the server's version and nothing is installed. Unset, the
+     * `pg_dump` / `pg_restore` on the PATH are used against DATABASE_URL.
+     */
+    BACKUP_DOCKER_CONTAINER: optionalText,
+    /**
+     * The zone backup file names and the daily 9 PM backup are in. Unset, the
+     * app's default zone (Asia/Manila) — never UTC, which would make 9 PM 5 AM.
+     */
+    BACKUP_TIME_ZONE: optionalText.refine((zone) => zone === undefined || isValidTimeZone(zone), {
+      message: 'BACKUP_TIME_ZONE is not an IANA time zone, e.g. "Asia/Manila"',
+    }),
+    /** How many backups the folder keeps; a new one past this deletes the oldest (the operator, 2026-10-26). */
+    BACKUP_KEEP: z.coerce.number().int().min(1).default(30),
 
     /**
      * ── mail ──────────────────────────────────────────────────────────────────
