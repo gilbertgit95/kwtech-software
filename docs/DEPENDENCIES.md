@@ -19,6 +19,7 @@ each other still work together. The rules come from PLAN §9 and `CLAUDE.md`;
    │  module-note   module-task   module-basic-pos                 │
    │  module-basic-bookkeeping   module-basic-inventory            │
    │  module-jobs   module-booking   module-print-studio           │
+   │  module-backup                                                │
    │                                                               │
    │  Each depends on module-kit ONLY, with web-ui, React and      │
    │  Nest as OPTIONAL peers. None imports another module.         │
@@ -49,6 +50,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-jobs` | module-kit | web-ui, Nest, React | both apps |
 | `module-booking` | module-kit | web-ui, Nest, React | both apps |
 | `module-print-studio` | module-kit (and `pdf-lib`, `pdfjs-dist`, `heic2any`, all used in the browser only) | web-ui, Nest, React | both apps |
+| `module-backup` | module-kit | web-ui, Nest, React, lucide-react | both apps |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -97,6 +99,9 @@ has a documented, fail-closed meaning — see each module's README.
 | Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today`, then `booking.upcoming_sessions`, then `studio.prune_logs`, then `stock.catch_up` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
 | Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans and subscriptions) |
 | Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |
+| The backup folder and pg_dump / pg_restore (a module never opens a connection) | `BACKUP_STORE` | `backup/pg-backup-store.ts`, shared with the command line (`backup/cli.ts`) |
+| Re-check the restorer's password; sign everybody out after a restore | `BACKUP_PASSWORD_CHECK`, `BACKUP_END_SESSIONS` | module-auth's `AuthService.confirmPassword` and `AuthAdminService.endEverySession`, bound in `app.module.ts` |
+| Hold every request off while a restore runs | `BackupMaintenanceGuard`, exported by module-backup | the app's FIRST `APP_GUARD` in `app.module.ts` |
 
 Shared shapes (a pub/sub port, a directory entry) are COPIED structurally in
 each module, not imported — a duplicate interface is cheaper than a coupling.

@@ -219,6 +219,7 @@ move a whole database, credentials included, to another computer, use
 
 ```bash
 pnpm db:backup            # a full pg_dump → backups/ (credentials included), for another computer
+pnpm --filter @kwtech/web-server backup:list | backup:create | backup:restore <file>   # the app's backups, from the command line
 pnpm db:snapshot          # this database → snapshot.json (stays on this machine)
 pnpm db:restore           # snapshot.json → an empty, migrated database, then db:seed
 pnpm db:restore --force   # the same, emptying the database first

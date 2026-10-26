@@ -602,10 +602,47 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 120 | The installed app has no offline handling: opened without a connection it shows the browser's own error page, not one of ours | when someone uses it where the connection drops (a shop floor, a delivery) | No service worker on purpose (§13, 2026-10-25): a worker that caches pages can serve a signed-out person a signed-in page, or yesterday's build. The first one should cache NOTHING but an offline page and the icons, and never a document or `/api/*` |
 | 121 | No web push: notifications reach a person only while a page is open | when someone must be told with the app closed (a booking, a queue call) | A service worker plus a delivery channel in `module-notification` (a `notify_push_subscription` per device, VAPID keys in the env profile, `sendSafely` fanning out). iPhone delivers only to an app on the home screen, iOS 16.4 and later |
 | 122 | The installed app is the whole site: there is no phone-first section with only a few screens | when the features for a mobile app are chosen | A `/m` section in this app with its own layout and its own manifest (`start_url: '/m'`, a separate `id`), reusing the modules' pages. A native app (Expo, `apps/mobile-app` + `/native` subpaths, §10) only if a device feature the browser lacks is needed; auth already allows it (the API sets no cookies) |
+| 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-26** — **Database backups: a super admin's page, a daily 9 PM backup and the command line, with nothing about them in the database (issue #2).**
+
+  The operator asked for a UI to trigger the existing backup, super admins
+  only, in a navigation section of its own for later database tasks; then for
+  restore in the UI as well as the CLI, deleting and downloading backups, a
+  daily backup at 9 PM, a limit of 30 (the 31st deletes the oldest), and
+  "do not record any of this on database … the logs is good for audit trails".
+  - **A new module, `module-backup`**, with a Database drawer section and
+    Backups as its first page. Five app-level keys split by risk (read,
+    create, download, delete, restore); `super-admin` holds them through the
+    registry and nobody else does.
+  - **The folder is the record.** Each file's name carries the database, the
+    day and time (in `BACKUP_TIME_ZONE`, Asia/Manila by default) and why it was
+    made; the page lists the folder. Who did what is the API log. Download
+    tickets, maintenance and "is one running" are in memory. The daily
+    process's own `module-jobs` run rows are counts and never name a file.
+  - **`pnpm db:backup` could not be reused as it was** (local container only,
+    the repo's folder, opens Explorer). Its parts — `pg_dump -Fc`, a
+    `.partial` name until it succeeds, the container when there is one — are
+    now the app's `PgBackupStore`, behind a port (a module never opens a
+    connection), shared by the API and a new CLI; `db:backup` calls that CLI.
+  - **Restore in the UI, with its cost paid:** typed database name and the
+    password (a credential surface), a safety backup first, a maintenance
+    guard answering every other request 503 while it runs, one transaction,
+    `prisma migrate deploy` after, then everybody signed out
+    (`AuthAdminService.endEverySession`), because a restored database brings
+    back sessions somebody had ended.
+  - **Downloads are a one-time ticket**, module-print's relay pattern: a file
+    is not a GraphQL value, and the ticket keeps the public route closed.
+  - **Not done:** off-machine copies (the folder is on the API's disk, so a
+    lost disk loses the backups too — copy them elsewhere until that is
+    built); restoring from an uploaded file (only files in the folder); more
+    than one API process (the "one at a time" lock and maintenance are per
+    process, which is this deployment); a maintenance screen of its own (the
+    web app's "cannot reach the server" stands in).
 
 - **2026-10-26** — **People can make the app larger or smaller: a text size and a spacing, kept on the account (issue #20).**
 

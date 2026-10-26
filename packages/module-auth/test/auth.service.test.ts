@@ -517,6 +517,19 @@ describe('resetPassword', () => {
   });
 });
 
+describe('confirmPassword — a yes or no for another module’s step-up', () => {
+  it('is yes for the account’s current password, and no otherwise', async () => {
+    const h = harness({ user: user(), secret: await hashPassword(PASSWORD) });
+    await expect(h.svc.confirmPassword('u1', PASSWORD)).resolves.toBe(true);
+    await expect(h.svc.confirmPassword('u1', 'wrong password!!')).resolves.toBe(false);
+  });
+
+  it('is no for a suspended account, even with the right password', async () => {
+    const h = harness({ user: user({ status: 'suspended' }), secret: await hashPassword(PASSWORD) });
+    await expect(h.svc.confirmPassword('u1', PASSWORD)).resolves.toBe(false);
+  });
+});
+
 describe('profile', () => {
   const principal = { userId: 'u1', sessionId: 's1', scope: 'full' as const, expiresAt: 0, issuedAt: 0 };
 
