@@ -299,7 +299,7 @@ function LayoutTile({
           {groups.length === 0 ? 'No cells' : groups.map((group) => `${group.count} × ${group.label}`).join(', ')}
         </span>
         {note ? (
-          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.625rem] text-muted-foreground">
             <UsersRound aria-hidden="true" className="size-3" />
             {note}
           </span>

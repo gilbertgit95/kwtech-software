@@ -15,6 +15,21 @@ import { Field, InputType } from '@nestjs/graphql';
  * needs a confirmation flow with the old address left working until the new one
  * is clicked — see AuthService.updateProfile.
  */
+/**
+ * A change to the caller's display sizes. Each field optional, absent meaning
+ * "leave it alone", like the profile. Plain strings on the wire, checked by
+ * `prepareDisplayChange`: a GraphQL enum would make the schema a fourth copy of
+ * the steps (src/domain/display.ts).
+ */
+@InputType()
+export class UpdateDisplayInput {
+  @Field(() => String, { nullable: true })
+  textSize?: string;
+
+  @Field(() => String, { nullable: true })
+  spacing?: string;
+}
+
 @InputType()
 export class UpdateProfileInput {
   @Field(() => String, { nullable: true })

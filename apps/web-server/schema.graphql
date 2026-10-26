@@ -585,6 +585,11 @@ input CreateTaskInput {
   title: String!
 }
 
+type DisplayPreferences {
+  spacing: String!
+  textSize: String!
+}
+
 input FeatureFilterInput {
   isPrivileged: Boolean
   levels: [String!]
@@ -919,6 +924,7 @@ type Mutation {
   unarchiveNotifications(ids: [String!]!): Int!
   unshareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   updateBookingAppointmentDetails(appointmentId: String!, input: BookingAppointmentDetailsInput!, organizationId: String!, workspaceId: String!): BookingAppointment!
+  updateMyDisplay(input: UpdateDisplayInput!): DisplayPreferences!
   updateNote(expectedVersion: Int!, input: UpdateNoteInput!, noteId: String!, organizationId: String!, workspaceId: String!): Note!
   updateOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   updatePlan(input: PlanDraftInput!, planKey: String!): PermissionPlanDetail!
@@ -1785,6 +1791,7 @@ type Query {
   jobProcessHistory(cursor: String, limit: Int, processKey: String!): JobHistoryPage!
   jobProcesses: [JobProcess!]!
   mfaFactors: [MfaFactor!]!
+  myDisplay: DisplayPreferences
   myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!
   myOrganization(organizationId: String!): PermissionOrganizationDetail
   myOrganizationRoles(level: String, organizationId: String!): [PermissionRoleDetail!]!
@@ -2588,6 +2595,11 @@ type TaskSettings {
 input TaskSettingsInput {
   lastBoardId: String
   view: String!
+}
+
+input UpdateDisplayInput {
+  spacing: String
+  textSize: String
 }
 
 input UpdateNoteInput {

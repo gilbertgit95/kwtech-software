@@ -163,7 +163,7 @@ export function StockBadge({ left }: { left: number | null }) {
   return (
     <span
       className={cn(
-        'shrink-0 rounded px-1 text-[11px] font-medium tabular-nums',
+        'shrink-0 rounded px-1 text-[0.6875rem] font-medium tabular-nums',
         badge.tone === 'muted' && 'text-muted-foreground',
         badge.tone === 'warning' && 'bg-status-warning text-status-warning-foreground',
         badge.tone === 'danger' && 'bg-status-error text-status-error-foreground',

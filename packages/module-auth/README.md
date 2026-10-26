@@ -190,6 +190,28 @@ you mount these under a prefix.
 Pass it to `ProfileRouteInner` instead when you use the descriptor's route, and
 it reaches the loading and error states too — not just the loaded form.
 
+## Display sizes (issue #20)
+
+A person's text size and spacing are kept on the ACCOUNT, so they follow them
+to every device, and on a shared till the person signed in gets theirs.
+
+- **`AuthDisplayPreference`** (`auth_display_preference`), one row per user,
+  created on the first change. No row is the defaults (`normal`,
+  `comfortable`). Its own table, so signing in never reads it.
+- **`myDisplay`** (query, null when signed out) and **`updateMyDisplay(input:
+  { textSize?, spacing? })`**, in `src/operations.ts`. Strings on the wire,
+  checked by `prepareDisplayChange`. Session only, with **no feature key**:
+  a role that withheld larger text would lock somebody out by eyesight.
+- **`/settings/display`**, the Display page, in the Account group after
+  Security (nav icon `text-size`). A choice applies at once and saves; a
+  failed save puts back what is stored and says so.
+- **The steps are `@kwtech/web-ui`'s**, copied as `AUTH_TEXT_SIZES` and
+  `AUTH_SPACINGS` because this core may not import web-ui. The app checks the
+  copies agree at compile time (`apps/web-app/src/lib/display.ts`). What each
+  step looks like is web-ui's README, "Text size and spacing".
+- **The app applies them**: it asks for `myDisplay` with `viewer` in its
+  session query and renders `displayApplyScript` in its shell.
+
 ## Features this module declares
 
 `AUTH_FEATURE_REGISTRY` carries the module's grantable rights, typed by

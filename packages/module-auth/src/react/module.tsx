@@ -6,6 +6,7 @@ import { UsersPage } from './admin/users-page.js';
 import { ForgotPasswordPage } from './forgot-password-page.js';
 import { MfaChallengePage } from './mfa-challenge-page.js';
 import { ResetPasswordPage } from './reset-password-page.js';
+import { DisplayPage } from './settings/display-page.js';
 import { ProfileRouteInner } from './settings/profile-route.js';
 import { SecurityPage } from './settings/security-page.js';
 import { SignInPage } from './sign-in-page.js';
@@ -93,6 +94,10 @@ function ResetPasswordRoute({ searchParams }: ModuleRouteProps) {
 
 function SecurityRoute(_props: ModuleRouteProps) {
   return <SecurityPage />;
+}
+
+function DisplayRoute(_props: ModuleRouteProps) {
+  return <DisplayPage />;
 }
 
 /*
@@ -187,6 +192,14 @@ export const authWebModule: WebModuleDescriptor = {
       title: 'Security',
       component: SecurityRoute,
       nav: { group: 'Account', order: 1, icon: 'shield' },
+    },
+    {
+      // Text size and spacing (issue #20). A property of the person, like the
+      // profile: needs a session, holds no key — see AuthDisplayService.
+      path: '/settings/display',
+      title: 'Display',
+      component: DisplayRoute,
+      nav: { group: 'Account', order: 2, icon: 'text-size' },
     },
     {
       // UNLISTED, and the Security page under an older address: two-step

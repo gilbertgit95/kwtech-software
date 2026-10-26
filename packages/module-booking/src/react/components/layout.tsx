@@ -24,7 +24,7 @@ import { buttonClass } from './controls.js';
 function CountBadge({ count }: { count: number | undefined }) {
   if (!count) return null;
   return (
-    <span className="rounded-full bg-status-warning px-1.5 text-[10px] text-status-warning-foreground tabular-nums">
+    <span className="rounded-full bg-status-warning px-1.5 text-[0.625rem] text-status-warning-foreground tabular-nums">
       {count}
     </span>
   );

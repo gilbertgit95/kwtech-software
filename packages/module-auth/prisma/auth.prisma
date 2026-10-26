@@ -130,8 +130,42 @@ model AuthUser {
   recoveryCodes  AuthRecoveryCode[]
   sessions       AuthSession[]
   passwordResets AuthPasswordReset[]
+  display        AuthDisplayPreference?
 
   @@map("auth_user")
+}
+
+/// How big things are on this person's screens (issue #20): the steps of
+/// `@kwtech/web-ui`'s display sizes, copied structurally in src/domain/display.ts.
+enum AuthTextSize {
+  small
+  normal
+  large
+  larger
+  largest
+}
+
+enum AuthSpacing {
+  compact
+  comfortable
+  roomy
+}
+
+/// A person's display sizes, on the ACCOUNT rather than in one browser, so they
+/// follow them to every device — and on a shared till, the person signed in
+/// gets theirs, not whoever used it last. No row means the defaults.
+///
+/// Its own table, not columns on `auth_user`: a sign-in reads that row on
+/// every attempt, and nothing about signing in needs to know a text size.
+model AuthDisplayPreference {
+  userId    String       @id
+  textSize  AuthTextSize @default(normal)
+  spacing   AuthSpacing  @default(comfortable)
+  updatedAt DateTime     @updatedAt
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_display_preference")
 }
 
 /// A second factor. IN USE for `totp` and `email`.

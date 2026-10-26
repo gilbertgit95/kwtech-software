@@ -40,6 +40,7 @@ export { MfaChallengePage } from './mfa-challenge-page.js';
 export { authWebModule } from './module.js';
 export { ResetPasswordPage } from './reset-password-page.js';
 export { SessionKeeper } from './session-keeper.js';
+export { DisplayPage } from './settings/display-page.js';
 export { ProfilePage } from './settings/profile-page.js';
 export { ProfileRouteInner } from './settings/profile-route.js';
 export { SecurityPage } from './settings/security-page.js';

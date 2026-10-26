@@ -241,6 +241,51 @@ less saturated there, and `--destructive-foreground` flips from light to dark,
 because the same colour on a dark ground reads muddy or loses contrast. An
 algorithmic inversion gets both wrong.
 
+## Text size and spacing
+
+A person can make the app larger or smaller (issue #20), like a phone's
+Settings → Display → Font size. Two settings, each an attribute on `<html>`:
+
+| | Steps | What it sets |
+|---|---|---|
+| `data-text-size` | `small` `normal` `large` `larger` `largest` | the root font size: 87.5% to 150% |
+| `data-spacing` | `compact` `comfortable` `roomy` | Tailwind's `--spacing` unit |
+
+No attribute is the default (Normal, Comfortable). The rules are at the end of
+`base.css`, outside any layer, because Tailwind declares `--spacing` in its
+theme layer and a layered override would lose to it silently.
+
+- **It works because everything is `rem` or `--spacing`.** Text size moves the
+  root, so text, spacing, control heights and container-query breakpoints all
+  follow; a sub-app stacks sooner on a larger page, which is right. Spacing
+  moves padding, gaps and heights around text of the same size.
+- **So write sizes in `rem` or the spacing scale, never `px`.** A
+  `text-[11px]` is a label that stays small for somebody who asked for large.
+  Use `text-[0.6875rem]`, or `left-3.75` rather than `left-[15px]`. The one
+  exception is a layout drawn in pixels on purpose (print studio's rulers),
+  which says why where it is done.
+- **Print is never scaled.** Receipts and studio pages are separate documents
+  with physical sizes.
+
+`src/display.ts` owns the steps and the browser half:
+
+```ts
+import { applyDisplay, displayApplyScript, displayPreloadScript, TEXT_SIZES, SPACINGS } from '@kwtech/web-ui';
+```
+
+- `displayPreloadScript()` goes in the root layout beside the palette's: this
+  browser's last sizes, before the first paint, on every page.
+- `displayApplyScript(display)` is rendered by the app's signed-in shell with
+  the ACCOUNT's sizes (`myDisplay`, module-auth), so on a shared computer the
+  person signed in gets theirs. It checks the values against the steps; nothing
+  from the API is written into the script as given.
+- `applyDisplay(display)` changes them now, with no reload: the Display page
+  calls it as a person chooses.
+
+`module-auth` stores the choice and copies the step lists
+(`AUTH_TEXT_SIZES`, `AUTH_SPACINGS`); `apps/web-app/src/lib/display.ts` fails
+the compile if the two disagree.
+
 ## Using the tokens
 
 Write utilities, never raw colours:

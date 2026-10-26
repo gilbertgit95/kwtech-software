@@ -195,7 +195,9 @@ function SelectedTools({
             onChange={(event) => onZoom(zoomAtSlider(Number(event.target.value), sliderMin, SLIDER_ZOOM_MAX))}
           />
           <IconButton icon={Minus} label="Zoom out" held={zoomOut} />
-          <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
+          <span className="text-[0.6875rem] font-medium tabular-nums text-muted-foreground">
+            {Math.round(zoom * 100)}%
+          </span>
           <Divider />
           <IconButton icon={RotateCw} label="Turn a quarter" onClick={onTurn} />
           <IconButton icon={RotateCcw} label="Reset: centred, 100%, upright" onClick={onReset} />

@@ -2,6 +2,7 @@ import { SessionKeeper } from '@kwtech/module-auth/react';
 import { WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { FEATURE } from '@kwtech/module-permissions';
 import { PermissionsProvider } from '@kwtech/module-permissions/react';
+import { displayApplyScript } from '@kwtech/web-ui';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -103,7 +104,7 @@ export async function AppShell({
    * The seam is unchanged in kind, only in shape: neither module names the
    * other, and the APP composes the query — see @/lib/session-query.
    */
-  const [{ viewer, permissions, organizations, expiresAt, reachable }, cookieStore] = await Promise.all([
+  const [{ viewer, permissions, organizations, expiresAt, display, reachable }, cookieStore] = await Promise.all([
     getSessionSnapshot(scope),
     cookies(),
   ]);
@@ -258,6 +259,20 @@ export async function AppShell({
      * components, and a function cannot cross the server/client boundary.
      */
     <AppIconSet>
+      {/*
+       * The ACCOUNT's text size and spacing (issue #20), applied before the
+       * shell paints. The root layout already applied this browser's last copy;
+       * this corrects it to whoever is signed in now — on a shared till, them,
+       * not the person before — and becomes the new copy.
+       *
+       * ⚠ Runs on a full page load only: React does not execute an inline
+       * script it inserts on a client-side navigation. That is enough, because
+       * the attributes stay on <html> between pages, a change made on Display
+       * applies itself (`applyDisplay`), and changing who is signed in is a
+       * full load.
+       */}
+      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: its values are checked against the fixed steps by displayApplyScript, never interpolated as given. */}
+      <script dangerouslySetInnerHTML={{ __html: displayApplyScript(display) }} />
       <PermissionsProvider value={permissions ?? undefined}>
         {/*
         Renders nothing. It spends the refresh token before the access token

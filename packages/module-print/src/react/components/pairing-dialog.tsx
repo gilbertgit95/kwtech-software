@@ -87,7 +87,7 @@ export function PairingDialog({
             <span
               aria-current={step === index + 1 ? 'step' : undefined}
               className={cn(
-                'flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px]',
+                'flex size-6 shrink-0 items-center justify-center rounded-full border text-[0.6875rem]',
                 step > index + 1 && 'border-transparent bg-status-success text-status-success-foreground',
                 step === index + 1 && 'border-transparent bg-primary text-primary-foreground',
                 step < index + 1 && 'border-border text-muted-foreground',

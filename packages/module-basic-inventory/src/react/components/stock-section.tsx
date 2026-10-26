@@ -643,7 +643,7 @@ function History({ stock, item, timeZone }: { stock: StockContext; item: StockIt
           return (
             <li key={move.id} className="relative flex gap-3 pb-3">
               {index < moves.length - 1 ? (
-                <span aria-hidden="true" className="absolute top-8 bottom-0 left-[15px] w-px bg-border" />
+                <span aria-hidden="true" className="absolute top-8 bottom-0 left-3.75 w-px bg-border" />
               ) : null}
               <span className={cn('z-0 grid size-8 shrink-0 place-items-center rounded-full', DOT[look.tone])}>
                 <Icon aria-hidden="true" className="size-3.5" />

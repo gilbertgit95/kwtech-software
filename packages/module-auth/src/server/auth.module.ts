@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller.js';
 import { AUTH_OPTIONS, type AuthModuleOptions, resolveAuthOptions } from './auth.options.js';
 import { AuthService } from './auth.service.js';
 import { AuthAdminService } from './auth-admin.service.js';
+import { AuthDisplayService } from './auth-display.service.js';
 import { AuthResolver } from './graphql/auth.resolver.js';
 import { UsersAdminResolver } from './graphql/users-admin.resolver.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
@@ -53,6 +54,7 @@ export class AuthModule {
        * as a request does. Only the graph surface is optional.
        */
       AuthAdminService,
+      AuthDisplayService,
       JwtAuthGuard,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider);
@@ -78,7 +80,15 @@ export class AuthModule {
       module: AuthModule,
       controllers: exposeRest ? [AuthController] : [],
       providers,
-      exports: [AuthService, AuthAdminService, TokenService, JwtAuthGuard, AUTH_OPTIONS, SESSION_REVOCATION_STORE],
+      exports: [
+        AuthService,
+        AuthAdminService,
+        AuthDisplayService,
+        TokenService,
+        JwtAuthGuard,
+        AUTH_OPTIONS,
+        SESSION_REVOCATION_STORE,
+      ],
       global: true,
     };
   }

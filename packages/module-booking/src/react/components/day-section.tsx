@@ -535,11 +535,11 @@ export function BookingDetail({
             <li key={change.id} className="relative flex gap-3 pb-4 last:pb-0">
               {/* The line joining one entry to the next; the last entry has nothing below it. */}
               {index < booking.changes.length - 1 ? (
-                <span aria-hidden="true" className="absolute top-3 bottom-0 left-[5px] w-px bg-border" />
+                <span aria-hidden="true" className="absolute top-3 bottom-0 left-1.25 w-px bg-border" />
               ) : null}
               <span
                 aria-hidden="true"
-                className="relative mt-1.5 size-[11px] shrink-0 rounded-full border-2 border-primary bg-card"
+                className="relative mt-1.5 size-2.75 shrink-0 rounded-full border-2 border-primary bg-card"
               />
               <span className="flex min-w-0 flex-col text-sm">
                 <span>

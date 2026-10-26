@@ -139,7 +139,7 @@ function Step({ number, title, children }: { number: number; title: string; chil
     <li className="flex gap-3">
       <span
         aria-hidden="true"
-        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
+        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[0.6875rem] font-semibold text-primary-foreground"
       >
         {number}
       </span>
