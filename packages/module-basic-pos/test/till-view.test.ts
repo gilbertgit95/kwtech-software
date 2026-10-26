@@ -271,6 +271,18 @@ describe('the receipt', () => {
     expect(html).toContain('Juan &#60;script&#62;');
   });
 
+  it('prints the order reference when there is one (issue #24), and nothing when there is none', () => {
+    const html = receiptHtml({ ...ORDER, label: 'Table 5' }, { timeZone: 'Asia/Manila' });
+    expect(html).toContain('Order ref: Table 5');
+    expect(receiptHtml(ORDER, { timeZone: 'Asia/Manila' })).not.toContain('Order ref');
+  });
+
+  it('⚠ escapes the order reference too — it is text somebody typed', () => {
+    const html = receiptHtml({ ...ORDER, label: '<b>T5</b>' }, { timeZone: 'Asia/Manila' });
+    expect(html).not.toContain('<b>T5</b>');
+    expect(html).toContain('Order ref: &#60;b&#62;T5&#60;/b&#62;');
+  });
+
   it('⚠ marks a reprint, and an unpaid slip, so neither passes for a paid original', () => {
     expect(receiptHtml(ORDER, { timeZone: 'Asia/Manila', reprintedAt: new Date('2026-10-02T01:00:00Z') })).toContain(
       'REPRINT',

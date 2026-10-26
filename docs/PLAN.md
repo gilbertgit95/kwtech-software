@@ -607,6 +607,22 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-26** — **A POS order's optional reference is its existing `label`, not a new column (issue #24).**
+
+  The operator asked for an optional field, letters or numbers, to hold a
+  restaurant's table number, kept generic for any other reference. `PosOrder`
+  already had `label` (free text, 40 characters, searchable), but the till
+  asked for it only inside the Hold dialog and the receipt never printed it.
+  - **Made it the reference on screen:** a quiet "Add a reference" line under
+    the customer on the till, saved through `setPosOrderLabel`; shown on the
+    on-screen receipt and the order's details; printed as "Order ref: …".
+  - **Optional and quiet**, because most stores will never use it: unset, it
+    is one muted line, never a required field.
+  - **Not done:** a separate column. It would only matter if one order needed
+    a reference AND a different hold note at once, which nobody has asked for;
+    it would also mean a migration and a second free-text field the till asks
+    for. The API keeps the name `label`, so no client breaks.
+
 - **2026-10-25** — **The web app is installable as a phone app (a PWA), with no app store.**
 
   The operator wants the app on phones, as an app, without publishing to a

@@ -218,7 +218,7 @@ export function OrdersSection({
                 // biome-ignore lint/a11y/noAutofocus: a section opens on its search, as Sell does — the next thing done is finding one (D20: focus always has a home).
                 autoFocus
                 className={`${INPUT_CLASS} pl-8`}
-                placeholder="Order number, customer or label"
+                placeholder="Order number, customer or reference"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 onKeyDown={searchIntoList(listRef)}
@@ -410,7 +410,7 @@ export function OrderDetail({
         ) : (
           <span className="text-muted-foreground">Walk-in</span>
         )}
-        {order.label ? <span className="text-muted-foreground"> · {order.label}</span> : null}
+        {order.label ? <span className="text-muted-foreground"> · Reference: {order.label}</span> : null}
       </p>
 
       {/*

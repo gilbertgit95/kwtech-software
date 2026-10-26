@@ -4,6 +4,7 @@ import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   Ban,
   Hand,
+  Hash,
   Keyboard,
   ListOrdered,
   Minus,
@@ -47,6 +48,7 @@ type Dialog =
   | { kind: 'pay' }
   | { kind: 'pending' }
   | { kind: 'hold' }
+  | { kind: 'reference' }
   | { kind: 'cancel' }
   | { kind: 'note'; line: PosOrderLineView }
   | { kind: 'lineDiscount'; line: PosOrderLineView }
@@ -456,14 +458,35 @@ export function Till({ state }: { state: TillState }) {
         <TextDialog
           open={dialog.kind === 'hold'}
           title="Hold this order"
-          label="Label (optional)"
-          hint="Tells held orders apart: “table 3”, “red cap”."
+          label="Order reference (optional)"
+          hint="Tells held orders apart: “table 3”, “red cap”. The same reference the order shows and prints."
           initial={open?.label ?? ''}
           confirmLabel="Hold"
           onSave={async (label) => {
             const held = await state.act((current) => client.hold(scope, current, label || null));
             if (held) state.clear();
             close();
+          }}
+          onClose={close}
+        />
+        <TextDialog
+          open={dialog.kind === 'reference'}
+          title="Order reference"
+          label="Reference (optional)"
+          hint="Letters or numbers, for whatever this store needs: “table 5”, “T12”, “pickup 3”. Printed on the receipt. Empty removes it."
+          initial={open?.label ?? ''}
+          confirmLabel="Save reference"
+          onSave={async (reference) => {
+            const text = reference.trim();
+            // Nothing typed on a clear till: no reason to start an empty order.
+            if (!open && text === '') {
+              close();
+              return;
+            }
+            const done = await state.act((current) => client.setLabel(scope, current, text || null), {
+              create: true,
+            });
+            if (done) close();
           }}
           onClose={close}
         />
@@ -736,6 +759,27 @@ function Cart({
           </span>
         ) : (
           <span className="text-muted-foreground">Walk-in — add a customer</span>
+        )}
+      </button>
+
+      {/*
+       * The order's reference (issue #24): a table number, a pickup tag, a job
+       * code — free text, so it serves any store. ⚠ OPTIONAL AND QUIET: most
+       * stores never use it, so unset it is one small muted line, never a
+       * field the cashier has to step over. It is the same `label` Hold asks for.
+       */}
+      <button
+        type="button"
+        className="flex items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => onDialog({ kind: 'reference' })}
+      >
+        <Hash aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        {order?.label ? (
+          <span className="min-w-0 truncate">
+            <span className="text-muted-foreground">Reference:</span> {order.label}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Add a reference (table no., tag…)</span>
         )}
       </button>
 
@@ -1029,6 +1073,7 @@ function Receipt({
       >
         {unpaid ? `Order #${order.number} — unpaid` : `Order #${order.number} — paid`}
       </p>
+      {order.label ? <p className="text-sm text-muted-foreground">Reference: {order.label}</p> : null}
       <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto text-sm">
         {order.lines.map((line) => (
           <li key={line.id} className="flex justify-between gap-2">
