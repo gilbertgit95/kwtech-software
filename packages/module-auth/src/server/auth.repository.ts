@@ -1,3 +1,5 @@
+import type { AuthDisplayPreferences } from '../domain/display.js';
+
 /**
  * The narrow slice of a Prisma client this module needs — declared
  * structurally, never imported from a generated client.
@@ -24,6 +26,10 @@ export interface AuthUserRow {
    * by a row rather than by a column that could drift from one.
    */
   mfaRequiredAt: Date | null;
+}
+
+export interface AuthDisplayPreferenceRow extends AuthDisplayPreferences {
+  userId: string;
 }
 
 export interface AuthCredentialRow {
@@ -421,6 +427,16 @@ export interface AuthPrismaClient {
     createMany(args: { data: { userId: string; codeHash: string }[] }): Promise<{ count: number }>;
     updateMany(args: { where: { id: string; usedAt: null }; data: { usedAt: Date } }): Promise<{ count: number }>;
     deleteMany(args: { where: { userId: string } }): Promise<{ count: number }>;
+  };
+
+  /** A person's display sizes (`AuthDisplayService`). No row is the defaults. */
+  authDisplayPreference: {
+    findUnique(args: { where: { userId: string } }): Promise<AuthDisplayPreferenceRow | null>;
+    upsert(args: {
+      where: { userId: string };
+      create: { userId: string } & AuthDisplayPreferences;
+      update: AuthDisplayPreferences;
+    }): Promise<AuthDisplayPreferenceRow>;
   };
 
   authPasswordReset: {

@@ -14,6 +14,26 @@
  *   @import "@kwtech/web-ui/themes/all.css";
  */
 export {
+  applyDisplay,
+  DEFAULT_DISPLAY,
+  DEFAULT_SPACING,
+  DEFAULT_TEXT_SIZE,
+  DISPLAY_STORAGE_KEY,
+  type DisplayPreferences,
+  displayApplyScript,
+  displayPreloadScript,
+  isSpacing,
+  isTextSize,
+  SPACING_ATTRIBUTE,
+  SPACING_LABELS,
+  SPACINGS,
+  type Spacing,
+  TEXT_SIZE_ATTRIBUTE,
+  TEXT_SIZE_LABELS,
+  TEXT_SIZES,
+  type TextSize,
+} from './display.js';
+export {
   applyPalette,
   PALETTE_ATTRIBUTE,
   PALETTE_STORAGE_KEY,

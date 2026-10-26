@@ -5,8 +5,9 @@ import type { Principal } from '../../types.js';
 import { PRINCIPAL_KEY } from '../auth.decorators.js';
 import { AUTH_OPTIONS, type ResolvedAuthModuleOptions } from '../auth.options.js';
 import { AuthService } from '../auth.service.js';
-import { UpdateProfileInput } from './auth.inputs.js';
-import { MfaFactorType, SessionInfoType, ViewerType } from './auth.types.js';
+import { AuthDisplayService } from '../auth-display.service.js';
+import { UpdateDisplayInput, UpdateProfileInput } from './auth.inputs.js';
+import { DisplayPreferencesType, MfaFactorType, SessionInfoType, ViewerType } from './auth.types.js';
 
 /**
  * The module's read side, on the graph.
@@ -40,6 +41,7 @@ import { MfaFactorType, SessionInfoType, ViewerType } from './auth.types.js';
 export class AuthResolver {
   constructor(
     private readonly auth: AuthService,
+    private readonly display: AuthDisplayService,
     @Inject(AUTH_OPTIONS) private readonly options: ResolvedAuthModuleOptions,
   ) {}
 
@@ -126,6 +128,36 @@ export class AuthResolver {
       ...(input.username !== undefined ? { username: input.username } : {}),
     });
     return { id: user.id, email: user.email, username: user.username, displayName: user.displayName };
+  }
+
+  /**
+   * The caller's display sizes (issue #20), or null when nobody is signed in.
+   * The app shell asks for it with `viewer` on every page, so the sizes apply
+   * before the page paints. Defaults when they never chose — never null for a
+   * signed-in caller, so "not signed in" and "never chose" stay apart.
+   *
+   * Session only, no feature key: see AuthDisplayService for why.
+   */
+  @Query(() => DisplayPreferencesType, { name: 'myDisplay', nullable: true })
+  async myDisplay(@Context() gqlContext: { req?: Record<string, unknown> }): Promise<DisplayPreferencesType | null> {
+    const principal = principalOf(gqlContext);
+    if (!principal) return null;
+    return this.display.read(principal.userId);
+  }
+
+  /** Changes the caller's own display sizes, and returns them as saved. */
+  @Mutation(() => DisplayPreferencesType, { name: 'updateMyDisplay' })
+  async updateMyDisplay(
+    @Context() gqlContext: { req?: Record<string, unknown> },
+    @Args('input') input: UpdateDisplayInput,
+  ): Promise<DisplayPreferencesType> {
+    const principal = principalOf(gqlContext);
+    // The guard has already refused an unauthenticated caller; this is the narrowing.
+    if (!principal) throw new UnauthorizedException('Not signed in');
+    return this.display.update(principal.userId, {
+      ...(input.textSize != null ? { textSize: input.textSize } : {}),
+      ...(input.spacing != null ? { spacing: input.spacing } : {}),
+    });
   }
 }
 

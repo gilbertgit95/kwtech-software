@@ -607,6 +607,37 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-26** — **People can make the app larger or smaller: a text size and a spacing, kept on the account (issue #20).**
+
+  The operator asked for settings so older users see things more clearly,
+  per user, covering fonts, sections and components, like a phone's display
+  settings. Every size in the stylesheets is a `rem` or a multiple of
+  Tailwind's `--spacing`, so two attributes on `<html>` scale everything.
+  - **Two settings, not one per component:** text size (the root font size,
+    87.5%–150%, as a percentage so the browser's own setting still counts)
+    and spacing (`--spacing`). Every module follows with no code of its own;
+    a per-component scale would mean each module reading a setting, and the
+    one that forgot would be the screen that does not grow.
+  - **On the account, not the browser** (`auth_display_preference`), because
+    the POS and queue run on shared computers: the person signed in gets
+    their sizes. The shell applies them before it paints from the session
+    query it already makes; this browser keeps a copy for pages outside the
+    shell (sign-in).
+  - **Session only, no feature key.** Withholding larger text is not a
+    permission anybody should be able to hold.
+  - **Account → Display** (`/settings/display`), beside Profile and
+    Security: applies at once, with a preview. Colours stay in the header's
+    theme switch.
+  - **Pixel text sizes became `rem`** across the modules (`text-[11px]` →
+    `text-[0.6875rem]`), or they would not have grown.
+  - **Not done:** scaling print (receipts and studio pages are physical
+    sizes, by design), the print studio's rulers (drawn in pixels against
+    the sheet), the queue's TV board (nobody signs in to it), and a
+    per-device override of the account's sizes, which nobody has asked for.
+  - **The steps are listed twice**, in web-ui (what they look like) and
+    module-auth (what is stored), because the auth core may not import
+    web-ui; the app fails the compile if they disagree.
+
 - **2026-10-26** — **A POS order's optional reference is its existing `label`, not a new column (issue #24).**
 
   The operator asked for an optional field, letters or numbers, to hold a

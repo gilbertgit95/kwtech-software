@@ -25,7 +25,7 @@ import { buttonClass } from './controls.js';
 function CountBadge({ count }: { count: number | undefined }) {
   if (!count) return null;
   return (
-    <span className="rounded-full bg-status-warning px-1.5 text-[10px] text-status-warning-foreground tabular-nums">
+    <span className="rounded-full bg-status-warning px-1.5 text-[0.625rem] text-status-warning-foreground tabular-nums">
       {count}
     </span>
   );
@@ -209,7 +209,7 @@ const TONE_CLASS: Readonly<Record<StatusTone, string>> = {
 
 export function StatusChip({ label, tone }: { label: string; tone: StatusTone }) {
   return (
-    <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium', TONE_CLASS[tone])}>{label}</span>
+    <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[0.6875rem] font-medium', TONE_CLASS[tone])}>{label}</span>
   );
 }
 

@@ -589,7 +589,7 @@ function Columns({
 
   return (
     <figure className="m-0 flex flex-col gap-1" aria-label={label}>
-      <div className="flex items-baseline justify-between text-[11px] text-muted-foreground tabular-nums">
+      <div className="flex items-baseline justify-between text-[0.6875rem] text-muted-foreground tabular-nums">
         <span>{format(max === 1 && points.every((point) => point.value === 0) ? 0 : max)}</span>
         {legend && hasPrevious ? (
           <span className="flex items-center gap-3">
@@ -650,7 +650,7 @@ function Columns({
         ) : null}
       </div>
       {first && last ? (
-        <div className="flex justify-between text-[11px] text-muted-foreground">
+        <div className="flex justify-between text-[0.6875rem] text-muted-foreground">
           <span>{first.label}</span>
           {last !== first ? <span>{last.label}</span> : null}
         </div>
@@ -667,7 +667,7 @@ function ColumnMark({ point, max }: { point: ColumnPoint; max: number }) {
         className="block w-full max-w-6 rounded-t bg-primary transition-opacity group-hover:opacity-80"
         style={{ height: `${(Math.max(0, point.value) / max) * 100}%` }}
       />
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow group-hover:block group-focus-visible:block">
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-popover px-2 py-1 text-[0.6875rem] text-popover-foreground shadow group-hover:block group-focus-visible:block">
         {point.label} · {point.text}
       </span>
     </>

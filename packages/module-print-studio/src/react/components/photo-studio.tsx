@@ -1120,7 +1120,7 @@ export function PhotoStudio({
                                 : {}),
                             }}
                             className={cn(
-                              'absolute flex touch-none select-none items-center justify-center text-[10px] font-medium',
+                              'absolute flex touch-none select-none items-center justify-center text-[0.625rem] font-medium',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                               chosen ? 'z-10' : null,
                               photo ? 'cursor-grab active:cursor-grabbing' : null,
@@ -1451,7 +1451,7 @@ function PhotoTray({
                         · {plural(group.photos.length, 'photo')}
                       </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground group-hover/batch:text-primary">
+                    <span className="flex shrink-0 items-center gap-1 text-[0.6875rem] font-medium text-muted-foreground group-hover/batch:text-primary">
                       <ArrowDownToLine aria-hidden="true" className="size-3.5" />
                       Place
                     </span>
@@ -1480,12 +1480,12 @@ function PhotoTray({
                       </button>
                       {number > 0 ? (
                         // Its place in the files as chosen, readable on a light photo and a dark one.
-                        <span className="pointer-events-none absolute top-1 left-1 min-w-4 rounded bg-card/90 px-1 text-center text-[10px] font-semibold tabular-nums text-foreground shadow-sm ring-1 ring-border">
+                        <span className="pointer-events-none absolute top-1 left-1 min-w-4 rounded bg-card/90 px-1 text-center text-[0.625rem] font-semibold tabular-nums text-foreground shadow-sm ring-1 ring-border">
                           {number}
                         </span>
                       ) : null}
                       {isEdited(edits.get(photo.id)) ? (
-                        <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                        <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-primary px-1 text-[0.5625rem] font-medium text-primary-foreground">
                           Edited
                         </span>
                       ) : null}

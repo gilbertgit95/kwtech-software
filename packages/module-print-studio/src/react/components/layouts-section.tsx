@@ -357,7 +357,7 @@ function LayoutCard({
       <div className="min-w-0">
         <h3 className="truncate text-sm font-semibold">{name}</h3>
         <p className="truncate text-xs text-muted-foreground">{layoutSummary(spec, 'in')}</p>
-        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.625rem] text-muted-foreground">
           {shared ? <UsersRound aria-hidden="true" className="size-3" /> : null}
           {badge}
         </span>

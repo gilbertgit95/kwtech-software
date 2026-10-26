@@ -147,3 +147,39 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/*
+ * A person's text size and spacing (src/display.ts, issue #20), as attributes
+ * on <html> set before the first paint. No attribute is the default: Normal,
+ * Comfortable.
+ *
+ * TEXT SIZE is the root font size, as a PERCENTAGE: it multiplies the
+ * browser's own default, so somebody who already enlarged text in their phone
+ * or browser settings keeps that and gets this on top. Everything in `rem`
+ * follows — text, the spacing unit, control heights, container breakpoints.
+ *
+ * SPACING is Tailwind's `--spacing` unit (0.25rem by default): padding, gaps
+ * and control heights, with the text left as it is.
+ *
+ * ⚠ OUTSIDE ANY LAYER, on purpose. Tailwind declares `--spacing` in its
+ * `theme` layer, and an unlayered rule outranks every layered one whatever the
+ * specificity; inside a layer this would lose to it and do nothing, silently.
+ */
+html[data-text-size="small"] {
+  font-size: 87.5%;
+}
+html[data-text-size="large"] {
+  font-size: 112.5%;
+}
+html[data-text-size="larger"] {
+  font-size: 125%;
+}
+html[data-text-size="largest"] {
+  font-size: 150%;
+}
+html[data-spacing="compact"] {
+  --spacing: 0.1875rem;
+}
+html[data-spacing="roomy"] {
+  --spacing: 0.3125rem;
+}

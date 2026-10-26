@@ -22,7 +22,14 @@ import {
  * paper's own edge, the way a ruler laid on the printout would.
  */
 
-/** How thick each ruler is, in screen pixels. */
+/**
+ * How thick each ruler is, in screen pixels.
+ *
+ * ⚠ The rulers' labels stay in PIXELS (`text-[9px]`) while the rest of the app
+ * follows the person's text size (issue #20): the strip, its ticks and where
+ * each label sits are all pixels laid against the sheet's scale, so a larger
+ * label would overrun the strip and its neighbours rather than read better.
+ */
 export const STUDIO_RULER_PX = 20;
 
 /*

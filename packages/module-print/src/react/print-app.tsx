@@ -187,7 +187,7 @@ export function PrintApp({
                   'Type the code on it, and start the agent.',
                 ].map((step, index) => (
                   <li key={step} className="flex items-center gap-2.5">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-foreground">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[0.6875rem] font-semibold text-foreground">
                       {index + 1}
                     </span>
                     {step}

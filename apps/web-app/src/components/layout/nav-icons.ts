@@ -1,5 +1,6 @@
 import {
   Activity,
+  ALargeSmall,
   Archive,
   Award,
   Ban,
@@ -138,6 +139,8 @@ export const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   settings: Settings,
   shield: Shield,
+  // Display sizes (Account → Display, issue #20): a small and a large letter, the phone settings' own sign for text size.
+  'text-size': ALargeSmall,
   // A key for the feature registry: a feature IS a key, in both senses, and the
   // registry is the ring of them a role is assembled from.
   key: KeyRound,

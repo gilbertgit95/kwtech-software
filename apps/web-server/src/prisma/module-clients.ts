@@ -120,6 +120,7 @@ export const authPrismaProvider: Provider = {
       authMfaEmailCode: prisma.authMfaEmailCode,
       authIdentity: prisma.authIdentity,
       authRecoveryCode: prisma.authRecoveryCode,
+      authDisplayPreference: prisma.authDisplayPreference,
     }),
 };
 

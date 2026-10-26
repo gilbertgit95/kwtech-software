@@ -1,4 +1,4 @@
-import { DEFAULT_PALETTE, palettePreloadScript } from '@kwtech/web-ui';
+import { DEFAULT_PALETTE, displayPreloadScript, palettePreloadScript } from '@kwtech/web-ui';
 import type { Metadata } from 'next';
 import { Caveat, Geist, Geist_Mono, Literata, Shantell_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
@@ -64,6 +64,14 @@ export function generateMetadata(): Metadata {
  */
 const PALETTE_SCRIPT = palettePreloadScript();
 
+/**
+ * Applies this browser's last text size and spacing (issue #20) before the
+ * first paint, for every page — the sign-in page and the bare pages too, which
+ * have no shell to apply the account's. The shell then corrects it to the
+ * signed-in person's own (AppShell). Inline for the palette's reason.
+ */
+const DISPLAY_SCRIPT = displayPreloadScript();
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     /*
@@ -86,6 +94,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-full">
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a build-time constant with no interpolated input; it must be inline to run before the first paint. */}
         <script dangerouslySetInnerHTML={{ __html: PALETTE_SCRIPT }} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a build-time constant with no interpolated input; it must be inline to run before the first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: DISPLAY_SCRIPT }} />
         <Providers>{children}</Providers>
       </body>
     </html>

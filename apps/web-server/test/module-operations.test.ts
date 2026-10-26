@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { APP_HUB_OPERATIONS } from '@kwtech/module-app-hub';
+import { AUTH_OPERATIONS } from '@kwtech/module-auth';
 import { BOOKS_OPERATIONS } from '@kwtech/module-basic-bookkeeping';
 import { STOCK_OPERATIONS } from '@kwtech/module-basic-inventory';
 import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
@@ -62,6 +63,7 @@ beforeAll(() => {
 });
 
 const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
+  auth: AUTH_OPERATIONS,
   chat: CHAT_OPERATIONS,
   queue: QUEUE_OPERATIONS,
   notification: NOTIFICATION_OPERATIONS,

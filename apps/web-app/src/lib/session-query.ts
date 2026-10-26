@@ -61,6 +61,7 @@ const SESSION_QUERY = `
   query Session($organizationId: String, $workspaceId: String) {
     viewer { id email username displayName }
     session { expiresAt }
+    myDisplay { textSize spacing }
     myOrganizations {
       organizationId
       organizationKey
@@ -493,6 +494,13 @@ export interface SessionSnapshot {
    * at each call site.
    */
   expiresAt: string | null;
+  /**
+   * The viewer's display sizes (issue #20), for the shell to apply before it
+   * paints. In this one request, not a second, for the reason `organizations`
+   * is: every signed-in page needs it. Null when signed out or not answered;
+   * `displayApplyScript` then applies the defaults.
+   */
+  display: { textSize: string; spacing: string } | null;
 }
 
 /** Signed out, having asked and been told so. */
@@ -501,6 +509,7 @@ const SIGNED_OUT: SessionSnapshot = {
   permissions: null,
   organizations: [],
   expiresAt: null,
+  display: null,
   reachable: true,
 };
 
@@ -510,6 +519,7 @@ const UNREACHABLE: SessionSnapshot = {
   permissions: null,
   organizations: [],
   expiresAt: null,
+  display: null,
   reachable: false,
 };
 
@@ -563,6 +573,7 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
         myPermissions: PermissionContext | null;
         myOrganizations: ViewerOrganization[] | null;
         session: { expiresAt: number } | null;
+        myDisplay: { textSize: string; spacing: string } | null;
       };
     };
 
@@ -572,6 +583,7 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
       permissions: body.data?.myPermissions ?? null,
       organizations: body.data?.myOrganizations ?? [],
       expiresAt: expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
+      display: body.data?.myDisplay ?? null,
       reachable: true,
     };
   } catch {

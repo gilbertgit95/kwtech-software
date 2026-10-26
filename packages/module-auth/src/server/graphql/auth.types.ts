@@ -9,6 +9,16 @@ import { Field, Int, ObjectType } from '@nestjs/graphql';
  * everything else speaks.
  */
 
+/** The caller's display sizes (src/domain/display.ts). Strings, for the reason `UpdateDisplayInput` gives. */
+@ObjectType('DisplayPreferences')
+export class DisplayPreferencesType {
+  @Field()
+  textSize!: string;
+
+  @Field()
+  spacing!: string;
+}
+
 @ObjectType('Viewer')
 export class ViewerType {
   @Field()
