@@ -69,8 +69,24 @@ export interface NotificationInboxState {
  * back to top" instead of inserting rows, for the same reason. A RECALL removes
  * its rows at once on any page: a recall is a promise that the words are gone.
  */
-export function useNotificationInbox(options: { client?: NotificationClient } = {}): NotificationInboxState {
+export interface UseNotificationInboxOptions {
+  client?: NotificationClient;
+  /**
+   * Whether the filters live in the ADDRESS (`?tab=unread&page=2`), so Back
+   * and a shared link work. True for the inbox page, which owns its address.
+   *
+   * False where the inbox is one part of a page whose address belongs to
+   * somebody else — the phone layout's Inbox tab (issue #22), whose frame
+   * keeps its own `?tab=`. Writing ours there replaced the frame's and sent a
+   * reload to Home; reading it there took the frame's `?tab=inbox` for ours.
+   * Off, the filters are kept in memory for as long as the inbox is mounted.
+   */
+  syncAddress?: boolean;
+}
+
+export function useNotificationInbox(options: UseNotificationInboxOptions = {}): NotificationInboxState {
   const client = useMemo(() => options.client ?? createNotificationClient(), [options.client]);
+  const syncAddress = options.syncAddress ?? true;
   const realtime = useRealtime();
 
   const [state, setState] = useState<InboxState>(DEFAULT_INBOX_STATE);
@@ -85,21 +101,28 @@ export function useNotificationInbox(options: { client?: NotificationClient } = 
   const seenOrganizations = useRef(new Map<string, string>());
   const [organizations, setOrganizations] = useState<Array<{ id: string; label: string }>>([]);
 
-  // ── the URL is the state ────────────────────────────────────────────────
+  // ── the URL is the state (unless the page's address is somebody else's) ──
   useEffect(() => {
+    if (!syncAddress) {
+      setReady(true);
+      return;
+    }
     setState(parseInboxState(window.location.search));
     setReady(true);
     const onPop = () => setState(parseInboxState(window.location.search));
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [syncAddress]);
 
-  const go = useCallback((next: InboxState) => {
-    // pushState, not `next/navigation`: modules never import Next. Back works
-    // because `popstate` above reads the URL again.
-    window.history.pushState(null, '', `${window.location.pathname}${serializeInboxState(next)}`);
-    setState(next);
-  }, []);
+  const go = useCallback(
+    (next: InboxState) => {
+      // pushState, not `next/navigation`: modules never import Next. Back works
+      // because `popstate` above reads the URL again.
+      if (syncAddress) window.history.pushState(null, '', `${window.location.pathname}${serializeInboxState(next)}`);
+      setState(next);
+    },
+    [syncAddress],
+  );
 
   const load = useCallback(
     async (current: InboxState) => {

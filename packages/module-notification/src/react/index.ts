@@ -47,7 +47,11 @@ export {
   toastFor,
   useNotificationCenter,
 } from './use-notification-center.js';
-export { type NotificationInboxState, useNotificationInbox } from './use-notification-inbox.js';
+export {
+  type NotificationInboxState,
+  type UseNotificationInboxOptions,
+  useNotificationInbox,
+} from './use-notification-inbox.js';
 export { useTabTitle } from './use-tab-title.js';
 export {
   activeFilterCount,
