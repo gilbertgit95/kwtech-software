@@ -2,7 +2,18 @@
 
 import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
-import { Archive, ArrowDown, ArrowUp, Check, ListChecks, MessageSquare, RotateCcw, Trash2, X } from 'lucide-react';
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronLeft,
+  ListChecks,
+  MessageSquare,
+  RotateCcw,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { isScheduledAfterDue } from '../../domain/dates.js';
 import { TASK_CONFLICT_MESSAGE, TASK_PRIORITIES } from '../../domain/tasks.js';
@@ -41,7 +52,20 @@ const AUTOSAVE_IDLE_MS = 2000;
  * Everything else — column, dates, priority, labels, assignees, checklist — is
  * its own small write (TASK-PLAN decision 17), so it never conflicts.
  */
-export function TaskPanel({ state, onClose }: { state: TasksState; onClose: () => void }) {
+export function TaskPanel({
+  state,
+  onClose,
+  back,
+}: {
+  state: TasksState;
+  onClose: () => void;
+  /**
+   * The phone's way out (issue #22): "‹ Printing Tasks" at the head of the
+   * panel instead of a Close button — the panel is the whole screen there, and
+   * a back arrow is how a phone leaves one. Omitted on the full site.
+   */
+  back?: string | undefined;
+}) {
   const task = state.openTask;
   if (!task) {
     return (
@@ -50,10 +74,20 @@ export function TaskPanel({ state, onClose }: { state: TasksState; onClose: () =
       </aside>
     );
   }
-  return <OpenTask key={task.id} state={state} task={task} onClose={onClose} />;
+  return <OpenTask key={task.id} state={state} task={task} onClose={onClose} back={back} />;
 }
 
-function OpenTask({ state, task, onClose }: { state: TasksState; task: TaskView; onClose: () => void }) {
+function OpenTask({
+  state,
+  task,
+  onClose,
+  back,
+}: {
+  state: TasksState;
+  task: TaskView;
+  onClose: () => void;
+  back: string | undefined;
+}) {
   const { client, scope } = state;
   const editable = state.canWrite && task.archivedAt === null;
   const act = (action: () => Promise<unknown>) => void state.run(action);
@@ -63,17 +97,32 @@ function OpenTask({ state, task, onClose }: { state: TasksState; task: TaskView;
 
   return (
     <aside aria-labelledby={titleId} className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
-        <p className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
-          {task.boardName}
-          {task.archivedAt ? ' · Archived' : ''}
-        </p>
-        {editable ? <SaveState status={status} busy={state.busy} /> : null}
-        <button type="button" aria-label="Close task" className={buttonClass('secondary', 'sm')} onClick={onClose}>
-          <X aria-hidden="true" className="size-3.5" />
-          Close
-        </button>
-      </header>
+      {back !== undefined ? (
+        <header className="flex items-center gap-2 border-b border-border/60 px-2 py-1.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex min-h-11 min-w-0 items-center gap-0.5 rounded-full pr-3 pl-1 text-sm font-medium text-primary transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronLeft aria-hidden="true" className="size-5 shrink-0" />
+            <span className="truncate">{back}</span>
+          </button>
+          {task.archivedAt ? <span className="text-xs text-muted-foreground">Archived</span> : null}
+          <span className="ml-auto pr-2">{editable ? <SaveState status={status} busy={state.busy} /> : null}</span>
+        </header>
+      ) : (
+        <header className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+          <p className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+            {task.boardName}
+            {task.archivedAt ? ' · Archived' : ''}
+          </p>
+          {editable ? <SaveState status={status} busy={state.busy} /> : null}
+          <button type="button" aria-label="Close task" className={buttonClass('secondary', 'sm')} onClick={onClose}>
+            <X aria-hidden="true" className="size-3.5" />
+            Close
+          </button>
+        </header>
+      )}
 
       {/* `relative`: clips its `sr-only` labels too — see the board's scroller. */}
       <div className="relative flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">

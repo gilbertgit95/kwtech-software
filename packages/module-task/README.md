@@ -59,9 +59,16 @@ when the books' Money tab became their second user (PLAN §13, 2026-10-15).
 
 ### On a phone (issue #22)
 
-`@kwtech/module-task/mobile` offers the phone layout Tasks — the same sub-app
-as the Apps page's, full screen, gated by `task:read`. A sub-app already lays
-out by its box and never navigates, which is all a phone screen asks.
+`@kwtech/module-task/mobile` offers the phone layout **Tasks**, gated by
+`task:read`: `TasksMobileApp`, tasks laid out for a phone on the same
+`useTasks` as `TaskApp`. The board as a picker at the top (with My tasks, by
+day), search and one Filters sheet; the board's columns as chips with their
+counts, one column's tasks at a time as cards (priority as the leading edge,
+due date, checklist, comments, labels, assignees); a round ＋ adding to the
+column on screen. A task opens full screen in the same `TaskPanel`, given
+`back` so its head reads "‹ Board" instead of Close; its Column field is how a
+task moves on a phone. Not on the phone yet: making and setting up boards, and
+dragging tasks.
 
 ## In a NestJS app
 

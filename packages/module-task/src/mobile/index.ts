@@ -4,3 +4,4 @@
  * Browser code, like `/react`: never `/server` (`pnpm check:boundaries`).
  */
 export { taskMobileModule } from './module.js';
+export { TasksMobileApp } from './tasks-mobile-app.js';
