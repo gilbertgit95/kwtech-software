@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, Tooltip } from '@kwtech/web-ui/react';
+import { cn, ResizeGrip, Tooltip } from '@kwtech/web-ui/react';
 import {
   Ban,
   ChevronLeft,
@@ -17,12 +17,29 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
-import { type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type PointerEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { type PosSearchResult, parseQuantityPrefix, searchItems } from '../../domain/search.js';
 import type { PosItemView, PosOrderLineView, PosOrderView } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
 import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
+import {
+  ORDER_PANEL_STORAGE_KEY,
+  ORDER_PANEL_WIDTH,
+  orderPanelWidthAfterDrag,
+  orderPanelWidthAfterKey,
+  parseStoredOrderPanelWidth,
+} from '../view/order-panel.js';
 import { receiptHtml } from '../view/receipt.js';
 import { leftOf, type PosStockMap, stockWarning, tileLeft } from '../view/stock.js';
 import {
@@ -38,7 +55,14 @@ import {
   searchCatalogue,
 } from '../view/till.js';
 import { buttonClass, INPUT_CLASS, StockBadge } from './controls.js';
-import { CustomerDialog, DiscountDialog, PendingDialog, TextDialog, VariantPicker } from './dialogs.js';
+import {
+  CustomerDialog,
+  DiscountDialog,
+  PendingDialog,
+  ReferenceDialog,
+  TextDialog,
+  VariantPicker,
+} from './dialogs.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
 
@@ -86,6 +110,15 @@ export function Till({
 }) {
   /** Phone only: whether the order is open over the items. */
   const [orderShown, setOrderShown] = useState(false);
+  /*
+   * The order panel's width on the full screen, dragged by its left edge. Read
+   * in the initialiser, not an effect, so the panel arrives at its remembered
+   * width instead of opening at the default and jumping. Safe because the till
+   * renders only after hydration (in the Apps page's grid); and on the phone,
+   * which may be rendered on the server, the width is never put on the page.
+   */
+  const [orderWidth, setOrderWidth] = useState(readOrderPanelWidth);
+  const orderPanelId = useId();
   const [query, setQuery] = useState('');
   /** The match ↑ ↓ are on in the search results, and the one Enter adds. The first, until an arrow moves it. */
   const [activeResult, setActiveResult] = useState(0);
@@ -442,15 +475,23 @@ export function Till({
         ) : null}
 
         <section
+          id={orderPanelId}
           aria-label="Order"
           // Phone: over the items, the whole till's height — and HIDDEN rather than unmounted while
           // closed, so the cart keeps its refs and its line selection.
           hidden={phone && !finished && !orderShown}
+          // The dragged width, as a variable the wide layout reads: an inline `width` would also
+          // size the narrow, stacked layout, where the order takes the whole width.
+          style={phone ? undefined : ({ '--pos-order-width': `${orderWidth}px` } as CSSProperties)}
           className={cn(
             'flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3',
-            phone ? 'absolute inset-0 z-10 rounded-2xl shadow-lg' : '@3xl:w-[22rem] @3xl:shrink-0',
+            phone
+              ? 'absolute inset-0 z-10 rounded-2xl shadow-lg'
+              : // max-w keeps a width chosen on a wide monitor from swallowing the items on a laptop.
+                'relative @3xl:w-[var(--pos-order-width)] @3xl:max-w-[65%] @3xl:shrink-0',
           )}
         >
+          {phone ? null : <OrderPanelHandle panelId={orderPanelId} width={orderWidth} onResize={setOrderWidth} />}
           {phone && !finished ? (
             <button
               type="button"
@@ -514,12 +555,16 @@ export function Till({
           }}
           onClose={close}
         />
-        <TextDialog
+        <ReferenceDialog
           open={dialog.kind === 'hold'}
           title="Hold this order"
           label="Order reference (optional)"
           hint="Tells held orders apart: “table 3”, “red cap”. The same reference the order shows and prints."
           initial={open?.label ?? ''}
+          options={state.referenceOptions}
+          held={state.pending}
+          currentId={open?.id ?? null}
+          phone={phone}
           confirmLabel="Hold"
           onSave={async (label) => {
             const held = await state.act((current) => client.hold(scope, current, label || null));
@@ -528,12 +573,16 @@ export function Till({
           }}
           onClose={close}
         />
-        <TextDialog
+        <ReferenceDialog
           open={dialog.kind === 'reference'}
           title="Order reference"
           label="Reference (optional)"
           hint="Letters or numbers, for whatever this store needs: “table 5”, “T12”, “pickup 3”. Printed on the receipt. Empty removes it."
           initial={open?.label ?? ''}
+          options={state.referenceOptions}
+          held={state.pending}
+          currentId={open?.id ?? null}
+          phone={phone}
           confirmLabel="Save reference"
           onSave={async (reference) => {
             const text = reference.trim();
@@ -808,12 +857,31 @@ function Cart({
         )}
         <button
           type="button"
-          // Pushed right by the shortcut button on the desktop; on a phone, which has none, by itself.
-          className={cn(buttonClass('ghost', 'sm'), phone ? 'ml-auto' : null)}
+          aria-label={
+            state.pending.length > 0 ? `Pending orders: ${state.pending.length} waiting` : 'Pending orders: none'
+          }
+          className={cn(
+            buttonClass('ghost', 'sm'),
+            // Pushed right by the shortcut button on the desktop; on a phone, which has none, by itself.
+            phone ? 'ml-auto' : null,
+            // ⚠ LOUD ONLY WHILE ORDERS WAIT (the operator, 2026-10-29): a held order is a sale still to settle,
+            // and "Pending (2)" in a ghost button was missed. Tinted, with the count as a badge — and quiet
+            // again once the list is empty, so a warning colour always means something to resolve.
+            state.pending.length > 0 &&
+              'border border-status-warning bg-status-warning/15 font-semibold hover:bg-status-warning/25',
+          )}
           onClick={() => onDialog({ kind: 'pending' })}
         >
           <ListOrdered aria-hidden="true" className="size-3.5" />
-          Pending{state.pending.length > 0 ? ` (${state.pending.length})` : ''}
+          Pending
+          {state.pending.length > 0 ? (
+            <span
+              aria-hidden="true"
+              className="inline-flex min-w-5 items-center justify-center rounded-full bg-status-warning px-1.5 py-0.5 text-xs font-bold leading-none tabular-nums text-status-warning-foreground"
+            >
+              {state.pending.length}
+            </span>
+          ) : null}
         </button>
       </header>
 
@@ -836,22 +904,26 @@ function Cart({
 
       {/*
        * The order's reference (issue #24): a table number, a pickup tag, a job
-       * code — free text, so it serves any store. ⚠ OPTIONAL AND QUIET: most
-       * stores never use it, so unset it is one small muted line, never a
-       * field the cashier has to step over. It is the same `label` Hold asks for.
+       * code — free text, so it serves any store. It is the same `label` Hold
+       * asks for.
+       *
+       * ⚠ OPTIONAL BUT NOT QUIET: the same box as the customer's, not a small
+       * muted line under it (the operator, 2026-10-29). Unset, it read as
+       * unimportant and was skipped; it is what tells held orders and tables
+       * apart, so it sits beside the customer as an equal.
        */}
       <button
         type="button"
-        className="flex items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => onDialog({ kind: 'reference' })}
       >
-        <Hash aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <Hash aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         {order?.label ? (
           <span className="min-w-0 truncate">
             <span className="text-muted-foreground">Reference:</span> {order.label}
           </span>
         ) : (
-          <span className="text-muted-foreground">Add a reference (table no., tag…)</span>
+          <span className="text-muted-foreground">No reference — add one (table no., tag…)</span>
         )}
       </button>
 
@@ -1253,4 +1325,116 @@ function tillZone(dialog: Dialog, finished: boolean, lineSelected: boolean): Til
   if (dialog.kind !== 'none') return 'dialog';
   if (finished) return 'receipt';
   return lineSelected ? 'cart' : 'search';
+}
+
+/**
+ * The order panel's LEFT edge, as a handle (the operator, 2026-10-29): drag it
+ * to give the order or the items more room. The ARIA window splitter, as
+ * `module-app-hub`'s app list: focusable, ← → move the edge, Home / End go to
+ * the bounds, double-click puts the default back. Only where the order sits
+ * beside the items (`@3xl`); stacked, the order has the whole width already.
+ *
+ * Stored once, on release, not on every move: a drag emits a pointer event
+ * per frame and nothing reads the stored width until the next visit.
+ */
+function OrderPanelHandle({
+  panelId,
+  width,
+  onResize,
+}: {
+  panelId: string;
+  width: number;
+  onResize: (width: number) => void;
+}) {
+  const [resizing, setResizing] = useState(false);
+  const drag = useRef<{ pointerId: number; fromX: number; start: number } | null>(null);
+
+  const resizeTo = (next: number) => {
+    onResize(next);
+    writeOrderPanelWidth(next);
+  };
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    // Stops the press from starting a text selection across the items beside it.
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { pointerId: event.pointerId, fromX: event.clientX, start: width };
+    setResizing(true);
+  };
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const active = drag.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    onResize(orderPanelWidthAfterDrag(active.start, active.fromX, event.clientX));
+  };
+  const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    const active = drag.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    drag.current = null;
+    setResizing(false);
+    resizeTo(orderPanelWidthAfterDrag(active.start, active.fromX, event.clientX));
+  };
+
+  return (
+    <Tooltip text="Drag to resize · double-click to reset" side="left">
+      {(tooltip) => (
+        // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or pointer events; a focusable separator is the ARIA window-splitter pattern.
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the order"
+          aria-controls={panelId}
+          aria-valuenow={width}
+          aria-valuemin={ORDER_PANEL_WIDTH.min}
+          aria-valuemax={ORDER_PANEL_WIDTH.max}
+          tabIndex={0}
+          {...tooltip}
+          // Both, for the two events the handle and the hint each listen to: a later prop replaces the spread one.
+          onPointerDown={(event) => {
+            tooltip.onPointerDown();
+            onPointerDown(event);
+          }}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerEnd}
+          onPointerCancel={onPointerEnd}
+          onKeyDown={(event) => {
+            tooltip.onKeyDown(event);
+            const next = orderPanelWidthAfterKey(width, event.key, event.shiftKey);
+            if (next === null) return;
+            event.preventDefault();
+            // ⚠ The till reads ← → and Home / End as its own keys (the cart, the search); here they are the edge's.
+            event.stopPropagation();
+            resizeTo(next);
+          }}
+          onDoubleClick={() => resizeTo(ORDER_PANEL_WIDTH.default)}
+          className={cn(
+            // touch-none: a finger dragging the edge resizes instead of scrolling. Straddles the border, 12px wide.
+            'group absolute inset-y-0 -left-1.5 z-10 hidden w-3 cursor-col-resize touch-none items-center justify-center rounded-full transition-colors @3xl:flex',
+            'hover:bg-primary/20 focus-visible:bg-primary/30 focus-visible:outline-none',
+            resizing && 'bg-primary/30',
+          )}
+        >
+          <ResizeGrip onBorder active={resizing} />
+        </div>
+      )}
+    </Tooltip>
+  );
+}
+
+/** Storage can throw (a private window, blocked site data); the panel then opens at its default. */
+function readOrderPanelWidth(): number {
+  if (typeof window === 'undefined') return ORDER_PANEL_WIDTH.default;
+  try {
+    return parseStoredOrderPanelWidth(window.localStorage.getItem(ORDER_PANEL_STORAGE_KEY));
+  } catch {
+    return ORDER_PANEL_WIDTH.default;
+  }
+}
+
+function writeOrderPanelWidth(width: number): void {
+  try {
+    window.localStorage.setItem(ORDER_PANEL_STORAGE_KEY, String(width));
+  } catch {
+    // Not remembered on this device; the panel keeps its width for this visit.
+  }
 }

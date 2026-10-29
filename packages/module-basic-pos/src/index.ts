@@ -13,6 +13,7 @@ export * from './domain/customers.js';
 export * from './domain/keymap.js';
 export * from './domain/money.js';
 export * from './domain/orders.js';
+export * from './domain/references.js';
 export * from './domain/refunds.js';
 export * from './domain/reports.js';
 export * from './domain/search.js';

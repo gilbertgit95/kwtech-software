@@ -634,6 +634,28 @@ Its one non-obvious line is `event.preventDefault()` on select: Radix dismisses
 on select by default, which for a multi-select means one click per re-open —
 technically working and unusable for its whole purpose.
 
+## Resizable borders
+
+Every border a person can drag carries the same grip, `ResizeGrip`: three dots
+at its middle. A bare border, or a line that appears only on hover, looks like
+no handle at all, and a touch screen has no hover.
+
+```tsx
+<div role="separator" aria-orientation="vertical" aria-label="Resize navigation" tabIndex={0}
+     className="group absolute inset-y-0 -right-1 flex w-2 cursor-col-resize items-center justify-center">
+  <ResizeGrip onBorder active={resizing} />
+</div>
+```
+
+- **The separator does the work** (pointer capture, ← → keys, `aria-value*`);
+  the grip is decorative. Give the separator `group`, so the dots light up on
+  its hover and keyboard focus, and centre the grip in it.
+- **`onBorder`** when the edge is a panel's own border (the navigation, the
+  app list, the POS order panel): the dots get a card-coloured pill, or the
+  border's line would cross them. Leave it off in a gap between two panels
+  (the Apps page's grid).
+- **`orientation="horizontal"`** for a border that runs across (a row's).
+
 ## Debouncing a search box
 
 ```tsx

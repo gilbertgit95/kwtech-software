@@ -74,4 +74,5 @@ export type PosRefusal =
   | 'exceeds_paid'
   | 'unknown_line'
   | 'invalid_keymap'
+  | 'invalid_reference_options'
   | 'invalid_period';

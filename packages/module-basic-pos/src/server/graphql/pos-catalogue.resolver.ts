@@ -225,6 +225,21 @@ export class PosCatalogueResolver {
     return renderSettings(saved);
   }
 
+  /**
+   * The order reference options the Reference and Hold dialogs offer, the
+   * whole list in order; an empty list removes them. Leaves the keymap alone.
+   */
+  @Mutation(() => PosSettingsType, { name: 'savePosReferenceOptions' })
+  async savePosReferenceOptions(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('options', { type: () => [String] }) options: string[],
+  ): Promise<PosSettingsType> {
+    const scope = { organizationId, workspaceId };
+    return renderSettings(await this.settings.saveReferenceOptions(scope, this.actor(gql.req), options));
+  }
+
   // ── live ──────────────────────────────────────────────────────────────────
 
   /**
@@ -326,5 +341,10 @@ export function renderCustomer(row: PosCustomerRow): PosCustomerType {
 }
 
 function renderSettings(settings: PosStoreSettings): PosSettingsType {
-  return { timeZone: settings.timeZone, keymap: JSON.stringify(settings.keymap), version: settings.version };
+  return {
+    timeZone: settings.timeZone,
+    keymap: JSON.stringify(settings.keymap),
+    referenceOptions: [...settings.referenceOptions],
+    version: settings.version,
+  };
 }

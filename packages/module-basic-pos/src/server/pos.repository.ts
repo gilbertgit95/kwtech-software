@@ -197,6 +197,8 @@ export interface PosSettingsRow {
   organizationId: string;
   /** A `PosKeymap` as JSON, or null for the defaults. Read through `effectiveKeymap`, never trusted as typed. */
   keymap: unknown;
+  /** The store's order reference options as JSON, or null for none. Read through `readReferenceOptions`. */
+  referenceOptions: unknown;
   version: number;
   updatedById: string;
   createdAt: Date;
@@ -434,8 +436,15 @@ export interface PosTransaction {
     findUnique(args: { where: { workspaceId: string } }): Promise<PosSettingsRow | null>;
     upsert(args: {
       where: { workspaceId: string };
-      create: InScope & { keymap: PosJsonInput; updatedById: string };
-      update: { keymap: PosJsonInput; updatedById: string; version: { increment: 1 } };
+      // Each save writes ONE setting: a missing field keeps what is stored, so saving the
+      // reference options never resets the keymap (and the reverse).
+      create: InScope & { keymap?: PosJsonInput; referenceOptions?: PosJsonInput; updatedById: string };
+      update: {
+        keymap?: PosJsonInput;
+        referenceOptions?: PosJsonInput;
+        updatedById: string;
+        version: { increment: 1 };
+      };
     }): Promise<PosSettingsRow>;
   };
 }

@@ -14,7 +14,7 @@ const CATEGORY = 'id name sortOrder archivedAt';
 const VARIANT = 'id itemId name code price cost sortOrder archivedAt';
 const ITEM = `id kind name code description price cost categoryId archivedAt variants { ${VARIANT} }`;
 const CUSTOMER = 'id name phone email facebookUrl note archivedAt';
-const SETTINGS = 'timeZone keymap version';
+const SETTINGS = 'timeZone keymap referenceOptions version';
 const DISCOUNT = 'kind value reason givenById givenAt';
 const LINE = `id itemId variantId name kind variantName code categoryName unitPrice unitCost quantity note discount { ${DISCOUNT} } discountAmount gross total net refundedQuantity`;
 const ORDER = `id status version number label customerId customerName customerContact lines { ${LINE} } gross lineDiscounts subtotal discount { ${DISCOUNT} } orderDiscount total paymentMethod received change tip paymentReference changeOwed changeSettlement changeSettledAt refunds { id amount method reason refundedById refundedAt } refunded refundState createdById createdAt finalisedAt finalisedById releasedUnpaid paidAt paidById cancelledAt cancelReason voidedAt voidReason`;
@@ -87,6 +87,10 @@ export const POS_OPERATIONS = {
 
   savePosSettings: `mutation SavePosSettings(${SCOPE_VARS}, $keymap: String) {
     savePosSettings(${SCOPE_ARGS}, keymap: $keymap) { ${SETTINGS} }
+  }`,
+
+  savePosReferenceOptions: `mutation SavePosReferenceOptions(${SCOPE_VARS}, $options: [String!]!) {
+    savePosReferenceOptions(${SCOPE_ARGS}, options: $options) { ${SETTINGS} }
   }`,
 
   // ── orders: reading ───────────────────────────────────────────────────────

@@ -158,9 +158,9 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     module: 'pos',
     level: 'workspace',
     label: 'Change store settings',
-    description: 'Set the store’s time zone, and the keyboard shortcuts every till in it uses.',
+    description: 'Set the keyboard shortcuts and the order reference options every till in the store uses.',
     tags: ['pos'],
-    bindings: [op('Mutation.savePosSettings')],
+    bindings: [op('Mutation.savePosSettings'), op('Mutation.savePosReferenceOptions')],
   },
 ];
 

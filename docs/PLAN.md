@@ -608,6 +608,32 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-29** — **POS order reference options: a per-store list on `PosSettings`, saved by a mutation of its own; the till offers them in a combobox and snaps a typed match to the option's spelling (issue #30).**
+
+  Stores reuse a few references all day (tables, "Take-out"), and typing them
+  drifts ("table 3", "T3"), which makes held orders harder to tell apart and
+  the Orders search less reliable.
+  - **A JSON column on `PosSettings`, not a table.** An ordered list of at
+    most 50 short strings, always read and written whole; a table would add
+    ordering columns and a second write path for no query that needs it.
+  - **`savePosReferenceOptions`, not a field on `savePosSettings`.** That
+    mutation writes the keymap it is given or the defaults, so the obvious
+    extension would have reset every hot key on each options save. Each save
+    now writes one setting, and the repository's upsert fields are optional.
+  - **A typed reference that IS an option but for case or spacing is saved in
+    the option's spelling.** The point of the issue is one spelling per
+    table; anything else is still saved as typed.
+  - **"On hold" is a client-side hint**, from the till's Pending list,
+    excluding the order on the till. The server checks nothing about
+    duplicates, as the issue decided.
+  - **The options are a Quick select grid of tiles, on the phone and the full
+    till alike** (the operator), and the reference's trigger on the till is
+    the same dashed box as the customer's: optional, but important on the
+    order. #24's "small muted line" read as skippable.
+  - **Not done:** ranges ("Table 1–20"), suggesting recently used references,
+    and Settings on the phone (it stays on the full site with the rest of the
+    POS's Settings, issue #22).
+
 - **2026-10-29** — **Phones get a layout of their own at the SAME addresses, chosen per request by the proxy; modules opt in screen by screen (issue #22).**
 
   The operator asked for a light layout for phones, for sellers and other

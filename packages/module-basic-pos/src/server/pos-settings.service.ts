@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { effectiveKeymap, type PosKeymap, validateKeymap } from '../domain/keymap.js';
+import { readReferenceOptions, validateReferenceOptions } from '../domain/references.js';
 import { PosWriteError } from './pos.errors.js';
 import { PosEventPublisher } from './pos.events.js';
 import type { InScope, PosJsonInput, PosWriteClient } from './pos.repository.js';
@@ -11,13 +12,16 @@ export interface PosStoreSettings {
   /** The WORKSPACE's zone, read through `PosTimeZoneService` — not a POS setting (PLAN §13, 2026-09-29). */
   timeZone: string;
   keymap: PosKeymap;
+  /** The order reference options the till offers (issue #30), in the store's order; empty for none. */
+  referenceOptions: readonly string[];
   version: number;
 }
 
 /**
- * A store's settings: its keymap (D18), and — read-only, for the till's
- * convenience — the workspace's time zone. Every member reads them; only
- * `pos:manage_settings` writes the keymap. No row means every default.
+ * A store's settings: its keymap (D18), its order reference options (issue
+ * #30), and — read-only, for the till's convenience — the workspace's time
+ * zone. Every member reads them; only `pos:manage_settings` writes them. No
+ * row means every default.
  */
 @Injectable()
 export class PosSettingsService {
@@ -36,9 +40,14 @@ export class PosSettingsService {
     // THIS organization's: a mismatch reads as "no settings", never as another
     // tenant's.
     if (!row || row.organizationId !== scope.organizationId) {
-      return { timeZone, keymap: effectiveKeymap(null), version: 0 };
+      return { timeZone, keymap: effectiveKeymap(null), referenceOptions: [], version: 0 };
     }
-    return { timeZone, keymap: readKeymap(row.keymap), version: row.version };
+    return {
+      timeZone,
+      keymap: readKeymap(row.keymap),
+      referenceOptions: readReferenceOptions(row.referenceOptions),
+      version: row.version,
+    };
   }
 
   /**
@@ -56,6 +65,30 @@ export class PosSettingsService {
       where: { workspaceId: scope.workspaceId },
       create: { ...scope, keymap, updatedById: actorId },
       update: { keymap, updatedById: actorId, version: { increment: 1 } },
+    });
+    await this.events.changed(scope, 'settings', actorId);
+    return this.get(scope);
+  }
+
+  /**
+   * Saves the order reference options, the whole list in its new order (an
+   * empty list removes them all). Checked by `validateReferenceOptions`, whose
+   * problems are shown as they are.
+   *
+   * ⚠ A SAVE OF ITS OWN, not a field of `save`: that one writes the keymap it
+   * is given, or the defaults when given none, so a reference list sent
+   * through it would reset every hot key.
+   */
+  async saveReferenceOptions(scope: InScope, actorId: string, raw: readonly string[]): Promise<PosStoreSettings> {
+    const checked = validateReferenceOptions(raw);
+    if ('refused' in checked) {
+      throw new PosWriteError('invalid_reference_options', checked.refused.join(' '), { problems: checked.refused });
+    }
+    const referenceOptions = [...checked.options];
+    await this.prisma.posSettings.upsert({
+      where: { workspaceId: scope.workspaceId },
+      create: { ...scope, referenceOptions, updatedById: actorId },
+      update: { referenceOptions, updatedById: actorId, version: { increment: 1 } },
     });
     await this.events.changed(scope, 'settings', actorId);
     return this.get(scope);

@@ -75,6 +75,8 @@ export interface PosSettingsView {
   timeZone: string;
   /** `PosKeymap` as JSON text. */
   keymap: string;
+  /** The order reference options the Reference and Hold dialogs offer (issue #30); empty for none. */
+  referenceOptions: string[];
   version: number;
 }
 
@@ -344,6 +346,8 @@ export interface PosClient {
   setCustomerArchived(scope: PosScopeView, customerId: string, archived: boolean): Promise<PosCustomerView>;
   settings(scope: PosScopeView): Promise<PosSettingsView>;
   saveSettings(scope: PosScopeView, keymap: string | null): Promise<PosSettingsView>;
+  /** The whole list, in order; empty removes them. The keymap is left alone. */
+  saveReferenceOptions(scope: PosScopeView, options: readonly string[]): Promise<PosSettingsView>;
 
   /** `tab` is the status; `days` the store's days it is narrowed to, or null for every date. */
   orders(
@@ -454,6 +458,7 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
       call('setPosCustomerArchived', scope, { customerId, archived }),
     settings: (scope) => call('posSettings', scope),
     saveSettings: (scope, keymap) => call('savePosSettings', scope, { keymap }),
+    saveReferenceOptions: (scope, options) => call('savePosReferenceOptions', scope, { options }),
 
     orders: (scope, tab, search = null, customerId = null, days = null) =>
       call('posOrders', scope, { tab, search, customerId, fromDay: days?.fromDay ?? null, toDay: days?.toDay ?? null }),
