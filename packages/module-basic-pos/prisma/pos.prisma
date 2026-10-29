@@ -387,6 +387,10 @@ model PosSettings {
 
   /// `PosKeymap`, checked by `validateKeymap` on write; null means the defaults.
   keymap   Json?
+  /// The order reference options the Reference and Hold dialogs offer (issue #30), a JSON list of
+  /// strings in the store's order. Checked by `validateReferenceOptions` on write and re-read by
+  /// `readReferenceOptions`; null means none, and the till shows its plain text box.
+  referenceOptions Json?
 
   version     Int      @default(1)
   updatedById String

@@ -75,13 +75,26 @@ Follow `module-queuing-window`, file for file:
    anybody signed in. Split keys by risk (`pos:sell`, `pos:manage_items`).
 4. Keep the app key `pos`. It is saved in people's layouts.
 
+## The order panel's width
+
+On the full screen, where the order sits beside the items, the order panel's
+LEFT edge is a handle: drag it to give the order or the items more room
+(288–720 px, never more than 65% of the till), or focus it and use ← → (Shift
+for bigger steps), Home and End; double-click puts back the default 352 px
+(22rem). Remembered per viewer and per device in localStorage
+(`kwtech:pos-order-panel-width`), not as a store setting, since how wide it
+should be depends on the screen. The rules are `view/order-panel.ts`. The
+phone has no handle: its order opens over the items.
+
 ## Order reference (issue #24)
 
 An order can carry one optional **reference**: free text, letters or numbers,
 at most 40 characters (`POS_LABEL_MAX`), checked by `preparePosLabel`. A
 restaurant puts the table number in it ("Table 5"); another store a pickup
 tag or a job code. Nothing about it is restaurant-specific, and a store that
-never uses it sees one muted "Add a reference" line under the customer.
+never uses it sees "No reference — add one" under the customer. It is the
+same dashed box as the customer's, not a quieter line: optional, but what
+tells held orders and tables apart (the operator, 2026-10-29).
 
 - **It is the order's `label`**, the same column Hold has always asked for
   (D8). The GraphQL names (`label`, `setPosOrderLabel`) are unchanged; only
@@ -92,6 +105,42 @@ never uses it sees one muted "Add a reference" line under the customer.
 - **Shown** in the cart's heading, the on-screen receipt and the order's
   details; **printed** on the receipt as "Order ref: …", apart from a
   payment's own "Reference"; **found** by the Orders search.
+
+### Reference options (issue #30)
+
+A store can set up the references its cashiers reuse all day ("Table 1" …
+"Table 12", "Take-out", "Pickup"), so they take one tap and are spelled the
+same every time. Optional: with none, both dialogs are the plain text box.
+
+- **Kept on `PosSettings.referenceOptions`**, a JSON list in the store's
+  order, at most 50 (`POS_REFERENCE_OPTIONS_MAX`), each a valid label, no two
+  the same after `posReferenceKey` (case and spacing folded). Checked by
+  `validateReferenceOptions` on write; re-read by `readReferenceOptions`,
+  which drops what no longer passes rather than the whole list.
+- **Edited in Settings → Order references** (add, rename, move up and down,
+  remove), saved with `savePosReferenceOptions` under `pos:manage_settings`.
+  ⚠ It is a mutation of its own: `savePosSettings` writes the keymap it is
+  given or the defaults, so a list sent through it would reset every hot key.
+  Every till reads the options with `posSettings`.
+- **On the till, the Reference and Hold dialogs are a combobox**
+  (`ReferenceDialog`): under the box, a **Quick select** grid of equal tiles,
+  one per option, in the store's order (as many columns as fit at 7rem: two
+  or three on a phone, four on the full till). Typing filters the tiles, and
+  a click, a tap, or ↑ ↓ and Enter picks one and saves it at once. The one on
+  the order is filled in. Esc hides the grid, not the dialog. The keys are
+  `useOptionList`, the same hook as the customer picker. Text typed that is
+  an option but for case or spacing is saved in the option's spelling
+  (`snapToReferenceOption`); anything else is saved as typed.
+- **On a phone** the tiles are taller (`min-h-14`, a thumb's target), and the
+  box does not take focus, so the keyboard does not come up over the tiles;
+  a tap on the box brings it.
+- **"On hold" is a hint, never a lock.** An option carried by an order on
+  hold (the till's Pending list) is flagged and stays pickable; the order on
+  the till is never flagged against itself, even a resumed held one
+  (`heldReferenceKeys`). The server does not refuse duplicate references.
+- **Stored as text.** A picked option is the order's `label`, like a typed
+  one, so receipts, the Orders list and search need nothing new. Recently
+  used references that are not options are not suggested.
 
 ## Stock (issue #10)
 

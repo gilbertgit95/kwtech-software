@@ -882,6 +882,7 @@ type Mutation {
   savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
+  savePosReferenceOptions(options: [String!]!, organizationId: String!, workspaceId: String!): PosSettings!
   savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
   saveStockCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): StockCategory!
   saveStockItem(input: SaveStockItemInput!, organizationId: String!, workspaceId: String!): StockItem!
@@ -1620,6 +1621,7 @@ type PosSeriesPoint {
 
 type PosSettings {
   keymap: String!
+  referenceOptions: [String!]!
   timeZone: String!
   version: Int!
 }

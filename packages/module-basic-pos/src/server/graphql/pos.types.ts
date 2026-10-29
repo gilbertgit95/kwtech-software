@@ -144,6 +144,10 @@ export class PosSettingsType {
   @Field()
   keymap!: string;
 
+  /** The order reference options the till offers, in the store's order; empty for none (issue #30). */
+  @Field(() => [String])
+  referenceOptions!: string[];
+
   /** 0 while the store has saved nothing. */
   @Field(() => Int)
   version!: number;
