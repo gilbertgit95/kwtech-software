@@ -57,6 +57,8 @@ export function FilterSheet({
       }}
       className={cn(
         'fixed inset-x-0 top-auto bottom-0 m-0 max-h-[85dvh] w-full max-w-none rounded-t-3xl border-t border-border/60 bg-card p-0 text-card-foreground shadow-2xl',
+        // A tablet: a card floating above the bottom edge, as the phone frame's own sheets are.
+        'md:mx-auto md:bottom-6 md:max-w-lg md:rounded-3xl md:border',
         'backdrop:bg-black/40 backdrop:backdrop-blur-[2px]',
         'open:animate-in open:slide-in-from-bottom open:duration-300 motion-reduce:open:animate-none',
       )}

@@ -228,7 +228,7 @@ export default async function MobilePage({
 function Scroll({ children }: { children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-lg px-4 pt-2 pb-8">{children}</div>
+      <div className="mx-auto w-full max-w-lg md:max-w-2xl px-4 pt-2 pb-8">{children}</div>
     </div>
   );
 }

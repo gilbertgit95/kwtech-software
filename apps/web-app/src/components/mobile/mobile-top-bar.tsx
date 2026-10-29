@@ -77,7 +77,7 @@ export function MobileTopBar({
   return (
     <>
       <header className="shrink-0 border-b border-border/60 bg-card/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-lg items-center justify-between gap-2 px-2">
+        <div className="mx-auto flex h-14 max-w-lg items-center justify-between gap-2 px-2 md:max-w-none md:px-4">
           {app ? (
             /*
              * INSIDE AN APP the left side is the way out, not the switcher:

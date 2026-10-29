@@ -10,7 +10,7 @@ import { MobileNotice } from '@/components/mobile/mobile-screens';
 export function NotOnMobile() {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-lg px-4 pt-2 pb-8">
+      <div className="mx-auto w-full max-w-lg md:max-w-2xl px-4 pt-2 pb-8">
         <MobileNotice
           title="This page isn't on the mobile view yet"
           body="It is on the full site, with everything your role gives you there."

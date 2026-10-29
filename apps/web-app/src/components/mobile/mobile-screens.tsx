@@ -277,6 +277,25 @@ export function MobileScreenStage({ home, places }: { home: ReactNode; places: M
 
 const SHOW = 'animate-in fade-in duration-200 motion-reduce:animate-none';
 
+/*
+ * ── HOW THE FRAME WIDENS ON A TABLET ─────────────────────────────────────
+ *
+ * The phone layout also serves a tablet switched to it (and, by the same
+ * page, a phone held sideways). A phone-width column centred on an iPad left
+ * two wide empty margins and a bottom bar with its buttons a hand apart
+ * (reported by the operator, 2026-10-29). So, by the SCREEN's width — the
+ * frame owns the whole screen, unlike a sub-app, which lays out by its box:
+ *
+ *   - the bars span the screen; the bottom bar keeps its buttons together in
+ *     the middle, at a fixed width each, as a tablet's tab bar does;
+ *   - lists and forms widen to a reading width (`md:max-w-2xl`), never the
+ *     full screen — a line across a whole iPad is too long to read;
+ *   - tile grids use the room: Apps 3 → 4 → 6 columns, pinned 2 → 3 → 4;
+ *   - sheets float as a card above the bottom edge instead of a full strip.
+ *
+ * `md` is a tablet upright (768px), `lg` a tablet on its side and up.
+ */
+
 /**
  * The open app's sections, as a strip of chips under the top bar — only the
  * ones the viewer holds, and only when there are two or more to choose from.
@@ -293,7 +312,7 @@ export function MobileSectionStrip() {
       aria-label={`${app.label} sections`}
       className="shrink-0 border-b border-border/60 bg-card/85 backdrop-blur-xl"
     >
-      <ul className="mx-auto flex max-w-lg gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none]">
+      <ul className="mx-auto flex max-w-lg gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] md:max-w-none md:px-5">
         {app.sections.map((section) => (
           <li key={section.key} className="shrink-0">
             <button
@@ -341,7 +360,7 @@ export function MobileBottomNav() {
       aria-label="Main"
       className="shrink-0 border-t border-border/60 bg-card/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl"
     >
-      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-1">
+      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-1 md:max-w-none md:justify-center md:gap-3">
         <BottomTab label="Home" icon={<House />} current={current === 'home'} onClick={() => goTab('home')} />
         {hasApps ? (
           <BottomTab label="Apps" icon={<LayoutGrid />} current={current === 'apps'} onClick={() => goTab('apps')} />
@@ -388,7 +407,7 @@ function BottomTab({
   onClick: () => void;
 }) {
   return (
-    <li className="flex flex-1">
+    <li className="flex flex-1 md:w-28 md:flex-none">
       <button
         type="button"
         onClick={onClick}
@@ -427,11 +446,11 @@ function AppsLauncher() {
   const screens = all.filter((screen) => screen.kind === 'app');
 
   return (
-    <div className="mx-auto w-full max-w-lg px-4 pt-6 pb-10">
+    <div className="mx-auto w-full max-w-lg md:max-w-3xl lg:max-w-5xl px-4 pt-6 pb-10 md:px-6">
       <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">Apps</h1>
       <p className="mt-1 text-sm text-muted-foreground">Tap the pin on the ones you use most to keep them on Home.</p>
 
-      <ul className="mt-6 grid grid-cols-3 gap-3">
+      <ul className="mt-6 grid grid-cols-3 gap-3 md:grid-cols-4 md:gap-4 lg:grid-cols-6">
         {screens.map((screen, index) => {
           const Icon = iconFor(screen.icon);
           const pinned = pins.includes(screen.key);
@@ -496,7 +515,7 @@ function ManageList({ places }: { places: ManagePlaceNames }) {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-4 px-4 pt-6 pb-10">
+    <div className="mx-auto w-full max-w-lg md:max-w-2xl space-y-4 px-4 pt-6 pb-10">
       <div>
         <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">Manage</h1>
         <p className="mt-1 text-sm text-muted-foreground">Settings and people, by where they apply.</p>
@@ -578,7 +597,7 @@ export function MobileHome({
     .filter((screen): screen is MobileScreenEntry => screen !== undefined);
 
   return (
-    <div className="mx-auto w-full max-w-lg px-4 pt-6 pb-10">
+    <div className="mx-auto w-full max-w-lg md:max-w-3xl lg:max-w-5xl px-4 pt-6 pb-10 md:px-6">
       <div className="animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{today}</p>
         <h1 className="mt-1 text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">{greeting}</h1>
@@ -638,7 +657,7 @@ export function MobileHome({
             </button>
           </div>
           {pinned.length > 0 ? (
-            <ul className="mt-3 grid grid-cols-2 gap-3">
+            <ul className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
               {pinned.map((screen, index) => (
                 <PinnedTile key={screen.key} screen={screen} index={index} onOpen={() => openApp(screen.key)} />
               ))}
@@ -727,7 +746,7 @@ export function MobileNotice({
 }) {
   const canUseFullSite = useCanUseFullSite();
   return (
-    <div className="mt-6 animate-in fade-in slide-in-from-bottom-2 rounded-3xl border border-border/70 bg-card p-7 text-center shadow-sm duration-300 motion-reduce:animate-none">
+    <div className="mx-auto mt-6 max-w-xl animate-in fade-in slide-in-from-bottom-2 rounded-3xl border border-border/70 bg-card p-7 text-center shadow-sm duration-300 motion-reduce:animate-none">
       <span
         aria-hidden
         className="mx-auto grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/10"

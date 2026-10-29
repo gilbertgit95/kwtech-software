@@ -83,6 +83,8 @@ export function MobileSheet({
       style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
       className={cn(
         'fixed inset-x-0 top-auto bottom-0 m-0 max-h-[88dvh] w-full max-w-none rounded-t-3xl border-t border-border/60 bg-card p-0 text-card-foreground shadow-2xl',
+        // A tablet: a card floating above the bottom edge, not a strip the width of the screen.
+        'md:mx-auto md:bottom-6 md:max-w-lg md:rounded-3xl md:border',
         'backdrop:bg-black/40 backdrop:backdrop-blur-[2px]',
         // Rises on open — the animation replays whenever the dialog goes from hidden to shown.
         'open:animate-in open:slide-in-from-bottom open:duration-300 open:ease-out motion-reduce:open:animate-none',
@@ -156,7 +158,7 @@ export function MobilePanel({
     >
       <div className="flex h-full flex-col">
         <header className="shrink-0 border-b border-border/60 bg-card/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-          <div className="mx-auto flex h-14 max-w-lg items-center gap-1 px-2">
+          <div className="mx-auto flex h-14 max-w-lg items-center gap-1 px-2 md:max-w-2xl">
             <button
               type="button"
               onClick={onClose}
@@ -169,7 +171,7 @@ export function MobilePanel({
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto w-full max-w-lg px-4 pt-5 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+          <div className="mx-auto w-full max-w-lg md:max-w-2xl px-4 pt-5 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
             {children}
           </div>
         </div>

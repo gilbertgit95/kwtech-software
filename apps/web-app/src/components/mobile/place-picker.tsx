@@ -34,7 +34,7 @@ export function PlacePicker({
 }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-lg space-y-4 px-4 pt-6 pb-8">
+      <div className="mx-auto w-full max-w-lg md:max-w-2xl space-y-4 px-4 pt-6 pb-8">
         <div className="pb-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{greeting}</h1>
           <p className="mt-1 text-sm text-muted-foreground">

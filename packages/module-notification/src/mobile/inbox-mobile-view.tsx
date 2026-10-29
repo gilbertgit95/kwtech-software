@@ -111,7 +111,7 @@ export function InboxMobileView() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-lg space-y-4 px-4 pt-5 pb-10">
+      <div className="mx-auto w-full max-w-lg md:max-w-2xl space-y-4 px-4 pt-5 pb-10">
         {/* ── heading ─────────────────────────────────────────────────── */}
         <header className="flex items-end justify-between gap-3">
           <div className="min-w-0">

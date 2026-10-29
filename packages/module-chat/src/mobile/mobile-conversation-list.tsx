@@ -62,7 +62,7 @@ export function MobileConversationList({
       : undefined;
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-4 px-4 pt-5 pb-10">
+    <div className="mx-auto w-full max-w-lg md:max-w-2xl space-y-4 px-4 pt-5 pb-10">
       <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">Chats</h1>
