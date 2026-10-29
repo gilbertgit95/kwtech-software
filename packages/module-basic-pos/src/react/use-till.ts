@@ -64,6 +64,8 @@ export interface TillState {
   /** Held orders waiting (D8), oldest first: the ones Hold set aside, never a cart still being built. */
   pending: PosOrderSummaryView[];
   canSell: boolean;
+  /** Pay, pay later, cancel and settle change (`pos:take_payment`, issue #23). Without it, orders are held for a cashier. */
+  canTakePayment: boolean;
   canDiscount: boolean;
   canRefund: boolean;
   live: boolean;
@@ -101,6 +103,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const client = useMemo(() => options.client ?? createPosClient(), [options.client]);
   const realtime = useRealtime();
   const canSell = useHoldsFeature(POS_FEATURE.sell);
+  const canTakePayment = useHoldsFeature(POS_FEATURE.takePayment);
   const canDiscount = useHoldsFeature(POS_FEATURE.discount);
   const canRefund = useHoldsFeature(POS_FEATURE.refund);
 
@@ -319,6 +322,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     order,
     pending,
     canSell,
+    canTakePayment,
     canDiscount,
     canRefund,
     live: realtime !== null,

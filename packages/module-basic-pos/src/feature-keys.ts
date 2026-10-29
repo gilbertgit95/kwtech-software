@@ -8,18 +8,25 @@ import type { FeatureContribution, LimitContribution } from '@kwtech/module-kit'
  * workspace key is also FILTERED BY THE PLAN, so a key no plan entitles is a
  * key nobody can use.
  *
- * Keys are ATOMIC and split by RISK: selling at the listed price; lowering a
- * price; giving money back; changing the catalogue (and seeing what things
+ * Keys are ATOMIC and split by RISK: taking orders at the listed price;
+ * settling them (payment); lowering a price; giving money back; changing the catalogue (and seeing what things
  * cost); reading the takings; changing how every till behaves.
  */
 export const POS_FEATURE = {
   /** Open the app; see items (without costs), orders and customers. */
   read: 'pos:read',
   /**
-   * Build, hold, resume, pay and cancel orders; pay later and change owed;
-   * create and edit customers. At the LISTED price: lowering it is `discount`.
+   * Build, hold, resume and edit orders; create and edit customers. At the
+   * LISTED price: lowering it is `discount`. ⚠ NOT PAYMENT: since issue #23 an
+   * order taker builds and holds, and a cashier settles (`takePayment`).
    */
   sell: 'pos:sell',
+  /**
+   * Settle an order: pay it, let it be paid later, cancel it, and settle the
+   * change owed (issue #23). Every act that decides what happens to the money,
+   * or that an order will bring none.
+   */
+  takePayment: 'pos:take_payment',
   /** Give a ₱ or % discount on a line or the whole order (D16). */
   discount: 'pos:discount',
   /** Refund a paid order, by line or by amount, and void an unpaid one whose items came back (D17). */
@@ -80,9 +87,8 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     key: POS_FEATURE.sell,
     module: 'pos',
     level: 'workspace',
-    label: 'Sell',
-    description:
-      'Ring up orders at the listed price, hold and resume them, take payment, let a customer pay later, and record customers.',
+    label: 'Take orders',
+    description: 'Ring up orders at the listed price, hold, resume and edit them, and record customers.',
     tags: ['pos'],
     bindings: [
       op('Mutation.createPosOrder'),
@@ -98,13 +104,33 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Mutation.setPosOrderCustomer'),
       op('Mutation.setPosOrderLabel'),
       op('Mutation.holdPosOrder'),
+      /* Customers are created where they are met: at the till (D5). */
+      op('Mutation.savePosCustomer'),
+      op('Mutation.setPosCustomerArchived'),
+    ],
+  },
+  {
+    key: POS_FEATURE.takePayment,
+    module: 'pos',
+    level: 'workspace',
+    label: 'Take payment',
+    description: 'Take payment for an order, let a customer pay later, cancel an order, and settle change owed.',
+    tags: ['pos'],
+    /*
+     * ⚠ NEVER ALSO BOUND TO `pos:sell`. Several keys on one operation means ALL
+     * of them are required (module-permissions' binding index), so a shared
+     * binding would lock out whoever holds only one. The order-building
+     * operations stay `pos:sell`'s alone; a cashier holds both keys.
+     *
+     * Cancelling is here, not with selling (the operator, 2026-10-29): an order
+     * cancelled is an order that brings no money, and the order taker who
+     * built it is not who decides that.
+     */
+    bindings: [
       op('Mutation.payPosOrder'),
       op('Mutation.payLaterPosOrder'),
       op('Mutation.cancelPosOrder'),
       op('Mutation.settlePosChangeOwed'),
-      /* Customers are created where they are met: at the till (D5). */
-      op('Mutation.savePosCustomer'),
-      op('Mutation.setPosCustomerArchived'),
     ],
   },
   {
@@ -205,17 +231,28 @@ export interface PosRolePreset {
 }
 
 /**
- * ⚠ THE MANAGER HOLDS EVERY CASHIER KEY. Grants add up and there is no deny, so
- * a store with no cashiers runs the till with the manager's role alone
- * (POS-PLAN §4).
+ * ⚠ THE MANAGER HOLDS EVERY CASHIER KEY, and the cashier every order taker's.
+ * Grants add up and there is no deny, so a store with no cashiers runs the
+ * till with the manager's role alone (POS-PLAN §4).
  */
 export const POS_ROLE_PRESETS: readonly PosRolePreset[] = [
+  /*
+   * Takes orders and holds them for a cashier to settle (issue #23): a waiter,
+   * a counter seller. Cannot pay, pay later or cancel.
+   */
+  {
+    key: 'pos-order-taker',
+    label: 'Order taker',
+    icon: 'store',
+    level: 'workspace',
+    features: [POS_FEATURE.read, POS_FEATURE.sell],
+  },
   {
     key: 'pos-cashier',
     label: 'Cashier',
     icon: 'store',
     level: 'workspace',
-    features: [POS_FEATURE.read, POS_FEATURE.sell],
+    features: [POS_FEATURE.read, POS_FEATURE.sell, POS_FEATURE.takePayment],
   },
   {
     key: 'pos-manager',
@@ -225,6 +262,7 @@ export const POS_ROLE_PRESETS: readonly PosRolePreset[] = [
     features: [
       POS_FEATURE.read,
       POS_FEATURE.sell,
+      POS_FEATURE.takePayment,
       POS_FEATURE.discount,
       POS_FEATURE.refund,
       POS_FEATURE.manageItems,

@@ -82,31 +82,42 @@ describe('meaningOf', () => {
 
 describe('the shortcut bar', () => {
   it('shows what works where the cashier is', () => {
-    const keys = (zone: TillZone) => shortcutBar(zone, POS_DEFAULT_KEYMAP, { canDiscount: true }).map((e) => e.key);
+    const keys = (zone: TillZone) =>
+      shortcutBar(zone, POS_DEFAULT_KEYMAP, { canDiscount: true, canTakePayment: true }).map((e) => e.key);
     expect(keys('search')).toEqual(['F2', '100*', '↑', 'F6', 'F4', 'F8', 'F9']);
     expect(keys('receipt')).toEqual(['P', 'Enter']);
   });
 
   it('⚠ leaves out discounts for somebody who may not give them (D21)', () => {
-    const labels = shortcutBar('cart', POS_DEFAULT_KEYMAP, { canDiscount: false }).map((entry) => entry.label);
+    const labels = shortcutBar('cart', POS_DEFAULT_KEYMAP, { canDiscount: false, canTakePayment: true }).map(
+      (entry) => entry.label,
+    );
     expect(labels).not.toContain('Line discount');
     expect(labels).not.toContain('Order discount');
   });
 
+  it('⚠ leaves out every payment key for an order taker — their sale ends at Hold (issue #23)', () => {
+    const orderTaker = { canDiscount: false, canTakePayment: false };
+    const actions = allShortcuts(POS_DEFAULT_KEYMAP, orderTaker).flatMap((group) => group.entries.map((e) => e.action));
+    for (const action of ['pay', 'payCash', 'payEwallet', 'payCard', 'keepTip', 'changeOwed', 'payLater'] as const) {
+      expect(actions).not.toContain(action);
+    }
+    expect(shortcutBar('search', POS_DEFAULT_KEYMAP, orderTaker).map((entry) => entry.action)).toContain('hold');
+  });
+
   it('⚠ shows a rebound key as rebound — the bar and the keys read one map', () => {
     const keymap = { ...POS_DEFAULT_KEYMAP, actions: { ...POS_DEFAULT_KEYMAP.actions, pay: 'F10' } };
-    const pay = shortcutBar('search', keymap, { canDiscount: true }).find((entry) => entry.action === 'pay');
+    const pay = shortcutBar('search', keymap, { canDiscount: true, canTakePayment: true }).find(
+      (entry) => entry.action === 'pay',
+    );
     expect(pay?.key).toBe('F10');
     expect(meaningOf(pay?.key ?? null, 'search', keymap)).toEqual({ kind: 'action', action: 'pay' });
   });
 
   it('lists every zone for the ? list', () => {
-    expect(allShortcuts(POS_DEFAULT_KEYMAP, { canDiscount: true }).map((group) => group.zone)).toEqual([
-      'Selling',
-      'A selected line',
-      'Payment',
-      'After payment',
-    ]);
+    expect(
+      allShortcuts(POS_DEFAULT_KEYMAP, { canDiscount: true, canTakePayment: true }).map((group) => group.zone),
+    ).toEqual(['Selling', 'A selected line', 'Payment', 'After payment']);
   });
 });
 

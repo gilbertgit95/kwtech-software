@@ -269,7 +269,7 @@ export function Till({
         setDialog({ kind: 'pending' });
         return true;
       case 'pay':
-        if (lines.length > 0) setDialog({ kind: 'pay' });
+        if (lines.length > 0 && state.canTakePayment) setDialog({ kind: 'pay' });
         return true;
       case 'help':
         setDialog({ kind: 'help' });
@@ -1077,35 +1077,55 @@ function Cart({
             {order?.discount ? 'Order discount ✓' : 'Order discount'}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={buttonClass('ghost', 'sm')}
-          disabled={!order}
-          onClick={() => onDialog({ kind: 'cancel' })}
-        >
-          <Ban aria-hidden="true" className="size-3.5" />
-          Cancel
-        </button>
+        {/* Cancelling settles an order as bringing no money: the cashier's call, not the order taker's (issue #23). */}
+        {state.canTakePayment ? (
+          <button
+            type="button"
+            className={buttonClass('ghost', 'sm')}
+            disabled={!order}
+            onClick={() => onDialog({ kind: 'cancel' })}
+          >
+            <Ban aria-hidden="true" className="size-3.5" />
+            Cancel
+          </button>
+        ) : null}
       </div>
-      <div className="grid grid-cols-[auto_1fr] gap-2">
-        <button
-          type="button"
-          className={buttonClass('secondary')}
-          disabled={lines.length === 0 || state.busy}
-          onClick={() => onDialog({ kind: 'hold' })}
-        >
-          <Hand aria-hidden="true" className="size-4" />
-          Hold
-        </button>
-        <button
-          type="button"
-          className={cn(buttonClass('primary'), 'h-11 text-base')}
-          disabled={lines.length === 0 || state.busy}
-          onClick={() => onDialog({ kind: 'pay' })}
-        >
-          Pay {formatPeso(order?.total ?? 0)}
-        </button>
-      </div>
+      {state.canTakePayment ? (
+        <div className="grid grid-cols-[auto_1fr] gap-2">
+          <button
+            type="button"
+            className={buttonClass('secondary')}
+            disabled={lines.length === 0 || state.busy}
+            onClick={() => onDialog({ kind: 'hold' })}
+          >
+            <Hand aria-hidden="true" className="size-4" />
+            Hold
+          </button>
+          <button
+            type="button"
+            className={cn(buttonClass('primary'), 'h-11 text-base')}
+            disabled={lines.length === 0 || state.busy}
+            onClick={() => onDialog({ kind: 'pay' })}
+          >
+            Pay {formatPeso(order?.total ?? 0)}
+          </button>
+        </div>
+      ) : (
+        // An order taker's sale ends at Hold: a cashier takes the payment (issue #23). Said, so the
+        // missing Pay button does not read as a fault.
+        <>
+          <button
+            type="button"
+            className={cn(buttonClass('primary'), 'h-11 text-base')}
+            disabled={lines.length === 0 || state.busy}
+            onClick={() => onDialog({ kind: 'hold' })}
+          >
+            <Hand aria-hidden="true" className="size-4" />
+            Hold for the cashier
+          </button>
+          <p className="text-center text-xs text-muted-foreground">A cashier takes the payment.</p>
+        </>
+      )}
       {/* Keeps the search box reachable for a mouse user who clicked into the cart. */}
       <button type="button" className="sr-only" onClick={() => searchRef.current?.focus()}>
         Back to search

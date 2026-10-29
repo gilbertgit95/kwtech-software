@@ -169,15 +169,16 @@ export interface OrderActions {
 
 export function orderActions(
   order: Pick<PosOrderView, 'status' | 'changeOwed' | 'changeSettlement' | 'total' | 'refunded'>,
-  can: { sell: boolean; refund: boolean },
+  can: { sell: boolean; takePayment: boolean; refund: boolean },
 ): OrderActions {
   const paid = order.status === 'paid';
   return {
     resume: order.status === 'open' && can.sell,
-    takePayment: order.status === 'unpaid' && can.sell,
+    // ⚠ Both keys: payment is taken AT THE TILL, which only somebody who may sell can open (issue #23).
+    takePayment: order.status === 'unpaid' && can.sell && can.takePayment,
     voidOrder: order.status === 'unpaid' && can.refund,
     refund: paid && can.refund && order.refunded < order.total,
-    settleChange: paid && can.sell && order.changeOwed > 0 && order.changeSettlement === null,
+    settleChange: paid && can.takePayment && order.changeOwed > 0 && order.changeSettlement === null,
     reprint: paid || order.status === 'unpaid',
   };
 }

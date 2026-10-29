@@ -31,8 +31,9 @@ import {
  *
  * ## Where the guard is
  *
- * Every operation is guarded by its BINDING in `POS_FEATURE_REGISTRY`: selling
- * by `pos:sell`, discounts by `pos:discount`, refunds and voids by
+ * Every operation is guarded by its BINDING in `POS_FEATURE_REGISTRY`: taking
+ * orders by `pos:sell`, settling them (pay, pay later, cancel, change owed) by
+ * `pos:take_payment` (issue #23), discounts by `pos:discount`, refunds and voids by
  * `pos:refund`, the report by `pos:reports`. The services find every order BY
  * ID AND SCOPE, and every change names the VERSION the till saw.
  */
@@ -211,6 +212,8 @@ export class PosOrderResolver {
       this.writes.hold(scope, actorId, ref, label ?? null, new Date()),
     );
   }
+
+  // ── settling (pos:take_payment, issue #23) ──────────────────────────────────
 
   /** Idempotent on `input.clientId`: a retry answers with the order it already paid. */
   @Mutation(() => PosOrderType, { name: 'payPosOrder' })
