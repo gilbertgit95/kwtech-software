@@ -30,6 +30,20 @@ The web server only needs the registry, for `db:sync`:
 { key: 'pos', features: POS_FEATURE_REGISTRY },
 ```
 
+## On a phone (issue #22)
+
+`@kwtech/module-basic-pos/mobile` offers the phone layout ONE app, **Sell**:
+the till and nothing else (Orders, Items, Customers, Reports and Settings stay
+on the full site). It is gated by `pos:sell`, not `pos:read` — the phone app
+is selling, and a till that refuses every sale is no app at all.
+
+It is the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
+fills the screen and the order waits in a summary bar at the foot ("2 items ·
+₱250 · View order"), opening over the items with "‹ Items" and opening by
+itself to show the receipt. No shortcut bar and no shortcut help (a phone has
+no function keys), and the search does not take focus on arrival, which would
+raise the keyboard before anybody asked to type.
+
 ## Entry points
 
 | Import | Contents |
