@@ -4,6 +4,9 @@ import {
   composeDefaults,
   composeFeatures,
   composeHeaderTools,
+  composeMobileManage,
+  composeMobileScreens,
+  composeMobileTabs,
   composeNav,
   composeNavGroups,
   composeRoutes,
@@ -16,7 +19,7 @@ import {
   serverModuleImports,
   serverRoutePrefixes,
 } from '../src/compose.js';
-import type { ModuleRoute, ServerModuleDescriptor, WebModuleDescriptor } from '../src/types.js';
+import type { MobileModuleDescriptor, ModuleRoute, ServerModuleDescriptor, WebModuleDescriptor } from '../src/types.js';
 
 /**
  * Composition fails LOUDLY. Two modules quietly owning one path — or one
@@ -663,5 +666,130 @@ describe('composeApps', () => {
     const one: WebModuleDescriptor = { key: 'one', apps: [app('queue')] };
     const two: WebModuleDescriptor = { key: 'two', apps: [app('queue')] };
     expect(() => composeApps([one, two])).toThrow(/App 'queue' declared by both 'one' and 'two'/);
+  });
+});
+
+/**
+ * Phone screens (issue #22). Their key is the screen's address (`?screen=`),
+ * so a duplicate would open the wrong screen from a reload.
+ */
+describe('composeMobileScreens', () => {
+  const Screen = () => null;
+  const screen = (key: string, order?: number) => ({
+    key,
+    label: key,
+    feature: `${key}:read`,
+    component: Screen,
+    ...(order === undefined ? {} : { order }),
+  });
+
+  it('collects every module’s screens, ordered by `order`, then key', () => {
+    const pos: MobileModuleDescriptor = { key: 'pos', screens: [screen('sell', 10)] };
+    const note: MobileModuleDescriptor = { key: 'note', screens: [screen('notes', 5), screen('archive', 10)] };
+    expect(composeMobileScreens([pos, note]).map((one) => one.key)).toEqual(['notes', 'archive', 'sell']);
+  });
+
+  it('is empty when no module offers the phone anything', () => {
+    expect(composeMobileScreens([])).toEqual([]);
+    expect(composeMobileScreens([{ key: 'task' }])).toEqual([]);
+  });
+
+  it('throws on a section declared twice in one screen, and allows the same section key on two screens', () => {
+    const sections = [
+      { key: 'sell', label: 'Sell' },
+      { key: 'sell', label: 'Sell again' },
+    ];
+    const twice: MobileModuleDescriptor = { key: 'pos', screens: [{ ...screen('pos'), sections }] };
+    expect(() => composeMobileScreens([twice])).toThrow(/Mobile screen 'pos' declares section 'sell' twice/);
+
+    const list = [{ key: 'list', label: 'List' }];
+    const shared: MobileModuleDescriptor = {
+      key: 'apps',
+      screens: [
+        { ...screen('notes'), sections: list },
+        { ...screen('tasks'), sections: list },
+      ],
+    };
+    expect(composeMobileScreens([shared]).map((one) => one.key)).toEqual(['notes', 'tasks']);
+  });
+
+  it('throws on a duplicate key, naming both owners', () => {
+    const one: MobileModuleDescriptor = { key: 'one', screens: [screen('sell')] };
+    const two: MobileModuleDescriptor = { key: 'two', screens: [screen('sell')] };
+    expect(() => composeMobileScreens([one, two])).toThrow(/Mobile screen 'sell' declared by both 'one' and 'two'/);
+  });
+});
+
+/**
+ * Phone administration pages (issue #22): grouped nearest first, and a
+ * duplicate key — an address — refused.
+ */
+describe('composeMobileManage', () => {
+  const Page = () => null;
+  const page = (key: string, level: 'workspace' | 'organization' | 'app', order?: number) => ({
+    key,
+    label: key,
+    level,
+    feature: `${key}:manage`,
+    component: Page,
+    ...(order === undefined ? {} : { order }),
+  });
+
+  it('orders by level — workspace, organization, platform — then by `order`', () => {
+    const permissions: MobileModuleDescriptor = {
+      key: 'permissions',
+      manage: [page('roles', 'organization', 20), page('members', 'workspace'), page('users', 'app')],
+    };
+    const backup: MobileModuleDescriptor = {
+      key: 'backup',
+      manage: [page('backups', 'app', 10), page('plan', 'organization', 10)],
+    };
+    expect(composeMobileManage([permissions, backup]).map((one) => one.key)).toEqual([
+      'members',
+      'plan',
+      'roles',
+      'users',
+      'backups',
+    ]);
+  });
+
+  it('throws on a duplicate key, naming both owners', () => {
+    const one: MobileModuleDescriptor = { key: 'one', manage: [page('members', 'workspace')] };
+    const two: MobileModuleDescriptor = { key: 'two', manage: [page('members', 'organization')] };
+    expect(() => composeMobileManage([one, two])).toThrow(
+      /Mobile manage page 'members' declared by both 'one' and 'two'/,
+    );
+  });
+});
+
+/**
+ * Phone bottom-bar destinations (issue #22): ordered left to right, and a key
+ * that is an address — another tab's, or the frame's own — refused.
+ */
+describe('composeMobileTabs', () => {
+  const View = () => null;
+  const tab = (key: string, order?: number) => ({
+    key,
+    label: key,
+    component: View,
+    ...(order === undefined ? {} : { order }),
+  });
+
+  it('orders by `order`, then key', () => {
+    const chat: MobileModuleDescriptor = { key: 'chat', tabs: [tab('chat', 10)] };
+    const notification: MobileModuleDescriptor = { key: 'notification', tabs: [tab('inbox', 20)] };
+    expect(composeMobileTabs([notification, chat]).map((one) => one.key)).toEqual(['chat', 'inbox']);
+  });
+
+  it('throws on a duplicate key, naming both owners', () => {
+    const one: MobileModuleDescriptor = { key: 'one', tabs: [tab('chat')] };
+    const two: MobileModuleDescriptor = { key: 'two', tabs: [tab('chat')] };
+    expect(() => composeMobileTabs([one, two])).toThrow(/Mobile tab 'chat' declared by both 'one' and 'two'/);
+  });
+
+  it('refuses the names of the frame’s own destinations', () => {
+    for (const reserved of ['home', 'apps', 'manage']) {
+      expect(() => composeMobileTabs([{ key: 'mod', tabs: [tab(reserved)] }])).toThrow(/takes a name the frame keeps/);
+    }
   });
 });

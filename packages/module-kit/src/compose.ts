@@ -4,6 +4,10 @@ import type {
   AppContribution,
   FeatureContribution,
   HeaderToolContribution,
+  MobileManageContribution,
+  MobileModuleDescriptor,
+  MobileScreenContribution,
+  MobileTabContribution,
   ModuleRoute,
   NavEntry,
   NavGroupContribution,
@@ -125,6 +129,110 @@ export function composeApps(modules: readonly WebModuleDescriptor[]): AppContrib
 
   return apps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.key.localeCompare(b.key));
 }
+
+/**
+ * Every module's phone screens, in tab order — see `MobileScreenContribution`.
+ *
+ * Not filtered by grants, for the reason `composeApps` is not: the phone
+ * layout filters them with the viewer's WORKSPACE grants, which exist only
+ * once a workspace is open.
+ *
+ * Throws on a duplicate key, and on a duplicate section key within a screen.
+ * Both are addresses (`?screen=`, `?section=`), so two answering to one would
+ * open the wrong one from a reload.
+ */
+export function composeMobileScreens(modules: readonly MobileModuleDescriptor[]): MobileScreenContribution[] {
+  const byKey = new Map<string, string>();
+  const screens: MobileScreenContribution[] = [];
+
+  for (const mod of modules) {
+    for (const screen of mod.screens ?? []) {
+      const owner = byKey.get(screen.key);
+      if (owner) {
+        throw new ModuleCompositionError(`Mobile screen '${screen.key}' declared by both '${owner}' and '${mod.key}'`);
+      }
+      byKey.set(screen.key, mod.key);
+      const sectionKeys = new Set<string>();
+      for (const section of screen.sections ?? []) {
+        if (sectionKeys.has(section.key)) {
+          throw new ModuleCompositionError(`Mobile screen '${screen.key}' declares section '${section.key}' twice`);
+        }
+        sectionKeys.add(section.key);
+      }
+      screens.push(screen);
+    }
+  }
+
+  return screens.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.key.localeCompare(b.key));
+}
+
+/**
+ * Every module's phone administration pages — see `MobileManageContribution`.
+ * Grouped by level in the order the Manage tab shows them (workspace, then
+ * organization, then platform), then by `order`.
+ *
+ * Not filtered by grants: each level has its own reading, which the web app
+ * resolves per request. Throws on a duplicate key, which is an address.
+ */
+export function composeMobileManage(modules: readonly MobileModuleDescriptor[]): MobileManageContribution[] {
+  const byKey = new Map<string, string>();
+  const pages: MobileManageContribution[] = [];
+
+  for (const mod of modules) {
+    for (const page of mod.manage ?? []) {
+      const owner = byKey.get(page.key);
+      if (owner) {
+        throw new ModuleCompositionError(
+          `Mobile manage page '${page.key}' declared by both '${owner}' and '${mod.key}'`,
+        );
+      }
+      byKey.set(page.key, mod.key);
+      pages.push(page);
+    }
+  }
+
+  return pages.sort(
+    (a, b) =>
+      MANAGE_LEVEL_RANK[a.level] - MANAGE_LEVEL_RANK[b.level] ||
+      (a.order ?? 0) - (b.order ?? 0) ||
+      a.key.localeCompare(b.key),
+  );
+}
+
+/**
+ * Every module's phone bottom-bar destinations, left to right — see
+ * `MobileTabContribution`. Not filtered: the web app filters them with the
+ * viewer's app-level grants per request. Throws on a duplicate key, which is
+ * an address (`?tab=`), and on the frame's own destinations' names.
+ */
+export function composeMobileTabs(modules: readonly MobileModuleDescriptor[]): MobileTabContribution[] {
+  const byKey = new Map<string, string>();
+  const tabs: MobileTabContribution[] = [];
+
+  for (const mod of modules) {
+    for (const tab of mod.tabs ?? []) {
+      if (RESERVED_TAB_KEYS.has(tab.key)) {
+        throw new ModuleCompositionError(
+          `Mobile tab '${tab.key}' from '${mod.key}' takes a name the frame keeps for itself`,
+        );
+      }
+      const owner = byKey.get(tab.key);
+      if (owner) {
+        throw new ModuleCompositionError(`Mobile tab '${tab.key}' declared by both '${owner}' and '${mod.key}'`);
+      }
+      byKey.set(tab.key, mod.key);
+      tabs.push(tab);
+    }
+  }
+
+  return tabs.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.key.localeCompare(b.key));
+}
+
+/** The frame's own destinations: a module's tab under one of these names would answer to the frame's address. */
+const RESERVED_TAB_KEYS: ReadonlySet<string> = new Set(['home', 'apps', 'manage']);
+
+/** Nearest first: the workspace that is open, its organization, then the platform. */
+const MANAGE_LEVEL_RANK: Record<MobileManageContribution['level'], number> = { workspace: 0, organization: 1, app: 2 };
 
 export interface ComposeNavOptions {
   /**
