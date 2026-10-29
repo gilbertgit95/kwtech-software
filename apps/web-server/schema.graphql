@@ -602,6 +602,7 @@ input CreateTaskInput {
 }
 
 type DisplayPreferences {
+  source: String!
   spacing: String!
   textSize: String!
 }
@@ -801,6 +802,7 @@ type Mutation {
   duplicateStudioLayout(layoutId: String!, name: String, organizationId: String!, workspaceId: String!): StudioLayout!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
+  forgetMyDeviceDisplay(device: String!, layout: String!): DisplayPreferences!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
   holdPosOrder(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
@@ -1812,7 +1814,7 @@ type Query {
   jobProcessHistory(cursor: String, limit: Int, processKey: String!): JobHistoryPage!
   jobProcesses: [JobProcess!]!
   mfaFactors: [MfaFactor!]!
-  myDisplay(layout: String): DisplayPreferences
+  myDisplay(device: String, layout: String): DisplayPreferences
   myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!
   myOrganization(organizationId: String!): PermissionOrganizationDetail
   myOrganizationRoles(level: String, organizationId: String!): [PermissionRoleDetail!]!
@@ -2619,6 +2621,8 @@ input TaskSettingsInput {
 }
 
 input UpdateDisplayInput {
+  applyTo: String
+  device: String
   layout: String
   spacing: String
   textSize: String
