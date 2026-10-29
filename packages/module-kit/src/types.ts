@@ -371,9 +371,11 @@ export interface MobileScreenContribution {
   order?: number;
   /**
    * The screen's own sections — Sell, Orders, Customers — drawn by the frame
-   * as a strip under the top bar, in this order. The component reads the open
-   * one with `useMobileSection()` from `@kwtech/module-kit/react`. Omit for a
-   * screen with one view.
+   * as a strip under the top bar, in this order, even when only one is
+   * declared yet (it names the part of the app this is). The component reads
+   * the open one with `useMobileSection()` from `@kwtech/module-kit/react`.
+   * Omit for a screen with one view. ⚠ A screen that declares sections is
+   * offered only while its viewer holds at least one of them.
    */
   sections?: readonly MobileSectionContribution[];
   component: ComponentType<AppProps>;

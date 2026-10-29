@@ -9,7 +9,8 @@ import { MOBILE_MANAGE, MOBILE_SCREENS, MOBILE_TABS } from '@/mobile-modules';
  *
  *   apps        the workspace's effective grants: an app needs its `feature`,
  *               a section its own (a section with none goes to everybody
- *               holding the app);
+ *               holding the app), and an app with sections needs at least
+ *               one of them;
  *   Manage      each page at ITS level's reading — the workspace's effective
  *               grants, the organization's (granted, cut to the plan, app
  *               roles passing the plan as the guard lets them), or the
@@ -42,16 +43,27 @@ export async function mobileDestinations(
   const place = await getMobilePlace(organizationId, workspaceId);
   const held = place.snapshot.permissions?.effective ?? [];
 
-  const apps: MobileScreenEntry[] = MOBILE_SCREENS.filter((screen) => held.includes(screen.feature)).map((screen) => ({
-    key: screen.key,
-    label: screen.label,
-    icon: screen.icon,
-    kind: 'app',
-    sections: (screen.sections ?? [])
-      .filter((section) => section.feature === undefined || held.includes(section.feature))
-      .map((section) => ({ key: section.key, label: section.label })),
-    node: withNodes ? <screen.component organizationId={organizationId} workspaceId={workspaceId} /> : null,
-  }));
+  const apps: MobileScreenEntry[] = MOBILE_SCREENS.filter((screen) => held.includes(screen.feature))
+    .map((screen) => ({
+      screen,
+      sections: (screen.sections ?? []).filter(
+        (section) => section.feature === undefined || held.includes(section.feature),
+      ),
+    }))
+    /*
+     * An app that has sections is offered only while at least one is held:
+     * a point of sale whose one section (Sell) its holder may not use would
+     * open onto nothing. An app without sections is offered by its key alone.
+     */
+    .filter(({ screen, sections }) => screen.sections === undefined || sections.length > 0)
+    .map(({ screen, sections }) => ({
+      key: screen.key,
+      label: screen.label,
+      icon: screen.icon,
+      kind: 'app',
+      sections: sections.map((section) => ({ key: section.key, label: section.label })),
+      node: withNodes ? <screen.component organizationId={organizationId} workspaceId={workspaceId} /> : null,
+    }));
 
   const heldAt = { workspace: held, organization: place.organizationEffective, app: place.appGranted };
   const manage: MobileScreenEntry[] = MOBILE_MANAGE.filter((page) => heldAt[page.level].includes(page.feature)).map(
