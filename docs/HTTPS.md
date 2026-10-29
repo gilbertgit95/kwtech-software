@@ -499,6 +499,7 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 | A remote server shows `kwtech-https` | `FRONTEND_URL` is a private address, not the domain: fix the profile (section 7), then `pnpm pm2:start` |
 | The page does not open from a phone | Not on the shop's Wi-Fi; ports 80/443 blocked (Windows: section 4, step 3); or Caddy is not running |
 | Mac: *Error: -25294* importing the certificate | `security add-trusted-cert`, or Keychain Access with *Destination: login* (section 5, Mac) |
+| Phones get *502 Bad Gateway* after the ports were changed | The Caddyfile still says `localhost:8080` / `localhost:8081`: [SETUP.md §8, "Changing the ports"](SETUP.md#changing-the-ports) lists every place |
 | Uploads fail on a remote server | The proxy's body limit: nginx's `client_max_body_size` (section 7) |
 
 ## 11. Known limits

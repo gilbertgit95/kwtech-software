@@ -268,6 +268,50 @@ Commits are conventional and scoped by package directory:
 [`CLAUDE.md`](../CLAUDE.md) for the add-a-feature checklist and
 [`docs/DEPENDENCIES.md`](DEPENDENCIES.md) for what may import what.
 
+### Changing the ports
+
+The API listens on **8080** and the web app on **8081** (chosen to sit clear
+of the other Sensorbee repos on the machine). ⚠ **Only the API's port is a
+setting, and nothing checks that the rest agree with it** (PLAN §12.124). To
+move either, change **every** place below, in both modes — miss one and the
+symptom is only "the app cannot reach the API", or a page that never loads.
+
+**The API's port** (8080 → e.g. 9080):
+
+| Where | What to change | Why |
+|---|---|---|
+| `envs/<name>/web-server.env` | `PORT=9080` | the API listens there — the one real setting |
+| `envs/<name>/web-app.env` | `API_URL="http://localhost:9080/api/v1"` | the web app's server calls the API here (sign-in, every page) |
+| `envs/<name>/web-app.env` | `NEXT_PUBLIC_WS_URL="ws://localhost:9080/api/v1/graphql"` | live updates. ⚠ **Baked into the build**: `pnpm build` again. Behind HTTPS it is `wss://<address>/api/v1/graphql` and does NOT change: Caddy's port is 443 |
+| `deploy/https/Caddyfile` | `reverse_proxy localhost:9080` | phones over HTTPS: `/api/v1` and live updates ([HTTPS.md](HTTPS.md)) |
+| `scripts/dev-ports.mjs` (`DEFAULT_PORTS`), `scripts/dev-focus.mjs`, and `dev:api` in the root `package.json` (`--ports=8080`) | `9080` | they free the port before a dev start; on the old number they leave an old API running |
+| `scripts/https-setup.mjs` | the `ws://localhost:8080/…` written by `--off` | or `--off` points live updates back at the old port |
+| A print agent's `.env` | `API_URL` and `WS_URL` (on the server itself; through HTTPS they do not change) | [apps/print-agent/README.md](../apps/print-agent/README.md) |
+| `apps/web-app/.env.example`, `apps/print-agent/.env.example`, the defaults in `packages/module-auth/src/next/config.ts`, `module-permissions` and `module-print`'s `next` entry, `apps/web-app/src/lib/session-query.ts` and `app/api/health/route.ts` | the fallback `localhost:8080` | used only when `API_URL` is unset; change them if the new port becomes the default for everyone |
+
+**The web app's port** (8081 → e.g. 9081). ⚠ **Not a setting at all**: an
+env value does nothing, the port is written into the commands.
+
+| Where | What to change | Why |
+|---|---|---|
+| `apps/web-app/package.json`, the `dev` and `start` scripts | `-p 9081` | where the web app listens, in development and built |
+| `ecosystem.config.cjs`, `kwtech-web-app`'s `args` | `-p 9081` (both branches) | the built app under pm2 |
+| `deploy/https/Caddyfile` | `reverse_proxy localhost:9081` | phones over HTTPS |
+| `envs/<name>/web-server.env` | `FRONTEND_URL`, `CORS_ORIGINS`, `AUTH_RESET_URL_BASE`, `PERMISSIONS_INVITE_URL_BASE`, `CHAT_URL_BASE`, `AUTH_GOOGLE_REDIRECT_URI` — whichever name `localhost:8081` | where the API sends people (links in emails, sign-in redirects) and whom it lets in (CORS). Their defaults in `apps/web-server/src/config/env.ts` say 8081 too |
+| `scripts/dev-ports.mjs`, `scripts/dev-focus.mjs`, `dev:web` in the root `package.json` | `9081` | freeing the port before a dev start |
+| `scripts/https-setup.mjs` | `LOCAL_WEB` | it adds `http://localhost:8081` to `CORS_ORIGINS` |
+| `apps/web-app/playwright.config.ts` | `baseURL` (or set `E2E_BASE_URL`) | the browser tests |
+
+**Then, either way:**
+
+1. `pnpm env:show`, and look at every URL it prints.
+2. Development: `pnpm dev:stop`, then start again. Built: `pnpm build && pnpm pm2:start` (the web app's build carries `NEXT_PUBLIC_WS_URL`).
+3. Check: `curl http://localhost:<web port>/api/health` answers 200 (the web app, which also calls the API); sign in; the point of sale shows no *"Not live"* note. With HTTPS, also `curl -sk https://<address>/api/v1/health`.
+
+Behind HTTPS (the shop's network or a remote server), phones and other
+devices keep using `https://<address>` on port 443: they never see 8080 or
+8081, so nothing on them changes.
+
 ## 9. Optional services
 
 All of these are off by default; the app works without each one, and the table

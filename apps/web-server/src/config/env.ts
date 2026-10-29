@@ -40,6 +40,10 @@ const envSchema = z
      * 8080 for the API, 8081 for the Next app. Chosen to sit clear of the other
      * Sensorbee repos on this machine — coseller-mono holds 3000/3001 and
      * masterdb 3002/3003 — so every service can run at once.
+     *
+     * ⚠ The only port that is a setting, and nothing checks the rest agree
+     * (PLAN §12.124): changing it means API_URL, NEXT_PUBLIC_WS_URL, the
+     * Caddyfile and the dev scripts too — docs/SETUP.md §8, "Changing the ports".
      */
     PORT: z.coerce.number().int().positive().default(8080),
 
