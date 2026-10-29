@@ -12,9 +12,10 @@
  *   2. checks Caddy is installed, and prints this system's install command if not;
  *   3. on Linux, lets Caddy use ports 80 and 443 without root (`setcap`, asks
  *      for the sudo password once);
- *   4. writes the three settings into the ACTIVE profile (`pnpm env:show`):
- *      FRONTEND_URL and CORS_ORIGINS for the API, NEXT_PUBLIC_WS_URL for the
- *      web app — and nothing else in either file;
+ *   4. writes the settings into the ACTIVE profile (`pnpm env:show`):
+ *      FRONTEND_URL, CORS_ORIGINS and LISTEN_HOST="127.0.0.1" (both apps
+ *      answer only to Caddy) for the API, NEXT_PUBLIC_WS_URL for the web
+ *      app — and nothing else in either file;
  *   5. checks the Caddyfile with that address;
  *   6. says what is left: the rebuild, the start, and each phone.
  *
@@ -228,7 +229,15 @@ async function turnOn() {
     `Writing the active profile (${relative(REPO, profileFile(SERVER_ENV))}, ${relative(REPO, profileFile(WEB_ENV))})`,
   );
   writeSettings([
-    { file: SERVER_ENV, set: { FRONTEND_URL: origin, CORS_ORIGINS: `${origin},${LOCAL_WEB}` } },
+    /*
+     * LISTEN_HOST: the apps answer only to this computer, so Caddy is the ONE
+     * way in from the network — never http://<address>:8081 around it,
+     * unencrypted (docs/HTTPS.md). The server keeps http://localhost:8081.
+     */
+    {
+      file: SERVER_ENV,
+      set: { FRONTEND_URL: origin, CORS_ORIGINS: `${origin},${LOCAL_WEB}`, LISTEN_HOST: '127.0.0.1' },
+    },
     { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: `wss://${address}/api/v1/graphql` } },
   ]);
   validateCaddyfile(address);
@@ -249,7 +258,9 @@ async function turnOn() {
 }
   2. Built apps:   pnpm build && pnpm pm2:start && pnpm pm2:save
      Development:  pnpm dev:focus …   and, in a second terminal,  pnpm https
-     (The web app must be BUILT again: NEXT_PUBLIC_WS_URL is baked in.)
+     (The web app must be BUILT again: NEXT_PUBLIC_WS_URL is baked in. And
+     restart both apps: from now on they answer only to Caddy, so phones use
+     https://${address}, never :8081 or :8080.)
   3. On each phone or tablet, on this Wi-Fi, open
        http://${address}/kwtech-local-ca.crt
      and trust it (docs/HTTPS.md: iPhone needs Install, then Certificate Trust
@@ -263,7 +274,7 @@ async function turnOn() {
 async function turnOff() {
   console.log('\n  Back to plain http://localhost\n');
   writeSettings([
-    { file: SERVER_ENV, set: { FRONTEND_URL: LOCAL_WEB }, remove: ['CORS_ORIGINS'] },
+    { file: SERVER_ENV, set: { FRONTEND_URL: LOCAL_WEB }, remove: ['CORS_ORIGINS', 'LISTEN_HOST'] },
     { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: 'ws://localhost:8080/api/v1/graphql' } },
   ]);
   console.log('\n  Then: pnpm build && pnpm pm2:start (pm2 no longer starts Caddy). .caddy/ is kept.\n');

@@ -58,8 +58,13 @@ async function bootstrap() {
   );
   SwaggerModule.setup(`${API_PREFIX}/docs`, app, document);
 
-  await app.listen(env.PORT);
-  new Logger('Bootstrap').log(`Listening on http://localhost:${env.PORT}/${API_PREFIX}`);
+  // LISTEN_HOST unset: every address, as Node does by default. Set: that one only (docs/HTTPS.md).
+  if (env.LISTEN_HOST) await app.listen(env.PORT, env.LISTEN_HOST);
+  else await app.listen(env.PORT);
+  new Logger('Bootstrap').log(
+    `Listening on http://${env.LISTEN_HOST ?? 'localhost'}:${env.PORT}/${API_PREFIX}` +
+      (env.LISTEN_HOST ? ' (this address only)' : ' (every address)'),
+  );
 }
 
 void bootstrap();

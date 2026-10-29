@@ -42,6 +42,35 @@ network address** — `192.168.x.x`, `10.x.x.x` or `172.16–31.x.x`
 (`httpsHost()` in `deploy/https/host.cjs`). With `http://`, `localhost` or a
 **domain**, pm2 runs only the two apps and `pnpm https` refuses to start.
 
+### One way in: `LISTEN_HOST`
+
+By default both apps listen on **every** address, so another device could
+also open `http://<address>:8081` or `:8080` directly, around the front
+door, unencrypted. **`LISTEN_HOST="127.0.0.1"`** (in
+`envs/<name>/web-server.env`) makes both apps answer **only to this
+computer**, so the front door is the only way in from the network:
+
+```
+                              THE SERVER
+                      ┌───────────────────────────────────────────┐
+📱 https://<address> ─🔒─▶│ Caddy / nginx :443 ─┬─▶ web app 127.0.0.1:8081 │
+                      │                       └─▶ API     127.0.0.1:8080 │
+📱 http://<address>:8081 ✗  refused: nothing listens there for the network │
+                      └───────────────────────────────────────────┘
+```
+
+| Setup | `LISTEN_HOST` |
+|---|---|
+| One computer | empty (default). `127.0.0.1` also works, and keeps the apps off the network |
+| The shop's network (Caddy) | `127.0.0.1` — **`pnpm https:setup` sets it**, `--off` removes it |
+| A remote server, **nginx on the same machine** | `127.0.0.1` — set it yourself (section 7) |
+| A remote server on a **platform** (Render, Fly.io, …) or in **Docker** | ⚠ **empty**: the front door is on another machine and must reach the apps over the network; `127.0.0.1` would cut them off |
+
+The API reads it itself (`apps/web-server/src/config/env.ts`); the web app
+gets it as `next -H` from `scripts/next.mjs` (its `dev` and `start` scripts)
+and from pm2 (`ecosystem.config.cjs`). The server always keeps
+`http://localhost:8081`.
+
 ## 2. Why other devices need HTTPS
 
 Any device **other than the server itself** must open the app over HTTPS,
@@ -128,10 +157,14 @@ pnpm https:setup
 It finds the address and asks you to confirm it; checks Caddy (and prints
 the install command if it is missing); on Linux lets Caddy use ports 80 and
 443 without root (`setcap`, asks for the sudo password once); writes three
-settings into the active profile and **nothing else** — `FRONTEND_URL` and
-`CORS_ORIGINS` in `envs/<name>/web-server.env`, `NEXT_PUBLIC_WS_URL` in
-`envs/<name>/web-app.env`; checks the Caddyfile for that address; and
-prints what is left.
+settings into the active profile and **nothing else** — `FRONTEND_URL`,
+`CORS_ORIGINS` and `LISTEN_HOST="127.0.0.1"` in `envs/<name>/web-server.env`,
+`NEXT_PUBLIC_WS_URL` in `envs/<name>/web-app.env`; checks the Caddyfile for
+that address; and prints what is left.
+
+⚠ From the next start, the apps answer **only to Caddy**: other devices use
+`https://<address>`, and `http://<address>:8081` is refused (section 1, "One
+way in"). Restart both apps after the setup for it to take effect.
 
 Options: `--address=192.168.1.186` (no detection), `--yes` (no questions),
 `--off` (back to `http://localhost`, section 9).
@@ -161,6 +194,7 @@ The first start creates the authority in `.caddy/`.
 curl -sk -o /dev/null -w "%{http_code}\n" https://192.168.1.186/api/health          # 200
 curl -sk -o /dev/null -w "%{http_code}\n" https://192.168.1.186/api/v1/health       # 200 (the API through Caddy)
 curl -s  -o /dev/null -w "%{http_code}\n" http://192.168.1.186/kwtech-local-ca.crt  # 200
+curl -s -m 3 http://192.168.1.186:8081/ || echo "refused — good: the only way in is https"
 ```
 
 Then register each device (section 5), the server's own browser too if it
@@ -301,7 +335,10 @@ trusts. **No Caddy, and no device registration.**
    Or put the API on a subdomain of its own (`api.yourshop.com` → 8080) and
    adjust the settings below to it.
 4. **Ports**: only **443** (and 80, for the certificate and the redirect)
-   open to the internet. Never expose 8080, 8081 or Postgres' 5432.
+   open to the internet. Never expose 8080, 8081 or Postgres' 5432. With
+   nginx on the same machine, `LISTEN_HOST="127.0.0.1"` (below) closes 8080
+   and 8081 even if the firewall is wrong; on a platform the platform keeps
+   them private.
 
 ### The profile
 
@@ -312,6 +349,7 @@ In `envs/<name>/` on the server (`pnpm env:new <name>`, then `pnpm env:use
 # web-server.env
 FRONTEND_URL="https://pos.yourshop.com"      # a domain: pm2 starts NO Caddy
 CORS_ORIGINS="https://pos.yourshop.com"
+LISTEN_HOST="127.0.0.1"   # ONLY with nginx on this same machine; leave EMPTY on a platform or in Docker
 
 # web-app.env
 NEXT_PUBLIC_WS_URL="wss://pos.yourshop.com/api/v1/graphql"   # baked in at build time
@@ -404,6 +442,18 @@ on another computer):
 
 A **remote** server instead: section 7, with no `.caddy/` to copy.
 
+### A print agent on another computer
+
+A print agent ([apps/print-agent/README.md](../apps/print-agent/README.md))
+on the **server** itself keeps `http://localhost:8080/api/v1`. On **another**
+computer on the shop's network it goes through the front door, like a phone:
+`API_URL="https://<address>/api/v1"` and
+`WS_URL="wss://<address>/api/v1/graphql"`. The agent is a Node program and
+does not read the computer's certificate list: point it at the shop's
+certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
+`NODE_EXTRA_CA_CERTS=/path/to/kwtech-local-ca.crt` in its environment.
+(Not yet tried on a second computer.)
+
 ## 9. Day to day
 
 | Task | How |
@@ -424,6 +474,9 @@ A **remote** server instead: section 7, with no `.caddy/` to copy.
 | *Your connection is not private* / *Not secure* on a device | It has not trusted the authority yet (section 5). **iPhone**: both *Install* **and** *Certificate Trust Settings*. **Android**: installed as **CA certificate**, from Settings |
 | The warning comes back on every device at once | The server's address changed: `pnpm https:setup`, rebuild (section 9), reserve the address on the router |
 | A phone shows a crash, or *"crypto.randomUUID is not a function"* | It is on plain `http://<address>:8081`: open **`https://<address>`** (section 2) |
+| `http://<address>:8081` (or `:8080`) is refused from another device | By design with `LISTEN_HOST="127.0.0.1"`: the only way in is `https://<address>` (section 1, "One way in") |
+| A **remote** server's site is down after setting `LISTEN_HOST` | It runs on a platform or in Docker, whose front door is on another machine: remove `LISTEN_HOST` (section 1) and restart |
+| A print agent on another computer cannot connect | It needs `https://` / `wss://` and `NODE_EXTRA_CA_CERTS` pointing at the shop's certificate (section 8) |
 | A phone cannot stay signed in | It is on `http://`: the built app's cookies need `https://` |
 | *"Not live — other tills' changes show when you reload"* | Live updates cannot connect. Is Caddy (or the remote host's proxy) running and passing the WebSocket upgrade on `/api/v1/`? Is `NEXT_PUBLIC_WS_URL` `wss://<address or domain>/api/v1/graphql`? It is baked in: `pnpm build` after changing it |
 | `kwtech-https` errored in `pnpm pm2:status` | Caddy is not installed, or on Linux may not use port 443: `pnpm https:setup` says which. `pnpm pm2:logs kwtech-https` shows the error |

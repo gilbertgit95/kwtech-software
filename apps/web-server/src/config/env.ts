@@ -43,6 +43,19 @@ const envSchema = z
      */
     PORT: z.coerce.number().int().positive().default(8080),
 
+    /**
+     * Which address the API listens on. Unset: EVERY address, as always — what
+     * a platform (Render, Fly.io) or a Docker container needs, its front door
+     * being on another machine. `127.0.0.1`: this computer only, when a front
+     * door on the SAME machine (Caddy on the shop's network, nginx on a VPS)
+     * is the only way in, so nothing reaches the app around it, unencrypted
+     * (docs/HTTPS.md). `pnpm https:setup` sets it; `--off` removes it.
+     *
+     * ⚠ Not `HOST`: some shells export HOST as the machine's name, and an
+     * exported variable wins over the file — the API would bind to that.
+     */
+    LISTEN_HOST: optionalText,
+
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
     /**

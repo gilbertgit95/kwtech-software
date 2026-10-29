@@ -21,13 +21,35 @@ const { resolve } = require('node:path');
 
 const REPO = resolve(__dirname, '..', '..');
 
-function httpsHost() {
+/**
+ * One setting from the API's file (the active profile), or null when unset or
+ * empty. An EXPORTED variable wins, as it does for the API itself
+ * (`load-env.ts`: dotenv never overrides the environment).
+ */
+function serverSetting(key) {
+  const exported = process.env[key]?.trim();
+  if (exported) return exported;
   const file = resolve(REPO, 'apps/web-server/.env.local');
   if (!existsSync(file)) return null;
-  const match = readFileSync(file, 'utf8').match(/^\s*FRONTEND_URL\s*=\s*["']?([^"'\s]+)/m);
-  if (!match) return null;
+  const match = readFileSync(file, 'utf8').match(new RegExp(`^\\s*${key}\\s*=\\s*["']?([^"'\\s]*)`, 'm'));
+  return match?.[1] ? match[1] : null;
+}
+
+/**
+ * The address BOTH apps listen on (`LISTEN_HOST`), or null for every address.
+ * One setting for the two: the API reads it itself (`config/env.ts`), the web
+ * app gets it as `next -H` from `scripts/next.mjs` and pm2, because Next
+ * takes the address only as a flag. docs/HTTPS.md.
+ */
+function listenHost() {
+  return serverSetting('LISTEN_HOST');
+}
+
+function httpsHost() {
+  const frontend = serverSetting('FRONTEND_URL');
+  if (!frontend) return null;
   try {
-    const url = new URL(match[1]);
+    const url = new URL(frontend);
     return url.protocol === 'https:' && isPrivateAddress(url.hostname) ? url.hostname : null;
   } catch {
     return null;
@@ -54,4 +76,4 @@ function caddyLaunch(host) {
   };
 }
 
-module.exports = { httpsHost, isPrivateAddress, caddyLaunch, REPO };
+module.exports = { httpsHost, listenHost, isPrivateAddress, caddyLaunch, REPO };

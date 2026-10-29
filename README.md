@@ -202,7 +202,10 @@ remote server, moving to another computer, and troubleshooting. In short:
 `http://<address>:8081` crashes in the browser (no `crypto.randomUUID()` off
 a secure page) and cannot stay signed in to the built app. Caddy runs only
 when `FRONTEND_URL` is `https://` on a private address (`192.168.x.x`,
-`10.x.x.x`, `172.16–31.x.x`); a domain never starts it.
+`10.x.x.x`, `172.16–31.x.x`); a domain never starts it. With
+`LISTEN_HOST="127.0.0.1"` (set by `pnpm https:setup`) both apps answer only
+to this computer, so the front door is the only way in from the network;
+leave it empty on a platform or in Docker.
 
 Database (all scoped to `apps/web-server`, which owns the schema — PLAN §12.2):
 

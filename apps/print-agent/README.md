@@ -65,6 +65,10 @@ WS_URL="wss://app.example.com/api/v1/graphql"
   WSL through `localhost`.
 - Anywhere but `localhost` they must be `https://` and `wss://`, or the agent
   refuses to start.
+- On the shop's network, from another computer, that is the server's
+  `https://<address>`, whose certificate comes from the shop's own authority:
+  set `NODE_EXTRA_CA_CERTS` to the downloaded `kwtech-local-ca.crt`
+  ([docs/HTTPS.md](../../docs/HTTPS.md) §8).
 - Every other setting is optional; see "Settings" below.
 
 **4. Check it sees the printers**, before pairing:

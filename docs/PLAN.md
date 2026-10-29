@@ -631,6 +631,16 @@ Decisions 1, 2, 3 and 5 gate the next step.
     `http://<address>:8081` crashes off localhost — no
     `crypto.randomUUID()` on a non-secure page — in development too. The
     docs said dev http worked; they now say it does not.
+  - **One way in: `LISTEN_HOST`.** Both apps listened on every address, so
+    `http://<address>:8081` and `:8080` stayed open around the front door,
+    unencrypted. `LISTEN_HOST="127.0.0.1"` makes both answer only to this
+    computer: the API reads it (`app.listen`), the web app gets it as
+    `next -H` from `scripts/next.mjs` and pm2, because Next takes the address
+    only as a flag. `pnpm https:setup` sets it, `--off` removes it. EMPTY by
+    default — every address, as before — because a platform's or Docker's
+    front door is on another machine and `127.0.0.1` would cut it off. Not
+    `HOST`: shells export that as the machine's name, and an exported
+    variable wins over the file.
   - **Not done:** making the browser code independent of
     `crypto.randomUUID()` (a `randomId()` in module-kit), which would let
     development run over plain http from phones; and an opt-out from
