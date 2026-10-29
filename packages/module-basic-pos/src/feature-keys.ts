@@ -31,7 +31,10 @@ export const POS_FEATURE = {
   discount: 'pos:discount',
   /** Refund a paid order, by line or by amount, and void an unpaid one whose items came back (D17). */
   refund: 'pos:refund',
-  /** Add, edit and archive items, variants and categories — and SEE COSTS (D15). */
+  /**
+   * Add, edit and archive items, variants and categories, the order types and
+   * the order reference options (the Items tab) — and SEE COSTS (D15).
+   */
   manageItems: 'pos:manage_items',
   /** The dashboard and the reports, with profit and CSV export (D22). */
   reports: 'pos:reports',
@@ -103,6 +106,7 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Mutation.refreshPosOrderLine'),
       op('Mutation.setPosOrderCustomer'),
       op('Mutation.setPosOrderLabel'),
+      op('Mutation.setPosOrderType'),
       op('Mutation.holdPosOrder'),
       /* Customers are created where they are met: at the till (D5). */
       op('Mutation.savePosCustomer'),
@@ -161,13 +165,19 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     module: 'pos',
     level: 'workspace',
     label: 'Manage items',
-    description: 'Add, edit and archive items, their variants and categories, and see what each one costs.',
+    description:
+      'Add, edit and archive items, their variants and categories, the order types and order references, and see what each item costs.',
     tags: ['pos'],
     bindings: [
       op('Mutation.savePosItem'),
       op('Mutation.setPosItemArchived'),
       op('Mutation.savePosCategory'),
       op('Mutation.setPosCategoryArchived'),
+      /* Order types and order references live on the Items tab beside categories (the operator, 2026-10-29). */
+      op('Mutation.savePosOrderTypeOption'),
+      op('Mutation.setPosOrderTypeOptionArchived'),
+      op('Mutation.setPosDefaultOrderType'),
+      op('Mutation.savePosReferenceOptions'),
     ],
   },
   {
@@ -184,9 +194,14 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     module: 'pos',
     level: 'workspace',
     label: 'Change store settings',
-    description: 'Set the keyboard shortcuts and the order reference options every till in the store uses.',
+    description: 'Set the keyboard shortcuts every till in the store uses.',
     tags: ['pos'],
-    bindings: [op('Mutation.savePosSettings'), op('Mutation.savePosReferenceOptions')],
+    /*
+     * The order reference options moved to the Items tab, under `pos:manage_items`
+     * (2026-10-29): bound there, never here as well — two keys on one operation
+     * would demand both.
+     */
+    bindings: [op('Mutation.savePosSettings')],
   },
 ];
 

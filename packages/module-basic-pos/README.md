@@ -119,8 +119,9 @@ same every time. Optional: with none, both dialogs are the plain text box.
   the same after `posReferenceKey` (case and spacing folded). Checked by
   `validateReferenceOptions` on write; re-read by `readReferenceOptions`,
   which drops what no longer passes rather than the whole list.
-- **Edited in Settings → Order references** (add, rename, move up and down,
-  remove), saved with `savePosReferenceOptions` under `pos:manage_settings`.
+- **Edited in Items → References** (add, rename, move up and down, remove,
+  set a default; in Settings until 2026-10-29), saved with
+  `savePosReferenceOptions` under `pos:manage_items`.
   ⚠ It is a mutation of its own: `savePosSettings` writes the keymap it is
   given or the defaults, so a list sent through it would reset every hot key.
   Every till reads the options with `posSettings`.
@@ -197,6 +198,37 @@ The same order process, split by who uses it:
   lost the key.
 - ⚠ **An order never held is listed nowhere**, so neither screen lets it be
   left for another (`canLeaveOrder`): it asks for Hold first.
+
+## Order types and defaults (the Items tab)
+
+How an order is served — "Dine-in", "Takeout", "Delivery" — is the store's
+own list, kept on **Items → Order types** beside Categories, under
+`pos:manage_items`. **References** (the reference options of issue #30) moved
+there too, from Settings.
+
+- **`PosOrderType`** (`pos_order_type`): name, case-blind `nameKey`
+  (`@@unique` per store), sort order, `isDefault`, `archivedAt`. Renamed,
+  reordered, archived, never deleted; at most 20 per store
+  (`POS_ORDER_TYPES_MAX`). Loaded with the catalogue (`orderTypes`), so a new
+  or renamed type reaches every till live.
+- **Optional on every order.** `PosOrder.orderTypeId` and `orderTypeName`,
+  the NAME COPIED when set, so a renamed type never changes a receipt (as
+  lines copy `categoryName`). Set with `setPosOrderType` (`pos:sell`); `null`
+  clears it. An archived type, or another store's, is refused.
+- **Defaults, per store.** One order type may be the default
+  (`setPosDefaultOrderType`; setting one clears the last, archiving it clears
+  it), and one reference option may be (`PosSettings.defaultReference`,
+  saved with the list by `savePosReferenceOptions`, refused unless it is one
+  of the options, dropped when its option is removed). `createPosOrder`
+  starts every new order on both; a reference typed when creating wins.
+- **At the till:** `OrderTypePicker`, a row of buttons — on the Classic
+  till's cart, and large in the Take orders sheet. Tapping the chosen one
+  again clears it. The type shows on the held-order chips, the Cashier's
+  cards ("Dine-in · 3 items"), the on-screen and printed receipt, and the
+  order's details.
+- ⚠ **The References editor changed key:** `savePosReferenceOptions` is bound
+  to `pos:manage_items` now, not `pos:manage_settings` (never both: the guard
+  would demand both).
 
 ## Stock (issue #10)
 

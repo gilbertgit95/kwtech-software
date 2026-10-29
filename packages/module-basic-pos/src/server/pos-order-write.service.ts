@@ -10,6 +10,7 @@ import {
   type PosPaymentInput,
   planPayment,
 } from '../domain/orders.js';
+import { readDefaultReference, readReferenceOptions } from '../domain/references.js';
 import {
   POS_NAME_MAX,
   preparePosContact,
@@ -102,7 +103,24 @@ export class PosOrderWriteService {
    */
   async create(scope: InScope, actorId: string, rawLabel: string | null): Promise<PosOrderRow> {
     const { label } = unwrap(preparePosLabel(rawLabel ?? ''));
-    const order = await this.prisma.posOrder.create({ data: { ...scope, createdById: actorId, label } });
+    // The store's defaults (the Items tab): a new order starts on them, and the seller changes them in a tap.
+    const [type, settings] = await Promise.all([
+      this.prisma.posOrderType.findFirst({ where: { ...scope, isDefault: true, archivedAt: null } }),
+      this.prisma.posSettings.findUnique({ where: { workspaceId: scope.workspaceId } }),
+    ]);
+    // ⚠ The row must be THIS organization's too, as `PosSettingsService.get` checks: never another tenant's default.
+    const own = settings && settings.organizationId === scope.organizationId ? settings : null;
+    const startLabel =
+      label ?? readDefaultReference(readReferenceOptions(own?.referenceOptions), own?.defaultReference ?? null);
+    const order = await this.prisma.posOrder.create({
+      data: {
+        ...scope,
+        createdById: actorId,
+        label: startLabel,
+        orderTypeId: type?.id ?? null,
+        orderTypeName: type?.name ?? null,
+      },
+    });
     await this.events.changed(scope, 'order', actorId, order.id);
     return order;
   }
@@ -295,6 +313,26 @@ export class PosOrderWriteService {
   async setLabel(scope: InScope, actorId: string, ref: PosOrderRef, rawLabel: string | null): Promise<PosOrderRow> {
     const { label } = unwrap(preparePosLabel(rawLabel ?? ''));
     return this.change(scope, actorId, ref, ['open'], async () => ({ data: { label } }));
+  }
+
+  /**
+   * How the order is served ("Dine-in", "Takeout"), or `null` for none: the
+   * type is optional. The NAME is copied now, so renaming the type later
+   * never changes this order's receipt. Only a live type of this store.
+   */
+  async setOrderType(
+    scope: InScope,
+    actorId: string,
+    ref: PosOrderRef,
+    orderTypeId: string | null,
+  ): Promise<PosOrderRow> {
+    const type = orderTypeId
+      ? await this.prisma.posOrderType.findFirst({ where: { ...scope, id: orderTypeId } })
+      : null;
+    if (orderTypeId && (!type || type.archivedAt)) throw refusalError('not_found');
+    return this.change(scope, actorId, ref, ['open'], async () => ({
+      data: { orderTypeId: type?.id ?? null, orderTypeName: type?.name ?? null },
+    }));
   }
 
   /**

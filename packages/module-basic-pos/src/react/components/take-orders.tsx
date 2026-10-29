@@ -21,6 +21,7 @@ import {
 import { itemCount, lineLabel, priceRange, searchCatalogue } from '../view/till.js';
 import { buttonClass, INPUT_CLASS, StockBadge } from './controls.js';
 import { ReferenceDialog, VariantPicker } from './dialogs.js';
+import { OrderTypePicker } from './order-type-picker.js';
 import { WaitBadge } from './wait-badge.js';
 
 type Sheet = 'none' | 'order' | 'hold' | 'reference';
@@ -157,6 +158,11 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
               )}
             >
               <span className="truncate text-sm font-semibold">{heldOrderTitle(held)}</span>
+              {held.orderTypeName ? (
+                <span className={cn('truncate text-xs', current ? 'opacity-80' : 'text-muted-foreground')}>
+                  {held.orderTypeName}
+                </span>
+              ) : null}
               <span className="flex items-center gap-1.5 text-xs">
                 <span className={cn('tabular-nums', current ? 'opacity-80' : 'text-muted-foreground')}>
                   {formatPeso(held.total)}
@@ -248,7 +254,13 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
         <span className="min-w-0">
           <span className="block truncate text-xs opacity-80">
             {open
-              ? `${open.label ?? (isHeld ? 'Held order' : 'New order')} · ${itemCount(lines)} ${itemCount(lines) === 1 ? 'item' : 'items'}`
+              ? [
+                  open.orderTypeName,
+                  open.label ?? (isHeld ? 'Held order' : 'New order'),
+                  `${itemCount(lines)} ${itemCount(lines) === 1 ? 'item' : 'items'}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
               : 'Tap an item to start an order'}
           </span>
           <span className="block text-lg font-semibold tabular-nums">{formatPeso(open?.total ?? 0)}</span>
@@ -282,6 +294,8 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
               {open.label ?? 'Add reference'}
             </button>
           </div>
+
+          <OrderTypePicker state={state} order={open} large />
 
           {lines.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing on this order yet.</p>

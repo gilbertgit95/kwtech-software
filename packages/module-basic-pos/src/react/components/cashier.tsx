@@ -6,6 +6,7 @@ import type { TillState } from '../use-till.js';
 import { formatPeso } from '../view/money.js';
 import {
   canLeaveOrder,
+  heldOrderDetail,
   heldOrderTitle,
   type PosWaitUrgency,
   waitMinutes,
@@ -98,7 +99,7 @@ export function Cashier({ state }: { state: TillState }) {
                     <span className="flex items-center justify-between gap-2 text-xs">
                       <span className="truncate text-muted-foreground">
                         {held.label && held.customerName ? `${held.customerName} · ` : ''}
-                        {held.itemCount} {held.itemCount === 1 ? 'item' : 'items'}
+                        {heldOrderDetail(held)}
                         {current ? ' · on the till' : ''}
                       </span>
                       {minutes === null ? null : <WaitBadge minutes={minutes} />}

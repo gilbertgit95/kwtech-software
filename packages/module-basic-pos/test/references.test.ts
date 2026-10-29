@@ -3,6 +3,7 @@ import {
   matchReferenceOptions,
   POS_REFERENCE_OPTIONS_MAX,
   posReferenceKey,
+  readDefaultReference,
   readReferenceOptions,
   snapToReferenceOption,
   validateReferenceOptions,
@@ -86,5 +87,22 @@ describe('heldReferenceKeys', () => {
 
   it('⚠ leaves out the order on the till, even a resumed held one', () => {
     expect(heldReferenceKeys(held, 'a').has('table 3')).toBe(false);
+  });
+});
+
+describe('the default reference', () => {
+  const options = ['Counter', 'Table 1', 'Take-out'];
+
+  it('starts a new order on the default, in the option’s own spelling', () => {
+    expect(readDefaultReference(options, 'counter')).toBe('Counter');
+  });
+
+  it('⚠ drops a default whose option was removed — never a reference the store took away', () => {
+    expect(readDefaultReference(options, 'Pickup')).toBeNull();
+  });
+
+  it('is none when none is set', () => {
+    expect(readDefaultReference(options, null)).toBeNull();
+    expect(readDefaultReference([], 'Counter')).toBeNull();
   });
 });

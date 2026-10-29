@@ -882,7 +882,8 @@ type Mutation {
   savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
-  savePosReferenceOptions(options: [String!]!, organizationId: String!, workspaceId: String!): PosSettings!
+  savePosOrderTypeOption(name: String!, orderTypeId: String, organizationId: String!, sortOrder: Int, workspaceId: String!): PosOrderTypeOption!
+  savePosReferenceOptions(defaultReference: String, options: [String!]!, organizationId: String!, workspaceId: String!): PosSettings!
   savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
   saveStockCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): StockCategory!
   saveStockItem(input: SaveStockItemInput!, organizationId: String!, workspaceId: String!): StockItem!
@@ -911,11 +912,14 @@ type Mutation {
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setPosCategoryArchived(archived: Boolean!, categoryId: String!, organizationId: String!, workspaceId: String!): PosCategory!
   setPosCustomerArchived(archived: Boolean!, customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer!
+  setPosDefaultOrderType(orderTypeId: String, organizationId: String!, workspaceId: String!): PosOrderTypeOption
   setPosItemArchived(archived: Boolean!, itemId: String!, organizationId: String!, workspaceId: String!): PosItem!
   setPosLineDiscount(discount: PosDiscountInput, lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderCustomer(contact: String, customerId: String, name: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderDiscount(discount: PosDiscountInput, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderLabel(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderType(orderId: String!, orderTypeId: String, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderTypeOptionArchived(archived: Boolean!, orderTypeId: String!, organizationId: String!, workspaceId: String!): PosOrderTypeOption!
   setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
   setQueueLineNextNumber(lineId: String!, next: Int!, organizationId: String!, workspaceId: String!): Int!
   setQueueShowStaffNames(organizationId: String!, show: Boolean!, workspaceId: String!): QueueSettings!
@@ -1425,6 +1429,7 @@ type PosCatalogue {
   categories: [PosCategory!]!
   costsVisible: Boolean!
   items: [PosItem!]!
+  orderTypes: [PosOrderTypeOption!]!
 }
 
 type PosCategory {
@@ -1510,6 +1515,8 @@ type PosOrder {
   lines: [PosOrderLine!]!
   number: Int
   orderDiscount: Float!
+  orderTypeId: String
+  orderTypeName: String
   paidAt: String
   paidById: String
   paymentMethod: String
@@ -1560,11 +1567,20 @@ type PosOrderSummary {
   itemCount: Int!
   label: String
   number: Int
+  orderTypeName: String
   paidAt: String
   refunded: Float!
   status: String!
   total: Float!
   version: Int!
+}
+
+type PosOrderTypeOption {
+  archivedAt: String
+  id: String!
+  isDefault: Boolean!
+  name: String!
+  sortOrder: Int!
 }
 
 type PosOwed {
@@ -1620,6 +1636,7 @@ type PosSeriesPoint {
 }
 
 type PosSettings {
+  defaultReference: String
   keymap: String!
   referenceOptions: [String!]!
   timeZone: String!

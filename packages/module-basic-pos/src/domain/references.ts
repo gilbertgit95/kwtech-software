@@ -78,6 +78,18 @@ export function readReferenceOptions(stored: unknown): readonly string[] {
 }
 
 /**
+ * The reference a new order starts with: the stored default, in the
+ * option's own spelling, ONLY while it is still one of the options. Removing
+ * the option from the list drops the default with it, with no second write
+ * to forget. Null for none.
+ */
+export function readDefaultReference(options: readonly string[], stored: string | null): string | null {
+  if (!stored) return null;
+  const key = posReferenceKey(stored);
+  return options.find((option) => posReferenceKey(option) === key) ?? null;
+}
+
+/**
  * The options that match what is typed, in the store's order: every one
  * holding the typed text, ignoring case and spacing. Nothing typed matches
  * them all.

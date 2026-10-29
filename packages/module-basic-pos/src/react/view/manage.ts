@@ -429,7 +429,7 @@ export function filterItems(
  * categories with the same sort order (as seeded) get distinct ones.
  */
 export function categoryReorder(
-  ordered: readonly PosCategoryView[],
+  ordered: readonly Pick<PosCategoryView, 'id' | 'name' | 'sortOrder'>[],
 ): { id: string; name: string; sortOrder: number }[] {
   return ordered
     .map((category, index) => ({ category, index }))

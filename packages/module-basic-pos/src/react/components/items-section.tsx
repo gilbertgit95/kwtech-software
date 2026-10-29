@@ -3,7 +3,7 @@
 import { cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PosCatalogueView, PosCategoryView } from '../pos-client.js';
+import type { PosCatalogueView, PosCategoryView, PosOrderTypeOptionView } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
 import {
@@ -22,12 +22,14 @@ import { buttonClass, Field, INPUT_CLASS } from './controls.js';
 import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PriceListButtons } from './price-list-buttons.js';
+import { ReferenceOptionsPanel } from './reference-options-panel.js';
 
-type ItemsTab = 'items' | 'categories';
+type ItemsTab = 'items' | 'categories' | 'order_types' | 'references';
 
 /**
- * Items (D23): the store's catalogue — items with their variants, and the
- * categories the till's tabs come from. Behind `pos:manage_items`, which also
+ * Items (D23): the store's catalogue — items with their variants, the
+ * categories the till's tabs come from, and (since 2026-10-29) what an order
+ * is set up with: the order types and the order reference options. Behind `pos:manage_items`, which also
  * sees costs (D15). Archived rows show on request and can be restored; nothing
  * is ever deleted, because old orders point at it.
  */
@@ -40,24 +42,31 @@ export function ItemsSection({ state }: { state: TillState }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <Tabs
-        label="Items or categories"
+        label="What to manage"
         tabs={[
           { key: 'items', label: 'Items' },
           { key: 'categories', label: 'Categories' },
+          { key: 'order_types', label: 'Order types' },
+          { key: 'references', label: 'References' },
         ]}
         current={tab}
         onChange={setTab}
       />
-      <Alert message={catalogue.error} />
-      {catalogue.data ? (
-        tab === 'items' ? (
-          <ItemsPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
-        ) : (
-          <CategoriesPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
-        )
-      ) : (
+      {/* References are settings, read apart from the catalogue. */}
+      {tab === 'references' ? <ReferenceOptionsPanel state={state} /> : null}
+      {tab !== 'references' ? <Alert message={catalogue.error} /> : null}
+      {tab !== 'references' && !catalogue.data ? (
         <Empty>{catalogue.loading ? 'Loading…' : 'The items could not be loaded.'}</Empty>
-      )}
+      ) : null}
+      {tab === 'items' && catalogue.data ? (
+        <ItemsPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
+      ) : null}
+      {tab === 'categories' && catalogue.data ? (
+        <CategoriesPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
+      ) : null}
+      {tab === 'order_types' && catalogue.data ? (
+        <OrderTypesPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
+      ) : null}
     </div>
   );
 }
@@ -630,6 +639,166 @@ function CategoriesPanel({
                 ? client.saveCategory(scope, name, dialog.category.id, dialog.category.sortOrder)
                 : client.saveCategory(scope, name, null, order.length),
             'Could not save the category.',
+          )
+        }
+        onClose={() => setDialog({ kind: 'none' })}
+      />
+    </section>
+  );
+}
+
+type OrderTypeDialog = { kind: 'none' } | { kind: 'new' } | { kind: 'rename'; type: PosOrderTypeOptionView };
+
+/**
+ * Order types: how an order is served — "Dine-in", "Takeout", "Delivery".
+ * The same shape as categories (renamed, reordered, archived, never deleted),
+ * plus ONE DEFAULT, the type every new order starts with. Optional: a store
+ * with none sees nothing of them at the till.
+ */
+function OrderTypesPanel({
+  state,
+  catalogue,
+  onSaved,
+}: {
+  state: TillState;
+  catalogue: PosCatalogueView;
+  onSaved: () => void;
+}) {
+  const { client, scope } = state;
+  const [dialog, setDialog] = useState<OrderTypeDialog>({ kind: 'none' });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [order, setOrder] = useState(catalogue.orderTypes);
+  useEffect(() => setOrder(catalogue.orderTypes), [catalogue.orderTypes]);
+
+  const run = async (fn: () => Promise<unknown>, fallback: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      setError(null);
+      setDialog({ kind: 'none' });
+      onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : fallback);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const move = (index: number, direction: 'up' | 'down') => {
+    const next = moveEntry(order, index, direction);
+    setOrder(next);
+    void run(async () => {
+      for (const change of categoryReorder(next)) {
+        await client.saveOrderTypeOption(scope, change.name, change.id, change.sortOrder);
+      }
+    }, 'Could not reorder the order types.');
+  };
+
+  return (
+    <section aria-label="Order types" className="flex min-h-0 flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          How an order is served — “Dine-in”, “Takeout”. Optional on every order; the default is what a new one starts
+          with.
+        </p>
+        <button type="button" className={buttonClass('primary')} onClick={() => setDialog({ kind: 'new' })}>
+          <Plus aria-hidden="true" className="size-4" />
+          New order type
+        </button>
+      </div>
+      <Alert message={error} onDismiss={() => setError(null)} />
+      <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+        {order.length === 0 ? (
+          <li>
+            <Empty>No order types yet. Without them, orders carry none and the till does not ask.</Empty>
+          </li>
+        ) : null}
+        {order.map((type, index) => (
+          <li
+            key={type.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-medium">{type.name}</span>
+              {type.isDefault ? <StatusChip label="Default" tone="info" /> : null}
+              {type.archivedAt ? <StatusChip label="Archived" tone="neutral" /> : null}
+            </span>
+            <span className="flex shrink-0 flex-wrap gap-1">
+              {type.archivedAt ? null : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-pressed={type.isDefault}
+                  className={buttonClass(type.isDefault ? 'secondary' : 'ghost', 'sm')}
+                  onClick={() =>
+                    void run(
+                      () => client.setDefaultOrderType(scope, type.isDefault ? null : type.id),
+                      'Could not change the default.',
+                    )
+                  }
+                >
+                  {type.isDefault ? 'No default' : 'Set default'}
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`Move ${type.name} up`}
+                disabled={busy || index === 0}
+                className={buttonClass('ghost', 'sm')}
+                onClick={() => move(index, 'up')}
+              >
+                <ArrowUp aria-hidden="true" className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Move ${type.name} down`}
+                disabled={busy || index === order.length - 1}
+                className={buttonClass('ghost', 'sm')}
+                onClick={() => move(index, 'down')}
+              >
+                <ArrowDown aria-hidden="true" className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                className={buttonClass('ghost', 'sm')}
+                onClick={() => setDialog({ kind: 'rename', type })}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className={buttonClass('ghost', 'sm')}
+                onClick={() =>
+                  void run(
+                    () => client.setOrderTypeOptionArchived(scope, type.id, type.archivedAt === null),
+                    'Could not change the order type.',
+                  )
+                }
+              >
+                {type.archivedAt ? 'Restore' : 'Archive'}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <TextDialog
+        open={dialog.kind !== 'none'}
+        title={dialog.kind === 'rename' ? `Rename ${dialog.type.name}` : 'New order type'}
+        label="Name"
+        hint="“Dine-in”, “Takeout”, “Delivery”. Orders already taken keep the name they had."
+        initial={dialog.kind === 'rename' ? dialog.type.name : ''}
+        required
+        confirmLabel={dialog.kind === 'rename' ? 'Rename' : 'Add order type'}
+        onSave={(name) =>
+          run(
+            () =>
+              dialog.kind === 'rename'
+                ? client.saveOrderTypeOption(scope, name, dialog.type.id, dialog.type.sortOrder)
+                : client.saveOrderTypeOption(scope, name, null, order.length),
+            'Could not save the order type.',
           )
         }
         onClose={() => setDialog({ kind: 'none' })}

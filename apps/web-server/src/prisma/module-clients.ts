@@ -347,6 +347,7 @@ export const posWritePrismaProvider: Provider = {
        * outside it would skip when the payment rolled back.
        */
       posCategory: prisma.posCategory,
+      posOrderType: prisma.posOrderType,
       posItem: prisma.posItem,
       posItemVariant: prisma.posItemVariant,
       posCustomer: prisma.posCustomer,

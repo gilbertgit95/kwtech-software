@@ -63,6 +63,7 @@ import {
   TextDialog,
   VariantPicker,
 } from './dialogs.js';
+import { OrderTypePicker } from './order-type-picker.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
 
@@ -902,6 +903,9 @@ function Cart({
         )}
       </button>
 
+      {/* How it is served ("Dine-in", "Takeout"): only when the store has order types. */}
+      <OrderTypePicker state={state} order={order} />
+
       {/*
        * The order's reference (issue #24): a table number, a pickup tag, a job
        * code — free text, so it serves any store. It is the same `label` Hold
@@ -1237,6 +1241,7 @@ function Receipt({
       >
         {unpaid ? `Order #${order.number} — unpaid` : `Order #${order.number} — paid`}
       </p>
+      {order.orderTypeName ? <p className="text-sm text-muted-foreground">{order.orderTypeName}</p> : null}
       {order.label ? <p className="text-sm text-muted-foreground">Reference: {order.label}</p> : null}
       <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto text-sm">
         {order.lines.map((line) => (

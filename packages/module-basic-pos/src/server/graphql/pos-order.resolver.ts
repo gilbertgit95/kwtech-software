@@ -198,6 +198,21 @@ export class PosOrderResolver {
     );
   }
 
+  /** How the order is served ("Dine-in"); `null` clears it. Optional, like the reference. */
+  @Mutation(() => PosOrderType, { name: 'setPosOrderType' })
+  async setPosOrderType(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('orderId') orderId: string,
+    @Args('version', { type: () => Int }) version: number,
+    @Args('orderTypeId', { type: () => String, nullable: true }) orderTypeId?: string | null,
+  ): Promise<PosOrderType> {
+    return this.write(gql, organizationId, workspaceId, { orderId, version }, (scope, actorId, ref) =>
+      this.writes.setOrderType(scope, actorId, ref, orderTypeId ?? null),
+    );
+  }
+
   /** Hold: the order becomes a pending one, under an optional label. */
   @Mutation(() => PosOrderType, { name: 'holdPosOrder' })
   async holdPosOrder(
@@ -416,6 +431,8 @@ export function renderOrder(detail: PosOrderDetail, costsVisible: boolean): PosO
     version: order.version,
     number: order.number,
     label: order.label,
+    orderTypeId: order.orderTypeId,
+    orderTypeName: order.orderTypeName,
     customerId: order.customerId,
     customerName: order.customerName,
     customerContact: order.customerContact,
@@ -489,6 +506,7 @@ function renderSummary(entry: PosOrderListEntry): PosOrderSummaryType {
     version: order.version,
     number: order.number,
     label: order.label,
+    orderTypeName: order.orderTypeName,
     customerName: order.customerName,
     itemCount: entry.lines.reduce((sum, line) => sum + line.quantity, 0),
     total: order.total,

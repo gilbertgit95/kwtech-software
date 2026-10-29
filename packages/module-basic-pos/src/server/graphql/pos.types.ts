@@ -26,6 +26,26 @@ export class PosCategoryType {
   archivedAt!: string | null;
 }
 
+/** How an order is served: "Dine-in", "Takeout". */
+@ObjectType('PosOrderTypeOption')
+export class PosOrderTypeOptionType {
+  @Field()
+  id!: string;
+
+  @Field()
+  name!: string;
+
+  @Field(() => Int)
+  sortOrder!: number;
+
+  /** The type a new order starts with; at most one per store. */
+  @Field()
+  isDefault!: boolean;
+
+  @Field(() => String, { nullable: true })
+  archivedAt!: string | null;
+}
+
 @ObjectType('PosVariant')
 export class PosVariantType {
   @Field()
@@ -101,6 +121,9 @@ export class PosCatalogueType {
   @Field(() => [PosCategoryType])
   categories!: PosCategoryType[];
 
+  @Field(() => [PosOrderTypeOptionType])
+  orderTypes!: PosOrderTypeOptionType[];
+
   @Field(() => [PosItemType])
   items!: PosItemType[];
 
@@ -147,6 +170,10 @@ export class PosSettingsType {
   /** The order reference options the till offers, in the store's order; empty for none (issue #30). */
   @Field(() => [String])
   referenceOptions!: string[];
+
+  /** The reference a new order starts with, one of `referenceOptions`; null for none. */
+  @Field(() => String, { nullable: true })
+  defaultReference!: string | null;
 
   /** 0 while the store has saved nothing. */
   @Field(() => Int)
@@ -368,6 +395,13 @@ export class PosOrderType {
   @Field(() => String, { nullable: true })
   label!: string | null;
 
+  /** How it is served: the type's id, and its name as copied when it was set. */
+  @Field(() => String, { nullable: true })
+  orderTypeId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  orderTypeName!: string | null;
+
   @Field(() => String, { nullable: true })
   customerId!: string | null;
 
@@ -485,6 +519,9 @@ export class PosOrderSummaryType {
 
   @Field(() => String, { nullable: true })
   label!: string | null;
+
+  @Field(() => String, { nullable: true })
+  orderTypeName!: string | null;
 
   @Field(() => String, { nullable: true })
   customerName!: string | null;

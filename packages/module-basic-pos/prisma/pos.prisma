@@ -77,6 +77,31 @@ model PosCategory {
   @@map("pos_category")
 }
 
+/// How an order is served: "Dine-in", "Takeout", "Delivery". The store's own
+/// list, kept on the Items tab beside categories and like them renamed,
+/// reordered, archived, never deleted. Optional on an order.
+model PosOrderType {
+  id             String @id @default(cuid())
+  organizationId String
+  workspaceId    String
+
+  name      String
+  /// The name lower-cased: "Takeout" and "takeout" cannot both exist.
+  nameKey   String
+  sortOrder Int    @default(0)
+  /// The type a new order starts with. At most one per store, kept so by the
+  /// service in the transaction that sets it; archiving the default clears it.
+  isDefault Boolean @default(false)
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([workspaceId, nameKey])
+  @@index([organizationId])
+  @@map("pos_order_type")
+}
+
 /// Something the store sells (D4, D9, D15).
 model PosItem {
   id             String  @id @default(cuid())
@@ -191,6 +216,13 @@ model PosOrder {
   /// When Hold set it aside (D8). Null for a cart still being built on a till,
   /// which is nobody's pending order yet: only a HELD open order is listed.
   heldAt  DateTime?
+
+  /// How it is served, if the store uses order types: the type's id, for
+  /// reports to group by, and its NAME COPIED when set, so renaming a type
+  /// never changes an old receipt (as lines copy `categoryName`). No relation:
+  /// a type is archived, never deleted, and the copy is what is printed.
+  orderTypeId   String?
+  orderTypeName String?
 
   /// A recorded customer, if one was linked, and the COPIES shown on the
   /// receipt — for a walk-in, the free text. Editing the customer never
@@ -391,6 +423,9 @@ model PosSettings {
   /// strings in the store's order. Checked by `validateReferenceOptions` on write and re-read by
   /// `readReferenceOptions`; null means none, and the till shows its plain text box.
   referenceOptions Json?
+  /// The reference a new order starts with: one of `referenceOptions`, re-checked against them on
+  /// read, so removing the option drops it. Null for none.
+  defaultReference String?
 
   version     Int      @default(1)
   updatedById String

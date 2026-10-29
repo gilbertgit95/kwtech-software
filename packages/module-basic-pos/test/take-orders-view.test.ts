@@ -2,9 +2,11 @@ import type { PosCatalogueView, PosItemView } from '../src/react/pos-client.js';
 import {
   canLeaveOrder,
   countOnOrder,
+  heldOrderDetail,
   heldOrderTitle,
   initiallyOpenGroups,
   itemGroups,
+  liveOrderTypes,
   POS_UNGROUPED,
   sellModeFor,
   waitMinutes,
@@ -37,6 +39,7 @@ const category = (id: string, name: string, sortOrder: number, archivedAt: strin
 
 const CATALOGUE: PosCatalogueView = {
   costsVisible: false,
+  orderTypes: [],
   categories: [category('pork', 'Pork', 2), category('beef', 'Beef', 1), category('fish', 'Fish', 3)],
   items: [
     item('hinalang', 'Hinalang', 'beef'),
@@ -174,5 +177,25 @@ describe('how long a held order has waited', () => {
     expect(waitText(80)).toBe('1 h 20 min');
     expect(waitText(24 * 60)).toBe('1 d');
     expect(waitText(27 * 60 + 5)).toBe('1 d 3 h');
+  });
+});
+
+describe('order types on the order', () => {
+  const type = (id: string, name: string, sortOrder: number, archivedAt: string | null = null) => ({
+    id,
+    name,
+    sortOrder,
+    isDefault: false,
+    archivedAt,
+  });
+
+  it('offers only live types, in the store’s order', () => {
+    const orderTypes = [type('t', 'Takeout', 1), type('d', 'Dine-in', 0), type('g', 'Grab', 2, '2026-10-01T00:00:00Z')];
+    expect(liveOrderTypes({ orderTypes }).map((one) => one.name)).toEqual(['Dine-in', 'Takeout']);
+  });
+
+  it('puts the type first on a held order’s line, and leaves it out when there is none', () => {
+    expect(heldOrderDetail({ orderTypeName: 'Dine-in', itemCount: 3 })).toBe('Dine-in · 3 items');
+    expect(heldOrderDetail({ orderTypeName: null, itemCount: 1 })).toBe('1 item');
   });
 });

@@ -608,6 +608,31 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-29** — **POS order types ("Dine-in", "Takeout") are a store list on the Items tab, optional on an order, with a per-store default; the order reference options and a default reference move to the Items tab too.**
+
+  Restaurants tell dine-in from takeout, and that is not the reference: a
+  dine-in order AT table 5 needs both.
+  - **A table, not a JSON setting.** `PosOrderType` copies `PosCategory`
+    (unique case-blind name, sort order, archived, never deleted) plus
+    `isDefault`, so it is managed beside categories and travels with the
+    catalogue, live.
+  - **The order copies the name** (`orderTypeName`) beside the id: a renamed
+    type never changes a receipt, as lines copy `categoryName`. No foreign
+    key: types are archived, never deleted.
+  - **Optional, with defaults (the operator).** One default type, held by the
+    service (setting one clears the last in the same transaction; archiving
+    clears it), and one default reference among the options, refused unless
+    it is one and dropped with its option. `createPosOrder` applies both; a
+    reference given at creation wins.
+  - **Per store, not per device** (the operator): one setting every till
+    shares.
+  - **References moved from Settings to Items,** and `savePosReferenceOptions`
+    from `pos:manage_settings` to `pos:manage_items`. A role with only
+    "Change store settings" can no longer edit them; the manager preset holds
+    both, so nothing changes for it.
+  - **Not done:** sales per order type in Reports, and prices per type
+    (delivery-app prices). Each waits until a store asks.
+
 - **2026-10-29** — **POS: taking payment is a key of its own, `pos:take_payment`, apart from `pos:sell`; a new `pos-order-taker` preset builds and holds orders and never settles one (issue #23).**
 
   The new Sell view (issue #23) splits the sale between a seller, who takes

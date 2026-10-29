@@ -153,9 +153,9 @@ Simple rules, not features: each closes a way the numbers could go wrong.
 | `pos:take_payment` | take payment (and record a tip), release an order unpaid and later take its payment, record change owed and later settle it, cancel an open order (issue #23, 2026-10-29: split from `pos:sell`) |
 | `pos:discount` | give a discount (₱ or %) on a line or the whole order |
 | `pos:refund` | refund a paid order (by line or by amount); void an unpaid order whose items came back |
-| `pos:manage_items` | add, edit and archive items, their variants, and categories; **see costs** |
+| `pos:manage_items` | add, edit and archive items, their variants, and categories; the order types and the order reference options, with their defaults (2026-10-29); **see costs** |
 | `pos:reports` | the dashboard and the reports, with profit and CSV export (D22) |
-| `pos:manage_settings` | store settings: the hot keys and item keys (D18) |
+| `pos:manage_settings` | store settings: the hot keys and item keys (D18). The order reference options moved to `pos:manage_items` (2026-10-29) |
 
 Presets, read by `seed/app-roles.ts`: `pos-order-taker` (read, sell; issue
 #23), `pos-cashier` (read, sell, take_payment) and `pos-manager` (read, sell,

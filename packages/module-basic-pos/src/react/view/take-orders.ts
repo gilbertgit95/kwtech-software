@@ -1,4 +1,10 @@
-import type { PosCatalogueView, PosItemView, PosOrderLineView, PosOrderSummaryView } from '../pos-client.js';
+import type {
+  PosCatalogueView,
+  PosItemView,
+  PosOrderLineView,
+  PosOrderSummaryView,
+  PosOrderTypeOptionView,
+} from '../pos-client.js';
 import { gridItems } from './till.js';
 
 /**
@@ -58,6 +64,23 @@ export function initiallyOpenGroups(groups: readonly Pick<PosItemGroup, 'id'>[])
 /** How many of an item (any variant) are on the order: the count on its row, so a seller sees what is in. */
 export function countOnOrder(lines: readonly Pick<PosOrderLineView, 'itemId' | 'quantity'>[], itemId: string): number {
   return lines.filter((line) => line.itemId === itemId).reduce((sum, line) => sum + line.quantity, 0);
+}
+
+/** The order types a seller can pick, in the store's order: archived ones are never offered. */
+export function liveOrderTypes(catalogue: Pick<PosCatalogueView, 'orderTypes'>): PosOrderTypeOptionView[] {
+  return catalogue.orderTypes
+    .filter((type) => type.archivedAt === null)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
+/**
+ * The line under a held order's title: its type and how much is on it —
+ * "Dine-in · 3 items". The type first, since it tells the cashier what kind
+ * of order it is before anything else.
+ */
+export function heldOrderDetail(order: Pick<PosOrderSummaryView, 'orderTypeName' | 'itemCount'>): string {
+  const items = `${order.itemCount} ${order.itemCount === 1 ? 'item' : 'items'}`;
+  return order.orderTypeName ? `${order.orderTypeName} · ${items}` : items;
 }
 
 /** What a held order is called on its chip: the reference, else the customer, else its number. */
