@@ -191,7 +191,11 @@ the repository moves, or after pm2 is upgraded, run step 1 again.
 Phones and tablets on the shop's Wi-Fi need **HTTPS**: the built app marks its
 session cookies `Secure`, which a browser drops on plain `http://` anywhere but
 `localhost` (so nobody could stay signed in), and installing the app on a phone
-needs it too. With no domain, **Caddy** sits in front of both apps on port 443
+needs it too. ⚠ **Plain `http://192.168.x.x:8081` does not work from a phone,
+even in development:** off `localhost` the page is not a secure context, so
+the browser leaves out `crypto.randomUUID()`, which the app calls in a dozen
+places (the phone layout's notifications crashed on it, and taking payment
+would too), and live updates point at `wss://`. Use `https://<address>`. With no domain, **Caddy** sits in front of both apps on port 443
 with a certificate from its **own local authority**, which each device trusts
 once (`deploy/https/Caddyfile`, PLAN §13 2026-10-26).
 
