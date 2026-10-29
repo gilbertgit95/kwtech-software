@@ -48,6 +48,12 @@ Sans and Mono are the app's own `--font-sans` / `--font-mono`. This app sets the
 in `apps/web-app/src/app/layout.tsx` with `next/font`, **`preload: false`**, so
 only a page that uses a face downloads it.
 
+### On a phone (issue #22)
+
+`@kwtech/module-note/mobile` offers the phone layout Notes — the same sub-app
+as the Apps page's, full screen, gated by `note:read`. A sub-app already lays
+out by its box and never navigates, which is all a phone screen asks.
+
 ## In a NestJS app
 
 ```ts
