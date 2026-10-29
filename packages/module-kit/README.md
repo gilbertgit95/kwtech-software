@@ -208,7 +208,9 @@ FIXED bottom bar (Home, Apps, the modules' tabs such as Chat and Inbox, then
 Manage — each only when something is behind it), and
 one app at a time, full screen. Apps are launched from the **Apps** tab or
 pinned to **Home**; inside one, the top bar reads **‹ Apps** and the app's
-sections sit in a strip of chips under it. It is **opt-in per module**: a
+sections sit in a strip of chips under it — only when the viewer holds two
+or more of them; with one, the strip is left out and the app has the whole
+height. It is **opt-in per module**: a
 module that declares no screen is not on phones at all, and nothing about its
 desktop pages changes.
 

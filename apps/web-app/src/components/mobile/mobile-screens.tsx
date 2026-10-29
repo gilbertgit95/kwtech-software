@@ -320,15 +320,19 @@ const SHOW = 'animate-in fade-in duration-200 motion-reduce:animate-none';
 
 /**
  * The open app's sections, as a strip of chips under the top bar — only the
- * ones the viewer holds. Shown for ONE section too: it names which part of the
- * app this is (Point of sale · Sell), and the app's other parts join the same
- * strip as they come to the phone (the operator, 2026-10-29). An app with no
- * sections (Notes, Tasks) has no strip. Swipeable sideways when they do not fit.
+ * ones the viewer holds. Swipeable sideways when they do not fit.
+ *
+ * ⚠ ONLY WITH SOMETHING TO SWITCH TO: two sections or more, counted among the
+ * ones THIS viewer holds. One section is the whole app, and a strip of one
+ * chip only took height from it (the operator, 2026-10-29 — reversing the
+ * same day's "shown for one too"). The strip comes back by itself the day an
+ * app offers a second section to the person looking. An app with no sections
+ * (Notes, Tasks) has none either.
  */
 export function MobileSectionStrip() {
   const app = useOpenApp();
   const { sections, openSection } = useMobileScreens();
-  if (!app || app.sections.length === 0) return null;
+  if (!app || app.sections.length < 2) return null;
   const current = sections[app.key] ?? app.sections[0]?.key;
 
   return (
