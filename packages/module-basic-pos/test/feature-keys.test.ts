@@ -35,6 +35,25 @@ describe('POS_FEATURE_REGISTRY', () => {
     ]);
   });
 
+  it('⚠ puts every act that settles an order under take_payment, and none under sell (issue #23)', () => {
+    const bound = (key: string) =>
+      (POS_FEATURE_REGISTRY.find((spec) => spec.key === key)?.bindings ?? []).map((b) => b.identifier);
+    const settling = [
+      'Mutation.payPosOrder',
+      'Mutation.payLaterPosOrder',
+      'Mutation.cancelPosOrder',
+      'Mutation.settlePosChangeOwed',
+    ];
+    expect(bound(POS_FEATURE.takePayment).sort()).toEqual([...settling].sort());
+    expect(bound(POS_FEATURE.sell).filter((one) => settling.includes(one))).toEqual([]);
+    expect(bound(POS_FEATURE.sell)).toContain('Mutation.holdPosOrder');
+  });
+
+  it('⚠ binds no operation to two keys — the guard would demand BOTH', () => {
+    const identifiers = POS_FEATURE_REGISTRY.flatMap((spec) => (spec.bindings ?? []).map((b) => b.identifier));
+    expect(identifiers.length).toBe(new Set(identifiers).size);
+  });
+
   it('⚠ binds every key — a key with no binding guards nothing while reading as coverage', () => {
     for (const spec of POS_FEATURE_REGISTRY) {
       expect([spec.key, (spec.bindings ?? []).length > 0]).toEqual([spec.key, true]);
@@ -86,6 +105,13 @@ describe('POS_ROLE_PRESETS', () => {
 
   it('sells at the listed price only: a cashier cannot discount, refund, see costs or reports', () => {
     const cashier = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-cashier');
-    expect(cashier?.features).toEqual([POS_FEATURE.read, POS_FEATURE.sell]);
+    expect(cashier?.features).toEqual([POS_FEATURE.read, POS_FEATURE.sell, POS_FEATURE.takePayment]);
+  });
+
+  it('⚠ an order taker builds and holds, and never settles an order (issue #23)', () => {
+    const taker = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-order-taker');
+    const cashier = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-cashier');
+    expect(taker?.features).toEqual([POS_FEATURE.read, POS_FEATURE.sell]);
+    expect(taker?.features.every((key) => cashier?.features.includes(key))).toBe(true);
   });
 });

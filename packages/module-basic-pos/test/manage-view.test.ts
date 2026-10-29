@@ -210,18 +210,25 @@ describe('orders', () => {
   });
 
   it('⚠ offers each act only on the status it applies to, and only to who holds its key', () => {
-    const everyone = { sell: true, refund: true };
+    const everyone = { sell: true, takePayment: true, refund: true };
     expect(orderActions({ ...PAID, status: 'open' }, everyone)).toMatchObject({ resume: true, refund: false });
     expect(orderActions({ ...PAID, status: 'unpaid' }, everyone)).toMatchObject({
       takePayment: true,
       voidOrder: true,
       reprint: true,
     });
-    expect(orderActions({ ...PAID, status: 'unpaid' }, { sell: true, refund: false }).voidOrder).toBe(false);
-    expect(orderActions(PAID, { sell: true, refund: false }).refund).toBe(false);
+    expect(
+      orderActions({ ...PAID, status: 'unpaid' }, { sell: true, takePayment: true, refund: false }).voidOrder,
+    ).toBe(false);
+    expect(orderActions(PAID, { sell: true, takePayment: true, refund: false }).refund).toBe(false);
     expect(orderActions({ ...PAID, refunded: 1000 }, everyone).refund).toBe(false);
     expect(orderActions({ ...PAID, changeOwed: 100 }, everyone).settleChange).toBe(true);
     expect(orderActions({ ...PAID, changeOwed: 100, changeSettlement: 'tip' }, everyone).settleChange).toBe(false);
+    // An order taker (issue #23): resumes an open order, never takes payment or settles change.
+    const orderTaker = { sell: true, takePayment: false, refund: false };
+    expect(orderActions({ ...PAID, status: 'open' }, orderTaker).resume).toBe(true);
+    expect(orderActions({ ...PAID, status: 'unpaid' }, orderTaker).takePayment).toBe(false);
+    expect(orderActions({ ...PAID, changeOwed: 100 }, orderTaker).settleChange).toBe(false);
     expect(orderActions({ ...PAID, status: 'cancelled' }, everyone)).toEqual({
       resume: false,
       takePayment: false,

@@ -28,6 +28,16 @@ export interface PosCategoryView {
   archivedAt: string | null;
 }
 
+/** How an order is served: "Dine-in", "Takeout". Kept on the Items tab beside categories. */
+export interface PosOrderTypeOptionView {
+  id: string;
+  name: string;
+  sortOrder: number;
+  /** The type a new order starts with; at most one per store. */
+  isDefault: boolean;
+  archivedAt: string | null;
+}
+
 export interface PosVariantView {
   id: string;
   itemId: string;
@@ -56,6 +66,7 @@ export interface PosItemView {
 
 export interface PosCatalogueView {
   categories: PosCategoryView[];
+  orderTypes: PosOrderTypeOptionView[];
   items: PosItemView[];
   costsVisible: boolean;
 }
@@ -77,6 +88,8 @@ export interface PosSettingsView {
   keymap: string;
   /** The order reference options the Reference and Hold dialogs offer (issue #30); empty for none. */
   referenceOptions: string[];
+  /** The reference a new order starts with, one of `referenceOptions`; null for none. */
+  defaultReference: string | null;
   version: number;
 }
 
@@ -126,6 +139,9 @@ export interface PosOrderView {
   version: number;
   number: number | null;
   label: string | null;
+  /** How it is served: the type's id, and its name as copied when set. */
+  orderTypeId: string | null;
+  orderTypeName: string | null;
   customerId: string | null;
   customerName: string | null;
   customerContact: string | null;
@@ -167,6 +183,7 @@ export interface PosOrderSummaryView {
   version: number;
   number: number | null;
   label: string | null;
+  orderTypeName: string | null;
   customerName: string | null;
   itemCount: number;
   total: number;
@@ -330,6 +347,18 @@ export interface PosClient {
     sortOrder?: number | null,
   ): Promise<PosCategoryView>;
   setCategoryArchived(scope: PosScopeView, categoryId: string, archived: boolean): Promise<PosCategoryView>;
+  saveOrderTypeOption(
+    scope: PosScopeView,
+    name: string,
+    orderTypeId?: string | null,
+    sortOrder?: number | null,
+  ): Promise<PosOrderTypeOptionView>;
+  setOrderTypeOptionArchived(
+    scope: PosScopeView,
+    orderTypeId: string,
+    archived: boolean,
+  ): Promise<PosOrderTypeOptionView>;
+  setDefaultOrderType(scope: PosScopeView, orderTypeId: string | null): Promise<PosOrderTypeOptionView | null>;
   customers(scope: PosScopeView, search: string, includeArchived?: boolean): Promise<PosCustomerView[]>;
   customer(scope: PosScopeView, customerId: string): Promise<PosCustomerView | null>;
   saveCustomer(
@@ -347,7 +376,11 @@ export interface PosClient {
   settings(scope: PosScopeView): Promise<PosSettingsView>;
   saveSettings(scope: PosScopeView, keymap: string | null): Promise<PosSettingsView>;
   /** The whole list, in order; empty removes them. The keymap is left alone. */
-  saveReferenceOptions(scope: PosScopeView, options: readonly string[]): Promise<PosSettingsView>;
+  saveReferenceOptions(
+    scope: PosScopeView,
+    options: readonly string[],
+    defaultReference?: string | null,
+  ): Promise<PosSettingsView>;
 
   /** `tab` is the status; `days` the store's days it is narrowed to, or null for every date. */
   orders(
@@ -380,6 +413,8 @@ export interface PosClient {
     input: { customerId?: string | null; name?: string | null; contact?: string | null },
   ): Promise<PosOrderView>;
   setLabel(scope: PosScopeView, order: PosOrderRefView, label: string | null): Promise<PosOrderView>;
+  /** How the order is served; `null` clears it. */
+  setOrderType(scope: PosScopeView, order: PosOrderRefView, orderTypeId: string | null): Promise<PosOrderView>;
   /** Hold: sets the order aside as a pending one. The only way a pending order is made. */
   hold(scope: PosScopeView, order: PosOrderRefView, label: string | null): Promise<PosOrderView>;
   pay(scope: PosScopeView, order: PosOrderRefView, input: PosPaymentInput): Promise<PosOrderView>;
@@ -451,6 +486,11 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
       call('savePosCategory', scope, { name, categoryId, sortOrder }),
     setCategoryArchived: (scope, categoryId, archived) =>
       call('setPosCategoryArchived', scope, { categoryId, archived }),
+    saveOrderTypeOption: (scope, name, orderTypeId = null, sortOrder = null) =>
+      call('savePosOrderTypeOption', scope, { name, orderTypeId, sortOrder }),
+    setOrderTypeOptionArchived: (scope, orderTypeId, archived) =>
+      call('setPosOrderTypeOptionArchived', scope, { orderTypeId, archived }),
+    setDefaultOrderType: (scope, orderTypeId) => call('setPosDefaultOrderType', scope, { orderTypeId }),
     customers: (scope, search, includeArchived = false) => call('posCustomers', scope, { search, includeArchived }),
     customer: (scope, customerId) => call('posCustomer', scope, { customerId }),
     saveCustomer: (scope, input) => call('savePosCustomer', scope, { input }),
@@ -458,7 +498,8 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
       call('setPosCustomerArchived', scope, { customerId, archived }),
     settings: (scope) => call('posSettings', scope),
     saveSettings: (scope, keymap) => call('savePosSettings', scope, { keymap }),
-    saveReferenceOptions: (scope, options) => call('savePosReferenceOptions', scope, { options }),
+    saveReferenceOptions: (scope, options, defaultReference = null) =>
+      call('savePosReferenceOptions', scope, { options, defaultReference }),
 
     orders: (scope, tab, search = null, customerId = null, days = null) =>
       call('posOrders', scope, { tab, search, customerId, fromDay: days?.fromDay ?? null, toDay: days?.toDay ?? null }),
@@ -483,6 +524,7 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
         contact: input.contact ?? null,
       }),
     setLabel: (scope, order, label) => call('setPosOrderLabel', scope, { ...ref(order), label }),
+    setOrderType: (scope, order, orderTypeId) => call('setPosOrderType', scope, { ...ref(order), orderTypeId }),
     hold: (scope, order, label) => call('holdPosOrder', scope, { ...ref(order), label }),
     pay: (scope, order, input) => call('payPosOrder', scope, { ...ref(order), input }),
     payLater: (scope, order) => call('payLaterPosOrder', scope, ref(order)),

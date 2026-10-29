@@ -31,8 +31,9 @@ import {
  *
  * ## Where the guard is
  *
- * Every operation is guarded by its BINDING in `POS_FEATURE_REGISTRY`: selling
- * by `pos:sell`, discounts by `pos:discount`, refunds and voids by
+ * Every operation is guarded by its BINDING in `POS_FEATURE_REGISTRY`: taking
+ * orders by `pos:sell`, settling them (pay, pay later, cancel, change owed) by
+ * `pos:take_payment` (issue #23), discounts by `pos:discount`, refunds and voids by
  * `pos:refund`, the report by `pos:reports`. The services find every order BY
  * ID AND SCOPE, and every change names the VERSION the till saw.
  */
@@ -197,6 +198,21 @@ export class PosOrderResolver {
     );
   }
 
+  /** How the order is served ("Dine-in"); `null` clears it. Optional, like the reference. */
+  @Mutation(() => PosOrderType, { name: 'setPosOrderType' })
+  async setPosOrderType(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('orderId') orderId: string,
+    @Args('version', { type: () => Int }) version: number,
+    @Args('orderTypeId', { type: () => String, nullable: true }) orderTypeId?: string | null,
+  ): Promise<PosOrderType> {
+    return this.write(gql, organizationId, workspaceId, { orderId, version }, (scope, actorId, ref) =>
+      this.writes.setOrderType(scope, actorId, ref, orderTypeId ?? null),
+    );
+  }
+
   /** Hold: the order becomes a pending one, under an optional label. */
   @Mutation(() => PosOrderType, { name: 'holdPosOrder' })
   async holdPosOrder(
@@ -211,6 +227,8 @@ export class PosOrderResolver {
       this.writes.hold(scope, actorId, ref, label ?? null, new Date()),
     );
   }
+
+  // ── settling (pos:take_payment, issue #23) ──────────────────────────────────
 
   /** Idempotent on `input.clientId`: a retry answers with the order it already paid. */
   @Mutation(() => PosOrderType, { name: 'payPosOrder' })
@@ -413,6 +431,8 @@ export function renderOrder(detail: PosOrderDetail, costsVisible: boolean): PosO
     version: order.version,
     number: order.number,
     label: order.label,
+    orderTypeId: order.orderTypeId,
+    orderTypeName: order.orderTypeName,
     customerId: order.customerId,
     customerName: order.customerName,
     customerContact: order.customerContact,
@@ -486,6 +506,7 @@ function renderSummary(entry: PosOrderListEntry): PosOrderSummaryType {
     version: order.version,
     number: order.number,
     label: order.label,
+    orderTypeName: order.orderTypeName,
     customerName: order.customerName,
     itemCount: entry.lines.reduce((sum, line) => sum + line.quantity, 0),
     total: order.total,

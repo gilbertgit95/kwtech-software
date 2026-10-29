@@ -57,7 +57,11 @@ export function ShortcutBar({
   const [hidden, setHidden] = useState(false);
   useEffect(() => setHidden(readHidden()), []);
   const itemLabels = useItemLabels(state);
-  const entries = shortcutBar(zone, state.keymap, { canDiscount: state.canDiscount, itemLabels });
+  const entries = shortcutBar(zone, state.keymap, {
+    canDiscount: state.canDiscount,
+    canTakePayment: state.canTakePayment,
+    itemLabels,
+  });
 
   if (hidden) {
     return (
@@ -127,7 +131,11 @@ function ShortcutChip({ entry, onPress }: { entry: ShortcutEntry; onPress: (key:
 /** Every key, grouped by where it works (the `?` list, D18). */
 export function ShortcutHelp({ open, state, onClose }: { open: boolean; state: TillState; onClose: () => void }) {
   const itemLabels = useItemLabels(state);
-  const groups = allShortcuts(state.keymap, { canDiscount: state.canDiscount, itemLabels });
+  const groups = allShortcuts(state.keymap, {
+    canDiscount: state.canDiscount,
+    canTakePayment: state.canTakePayment,
+    itemLabels,
+  });
   return (
     <Modal open={open} title="Keyboard shortcuts" onClose={onClose} wide>
       <p className="text-sm text-muted-foreground">

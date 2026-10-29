@@ -52,6 +52,8 @@ export function receiptHtml(
 
   // The order's own reference (issue #24: "table 5"), apart from a payment's reference further down.
   const reference = order.label ? `<p class="ref">Order ref: ${escapeHtml(order.label)}</p>` : '';
+  // How it was served ("Dine-in"), as copied onto the order when set: a renamed type never changes a receipt.
+  const orderType = order.orderTypeName ? `<p class="ref">${escapeHtml(order.orderTypeName)}</p>` : '';
   const customer = order.customerName
     ? `<p>${escapeHtml(order.customerName)}${order.customerContact ? ` · ${escapeHtml(order.customerContact)}` : ''}</p>`
     : '';
@@ -70,7 +72,7 @@ table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}.r
 ${options.storeName ? `<h1>${escapeHtml(options.storeName)}</h1>` : ''}
 <p>${escapeHtml(title)}${order.number !== null ? ` #${order.number}` : ''}</p>
 <p>${escapeHtml(when(order.paidAt ?? order.finalisedAt ?? order.createdAt))}</p>
-${reference}${customer}${reprint}<hr>
+${orderType}${reference}${customer}${reprint}<hr>
 <table>${lines}</table><hr><table>${totals}${payment}</table>
 <p style="margin-top:8px">Thank you!</p>
 </body></html>`;

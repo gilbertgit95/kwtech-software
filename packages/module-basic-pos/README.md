@@ -15,7 +15,7 @@ A point of sale per workspace, run as a **sub-app** on the workspace's Apps page
 | Feature key | `pos:read` (workspace level): offers the app on the Apps page |
 | Sub-app | `pos`, label "Point of sale", icon `store`, order 40, component `PosApp` |
 | Routes, nav | none. A sub-app has no drawer entry |
-| Role preset | `pos-cashier` (`pos:read`), exported as data, never seeded by the module |
+| Role presets | `pos-order-taker`, `pos-cashier`, `pos-manager` (`POS_ROLE_PRESETS`), exported as data, never seeded by the module |
 
 ```ts
 // apps/web-app/src/modules.ts
@@ -34,14 +34,17 @@ The web server only needs the registry, for `db:sync`:
 
 `@kwtech/module-basic-pos/mobile` offers the phone layout the **Point of sale**
 app, gated by `pos:read` as on the Apps page, with its parts as SECTIONS in the
-phone frame's strip. Today there is one, **Sell** (`pos:sell`), the operator's
-choice for the phone; Orders, Items, Customers, Reports and Settings stay on
+phone frame's strip. Today there is one, **Sell** (`pos:sell`, the screen
+"Take orders"), the operator's choice for the phone — and with one section the
+frame shows no strip at all, so Take orders has the whole height; Orders, Items, Customers, Reports and Settings stay on
 the full site and join as sections when they come to the phone, each gated by
 its own key, without the app or its address (`?screen=pos&section=…`)
 changing. The frame offers the app only while its holder has at least one
 section, so somebody who may not sell is not shown an empty point of sale.
 
-Sell is the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
+⚠ Since issue #23, Sell on the phone is **Take orders**, not the till (see
+"Take orders and Cashier" below); `Till`'s `phone` mode is unused there.
+Before that, Sell was the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
 fills the screen and the order waits in a summary bar at the foot ("2 items ·
 ₱250 · View order"), opening over the items with "‹ Items" and opening by
 itself to show the receipt. No shortcut bar and no shortcut help (a phone has
@@ -117,8 +120,9 @@ same every time. Optional: with none, both dialogs are the plain text box.
   the same after `posReferenceKey` (case and spacing folded). Checked by
   `validateReferenceOptions` on write; re-read by `readReferenceOptions`,
   which drops what no longer passes rather than the whole list.
-- **Edited in Settings → Order references** (add, rename, move up and down,
-  remove), saved with `savePosReferenceOptions` under `pos:manage_settings`.
+- **Edited in Items → References** (add, rename, move up and down, remove,
+  set a default; in Settings until 2026-10-29), saved with
+  `savePosReferenceOptions` under `pos:manage_items`.
   ⚠ It is a mutation of its own: `savePosSettings` writes the keymap it is
   given or the defaults, so a list sent through it would reset every hot key.
   Every till reads the options with `posSettings`.
@@ -141,6 +145,109 @@ same every time. Optional: with none, both dialogs are the plain text box.
 - **Stored as text.** A picked option is the order's `label`, like a typed
   one, so receipts, the Orders list and search need nothing new. Recently
   used references that are not options are not suggested.
+
+## Taking orders and taking payment (issue #23)
+
+A sale can be split between a **seller**, who takes orders and holds them,
+and a **cashier**, who takes the payment. Each is a key of its own:
+
+| Key | Covers | Preset |
+|---|---|---|
+| `pos:sell` | create orders, add, edit and remove lines, customer, reference, hold, resume; customers | `pos-order-taker` (read, sell) |
+| `pos:take_payment` | `payPosOrder`, `payLaterPosOrder`, `cancelPosOrder`, `settlePosChangeOwed` | `pos-cashier` and `pos-manager` add it |
+
+- ⚠ **No operation is bound to both.** The guard requires every key bound to
+  an operation, so a shared binding would lock out whoever holds one; a
+  cashier holds both (`feature-keys.test.ts` checks it).
+- **Without `pos:take_payment`** the till hides Pay, Cancel and the payment
+  shortcuts and ends the sale with **Hold for the cashier**; Orders hides
+  Take payment and settle change (`orderActions`). The bindings refuse all
+  the same.
+- **Live across devices.** Every order write publishes `order` on
+  `posEvents`, and each till re-reads its held orders, so an order held on
+  one device shows on the others, and leaves them once paid.
+- ⚠ A role made before this holds `pos:sell` alone, and cannot pay until it
+  is granted `pos:take_payment`.
+
+### Take orders and Cashier (the two screens)
+
+The same order process, split by who uses it:
+
+- **Take orders** (`TakeOrders`, `pos:sell`): the seller's screen, built for
+  a phone or a handheld. Held orders as chips across the top (tap to reopen
+  and add to one), a search box, the items **grouped by category** under
+  headings that open and close (`itemGroups`; uncategorised items last, as
+  "Other"), rows a thumb can hit, and the order at the foot. An item with
+  sizes opens the variant picker. Inside the order: the order type, then the
+  customer and the reference — optional, the classic till's dashed boxes and
+  dialogs, a thumb tall.
+- **Long text never widens the list:** a row cuts the name at two lines and
+  the description at one, with "…". An item with more to read
+  (`hasMoreToRead`: a description, or a name past 40 characters) has **ⓘ**
+  beside its row: a sheet with the whole name and description, the price,
+  what is left, and each size or "Add to order".
+- **It feels like a phone:** the order opens as a BOTTOM SHEET (web-ui's
+  `BottomSheet`: it rises, has a handle, swipes down or taps outside to
+  close), and every dialog inside Take orders — sizes, customer, reference,
+  hold — opens as a sheet over it (`PhoneDialogs` around the screen makes
+  the POS's `Modal` a sheet). The full screen keeps its dialogs. **Every order ends at Hold**: there is no
+  Pay on this screen, even for a cashier.
+- **Cashier** (`Cashier`, `pos:take_payment`): the full screen at the
+  cashier's window. A live column of held orders, oldest first, beside the
+  keyboard till, which opens, edits and pays them. The column's RIGHT edge
+  is a handle, like the order panel's left (224–560 px, at most 40% of the
+  screen; ← → Shift Home End; double-click resets to 320 px), remembered per
+  device (`kwtech:pos-waiting-column-width`). Both edges are one component,
+  `PanelEdgeHandle`, over one set of rules, `panelWidthRules`.
+- **How long each has waited**, on the Cashier's cards and the sellers'
+  chips: "12 min", "1 h 20 min" (`waitText`), ticking on its own every half
+  minute (`useNow`), and coloured by urgency (`waitUrgency`): new under 30
+  min, then 30 min, 1 h, and 2 h, when the dot pulses (not for somebody who
+  asked for less motion). Counted from when the order was started.
+  ⚠ The colours are tints of the theme's `primary`, so they follow the theme
+  picker; the status colours are fixed across palettes and would not
+  (`wait-badge.tsx`).
+- **Where:** on a phone, Sell is Take orders and the till is not offered.
+  On the full screen (the Apps page) Take orders is NOT offered — it is
+  built for a phone, and Cashier does all it does there. Sell has two tabs,
+  **Cashier** (only with `pos:take_payment`) and **Classic**, the keyboard
+  till as it was before issue #23; somebody without the key gets Classic
+  alone (without Pay, ending at "Hold for the cashier"), and no tabs.
+  Remembered per device (`kwtech:pos-sell-mode`).
+- ⚠ **An order never held is listed nowhere**, so neither screen lets it be
+  left for another (`canLeaveOrder`): it asks for Hold first.
+
+## Order types and defaults (the Items tab)
+
+How an order is served — "Dine-in", "Takeout", "Delivery" — is the store's
+own list, kept on **Items → Order types** beside Categories, under
+`pos:manage_items`. **References** (the reference options of issue #30) moved
+there too, from Settings.
+
+- **`PosOrderType`** (`pos_order_type`): name, case-blind `nameKey`
+  (`@@unique` per store), sort order, `isDefault`, `archivedAt`. Renamed,
+  reordered, archived, never deleted; at most 20 per store
+  (`POS_ORDER_TYPES_MAX`). Loaded with the catalogue (`orderTypes`), so a new
+  or renamed type reaches every till live.
+- **Optional on every order.** `PosOrder.orderTypeId` and `orderTypeName`,
+  the NAME COPIED when set, so a renamed type never changes a receipt (as
+  lines copy `categoryName`). Set with `setPosOrderType` (`pos:sell`); `null`
+  clears it. An archived type, or another store's, is refused.
+- **Defaults, per store.** One order type may be the default
+  (`setPosDefaultOrderType`; setting one clears the last, archiving it clears
+  it), and one reference option may be (`PosSettings.defaultReference`,
+  saved with the list by `savePosReferenceOptions`, refused unless it is one
+  of the options, dropped when its option is removed). `createPosOrder`
+  starts every new order on both; a reference typed when creating wins.
+- **At the till:** `OrderTypePicker`, a row of buttons labelled "Order
+  type", only inside the order — the Classic till's order panel, and large in
+  the Take orders sheet, never on the items screen. Tapping the chosen one
+  again clears it. The type shows on the held-order chips, the Cashier's
+  cards ("Dine-in · 3 items"), the on-screen and printed receipt, and the
+  order's details.
+- ⚠ **The References editor changed key:** `savePosReferenceOptions` is bound
+  to `pos:manage_items` now, not `pos:manage_settings` (never both: the guard
+  would demand both).
 
 ## Stock (issue #10)
 

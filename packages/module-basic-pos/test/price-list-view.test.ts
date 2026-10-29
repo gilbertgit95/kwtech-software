@@ -29,6 +29,7 @@ function item(patch: Partial<PosItemView> & Pick<PosItemView, 'id' | 'name'>): P
 
 const CATALOGUE: PosCatalogueView = {
   costsVisible: true,
+  orderTypes: [],
   categories: [
     { id: 'c-print', name: 'Printing', sortOrder: 1, archivedAt: null },
     { id: 'c-lam', name: 'Lamination', sortOrder: 0, archivedAt: null },

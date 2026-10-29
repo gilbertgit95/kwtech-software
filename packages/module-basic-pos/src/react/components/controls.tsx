@@ -1,8 +1,8 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
+import { BottomSheet, cn } from '@kwtech/web-ui/react';
 import { X } from 'lucide-react';
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { stockBadge } from '../view/stock.js';
 
 /*
@@ -31,6 +31,18 @@ export const INPUT_CLASS =
   'h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 /**
+ * Whether the POS's dialogs open as BOTTOM SHEETS (the operator, 2026-10-29):
+ * on a phone a centred desktop pop-up felt like the desktop. The phone's
+ * screens wrap themselves in `<PhoneDialogs>`; everything else keeps dialogs.
+ */
+const SheetDialogsContext = createContext(false);
+
+/** Every `Modal` inside opens as a bottom sheet: the phone's screens. */
+export function PhoneDialogs({ children, on = true }: { children: ReactNode; on?: boolean }) {
+  return <SheetDialogsContext.Provider value={on}>{children}</SheetDialogsContext.Provider>;
+}
+
+/**
  * A modal, drawn by the browser's own `<dialog>` so it is in the top layer and
  * traps focus — `ConfirmDialog`'s reasoning. `showModal()` rather than the
  * `open` attribute, which renders inline with no backdrop and no Escape.
@@ -55,6 +67,63 @@ export function Modal({
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+}) {
+  const asSheet = useContext(SheetDialogsContext);
+  if (asSheet) {
+    return (
+      <SheetModal open={open} title={title} onClose={onClose}>
+        {children}
+      </SheetModal>
+    );
+  }
+  return (
+    <DialogModal open={open} title={title} onClose={onClose} wide={wide}>
+      {children}
+    </DialogModal>
+  );
+}
+
+/**
+ * On a phone: web-ui's `BottomSheet`, the one every phone screen uses — it
+ * rises from the bottom, has a handle, swipes down and taps outside to close.
+ *
+ * ⚠ The content still mounts only once the sheet is OPEN, for `autoFocus`
+ * (above): the sheet's own effect calls `showModal()` before this one, a
+ * child's effects running first, so the content arrives inside an open
+ * dialog.
+ */
+function SheetModal({
+  open,
+  title,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => setShown(open), [open]);
+  return (
+    <BottomSheet open={open} onClose={onClose} title={title}>
+      {open && shown ? <div className="flex flex-col gap-4 px-2 pb-2">{children}</div> : null}
+    </BottomSheet>
+  );
+}
+
+function DialogModal({
+  open,
+  title,
+  onClose,
+  children,
+  wide,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);

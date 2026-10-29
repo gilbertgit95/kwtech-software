@@ -11,15 +11,16 @@
  */
 
 const CATEGORY = 'id name sortOrder archivedAt';
+const ORDER_TYPE_OPTION = 'id name sortOrder isDefault archivedAt';
 const VARIANT = 'id itemId name code price cost sortOrder archivedAt';
 const ITEM = `id kind name code description price cost categoryId archivedAt variants { ${VARIANT} }`;
 const CUSTOMER = 'id name phone email facebookUrl note archivedAt';
-const SETTINGS = 'timeZone keymap referenceOptions version';
+const SETTINGS = 'timeZone keymap referenceOptions defaultReference version';
 const DISCOUNT = 'kind value reason givenById givenAt';
 const LINE = `id itemId variantId name kind variantName code categoryName unitPrice unitCost quantity note discount { ${DISCOUNT} } discountAmount gross total net refundedQuantity`;
-const ORDER = `id status version number label customerId customerName customerContact lines { ${LINE} } gross lineDiscounts subtotal discount { ${DISCOUNT} } orderDiscount total paymentMethod received change tip paymentReference changeOwed changeSettlement changeSettledAt refunds { id amount method reason refundedById refundedAt } refunded refundState createdById createdAt finalisedAt finalisedById releasedUnpaid paidAt paidById cancelledAt cancelReason voidedAt voidReason`;
+const ORDER = `id status version number label orderTypeId orderTypeName customerId customerName customerContact lines { ${LINE} } gross lineDiscounts subtotal discount { ${DISCOUNT} } orderDiscount total paymentMethod received change tip paymentReference changeOwed changeSettlement changeSettledAt refunds { id amount method reason refundedById refundedAt } refunded refundState createdById createdAt finalisedAt finalisedById releasedUnpaid paidAt paidById cancelledAt cancelReason voidedAt voidReason`;
 const ORDER_SUMMARY =
-  'id status version number label customerName itemCount total changeOwed refunded createdAt finalisedAt finalisedById paidAt cancelReason';
+  'id status version number label orderTypeName customerName itemCount total changeOwed refunded createdAt finalisedAt finalisedById paidAt cancelReason';
 const COUNT = 'count amount';
 const SUMMARY = `orders gross discounts refunds netSales averageOrder tips cash ewallet card cashExpected profit costCoverage unpaidReleased { ${COUNT} } unpaidCollected { ${COUNT} } changeOwedOutstanding { ${COUNT} } cancelled { ${COUNT} }`;
 const BREAKDOWN = 'key label quantity net cost profit';
@@ -36,7 +37,7 @@ export const POS_OPERATIONS = {
   /** What a till loads once and searches in the browser. Costs only for those who may see them. */
   posCatalogue: `query PosCatalogue(${SCOPE_VARS}, $includeArchived: Boolean) {
     posCatalogue(${SCOPE_ARGS}, includeArchived: $includeArchived) {
-      categories { ${CATEGORY} } items { ${ITEM} } costsVisible
+      categories { ${CATEGORY} } orderTypes { ${ORDER_TYPE_OPTION} } items { ${ITEM} } costsVisible
     }
   }`,
 
@@ -59,6 +60,20 @@ export const POS_OPERATIONS = {
 
   setPosCategoryArchived: `mutation SetPosCategoryArchived(${SCOPE_VARS}, $categoryId: String!, $archived: Boolean!) {
     setPosCategoryArchived(${SCOPE_ARGS}, categoryId: $categoryId, archived: $archived) { ${CATEGORY} }
+  }`,
+
+  // ── order types (the Items tab) ────────────────────────────────────────────
+
+  savePosOrderTypeOption: `mutation SavePosOrderTypeOption(${SCOPE_VARS}, $name: String!, $orderTypeId: String, $sortOrder: Int) {
+    savePosOrderTypeOption(${SCOPE_ARGS}, name: $name, orderTypeId: $orderTypeId, sortOrder: $sortOrder) { ${ORDER_TYPE_OPTION} }
+  }`,
+
+  setPosOrderTypeOptionArchived: `mutation SetPosOrderTypeOptionArchived(${SCOPE_VARS}, $orderTypeId: String!, $archived: Boolean!) {
+    setPosOrderTypeOptionArchived(${SCOPE_ARGS}, orderTypeId: $orderTypeId, archived: $archived) { ${ORDER_TYPE_OPTION} }
+  }`,
+
+  setPosDefaultOrderType: `mutation SetPosDefaultOrderType(${SCOPE_VARS}, $orderTypeId: String) {
+    setPosDefaultOrderType(${SCOPE_ARGS}, orderTypeId: $orderTypeId) { ${ORDER_TYPE_OPTION} }
   }`,
 
   // ── customers ─────────────────────────────────────────────────────────────
@@ -89,8 +104,8 @@ export const POS_OPERATIONS = {
     savePosSettings(${SCOPE_ARGS}, keymap: $keymap) { ${SETTINGS} }
   }`,
 
-  savePosReferenceOptions: `mutation SavePosReferenceOptions(${SCOPE_VARS}, $options: [String!]!) {
-    savePosReferenceOptions(${SCOPE_ARGS}, options: $options) { ${SETTINGS} }
+  savePosReferenceOptions: `mutation SavePosReferenceOptions(${SCOPE_VARS}, $options: [String!]!, $defaultReference: String) {
+    savePosReferenceOptions(${SCOPE_ARGS}, options: $options, defaultReference: $defaultReference) { ${SETTINGS} }
   }`,
 
   // ── orders: reading ───────────────────────────────────────────────────────
@@ -135,6 +150,10 @@ export const POS_OPERATIONS = {
 
   setPosOrderLabel: `mutation SetPosOrderLabel(${SCOPE_VARS}, ${ORDER_VARS}, $label: String) {
     setPosOrderLabel(${SCOPE_ARGS}, ${ORDER_ARGS}, label: $label) { ${ORDER} }
+  }`,
+
+  setPosOrderType: `mutation SetPosOrderType(${SCOPE_VARS}, ${ORDER_VARS}, $orderTypeId: String) {
+    setPosOrderType(${SCOPE_ARGS}, ${ORDER_ARGS}, orderTypeId: $orderTypeId) { ${ORDER} }
   }`,
 
   holdPosOrder: `mutation HoldPosOrder(${SCOPE_VARS}, ${ORDER_VARS}, $label: String) {

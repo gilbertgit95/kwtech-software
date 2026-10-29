@@ -407,7 +407,9 @@ function taskPreset(key: string): TaskRolePreset {
  * have no cashiers yet, so its keys fold into the two workspace roles rather
  * than a combined role: a workspace admin is `pos-manager` (sells, discounts,
  * refunds, items, reports, settings) and a workspace user `pos-cashier` (sells
- * at the listed price). THROWS if a preset is gone.
+ * at the listed price and takes payment). `pos-order-taker` (takes and holds
+ * orders, never takes payment; issue #23) is folded into no seeded role: a
+ * store with order takers builds a role from it. THROWS if a preset is gone.
  */
 function posPreset(key: string): PosRolePreset {
   const preset = POS_ROLE_PRESETS.find((one) => one.key === key);
@@ -591,7 +593,7 @@ const WORKSPACE_USER: SystemRoleDefinition = {
     APP_HUB_FEATURE.read,
     ...notePreset('note-user').features,
     ...taskPreset('task-user').features,
-    // Sells at the listed price: no discounts, refunds, costs or reports.
+    // Sells at the listed price and takes payment: no discounts, refunds, costs or reports.
     ...posPreset('pos-cashier').features,
     // Records deliveries, corrections and waste. No items, materials lists or stock takes.
     ...stockPreset('stock-keeper').features,

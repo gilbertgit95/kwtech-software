@@ -45,6 +45,7 @@ describe('money on screen', () => {
 
 const CATALOGUE: PosCatalogueView = {
   costsVisible: false,
+  orderTypes: [],
   categories: [
     { id: 'c-lam', name: 'Lamination', sortOrder: 0, archivedAt: null },
     { id: 'c-empty', name: 'Empty', sortOrder: 1, archivedAt: null },
@@ -224,6 +225,8 @@ describe('the receipt', () => {
     version: 3,
     number: 41,
     label: null,
+    orderTypeId: null,
+    orderTypeName: null,
     customerId: null,
     customerName: 'Juan <script>',
     customerContact: null,
@@ -263,6 +266,13 @@ describe('the receipt', () => {
     for (const text of ['RECEIPT #41', 'Magnet', 'Note: rush', '₱30.00', 'Change', '₱20.00']) {
       expect(html).toContain(text);
     }
+  });
+
+  it('prints how the order was served, escaped, and nothing without a type', () => {
+    expect(receiptHtml({ ...ORDER, orderTypeName: 'Dine-in <b>' }, { timeZone: 'Asia/Manila' })).toContain(
+      'Dine-in &#60;b&#62;',
+    );
+    expect(receiptHtml(ORDER, { timeZone: 'Asia/Manila' })).not.toContain('Dine-in');
   });
 
   it('⚠ escapes what people typed — a name is text, never markup', () => {

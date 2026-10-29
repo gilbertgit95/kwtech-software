@@ -608,6 +608,84 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-29** — **POS order types ("Dine-in", "Takeout") are a store list on the Items tab, optional on an order, with a per-store default; the order reference options and a default reference move to the Items tab too.**
+
+  Restaurants tell dine-in from takeout, and that is not the reference: a
+  dine-in order AT table 5 needs both.
+  - **A table, not a JSON setting.** `PosOrderType` copies `PosCategory`
+    (unique case-blind name, sort order, archived, never deleted) plus
+    `isDefault`, so it is managed beside categories and travels with the
+    catalogue, live.
+  - **The order copies the name** (`orderTypeName`) beside the id: a renamed
+    type never changes a receipt, as lines copy `categoryName`. No foreign
+    key: types are archived, never deleted.
+  - **Optional, with defaults (the operator).** One default type, held by the
+    service (setting one clears the last in the same transaction; archiving
+    clears it), and one default reference among the options, refused unless
+    it is one and dropped with its option. `createPosOrder` applies both; a
+    reference given at creation wins.
+  - **Per store, not per device** (the operator): one setting every till
+    shares.
+  - **References moved from Settings to Items,** and `savePosReferenceOptions`
+    from `pos:manage_settings` to `pos:manage_items`. A role with only
+    "Change store settings" can no longer edit them; the manager preset holds
+    both, so nothing changes for it.
+  - **Not done:** sales per order type in Reports, and prices per type
+    (delivery-app prices). Each waits until a store asks.
+
+- **2026-10-29** — **POS: taking payment is a key of its own, `pos:take_payment`, apart from `pos:sell`; a new `pos-order-taker` preset builds and holds orders and never settles one (issue #23).**
+
+  The new Sell view (issue #23) splits the sale between a seller, who takes
+  orders and holds them, and a cashier, who sees every held order live and
+  takes the payment. One key covered both, so a seller could not be kept away
+  from the drawer.
+  - **Payment is the NEW key, not order taking.** The riskier act gets the
+    narrow key, and a role that misses it fails closed: it can still take
+    orders, and cannot pay. The other way round, every cashier would have
+    lost the till until somebody granted the new key.
+  - **`pos:take_payment` binds pay, pay later, cancel and settle change.**
+    Cancelling is the cashier's (the operator, 2026-10-29): a cancelled order
+    is one that brings no money, and the person who built it does not decide
+    that. Pay later likewise: it is a decision about the money.
+  - **No operation is bound to both keys.** The guard requires EVERY key
+    bound to an operation (`module-permissions`' binding index), so a shared
+    binding would lock out whoever holds only one. A cashier holds both.
+  - **Presets:** `pos-order-taker` (read, sell) is new; `pos-cashier` and
+    `pos-manager` add `pos:take_payment`. The workspace user role keeps the
+    cashier's keys, so nothing changes for a store that has no order takers.
+  - **Screens:** without the key the till's Pay, Cancel and payment
+    shortcuts are hidden and its last button is "Hold for the cashier";
+    Orders hides Take payment and settle change. Hiding is cosmetic: the
+    bindings refuse.
+  - ⚠ **Existing databases, two steps.** (1) Roles: a role already holding
+    `pos:sell` loses pay, pay later and cancel until it is granted
+    `pos:take_payment`. `db:sync` updates the seeded roles; a role an owner
+    built by hand needs the key added in the permissions admin. (2) PLANS:
+    the key is workspace level, so the plan filters it, and
+    `createPlanIfAbsent` never rewrites a plan that exists. Until an
+    operator adds `pos:take_payment` to each plan on `/admin/plans`, nobody
+    in those organizations can take payment, managers included.
+  - **Two screens on one order process.** Take orders (`TakeOrders`) is the
+    seller's, built for a phone or a handheld: held orders as chips across
+    the top, items grouped by category under headings that open and close,
+    big rows, and every order ends at Hold — no Pay, even for a cashier, so
+    the whole sale goes through the held orders. Cashier (`Cashier`) is the
+    full screen at the cashier's window: a live column of held orders beside
+    the keyboard till, which opens, edits and pays them. On the phone, Sell
+    IS Take orders and the till is not offered; on the full screen a cashier
+    chooses between Cashier and **Classic** (the keyboard till as it was),
+    remembered per device. Take orders is NOT on the full screen (the
+    operator, 2026-10-29): it is built for a phone, and Cashier does all it
+    does there; somebody without `pos:take_payment` gets Classic alone.
+  - **Grouped by category, not by new tags.** Issue #21 asked for "beef ▸
+    bulalo, balbacua"; an item already has one category, so the groups are
+    categories, with no schema change. Tags (an item in two groups) wait
+    until a store needs them.
+  - **Not done:** an "order taker" workspace role in the seed. A member holds
+    one workspace role, and no store has asked for one yet; it is built from
+    the preset when one does (`.claude/rules/database.md`, "Combined
+    workspace roles").
+
 - **2026-10-29** — **POS order reference options: a per-store list on `PosSettings`, saved by a mutation of its own; the till offers them in a combobox and snaps a typed match to the option's spelling (issue #30).**
 
   Stores reuse a few references all day (tables, "Take-out"), and typing them

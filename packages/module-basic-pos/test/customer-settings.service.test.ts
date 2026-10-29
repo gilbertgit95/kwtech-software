@@ -83,6 +83,7 @@ describe('settings', () => {
       timeZone: 'Asia/Manila',
       keymap: POS_DEFAULT_KEYMAP,
       referenceOptions: [],
+      defaultReference: null,
       version: 0,
     });
   });
