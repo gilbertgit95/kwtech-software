@@ -186,6 +186,27 @@ creates it with `--restart unless-stopped`, and Docker is a systemd service.
 The systemd service starts pm2 from this checkout's `node_modules`, so after
 the repository moves, or after pm2 is upgraded, run step 1 again.
 
+### HTTPS: the shop's network, a remote server
+
+**[docs/HTTPS.md](docs/HTTPS.md)** is the guide: which setup you need,
+first-time installation, registering each phone, tablet and computer, a
+remote server, moving to another computer, and troubleshooting. In short:
+
+| Where the app runs | HTTPS from | Devices |
+|---|---|---|
+| One computer, used only there (`http://localhost:8081`) | not needed | — |
+| **The shop's network** (no domain) | **Caddy**, optional, with its own certificate authority: `pnpm https:setup`, then `pnpm build && pnpm pm2:start` (or `pnpm https` beside the dev servers) | each trusts the certificate once, from `http://<address>/kwtech-local-ca.crt` |
+| **A remote server** with a domain | the host (platform, Cloudflare, nginx + Let's Encrypt) — **no Caddy** | nothing |
+
+⚠ Any device other than the server itself needs `https://`: plain
+`http://<address>:8081` crashes in the browser (no `crypto.randomUUID()` off
+a secure page) and cannot stay signed in to the built app. Caddy runs only
+when `FRONTEND_URL` is `https://` on a private address (`192.168.x.x`,
+`10.x.x.x`, `172.16–31.x.x`); a domain never starts it. With
+`LISTEN_HOST="127.0.0.1"` (set by `pnpm https:setup`) both apps answer only
+to this computer, so the front door is the only way in from the network;
+leave it empty on a platform or in Docker.
+
 Database (all scoped to `apps/web-server`, which owns the schema — PLAN §12.2):
 
 ```bash

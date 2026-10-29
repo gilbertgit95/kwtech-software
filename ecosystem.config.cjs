@@ -15,6 +15,15 @@
  * CommonJS (.cjs) because pm2 loads this file with require().
  */
 const { resolve } = require('node:path');
+const { caddyLaunch, httpsHost, webListenHost } = require('./deploy/https/host.cjs');
+
+/** The address phones open over HTTPS, or null: the API's FRONTEND_URL (deploy/https/host.cjs). */
+const HTTPS_HOST = httpsHost();
+/*
+ * The address both apps listen on (`LISTEN_HOST`, docs/HTTPS.md): the API
+ * reads it itself; the web app takes it only as `-H`. Unset: every address.
+ */
+const LISTEN_HOST = webListenHost(); // `localhost` for this computer, never 127.0.0.1: see webListenHost
 
 module.exports = {
   apps: [
@@ -42,11 +51,35 @@ module.exports = {
       // Next's own CLI, the same `next start -p 8081` as the app's `start`
       // script, resolved from the app's node_modules so it is the app's Next.
       script: 'node_modules/next/dist/bin/next',
-      args: 'start -p 8081',
+      args: LISTEN_HOST ? `start -p 8081 -H ${LISTEN_HOST}` : 'start -p 8081',
       interpreter: 'node',
       max_restarts: 10,
       min_uptime: '10s',
       restart_delay: 2000,
     },
+    /*
+     * HTTPS in front of both, on 443 (deploy/https/Caddyfile), only when
+     * FRONTEND_URL is https:// on a PRIVATE address (the shop's own network;
+     * `httpsHost`). A domain runs no Caddy: a remote server's HTTPS is its
+     * host's. ⚠ `caddy` must be installed on the machine (docs/HTTPS.md);
+     * without it this one service shows `errored` and the other
+     * two run as before. On Linux it needs leave to bind 443 without root:
+     * `sudo setcap cap_net_bind_service=+ep "$(command -v caddy)"`.
+     */
+    ...(HTTPS_HOST
+      ? [
+          {
+            name: 'kwtech-https',
+            cwd: __dirname,
+            script: caddyLaunch(HTTPS_HOST).command,
+            args: caddyLaunch(HTTPS_HOST).args,
+            interpreter: 'none',
+            env: caddyLaunch(HTTPS_HOST).env,
+            max_restarts: 10,
+            min_uptime: '10s',
+            restart_delay: 2000,
+          },
+        ]
+      : []),
   ],
 };

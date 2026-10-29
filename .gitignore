@@ -25,6 +25,12 @@ envs/*
 .env.local
 .env.*.local
 
+# local HTTPS (deploy/https/Caddyfile)
+# Caddy's own certificate authority for the shop network: its PRIVATE KEY is
+# in here, and whoever holds it can impersonate the server to every device
+# that trusts it. Machine state, never committed.
+.caddy/
+
 # database backups
 # Full pg_dump copies of a database: password hashes, sessions, MFA secrets and
 # every customer row. Never committed, unlike seed-data/snapshot.json, which

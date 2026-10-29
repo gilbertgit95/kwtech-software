@@ -603,10 +603,57 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 121 | No web push: notifications reach a person only while a page is open | when someone must be told with the app closed (a booking, a queue call) | A service worker plus a delivery channel in `module-notification` (a `notify_push_subscription` per device, VAPID keys in the env profile, `sendSafely` fanning out). iPhone delivers only to an app on the home screen, iOS 16.4 and later |
 | 122 | ~~The installed app is the whole site: there is no phone-first section with only a few screens~~ **Closed** | — | **One set of addresses, a layout per device (§13, 2026-10-29, issue #22).** `proxy.ts` rewrites a phone's `/` and `/organizations/...` to the phone page; modules opt in with `/mobile` screens. A native app only if a device feature the browser lacks is needed |
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
+| 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-29** — **Caddy is optional and only for the shop's own network: it runs only when `FRONTEND_URL` is `https://` on a PRIVATE address; a remote server's HTTPS comes from its host, with no Caddy.**
+
+  Caddy's one job is HTTPS for the devices on the shop's network when there
+  is no domain (the local certificate authority of 2026-10-26). It ran for
+  ANY `https://` address but localhost, so a remote server with
+  `FRONTEND_URL="https://pos.example.com"` would have started it there too,
+  with the LOCAL authority, clashing with the host's proxy on 443 or serving
+  a certificate nobody trusts.
+  - **`httpsHost()` accepts only 10.x, 172.16–31.x and 192.168.x** (the
+    ranges `pnpm https:setup` detects). A domain, `http://` or localhost
+    starts no Caddy, under pm2 or `pnpm https`.
+  - **A remote server**: a domain, HTTPS from the platform, Cloudflare or
+    nginx + Let's Encrypt, `/api/v1/*` (with the WebSocket upgrade) to 8080
+    and the rest to 8081. No device registration: the certificate is public.
+  - **One guide, `docs/HTTPS.md`**: which setup, first-time installation,
+    registering each device (Android, iPhone, Mac, Windows, Firefox),
+    installing the app, a remote server (with an nginx example), another
+    computer becoming the server (copy `.caddy/`), troubleshooting. The
+    README keeps a summary and the link.
+  - **Found testing #23 from an Android phone**: plain
+    `http://<address>:8081` crashes off localhost — no
+    `crypto.randomUUID()` on a non-secure page — in development too. The
+    docs said dev http worked; they now say it does not.
+  - **One way in: `LISTEN_HOST`.** Both apps listened on every address, so
+    `http://<address>:8081` and `:8080` stayed open around the front door,
+    unencrypted. `LISTEN_HOST="127.0.0.1"` makes both answer only to this
+    computer: the API reads it (`app.listen`), the web app gets it as
+    `next -H` from `scripts/next.mjs` and pm2, because Next takes the address
+    only as a flag. `pnpm https:setup` sets it, `--off` removes it. EMPTY by
+    default — every address, as before — because a platform's or Docker's
+    front door is on another machine and `127.0.0.1` would cut it off. Not
+    `HOST`: shells export that as the machine's name, and an exported
+    variable wins over the file.
+  - ⚠ **The web app gets `localhost`, never `127.0.0.1`.** Next writes
+    127.0.0.1 as "localhost" in the middleware's `NextURL`, so with
+    `-H 127.0.0.1` the phone layout's rewrite (`proxy.ts`) named another
+    host than the server's own; Next proxied it as EXTERNAL, over TLS from a
+    plain-http port, and every phone page was a 500. Found on an Android
+    phone the same day; `webListenHost()` maps this computer to `localhost`,
+    which then listens on `[::1]`.
+  - **Not done:** making the browser code independent of
+    `crypto.randomUUID()` (a `randomId()` in module-kit), which would let
+    development run over plain http from phones; and an opt-out from
+    `Secure` cookies for a built app on plain http, which would send
+    sessions over the Wi-Fi in the clear. Both wait for a decision.
 
 - **2026-10-29** — **POS order types ("Dine-in", "Takeout") are a store list on the Items tab, optional on an order, with a per-store default; the order reference options and a default reference move to the Items tab too.**
 
@@ -816,6 +863,30 @@ Decisions 1, 2, 3 and 5 gate the next step.
   - **Not done: `Vary: User-Agent, Cookie`.** Next writes the page's own
     `Vary` over one set in the proxy. Safe while these pages are `no-store`;
     a CDN put in front must bypass them.
+
+- **2026-10-26** — **HTTPS on the shop's own network: Caddy in front of both apps, with its own local certificate authority.**
+
+  The operator asked for HTTPS on the locally hosted server, for devices on
+  the local network only, with no domain. Without it, a phone on the Wi-Fi
+  could not stay signed in to the BUILT app (its session cookies are
+  `Secure`, which a browser drops on plain http:// away from localhost), and
+  could not install the app (the PWA).
+  - **Caddy on 443** (`deploy/https/Caddyfile`): `/api/v1/*` (GraphQL and the
+    live-updates socket) to the API, everything else to the web app. No code
+    changes; the web app's own `/api/*` routes are not under `/api/v1`.
+  - **Its own authority (`tls internal`)**, stored in the gitignored `.caddy/`,
+    and the root certificate served over plain HTTP at
+    `/kwtech-local-ca.crt` so each device can install and trust it once.
+    `default_sni`, because a browser opening a bare address sends no name.
+  - **One switch**: the API's `FRONTEND_URL` being an `https://` address on
+    the network makes pm2 run Caddy as a third service (`kwtech-https`), and
+    `pnpm https` runs it beside the dev servers. Both read it through
+    `deploy/https/host.cjs`. `NEXT_PUBLIC_WS_URL` becomes `wss://…` and the
+    web app is rebuilt.
+  - **Not done:** a public certificate (needs a domain; switching later is the
+    Caddyfile alone), Google sign-in on a bare address (Google refuses one),
+    the print agent through HTTPS (it still reaches the API at :8080 on the
+    network), and trusting the authority on devices automatically.
 
 - **2026-10-26** — **Database backups: a super admin's page, a daily 9 PM backup and the command line, with nothing about them in the database (issue #2).**
 
