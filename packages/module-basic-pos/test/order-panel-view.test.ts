@@ -4,6 +4,8 @@ import {
   orderPanelWidthAfterDrag,
   orderPanelWidthAfterKey,
   parseStoredOrderPanelWidth,
+  WAITING_COLUMN_RULES,
+  WAITING_COLUMN_WIDTH,
 } from '../src/react/view/order-panel.js';
 
 describe('the order panel’s width', () => {
@@ -33,5 +35,26 @@ describe('the order panel’s width', () => {
     expect(parseStoredOrderPanelWidth(null)).toBe(ORDER_PANEL_WIDTH.default);
     expect(parseStoredOrderPanelWidth('wide')).toBe(ORDER_PANEL_WIDTH.default);
     expect(parseStoredOrderPanelWidth('')).toBe(ORDER_PANEL_WIDTH.default);
+  });
+});
+
+describe('the Cashier’s waiting column (issue #23)', () => {
+  it('⚠ is dragged by its RIGHT edge: moving right widens it, the opposite of the order panel', () => {
+    expect(WAITING_COLUMN_RULES.afterDrag(320, 500, 560)).toBe(380);
+    expect(WAITING_COLUMN_RULES.afterDrag(320, 500, 440)).toBe(260);
+  });
+
+  it('→ widens and ← narrows, Home and End go to the bounds', () => {
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'ArrowRight', false)).toBe(336);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'ArrowLeft', true)).toBe(256);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'Home', false)).toBe(WAITING_COLUMN_WIDTH.min);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'End', false)).toBe(WAITING_COLUMN_WIDTH.max);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'Enter', false)).toBeNull();
+  });
+
+  it('stays within its bounds, and reads a bad stored width as the default', () => {
+    expect(WAITING_COLUMN_RULES.afterDrag(320, 0, 5000)).toBe(WAITING_COLUMN_WIDTH.max);
+    expect(WAITING_COLUMN_RULES.parseStored('NaN')).toBe(WAITING_COLUMN_WIDTH.default);
+    expect(WAITING_COLUMN_RULES.parseStored('100')).toBe(WAITING_COLUMN_WIDTH.min);
   });
 });

@@ -673,9 +673,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
     full screen at the cashier's window: a live column of held orders beside
     the keyboard till, which opens, edits and pays them. On the phone, Sell
     IS Take orders and the till is not offered; on the full screen a cashier
-    chooses between Take orders, Cashier and **Classic** (the keyboard till
-    as it was, kept as an option for everybody who may sell), remembered per
-    device.
+    chooses between Cashier and **Classic** (the keyboard till as it was),
+    remembered per device. Take orders is NOT on the full screen (the
+    operator, 2026-10-29): it is built for a phone, and Cashier does all it
+    does there; somebody without `pos:take_payment` gets Classic alone.
   - **Grouped by category, not by new tags.** Issue #21 asked for "beef ▸
     bulalo, balbacua"; an item already has one category, so the groups are
     categories, with no schema change. Tags (an item in two groups) wait

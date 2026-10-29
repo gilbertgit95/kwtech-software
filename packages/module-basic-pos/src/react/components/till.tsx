@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, ResizeGrip, Tooltip } from '@kwtech/web-ui/react';
+import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   Ban,
   ChevronLeft,
@@ -17,29 +17,13 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
-import {
-  type CSSProperties,
-  type PointerEvent,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type CSSProperties, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { type PosSearchResult, parseQuantityPrefix, searchItems } from '../../domain/search.js';
 import type { PosItemView, PosOrderLineView, PosOrderView } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
 import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
-import {
-  ORDER_PANEL_STORAGE_KEY,
-  ORDER_PANEL_WIDTH,
-  orderPanelWidthAfterDrag,
-  orderPanelWidthAfterKey,
-  parseStoredOrderPanelWidth,
-} from '../view/order-panel.js';
+import { ORDER_PANEL_RULES, ORDER_PANEL_STORAGE_KEY } from '../view/order-panel.js';
 import { receiptHtml } from '../view/receipt.js';
 import { leftOf, type PosStockMap, stockWarning, tileLeft } from '../view/stock.js';
 import {
@@ -64,6 +48,7 @@ import {
   VariantPicker,
 } from './dialogs.js';
 import { OrderTypePicker } from './order-type-picker.js';
+import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
 
@@ -118,7 +103,7 @@ export function Till({
    * renders only after hydration (in the Apps page's grid); and on the phone,
    * which may be rendered on the server, the width is never put on the page.
    */
-  const [orderWidth, setOrderWidth] = useState(readOrderPanelWidth);
+  const [orderWidth, setOrderWidth] = useState(() => readPanelWidth(ORDER_PANEL_RULES, ORDER_PANEL_STORAGE_KEY));
   const orderPanelId = useId();
   const [query, setQuery] = useState('');
   /** The match ↑ ↓ are on in the search results, and the one Enter adds. The first, until an arrow moves it. */
@@ -492,7 +477,17 @@ export function Till({
                 'relative @3xl:w-[var(--pos-order-width)] @3xl:max-w-[65%] @3xl:shrink-0',
           )}
         >
-          {phone ? null : <OrderPanelHandle panelId={orderPanelId} width={orderWidth} onResize={setOrderWidth} />}
+          {phone ? null : (
+            <PanelEdgeHandle
+              panelId={orderPanelId}
+              label="Resize the order"
+              width={orderWidth}
+              rules={ORDER_PANEL_RULES}
+              storageKey={ORDER_PANEL_STORAGE_KEY}
+              shownClass="@3xl:flex"
+              onResize={setOrderWidth}
+            />
+          )}
           {phone && !finished ? (
             <button
               type="button"
@@ -904,7 +899,7 @@ function Cart({
       </button>
 
       {/* How it is served ("Dine-in", "Takeout"): only when the store has order types. */}
-      <OrderTypePicker state={state} order={order} />
+      <OrderTypePicker state={state} order={order} labelled />
 
       {/*
        * The order's reference (issue #24): a table number, a pickup tag, a job
@@ -1350,116 +1345,4 @@ function tillZone(dialog: Dialog, finished: boolean, lineSelected: boolean): Til
   if (dialog.kind !== 'none') return 'dialog';
   if (finished) return 'receipt';
   return lineSelected ? 'cart' : 'search';
-}
-
-/**
- * The order panel's LEFT edge, as a handle (the operator, 2026-10-29): drag it
- * to give the order or the items more room. The ARIA window splitter, as
- * `module-app-hub`'s app list: focusable, ← → move the edge, Home / End go to
- * the bounds, double-click puts the default back. Only where the order sits
- * beside the items (`@3xl`); stacked, the order has the whole width already.
- *
- * Stored once, on release, not on every move: a drag emits a pointer event
- * per frame and nothing reads the stored width until the next visit.
- */
-function OrderPanelHandle({
-  panelId,
-  width,
-  onResize,
-}: {
-  panelId: string;
-  width: number;
-  onResize: (width: number) => void;
-}) {
-  const [resizing, setResizing] = useState(false);
-  const drag = useRef<{ pointerId: number; fromX: number; start: number } | null>(null);
-
-  const resizeTo = (next: number) => {
-    onResize(next);
-    writeOrderPanelWidth(next);
-  };
-
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    // Stops the press from starting a text selection across the items beside it.
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { pointerId: event.pointerId, fromX: event.clientX, start: width };
-    setResizing(true);
-  };
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    const active = drag.current;
-    if (!active || active.pointerId !== event.pointerId) return;
-    onResize(orderPanelWidthAfterDrag(active.start, active.fromX, event.clientX));
-  };
-  const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
-    const active = drag.current;
-    if (!active || active.pointerId !== event.pointerId) return;
-    drag.current = null;
-    setResizing(false);
-    resizeTo(orderPanelWidthAfterDrag(active.start, active.fromX, event.clientX));
-  };
-
-  return (
-    <Tooltip text="Drag to resize · double-click to reset" side="left">
-      {(tooltip) => (
-        // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or pointer events; a focusable separator is the ARIA window-splitter pattern.
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize the order"
-          aria-controls={panelId}
-          aria-valuenow={width}
-          aria-valuemin={ORDER_PANEL_WIDTH.min}
-          aria-valuemax={ORDER_PANEL_WIDTH.max}
-          tabIndex={0}
-          {...tooltip}
-          // Both, for the two events the handle and the hint each listen to: a later prop replaces the spread one.
-          onPointerDown={(event) => {
-            tooltip.onPointerDown();
-            onPointerDown(event);
-          }}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerEnd}
-          onPointerCancel={onPointerEnd}
-          onKeyDown={(event) => {
-            tooltip.onKeyDown(event);
-            const next = orderPanelWidthAfterKey(width, event.key, event.shiftKey);
-            if (next === null) return;
-            event.preventDefault();
-            // ⚠ The till reads ← → and Home / End as its own keys (the cart, the search); here they are the edge's.
-            event.stopPropagation();
-            resizeTo(next);
-          }}
-          onDoubleClick={() => resizeTo(ORDER_PANEL_WIDTH.default)}
-          className={cn(
-            // touch-none: a finger dragging the edge resizes instead of scrolling. Straddles the border, 12px wide.
-            'group absolute inset-y-0 -left-1.5 z-10 hidden w-3 cursor-col-resize touch-none items-center justify-center rounded-full transition-colors @3xl:flex',
-            'hover:bg-primary/20 focus-visible:bg-primary/30 focus-visible:outline-none',
-            resizing && 'bg-primary/30',
-          )}
-        >
-          <ResizeGrip onBorder active={resizing} />
-        </div>
-      )}
-    </Tooltip>
-  );
-}
-
-/** Storage can throw (a private window, blocked site data); the panel then opens at its default. */
-function readOrderPanelWidth(): number {
-  if (typeof window === 'undefined') return ORDER_PANEL_WIDTH.default;
-  try {
-    return parseStoredOrderPanelWidth(window.localStorage.getItem(ORDER_PANEL_STORAGE_KEY));
-  } catch {
-    return ORDER_PANEL_WIDTH.default;
-  }
-}
-
-function writeOrderPanelWidth(width: number): void {
-  try {
-    window.localStorage.setItem(ORDER_PANEL_STORAGE_KEY, String(width));
-  } catch {
-    // Not remembered on this device; the panel keeps its width for this visit.
-  }
 }

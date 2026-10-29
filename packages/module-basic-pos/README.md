@@ -34,8 +34,9 @@ The web server only needs the registry, for `db:sync`:
 
 `@kwtech/module-basic-pos/mobile` offers the phone layout the **Point of sale**
 app, gated by `pos:read` as on the Apps page, with its parts as SECTIONS in the
-phone frame's strip. Today there is one, **Sell** (`pos:sell`), the operator's
-choice for the phone; Orders, Items, Customers, Reports and Settings stay on
+phone frame's strip. Today there is one, **Sell** (`pos:sell`, the screen
+"Take orders"), the operator's choice for the phone — and with one section the
+frame shows no strip at all, so Take orders has the whole height; Orders, Items, Customers, Reports and Settings stay on
 the full site and join as sections when they come to the phone, each gated by
 its own key, without the app or its address (`?screen=pos&section=…`)
 changing. The frame offers the app only while its holder has at least one
@@ -177,11 +178,27 @@ The same order process, split by who uses it:
   and add to one), a search box, the items **grouped by category** under
   headings that open and close (`itemGroups`; uncategorised items last, as
   "Other"), rows a thumb can hit, and the order at the foot. An item with
-  sizes opens the variant picker. **Every order ends at Hold**: there is no
+  sizes opens the variant picker. Inside the order: the order type, then the
+  customer and the reference — optional, the classic till's dashed boxes and
+  dialogs, a thumb tall.
+- **Long text never widens the list:** a row cuts the name at two lines and
+  the description at one, with "…". An item with more to read
+  (`hasMoreToRead`: a description, or a name past 40 characters) has **ⓘ**
+  beside its row: a sheet with the whole name and description, the price,
+  what is left, and each size or "Add to order".
+- **It feels like a phone:** the order opens as a BOTTOM SHEET (web-ui's
+  `BottomSheet`: it rises, has a handle, swipes down or taps outside to
+  close), and every dialog inside Take orders — sizes, customer, reference,
+  hold — opens as a sheet over it (`PhoneDialogs` around the screen makes
+  the POS's `Modal` a sheet). The full screen keeps its dialogs. **Every order ends at Hold**: there is no
   Pay on this screen, even for a cashier.
 - **Cashier** (`Cashier`, `pos:take_payment`): the full screen at the
   cashier's window. A live column of held orders, oldest first, beside the
-  keyboard till, which opens, edits and pays them.
+  keyboard till, which opens, edits and pays them. The column's RIGHT edge
+  is a handle, like the order panel's left (224–560 px, at most 40% of the
+  screen; ← → Shift Home End; double-click resets to 320 px), remembered per
+  device (`kwtech:pos-waiting-column-width`). Both edges are one component,
+  `PanelEdgeHandle`, over one set of rules, `panelWidthRules`.
 - **How long each has waited**, on the Cashier's cards and the sellers'
   chips: "12 min", "1 h 20 min" (`waitText`), ticking on its own every half
   minute (`useNow`), and coloured by urgency (`waitUrgency`): new under 30
@@ -190,12 +207,13 @@ The same order process, split by who uses it:
   ⚠ The colours are tints of the theme's `primary`, so they follow the theme
   picker; the status colours are fixed across palettes and would not
   (`wait-badge.tsx`).
-- **Where:** on a phone, Sell is Take orders and the till is not offered. On
-  the Apps page, Sell has tabs: **Take orders**, **Cashier** (only with
-  `pos:take_payment`) and **Classic**, the keyboard till as it was before
-  issue #23, kept as an option (without Pay for somebody without the key).
-  Remembered per device (`kwtech:pos-sell-mode`). `sellModeFor` never reopens Cashier for somebody who
-  lost the key.
+- **Where:** on a phone, Sell is Take orders and the till is not offered.
+  On the full screen (the Apps page) Take orders is NOT offered — it is
+  built for a phone, and Cashier does all it does there. Sell has two tabs,
+  **Cashier** (only with `pos:take_payment`) and **Classic**, the keyboard
+  till as it was before issue #23; somebody without the key gets Classic
+  alone (without Pay, ending at "Hold for the cashier"), and no tabs.
+  Remembered per device (`kwtech:pos-sell-mode`).
 - ⚠ **An order never held is listed nowhere**, so neither screen lets it be
   left for another (`canLeaveOrder`): it asks for Hold first.
 
@@ -221,8 +239,9 @@ there too, from Settings.
   saved with the list by `savePosReferenceOptions`, refused unless it is one
   of the options, dropped when its option is removed). `createPosOrder`
   starts every new order on both; a reference typed when creating wins.
-- **At the till:** `OrderTypePicker`, a row of buttons — on the Classic
-  till's cart, and large in the Take orders sheet. Tapping the chosen one
+- **At the till:** `OrderTypePicker`, a row of buttons labelled "Order
+  type", only inside the order — the Classic till's order panel, and large in
+  the Take orders sheet, never on the items screen. Tapping the chosen one
   again clears it. The type shows on the held-order chips, the Cashier's
   cards ("Dine-in · 3 items"), the on-screen and printed receipt, and the
   order's details.

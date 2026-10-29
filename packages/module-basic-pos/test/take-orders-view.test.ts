@@ -2,6 +2,7 @@ import type { PosCatalogueView, PosItemView } from '../src/react/pos-client.js';
 import {
   canLeaveOrder,
   countOnOrder,
+  hasMoreToRead,
   heldOrderDetail,
   heldOrderTitle,
   initiallyOpenGroups,
@@ -131,24 +132,25 @@ describe('the order on the Take orders view', () => {
   });
 });
 
-describe('which half of Sell opens on the full screen', () => {
+describe('which Sell opens on the full screen', () => {
   it('opens what this device last showed', () => {
-    expect(sellModeFor('take_orders', true)).toBe('take_orders');
     expect(sellModeFor('cashier', true)).toBe('cashier');
     expect(sellModeFor('classic', true)).toBe('classic');
-  });
-
-  it('keeps the classic till for somebody who may not take payment — it shows without Pay', () => {
     expect(sellModeFor('classic', false)).toBe('classic');
   });
 
   it('⚠ never opens Cashier for somebody who may not take payment, whatever was remembered', () => {
-    expect(sellModeFor('cashier', false)).toBe('take_orders');
+    expect(sellModeFor('cashier', false)).toBe('classic');
   });
 
-  it('defaults to Cashier for a cashier and Take orders for a seller', () => {
+  it('defaults to Cashier for a cashier and Classic for a seller', () => {
     expect(sellModeFor(null, true)).toBe('cashier');
-    expect(sellModeFor('nonsense', false)).toBe('take_orders');
+    expect(sellModeFor(null, false)).toBe('classic');
+  });
+
+  it('⚠ reads a remembered Take orders — the full screen’s until it left — as nothing', () => {
+    expect(sellModeFor('take_orders', true)).toBe('cashier');
+    expect(sellModeFor('take_orders', false)).toBe('classic');
   });
 });
 
@@ -197,5 +199,19 @@ describe('order types on the order', () => {
   it('puts the type first on a held order’s line, and leaves it out when there is none', () => {
     expect(heldOrderDetail({ orderTypeName: 'Dine-in', itemCount: 3 })).toBe('Dine-in · 3 items');
     expect(heldOrderDetail({ orderTypeName: null, itemCount: 1 })).toBe('1 item');
+  });
+});
+
+describe('ⓘ on an item’s row', () => {
+  it('is offered for an item with a description, or a name the row may cut', () => {
+    expect(hasMoreToRead({ name: 'Bulalo', description: 'Beef shank soup, slow-cooked' })).toBe(true);
+    expect(hasMoreToRead({ name: 'Bulalo special with bone marrow and corn, family size', description: null })).toBe(
+      true,
+    );
+  });
+
+  it('is not offered when the row already shows it all', () => {
+    expect(hasMoreToRead({ name: 'Rice', description: null })).toBe(false);
+    expect(hasMoreToRead({ name: 'Rice', description: '   ' })).toBe(false);
   });
 });

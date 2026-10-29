@@ -107,25 +107,27 @@ export function canLeaveOrder(
 }
 
 /**
- * The ways Sell shows on the full screen (issue #23): the two halves of one
- * sale, and the keyboard till as it was before them, kept as an option (the
- * operator, 2026-10-29).
+ * The ways Sell shows on the full screen (issue #23): Cashier, and the
+ * keyboard till as it was, kept as an option (the operator, 2026-10-29).
+ * Take orders is not one of them: it is the phone's, and Cashier does all it
+ * does on a big screen.
  */
-export type PosSellMode = 'take_orders' | 'cashier' | 'classic';
+export type PosSellMode = 'cashier' | 'classic';
 
 /**
  * Which one Sell opens with: the one this device last showed, when the person
- * may still use it, else Cashier for somebody who may take payment (the till
- * at the cashier's window) and Take orders for everybody else.
+ * may still use it, else Cashier for somebody who may take payment and
+ * Classic for everybody else (the till without Pay, ending at Hold).
  *
  * ⚠ A remembered Cashier never opens for somebody who lost `pos:take_payment`:
- * it would offer a board whose every payment the server refuses. Classic is
- * for anybody who may sell; without the key it is the till without Pay.
+ * it would offer a board whose every payment the server refuses. Anything
+ * else remembered — "take_orders" from before it left the full screen — is
+ * read as nothing.
  */
 export function sellModeFor(saved: string | null, canTakePayment: boolean): PosSellMode {
-  if (saved === 'take_orders' || saved === 'classic') return saved;
+  if (saved === 'classic') return 'classic';
   if (saved === 'cashier' && canTakePayment) return 'cashier';
-  return canTakePayment ? 'cashier' : 'take_orders';
+  return canTakePayment ? 'cashier' : 'classic';
 }
 
 /**
@@ -164,4 +166,21 @@ export function waitText(minutes: number): string {
   if (hours < 24) return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
   const days = Math.floor(hours / 24);
   return hours % 24 === 0 ? `${days} d` : `${days} d ${hours % 24} h`;
+}
+
+/**
+ * How long a name may be before its row offers ⓘ: past this, the row's two
+ * lines can cut it. A guess by length, not a measurement — measuring every
+ * row's text after layout would cost a pass per row for a hint.
+ */
+export const POS_LONG_NAME_CHARS = 40;
+
+/**
+ * Whether an item's row offers ⓘ, a sheet with its whole text (the operator,
+ * 2026-10-29): the row cuts a long name and the description with "…", so an
+ * item with a description, or a name past `POS_LONG_NAME_CHARS`, has more to
+ * read than the row shows.
+ */
+export function hasMoreToRead(item: Pick<PosItemView, 'name' | 'description'>): boolean {
+  return Boolean(item.description?.trim()) || item.name.trim().length > POS_LONG_NAME_CHARS;
 }

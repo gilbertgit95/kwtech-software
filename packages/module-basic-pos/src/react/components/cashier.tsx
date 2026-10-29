@@ -1,9 +1,11 @@
 'use client';
 
 import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
+import { type CSSProperties, useId, useState } from 'react';
 import { useNow } from '../use-now.js';
 import type { TillState } from '../use-till.js';
 import { formatPeso } from '../view/money.js';
+import { WAITING_COLUMN_RULES, WAITING_COLUMN_STORAGE_KEY } from '../view/order-panel.js';
 import {
   canLeaveOrder,
   heldOrderDetail,
@@ -13,6 +15,7 @@ import {
   waitText,
   waitUrgency,
 } from '../view/take-orders.js';
+import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { Till } from './till.js';
 import { WaitBadge } from './wait-badge.js';
 
@@ -38,6 +41,15 @@ export function Cashier({ state }: { state: TillState }) {
   const open = state.order?.status === 'open' ? state.order : null;
   const now = useNow();
   const oldest = state.pending[0];
+  const columnId = useId();
+  /*
+   * The column's width, dragged by its RIGHT edge like the order panel's left
+   * (the operator, 2026-10-29). Read in the initialiser so it arrives at its
+   * remembered width; the Apps page renders the POS only after hydration.
+   */
+  const [columnWidth, setColumnWidth] = useState(() =>
+    readPanelWidth(WAITING_COLUMN_RULES, WAITING_COLUMN_STORAGE_KEY),
+  );
 
   const openOrder = (orderId: string) => {
     if (open?.id === orderId) return;
@@ -55,9 +67,21 @@ export function Cashier({ state }: { state: TillState }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 @4xl:flex-row">
       <section
+        id={columnId}
         aria-label="Waiting for payment"
-        className="flex max-h-64 min-h-0 shrink-0 flex-col gap-2 rounded-lg border border-border bg-card p-3 @4xl:max-h-none @4xl:w-80"
+        // A variable the side-by-side layout reads: an inline `width` would also size the stacked one.
+        style={{ '--pos-waiting-width': `${columnWidth}px` } as CSSProperties}
+        className="relative flex max-h-64 min-h-0 shrink-0 flex-col gap-2 rounded-lg border border-border bg-card p-3 @4xl:max-h-none @4xl:w-[var(--pos-waiting-width)] @4xl:max-w-[40%]"
       >
+        <PanelEdgeHandle
+          panelId={columnId}
+          label="Resize the orders waiting for payment"
+          width={columnWidth}
+          rules={WAITING_COLUMN_RULES}
+          storageKey={WAITING_COLUMN_STORAGE_KEY}
+          shownClass="@4xl:flex"
+          onResize={setColumnWidth}
+        />
         <div>
           <h2 className="flex items-baseline justify-between text-sm font-semibold">
             Waiting for payment

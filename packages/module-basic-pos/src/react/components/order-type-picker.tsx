@@ -14,15 +14,21 @@ import { liveOrderTypes } from '../view/take-orders.js';
  * - On a clear till a tap starts the order: the server starts it on the
  *   store's defaults (type and reference), then sets the one tapped.
  * - `large` is the phone's: buttons a thumb can hit, in a row that scrolls.
+ * - INSIDE THE ORDER, never on the items screen (the operator, 2026-10-29):
+ *   the Take orders sheet and the till's order panel. Named "Order type" on
+ *   screen there, since nothing else beside it says what the buttons are.
  */
 export function OrderTypePicker({
   state,
   order,
   large = false,
+  labelled = false,
 }: {
   state: TillState;
   order: PosOrderView | null;
   large?: boolean;
+  /** Says "Order type" before the buttons, where nothing else around says what they are. */
+  labelled?: boolean;
 }) {
   const types = state.catalogue ? liveOrderTypes(state.catalogue) : [];
   if (types.length === 0) return null;
@@ -34,7 +40,12 @@ export function OrderTypePicker({
   return (
     <fieldset className="min-w-0">
       <legend className="sr-only">Order type</legend>
-      <div className={cn('flex gap-1.5', large ? '-mx-1 overflow-x-auto px-1 pb-1' : 'flex-wrap')}>
+      <div className={cn('flex items-center gap-1.5', large ? '-mx-1 overflow-x-auto px-1 pb-1' : 'flex-wrap')}>
+        {labelled ? (
+          <span aria-hidden="true" className="shrink-0 pr-1 text-xs font-medium text-muted-foreground">
+            Order type
+          </span>
+        ) : null}
         {types.map((type) => {
           const chosen = order?.orderTypeId === type.id;
           return (

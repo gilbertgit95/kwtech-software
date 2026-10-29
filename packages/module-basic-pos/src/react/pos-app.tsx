@@ -13,7 +13,6 @@ import { SectionBar } from './components/layout.js';
 import { OrdersSection } from './components/orders-section.js';
 import { ReportsSection } from './components/reports-section.js';
 import { SettingsSection } from './components/settings-section.js';
-import { TakeOrders } from './components/take-orders.js';
 import { Till } from './components/till.js';
 import type { PosClient } from './pos-client.js';
 import { usePosData } from './use-pos-data.js';
@@ -23,15 +22,17 @@ import { type PosSellMode, sellModeFor } from './view/take-orders.js';
 type Section = 'sell' | 'orders' | 'items' | 'customers' | 'reports' | 'settings';
 
 /**
- * Which half of Sell this device showed last (issue #23), per device like the
- * order panel's width: the phone at a table takes orders, the screen at the
- * window is the cashier's, and the same person may use both.
+ * Which Sell this device showed last (issue #23), per device like the order
+ * panel's width: Cashier or Classic. Take orders is the phone's alone.
  */
 const SELL_MODE_STORAGE_KEY = 'kwtech:pos-sell-mode';
 
-/** The Sell tabs on the full screen, in order. "Classic" is the keyboard till from before issue #23. */
+/**
+ * The Sell tabs on the full screen, in order. "Classic" is the keyboard till
+ * from before issue #23. NO TAKE ORDERS here (the operator, 2026-10-29): it
+ * is built for a phone, and Cashier does all it does on a big screen.
+ */
 const SELL_MODES: readonly { mode: PosSellMode; label: string }[] = [
-  { mode: 'take_orders', label: 'Take orders' },
   { mode: 'cashier', label: 'Cashier' },
   { mode: 'classic', label: 'Classic' },
 ];
@@ -77,6 +78,7 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
   const [savedMode, setSavedMode] = useState<string | null>(null);
   useEffect(() => setSavedMode(readSellMode()), []);
   const sellMode = sellModeFor(savedMode, state.canTakePayment);
+  const sellTabs = SELL_MODES.filter((one) => one.mode !== 'cashier' || state.canTakePayment);
   const chooseSellMode = (mode: PosSellMode) => {
     setSavedMode(mode);
     writeSellMode(mode);
@@ -142,25 +144,26 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
             </div>
           ) : null}
           {/*
-           * Two halves of one sale (issue #23) — sellers hold, the cashier pays — and the keyboard till as it
-           * was, kept as an option (the operator, 2026-10-29). Cashier only for somebody who may take payment.
+           * Cashier (issue #23: the held orders beside the till) and the keyboard till as it was, kept as an
+           * option. Cashier only for somebody who may take payment; with one option left, no tabs at all.
            */}
-          <div role="tablist" aria-label="Sell" className="flex shrink-0 gap-1 self-start rounded-lg bg-muted p-1">
-            {SELL_MODES.filter((one) => one.mode !== 'cashier' || state.canTakePayment).map(({ mode, label }) => (
-              <button
-                key={mode}
-                type="button"
-                role="tab"
-                aria-selected={sellMode === mode}
-                className={buttonClass(sellMode === mode ? 'primary' : 'ghost', 'sm')}
-                onClick={() => chooseSellMode(mode)}
-              >
-                {label}
-                {mode === 'cashier' && state.pending.length > 0 ? ` (${state.pending.length})` : ''}
-              </button>
-            ))}
-          </div>
-          {sellMode === 'take_orders' ? <TakeOrders state={state} /> : null}
+          {sellTabs.length > 1 ? (
+            <div role="tablist" aria-label="Sell" className="flex shrink-0 gap-1 self-start rounded-lg bg-muted p-1">
+              {sellTabs.map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={sellMode === mode}
+                  className={buttonClass(sellMode === mode ? 'primary' : 'ghost', 'sm')}
+                  onClick={() => chooseSellMode(mode)}
+                >
+                  {label}
+                  {mode === 'cashier' && state.pending.length > 0 ? ` (${state.pending.length})` : ''}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {sellMode === 'cashier' ? <Cashier state={state} /> : null}
           {sellMode === 'classic' ? <Till state={state} /> : null}
         </>
