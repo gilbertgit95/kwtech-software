@@ -19,7 +19,7 @@ import type { ChatMyAvailabilityView } from '../chat-client.js';
  */
 
 /** ⚠ Written out rather than derived: each needs a name a person would use. */
-const LABELS: Record<string, string> = {
+export const AVAILABILITY_LABELS: Readonly<Record<string, string>> = {
   available: 'Available',
   busy: 'Busy',
   dnd: 'Do not disturb',
@@ -34,7 +34,7 @@ const LABELS: Record<string, string> = {
  * these two agree by construction — and the option has to exist, because the
  * commonest answer is that somebody does not want their state quietly reverting.
  */
-const DURATIONS: readonly { minutes: number | null; label: string }[] = [
+export const AVAILABILITY_DURATIONS: readonly { minutes: number | null; label: string }[] = [
   { minutes: null, label: 'Until I change it' },
   { minutes: 30, label: 'For 30 minutes' },
   { minutes: 60, label: 'For 1 hour' },
@@ -74,7 +74,7 @@ export function AvailabilityPicker({
       >
         {AVAILABILITY_ORDER.map((value) => (
           <option key={value} value={value}>
-            {LABELS[value] ?? value}
+            {AVAILABILITY_LABELS[value] ?? value}
           </option>
         ))}
       </select>
@@ -106,8 +106,8 @@ export function AvailabilityPicker({
               server holds a moment, and this cannot name the duration it came
               from.
             */}
-            {timed ? <option value="timed">{`Until ${clock(mine.clearAt)}`}</option> : null}
-            {DURATIONS.map((option) => (
+            {timed ? <option value="timed">{`Until ${availabilityClock(mine.clearAt)}`}</option> : null}
+            {AVAILABILITY_DURATIONS.map((option) => (
               <option key={option.label} value={option.minutes ?? ''}>
                 {option.label}
               </option>
@@ -119,7 +119,8 @@ export function AvailabilityPicker({
   );
 }
 
-function clock(iso: string | null): string {
+/** "3:30 PM": when a timed availability ends. Shared with the phone's list (issue #22). */
+export function availabilityClock(iso: string | null): string {
   if (!iso) return '';
   const at = new Date(iso);
   return Number.isNaN(at.getTime()) ? '' : at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });

@@ -3,6 +3,7 @@
 import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   Ban,
+  ChevronLeft,
   Hand,
   Hash,
   Keyboard,
@@ -64,7 +65,27 @@ type Dialog =
  * match (an exact code wins, D19), "100*" sets the quantity first (D20), and
  * every act's answer is the order as the server now holds it.
  */
-export function Till({ state }: { state: TillState }) {
+export function Till({
+  state,
+  phone = false,
+}: {
+  state: TillState;
+  /**
+   * The PHONE's till (issue #22). On a phone the items and the order cannot
+   * share the screen: stacked, the order took all the height and left the
+   * items none. So the item grid fills the screen, the order waits in a
+   * summary bar at the foot ("2 items · ₱250 · View order") and opens over the
+   * items with "‹ Items" — and opens by itself to show the receipt after a
+   * sale. A phone has no function keys either, so the shortcut bar and its
+   * help go, and the search does not take focus on arrival, which would push
+   * the keyboard over the till before anybody asked to type.
+   *
+   * The same till in every other respect: one order, kept as it is built.
+   */
+  phone?: boolean;
+}) {
+  /** Phone only: whether the order is open over the items. */
+  const [orderShown, setOrderShown] = useState(false);
   const [query, setQuery] = useState('');
   /** The match ↑ ↓ are on in the search results, and the one Enter adds. The first, until an arrow moves it. */
   const [activeResult, setActiveResult] = useState(0);
@@ -340,7 +361,7 @@ export function Till({ state }: { state: TillState }) {
         if (dialog.kind === 'none' && document.activeElement === document.body) focusHome();
       }}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3 @3xl:flex-row">
+      <div className={cn('flex min-h-0 flex-1 flex-col gap-3', phone ? 'relative' : '@3xl:flex-row')}>
         {/* ── search and the grid ─────────────────────────────────────────── */}
         <section aria-label="Items" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
           <label className="sr-only" htmlFor={searchId}>
@@ -351,8 +372,8 @@ export function Till({ state }: { state: TillState }) {
             ref={searchRef}
             type="search"
             autoComplete="off"
-            // biome-ignore lint/a11y/noAutofocus: the till's search is where a cashier starts every sale (D20).
-            autoFocus
+            // biome-ignore lint/a11y/noAutofocus: the till's search is where a cashier starts every sale (D20) — not on a phone, where focus raises the keyboard.
+            autoFocus={!phone}
             placeholder="Search or scan · 100* for quantity"
             className={cn(INPUT_CLASS, 'h-11 text-base')}
             value={query}
@@ -401,10 +422,45 @@ export function Till({ state }: { state: TillState }) {
         </section>
 
         {/* ── the order ───────────────────────────────────────────────────── */}
+        {/* Phone: the order's summary at the foot, while the order itself is closed. */}
+        {phone && !finished && !orderShown ? (
+          <button
+            type="button"
+            onClick={() => setOrderShown(true)}
+            className="flex min-h-14 shrink-0 items-center justify-between gap-3 rounded-2xl bg-primary px-4 text-left text-primary-foreground shadow-md transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <span className="min-w-0">
+              <span className="block text-xs opacity-80">
+                {open && open.lines.length > 0
+                  ? `${itemCount(open.lines)} ${itemCount(open.lines) === 1 ? 'item' : 'items'}`
+                  : 'No items yet'}
+              </span>
+              <span className="block text-lg font-semibold tabular-nums">{formatPeso(open?.total ?? 0)}</span>
+            </span>
+            <span className="shrink-0 text-sm font-medium">View order ›</span>
+          </button>
+        ) : null}
+
         <section
           aria-label="Order"
-          className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3 @3xl:w-[22rem] @3xl:shrink-0"
+          // Phone: over the items, the whole till's height — and HIDDEN rather than unmounted while
+          // closed, so the cart keeps its refs and its line selection.
+          hidden={phone && !finished && !orderShown}
+          className={cn(
+            'flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3',
+            phone ? 'absolute inset-0 z-10 rounded-2xl shadow-lg' : '@3xl:w-[22rem] @3xl:shrink-0',
+          )}
         >
+          {phone && !finished ? (
+            <button
+              type="button"
+              onClick={() => setOrderShown(false)}
+              className="-mt-1 -ml-1 flex min-h-10 w-fit items-center gap-0.5 rounded-full pr-3 pl-1 text-sm font-medium text-primary transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronLeft aria-hidden="true" className="size-4" />
+              Items
+            </button>
+          ) : null}
           {finished ? (
             <Receipt
               order={finished}
@@ -413,6 +469,8 @@ export function Till({ state }: { state: TillState }) {
               onNext={() => {
                 state.clear();
                 close();
+                // Phone: the next sale starts on the items, not on an empty order.
+                setOrderShown(false);
               }}
             />
           ) : (
@@ -424,6 +482,7 @@ export function Till({ state }: { state: TillState }) {
               selectedLineId={selectedLineId}
               onSelect={setSelectedLineId}
               onDialog={setDialog}
+              phone={phone}
             />
           )}
         </section>
@@ -543,7 +602,10 @@ export function Till({ state }: { state: TillState }) {
         />
         <ShortcutHelp open={dialog.kind === 'help'} state={state} onClose={close} />
       </div>
-      <ShortcutBar zone={zone} state={state} onPress={(key) => perform(meaningOf(key, zone, state.keymap))} />
+      {/* No function keys on a phone: nothing for the bar to name. */}
+      {phone ? null : (
+        <ShortcutBar zone={zone} state={state} onPress={(key) => perform(meaningOf(key, zone, state.keymap))} />
+      )}
     </div>
   );
 }
@@ -710,6 +772,7 @@ function Cart({
   selectedLineId,
   onSelect,
   onDialog,
+  phone,
 }: {
   order: PosOrderView | null;
   state: TillState;
@@ -718,6 +781,8 @@ function Cart({
   selectedLineId: string | null;
   onSelect: (lineId: string | null) => void;
   onDialog: (dialog: Dialog) => void;
+  /** The phone's till: no keyboard-shortcut help, there being no keyboard. */
+  phone: boolean;
 }) {
   const { client, scope } = state;
   const lines = order?.lines ?? [];
@@ -731,15 +796,22 @@ function Cart({
             <span className="ml-1 font-normal text-muted-foreground">· {itemCount(lines)} items</span>
           ) : null}
         </h2>
+        {phone ? null : (
+          <button
+            type="button"
+            aria-label="Keyboard shortcuts"
+            className={cn(buttonClass('ghost', 'sm'), 'ml-auto')}
+            onClick={() => onDialog({ kind: 'help' })}
+          >
+            <Keyboard aria-hidden="true" className="size-3.5" />
+          </button>
+        )}
         <button
           type="button"
-          aria-label="Keyboard shortcuts"
-          className={cn(buttonClass('ghost', 'sm'), 'ml-auto')}
-          onClick={() => onDialog({ kind: 'help' })}
+          // Pushed right by the shortcut button on the desktop; on a phone, which has none, by itself.
+          className={cn(buttonClass('ghost', 'sm'), phone ? 'ml-auto' : null)}
+          onClick={() => onDialog({ kind: 'pending' })}
         >
-          <Keyboard aria-hidden="true" className="size-3.5" />
-        </button>
-        <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => onDialog({ kind: 'pending' })}>
           <ListOrdered aria-hidden="true" className="size-3.5" />
           Pending{state.pending.length > 0 ? ` (${state.pending.length})` : ''}
         </button>

@@ -601,12 +601,117 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 119 | Stock does not reach the books or the POS's costs: receiving is not recorded as a purchase, and a service's cost is not worked out from its materials | when entering a delivery twice (stock and books) or a service's cost by hand is felt (INVENTORY-PLAN I7, I10) | The Products section shows each product's materials cost per sale, read-only. Receiving into the books would be a port from stock to the books (supplies, or stock for resale); a service's cost would be proposed to the POS, never written behind the manager's back |
 | 120 | The installed app has no offline handling: opened without a connection it shows the browser's own error page, not one of ours | when someone uses it where the connection drops (a shop floor, a delivery) | No service worker on purpose (§13, 2026-10-25): a worker that caches pages can serve a signed-out person a signed-in page, or yesterday's build. The first one should cache NOTHING but an offline page and the icons, and never a document or `/api/*` |
 | 121 | No web push: notifications reach a person only while a page is open | when someone must be told with the app closed (a booking, a queue call) | A service worker plus a delivery channel in `module-notification` (a `notify_push_subscription` per device, VAPID keys in the env profile, `sendSafely` fanning out). iPhone delivers only to an app on the home screen, iOS 16.4 and later |
-| 122 | The installed app is the whole site: there is no phone-first section with only a few screens | when the features for a mobile app are chosen | A `/m` section in this app with its own layout and its own manifest (`start_url: '/m'`, a separate `id`), reusing the modules' pages. A native app (Expo, `apps/mobile-app` + `/native` subpaths, §10) only if a device feature the browser lacks is needed; auth already allows it (the API sets no cookies) |
+| 122 | ~~The installed app is the whole site: there is no phone-first section with only a few screens~~ **Closed** | — | **One set of addresses, a layout per device (§13, 2026-10-29, issue #22).** `proxy.ts` rewrites a phone's `/` and `/organizations/...` to the phone page; modules opt in with `/mobile` screens. A native app only if a device feature the browser lacks is needed |
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-29** — **Phones get a layout of their own at the SAME addresses, chosen per request by the proxy; modules opt in screen by screen (issue #22).**
+
+  The operator asked for a light layout for phones, for sellers and other
+  people who work in a workspace rather than administer it. §12.122 had
+  proposed a `/m` section; it was weighed against one set of addresses and
+  dropped.
+  - **`proxy.ts` decides, before anything renders.** `userAgent()`'s
+    `device.type === 'mobile'`, unless `kwtech_layout` (`mobile` | `full`)
+    says otherwise; tablets stay on the desktop shell. A phone's request is
+    REWRITTEN to `app/mobile/[[...slug]]`, so the address bar keeps the URL
+    asked for, and the renewed session token rides on the rewritten request.
+  - **An allowlist: `/` and `/organizations/...` only.** Sign-in, two-step and
+    reset stay one shared set of pages (already a single narrow column), and
+    every public page is untouched. A page added later is never sent to the
+    phone page by accident.
+  - **The phone page imports `MOBILE_SCREENS`, never `WEB_MODULES`.** Measured
+    on the 2026-10-26 build: every module page loads ~1.15 MB gzipped, of
+    which ~0.45 MB is the catch-all's every-module import; the phone page
+    skips that. The other ~0.70 MB is the root layout, shared by both.
+  - **module-kit: `MobileModuleDescriptor` and `composeMobileScreens`.** A
+    module offers screens from a `/mobile` subpath, each with a required
+    workspace-level `feature`; a module that offers none is not on phones.
+  - **The frame:** a top bar (workspace switcher, account sheet with theme,
+    full site, install, sign out) and a FIXED bottom bar — Home and Apps now,
+    Chat, Inbox and Manage as they are built, five at most, each only when
+    something is behind it. Apps are launched from the Apps tab or pinned to
+    Home (pins per workspace, in the browser); inside one, "‹ Apps" and a
+    strip of the app's sections. Visited apps stay mounted; `?tab=`,
+    `?screen=` and `?section=` keep the place across a reload. One
+    organization or one workspace is entered without a picker. The first
+    version gave each screen its own bottom tab; the operator chose fixed
+    destinations instead, because a bar that grows a tab per app reshuffles
+    and runs out of room.
+  - **Switching place is one level per view:** a workspace list, and
+    "‹ Organizations" sliding to the organization list. Organizations and
+    workspaces on one screen were what the operator found confusing.
+  - **Permissions decide on the server, before the phone sees anything:** an
+    app needs its `feature`, a section its own (`MobileSectionContribution`);
+    the frame is handed only what passed.
+  - **Administration is a Manage tab of its own (`MobileManageContribution`),
+    grouped workspace / organization / platform.** Each page is filtered at
+    its level's reading: workspace effective, organization effective (one
+    more field on the drawer's nav query, so a super admin is not cut by a
+    plan the guard would let them past), or app-level grants. The tab shows
+    only when a page passes. Separate from screens because it answers to the
+    people who run a workspace, not those who work in it.
+  - **Chat and the Inbox are bottom-bar TABS (`MobileTabContribution`), from
+    `module-chat/mobile` and `module-notification/mobile`.** They belong to the
+    person, so they are filtered at APP level like the header tools they stand
+    in for. Five destinations at most; a module tab past that is left off.
+    The Inbox's always-mounted badge is the phone's notification centre
+    (count, toasts, tab title). `check:boundaries` now holds `/mobile` to
+    `/react`'s rule: never `/server`.
+  - **A phone can never open the full site** (the operator, the same day).
+    `chooseLayout` ignores the `full` cookie on a phone; the phone layout
+    hides "Use full site" and every "Open full site" button there
+    (`canUseFullSite`); and `AppShell`, the shell every signed-in desktop page
+    renders through, draws the phone frame with "not on the mobile view yet —
+    open it on a computer" instead of itself. Computers and tablets keep the
+    switch. ⚠ The cost: on a phone, administration, two-step verification
+    and the chat and notification preferences are unreachable until each has
+    a phone version (profile, password and display followed the same day).
+  - **Account settings on the phone, and display sizes PER LAYOUT** (the
+    operator, the same day). Profile, Password and Display open as
+    full-screen panels from the phone's account sheet
+    (`@kwtech/module-auth/mobile`). Display sizes are now kept per account
+    AND layout — `auth_display_preference` keyed `(userId, layout)`,
+    migration `20261029120000_auth_display_per_layout`; existing rows became
+    `desktop` — because sizes chosen for a desk are wrong at arm's length.
+    `myDisplay(layout)` defaults to `desktop`, so nothing that called it
+    before changed. Two-step verification and "sign out everywhere" are
+    still full-site only.
+  - **Display sizes and the layout choice are per person AND device** (the
+    operator, the same day: "a user might have multiple devices, and desktop
+    settings must not affect mobile"). Sizes: this device's own for the layout
+    → the account's for the layout → defaults; `auth_display_preference` keyed
+    `(userId, layout, deviceId)`, migration
+    `20261029180000_auth_display_per_device`, existing rows the account's
+    (`deviceId ''`). A device is a random id the proxy issues in a
+    five-year, non-httpOnly cookie (`kwtech_device`) — not a credential, it
+    only keeps one person's rows apart; the API takes the user from the
+    session, never the request. The layout choice: one cookie per person
+    (`kwtech_layout_<userId>`), the proxy reading whose from the session
+    token's `sub` UNVERIFIED — acceptable only because it picks a layout,
+    never access. **Not done:** naming devices or listing them ("my iPhone"),
+    and clearing a device's rows at sign-out — a device's sizes outlive the
+    session on purpose.
+  - **Not done on the phone: chat's message tone** (the desktop header tool
+    plays it) **and the chat and notification preference pages**, which stay
+    on the full site.
+  - **No new permission key.** The phone offers what the viewer already holds
+    and nothing more; permissions reach screens through module-kit's
+    `FeatureAccessProvider`, not the permissions module's React layer.
+  - **Not done: a `/m` section** — every link would need a phone twin, and a
+    desktop link opened on a phone would land on the desktop page.
+  - **Not done: desktop pages squeezed into the phone frame.** They are not in
+    the phone's bundle, which is what keeps it light; such a page says it is
+    not on the mobile view and offers the full site.
+  - **Not done: workspace apps and Manage pages.** POS, notes and tasks, and
+    the first administration pages (members, roles), are each their own
+    change.
+  - **Not done: `Vary: User-Agent, Cookie`.** Next writes the page's own
+    `Vary` over one set in the proxy. Safe while these pages are `no-store`;
+    a CDN put in front must bypass them.
 
 - **2026-10-26** — **Database backups: a super admin's page, a daily 9 PM backup and the command line, with nothing about them in the database (issue #2).**
 

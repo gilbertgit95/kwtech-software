@@ -201,6 +201,116 @@ apps: [{ key: 'queue', label: 'Queue', icon: 'megaphone', feature: QUEUE_FEATURE
   `key`. The web app hands the result to `appHubWebModule({ apps })`, so the Apps
   page never imports a sub-app.
 
+## Mobile screens: the phone layout
+
+On a phone the web app shows a layout of its own (issue #22): a top bar, a
+FIXED bottom bar (Home, Apps, the modules' tabs such as Chat and Inbox, then
+Manage — each only when something is behind it), and
+one app at a time, full screen. Apps are launched from the **Apps** tab or
+pinned to **Home**; inside one, the top bar reads **‹ Apps** and the app's
+sections sit in a strip of chips under it. It is **opt-in per module**: a
+module that declares no screen is not on phones at all, and nothing about its
+desktop pages changes.
+
+A module offers screens from a `/mobile` subpath, exporting a
+`MobileModuleDescriptor`:
+
+```ts
+// src/mobile/module.tsx  → "@kwtech/module-x/mobile"
+export function posMobileModule(): MobileModuleDescriptor {
+  return {
+    key: 'pos',
+    screens: [{
+      key: 'pos', label: 'Point of sale', icon: 'store', feature: POS_FEATURE.read, order: 10,
+      sections: [
+        { key: 'sell', label: 'Sell', feature: POS_FEATURE.sell },
+        { key: 'orders', label: 'Orders' },
+        { key: 'items', label: 'Items', feature: POS_FEATURE.manageItems },
+      ],
+      component: PosMobileScreen,
+    }],
+  };
+}
+
+// inside PosMobileScreen
+const { section, open } = useMobileSection(); // '@kwtech/module-kit/react'
+```
+
+- **A screen is a smaller selection, not a second copy.** It may mount the
+  module's own components (the till without its section bar). Same API, same
+  keys.
+- **`component` gets `AppProps`** and fills the space between the bars; the
+  frame adds no padding. **It must not navigate**: the frame keeps visited
+  apps mounted, and a link away unmounts them all.
+- **`feature` is REQUIRED** and workspace level. The app is offered (launcher,
+  pins, `?screen=`) only to a viewer holding it, decided on the server before
+  anything reaches the phone; the API still authorises every request.
+- **`sections`** are optional. Each may carry its own `feature`, and one the
+  viewer does not hold is never drawn; a section with no `feature` goes to
+  everybody holding the app. The strip shows when two or more remain. The
+  frame owns which is open (`?section=`, survives a reload); the screen reads
+  it with **`useMobileSection()`**, which outside the phone frame answers
+  `null` so a component shared with the desktop draws its own default.
+- **`key` is kept in the address (`?screen=`), and so is each section's
+  (`?section=`).** Never rename one.
+- **`/mobile` follows `/react`'s rules:** client code, never `/server`, never
+  another module. A separate subpath, not `/react`, so the phone's page imports
+  none of the desktop pages.
+- **`composeMobileScreens(modules)`** collects them in `order` and throws on a
+  duplicate screen `key`, or a section `key` repeated within one screen. The
+  web app lists the modules once, in `apps/web-app/src/mobile-modules.ts`.
+
+### Manage pages: administration on the phone
+
+Administration goes on the phone's **Manage** tab, declared beside the
+screens as `manage` on the same descriptor:
+
+```ts
+manage: [
+  { key: 'org-members', label: 'Members & invitations', icon: 'users', level: 'organization',
+    feature: FEATURE.membersRead, order: 10, component: MobileMembersPage },
+],
+```
+
+- **`level`** is `workspace`, `organization` or `app` (the platform). It
+  decides which group the page sits in, and **which grants decide it**: the
+  open workspace's effective grants; the organization's effective grants
+  (granted, cut to the plan, app roles passing the plan as the guard lets
+  them); or app-level grants. The same readings the desktop drawer uses.
+- **`feature` is REQUIRED and must be a key of `level`.** A workspace key on
+  an organization page is checked against grants that never hold it, so the
+  page shows to nobody.
+- **The Manage tab appears only when at least one page passes.** Decided on the
+  server; the phone receives nothing else. The page's API authorises anyway.
+- **`component` gets `{ organizationId, workspaceId }`** (`MobileManageProps`),
+  null where its level has none. It opens full screen with "‹ Manage" and,
+  like a screen, **must not navigate**.
+- **`composeMobileManage(modules)`** orders them workspace, organization,
+  platform, then by `order`, and throws on a duplicate `key`.
+
+### Bottom-bar tabs: what belongs to the person
+
+Chat and the notification inbox belong to the person, not to the workspace
+that is open, so they are **bottom-bar destinations** (`tabs`) rather than
+apps:
+
+```ts
+tabs: [{ key: 'chat', label: 'Chat', icon: 'message', feature: CHAT_FEATURE.read, order: 10,
+         component: ChatMobileView, badge: ChatUnreadBadge }],
+```
+
+- **`feature` is APP level**, filtered as a header tool's is. Omit it only for
+  a tab every signed-in person may use.
+- **`component` and `badge` take no props** (they cross from a server page).
+  The view is mounted on its first visit and kept; the badge is always
+  mounted, which makes it the place for what must run on every screen (the
+  notification toasts).
+- **The bar holds five destinations** — Home, Apps and Manage among them when
+  shown. A tab past that is left off, never squeezed in. This is for the few
+  things somebody returns to all day, never a way onto the bar for an app.
+- **`composeMobileTabs(modules)`** orders them left to right and throws on a
+  duplicate `key` or on `home`, `apps` or `manage`, the frame's own names.
+
 ## Three declarations: features, limits, defaults
 
 A module declares three kinds of thing that a *different* module resolves. All

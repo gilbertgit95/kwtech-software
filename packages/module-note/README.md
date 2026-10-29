@@ -48,6 +48,18 @@ Sans and Mono are the app's own `--font-sans` / `--font-mono`. This app sets the
 in `apps/web-app/src/app/layout.tsx` with `next/font`, **`preload: false`**, so
 only a page that uses a face downloads it.
 
+### On a phone (issue #22)
+
+`@kwtech/module-note/mobile` offers the phone layout **Notes**, gated by
+`note:read`: `NotesMobileApp`, notes laid out for a phone on the same
+`useNotes` and `useNoteEditor` as `NoteApp` — the same list, autosave,
+conflict handling, keys and live updates. A LIST (search, All / Mine / Shared /
+Trash, tags, pinned first, cards with the note's colour, a round ＋), then a
+NOTE full screen with "‹ Notes", Edit / Done, Markdown when reading, and its
+actions — pin, share, colour, trash, restore, delete forever — in a
+`BottomSheet`. Going back saves first, and stays with the problem shown when it
+cannot. Not on the phone yet: earlier versions, and dragging notes into order.
+
 ## In a NestJS app
 
 ```ts

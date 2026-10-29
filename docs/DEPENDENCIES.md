@@ -65,9 +65,9 @@ of an app — and the others still build and run.
 src/index.ts, src/domain/, types.ts,      the pure core: no framework at all
 feature-keys.ts, operations.ts            (no Nest, React, Next, Prisma)
         ▲                    ▲
-src/server/  (→ /server)     src/react/  (→ /react)
-Nest, GraphQL                React, web-ui
-        ✗ /react never imports /server — server code stays out of the browser
+src/server/  (→ /server)     src/react/  (→ /react)    src/mobile/  (→ /mobile, optional)
+Nest, GraphQL                React, web-ui             the phone layout; may use its own /react
+        ✗ /react and /mobile never import /server — server code stays out of the browser
 ```
 
 ## How modules work together anyway: ports the app answers
@@ -115,7 +115,7 @@ code, not just the same shape (PLAN §9 rule 8).
 2. `module-kit` and `web-ui` import no other `@kwtech` package.
 3. No package imports an app, or reaches into another package's `src/` —
    public entry points only.
-4. A module's `/react` never imports its `/server`.
+4. A module's `/react` and `/mobile` never import its `/server`.
 5. A module's pure core imports no framework.
 6. A module's `package.json` lists only `module-kit` and `web-ui` among
    `@kwtech/*`.
