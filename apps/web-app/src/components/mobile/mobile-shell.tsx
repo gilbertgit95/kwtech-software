@@ -129,7 +129,7 @@ export async function MobileShell({
       ) : (
         <AccountDisplay display={display} />
       )}
-      <FullSiteProvider allowed={fullSiteAllowed}>
+      <FullSiteProvider allowed={fullSiteAllowed} userId={viewer.id}>
         <FeatureAccessProvider value={permissions?.effective ?? []}>
           <SessionKeeper expiresAt={expiresAt} />
           <ConnectivityMonitor />

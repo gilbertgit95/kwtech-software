@@ -45,9 +45,11 @@ interface UserMenuProps {
    * the request, by `offersMobileView`.
    */
   offerMobileView?: boolean;
+  /** The signed-in person, whose layout choice the switch saves — per person on each device. */
+  userId: string;
 }
 
-export function UserMenu({ name, email, accountNav = [], roles = [], offerMobileView = false }: UserMenuProps) {
+export function UserMenu({ name, email, accountNav = [], roles = [], offerMobileView = false, userId }: UserMenuProps) {
   const initials = initialsOf(name, email);
   // `||`, not `??`: an empty-string display name is as absent as a null one,
   // and it comes from a nullable column.
@@ -156,7 +158,10 @@ export function UserMenu({ name, email, accountNav = [], roles = [], offerMobile
            */}
           {offerMobileView ? (
             <>
-              <DropdownMenuItem onSelect={() => switchLayout('mobile')} className="gap-2.5 rounded-lg px-2 py-2">
+              <DropdownMenuItem
+                onSelect={() => switchLayout('mobile', userId)}
+                className="gap-2.5 rounded-lg px-2 py-2"
+              >
                 <MonitorSmartphone aria-hidden className="opacity-80" />
                 Use mobile view
               </DropdownMenuItem>

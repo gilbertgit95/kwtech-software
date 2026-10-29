@@ -1,6 +1,7 @@
-import type { Viewer } from '@kwtech/module-auth';
+import { AUTH_DEVICE_COOKIE, isAuthDeviceId, type Viewer } from '@kwtech/module-auth';
 import { getSessionToken } from '@kwtech/module-auth/next';
 import type { PermissionContext } from '@kwtech/module-permissions';
+import { cookies } from 'next/headers';
 import { cache } from 'react';
 
 /**
@@ -58,11 +59,11 @@ import { cache } from 'react';
  */
 
 const SESSION_QUERY = `
-  query Session($organizationId: String, $workspaceId: String) {
+  query Session($organizationId: String, $workspaceId: String, $device: String) {
     viewer { id email username displayName }
     session { expiresAt }
-    myDisplay { textSize spacing }
-    mobileDisplay: myDisplay(layout: "mobile") { textSize spacing }
+    myDisplay(device: $device) { textSize spacing }
+    mobileDisplay: myDisplay(layout: "mobile", device: $device) { textSize spacing }
     myOrganizations {
       organizationId
       organizationKey
@@ -566,6 +567,8 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
   if (!token) return SIGNED_OUT;
 
   const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+  const device = (await cookies()).get(AUTH_DEVICE_COOKIE)?.value;
+  const deviceId = isAuthDeviceId(device) ? device : null;
 
   try {
     const response = await fetch(`${apiUrl}/graphql`, {
@@ -573,7 +576,17 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({
         query: SESSION_QUERY,
-        variables: { organizationId: scope.organizationId ?? null, workspaceId: scope.workspaceId ?? null },
+        variables: {
+          organizationId: scope.organizationId ?? null,
+          workspaceId: scope.workspaceId ?? null,
+          /*
+           * This device (the proxy issues the id on the first visit): its own
+           * display sizes when it has them, else the account's for the layout.
+           * An id that is not one the app makes is sent as none, which the API
+           * would otherwise refuse — taking the viewer down with it.
+           */
+          device: deviceId,
+        },
       }),
       // Never cached: one viewer must not be served another's identity or grants
       // from a shared cache.

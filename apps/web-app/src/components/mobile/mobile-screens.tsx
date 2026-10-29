@@ -739,19 +739,38 @@ function PinnedTile({ screen, index, onOpen }: { screen: MobileScreenEntry; inde
 
 /**
  * Whether this device may switch to the full site — false on a phone, which
- * always gets the phone layout (`canUseFullSite`). Provided by the shell from
- * the request. FALSE without a provider: an unknown device is not offered a
- * way onto a layout it may not be allowed.
+ * always gets the phone layout (`canUseFullSite`) — and whose choice a switch
+ * saves (the signed-in person: the choice is per person on each device).
+ * Provided by the shell from the request. NOTHING without a provider: an
+ * unknown device is not offered a way onto a layout it may not be allowed.
  */
-const FullSiteContext = createContext(false);
+const FullSiteContext = createContext<{ allowed: boolean; userId: string | null }>({ allowed: false, userId: null });
 
-export function FullSiteProvider({ allowed, children }: { allowed: boolean; children: ReactNode }) {
-  return <FullSiteContext.Provider value={allowed}>{children}</FullSiteContext.Provider>;
+export function FullSiteProvider({
+  allowed,
+  userId,
+  children,
+}: {
+  allowed: boolean;
+  userId: string;
+  children: ReactNode;
+}) {
+  const value = useMemo(() => ({ allowed, userId }), [allowed, userId]);
+  return <FullSiteContext.Provider value={value}>{children}</FullSiteContext.Provider>;
 }
 
 /** Whether to offer "Use full site" / "Open full site" here. */
 export function useCanUseFullSite(): boolean {
-  return useContext(FullSiteContext);
+  const { allowed, userId } = useContext(FullSiteContext);
+  return allowed && userId !== null;
+}
+
+/** Switches the signed-in person, on this device, to the full site. Does nothing where it is not offered. */
+export function useOpenFullSite(): () => void {
+  const { allowed, userId } = useContext(FullSiteContext);
+  return useCallback(() => {
+    if (allowed && userId) switchLayout('full', userId);
+  }, [allowed, userId]);
 }
 
 /**
@@ -772,6 +791,7 @@ export function MobileNotice({
   action: 'full_site' | null;
 }) {
   const canUseFullSite = useCanUseFullSite();
+  const openFullSite = useOpenFullSite();
   return (
     <div className="mx-auto mt-6 max-w-xl animate-in fade-in slide-in-from-bottom-2 rounded-3xl border border-border/70 bg-card p-7 text-center shadow-sm duration-300 motion-reduce:animate-none">
       <span
@@ -788,7 +808,7 @@ export function MobileNotice({
       {action === 'full_site' && canUseFullSite ? (
         <button
           type="button"
-          onClick={() => switchLayout('full')}
+          onClick={openFullSite}
           className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           Open full site

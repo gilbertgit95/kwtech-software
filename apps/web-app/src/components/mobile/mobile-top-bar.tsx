@@ -8,9 +8,8 @@ import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { isRunningInstalled } from '@/components/install/install-platform';
 import { Avatar, initialsOf } from '@/components/layout/avatar';
-import { switchLayout } from '@/components/layout/layout-switch';
 import { MobileAppearance } from '@/components/mobile/mobile-appearance';
-import { useCanUseFullSite, useMobileScreens, useOpenApp } from '@/components/mobile/mobile-screens';
+import { useCanUseFullSite, useMobileScreens, useOpenApp, useOpenFullSite } from '@/components/mobile/mobile-screens';
 import { MobilePanel, MobileSheet, SheetRow } from '@/components/mobile/mobile-sheet';
 import type { MobileTab } from '@/components/mobile/mobile-view';
 import { PlaceSheet } from '@/components/mobile/place-sheet';
@@ -192,6 +191,7 @@ function AccountSheet({
   onOpenPanel: (panel: AccountPanel) => void;
 }) {
   const canUseFullSite = useCanUseFullSite();
+  const openFullSite = useOpenFullSite();
   const signOutForm = useRef<HTMLFormElement>(null);
   // As in the desktop menu: no "Install app" inside the installed app. Decided after mount; the server cannot know.
   const [installed, setInstalled] = useState(false);
@@ -225,7 +225,7 @@ function AccountSheet({
       <SheetGroup label="This device">
         {/* Not on a phone: a phone always gets the phone layout (`canUseFullSite`). */}
         {canUseFullSite ? (
-          <SheetRow icon={<Monitor className="size-5" />} label="Use full site" onClick={() => switchLayout('full')} />
+          <SheetRow icon={<Monitor className="size-5" />} label="Use full site" onClick={openFullSite} />
         ) : null}
         {installed ? null : <SheetRow icon={<Smartphone className="size-5" />} label="Install app" href="/install" />}
       </SheetGroup>

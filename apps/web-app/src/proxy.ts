@@ -1,7 +1,9 @@
-import { DEFAULT_COOKIE_NAME, renewSessionIfNeeded } from '@kwtech/module-auth/next';
+import { AUTH_DEVICE_COOKIE, isAuthDeviceId } from '@kwtech/module-auth';
+import { DEFAULT_COOKIE_NAME, renewSessionIfNeeded, serializeCookie } from '@kwtech/module-auth/next';
 import { type NextRequest, NextResponse, userAgent } from 'next/server';
 import { chooseLayout, mobileRewritePath, parseLayoutPreference } from '@/lib/layout-choice';
-import { LAYOUT_COOKIE } from '@/lib/preferences';
+import { layoutCookieName } from '@/lib/preferences';
+import { tokenSubject } from '@/lib/token-subject';
 
 /**
  * Renews an expired session BEFORE the page renders, and sends a phone to the
@@ -49,9 +51,9 @@ export async function proxy(request: NextRequest) {
   });
 
   const renewed = decision.cookies?.length ? decision.cookies : null;
-  const mobileTarget = mobileTargetFor(request);
-
-  if (!renewed && !mobileTarget) return NextResponse.next();
+  /** Cookies this request should carry onward that the browser has not sent yet: name → value. */
+  const added = new Map<string, string>();
+  const setCookies = [...(renewed ?? [])];
 
   /*
    * The renewed token is put on the REQUEST as well as in the response cookies.
@@ -61,13 +63,41 @@ export async function proxy(request: NextRequest) {
    * the NEXT navigation, so the first click after a gap would still bounce. That
    * is the whole bug, half-fixed, which is worse than obvious.
    */
+  if (renewed && decision.kind === 'renewed' && decision.accessToken) added.set(name, decision.accessToken);
+
+  /*
+   * THIS DEVICE'S ID (the operator, 2026-10-29), issued on the first visit and
+   * kept for years: a person's display sizes can be this device's own. Not a
+   * credential and proves nothing — see `AUTH_DEVICE_COOKIE` — so readable by
+   * the page, which names it to the API. On the request too, like the token,
+   * so the very first page already reads this device's sizes.
+   */
+  if (!isAuthDeviceId(request.cookies.get(AUTH_DEVICE_COOKIE)?.value)) {
+    const deviceId = crypto.randomUUID();
+    added.set(AUTH_DEVICE_COOKIE, deviceId);
+    setCookies.push(
+      serializeCookie(AUTH_DEVICE_COOKIE, deviceId, {
+        path: '/',
+        maxAge: DEVICE_COOKIE_MAX_AGE,
+        sameSite: 'lax',
+        secure: request.nextUrl.protocol === 'https:',
+      }),
+    );
+  }
+
+  // Whose layout choice applies: the signed-in person's, read from their (possibly just renewed) token.
+  const userId = tokenSubject(added.get(name) ?? request.cookies.get(name)?.value);
+  const mobileTarget = mobileTargetFor(request, userId);
+
+  if (added.size === 0 && !mobileTarget) return NextResponse.next();
+
   const headers = new Headers(request.headers);
-  if (renewed && decision.kind === 'renewed' && decision.accessToken) {
-    const others = request.cookies
+  if (added.size > 0) {
+    const kept = request.cookies
       .getAll()
-      .filter((cookie) => cookie.name !== name)
+      .filter((cookie) => !added.has(cookie.name))
       .map((cookie) => `${cookie.name}=${cookie.value}`);
-    headers.set('cookie', [...others, `${name}=${decision.accessToken}`].join('; '));
+    headers.set('cookie', [...kept, ...[...added].map(([key, value]) => `${key}=${value}`)].join('; '));
   }
 
   /*
@@ -83,16 +113,19 @@ export async function proxy(request: NextRequest) {
     url.pathname = mobileTarget;
     response = NextResponse.rewrite(url, { request: { headers } });
   }
-  for (const cookie of renewed ?? []) response.headers.append('set-cookie', cookie);
+  for (const cookie of setCookies) response.headers.append('set-cookie', cookie);
   return response;
 }
+
+/** How long a device keeps its id: five years, renewed by nothing — it is the device, not a session. */
+const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 5;
 
 /**
  * The phone page to render this request with, or null for the page it asked for.
  *
  * Allowlisted paths only (`mobileRewritePath`), and only when the layout is
- * `mobile` — by the device, or by the person's own `LAYOUT_COOKIE`, which
- * always wins. Not a guard: the phone page resolves the viewer's grants
+ * `mobile` — by the device, or by the signed-in person's own choice on this
+ * device (`layoutCookieName`), which wins everywhere but on a phone. Not a guard: the phone page resolves the viewer's grants
  * itself, exactly as the desktop one does.
  *
  * ⚠ One URL therefore answers differently by device. Safe today because these
@@ -102,13 +135,12 @@ export async function proxy(request: NextRequest) {
  * must be told to bypass these paths, or one phone's page could reach a
  * computer.
  */
-function mobileTargetFor(request: NextRequest): string | null {
+function mobileTargetFor(request: NextRequest, userId: string | null): string | null {
   const target = mobileRewritePath(request.nextUrl.pathname);
   if (!target) return null;
-  const layout = chooseLayout(
-    userAgent(request).device.type,
-    parseLayoutPreference(request.cookies.get(LAYOUT_COOKIE)?.value),
-  );
+  // The signed-in person's own choice on this device; nobody signed in has none, and the device decides.
+  const preference = userId ? request.cookies.get(layoutCookieName(userId))?.value : undefined;
+  const layout = chooseLayout(userAgent(request).device.type, parseLayoutPreference(preference));
   return layout === 'mobile' ? target : null;
 }
 

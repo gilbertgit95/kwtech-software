@@ -74,6 +74,7 @@ export function Header({
           accountNav={accountNav}
           roles={roles}
           offerMobileView={offerMobileView}
+          userId={viewer.id}
         />
         {/* A hairline between the two: they are unrelated actions that would
             otherwise read as one segmented group. */}

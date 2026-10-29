@@ -32,7 +32,7 @@ import { ConnectivityMonitor } from '@/components/status/connectivity-monitor';
 import { StatusBarHost } from '@/components/status/status-bar-host';
 import { appBrand } from '@/config/env';
 import { canUseFullSite, offersMobileView, parseLayoutPreference } from '@/lib/layout-choice';
-import { LAYOUT_COOKIE } from '@/lib/preferences';
+import { layoutCookieName } from '@/lib/preferences';
 import {
   getNavContext,
   getOrganizationIdentity,
@@ -518,7 +518,8 @@ export async function AppShell({
                */
               offerMobileView={offersMobileView(
                 userAgent({ headers: requestHeaders }).device.type,
-                parseLayoutPreference(cookieStore.get(LAYOUT_COOKIE)?.value),
+                // This person's own choice on this device: the layout choice is per person, per device.
+                parseLayoutPreference(cookieStore.get(layoutCookieName(viewer.id))?.value),
               )}
             />
             {/* `min-h-0` for the same reason as the column. */}

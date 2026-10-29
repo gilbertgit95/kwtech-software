@@ -7,13 +7,7 @@ import { greetingFor } from '@/components/mobile/greeting';
 import { mobileDestinations } from '@/components/mobile/mobile-destinations';
 import { getMobilePlace } from '@/components/mobile/mobile-place';
 import { mobileRoute } from '@/components/mobile/mobile-routes';
-import {
-  MobileHome,
-  MobileNotice,
-  type MobileScreenEntry,
-  MobileScreenStage,
-  type MobileTabEntry,
-} from '@/components/mobile/mobile-screens';
+import { MobileHome, MobileNotice, MobileScreenStage } from '@/components/mobile/mobile-screens';
 import { MobileShell } from '@/components/mobile/mobile-shell';
 import { initialView } from '@/components/mobile/mobile-view';
 import { NotOnMobile } from '@/components/mobile/not-on-mobile';
