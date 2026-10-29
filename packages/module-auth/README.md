@@ -199,28 +199,42 @@ to every device, and on a shared till the person signed in gets theirs.
   (`mobile`) each keep their own**, because text sized for a phone at arm's
   length is wrong on a desk. A layout never set is the defaults there — never
   the other layout's sizes.
-- **`AuthDisplayPreference`** (`auth_display_preference`), one row per user
-  and layout (`@@id([userId, layout])`), created on the first change. No row is
-  the defaults (`normal`, `comfortable`). Rows from before the split are the
-  desktop's. Its own table, so signing in never reads it.
-- **`myDisplay(layout?)`** (query, null when signed out) and
-  **`updateMyDisplay(input: { layout?, textSize?, spacing? })`**, in
-  `src/operations.ts`. `layout` omitted is `desktop`, so callers from before
-  the split are unchanged; any other value is refused by name. Strings on the wire,
+- **And per DEVICE** (2026-10-29): a person's several phones and computers
+  each may have sizes of their own. What applies on a device is the first
+  that exists: **this device's own for the layout → the account's for the
+  layout → the defaults**. A device is a random id the web app keeps in the
+  `AUTH_DEVICE_COOKIE` cookie (`kwtech_device`, issued by its proxy) — not a
+  credential: it only keeps one person's own rows apart.
+- **`AuthDisplayPreference`** (`auth_display_preference`), one row per user,
+  layout and device (`@@id([userId, layout, deviceId])`; `deviceId ''` is the
+  account's own row), created on the first change. No row is the defaults
+  (`normal`, `comfortable`). Its own table, so signing in never reads it.
+- **`myDisplay(layout?, device?)`** (query, null when signed out) answers the
+  sizes in effect and their `source` (`device` | `account` | `default`).
+  **`updateMyDisplay(input: { layout?, device?, applyTo?, textSize?, spacing?
+  })`** saves for `device` (this device only) or `account` (the account's for
+  the layout — and drops this device's own, so it follows), and
+  **`forgetMyDeviceDisplay(layout, device)`** returns a device to the account's.
+  All in `src/operations.ts`. Omitted, `layout` is `desktop` and `applyTo` is
+  `device` when a device is named, else `account` — so callers from before are
+  unchanged. A device id the app does not make is refused by name. Strings on the wire,
   checked by `prepareDisplayChange`. Session only, with **no feature key**:
   a role that withheld larger text would lock somebody out by eyesight.
 - **`/settings/display`**, the full site's Display page, in the Account group
   after Security (nav icon `text-size`), sets the `desktop` sizes. The phone
   sets its own from `DisplayMobilePanel` (below). Both run on one hook,
-  `useDisplaySettings(layout)`. A choice applies at once and saves; a
+  `useDisplaySettings(layout)`, and say where the sizes come from and offer
+  "Save changes for: This device / All my phones (computers and tablets)" and
+  "Use my usual sizes here" with one component, `DisplayScope`. A choice applies at once and saves; a
   failed save puts back what is stored and says so.
 - **The steps are `@kwtech/web-ui`'s**, copied as `AUTH_TEXT_SIZES` and
   `AUTH_SPACINGS` because this core may not import web-ui. The app checks the
   copies agree at compile time (`apps/web-app/src/lib/display.ts`). What each
   step looks like is web-ui's README, "Text size and spacing".
-- **The app applies them**: it asks for both layouts with `viewer` in its
-  session query (`myDisplay` and `mobileDisplay: myDisplay(layout: "mobile")`)
-  and each shell renders `displayApplyScript` with its own.
+- **The app applies them**: it asks for both layouts on this device with
+  `viewer` in its session query (`myDisplay(device:)` and `mobileDisplay:
+  myDisplay(layout: "mobile", device:)`) and each shell renders
+  `displayApplyScript` with its own.
 
 ## On a phone (issue #22)
 

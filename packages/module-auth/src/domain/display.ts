@@ -40,7 +40,53 @@ export function isAuthDisplayLayout(value: unknown): value is AuthDisplayLayout 
   return typeof value === 'string' && (AUTH_DISPLAY_LAYOUTS as readonly string[]).includes(value);
 }
 
-export type AuthDisplayRefusal = 'invalid_text_size' | 'invalid_spacing' | 'invalid_layout';
+/**
+ * ── PER DEVICE (the operator, 2026-10-29) ─────────────────────────────────
+ *
+ * A person may have several phones and several computers, and sizes chosen on
+ * one must not change another. So a set of sizes is kept for one DEVICE as
+ * well as for the account, per layout, and the one that applies is the first
+ * that exists:
+ *
+ *   this device's, for this layout  →  the account's, for this layout  →  defaults
+ *
+ * A device is a random id the web app keeps in a long-lived cookie
+ * (`AUTH_DEVICE_COOKIE`). It is NOT a credential and proves nothing: it only
+ * keeps one person's rows apart, and only their own — the user id always
+ * comes from the session, never from the request.
+ */
+export const AUTH_DEVICE_COOKIE = 'kwtech_device';
+
+/** The device id of the ACCOUNT's own row: the sizes a device without its own falls back to. */
+export const AUTH_ACCOUNT_DEVICE = '';
+
+/** Where the sizes in effect came from — so a settings page can say so. */
+export type AuthDisplaySource = 'device' | 'account' | 'default';
+
+/** Where a change is saved: for this device only, or as the account's own for the layout. */
+export const AUTH_DISPLAY_APPLY_TO = ['device', 'account'] as const;
+export type AuthDisplayApplyTo = (typeof AUTH_DISPLAY_APPLY_TO)[number];
+
+/**
+ * A device id as the web app makes them (`crypto.randomUUID`, or any URL-safe
+ * token of a sensible length). Checked so a request cannot write a row under a
+ * key of any size it likes.
+ */
+export function isAuthDeviceId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(value);
+}
+
+export function isAuthDisplayApplyTo(value: unknown): value is AuthDisplayApplyTo {
+  return typeof value === 'string' && (AUTH_DISPLAY_APPLY_TO as readonly string[]).includes(value);
+}
+
+export type AuthDisplayRefusal =
+  | 'invalid_text_size'
+  | 'invalid_spacing'
+  | 'invalid_layout'
+  | 'invalid_device'
+  | 'invalid_apply_to'
+  | 'device_required';
 
 /**
  * A change to the display sizes, checked: the stored preferences with the

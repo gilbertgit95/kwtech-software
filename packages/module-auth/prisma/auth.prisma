@@ -166,18 +166,24 @@ enum AuthDisplayLayout {
 /// existed before the split) and the phone layout (`mobile`) are set apart,
 /// because text sized for a phone at arm's length is wrong on a desk.
 ///
+/// AND PER DEVICE: `deviceId` is one of the person's devices (a random id the
+/// web app keeps in a cookie), or `""` for the ACCOUNT's own row. A device
+/// uses its own row for the layout, else the account's, else the defaults —
+/// so sizes set on one phone never change another.
+///
 /// Its own table, not columns on `auth_user`: a sign-in reads that row on
 /// every attempt, and nothing about signing in needs to know a text size.
 model AuthDisplayPreference {
   userId    String
   layout    AuthDisplayLayout @default(desktop)
+  deviceId  String            @default("")
   textSize  AuthTextSize      @default(normal)
   spacing   AuthSpacing       @default(comfortable)
   updatedAt DateTime          @updatedAt
 
   user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([userId, layout])
+  @@id([userId, layout, deviceId])
   @@map("auth_display_preference")
 }
 

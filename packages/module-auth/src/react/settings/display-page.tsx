@@ -4,6 +4,7 @@ import { DEFAULT_DISPLAY, SPACING_LABELS, SPACINGS, TEXT_SIZE_LABELS, TEXT_SIZES
 import { cn } from '@kwtech/web-ui/react';
 import { useId } from 'react';
 import type { AuthClient } from '../auth-client.js';
+import { DisplayScope } from './display-scope.js';
 import { SettingsCard, SettingsPage } from './settings-shell.js';
 import { useDisplaySettings } from './use-display-settings.js';
 
@@ -26,15 +27,19 @@ export function DisplayPage({
   client?: AuthClient;
   backTo?: { href: string; label: string };
 }) {
-  const { shown, saving, error, status, isDefault, choose } = useDisplaySettings('desktop', {
+  const display = useDisplaySettings('desktop', {
     client,
-    savedMessage: 'Saved. The full site uses these sizes on every computer and tablet you sign in on.',
+    savedMessage: (applyTo) =>
+      applyTo === 'device'
+        ? 'Saved for this device.'
+        : 'Saved as your usual sizes on every computer and tablet without sizes of its own.',
   });
+  const { shown, saving, error, status, isDefault, choose } = display;
 
   return (
     <SettingsPage
       title="Display"
-      description="Make text and the space around it larger or smaller on the full site, on every computer and tablet you sign in on. Phones have sizes of their own, set from the phone."
+      description="Make text and the space around it larger or smaller on the full site — for this device, or for every computer and tablet you sign in on. Phones have sizes of their own, set from the phone."
       backTo={backTo}
     >
       {error ? (
@@ -45,6 +50,10 @@ export function DisplayPage({
 
       {shown ? (
         <>
+          <SettingsCard title="This device" description="Each of your devices can have sizes of its own.">
+            <DisplayScope state={display} kind="computers and tablets" />
+          </SettingsCard>
+
           <SettingsCard
             title="Text size"
             description="Everything grows with the text: buttons, lists and the space between them."

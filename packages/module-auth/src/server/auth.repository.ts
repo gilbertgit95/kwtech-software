@@ -31,6 +31,13 @@ export interface AuthUserRow {
 export interface AuthDisplayPreferenceRow extends AuthDisplayPreferences {
   userId: string;
   layout: AuthDisplayLayout;
+  /** One of the person's devices, or `''` for the account's own row. */
+  deviceId: string;
+}
+
+/** A display row's key: the person, the layout, and the device (`''` for the account). */
+export interface AuthDisplayKey {
+  userId_layout_deviceId: { userId: string; layout: AuthDisplayLayout; deviceId: string };
 }
 
 export interface AuthCredentialRow {
@@ -432,14 +439,15 @@ export interface AuthPrismaClient {
 
   /** A person's display sizes (`AuthDisplayService`). No row is the defaults. */
   authDisplayPreference: {
-    findUnique(args: {
-      where: { userId_layout: { userId: string; layout: AuthDisplayLayout } };
-    }): Promise<AuthDisplayPreferenceRow | null>;
+    findUnique(args: { where: AuthDisplayKey }): Promise<AuthDisplayPreferenceRow | null>;
     upsert(args: {
-      where: { userId_layout: { userId: string; layout: AuthDisplayLayout } };
-      create: { userId: string; layout: AuthDisplayLayout } & AuthDisplayPreferences;
+      where: AuthDisplayKey;
+      create: { userId: string; layout: AuthDisplayLayout; deviceId: string } & AuthDisplayPreferences;
       update: AuthDisplayPreferences;
     }): Promise<AuthDisplayPreferenceRow>;
+    deleteMany(args: {
+      where: { userId: string; layout: AuthDisplayLayout; deviceId: string };
+    }): Promise<{ count: number }>;
   };
 
   authPasswordReset: {

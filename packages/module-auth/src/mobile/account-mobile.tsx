@@ -8,6 +8,7 @@ import { MAX_USERNAME_LENGTH, MIN_PASSWORD_LENGTH, MIN_USERNAME_LENGTH } from '.
 import { AUTH_FEATURE } from '../features.js';
 import { type AuthClient, createAuthClient } from '../react/auth-client.js';
 import { AuthField } from '../react/auth-shell.js';
+import { DisplayScope } from '../react/settings/display-scope.js';
 import { useDisplaySettings } from '../react/settings/use-display-settings.js';
 import { useAuthForm } from '../react/use-auth-form.js';
 import type { Viewer } from '../types.js';
@@ -150,15 +151,17 @@ export function PasswordMobilePanel({ client }: { client?: AuthClient }) {
 
 /** The PHONE's text size and spacing — the full site keeps its own. */
 export function DisplayMobilePanel({ client }: { client?: AuthClient }) {
-  const { shown, saving, error, status, isDefault, choose } = useDisplaySettings('mobile', {
+  const display = useDisplaySettings('mobile', {
     client,
-    savedMessage: 'Saved. Every phone you sign in on uses these sizes.',
+    savedMessage: (applyTo) =>
+      applyTo === 'device' ? 'Saved for this phone.' : 'Saved as your usual sizes on every phone without its own.',
   });
+  const { shown, saving, error, status, isDefault, choose } = display;
 
   return (
     <div className="space-y-4">
       <p className="px-1 text-sm text-muted-foreground">
-        For this app on phones. The full site on a computer or tablet keeps sizes of its own.
+        For this app on phones. Computers and tablets on the full site keep sizes of their own.
       </p>
       {error ? (
         <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
@@ -168,6 +171,9 @@ export function DisplayMobilePanel({ client }: { client?: AuthClient }) {
 
       {shown ? (
         <>
+          <Card>
+            <DisplayScope state={display} kind="phones" large />
+          </Card>
           <Card>
             <ChoiceGroup
               label="Text size"

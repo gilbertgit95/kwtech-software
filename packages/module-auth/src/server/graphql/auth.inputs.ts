@@ -27,6 +27,18 @@ export class UpdateDisplayInput {
   @Field(() => String, { nullable: true })
   layout?: string;
 
+  /** The device the change is made on: the web app's device id. Omitted: none. */
+  @Field(() => String, { nullable: true })
+  device?: string;
+
+  /**
+   * `device` — this device's own sizes for the layout; `account` — the
+   * account's for the layout, which every device without its own follows.
+   * Omitted: `device` when a device is named, else `account`.
+   */
+  @Field(() => String, { nullable: true })
+  applyTo?: string;
+
   @Field(() => String, { nullable: true })
   textSize?: string;
 

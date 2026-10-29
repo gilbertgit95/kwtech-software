@@ -33,8 +33,15 @@ export {
   type UsersAdminClient,
 } from './admin/users-admin-client.js';
 export { UsersPage } from './admin/users-page.js';
-export { type AuthActionResult, type AuthClient, AuthClientError, createAuthClient } from './auth-client.js';
+export {
+  type AuthActionResult,
+  type AuthClient,
+  AuthClientError,
+  type AuthDisplayView,
+  createAuthClient,
+} from './auth-client.js';
 export { AuthError, AuthField, AuthShell, AuthSubmit } from './auth-shell.js';
+export { readDeviceId } from './device-id.js';
 export { ForgotPasswordPage } from './forgot-password-page.js';
 export { MfaChallengePage } from './mfa-challenge-page.js';
 export { authWebModule } from './module.js';
