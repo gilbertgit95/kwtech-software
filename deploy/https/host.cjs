@@ -45,6 +45,23 @@ function listenHost() {
   return serverSetting('LISTEN_HOST');
 }
 
+/**
+ * The same address, as the WEB APP must be given it: `next -H`.
+ *
+ * ⚠ THIS COMPUTER IS `localhost` TO NEXT, NEVER `127.0.0.1`. Next writes
+ * 127.0.0.1 as "localhost" inside the middleware (`NextURL`), so with
+ * `-H 127.0.0.1` the phone layout's rewrite (`proxy.ts`) pointed at another
+ * host than the server's own, Next treated it as EXTERNAL and fetched
+ * `https://localhost:8081/mobile` from itself — over TLS, from a plain-http
+ * port: every phone page was a 500 (found 2026-10-29). `-H localhost` keeps
+ * the rewrite internal, and still answers only to this computer.
+ */
+function webListenHost() {
+  const host = listenHost();
+  if (!host) return null;
+  return ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(host) ? 'localhost' : host;
+}
+
 function httpsHost() {
   const frontend = serverSetting('FRONTEND_URL');
   if (!frontend) return null;
@@ -76,4 +93,4 @@ function caddyLaunch(host) {
   };
 }
 
-module.exports = { httpsHost, listenHost, isPrivateAddress, caddyLaunch, REPO };
+module.exports = { httpsHost, listenHost, webListenHost, isPrivateAddress, caddyLaunch, REPO };

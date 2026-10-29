@@ -15,10 +15,11 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
-const { listenHost } = createRequire(import.meta.url)('../deploy/https/host.cjs');
+const { webListenHost } = createRequire(import.meta.url)('../deploy/https/host.cjs');
 
 const args = process.argv.slice(2);
-const host = listenHost();
+// `localhost`, not 127.0.0.1, for this computer: see `webListenHost` (a 127.0.0.1 broke every phone page).
+const host = webListenHost();
 const hasHostFlag = args.some((arg) => arg === '-H' || arg === '--hostname' || arg.startsWith('--hostname='));
 const next = resolve(process.cwd(), 'node_modules/next/dist/bin/next');
 

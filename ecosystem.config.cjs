@@ -15,7 +15,7 @@
  * CommonJS (.cjs) because pm2 loads this file with require().
  */
 const { resolve } = require('node:path');
-const { caddyLaunch, httpsHost, listenHost } = require('./deploy/https/host.cjs');
+const { caddyLaunch, httpsHost, webListenHost } = require('./deploy/https/host.cjs');
 
 /** The address phones open over HTTPS, or null: the API's FRONTEND_URL (deploy/https/host.cjs). */
 const HTTPS_HOST = httpsHost();
@@ -23,7 +23,7 @@ const HTTPS_HOST = httpsHost();
  * The address both apps listen on (`LISTEN_HOST`, docs/HTTPS.md): the API
  * reads it itself; the web app takes it only as `-H`. Unset: every address.
  */
-const LISTEN_HOST = listenHost();
+const LISTEN_HOST = webListenHost(); // `localhost` for this computer, never 127.0.0.1: see webListenHost
 
 module.exports = {
   apps: [

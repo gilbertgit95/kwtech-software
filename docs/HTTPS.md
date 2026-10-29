@@ -71,6 +71,13 @@ gets it as `next -H` from `scripts/next.mjs` (its `dev` and `start` scripts)
 and from pm2 (`ecosystem.config.cjs`). The server always keeps
 `http://localhost:8081`.
 
+⚠ For this computer the web app is given **`localhost`**, never `127.0.0.1`
+(`webListenHost()` in `deploy/https/host.cjs`): Next writes 127.0.0.1 as
+"localhost" inside its middleware, so with `-H 127.0.0.1` the phone layout's
+rewrite looked external, and **every page on a phone was a 500**
+(*"Failed to proxy https://localhost:8081/mobile … wrong version number"*).
+It then listens on `[::1]`, which `localhost` and Caddy reach.
+
 ## 2. Why other devices need HTTPS
 
 Any device **other than the server itself** must open the app over HTTPS,
@@ -475,6 +482,7 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 | The warning comes back on every device at once | The server's address changed: `pnpm https:setup`, rebuild (section 9), reserve the address on the router |
 | A phone shows a crash, or *"crypto.randomUUID is not a function"* | It is on plain `http://<address>:8081`: open **`https://<address>`** (section 2) |
 | `http://<address>:8081` (or `:8080`) is refused from another device | By design with `LISTEN_HOST="127.0.0.1"`: the only way in is `https://<address>` (section 1, "One way in") |
+| Every page on a **phone** is a 500, the server's log says *Failed to proxy https://localhost:8081/mobile … wrong version number* | The web app was started with `-H 127.0.0.1`. Start it through its scripts or pm2, which give Next `localhost` (section 1, "One way in") |
 | A **remote** server's site is down after setting `LISTEN_HOST` | It runs on a platform or in Docker, whose front door is on another machine: remove `LISTEN_HOST` (section 1) and restart |
 | A print agent on another computer cannot connect | It needs `https://` / `wss://` and `NODE_EXTRA_CA_CERTS` pointing at the shop's certificate (section 8) |
 | A phone cannot stay signed in | It is on `http://`: the built app's cookies need `https://` |

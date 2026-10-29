@@ -641,6 +641,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
     front door is on another machine and `127.0.0.1` would cut it off. Not
     `HOST`: shells export that as the machine's name, and an exported
     variable wins over the file.
+  - ⚠ **The web app gets `localhost`, never `127.0.0.1`.** Next writes
+    127.0.0.1 as "localhost" in the middleware's `NextURL`, so with
+    `-H 127.0.0.1` the phone layout's rewrite (`proxy.ts`) named another
+    host than the server's own; Next proxied it as EXTERNAL, over TLS from a
+    plain-http port, and every phone page was a 500. Found on an Android
+    phone the same day; `webListenHost()` maps this computer to `localhost`,
+    which then listens on `[::1]`.
   - **Not done:** making the browser code independent of
     `crypto.randomUUID()` (a `randomId()` in module-kit), which would let
     development run over plain http from phones; and an opt-out from
