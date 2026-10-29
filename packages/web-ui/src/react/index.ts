@@ -15,6 +15,7 @@
  * where that cost a debugging session.
  */
 
+export { BottomSheet, type BottomSheetProps, BottomSheetRow } from './bottom-sheet.js';
 export {
   addDays,
   type CalendarCell,

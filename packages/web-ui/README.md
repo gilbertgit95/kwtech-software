@@ -810,3 +810,13 @@ playTone({ notes: [{ hz: 660, at: 0, ms: 110 }, { hz: 990, at: 80, ms: 200, shap
   keep every frequency positive: the Web Audio API throws on a zero ramp target.
 - **`peak` defaults to desk level (0.14)** and is capped at 0.5, because
   overlapping notes past that clip into distortion.
+
+## Bottom sheets (phones)
+
+`BottomSheet` (and `BottomSheetRow`) from `@kwtech/web-ui/react`: a panel
+rising from the bottom of a phone's screen — a native modal `<dialog>` (focus
+trapped, Esc and the backdrop close it, the page behind inert), with a handle
+and swipe-down to close, an optional `footer` kept in view, and on a tablet a
+card floating above the bottom edge. Every sheet on the phone layout uses it
+(issue #22): the frame's account and switcher, the inbox's filters, notes' and
+tasks' actions and filters.
