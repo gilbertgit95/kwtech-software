@@ -4,3 +4,4 @@
  * Browser code, like `/react`: never `/server` (`pnpm check:boundaries`).
  */
 export { noteMobileModule } from './module.js';
+export { NotesMobileApp } from './notes-mobile-app.js';
