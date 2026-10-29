@@ -15,7 +15,7 @@ A point of sale per workspace, run as a **sub-app** on the workspace's Apps page
 | Feature key | `pos:read` (workspace level): offers the app on the Apps page |
 | Sub-app | `pos`, label "Point of sale", icon `store`, order 40, component `PosApp` |
 | Routes, nav | none. A sub-app has no drawer entry |
-| Role preset | `pos-cashier` (`pos:read`), exported as data, never seeded by the module |
+| Role presets | `pos-order-taker`, `pos-cashier`, `pos-manager` (`POS_ROLE_PRESETS`), exported as data, never seeded by the module |
 
 ```ts
 // apps/web-app/src/modules.ts
@@ -41,7 +41,9 @@ its own key, without the app or its address (`?screen=pos&section=…`)
 changing. The frame offers the app only while its holder has at least one
 section, so somebody who may not sell is not shown an empty point of sale.
 
-Sell is the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
+⚠ Since issue #23, Sell on the phone is **Take orders**, not the till (see
+"Take orders and Cashier" below); `Till`'s `phone` mode is unused there.
+Before that, Sell was the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
 fills the screen and the order waits in a summary bar at the foot ("2 items ·
 ₱250 · View order"), opening over the items with "‹ Items" and opening by
 itself to show the receipt. No shortcut bar and no shortcut help (a phone has
@@ -141,6 +143,60 @@ same every time. Optional: with none, both dialogs are the plain text box.
 - **Stored as text.** A picked option is the order's `label`, like a typed
   one, so receipts, the Orders list and search need nothing new. Recently
   used references that are not options are not suggested.
+
+## Taking orders and taking payment (issue #23)
+
+A sale can be split between a **seller**, who takes orders and holds them,
+and a **cashier**, who takes the payment. Each is a key of its own:
+
+| Key | Covers | Preset |
+|---|---|---|
+| `pos:sell` | create orders, add, edit and remove lines, customer, reference, hold, resume; customers | `pos-order-taker` (read, sell) |
+| `pos:take_payment` | `payPosOrder`, `payLaterPosOrder`, `cancelPosOrder`, `settlePosChangeOwed` | `pos-cashier` and `pos-manager` add it |
+
+- ⚠ **No operation is bound to both.** The guard requires every key bound to
+  an operation, so a shared binding would lock out whoever holds one; a
+  cashier holds both (`feature-keys.test.ts` checks it).
+- **Without `pos:take_payment`** the till hides Pay, Cancel and the payment
+  shortcuts and ends the sale with **Hold for the cashier**; Orders hides
+  Take payment and settle change (`orderActions`). The bindings refuse all
+  the same.
+- **Live across devices.** Every order write publishes `order` on
+  `posEvents`, and each till re-reads its held orders, so an order held on
+  one device shows on the others, and leaves them once paid.
+- ⚠ A role made before this holds `pos:sell` alone, and cannot pay until it
+  is granted `pos:take_payment`.
+
+### Take orders and Cashier (the two screens)
+
+The same order process, split by who uses it:
+
+- **Take orders** (`TakeOrders`, `pos:sell`): the seller's screen, built for
+  a phone or a handheld. Held orders as chips across the top (tap to reopen
+  and add to one), a search box, the items **grouped by category** under
+  headings that open and close (`itemGroups`; uncategorised items last, as
+  "Other"), rows a thumb can hit, and the order at the foot. An item with
+  sizes opens the variant picker. **Every order ends at Hold**: there is no
+  Pay on this screen, even for a cashier.
+- **Cashier** (`Cashier`, `pos:take_payment`): the full screen at the
+  cashier's window. A live column of held orders, oldest first, beside the
+  keyboard till, which opens, edits and pays them.
+- **How long each has waited**, on the Cashier's cards and the sellers'
+  chips: "12 min", "1 h 20 min" (`waitText`), ticking on its own every half
+  minute (`useNow`), and coloured by urgency (`waitUrgency`): new under 30
+  min, then 30 min, 1 h, and 2 h, when the dot pulses (not for somebody who
+  asked for less motion). Counted from when the order was started.
+  ⚠ The colours are tints of the theme's `primary`, so they follow the theme
+  picker; the status colours are fixed across palettes and would not
+  (`wait-badge.tsx`).
+- **Where:** on a phone, Sell is Take orders and the till is not offered. On
+  the Apps page, Sell has tabs: **Take orders**, **Cashier** (only with
+  `pos:take_payment`) and **Classic**, the keyboard till as it was before
+  issue #23, kept as an option (without Pay for somebody without the key).
+  Remembered per device (`kwtech:pos-sell-mode`). `sellModeFor` never reopens Cashier for somebody who
+  lost the key.
+- ⚠ **An order never held is listed nowhere**, so neither screen lets it be
+  left for another (`canLeaveOrder`): it asks for Hold first.
 
 ## Stock (issue #10)
 

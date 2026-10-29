@@ -3,7 +3,7 @@
 import type { AppProps } from '@kwtech/module-kit';
 import { useMobileSection } from '@kwtech/module-kit/react';
 import { buttonClass } from '../react/components/controls.js';
-import { Till } from '../react/components/till.js';
+import { TakeOrders } from '../react/components/take-orders.js';
 import { useTill } from '../react/use-till.js';
 import { POS_MOBILE_SECTION } from './sections.js';
 
@@ -14,10 +14,12 @@ import { POS_MOBILE_SECTION } from './sections.js';
  * Settings stay on the full site until each is brought here as a section of
  * its own (`POS_MOBILE_SECTION` and `posMobileModule`).
  *
- * The till is the same `useTill` and `Till` as the Apps page's Sell, in the
- * till's `phone` mode — the items fill the screen and the order waits in a
- * summary bar at the foot. `useTill` lives here, above the sections, as in
- * `PosApp`, so a later section never costs the order being built.
+ * Sell on a phone is TAKE ORDERS (issue #23), not the till: a phone or a
+ * handheld is the seller's, carried between tables, and every order it takes
+ * is held for the cashier, who pays it on the full screen's Cashier board.
+ * The keyboard till (`Till`) is not offered here at all (the operator,
+ * 2026-10-29). `useTill` lives here, above the sections, as in `PosApp`, so a
+ * later section never costs the order being built.
  */
 export function PosMobileApp({ organizationId, workspaceId }: AppProps) {
   const state = useTill(organizationId, workspaceId);
@@ -45,7 +47,7 @@ export function PosMobileApp({ organizationId, workspaceId }: AppProps) {
           </button>
         </div>
       ) : null}
-      <Till state={state} phone />
+      <TakeOrders state={state} phone />
     </div>
   );
 }

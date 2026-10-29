@@ -25,7 +25,7 @@ export function posMobileModule(): MobileModuleDescriptor {
         icon: 'store',
         feature: POS_FEATURE.read,
         order: 10,
-        sections: [{ key: POS_MOBILE_SECTION.sell, label: 'Sell', feature: POS_FEATURE.sell }],
+        sections: [{ key: POS_MOBILE_SECTION.sell, label: 'Take orders', feature: POS_FEATURE.sell }],
         component: PosMobileApp,
       },
     ],
