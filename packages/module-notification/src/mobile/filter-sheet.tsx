@@ -1,7 +1,6 @@
 'use client';
 
-import { cn } from '@kwtech/web-ui/react';
-import { useEffect, useRef } from 'react';
+import { BottomSheet, cn } from '@kwtech/web-ui/react';
 import { NotificationIcon } from '../react/components/notification-icons.js';
 
 /** One filter in the sheet: a heading and its choices, one of which is on. */
@@ -19,9 +18,8 @@ export interface FilterSheetGroup {
  * Source, From. Choices apply as they are tapped — the list behind updates —
  * and "Done" closes it.
  *
- * A native modal `<dialog>`, as the phone frame's own sheets are: focus moves
- * in and stays, Esc closes it, the page behind is inert. The module draws its
- * own rather than borrowing the frame's: a module never imports the app.
+ * web-ui's `BottomSheet`, as every sheet on the phone is: focus moves in and
+ * stays, Esc or a swipe down closes it, the page behind is inert.
  */
 export function FilterSheet({
   open,
@@ -37,82 +35,13 @@ export function FilterSheet({
   active: number;
   onClear: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    if (open && !element.open) element.showModal();
-    if (!open && element.open) element.close();
-  }, [open]);
-
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the click below only detects a backdrop press; its keyboard equivalent is Escape, which <dialog> handles itself. `ConfirmDialog`'s reasoning.
-    <dialog
-      ref={dialog}
-      aria-label="Filters"
+    <BottomSheet
+      open={open}
       onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-      className={cn(
-        'fixed inset-x-0 top-auto bottom-0 m-0 max-h-[85dvh] w-full max-w-none rounded-t-3xl border-t border-border/60 bg-card p-0 text-card-foreground shadow-2xl',
-        // A tablet: a card floating above the bottom edge, as the phone frame's own sheets are.
-        'md:mx-auto md:bottom-6 md:max-w-lg md:rounded-3xl md:border',
-        'backdrop:bg-black/40 backdrop:backdrop-blur-[2px]',
-        'open:animate-in open:slide-in-from-bottom open:duration-300 motion-reduce:open:animate-none',
-      )}
-    >
-      <div className="flex max-h-[85dvh] flex-col pb-[env(safe-area-inset-bottom)]">
-        <div className="shrink-0 px-4 pt-2.5 pb-2">
-          <span aria-hidden className="mx-auto block h-1.5 w-10 rounded-full bg-muted-foreground/30" />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">Filters</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="grid size-9 place-items-center rounded-full bg-muted text-muted-foreground active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <NotificationIcon name="close" className="size-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain px-4 pt-2 pb-4">
-          {groups.map((group) => (
-            <fieldset key={group.key}>
-              <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.label}
-              </legend>
-              <div className="flex flex-wrap gap-2">
-                {group.options.map((option) => {
-                  const on = option.value === group.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => group.onChange(option.value)}
-                      className={cn(
-                        'inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        on
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'bg-muted text-foreground active:bg-accent',
-                      )}
-                    >
-                      {on ? <NotificationIcon name="check" className="size-3.5" /> : null}
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-          ))}
-        </div>
-
-        <div className="flex shrink-0 gap-2 border-t border-border/60 px-4 py-3">
+      title="Filters"
+      footer={
+        <div className="flex gap-2">
           <button
             type="button"
             onClick={onClear}
@@ -129,7 +58,38 @@ export function FilterSheet({
             Done
           </button>
         </div>
+      }
+    >
+      <div className="space-y-5 px-2 pt-2 pb-2">
+        {groups.map((group) => (
+          <fieldset key={group.key}>
+            <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {group.label}
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {group.options.map((option) => {
+                const on = option.value === group.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => group.onChange(option.value)}
+                    className={cn(
+                      'inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      on ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-foreground active:bg-accent',
+                    )}
+                  >
+                    {on ? <NotificationIcon name="check" className="size-3.5" /> : null}
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        ))}
       </div>
-    </dialog>
+    </BottomSheet>
   );
 }
