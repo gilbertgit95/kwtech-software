@@ -1812,7 +1812,7 @@ type Query {
   jobProcessHistory(cursor: String, limit: Int, processKey: String!): JobHistoryPage!
   jobProcesses: [JobProcess!]!
   mfaFactors: [MfaFactor!]!
-  myDisplay: DisplayPreferences
+  myDisplay(layout: String): DisplayPreferences
   myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!
   myOrganization(organizationId: String!): PermissionOrganizationDetail
   myOrganizationRoles(level: String, organizationId: String!): [PermissionRoleDetail!]!
@@ -2619,6 +2619,7 @@ input TaskSettingsInput {
 }
 
 input UpdateDisplayInput {
+  layout: String
   spacing: String
   textSize: String
 }
