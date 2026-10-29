@@ -601,11 +601,221 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 119 | Stock does not reach the books or the POS's costs: receiving is not recorded as a purchase, and a service's cost is not worked out from its materials | when entering a delivery twice (stock and books) or a service's cost by hand is felt (INVENTORY-PLAN I7, I10) | The Products section shows each product's materials cost per sale, read-only. Receiving into the books would be a port from stock to the books (supplies, or stock for resale); a service's cost would be proposed to the POS, never written behind the manager's back |
 | 120 | The installed app has no offline handling: opened without a connection it shows the browser's own error page, not one of ours | when someone uses it where the connection drops (a shop floor, a delivery) | No service worker on purpose (§13, 2026-10-25): a worker that caches pages can serve a signed-out person a signed-in page, or yesterday's build. The first one should cache NOTHING but an offline page and the icons, and never a document or `/api/*` |
 | 121 | No web push: notifications reach a person only while a page is open | when someone must be told with the app closed (a booking, a queue call) | A service worker plus a delivery channel in `module-notification` (a `notify_push_subscription` per device, VAPID keys in the env profile, `sendSafely` fanning out). iPhone delivers only to an app on the home screen, iOS 16.4 and later |
-| 122 | The installed app is the whole site: there is no phone-first section with only a few screens | when the features for a mobile app are chosen | A `/m` section in this app with its own layout and its own manifest (`start_url: '/m'`, a separate `id`), reusing the modules' pages. A native app (Expo, `apps/mobile-app` + `/native` subpaths, §10) only if a device feature the browser lacks is needed; auth already allows it (the API sets no cookies) |
+| 122 | ~~The installed app is the whole site: there is no phone-first section with only a few screens~~ **Closed** | — | **One set of addresses, a layout per device (§13, 2026-10-29, issue #22).** `proxy.ts` rewrites a phone's `/` and `/organizations/...` to the phone page; modules opt in with `/mobile` screens. A native app only if a device feature the browser lacks is needed |
+| 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-10-29** — **POS order types ("Dine-in", "Takeout") are a store list on the Items tab, optional on an order, with a per-store default; the order reference options and a default reference move to the Items tab too.**
+
+  Restaurants tell dine-in from takeout, and that is not the reference: a
+  dine-in order AT table 5 needs both.
+  - **A table, not a JSON setting.** `PosOrderType` copies `PosCategory`
+    (unique case-blind name, sort order, archived, never deleted) plus
+    `isDefault`, so it is managed beside categories and travels with the
+    catalogue, live.
+  - **The order copies the name** (`orderTypeName`) beside the id: a renamed
+    type never changes a receipt, as lines copy `categoryName`. No foreign
+    key: types are archived, never deleted.
+  - **Optional, with defaults (the operator).** One default type, held by the
+    service (setting one clears the last in the same transaction; archiving
+    clears it), and one default reference among the options, refused unless
+    it is one and dropped with its option. `createPosOrder` applies both; a
+    reference given at creation wins.
+  - **Per store, not per device** (the operator): one setting every till
+    shares.
+  - **References moved from Settings to Items,** and `savePosReferenceOptions`
+    from `pos:manage_settings` to `pos:manage_items`. A role with only
+    "Change store settings" can no longer edit them; the manager preset holds
+    both, so nothing changes for it.
+  - **Not done:** sales per order type in Reports, and prices per type
+    (delivery-app prices). Each waits until a store asks.
+
+- **2026-10-29** — **POS: taking payment is a key of its own, `pos:take_payment`, apart from `pos:sell`; a new `pos-order-taker` preset builds and holds orders and never settles one (issue #23).**
+
+  The new Sell view (issue #23) splits the sale between a seller, who takes
+  orders and holds them, and a cashier, who sees every held order live and
+  takes the payment. One key covered both, so a seller could not be kept away
+  from the drawer.
+  - **Payment is the NEW key, not order taking.** The riskier act gets the
+    narrow key, and a role that misses it fails closed: it can still take
+    orders, and cannot pay. The other way round, every cashier would have
+    lost the till until somebody granted the new key.
+  - **`pos:take_payment` binds pay, pay later, cancel and settle change.**
+    Cancelling is the cashier's (the operator, 2026-10-29): a cancelled order
+    is one that brings no money, and the person who built it does not decide
+    that. Pay later likewise: it is a decision about the money.
+  - **No operation is bound to both keys.** The guard requires EVERY key
+    bound to an operation (`module-permissions`' binding index), so a shared
+    binding would lock out whoever holds only one. A cashier holds both.
+  - **Presets:** `pos-order-taker` (read, sell) is new; `pos-cashier` and
+    `pos-manager` add `pos:take_payment`. The workspace user role keeps the
+    cashier's keys, so nothing changes for a store that has no order takers.
+  - **Screens:** without the key the till's Pay, Cancel and payment
+    shortcuts are hidden and its last button is "Hold for the cashier";
+    Orders hides Take payment and settle change. Hiding is cosmetic: the
+    bindings refuse.
+  - ⚠ **Existing databases, two steps.** (1) Roles: a role already holding
+    `pos:sell` loses pay, pay later and cancel until it is granted
+    `pos:take_payment`. `db:sync` updates the seeded roles; a role an owner
+    built by hand needs the key added in the permissions admin. (2) PLANS:
+    the key is workspace level, so the plan filters it, and
+    `createPlanIfAbsent` never rewrites a plan that exists. Until an
+    operator adds `pos:take_payment` to each plan on `/admin/plans`, nobody
+    in those organizations can take payment, managers included.
+  - **Two screens on one order process.** Take orders (`TakeOrders`) is the
+    seller's, built for a phone or a handheld: held orders as chips across
+    the top, items grouped by category under headings that open and close,
+    big rows, and every order ends at Hold — no Pay, even for a cashier, so
+    the whole sale goes through the held orders. Cashier (`Cashier`) is the
+    full screen at the cashier's window: a live column of held orders beside
+    the keyboard till, which opens, edits and pays them. On the phone, Sell
+    IS Take orders and the till is not offered; on the full screen a cashier
+    chooses between Cashier and **Classic** (the keyboard till as it was),
+    remembered per device. Take orders is NOT on the full screen (the
+    operator, 2026-10-29): it is built for a phone, and Cashier does all it
+    does there; somebody without `pos:take_payment` gets Classic alone.
+  - **Grouped by category, not by new tags.** Issue #21 asked for "beef ▸
+    bulalo, balbacua"; an item already has one category, so the groups are
+    categories, with no schema change. Tags (an item in two groups) wait
+    until a store needs them.
+  - **Not done:** an "order taker" workspace role in the seed. A member holds
+    one workspace role, and no store has asked for one yet; it is built from
+    the preset when one does (`.claude/rules/database.md`, "Combined
+    workspace roles").
+
+- **2026-10-29** — **POS order reference options: a per-store list on `PosSettings`, saved by a mutation of its own; the till offers them in a combobox and snaps a typed match to the option's spelling (issue #30).**
+
+  Stores reuse a few references all day (tables, "Take-out"), and typing them
+  drifts ("table 3", "T3"), which makes held orders harder to tell apart and
+  the Orders search less reliable.
+  - **A JSON column on `PosSettings`, not a table.** An ordered list of at
+    most 50 short strings, always read and written whole; a table would add
+    ordering columns and a second write path for no query that needs it.
+  - **`savePosReferenceOptions`, not a field on `savePosSettings`.** That
+    mutation writes the keymap it is given or the defaults, so the obvious
+    extension would have reset every hot key on each options save. Each save
+    now writes one setting, and the repository's upsert fields are optional.
+  - **A typed reference that IS an option but for case or spacing is saved in
+    the option's spelling.** The point of the issue is one spelling per
+    table; anything else is still saved as typed.
+  - **"On hold" is a client-side hint**, from the till's Pending list,
+    excluding the order on the till. The server checks nothing about
+    duplicates, as the issue decided.
+  - **The options are a Quick select grid of tiles, on the phone and the full
+    till alike** (the operator), and the reference's trigger on the till is
+    the same dashed box as the customer's: optional, but important on the
+    order. #24's "small muted line" read as skippable.
+  - **Not done:** ranges ("Table 1–20"), suggesting recently used references,
+    and Settings on the phone (it stays on the full site with the rest of the
+    POS's Settings, issue #22).
+
+- **2026-10-29** — **Phones get a layout of their own at the SAME addresses, chosen per request by the proxy; modules opt in screen by screen (issue #22).**
+
+  The operator asked for a light layout for phones, for sellers and other
+  people who work in a workspace rather than administer it. §12.122 had
+  proposed a `/m` section; it was weighed against one set of addresses and
+  dropped.
+  - **`proxy.ts` decides, before anything renders.** `userAgent()`'s
+    `device.type === 'mobile'`, unless `kwtech_layout` (`mobile` | `full`)
+    says otherwise; tablets stay on the desktop shell. A phone's request is
+    REWRITTEN to `app/mobile/[[...slug]]`, so the address bar keeps the URL
+    asked for, and the renewed session token rides on the rewritten request.
+  - **An allowlist: `/` and `/organizations/...` only.** Sign-in, two-step and
+    reset stay one shared set of pages (already a single narrow column), and
+    every public page is untouched. A page added later is never sent to the
+    phone page by accident.
+  - **The phone page imports `MOBILE_SCREENS`, never `WEB_MODULES`.** Measured
+    on the 2026-10-26 build: every module page loads ~1.15 MB gzipped, of
+    which ~0.45 MB is the catch-all's every-module import; the phone page
+    skips that. The other ~0.70 MB is the root layout, shared by both.
+  - **module-kit: `MobileModuleDescriptor` and `composeMobileScreens`.** A
+    module offers screens from a `/mobile` subpath, each with a required
+    workspace-level `feature`; a module that offers none is not on phones.
+  - **The frame:** a top bar (workspace switcher, account sheet with theme,
+    full site, install, sign out) and a FIXED bottom bar — Home and Apps now,
+    Chat, Inbox and Manage as they are built, five at most, each only when
+    something is behind it. Apps are launched from the Apps tab or pinned to
+    Home (pins per workspace, in the browser); inside one, "‹ Apps" and a
+    strip of the app's sections. Visited apps stay mounted; `?tab=`,
+    `?screen=` and `?section=` keep the place across a reload. One
+    organization or one workspace is entered without a picker. The first
+    version gave each screen its own bottom tab; the operator chose fixed
+    destinations instead, because a bar that grows a tab per app reshuffles
+    and runs out of room.
+  - **Switching place is one level per view:** a workspace list, and
+    "‹ Organizations" sliding to the organization list. Organizations and
+    workspaces on one screen were what the operator found confusing.
+  - **Permissions decide on the server, before the phone sees anything:** an
+    app needs its `feature`, a section its own (`MobileSectionContribution`);
+    the frame is handed only what passed.
+  - **Administration is a Manage tab of its own (`MobileManageContribution`),
+    grouped workspace / organization / platform.** Each page is filtered at
+    its level's reading: workspace effective, organization effective (one
+    more field on the drawer's nav query, so a super admin is not cut by a
+    plan the guard would let them past), or app-level grants. The tab shows
+    only when a page passes. Separate from screens because it answers to the
+    people who run a workspace, not those who work in it.
+  - **Chat and the Inbox are bottom-bar TABS (`MobileTabContribution`), from
+    `module-chat/mobile` and `module-notification/mobile`.** They belong to the
+    person, so they are filtered at APP level like the header tools they stand
+    in for. Five destinations at most; a module tab past that is left off.
+    The Inbox's always-mounted badge is the phone's notification centre
+    (count, toasts, tab title). `check:boundaries` now holds `/mobile` to
+    `/react`'s rule: never `/server`.
+  - **A phone can never open the full site** (the operator, the same day).
+    `chooseLayout` ignores the `full` cookie on a phone; the phone layout
+    hides "Use full site" and every "Open full site" button there
+    (`canUseFullSite`); and `AppShell`, the shell every signed-in desktop page
+    renders through, draws the phone frame with "not on the mobile view yet —
+    open it on a computer" instead of itself. Computers and tablets keep the
+    switch. ⚠ The cost: on a phone, administration, two-step verification
+    and the chat and notification preferences are unreachable until each has
+    a phone version (profile, password and display followed the same day).
+  - **Account settings on the phone, and display sizes PER LAYOUT** (the
+    operator, the same day). Profile, Password and Display open as
+    full-screen panels from the phone's account sheet
+    (`@kwtech/module-auth/mobile`). Display sizes are now kept per account
+    AND layout — `auth_display_preference` keyed `(userId, layout)`,
+    migration `20261029120000_auth_display_per_layout`; existing rows became
+    `desktop` — because sizes chosen for a desk are wrong at arm's length.
+    `myDisplay(layout)` defaults to `desktop`, so nothing that called it
+    before changed. Two-step verification and "sign out everywhere" are
+    still full-site only.
+  - **Display sizes and the layout choice are per person AND device** (the
+    operator, the same day: "a user might have multiple devices, and desktop
+    settings must not affect mobile"). Sizes: this device's own for the layout
+    → the account's for the layout → defaults; `auth_display_preference` keyed
+    `(userId, layout, deviceId)`, migration
+    `20261029180000_auth_display_per_device`, existing rows the account's
+    (`deviceId ''`). A device is a random id the proxy issues in a
+    five-year, non-httpOnly cookie (`kwtech_device`) — not a credential, it
+    only keeps one person's rows apart; the API takes the user from the
+    session, never the request. The layout choice: one cookie per person
+    (`kwtech_layout_<userId>`), the proxy reading whose from the session
+    token's `sub` UNVERIFIED — acceptable only because it picks a layout,
+    never access. **Not done:** naming devices or listing them ("my iPhone"),
+    and clearing a device's rows at sign-out — a device's sizes outlive the
+    session on purpose.
+  - **Not done on the phone: chat's message tone** (the desktop header tool
+    plays it) **and the chat and notification preference pages**, which stay
+    on the full site.
+  - **No new permission key.** The phone offers what the viewer already holds
+    and nothing more; permissions reach screens through module-kit's
+    `FeatureAccessProvider`, not the permissions module's React layer.
+  - **Not done: a `/m` section** — every link would need a phone twin, and a
+    desktop link opened on a phone would land on the desktop page.
+  - **Not done: desktop pages squeezed into the phone frame.** They are not in
+    the phone's bundle, which is what keeps it light; such a page says it is
+    not on the mobile view and offers the full site.
+  - **Not done: workspace apps and Manage pages.** POS, notes and tasks, and
+    the first administration pages (members, roles), are each their own
+    change.
+  - **Not done: `Vary: User-Agent, Cookie`.** Next writes the page's own
+    `Vary` over one set in the proxy. Safe while these pages are `no-store`;
+    a CDN put in front must bypass them.
 
 - **2026-10-26** — **HTTPS on the shop's own network: Caddy in front of both apps, with its own local certificate authority.**
 
@@ -630,6 +840,42 @@ Decisions 1, 2, 3 and 5 gate the next step.
     Caddyfile alone), Google sign-in on a bare address (Google refuses one),
     the print agent through HTTPS (it still reaches the API at :8080 on the
     network), and trusting the authority on devices automatically.
+
+- **2026-10-26** — **Database backups: a super admin's page, a daily 9 PM backup and the command line, with nothing about them in the database (issue #2).**
+
+  The operator asked for a UI to trigger the existing backup, super admins
+  only, in a navigation section of its own for later database tasks; then for
+  restore in the UI as well as the CLI, deleting and downloading backups, a
+  daily backup at 9 PM, a limit of 30 (the 31st deletes the oldest), and
+  "do not record any of this on database … the logs is good for audit trails".
+  - **A new module, `module-backup`**, with a Database drawer section and
+    Backups as its first page. Five app-level keys split by risk (read,
+    create, download, delete, restore); `super-admin` holds them through the
+    registry and nobody else does.
+  - **The folder is the record.** Each file's name carries the database, the
+    day and time (in `BACKUP_TIME_ZONE`, Asia/Manila by default) and why it was
+    made; the page lists the folder. Who did what is the API log. Download
+    tickets, maintenance and "is one running" are in memory. The daily
+    process's own `module-jobs` run rows are counts and never name a file.
+  - **`pnpm db:backup` could not be reused as it was** (local container only,
+    the repo's folder, opens Explorer). Its parts — `pg_dump -Fc`, a
+    `.partial` name until it succeeds, the container when there is one — are
+    now the app's `PgBackupStore`, behind a port (a module never opens a
+    connection), shared by the API and a new CLI; `db:backup` calls that CLI.
+  - **Restore in the UI, with its cost paid:** typed database name and the
+    password (a credential surface), a safety backup first, a maintenance
+    guard answering every other request 503 while it runs, one transaction,
+    `prisma migrate deploy` after, then everybody signed out
+    (`AuthAdminService.endEverySession`), because a restored database brings
+    back sessions somebody had ended.
+  - **Downloads are a one-time ticket**, module-print's relay pattern: a file
+    is not a GraphQL value, and the ticket keeps the public route closed.
+  - **Not done:** off-machine copies (the folder is on the API's disk, so a
+    lost disk loses the backups too — copy them elsewhere until that is
+    built); restoring from an uploaded file (only files in the folder); more
+    than one API process (the "one at a time" lock and maintenance are per
+    process, which is this deployment); a maintenance screen of its own (the
+    web app's "cannot reach the server" stands in).
 
 - **2026-10-26** — **People can make the app larger or smaller: a text size and a spacing, kept on the account (issue #20).**
 

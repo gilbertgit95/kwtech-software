@@ -7,11 +7,21 @@
  * `react/auth-client.ts` and the settings pages, where nothing validates them.
  * They move here when that code is next worked on, not as a side effect.
  */
-const DISPLAY = 'textSize spacing';
+const DISPLAY = 'textSize spacing source';
 
 export const AUTH_OPERATIONS = {
-  myDisplay: `query MyDisplay { myDisplay { ${DISPLAY} } }`,
+  /**
+   * `$layout`: `desktop` (omitted) or `mobile` — the full site's sizes and the
+   * phone layout's are kept apart. `$device`: this device's own sizes when it
+   * has them, else the account's.
+   */
+  myDisplay: `query MyDisplay($layout: String, $device: String) {
+    myDisplay(layout: $layout, device: $device) { ${DISPLAY} }
+  }`,
   updateMyDisplay: `mutation UpdateMyDisplay($input: UpdateDisplayInput!) {
     updateMyDisplay(input: $input) { ${DISPLAY} }
+  }`,
+  forgetMyDeviceDisplay: `mutation ForgetMyDeviceDisplay($layout: String!, $device: String!) {
+    forgetMyDeviceDisplay(layout: $layout, device: $device) { ${DISPLAY} }
   }`,
 } as const;

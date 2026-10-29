@@ -1,6 +1,17 @@
 'use client';
 
-import type { AuthDisplayPreferences } from '../domain/display.js';
+import type {
+  AuthDisplayApplyTo,
+  AuthDisplayLayout,
+  AuthDisplayPreferences,
+  AuthDisplaySource,
+} from '../domain/display.js';
+
+/** Display sizes as the API answers: the sizes in effect, and where they came from. */
+export interface AuthDisplayView extends AuthDisplayPreferences {
+  source: AuthDisplaySource;
+}
+
 import { AUTH_OPERATIONS } from '../operations.js';
 import type {
   MfaEmailCodeSent,
@@ -78,10 +89,24 @@ export interface AuthClient {
   /** Display name and username. Carries no secret, so it is a GraphQL mutation. */
   updateProfile(input: { displayName?: string | null; username?: string }): Promise<Viewer>;
 
-  /** The caller's display sizes (issue #20): the defaults when they never chose. */
-  myDisplay(): Promise<AuthDisplayPreferences>;
-  /** Changes the given display sizes, leaving the other alone; answers with what was saved. */
-  updateMyDisplay(input: Partial<AuthDisplayPreferences>): Promise<AuthDisplayPreferences>;
+  /**
+   * The caller's display sizes (issue #20) for one layout — the full site's
+   * (`desktop`, the default) or the phone layout's (`mobile`, issue #22): the
+   * defaults when they never chose for it.
+   */
+  myDisplay(layout?: AuthDisplayLayout, device?: string | null): Promise<AuthDisplayView>;
+  /**
+   * Changes the given display sizes of one layout, leaving the other alone,
+   * saved for this `device` only or as the account's (`applyTo`); answers with
+   * what is now in effect on the device.
+   */
+  updateMyDisplay(
+    input: Partial<AuthDisplayPreferences>,
+    layout?: AuthDisplayLayout,
+    target?: { device: string | null; applyTo: AuthDisplayApplyTo },
+  ): Promise<AuthDisplayView>;
+  /** Drops this device's own sizes for a layout, so it follows the account's again. */
+  forgetMyDeviceDisplay(layout: AuthDisplayLayout, device: string): Promise<AuthDisplayView>;
 
   /** REST, not a mutation: it takes the CURRENT password, so it is guessable. */
   changePassword(input: { currentPassword: string; newPassword: string }): Promise<void>;
@@ -158,18 +183,29 @@ export function createAuthClient(basePath = '/api/auth'): AuthClient {
       return data.updateProfile;
     },
 
-    myDisplay: async () => {
-      const data = await graphql<{ myDisplay: AuthDisplayPreferences | null }>(AUTH_OPERATIONS.myDisplay);
+    myDisplay: async (layout = 'desktop', device = null) => {
+      const data = await graphql<{ myDisplay: AuthDisplayView | null }>(AUTH_OPERATIONS.myDisplay, {
+        layout,
+        device,
+      });
       // Null only when signed out, which a settings page under a session cannot be.
       if (!data.myDisplay) throw new AuthClientError('Your session has ended. Sign in again.', 401);
       return data.myDisplay;
     },
 
-    updateMyDisplay: async (input) => {
-      const data = await graphql<{ updateMyDisplay: AuthDisplayPreferences }>(AUTH_OPERATIONS.updateMyDisplay, {
-        input,
+    updateMyDisplay: async (input, layout = 'desktop', target) => {
+      const data = await graphql<{ updateMyDisplay: AuthDisplayView }>(AUTH_OPERATIONS.updateMyDisplay, {
+        input: { ...input, layout, ...(target ? { device: target.device, applyTo: target.applyTo } : {}) },
       });
       return data.updateMyDisplay;
+    },
+
+    forgetMyDeviceDisplay: async (layout, device) => {
+      const data = await graphql<{ forgetMyDeviceDisplay: AuthDisplayView }>(AUTH_OPERATIONS.forgetMyDeviceDisplay, {
+        layout,
+        device,
+      });
+      return data.forgetMyDeviceDisplay;
     },
 
     listMfaFactors: async () => {

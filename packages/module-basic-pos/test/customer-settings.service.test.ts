@@ -79,7 +79,13 @@ describe('customers', () => {
 describe('settings', () => {
   it('gives every default to a store that saved nothing', async () => {
     const { settings } = harness();
-    expect(await settings.get(SCOPE)).toEqual({ timeZone: 'Asia/Manila', keymap: POS_DEFAULT_KEYMAP, version: 0 });
+    expect(await settings.get(SCOPE)).toEqual({
+      timeZone: 'Asia/Manila',
+      keymap: POS_DEFAULT_KEYMAP,
+      referenceOptions: [],
+      defaultReference: null,
+      version: 0,
+    });
   });
 
   it('saves a keymap, and tells the tills', async () => {
@@ -95,6 +101,46 @@ describe('settings', () => {
     const { settings } = harness();
     const bad = { ...POS_DEFAULT_KEYMAP, actions: { ...POS_DEFAULT_KEYMAP.actions, pay: 'F5' } };
     await expect(settings.save(SCOPE, ANA, { keymap: bad })).rejects.toThrow('belongs to the browser');
+  });
+});
+
+describe('order reference options', () => {
+  it('saves them in the store’s order, tidied, and tells the tills', async () => {
+    const { settings, pubsub } = harness();
+    const saved = await settings.saveReferenceOptions(SCOPE, ANA, ['Table  1', ' Take-out ']);
+    expect(saved.referenceOptions).toEqual(['Table 1', 'Take-out']);
+    expect((await settings.get(SCOPE)).referenceOptions).toEqual(['Table 1', 'Take-out']);
+    expect(pubsub.sent.map((event) => event.change)).toEqual(['settings']);
+  });
+
+  it('⚠ never resets the keymap, and saving the keymap never drops them', async () => {
+    const { settings } = harness();
+    const keymap = { ...POS_DEFAULT_KEYMAP, actions: { ...POS_DEFAULT_KEYMAP.actions, pay: 'F10' } };
+    await settings.save(SCOPE, ANA, { keymap });
+    await settings.saveReferenceOptions(SCOPE, ANA, ['Pickup']);
+    expect((await settings.get(SCOPE)).keymap.actions.pay).toBe('F10');
+    await settings.save(SCOPE, ANA, { keymap });
+    expect((await settings.get(SCOPE)).referenceOptions).toEqual(['Pickup']);
+  });
+
+  it('removes them all with an empty list', async () => {
+    const { settings } = harness();
+    await settings.saveReferenceOptions(SCOPE, ANA, ['Pickup']);
+    expect((await settings.saveReferenceOptions(SCOPE, ANA, [])).referenceOptions).toEqual([]);
+  });
+
+  it('refuses a duplicate, naming it', async () => {
+    const { settings } = harness();
+    expect(await refusal(settings.saveReferenceOptions(SCOPE, ANA, ['Table 3', 'table 3']))).toBe(
+      'invalid_reference_options',
+    );
+    await expect(settings.saveReferenceOptions(SCOPE, ANA, ['Table 3', 'table 3'])).rejects.toThrow('twice');
+  });
+
+  it('⚠ never reads another store’s options', async () => {
+    const { settings } = harness();
+    await settings.saveReferenceOptions(SCOPE, ANA, ['Pickup']);
+    expect((await settings.get(OTHER_STORE)).referenceOptions).toEqual([]);
   });
 });
 

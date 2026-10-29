@@ -28,6 +28,7 @@ export function Header({
   accountNav,
   roles,
   tools,
+  offerMobileView,
 }: {
   title: string;
   viewer: Viewer;
@@ -44,6 +45,8 @@ export function Header({
   roles: readonly AppRole[];
   /** Already filtered and ordered, from `buildHeaderTools`. Empty draws nothing. */
   tools: readonly HeaderToolContribution[];
+  /** See `UserMenu`'s prop of the same name. */
+  offerMobileView: boolean;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 sm:px-6">
@@ -70,6 +73,8 @@ export function Header({
           email={viewer.email}
           accountNav={accountNav}
           roles={roles}
+          offerMobileView={offerMobileView}
+          userId={viewer.id}
         />
         {/* A hairline between the two: they are unrelated actions that would
             otherwise read as one segmented group. */}

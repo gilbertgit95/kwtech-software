@@ -36,6 +36,30 @@ else, so a feature sync does not strip them from every role while it is off.
 Without it the socket gives up after about thirty seconds of outage and the
 bell silently stops being live. See module-kit's README.
 
+### On a phone
+
+```ts
+// apps/web-app/src/mobile-modules.ts
+import { notificationMobileModule } from '@kwtech/module-notification/mobile';
+export const MOBILE_MODULES = [notificationMobileModule()];
+```
+
+The phone layout (issue #22) gets an **Inbox** destination on its bottom bar,
+right of Chat (order 20). Its badge, `InboxMobileBadge`, is always mounted and
+is the phone's one notification centre — the unread count, the toasts and the
+tab title, from one `useNotificationCenter`, as the bell is on the desktop.
+The tab opens `InboxMobileView`: the same `useNotificationInbox` as the
+inbox page, laid out for a phone — All / Unread / Archived as one switch,
+every filter behind one **Filters** button in a sheet of chips, cards whose
+tools (read, unread, archive) open from a "⋯" button because a phone has no
+hover, "Mark all read" in place of bulk selection, and a Newer / Older pager.
+Filtered by `notification:read` at app level.
+
+⚠ It passes `syncAddress: false`. The inbox page keeps its filters in the
+address (`?tab=unread`); on the phone the address is the frame's, whose own
+`?tab=inbox` it would have overwritten. Off, the filters are kept in memory
+while the tab is mounted.
+
 ## In a NestJS app
 
 ```ts

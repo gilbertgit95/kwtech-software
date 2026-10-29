@@ -23,13 +23,17 @@
     "notify:demo": "node ../../scripts/env.mjs --require=local && pnpm db:seed:build && node dist/notifications/demo.js",
     "db:seed:list": "pnpm db:seed:build && node dist/seed/run.js --list",
     "db:snapshot": "pnpm db:seed:build && node dist/seed/snapshot.js --export",
-    "db:restore": "pnpm db:seed:build && node dist/seed/snapshot.js --restore"
+    "db:restore": "pnpm db:seed:build && node dist/seed/snapshot.js --restore",
+    "backup:create": "pnpm db:seed:build && node dist/backup/cli.js create",
+    "backup:list": "pnpm db:seed:build && node dist/backup/cli.js list",
+    "backup:restore": "pnpm db:seed:build && node dist/backup/cli.js restore"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",
     "@as-integrations/express5": "^1.1.2",
     "@kwtech/module-app-hub": "workspace:*",
     "@kwtech/module-auth": "workspace:*",
+    "@kwtech/module-backup": "workspace:*",
     "@kwtech/module-booking": "workspace:*",
     "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-jobs": "workspace:*",

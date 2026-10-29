@@ -17,6 +17,14 @@ export class DisplayPreferencesType {
 
   @Field()
   spacing!: string;
+
+  /**
+   * Where these came from: `device` (this device's own), `account` (the
+   * account's for the layout) or `default`. So a settings page can say whether
+   * a change here would be this device's alone.
+   */
+  @Field()
+  source!: string;
 }
 
 @ObjectType('Viewer')

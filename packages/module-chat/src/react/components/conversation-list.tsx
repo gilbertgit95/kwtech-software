@@ -227,7 +227,8 @@ export function ConversationList({
  * removed message as a placeholder because its reader can see the conversation
  * and ask, and somebody holding an unanswered invitation can do neither.
  */
-function previewOf(conversation: ChatConversationView): string | null {
+/** An invitation's first message, or null — §12.51. Shared with the phone's list (issue #22). */
+export function previewOf(conversation: ChatConversationView): string | null {
   const preview = conversation.preview;
   if (!preview || preview.deleted) return null;
   return preview.body?.trim() || null;
@@ -242,7 +243,8 @@ function previewOf(conversation: ChatConversationView): string | null {
  * be a guess, and a wrong guess about who invited you into a group is worse
  * than not saying.
  */
-function invitedBy(conversation: ChatConversationView): string {
+/** What an invitation is, in a line. Shared with the phone's list. */
+export function invitedBy(conversation: ChatConversationView): string {
   const others = otherParticipants(conversation);
   if (conversation.isDirect) return 'Wants to start a conversation';
   return others.length > 0 ? `Group with ${others.join(', ')}` : 'Group invitation';

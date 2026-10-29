@@ -15,6 +15,7 @@
  * where that cost a debugging session.
  */
 
+export { BottomSheet, type BottomSheetProps, BottomSheetRow } from './bottom-sheet.js';
 export {
   addDays,
   type CalendarCell,
@@ -86,6 +87,7 @@ export {
   settingChoices,
 } from './printer-menu-rules.js';
 export { QrCode } from './qr-code.js';
+export { ResizeGrip, type ResizeGripProps } from './resize-grip.js';
 export { StatusBar, type StatusBarMessage, type StatusBarProps } from './status-bar.js';
 export { type ThemeMode, ThemeSwitcher, type ThemeSwitcherProps } from './theme-switcher.js';
 export { TOOLTIP_DELAY_MS, Tooltip, type TooltipProps, type TooltipTriggerProps } from './tooltip.js';

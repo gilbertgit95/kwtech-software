@@ -118,6 +118,8 @@ function refusalMessage(reason: PosRefusal): string {
       return 'Pick each line of this order once';
     case 'invalid_keymap':
       return 'Those shortcuts cannot be saved';
+    case 'invalid_reference_options':
+      return 'Those reference options cannot be saved';
     case 'invalid_period':
       return 'A period covers whole store days, from one day to a little over a year';
   }

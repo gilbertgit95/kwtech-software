@@ -10,9 +10,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@kwtech/web-ui/react';
-import { ChevronDown, LogOut, Smartphone } from 'lucide-react';
+import { ChevronDown, LogOut, MonitorSmartphone, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { isRunningInstalled } from '@/components/install/install-platform';
+import { Avatar, initialsOf } from '@/components/layout/avatar';
+import { switchLayout } from '@/components/layout/layout-switch';
 import { iconFor } from '@/components/layout/nav-icons';
 import { RoleBadge } from '@/components/layout/role-badge';
 
@@ -37,39 +39,17 @@ interface UserMenuProps {
    * rather than a "none" chip nobody needs to read.
    */
   roles?: readonly AppRole[];
+  /**
+   * Whether to offer "Use mobile view" (issue #22): on a phone or tablet, or
+   * for somebody who switched to the full site — decided on the server from
+   * the request, by `offersMobileView`.
+   */
+  offerMobileView?: boolean;
+  /** The signed-in person, whose layout choice the switch saves — per person on each device. */
+  userId: string;
 }
 
-/**
- * Initials, not a generic person glyph. An avatar's job in a header is to be
- * recognisable at a glance, and every user sharing one silhouette defeats
- * that — two letters do it with no image to upload, store or serve.
- */
-function initialsOf(name: string | null, email: string): string {
-  const source = name?.trim() || email.split('@')[0]?.replace(/[._-]+/g, ' ') || '';
-  const parts = source.split(/\s+/).filter(Boolean);
-
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return (parts[0] ?? '').slice(0, 2).toUpperCase();
-
-  return `${parts[0]?.[0] ?? ''}${parts[parts.length - 1]?.[0] ?? ''}`.toUpperCase();
-}
-
-function Avatar({ initials, className }: { initials: string; className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/70',
-        'font-semibold leading-none tracking-tight text-primary-foreground',
-        className,
-      )}
-    >
-      {initials}
-    </span>
-  );
-}
-
-export function UserMenu({ name, email, accountNav = [], roles = [] }: UserMenuProps) {
+export function UserMenu({ name, email, accountNav = [], roles = [], offerMobileView = false, userId }: UserMenuProps) {
   const initials = initialsOf(name, email);
   // `||`, not `??`: an empty-string display name is as absent as a null one,
   // and it comes from a nullable column.
@@ -172,6 +152,23 @@ export function UserMenu({ name, email, accountNav = [], roles = [] }: UserMenuP
            * in the drawer because it is about this person's device, not about
            * a feature they hold — and so it needs no feature key.
            */}
+          {/*
+           * Back to the phone layout. Only where it could matter (see the
+           * prop): a computer that never asked for it is not offered it.
+           */}
+          {offerMobileView ? (
+            <>
+              <DropdownMenuItem
+                onSelect={() => switchLayout('mobile', userId)}
+                className="gap-2.5 rounded-lg px-2 py-2"
+              >
+                <MonitorSmartphone aria-hidden className="opacity-80" />
+                Use mobile view
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1" />
+            </>
+          ) : null}
+
           {installed ? null : (
             <>
               <DropdownMenuItem asChild className="gap-2.5 rounded-lg px-2 py-2">

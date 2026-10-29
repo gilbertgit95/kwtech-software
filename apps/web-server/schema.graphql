@@ -58,6 +58,22 @@ type AppHubLayouts {
   workspace: String
 }
 
+type BackupFile {
+  createdAt: String!
+  kind: String!
+  name: String!
+  sizeBytes: Float!
+}
+
+type BackupState {
+  activity: String!
+  database: String!
+  files: [BackupFile!]!
+  keep: Float!
+  maintenance: Boolean!
+  timeZone: String!
+}
+
 type BookingAppointment {
   createdAt: String!
   createdById: String
@@ -586,6 +602,7 @@ input CreateTaskInput {
 }
 
 type DisplayPreferences {
+  source: String!
   spacing: String!
   textSize: String!
 }
@@ -757,6 +774,7 @@ type Mutation {
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   confirmBookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointment!
   confirmStockTake(organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
+  createBackup: BackupFile!
   createBookingAppointment(input: BookingAppointmentInput!, organizationId: String!, workspaceId: String!): BookingAppointment!
   createNote(input: CreateNoteInput!, organizationId: String!, workspaceId: String!): Note!
   createOrganization(description: String, key: String!, name: String!): PermissionWriteResult!
@@ -774,6 +792,7 @@ type Mutation {
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
   declineBookingAppointment(appointmentId: String!, organizationId: String!, reason: String, workspaceId: String!): BookingAppointment!
   declineInvitation(token: String!): InvitationDeclineResult!
+  deleteBackup(name: String!): Boolean!
   deleteChatMessage(messageId: String!): ChatMessage!
   deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteStudioCalibration(calibrationId: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -783,11 +802,13 @@ type Mutation {
   duplicateStudioLayout(layoutId: String!, name: String, organizationId: String!, workspaceId: String!): StudioLayout!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
+  forgetMyDeviceDisplay(device: String!, layout: String!): DisplayPreferences!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
   holdPosOrder(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
   inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
+  issueBackupDownload(name: String!): String!
   leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
   lendBooksMoney(input: LendBooksMoneyInput!, organizationId: String!, workspaceId: String!): BooksLoan!
@@ -840,6 +861,7 @@ type Mutation {
   resetMyAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   resetWorkspaceAppHubLayout(organizationId: String!, workspaceId: String!): Boolean!
   respondToChatInvitation(accept: Boolean!, conversationId: String!): Boolean!
+  restoreBackup(confirmation: String!, name: String!, password: String!): Boolean!
   restoreNote(noteId: String!, organizationId: String!, workspaceId: String!): Note!
   restoreNoteRevision(expectedVersion: Int!, noteId: String!, organizationId: String!, revisionId: String!, workspaceId: String!): Note!
   restoreTask(organizationId: String!, taskId: String!, workspaceId: String!): Task!
@@ -860,6 +882,8 @@ type Mutation {
   savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
+  savePosOrderTypeOption(name: String!, orderTypeId: String, organizationId: String!, sortOrder: Int, workspaceId: String!): PosOrderTypeOption!
+  savePosReferenceOptions(defaultReference: String, options: [String!]!, organizationId: String!, workspaceId: String!): PosSettings!
   savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
   saveStockCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): StockCategory!
   saveStockItem(input: SaveStockItemInput!, organizationId: String!, workspaceId: String!): StockItem!
@@ -888,11 +912,14 @@ type Mutation {
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
   setPosCategoryArchived(archived: Boolean!, categoryId: String!, organizationId: String!, workspaceId: String!): PosCategory!
   setPosCustomerArchived(archived: Boolean!, customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer!
+  setPosDefaultOrderType(orderTypeId: String, organizationId: String!, workspaceId: String!): PosOrderTypeOption
   setPosItemArchived(archived: Boolean!, itemId: String!, organizationId: String!, workspaceId: String!): PosItem!
   setPosLineDiscount(discount: PosDiscountInput, lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderCustomer(contact: String, customerId: String, name: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderDiscount(discount: PosDiscountInput, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderLabel(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderType(orderId: String!, orderTypeId: String, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  setPosOrderTypeOptionArchived(archived: Boolean!, orderTypeId: String!, organizationId: String!, workspaceId: String!): PosOrderTypeOption!
   setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
   setQueueLineNextNumber(lineId: String!, next: Int!, organizationId: String!, workspaceId: String!): Int!
   setQueueShowStaffNames(organizationId: String!, show: Boolean!, workspaceId: String!): QueueSettings!
@@ -1402,6 +1429,7 @@ type PosCatalogue {
   categories: [PosCategory!]!
   costsVisible: Boolean!
   items: [PosItem!]!
+  orderTypes: [PosOrderTypeOption!]!
 }
 
 type PosCategory {
@@ -1487,6 +1515,8 @@ type PosOrder {
   lines: [PosOrderLine!]!
   number: Int
   orderDiscount: Float!
+  orderTypeId: String
+  orderTypeName: String
   paidAt: String
   paidById: String
   paymentMethod: String
@@ -1537,11 +1567,20 @@ type PosOrderSummary {
   itemCount: Int!
   label: String
   number: Int
+  orderTypeName: String
   paidAt: String
   refunded: Float!
   status: String!
   total: Float!
   version: Int!
+}
+
+type PosOrderTypeOption {
+  archivedAt: String
+  id: String!
+  isDefault: Boolean!
+  name: String!
+  sortOrder: Int!
 }
 
 type PosOwed {
@@ -1597,7 +1636,9 @@ type PosSeriesPoint {
 }
 
 type PosSettings {
+  defaultReference: String
   keymap: String!
+  referenceOptions: [String!]!
   timeZone: String!
   version: Int!
 }
@@ -1767,6 +1808,7 @@ type Query {
   adminUserSessions(userId: String!): [AdminUserSession!]!
   adminUsers(search: String, skip: Int, status: String, take: Int): AdminUserPage!
   appHubLayouts(organizationId: String!, workspaceId: String!): AppHubLayouts!
+  backups: BackupState!
   bookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointmentDetail
   bookingCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): BookingCatalogue!
   bookingDay(day: String!, organizationId: String!, workspaceId: String!): BookingDay!
@@ -1791,7 +1833,7 @@ type Query {
   jobProcessHistory(cursor: String, limit: Int, processKey: String!): JobHistoryPage!
   jobProcesses: [JobProcess!]!
   mfaFactors: [MfaFactor!]!
-  myDisplay: DisplayPreferences
+  myDisplay(device: String, layout: String): DisplayPreferences
   myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!
   myOrganization(organizationId: String!): PermissionOrganizationDetail
   myOrganizationRoles(level: String, organizationId: String!): [PermissionRoleDetail!]!
@@ -2598,6 +2640,9 @@ input TaskSettingsInput {
 }
 
 input UpdateDisplayInput {
+  applyTo: String
+  device: String
+  layout: String
   spacing: String
   textSize: String
 }

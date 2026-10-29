@@ -56,12 +56,16 @@ export interface TillState {
   /** How many are left per item and variant, from the stock app; null when the store counts no stock. */
   stock: PosStockMap | null;
   keymap: PosKeymap;
+  /** The store's order reference options (issue #30), in its order; empty for none — the plain text box. */
+  referenceOptions: readonly string[];
   timeZone: string;
   /** The order on the till: open, or just finished (its receipt). Null for a clear till. */
   order: PosOrderView | null;
   /** Held orders waiting (D8), oldest first: the ones Hold set aside, never a cart still being built. */
   pending: PosOrderSummaryView[];
   canSell: boolean;
+  /** Pay, pay later, cancel and settle change (`pos:take_payment`, issue #23). Without it, orders are held for a cashier. */
+  canTakePayment: boolean;
   canDiscount: boolean;
   canRefund: boolean;
   live: boolean;
@@ -99,12 +103,14 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const client = useMemo(() => options.client ?? createPosClient(), [options.client]);
   const realtime = useRealtime();
   const canSell = useHoldsFeature(POS_FEATURE.sell);
+  const canTakePayment = useHoldsFeature(POS_FEATURE.takePayment);
   const canDiscount = useHoldsFeature(POS_FEATURE.discount);
   const canRefund = useHoldsFeature(POS_FEATURE.refund);
 
   const [catalogue, setCatalogue] = useState<PosCatalogueView | null>(null);
   const [stock, setStock] = useState<PosStockMap | null>(null);
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
+  const [referenceOptions, setReferenceOptions] = useState<readonly string[]>([]);
   // The workspace's zone, from the app's shell: receipts and "today" follow it.
   const timeZone = useWorkspaceTimeZone();
   const [order, setTillOrder] = useState<PosOrderView | null>(null);
@@ -149,8 +155,10 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     try {
       const settings = await client.settings(scope);
       setKeymap(effectiveKeymap(JSON.parse(settings.keymap) as Partial<PosKeymap>));
+      setReferenceOptions(settings.referenceOptions);
     } catch {
-      // The defaults serve: a till without the store's keymap still sells.
+      // The defaults serve: a till without the store's keymap still sells, and without its
+      // reference options it asks for a typed reference.
     }
   }, [client, scope]);
 
@@ -309,10 +317,12 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     catalogue,
     stock,
     keymap,
+    referenceOptions,
     timeZone,
     order,
     pending,
     canSell,
+    canTakePayment,
     canDiscount,
     canRefund,
     live: realtime !== null,

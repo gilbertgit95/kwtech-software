@@ -5,7 +5,7 @@ import type { PosKeymap } from '../../domain/keymap.js';
 import { PosWriteError } from '../pos.errors.js';
 import type { PosModuleOptions } from '../pos.options.js';
 import { isPosEventFor, NULL_POS_PUBSUB, POS_EVENT, type PosEvent, type PosPubSub } from '../pos.pubsub.js';
-import type { PosCategoryRow, PosCustomerRow, PosItemVariantRow } from '../pos.repository.js';
+import type { PosCategoryRow, PosCustomerRow, PosItemVariantRow, PosOrderTypeRow } from '../pos.repository.js';
 import { POS_OPTIONS, POS_PUBSUB } from '../pos.tokens.js';
 import { PosAccessService } from '../pos-access.service.js';
 import { type PosCatalogueItem, PosCatalogueService } from '../pos-catalogue.service.js';
@@ -18,6 +18,7 @@ import {
   PosCustomerType,
   PosEventType,
   PosItemType,
+  PosOrderTypeOptionType,
   PosSettingsType,
   PosStockLevelsType,
   PosVariantType,
@@ -94,6 +95,7 @@ export class PosCatalogueResolver {
     ]);
     return {
       categories: catalogue.categories.map(renderCategory),
+      orderTypes: catalogue.orderTypes.map(renderOrderTypeOption),
       items: catalogue.items.map((entry) => renderItem(entry, costsVisible)),
       costsVisible,
     };
@@ -149,6 +151,51 @@ export class PosCatalogueResolver {
   ): Promise<PosCategoryType> {
     const scope = { organizationId, workspaceId };
     return renderCategory(await this.catalogue.setCategoryArchived(scope, this.actor(gql.req), categoryId, archived));
+  }
+
+  // ── order types (pos:manage_items) ──────────────────────────────────────────
+
+  /** Omit `orderTypeId` for a new one. */
+  @Mutation(() => PosOrderTypeOptionType, { name: 'savePosOrderTypeOption' })
+  async savePosOrderTypeOption(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('name') name: string,
+    @Args('orderTypeId', { type: () => String, nullable: true }) orderTypeId?: string | null,
+    @Args('sortOrder', { type: () => Int, nullable: true }) sortOrder?: number | null,
+  ): Promise<PosOrderTypeOptionType> {
+    const scope = { organizationId, workspaceId };
+    return renderOrderTypeOption(
+      await this.catalogue.saveOrderType(scope, this.actor(gql.req), { id: orderTypeId, name, sortOrder }),
+    );
+  }
+
+  @Mutation(() => PosOrderTypeOptionType, { name: 'setPosOrderTypeOptionArchived' })
+  async setPosOrderTypeOptionArchived(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('orderTypeId') orderTypeId: string,
+    @Args('archived') archived: boolean,
+  ): Promise<PosOrderTypeOptionType> {
+    const scope = { organizationId, workspaceId };
+    return renderOrderTypeOption(
+      await this.catalogue.setOrderTypeArchived(scope, this.actor(gql.req), orderTypeId, archived),
+    );
+  }
+
+  /** The type a new order starts with; `null` for none. Answers the new default, or null. */
+  @Mutation(() => PosOrderTypeOptionType, { name: 'setPosDefaultOrderType', nullable: true })
+  async setPosDefaultOrderType(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('orderTypeId', { type: () => String, nullable: true }) orderTypeId?: string | null,
+  ): Promise<PosOrderTypeOptionType | null> {
+    const scope = { organizationId, workspaceId };
+    const saved = await this.catalogue.setDefaultOrderType(scope, this.actor(gql.req), orderTypeId ?? null);
+    return saved ? renderOrderTypeOption(saved) : null;
   }
 
   // ── customers ─────────────────────────────────────────────────────────────
@@ -225,6 +272,25 @@ export class PosCatalogueResolver {
     return renderSettings(saved);
   }
 
+  /**
+   * The order reference options the Reference and Hold dialogs offer, the
+   * whole list in order; an empty list removes them. Leaves the keymap alone.
+   */
+  @Mutation(() => PosSettingsType, { name: 'savePosReferenceOptions' })
+  async savePosReferenceOptions(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('options', { type: () => [String] }) options: string[],
+    /** One of `options`, the reference a new order starts with; omitted or null for none. */
+    @Args('defaultReference', { type: () => String, nullable: true }) defaultReference?: string | null,
+  ): Promise<PosSettingsType> {
+    const scope = { organizationId, workspaceId };
+    return renderSettings(
+      await this.settings.saveReferenceOptions(scope, this.actor(gql.req), options, defaultReference ?? null),
+    );
+  }
+
   // ── live ──────────────────────────────────────────────────────────────────
 
   /**
@@ -283,6 +349,16 @@ export function renderCategory(row: PosCategoryRow): PosCategoryType {
   return { id: row.id, name: row.name, sortOrder: row.sortOrder, archivedAt: iso(row.archivedAt) };
 }
 
+export function renderOrderTypeOption(row: PosOrderTypeRow): PosOrderTypeOptionType {
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sortOrder,
+    isDefault: row.isDefault,
+    archivedAt: iso(row.archivedAt),
+  };
+}
+
 function renderVariant(row: PosItemVariantRow, costsVisible: boolean): PosVariantType {
   return {
     id: row.id,
@@ -326,5 +402,11 @@ export function renderCustomer(row: PosCustomerRow): PosCustomerType {
 }
 
 function renderSettings(settings: PosStoreSettings): PosSettingsType {
-  return { timeZone: settings.timeZone, keymap: JSON.stringify(settings.keymap), version: settings.version };
+  return {
+    timeZone: settings.timeZone,
+    keymap: JSON.stringify(settings.keymap),
+    referenceOptions: [...settings.referenceOptions],
+    defaultReference: settings.defaultReference,
+    version: settings.version,
+  };
 }

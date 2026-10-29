@@ -634,6 +634,28 @@ Its one non-obvious line is `event.preventDefault()` on select: Radix dismisses
 on select by default, which for a multi-select means one click per re-open —
 technically working and unusable for its whole purpose.
 
+## Resizable borders
+
+Every border a person can drag carries the same grip, `ResizeGrip`: three dots
+at its middle. A bare border, or a line that appears only on hover, looks like
+no handle at all, and a touch screen has no hover.
+
+```tsx
+<div role="separator" aria-orientation="vertical" aria-label="Resize navigation" tabIndex={0}
+     className="group absolute inset-y-0 -right-1 flex w-2 cursor-col-resize items-center justify-center">
+  <ResizeGrip onBorder active={resizing} />
+</div>
+```
+
+- **The separator does the work** (pointer capture, ← → keys, `aria-value*`);
+  the grip is decorative. Give the separator `group`, so the dots light up on
+  its hover and keyboard focus, and centre the grip in it.
+- **`onBorder`** when the edge is a panel's own border (the navigation, the
+  app list, the POS order panel): the dots get a card-coloured pill, or the
+  border's line would cross them. Leave it off in a gap between two panels
+  (the Apps page's grid).
+- **`orientation="horizontal"`** for a border that runs across (a row's).
+
 ## Debouncing a search box
 
 ```tsx
@@ -810,3 +832,13 @@ playTone({ notes: [{ hz: 660, at: 0, ms: 110 }, { hz: 990, at: 80, ms: 200, shap
   keep every frequency positive: the Web Audio API throws on a zero ramp target.
 - **`peak` defaults to desk level (0.14)** and is capped at 0.5, because
   overlapping notes past that clip into distortion.
+
+## Bottom sheets (phones)
+
+`BottomSheet` (and `BottomSheetRow`) from `@kwtech/web-ui/react`: a panel
+rising from the bottom of a phone's screen — a native modal `<dialog>` (focus
+trapped, Esc and the backdrop close it, the page behind inert), with a handle
+and swipe-down to close, an optional `footer` kept in view, and on a tablet a
+card floating above the bottom edge. Every sheet on the phone layout uses it
+(issue #22): the frame's account and switcher, the inbox's filters, notes' and
+tasks' actions and filters.

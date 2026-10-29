@@ -3,6 +3,7 @@
 import { cn, Tooltip } from '@kwtech/web-ui/react';
 import {
   Ban,
+  ChevronLeft,
   Hand,
   Hash,
   Keyboard,
@@ -16,12 +17,13 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
-import { type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { type PosSearchResult, parseQuantityPrefix, searchItems } from '../../domain/search.js';
 import type { PosItemView, PosOrderLineView, PosOrderView } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
 import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
+import { ORDER_PANEL_RULES, ORDER_PANEL_STORAGE_KEY } from '../view/order-panel.js';
 import { receiptHtml } from '../view/receipt.js';
 import { leftOf, type PosStockMap, stockWarning, tileLeft } from '../view/stock.js';
 import {
@@ -37,7 +39,16 @@ import {
   searchCatalogue,
 } from '../view/till.js';
 import { buttonClass, INPUT_CLASS, StockBadge } from './controls.js';
-import { CustomerDialog, DiscountDialog, PendingDialog, TextDialog, VariantPicker } from './dialogs.js';
+import {
+  CustomerDialog,
+  DiscountDialog,
+  PendingDialog,
+  ReferenceDialog,
+  TextDialog,
+  VariantPicker,
+} from './dialogs.js';
+import { OrderTypePicker } from './order-type-picker.js';
+import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
 
@@ -64,7 +75,36 @@ type Dialog =
  * match (an exact code wins, D19), "100*" sets the quantity first (D20), and
  * every act's answer is the order as the server now holds it.
  */
-export function Till({ state }: { state: TillState }) {
+export function Till({
+  state,
+  phone = false,
+}: {
+  state: TillState;
+  /**
+   * The PHONE's till (issue #22). On a phone the items and the order cannot
+   * share the screen: stacked, the order took all the height and left the
+   * items none. So the item grid fills the screen, the order waits in a
+   * summary bar at the foot ("2 items · ₱250 · View order") and opens over the
+   * items with "‹ Items" — and opens by itself to show the receipt after a
+   * sale. A phone has no function keys either, so the shortcut bar and its
+   * help go, and the search does not take focus on arrival, which would push
+   * the keyboard over the till before anybody asked to type.
+   *
+   * The same till in every other respect: one order, kept as it is built.
+   */
+  phone?: boolean;
+}) {
+  /** Phone only: whether the order is open over the items. */
+  const [orderShown, setOrderShown] = useState(false);
+  /*
+   * The order panel's width on the full screen, dragged by its left edge. Read
+   * in the initialiser, not an effect, so the panel arrives at its remembered
+   * width instead of opening at the default and jumping. Safe because the till
+   * renders only after hydration (in the Apps page's grid); and on the phone,
+   * which may be rendered on the server, the width is never put on the page.
+   */
+  const [orderWidth, setOrderWidth] = useState(() => readPanelWidth(ORDER_PANEL_RULES, ORDER_PANEL_STORAGE_KEY));
+  const orderPanelId = useId();
   const [query, setQuery] = useState('');
   /** The match ↑ ↓ are on in the search results, and the one Enter adds. The first, until an arrow moves it. */
   const [activeResult, setActiveResult] = useState(0);
@@ -215,7 +255,7 @@ export function Till({ state }: { state: TillState }) {
         setDialog({ kind: 'pending' });
         return true;
       case 'pay':
-        if (lines.length > 0) setDialog({ kind: 'pay' });
+        if (lines.length > 0 && state.canTakePayment) setDialog({ kind: 'pay' });
         return true;
       case 'help':
         setDialog({ kind: 'help' });
@@ -340,7 +380,7 @@ export function Till({ state }: { state: TillState }) {
         if (dialog.kind === 'none' && document.activeElement === document.body) focusHome();
       }}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3 @3xl:flex-row">
+      <div className={cn('flex min-h-0 flex-1 flex-col gap-3', phone ? 'relative' : '@3xl:flex-row')}>
         {/* ── search and the grid ─────────────────────────────────────────── */}
         <section aria-label="Items" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
           <label className="sr-only" htmlFor={searchId}>
@@ -351,8 +391,8 @@ export function Till({ state }: { state: TillState }) {
             ref={searchRef}
             type="search"
             autoComplete="off"
-            // biome-ignore lint/a11y/noAutofocus: the till's search is where a cashier starts every sale (D20).
-            autoFocus
+            // biome-ignore lint/a11y/noAutofocus: the till's search is where a cashier starts every sale (D20) — not on a phone, where focus raises the keyboard.
+            autoFocus={!phone}
             placeholder="Search or scan · 100* for quantity"
             className={cn(INPUT_CLASS, 'h-11 text-base')}
             value={query}
@@ -401,10 +441,63 @@ export function Till({ state }: { state: TillState }) {
         </section>
 
         {/* ── the order ───────────────────────────────────────────────────── */}
+        {/* Phone: the order's summary at the foot, while the order itself is closed. */}
+        {phone && !finished && !orderShown ? (
+          <button
+            type="button"
+            onClick={() => setOrderShown(true)}
+            className="flex min-h-14 shrink-0 items-center justify-between gap-3 rounded-2xl bg-primary px-4 text-left text-primary-foreground shadow-md transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <span className="min-w-0">
+              <span className="block text-xs opacity-80">
+                {open && open.lines.length > 0
+                  ? `${itemCount(open.lines)} ${itemCount(open.lines) === 1 ? 'item' : 'items'}`
+                  : 'No items yet'}
+              </span>
+              <span className="block text-lg font-semibold tabular-nums">{formatPeso(open?.total ?? 0)}</span>
+            </span>
+            <span className="shrink-0 text-sm font-medium">View order ›</span>
+          </button>
+        ) : null}
+
         <section
+          id={orderPanelId}
           aria-label="Order"
-          className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3 @3xl:w-[22rem] @3xl:shrink-0"
+          // Phone: over the items, the whole till's height — and HIDDEN rather than unmounted while
+          // closed, so the cart keeps its refs and its line selection.
+          hidden={phone && !finished && !orderShown}
+          // The dragged width, as a variable the wide layout reads: an inline `width` would also
+          // size the narrow, stacked layout, where the order takes the whole width.
+          style={phone ? undefined : ({ '--pos-order-width': `${orderWidth}px` } as CSSProperties)}
+          className={cn(
+            'flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3',
+            phone
+              ? 'absolute inset-0 z-10 rounded-2xl shadow-lg'
+              : // max-w keeps a width chosen on a wide monitor from swallowing the items on a laptop.
+                'relative @3xl:w-[var(--pos-order-width)] @3xl:max-w-[65%] @3xl:shrink-0',
+          )}
         >
+          {phone ? null : (
+            <PanelEdgeHandle
+              panelId={orderPanelId}
+              label="Resize the order"
+              width={orderWidth}
+              rules={ORDER_PANEL_RULES}
+              storageKey={ORDER_PANEL_STORAGE_KEY}
+              shownClass="@3xl:flex"
+              onResize={setOrderWidth}
+            />
+          )}
+          {phone && !finished ? (
+            <button
+              type="button"
+              onClick={() => setOrderShown(false)}
+              className="-mt-1 -ml-1 flex min-h-10 w-fit items-center gap-0.5 rounded-full pr-3 pl-1 text-sm font-medium text-primary transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronLeft aria-hidden="true" className="size-4" />
+              Items
+            </button>
+          ) : null}
           {finished ? (
             <Receipt
               order={finished}
@@ -413,6 +506,8 @@ export function Till({ state }: { state: TillState }) {
               onNext={() => {
                 state.clear();
                 close();
+                // Phone: the next sale starts on the items, not on an empty order.
+                setOrderShown(false);
               }}
             />
           ) : (
@@ -424,6 +519,7 @@ export function Till({ state }: { state: TillState }) {
               selectedLineId={selectedLineId}
               onSelect={setSelectedLineId}
               onDialog={setDialog}
+              phone={phone}
             />
           )}
         </section>
@@ -455,12 +551,16 @@ export function Till({ state }: { state: TillState }) {
           }}
           onClose={close}
         />
-        <TextDialog
+        <ReferenceDialog
           open={dialog.kind === 'hold'}
           title="Hold this order"
           label="Order reference (optional)"
           hint="Tells held orders apart: “table 3”, “red cap”. The same reference the order shows and prints."
           initial={open?.label ?? ''}
+          options={state.referenceOptions}
+          held={state.pending}
+          currentId={open?.id ?? null}
+          phone={phone}
           confirmLabel="Hold"
           onSave={async (label) => {
             const held = await state.act((current) => client.hold(scope, current, label || null));
@@ -469,12 +569,16 @@ export function Till({ state }: { state: TillState }) {
           }}
           onClose={close}
         />
-        <TextDialog
+        <ReferenceDialog
           open={dialog.kind === 'reference'}
           title="Order reference"
           label="Reference (optional)"
           hint="Letters or numbers, for whatever this store needs: “table 5”, “T12”, “pickup 3”. Printed on the receipt. Empty removes it."
           initial={open?.label ?? ''}
+          options={state.referenceOptions}
+          held={state.pending}
+          currentId={open?.id ?? null}
+          phone={phone}
           confirmLabel="Save reference"
           onSave={async (reference) => {
             const text = reference.trim();
@@ -543,7 +647,10 @@ export function Till({ state }: { state: TillState }) {
         />
         <ShortcutHelp open={dialog.kind === 'help'} state={state} onClose={close} />
       </div>
-      <ShortcutBar zone={zone} state={state} onPress={(key) => perform(meaningOf(key, zone, state.keymap))} />
+      {/* No function keys on a phone: nothing for the bar to name. */}
+      {phone ? null : (
+        <ShortcutBar zone={zone} state={state} onPress={(key) => perform(meaningOf(key, zone, state.keymap))} />
+      )}
     </div>
   );
 }
@@ -710,6 +817,7 @@ function Cart({
   selectedLineId,
   onSelect,
   onDialog,
+  phone,
 }: {
   order: PosOrderView | null;
   state: TillState;
@@ -718,6 +826,8 @@ function Cart({
   selectedLineId: string | null;
   onSelect: (lineId: string | null) => void;
   onDialog: (dialog: Dialog) => void;
+  /** The phone's till: no keyboard-shortcut help, there being no keyboard. */
+  phone: boolean;
 }) {
   const { client, scope } = state;
   const lines = order?.lines ?? [];
@@ -731,17 +841,43 @@ function Cart({
             <span className="ml-1 font-normal text-muted-foreground">· {itemCount(lines)} items</span>
           ) : null}
         </h2>
+        {phone ? null : (
+          <button
+            type="button"
+            aria-label="Keyboard shortcuts"
+            className={cn(buttonClass('ghost', 'sm'), 'ml-auto')}
+            onClick={() => onDialog({ kind: 'help' })}
+          >
+            <Keyboard aria-hidden="true" className="size-3.5" />
+          </button>
+        )}
         <button
           type="button"
-          aria-label="Keyboard shortcuts"
-          className={cn(buttonClass('ghost', 'sm'), 'ml-auto')}
-          onClick={() => onDialog({ kind: 'help' })}
+          aria-label={
+            state.pending.length > 0 ? `Pending orders: ${state.pending.length} waiting` : 'Pending orders: none'
+          }
+          className={cn(
+            buttonClass('ghost', 'sm'),
+            // Pushed right by the shortcut button on the desktop; on a phone, which has none, by itself.
+            phone ? 'ml-auto' : null,
+            // ⚠ LOUD ONLY WHILE ORDERS WAIT (the operator, 2026-10-29): a held order is a sale still to settle,
+            // and "Pending (2)" in a ghost button was missed. Tinted, with the count as a badge — and quiet
+            // again once the list is empty, so a warning colour always means something to resolve.
+            state.pending.length > 0 &&
+              'border border-status-warning bg-status-warning/15 font-semibold hover:bg-status-warning/25',
+          )}
+          onClick={() => onDialog({ kind: 'pending' })}
         >
-          <Keyboard aria-hidden="true" className="size-3.5" />
-        </button>
-        <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => onDialog({ kind: 'pending' })}>
           <ListOrdered aria-hidden="true" className="size-3.5" />
-          Pending{state.pending.length > 0 ? ` (${state.pending.length})` : ''}
+          Pending
+          {state.pending.length > 0 ? (
+            <span
+              aria-hidden="true"
+              className="inline-flex min-w-5 items-center justify-center rounded-full bg-status-warning px-1.5 py-0.5 text-xs font-bold leading-none tabular-nums text-status-warning-foreground"
+            >
+              {state.pending.length}
+            </span>
+          ) : null}
         </button>
       </header>
 
@@ -762,24 +898,31 @@ function Cart({
         )}
       </button>
 
+      {/* How it is served ("Dine-in", "Takeout"): only when the store has order types. */}
+      <OrderTypePicker state={state} order={order} labelled />
+
       {/*
        * The order's reference (issue #24): a table number, a pickup tag, a job
-       * code — free text, so it serves any store. ⚠ OPTIONAL AND QUIET: most
-       * stores never use it, so unset it is one small muted line, never a
-       * field the cashier has to step over. It is the same `label` Hold asks for.
+       * code — free text, so it serves any store. It is the same `label` Hold
+       * asks for.
+       *
+       * ⚠ OPTIONAL BUT NOT QUIET: the same box as the customer's, not a small
+       * muted line under it (the operator, 2026-10-29). Unset, it read as
+       * unimportant and was skipped; it is what tells held orders and tables
+       * apart, so it sits beside the customer as an equal.
        */}
       <button
         type="button"
-        className="flex items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-2 rounded-md border border-dashed border-border px-2.5 py-1.5 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => onDialog({ kind: 'reference' })}
       >
-        <Hash aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <Hash aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         {order?.label ? (
           <span className="min-w-0 truncate">
             <span className="text-muted-foreground">Reference:</span> {order.label}
           </span>
         ) : (
-          <span className="text-muted-foreground">Add a reference (table no., tag…)</span>
+          <span className="text-muted-foreground">No reference — add one (table no., tag…)</span>
         )}
       </button>
 
@@ -933,35 +1076,55 @@ function Cart({
             {order?.discount ? 'Order discount ✓' : 'Order discount'}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={buttonClass('ghost', 'sm')}
-          disabled={!order}
-          onClick={() => onDialog({ kind: 'cancel' })}
-        >
-          <Ban aria-hidden="true" className="size-3.5" />
-          Cancel
-        </button>
+        {/* Cancelling settles an order as bringing no money: the cashier's call, not the order taker's (issue #23). */}
+        {state.canTakePayment ? (
+          <button
+            type="button"
+            className={buttonClass('ghost', 'sm')}
+            disabled={!order}
+            onClick={() => onDialog({ kind: 'cancel' })}
+          >
+            <Ban aria-hidden="true" className="size-3.5" />
+            Cancel
+          </button>
+        ) : null}
       </div>
-      <div className="grid grid-cols-[auto_1fr] gap-2">
-        <button
-          type="button"
-          className={buttonClass('secondary')}
-          disabled={lines.length === 0 || state.busy}
-          onClick={() => onDialog({ kind: 'hold' })}
-        >
-          <Hand aria-hidden="true" className="size-4" />
-          Hold
-        </button>
-        <button
-          type="button"
-          className={cn(buttonClass('primary'), 'h-11 text-base')}
-          disabled={lines.length === 0 || state.busy}
-          onClick={() => onDialog({ kind: 'pay' })}
-        >
-          Pay {formatPeso(order?.total ?? 0)}
-        </button>
-      </div>
+      {state.canTakePayment ? (
+        <div className="grid grid-cols-[auto_1fr] gap-2">
+          <button
+            type="button"
+            className={buttonClass('secondary')}
+            disabled={lines.length === 0 || state.busy}
+            onClick={() => onDialog({ kind: 'hold' })}
+          >
+            <Hand aria-hidden="true" className="size-4" />
+            Hold
+          </button>
+          <button
+            type="button"
+            className={cn(buttonClass('primary'), 'h-11 text-base')}
+            disabled={lines.length === 0 || state.busy}
+            onClick={() => onDialog({ kind: 'pay' })}
+          >
+            Pay {formatPeso(order?.total ?? 0)}
+          </button>
+        </div>
+      ) : (
+        // An order taker's sale ends at Hold: a cashier takes the payment (issue #23). Said, so the
+        // missing Pay button does not read as a fault.
+        <>
+          <button
+            type="button"
+            className={cn(buttonClass('primary'), 'h-11 text-base')}
+            disabled={lines.length === 0 || state.busy}
+            onClick={() => onDialog({ kind: 'hold' })}
+          >
+            <Hand aria-hidden="true" className="size-4" />
+            Hold for the cashier
+          </button>
+          <p className="text-center text-xs text-muted-foreground">A cashier takes the payment.</p>
+        </>
+      )}
       {/* Keeps the search box reachable for a mouse user who clicked into the cart. */}
       <button type="button" className="sr-only" onClick={() => searchRef.current?.focus()}>
         Back to search
@@ -1073,6 +1236,7 @@ function Receipt({
       >
         {unpaid ? `Order #${order.number} — unpaid` : `Order #${order.number} — paid`}
       </p>
+      {order.orderTypeName ? <p className="text-sm text-muted-foreground">{order.orderTypeName}</p> : null}
       {order.label ? <p className="text-sm text-muted-foreground">Reference: {order.label}</p> : null}
       <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto text-sm">
         {order.lines.map((line) => (

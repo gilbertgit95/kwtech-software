@@ -104,6 +104,16 @@ export function meaningOf(key: string | null, zone: TillZone, keymap: PosKeymap)
 
 /** Actions a person without the key cannot use: the bar and the `?` list leave them out (D21). */
 const NEEDS_DISCOUNT: readonly PosKeyAction[] = ['lineDiscount', 'orderDiscount'];
+/** Settling the order (`pos:take_payment`, issue #23): an order taker's sale ends at Hold. */
+const NEEDS_PAYMENT: readonly PosKeyAction[] = [
+  'pay',
+  'payCash',
+  'payEwallet',
+  'payCard',
+  'keepTip',
+  'changeOwed',
+  'payLater',
+];
 
 /** One entry of the shortcut bar or the `?` list. */
 export interface ShortcutEntry {
@@ -122,10 +132,11 @@ export interface ShortcutEntry {
 export function shortcutBar(
   zone: TillZone,
   keymap: PosKeymap,
-  options: { canDiscount: boolean; itemLabels?: ReadonlyMap<string, string> },
+  options: { canDiscount: boolean; canTakePayment: boolean; itemLabels?: ReadonlyMap<string, string> },
 ): ShortcutEntry[] {
   const entry = (action: PosKeyAction): ShortcutEntry | null => {
     if (!options.canDiscount && NEEDS_DISCOUNT.includes(action)) return null;
+    if (!options.canTakePayment && NEEDS_PAYMENT.includes(action)) return null;
     return { key: keymap.actions[action], label: POS_KEY_ACTIONS[action].label, action };
   };
   const fixed = (key: string, label: string): ShortcutEntry => ({ key, label, action: null });
@@ -170,7 +181,7 @@ export function shortcutBar(
 /** Every key, for the `?` list: each zone's bar, without repeats. */
 export function allShortcuts(
   keymap: PosKeymap,
-  options: { canDiscount: boolean; itemLabels?: ReadonlyMap<string, string> },
+  options: { canDiscount: boolean; canTakePayment: boolean; itemLabels?: ReadonlyMap<string, string> },
 ): { zone: string; entries: ShortcutEntry[] }[] {
   const zones: [TillZone, string][] = [
     ['search', 'Selling'],

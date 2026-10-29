@@ -1,6 +1,7 @@
-import type { Viewer } from '@kwtech/module-auth';
+import { AUTH_DEVICE_COOKIE, isAuthDeviceId, type Viewer } from '@kwtech/module-auth';
 import { getSessionToken } from '@kwtech/module-auth/next';
 import type { PermissionContext } from '@kwtech/module-permissions';
+import { cookies } from 'next/headers';
 import { cache } from 'react';
 
 /**
@@ -58,10 +59,11 @@ import { cache } from 'react';
  */
 
 const SESSION_QUERY = `
-  query Session($organizationId: String, $workspaceId: String) {
+  query Session($organizationId: String, $workspaceId: String, $device: String) {
     viewer { id email username displayName }
     session { expiresAt }
-    myDisplay { textSize spacing }
+    myDisplay(device: $device) { textSize spacing }
+    mobileDisplay: myDisplay(layout: "mobile", device: $device) { textSize spacing }
     myOrganizations {
       organizationId
       organizationKey
@@ -134,6 +136,14 @@ export interface NavContext {
    */
   organizationEntitled: readonly string[] | null;
   /**
+   * What the viewer can actually USE inside the selected organization: the
+   * grants, cut down to what the plan includes, with app-level roles passing
+   * the plan as the guard lets them. The phone's Manage tab filters its
+   * organization pages with this (issue #22), so a page shows exactly when
+   * the API would serve it; the drawer keeps `organizationGranted`.
+   */
+  organizationEffective: readonly string[];
+  /**
    * Grants at the selected WORKSPACE — filters the workspace section.
    *
    * A third reading rather than reusing the organization's, because an
@@ -160,6 +170,7 @@ const EMPTY_NAV: NavContext = {
   appGranted: [],
   organizationGranted: [],
   organizationEntitled: null,
+  organizationEffective: [],
   workspaceGranted: [],
   workspaces: [],
 };
@@ -211,7 +222,7 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
       body: JSON.stringify({
         query: `query NavContext($organizationId: String!, $workspaceId: String) {
           app: myPermissions { granted }
-          organization: myPermissions(organizationId: $organizationId) { granted entitled }
+          organization: myPermissions(organizationId: $organizationId) { granted entitled effective }
           workspace: myPermissions(organizationId: $organizationId, workspaceId: $workspaceId) { granted }
           workspaces: myWorkspaces(organizationId: $organizationId) { id key name timeZone roleKey roleLabel roleIcon }
         }`,
@@ -236,7 +247,7 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
     const body = (await response.json()) as {
       data?: {
         app: { granted: string[] } | null;
-        organization: { granted: string[]; entitled: string[] | null } | null;
+        organization: { granted: string[]; entitled: string[] | null; effective: string[] } | null;
         workspace: { granted: string[] } | null;
         workspaces: ViewerWorkspace[] | null;
       };
@@ -251,6 +262,7 @@ export const getNavContext = cache(async (organizationId: string, workspaceId: s
        * which claims nothing, rather than "this plan includes nothing".
        */
       organizationEntitled: body.data?.organization?.entitled ?? null,
+      organizationEffective: body.data?.organization?.effective ?? [],
       workspaceGranted: body.data?.workspace?.granted ?? [],
       workspaces: body.data?.workspaces ?? [],
     };
@@ -501,6 +513,12 @@ export interface SessionSnapshot {
    * `displayApplyScript` then applies the defaults.
    */
   display: { textSize: string; spacing: string } | null;
+  /**
+   * The same, for the PHONE layout (issue #22): set apart from the full
+   * site's, because text sized for a phone is wrong on a desk. Asked for in
+   * this same request under an alias, so the phone shell costs no extra trip.
+   */
+  mobileDisplay: { textSize: string; spacing: string } | null;
 }
 
 /** Signed out, having asked and been told so. */
@@ -510,6 +528,7 @@ const SIGNED_OUT: SessionSnapshot = {
   organizations: [],
   expiresAt: null,
   display: null,
+  mobileDisplay: null,
   reachable: true,
 };
 
@@ -520,6 +539,7 @@ const UNREACHABLE: SessionSnapshot = {
   organizations: [],
   expiresAt: null,
   display: null,
+  mobileDisplay: null,
   reachable: false,
 };
 
@@ -547,6 +567,8 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
   if (!token) return SIGNED_OUT;
 
   const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+  const device = (await cookies()).get(AUTH_DEVICE_COOKIE)?.value;
+  const deviceId = isAuthDeviceId(device) ? device : null;
 
   try {
     const response = await fetch(`${apiUrl}/graphql`, {
@@ -554,7 +576,17 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({
         query: SESSION_QUERY,
-        variables: { organizationId: scope.organizationId ?? null, workspaceId: scope.workspaceId ?? null },
+        variables: {
+          organizationId: scope.organizationId ?? null,
+          workspaceId: scope.workspaceId ?? null,
+          /*
+           * This device (the proxy issues the id on the first visit): its own
+           * display sizes when it has them, else the account's for the layout.
+           * An id that is not one the app makes is sent as none, which the API
+           * would otherwise refuse — taking the viewer down with it.
+           */
+          device: deviceId,
+        },
       }),
       // Never cached: one viewer must not be served another's identity or grants
       // from a shared cache.
@@ -574,6 +606,7 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
         myOrganizations: ViewerOrganization[] | null;
         session: { expiresAt: number } | null;
         myDisplay: { textSize: string; spacing: string } | null;
+        mobileDisplay: { textSize: string; spacing: string } | null;
       };
     };
 
@@ -584,6 +617,7 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
       organizations: body.data?.myOrganizations ?? [],
       expiresAt: expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
       display: body.data?.myDisplay ?? null,
+      mobileDisplay: body.data?.mobileDisplay ?? null,
       reachable: true,
     };
   } catch {

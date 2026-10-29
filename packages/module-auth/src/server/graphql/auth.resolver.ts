@@ -1,4 +1,4 @@
-import { Inject, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Inject, UnauthorizedException } from '@nestjs/common';
 import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { ACCESS_TOKEN_TTL } from '../../domain/policy.js';
 import type { Principal } from '../../types.js';
@@ -137,12 +137,21 @@ export class AuthResolver {
    * signed-in caller, so "not signed in" and "never chose" stay apart.
    *
    * Session only, no feature key: see AuthDisplayService for why.
+   *
+   * `layout` picks the full site's sizes (`desktop`, the default) or the phone
+   * layout's (`mobile`) — kept apart since issue #22. The shell asks for the
+   * one it is drawing.
    */
   @Query(() => DisplayPreferencesType, { name: 'myDisplay', nullable: true })
-  async myDisplay(@Context() gqlContext: { req?: Record<string, unknown> }): Promise<DisplayPreferencesType | null> {
+  async myDisplay(
+    @Context() gqlContext: { req?: Record<string, unknown> },
+    @Args('layout', { type: () => String, nullable: true }) layout: string | null,
+    // The device asked about: its own sizes when it has them, else the account's. Omitted: the account's.
+    @Args('device', { type: () => String, nullable: true }) device: string | null,
+  ): Promise<DisplayPreferencesType | null> {
     const principal = principalOf(gqlContext);
     if (!principal) return null;
-    return this.display.read(principal.userId);
+    return this.display.read(principal.userId, this.display.layoutOf(layout), this.display.deviceOf(device));
   }
 
   /** Changes the caller's own display sizes, and returns them as saved. */
@@ -154,10 +163,34 @@ export class AuthResolver {
     const principal = principalOf(gqlContext);
     // The guard has already refused an unauthenticated caller; this is the narrowing.
     if (!principal) throw new UnauthorizedException('Not signed in');
-    return this.display.update(principal.userId, {
-      ...(input.textSize != null ? { textSize: input.textSize } : {}),
-      ...(input.spacing != null ? { spacing: input.spacing } : {}),
-    });
+    const device = this.display.deviceOf(input.device);
+    return this.display.update(
+      principal.userId,
+      this.display.layoutOf(input.layout),
+      device,
+      this.display.applyToOf(input.applyTo, device),
+      {
+        ...(input.textSize != null ? { textSize: input.textSize } : {}),
+        ...(input.spacing != null ? { spacing: input.spacing } : {}),
+      },
+    );
+  }
+
+  /**
+   * Drops this device's own sizes for a layout, so it follows the account's
+   * again; answers with what is now in effect. The caller's own rows only.
+   */
+  @Mutation(() => DisplayPreferencesType, { name: 'forgetMyDeviceDisplay' })
+  async forgetMyDeviceDisplay(
+    @Context() gqlContext: { req?: Record<string, unknown> },
+    @Args('layout', { type: () => String }) layout: string,
+    @Args('device', { type: () => String }) device: string,
+  ): Promise<DisplayPreferencesType> {
+    const principal = principalOf(gqlContext);
+    if (!principal) throw new UnauthorizedException('Not signed in');
+    const deviceId = this.display.deviceOf(device);
+    if (!deviceId) throw new BadRequestException('Saving for this device needs the device.');
+    return this.display.forgetDevice(principal.userId, this.display.layoutOf(layout), deviceId);
   }
 }
 

@@ -30,6 +30,27 @@ full navigation does not close it. While `/chat` itself is open the window hides
 and the header tool stays silent, so one message is one tone, not two
 (`chat-surface.ts`).
 
+**On a phone** (issue #22) chat is a bottom-bar destination instead:
+
+```ts
+// apps/web-app/src/mobile-modules.ts
+import { chatMobileModule } from '@kwtech/module-chat/mobile';
+export const MOBILE_MODULES = [chatMobileModule()];
+```
+
+The **Chat** tab carries the live unread count (`ChatUnreadBadge`) and opens
+`ChatMobileView`: a list drawn for a phone (`MobileConversationList` — a
+"Chats" heading, a round New button for holders of `chat:start`, your
+availability as pills that open the phone's own picker, Requests with Accept
+and Decline, and rows with an avatar, presence, the last activity's time and
+the unread count; an active conversation shows no message text, because the
+API sends none for it, §12.51), then one conversation full screen with
+"‹ Chats" to return, and the new-conversation form — the same thread and the
+same `useChat` as `/chat`. Filtered by `chat:read` at app
+level, as the header tool is. Not on the phone yet: the message tone (the
+header tool plays it, and the phone has no header tool) and the preferences
+page, which stays on the full site.
+
 One window at a time: picking another conversation replaces it. Moving the
 window is pointer-only (mouse, pen, touch); everything in it works by keyboard
 without moving it.

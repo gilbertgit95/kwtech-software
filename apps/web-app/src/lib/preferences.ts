@@ -108,6 +108,28 @@ export const ACTIVE_ORGANIZATION_COOKIE = 'kwtech_active_organization';
  */
 export const ACTIVE_WORKSPACE_COOKIE = 'kwtech_active_workspace';
 
+/**
+ * Cookie, ONE PER PERSON on this device: `mobile` or `full`, the layout they
+ * asked for here, overriding what the device suggests (issue #22). Absent
+ * means "decide by the device".
+ *
+ * Per person AND device (the operator, 2026-10-29): on a shared tablet each
+ * person's choice is their own — one choosing the mobile view no longer moves
+ * the next one there. Named by the user id, so the proxy reads the signed-in
+ * person's without a request to the API.
+ *
+ * A COOKIE because the PROXY decides the layout, before any page renders,
+ * and the proxy sees only the request. It survives a sign-out, as the theme
+ * does: it is this person's preference on this device, not a session.
+ *
+ * Not authorisation: either layout resolves the viewer's real grants, and the
+ * phone layout offers less, never more. A phone ignores it entirely.
+ */
+export function layoutCookieName(userId: string): string {
+  // A cookie name may not hold every character an id could; ours are cuids, and anything else is dropped.
+  return `kwtech_layout_${userId.replace(/[^A-Za-z0-9_-]/g, '')}`;
+}
+
 /** A year. A preference should outlive the session that set it. */
 export const PREFERENCE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 

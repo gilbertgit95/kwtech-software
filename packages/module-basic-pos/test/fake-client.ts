@@ -25,6 +25,7 @@ type Where = Record<string, unknown>;
 
 export const TABLES = [
   'posCategory',
+  'posOrderType',
   'posItem',
   'posItemVariant',
   'posCustomer',
@@ -41,6 +42,7 @@ export type FakeState = Record<TableName, Row[]>;
 /** Mirrors prisma/pos.prisma. */
 const UNIQUES: Record<TableName, string[][]> = {
   posCategory: [['id'], ['workspaceId', 'nameKey']],
+  posOrderType: [['id'], ['workspaceId', 'nameKey']],
   posItem: [['id'], ['workspaceId', 'code']],
   posItemVariant: [['id'], ['workspaceId', 'code']],
   posCustomer: [['id']],
@@ -59,6 +61,7 @@ const RELATIONS: Partial<Record<TableName, Record<string, { table: TableName; ke
 
 const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
   posCategory: (id, now) => ({ id, sortOrder: 0, archivedAt: null, createdAt: now, updatedAt: now }),
+  posOrderType: (id, now) => ({ id, sortOrder: 0, isDefault: false, archivedAt: null, createdAt: now, updatedAt: now }),
   posItem: (id, now) => ({
     id,
     categoryId: null,
@@ -96,6 +99,8 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     number: null,
     label: null,
     heldAt: null,
+    orderTypeId: null,
+    orderTypeName: null,
     customerId: null,
     customerName: null,
     customerContact: null,
@@ -153,7 +158,14 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
   posRefund: (id, now) => ({ id, refundedAt: now }),
   posRefundLine: (id) => ({ id, restock: false }),
   posCounter: () => ({ nextNumber: 1 }),
-  posSettings: (_id, now) => ({ keymap: null, version: 1, createdAt: now, updatedAt: now }),
+  posSettings: (_id, now) => ({
+    keymap: null,
+    referenceOptions: null,
+    defaultReference: null,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  }),
 };
 
 export function emptyState(): FakeState {

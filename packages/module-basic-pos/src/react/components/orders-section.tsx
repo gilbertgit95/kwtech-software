@@ -363,7 +363,7 @@ export function OrderDetail({
     );
   }
 
-  const can = orderActions(order, { sell: state.canSell, refund: state.canRefund });
+  const can = orderActions(order, { sell: state.canSell, takePayment: state.canTakePayment, refund: state.canRefund });
   const ref = { id: order.id, version: order.version };
 
   /** One act at a time; the order and the list read again after it. */
@@ -410,6 +410,7 @@ export function OrderDetail({
         ) : (
           <span className="text-muted-foreground">Walk-in</span>
         )}
+        {order.orderTypeName ? <span className="text-muted-foreground"> · {order.orderTypeName}</span> : null}
         {order.label ? <span className="text-muted-foreground"> · Reference: {order.label}</span> : null}
       </p>
 

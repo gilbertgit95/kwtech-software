@@ -20,7 +20,11 @@ import { Alert, Empty, Tabs } from './layout.js';
 
 type SettingsTab = 'store' | 'keys';
 
-/** Settings (D23): the store, and its hot keys. Behind `pos:manage_settings`. */
+/**
+ * Settings (D23): the store and its hot keys. Behind `pos:manage_settings`.
+ * The order reference options moved to the Items tab (2026-10-29), beside
+ * categories and order types.
+ */
 export function SettingsSection({ state }: { state: TillState }) {
   const [tab, setTab] = useState<SettingsTab>('store');
   return (
@@ -34,7 +38,8 @@ export function SettingsSection({ state }: { state: TillState }) {
         current={tab}
         onChange={setTab}
       />
-      {tab === 'store' ? <StoreSettings state={state} /> : <KeySettings state={state} />}
+      {tab === 'store' ? <StoreSettings state={state} /> : null}
+      {tab === 'keys' ? <KeySettings state={state} /> : null}
     </div>
   );
 }

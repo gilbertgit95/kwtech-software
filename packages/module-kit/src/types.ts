@@ -343,6 +343,162 @@ export interface AppContribution {
   component: ComponentType<AppProps>;
 }
 
+/**
+ * A SCREEN on the phone layout: one app of a workspace, launched from the Apps
+ * tab (or pinned to Home) and shown full screen (issue #22).
+ *
+ * Opt-in, and deliberately separate from `AppContribution`. A phone gets only
+ * what was chosen for it, never every sub-app squeezed onto a small screen, so
+ * a module that declares no screen is simply not on phones. The screen may
+ * reuse the module's own components (the point of sale's till, without its
+ * section bar); it is a smaller selection, not a second copy of the feature.
+ *
+ * ⚠ The same two rules as a sub-app: it MUST NOT NAVIGATE — the person moves
+ * between tabs, and a link away unmounts every screen they had open — and its
+ * `feature` is REQUIRED and workspace level. The screen's own API still
+ * authorises every request; hiding the tab is the affordance, not the check.
+ */
+export interface MobileScreenContribution {
+  /** Unique across the app; composition throws on a duplicate. Kept in the address (`?screen=`), so never rename one. */
+  key: string;
+  /** The tile's label, and the title while it is open. Short: a tile is a third of a phone's width. */
+  label: string;
+  /** A name from the app's icon set, as `nav.icon` is. */
+  icon?: string;
+  /** The WORKSPACE-level key that offers the screen. See `AppContribution.feature`. */
+  feature: string;
+  /** Where its tile sits in the Apps launcher. Lower is first; space them — 10, 20. */
+  order?: number;
+  /**
+   * The screen's own sections — Sell, Orders, Customers — drawn by the frame
+   * as a strip under the top bar, in this order, even when only one is
+   * declared yet (it names the part of the app this is). The component reads
+   * the open one with `useMobileSection()` from `@kwtech/module-kit/react`.
+   * Omit for a screen with one view. ⚠ A screen that declares sections is
+   * offered only while its viewer holds at least one of them.
+   */
+  sections?: readonly MobileSectionContribution[];
+  component: ComponentType<AppProps>;
+}
+
+/**
+ * One section of a phone screen, as a chip in the strip under the top bar.
+ *
+ * `feature` hides it from somebody without the key — a cashier has no Items —
+ * as the desktop app hides its own sections. Omit it for a section everybody
+ * who holds the screen may open. Hiding is the affordance; the API refuses
+ * anyway.
+ */
+export interface MobileSectionContribution {
+  /** Unique within its screen; composition throws on a duplicate. Kept in the address (`?section=`). */
+  key: string;
+  label: string;
+  feature?: string;
+}
+
+/**
+ * What a module offers the phone layout, exported from its `/mobile` subpath.
+ *
+ * Much smaller than `WebModuleDescriptor` on purpose: no routes, no drawer, no
+ * header tools. The phone layout is for the people who work in a workspace
+ * (a seller at the till), not for administering it, and an app composing this
+ * list imports none of the modules' desktop pages — which is what keeps the
+ * phone's download small.
+ */
+export interface MobileModuleDescriptor {
+  key: string;
+  screens?: readonly MobileScreenContribution[];
+  /** Administration pages for the phone's Manage tab — see `MobileManageContribution`. */
+  manage?: readonly MobileManageContribution[];
+  /** Destinations of the phone's bottom bar — Chat, Inbox — see `MobileTabContribution`. */
+  tabs?: readonly MobileTabContribution[];
+}
+
+/**
+ * A DESTINATION on the phone's bottom bar, beside Home, Apps and Manage
+ * (issue #22): Chat, the notification Inbox — things that belong to the
+ * PERSON, wherever they are, rather than to the workspace that is open.
+ *
+ * The phone's version of a header tool, and gated the same way: `feature` is
+ * filtered with the viewer's APP-level grants, because a person's chat is not
+ * a fact about the workspace they happen to be in. Omit it only for a tab
+ * every signed-in person may use.
+ *
+ * ⚠ The bar holds five destinations at most, Home, Apps and Manage among
+ * them, so this is for the few things somebody returns to all day — never a
+ * way onto the bar for an app.
+ *
+ * Both components are COMPONENT REFERENCES THAT TAKE NO PROPS, for the reason
+ * `HeaderToolContribution.component` is: they cross from a server page.
+ */
+export interface MobileTabContribution {
+  /** Unique across the app; composition throws on a duplicate. Kept in the address (`?tab=`). */
+  key: string;
+  /** The tab's label: one short word. */
+  label: string;
+  /** A name from the app's icon set, as `nav.icon` is. */
+  icon?: string;
+  /** An APP-level key. See above. */
+  feature?: string;
+  /** Left to right after Apps, before Manage. Space them — 10, 20. */
+  order?: number;
+  /**
+   * The destination, full screen between the bars. Mounted the first time the
+   * tab is opened and kept, so a half-written message survives a trip to Home.
+   * It must not navigate.
+   */
+  component: ComponentType;
+  /**
+   * Drawn on the tab's icon, always mounted — the live unread count. Renders
+   * nothing when there is nothing to count. Also the place for whatever must
+   * run on every screen for this tab (the notification toasts).
+   */
+  badge?: ComponentType;
+}
+
+/**
+ * Which level an administration page changes, and so which grants decide it
+ * and which group of the Manage tab it sits in: the workspace that is open,
+ * its organization, or the whole platform (`app`, super admins).
+ */
+export type MobileManageLevel = 'workspace' | 'organization' | 'app';
+
+/** What a Manage page is handed: the place that is open. Null where its level has none. */
+export interface MobileManageProps {
+  organizationId: string | null;
+  workspaceId: string | null;
+}
+
+/**
+ * An ADMINISTRATION page on the phone's Manage tab (issue #22): members,
+ * settings, roles — grouped by `level` and opened full screen with
+ * "‹ Manage" to leave.
+ *
+ * Separate from `MobileScreenContribution` because it answers to a different
+ * reader and different grants. An app is for the people who work in a
+ * workspace; a Manage page is for the people who run it, and is filtered at
+ * ITS level — an organization page by the viewer's grants in the
+ * organization, cut down to what its plan includes; a platform page by their
+ * app-level grants — the same readings the desktop drawer filters with.
+ *
+ * ⚠ `feature` is REQUIRED, and must be a key OF `level`: a workspace key on an
+ * organization page would be checked against grants that never hold it, and
+ * the page would show to nobody. The Manage tab itself appears only when at
+ * least one page passes. The page's API authorises every request anyway.
+ */
+export interface MobileManageContribution {
+  /** Unique across the app; composition throws on a duplicate. Kept in the address, so never rename one. */
+  key: string;
+  label: string;
+  /** A name from the app's icon set, as `nav.icon` is. */
+  icon?: string;
+  level: MobileManageLevel;
+  feature: string;
+  /** Where it sits within its level's group. Lower is first; space them — 10, 20. */
+  order?: number;
+  component: ComponentType<MobileManageProps>;
+}
+
 export interface WebModuleDescriptor {
   key: string;
   routes?: readonly ModuleRoute[];

@@ -195,12 +195,16 @@ const TASK_CAPS = { [TASK_LIMIT.boards]: 20, [TASK_LIMIT.tasks]: 2000 };
 
 /**
  * The point of sale, sold where it was as a placeholder: every tier except
- * free. All seven keys are workspace level.
+ * free. All eight keys are workspace level.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment
  * seeded while the POS was a placeholder has `pos:read` only: an operator adds
- * the other six keys and the `pos:items` cap on `/admin/plans`. Until then
+ * the other keys and the `pos:items` cap on `/admin/plans`. Until then
  * people can open the app and do nothing in it — the till says why.
+ *
+ * ⚠ `pos:take_payment` (issue #23, 2026-10-29) is the same case: a plan made
+ * before it does not carry it, and NOBODY in that organization can take
+ * payment — managers included — until an operator adds it to the plan.
  */
 const POS = Object.values(POS_FEATURE);
 

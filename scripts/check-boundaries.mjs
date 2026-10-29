@@ -13,8 +13,9 @@
  *      and `@kwtech/web-ui` (and itself). Never another module.
  *   2. `module-kit` and `web-ui` import no other `@kwtech` package.
  *   3. No package imports an app, or reaches into another package's `src/`.
- *   4. A module's `/react` code never imports its `/server` code — server code
- *      must stay out of the browser bundle.
+ *   4. A module's browser code — `/react`, and `/mobile` (the phone layout,
+ *      issue #22) — never imports its `/server` code: server code must stay
+ *      out of the browser bundle.
  *   5. A module's pure core (`src/index.ts`, `src/domain/`, `src/types.ts`,
  *      `src/feature-keys.ts`, `src/operations.ts`) imports no framework.
  *   6. A module's package.json lists, among `@kwtech/*`, only `module-kit` and
@@ -124,7 +125,8 @@ for (const dir of readdirSync(PACKAGES)) {
   for (const file of files) {
     const inSrc = file.startsWith(srcDir + sep);
     const within = inSrc ? relative(srcDir, file).split(sep).join('/') : '';
-    const isReact = within.startsWith('react/');
+    // Browser code: the desktop React layer and the phone layer alike.
+    const isReact = within.startsWith('react/') || within.startsWith('mobile/');
     const isPure =
       within === 'index.ts' ||
       within.startsWith('domain/') ||
@@ -159,7 +161,7 @@ for (const dir of readdirSync(PACKAGES)) {
           report(
             file,
             line,
-            `imports ${specifier}: /react must not import /server (server code in the browser bundle)`,
+            `imports ${specifier}: /react and /mobile must not import /server (server code in the browser bundle)`,
           );
         }
         continue;
@@ -173,7 +175,7 @@ for (const dir of readdirSync(PACKAGES)) {
         }
       }
       if (isReact && pkg === self && /\/server(\/|$)/.test(specifier)) {
-        report(file, line, `imports ${specifier}: /react must not import /server (server code in the browser bundle)`);
+        report(file, line, `imports ${specifier}: /react and /mobile must not import /server (server code in the browser bundle)`);
       }
 
       // ── rule 5: the pure core ─────────────────────────────────────────

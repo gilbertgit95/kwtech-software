@@ -11,6 +11,7 @@ import type {
   PosCategoryRow,
   PosItemRow,
   PosItemVariantRow,
+  PosOrderTypeRow,
   PosTransaction,
   PosWriteClient,
 } from './pos.repository.js';
@@ -21,6 +22,13 @@ export const POS_CATALOGUE_READ_MAX = 5000;
 
 /** How many categories a store may have. A till with more tabs than this is unreadable. */
 export const POS_CATEGORIES_MAX = 200;
+
+/**
+ * How many order types a store may have, archived ones included. "Dine-in",
+ * "Takeout", "Delivery", a few delivery apps: a row of buttons on a phone,
+ * which past this stops being one tap.
+ */
+export const POS_ORDER_TYPES_MAX = 20;
 
 /** How many variants one item may have. Past this it is a catalogue of its own. */
 export const POS_VARIANTS_MAX = 100;
@@ -40,6 +48,8 @@ export interface PosCatalogueItem {
 
 export interface PosCatalogue {
   categories: readonly PosCategoryRow[];
+  /** The store's order types, in its order. Loaded with the catalogue, so a new one reaches every till live. */
+  orderTypes: readonly PosOrderTypeRow[];
   items: readonly PosCatalogueItem[];
 }
 
@@ -113,11 +123,16 @@ export class PosCatalogueService {
    */
   async catalogue(scope: InScope, includeArchived: boolean): Promise<PosCatalogue> {
     const live = includeArchived ? {} : { archivedAt: null };
-    const [categories, items] = await Promise.all([
+    const [categories, orderTypes, items] = await Promise.all([
       this.prisma.posCategory.findMany({
         where: { ...scope, ...live },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
         take: POS_CATEGORIES_MAX * 2,
+      }),
+      this.prisma.posOrderType.findMany({
+        where: { ...scope, ...live },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        take: POS_ORDER_TYPES_MAX,
       }),
       this.prisma.posItem.findMany({
         where: { ...scope, ...live },
@@ -130,7 +145,7 @@ export class PosCatalogueService {
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       take: POS_CATALOGUE_READ_MAX,
     });
-    return { categories, items: items.map((item) => withVariants(item, variants)) };
+    return { categories, orderTypes, items: items.map((item) => withVariants(item, variants)) };
   }
 
   // ── categories ────────────────────────────────────────────────────────────
@@ -181,6 +196,86 @@ export class PosCatalogueService {
       });
       if (updated.count === 0) throw refusalError('not_found');
       return this.requireCategory(tx, scope, id);
+    });
+    await this.events.changed(scope, 'catalogue', actorId);
+    return saved;
+  }
+
+  // ── order types ───────────────────────────────────────────────────────────
+
+  /**
+   * A new order type (no `id`), or a renamed or reordered one. The same rules
+   * as a category: names unique per store, case-blind, and a cap on rows kept.
+   */
+  async saveOrderType(
+    scope: InScope,
+    actorId: string,
+    input: { id?: string | null | undefined; name: string; sortOrder?: number | null | undefined },
+  ): Promise<PosOrderTypeRow> {
+    const { name } = unwrap(preparePosName(input.name));
+    const nameKey = name.toLowerCase();
+    const sortOrder = input.sortOrder ?? 0;
+    if (!Number.isSafeInteger(sortOrder)) throw refusalError('invalid_name');
+
+    const saved = await this.transact('invalid_name', async (tx) => {
+      const clash = await tx.posOrderType.findFirst({ where: { ...scope, nameKey } });
+      if (clash && clash.id !== input.id) {
+        throw new PosWriteError('invalid_name', 'This store already has an order type with that name');
+      }
+      if (!input.id) {
+        if ((await tx.posOrderType.count({ where: { ...scope } })) >= POS_ORDER_TYPES_MAX) {
+          throw refusalError('limit_reached');
+        }
+        return tx.posOrderType.create({ data: { ...scope, name, nameKey, sortOrder } });
+      }
+      const updated = await tx.posOrderType.updateMany({
+        where: { ...scope, id: input.id },
+        data: { name, nameKey, sortOrder },
+      });
+      if (updated.count === 0) throw refusalError('not_found');
+      return this.requireOrderType(tx, scope, input.id);
+    });
+    await this.events.changed(scope, 'catalogue', actorId);
+    return saved;
+  }
+
+  /**
+   * Archives an order type, or restores it. Orders that carry it keep its
+   * NAME (copied when set). ⚠ Archiving the default clears it: a new order
+   * must never start on a type the store has put away.
+   */
+  async setOrderTypeArchived(scope: InScope, actorId: string, id: string, archived: boolean): Promise<PosOrderTypeRow> {
+    const saved = await this.transact('invalid_name', async (tx) => {
+      const updated = await tx.posOrderType.updateMany({
+        where: { ...scope, id },
+        data: archived ? { archivedAt: new Date(), isDefault: false } : { archivedAt: null },
+      });
+      if (updated.count === 0) throw refusalError('not_found');
+      return this.requireOrderType(tx, scope, id);
+    });
+    await this.events.changed(scope, 'catalogue', actorId);
+    return saved;
+  }
+
+  /**
+   * Makes one order type the store's default — the one a new order starts
+   * with — or, with `null`, leaves new orders without one.
+   *
+   * ⚠ AT MOST ONE DEFAULT, held here: the old one is cleared in the SAME
+   * transaction the new one is set. Two managers saving at the same instant
+   * is the accepted race; the catalogue read takes the first by sort order.
+   */
+  async setDefaultOrderType(scope: InScope, actorId: string, id: string | null): Promise<PosOrderTypeRow | null> {
+    const saved = await this.transact('invalid_name', async (tx) => {
+      if (id) {
+        const type = await this.requireOrderType(tx, scope, id);
+        // An archived type is never offered, so it can never be the one a new order starts with.
+        if (type.archivedAt) throw refusalError('not_found');
+      }
+      await tx.posOrderType.updateMany({ where: { ...scope, isDefault: true }, data: { isDefault: false } });
+      if (!id) return null;
+      await tx.posOrderType.updateMany({ where: { ...scope, id }, data: { isDefault: true } });
+      return this.requireOrderType(tx, scope, id);
     });
     await this.events.changed(scope, 'catalogue', actorId);
     return saved;
@@ -383,6 +478,12 @@ export class PosCatalogueService {
     const item = await tx.posItem.findFirst({ where: { ...scope, id } });
     if (!item) throw refusalError('not_found');
     return item;
+  }
+
+  private async requireOrderType(tx: PosTransaction, scope: InScope, id: string): Promise<PosOrderTypeRow> {
+    const type = await tx.posOrderType.findFirst({ where: { ...scope, id } });
+    if (!type) throw refusalError('not_found');
+    return type;
   }
 
   private async requireCategory(tx: PosTransaction, scope: InScope, id: string): Promise<PosCategoryRow> {

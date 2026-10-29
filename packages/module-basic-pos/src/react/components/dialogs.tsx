@@ -2,8 +2,14 @@
 
 import { cn, LIST_ITEM, LIST_KEYS, useDebouncedValue } from '@kwtech/web-ui/react';
 import { UserPlus } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { posContactAsCustomerFields, posCustomerContactLine } from '../../domain/customers.js';
+import {
+  heldReferenceKeys,
+  matchReferenceOptions,
+  posReferenceKey,
+  snapToReferenceOption,
+} from '../../domain/references.js';
 import type {
   PosCustomerView,
   PosDiscountInput,
@@ -11,10 +17,11 @@ import type {
   PosItemView,
   PosOrderSummaryView,
 } from '../pos-client.js';
+import { useOptionList } from '../use-option-list.js';
 import type { TillState } from '../use-till.js';
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../view/money.js';
 import { leftOf, type PosStockMap } from '../view/stock.js';
-import { liveVariants, nextOption } from '../view/till.js';
+import { liveVariants } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS, Modal, StockBadge } from './controls.js';
 
 /** The variants of one item, in order (D9). Picking one adds it. */
@@ -82,23 +89,26 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
   const [found, setFound] = useState<CustomerMatches | null>(null);
-  /** Whether the matches are showing. Typing, ↓ or a click opens them — the dialog opening does not, or they would cover Contact and the buttons before anything was asked. */
-  const [listOpen, setListOpen] = useState(false);
-  /** The match ↑ ↓ are on, as an index into `matches`; null until one of them is pressed. */
-  const [active, setActive] = useState<number | null>(null);
   const settled = useDebouncedValue(name, 250);
-  const listId = useId();
   const { client, scope, order } = state;
   const matches = found?.rows ?? [];
   const searching = found?.term !== name;
+  // The matches show on typing, ↓ or a click — not when the dialog opens, or they would cover Contact and the buttons before anything was asked.
+  const list = useOptionList({
+    count: matches.length,
+    onChoose: (index) => {
+      const chosen = matches[index];
+      if (chosen) void set({ customerId: chosen.id });
+    },
+  });
+  const { listId, listOpen, active, show, resetActive } = list;
 
   useEffect(() => {
     if (!open) return;
     setName(order?.customerId ? '' : (order?.customerName ?? ''));
     setContact(order?.customerId ? '' : (order?.customerContact ?? ''));
-    setListOpen(false);
-    setActive(null);
-  }, [open, order?.customerId, order?.customerName, order?.customerContact]);
+    show(false);
+  }, [open, order?.customerId, order?.customerName, order?.customerContact, show]);
 
   useEffect(() => {
     if (!open) return;
@@ -109,7 +119,7 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
         if (cancelled) return;
         setFound({ term: settled, rows, failed: false });
         // The list under the cursor changed: an index kept would point at somebody else.
-        setActive(null);
+        resetActive();
       })
       // The picker is a convenience: without it, typing a walk-in still works.
       .catch(() => {
@@ -118,13 +128,7 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
     return () => {
       cancelled = true;
     };
-  }, [open, client, scope, settled]);
-
-  // ↑ ↓ can move past what the dropdown shows; keep the chosen one in sight.
-  useEffect(() => {
-    if (active === null) return;
-    document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
-  }, [active, listId]);
+  }, [open, client, scope, settled, resetActive]);
 
   const set = async (input: { customerId?: string | null; name?: string | null; contact?: string | null }) => {
     const done = await state.act((current) => client.setCustomer(scope, current, input), { create: true });
@@ -141,27 +145,6 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
     }
   };
 
-  const onNameKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      setListOpen(true);
-      setActive(nextOption(matches.length, listOpen ? active : null, event.key === 'ArrowDown' ? 'down' : 'up'));
-      return;
-    }
-    if (event.key === 'Escape' && listOpen) {
-      // ⚠ The first Escape closes the dropdown only. Unprevented, the <dialog> takes it and the whole dialog closes.
-      event.preventDefault();
-      setListOpen(false);
-      setActive(null);
-      return;
-    }
-    if (event.key !== 'Enter' || !listOpen || active === null) return;
-    const chosen = matches[active];
-    if (!chosen) return;
-    event.preventDefault();
-    void set({ customerId: chosen.id });
-  };
-
   return (
     <Modal open={open} title="Customer" onClose={onClose}>
       <Field label="Name" hint="Type to search recorded customers, or type a walk-in’s name.">
@@ -169,13 +152,8 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
           <div className="relative">
             <input
               id={id}
-              role="combobox"
-              aria-expanded={listOpen}
-              aria-controls={listId}
-              aria-autocomplete="list"
-              aria-activedescendant={listOpen && active !== null ? `${listId}-${active}` : undefined}
+              {...list.comboboxProps}
               aria-describedby={describedBy}
-              autoComplete="off"
               className={INPUT_CLASS}
               placeholder="Search by name, phone or e-mail"
               value={name}
@@ -183,12 +161,11 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
               autoFocus
               onChange={(event) => {
                 setName(event.target.value);
-                setListOpen(true);
-                setActive(null);
+                show(true);
               }}
-              onClick={() => setListOpen(true)}
-              onBlur={() => setListOpen(false)}
-              onKeyDown={onNameKey}
+              onClick={() => show(true)}
+              onBlur={() => show(false)}
+              onKeyDown={list.onKeyDown}
             />
             {listOpen ? (
               // biome-ignore lint/a11y/noStaticElementInteractions: not a control — the handler only keeps the focus in the box; the options inside carry the roles.
@@ -202,7 +179,7 @@ export function CustomerDialog({ open, state, onClose }: { open: boolean; state:
                     // biome-ignore lint/a11y/useKeyWithClickEvents: the options are chosen from the box, with ↑ ↓ and Enter — the combobox pattern; focus never leaves it.
                     <div
                       key={customer.id}
-                      id={`${listId}-${index}`}
+                      id={list.optionId(index)}
                       role="option"
                       // Focusable by script only: Tab goes on to Contact, and the box keeps the focus while choosing.
                       tabIndex={-1}
@@ -449,6 +426,183 @@ export function TextDialog({
       </Field>
       <div className="flex justify-end gap-2">
         <button type="button" className={buttonClass(danger ? 'danger' : 'primary')} onClick={() => void save()}>
+          {confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+interface ReferenceDialogProps {
+  open: boolean;
+  title: string;
+  label: string;
+  hint: string;
+  /** The order's reference now, or empty. */
+  initial: string;
+  confirmLabel: string;
+  /** The store's options, in its order. None: the plain text box, exactly as before options existed. */
+  options: readonly string[];
+  /** Orders on hold, for the "on hold" flag. */
+  held: readonly PosOrderSummaryView[];
+  /** The order on the till, never flagged against itself. */
+  currentId: string | null;
+  /** On a phone the options show first and the keyboard waits for a tap on the box. */
+  phone: boolean;
+  onSave: (reference: string) => Promise<void>;
+  onClose: () => void;
+}
+
+/**
+ * An order's reference, asked for by the Reference and Hold dialogs (issue
+ * #30): the store's options to pick from, or anything typed. Picking one —
+ * a click, a tap, or ↑ ↓ and Enter — saves it at once; that is the point of
+ * an option. A store with no options gets `TextDialog`, unchanged.
+ */
+export function ReferenceDialog({ options, held, currentId, phone, ...text }: ReferenceDialogProps) {
+  if (options.length === 0) return <TextDialog {...text} />;
+  return <ReferenceOptionsDialog options={options} held={held} currentId={currentId} phone={phone} {...text} />;
+}
+
+function ReferenceOptionsDialog({
+  open,
+  title,
+  label,
+  hint,
+  initial,
+  confirmLabel,
+  options,
+  held,
+  currentId,
+  phone,
+  onSave,
+  onClose,
+}: ReferenceDialogProps) {
+  const [text, setText] = useState(initial);
+  /**
+   * Whether anything was typed since the dialog opened. Until then every
+   * option shows: a dialog opened on "Table 3" must still offer Table 4, not
+   * only what the old reference matches.
+   */
+  const [edited, setEdited] = useState(false);
+  const shown = edited ? matchReferenceOptions(options, text) : options;
+  const heldKeys = useMemo(() => heldReferenceKeys(held, currentId), [held, currentId]);
+  const currentKey = posReferenceKey(initial);
+  // The list is open from the start: the options are the quick way, and there is nothing below it to cover.
+  const list = useOptionList({
+    count: shown.length,
+    initiallyOpen: true,
+    onChoose: (index) => {
+      const option = shown[index];
+      if (option !== undefined) void onSave(option);
+    },
+  });
+  const { listId, listOpen, active, show } = list;
+
+  useEffect(() => {
+    if (!open) return;
+    setText(initial);
+    setEdited(false);
+    show(true);
+  }, [open, initial, show]);
+
+  return (
+    <Modal open={open} title={title} onClose={onClose}>
+      <Field label={label} hint={hint}>
+        {(id, describedBy) => (
+          <div className="flex flex-col gap-1.5">
+            <input
+              id={id}
+              {...list.comboboxProps}
+              aria-describedby={describedBy}
+              className={INPUT_CLASS}
+              value={text}
+              // ⚠ NOT on a phone: the keyboard would come up over the options, the one-tap way in. A tap on the box brings it.
+              // biome-ignore lint/a11y/noAutofocus: a dialog opens where the person will type or choose next (D20: focus always has a home).
+              autoFocus={!phone}
+              onChange={(event) => {
+                setText(event.target.value);
+                setEdited(true);
+                show(true);
+              }}
+              onKeyDown={(event) => {
+                if (list.onKeyDown(event)) return;
+                // Typed text that IS an option, but for case or spacing, is saved in the option's spelling.
+                if (event.key === 'Enter') void onSave(snapToReferenceOption(options, text));
+              }}
+            />
+            {listOpen ? (
+              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+                {/* Says what the tiles are for: one tap gives the order that reference, with nothing more to press. */}
+                <p aria-hidden="true" className="text-xs font-medium text-muted-foreground">
+                  Quick select
+                </p>
+                <div
+                  id={listId}
+                  role="listbox"
+                  aria-label="Quick select a reference"
+                  // ⚠ A GRID of equal tiles, on every screen (the operator, 2026-10-29): each reference one big
+                  // target, more of them in sight at once than a list of rows shows — above a phone's keyboard
+                  // too — and "Table 1" … "Table 12" line up like the tables. As many columns as fit at 7rem, so
+                  // a phone gets two or three and the full till's dialog four. ↑ ↓ from the box step through
+                  // them in the store's order, row by row.
+                  aria-orientation="horizontal"
+                  className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 p-0.5"
+                >
+                  {shown.map((option, index) => {
+                    const onHold = heldKeys.has(posReferenceKey(option));
+                    const onThisOrder = posReferenceKey(option) === currentKey;
+                    return (
+                      // biome-ignore lint/a11y/useKeyWithClickEvents: the options are chosen from the box, with ↑ ↓ and Enter — the combobox pattern; focus never leaves it.
+                      <div
+                        key={option}
+                        id={list.optionId(index)}
+                        role="option"
+                        // Focusable by script only: the box keeps the focus while choosing.
+                        tabIndex={-1}
+                        aria-selected={index === active}
+                        className={cn(
+                          'relative flex min-w-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-center text-sm font-medium transition-colors active:bg-accent',
+                          // A thumb's target on the phone; a little tighter for a mouse.
+                          phone ? 'min-h-14' : 'min-h-12',
+                          onThisOrder
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-card hover:bg-accent hover:text-accent-foreground',
+                          index === active && 'ring-2 ring-ring ring-offset-1 ring-offset-card',
+                        )}
+                        // ⚠ A press must not take the focus from the box first: the cursor would jump, and a phone's keyboard close and reopen.
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => void onSave(option)}
+                      >
+                        <span className="line-clamp-2 max-w-full break-words">{option}</span>
+                        {onHold ? (
+                          // A hint, never a lock (issue #30): a table whose order was never closed stays pickable.
+                          <span className="shrink-0 rounded-full bg-status-warning px-1.5 py-0.5 text-[0.65rem] font-semibold leading-none text-status-warning-foreground">
+                            On hold
+                          </span>
+                        ) : null}
+                        {/* The fill says it to the eye; this says it to a screen reader. */}
+                        {onThisOrder ? <span className="sr-only">(on this order)</span> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                {shown.length === 0 ? (
+                  <p role="status" className="py-1.5 text-sm text-muted-foreground">
+                    No option matches. What you typed is saved as it is.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Field>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          className={buttonClass('primary')}
+          onClick={() => void onSave(snapToReferenceOption(options, text))}
+        >
           {confirmLabel}
         </button>
       </div>

@@ -340,6 +340,28 @@ export class AuthAdminService {
   }
 
   /**
+   * EVERY account signed out at once — after the database is restored from a
+   * backup (module-backup, through the app's port). The restored rows hold the
+   * sessions of the backup's day, some of them signed out since; ending all of
+   * them, and refusing every access token issued before now, is what stops a
+   * restore from quietly bringing a session back.
+   *
+   * The same two steps as one account's (`endSessions`), account by account,
+   * paged so a long account list is never read whole. Sequential on purpose:
+   * one account's two writes at a time, rather than a burst of thousands
+   * against a database that has only just been restored.
+   */
+  async endEverySession(): Promise<number> {
+    const db = this.client();
+    let ended = 0;
+    for (let skip = 0; ; skip += MAX_PAGE) {
+      const users = await db.authUser.findMany({ where: {}, orderBy: { createdAt: 'asc' }, skip, take: MAX_PAGE });
+      for (const user of users) ended += await this.endSessions(user.id);
+      if (users.length < MAX_PAGE) return ended;
+    }
+  }
+
+  /**
    * Revoke the rows, then post ONE denylist entry for the account.
    *
    * Lifted from `AuthService.signOutEverywhere` — same two steps, same reason

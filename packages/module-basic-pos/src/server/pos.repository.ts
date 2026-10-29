@@ -39,6 +39,19 @@ export interface PosCategoryRow extends InScope {
   updatedAt: Date;
 }
 
+/** How an order is served: "Dine-in", "Takeout". The store's own list, beside the categories. */
+export interface PosOrderTypeRow extends InScope {
+  id: string;
+  name: string;
+  nameKey: string;
+  sortOrder: number;
+  /** The type a new order starts with; at most one per store. */
+  isDefault: boolean;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface PosItemRow extends InScope {
   id: string;
   categoryId: string | null;
@@ -98,6 +111,9 @@ export interface PosOrderRow extends InScope {
   label: string | null;
   /** When Hold set it aside; null for a cart still on a till (D8). */
   heldAt: Date | null;
+  /** How it is served: the type's id, and its name COPIED when set (a receipt never changes). */
+  orderTypeId: string | null;
+  orderTypeName: string | null;
   customerId: string | null;
   customerName: string | null;
   customerContact: string | null;
@@ -197,6 +213,10 @@ export interface PosSettingsRow {
   organizationId: string;
   /** A `PosKeymap` as JSON, or null for the defaults. Read through `effectiveKeymap`, never trusted as typed. */
   keymap: unknown;
+  /** The store's order reference options as JSON, or null for none. Read through `readReferenceOptions`. */
+  referenceOptions: unknown;
+  /** The reference a new order starts with. Only honoured while it is still one of the options. */
+  defaultReference: string | null;
   version: number;
   updatedById: string;
   createdAt: Date;
@@ -266,6 +286,25 @@ export interface PosTransaction {
     updateMany(args: {
       where: InScope & { id: string };
       data: { name?: string; nameKey?: string; sortOrder?: number; archivedAt?: Date | null };
+    }): Promise<{ count: number }>;
+  };
+
+  /** Order types: the same shape and rules as categories, plus the one default. */
+  posOrderType: {
+    findFirst(args: {
+      where: InScope & ({ id: string } | { nameKey: string } | { isDefault: true; archivedAt: null });
+    }): Promise<PosOrderTypeRow | null>;
+    findMany(args: {
+      where: InScope & { archivedAt?: ArchivedFilter };
+      orderBy: Array<{ sortOrder: SortOrder } | { name: SortOrder } | { id: SortOrder }>;
+      take: number;
+    }): Promise<PosOrderTypeRow[]>;
+    /** How many a store has, archived ones included: the cap is on rows kept. */
+    count(args: { where: InScope }): Promise<number>;
+    create(args: { data: InScope & { name: string; nameKey: string; sortOrder: number } }): Promise<PosOrderTypeRow>;
+    updateMany(args: {
+      where: InScope & ({ id: string } | { isDefault: true });
+      data: { name?: string; nameKey?: string; sortOrder?: number; isDefault?: boolean; archivedAt?: Date | null };
     }): Promise<{ count: number }>;
   };
 
@@ -360,7 +399,14 @@ export interface PosTransaction {
       take: number;
     }): Promise<PosOrderRow[]>;
     count(args: { where: PosOrderListWhere }): Promise<number>;
-    create(args: { data: InScope & { createdById: string; label: string | null } }): Promise<PosOrderRow>;
+    create(args: {
+      data: InScope & {
+        createdById: string;
+        label: string | null;
+        orderTypeId: string | null;
+        orderTypeName: string | null;
+      };
+    }): Promise<PosOrderRow>;
     /**
      * ⚠ EVERY CHANGE IS A COMPARE-AND-SET ON `version` (and, where it matters,
      * `status`). Zero rows means somebody changed the order in between; the
@@ -434,8 +480,21 @@ export interface PosTransaction {
     findUnique(args: { where: { workspaceId: string } }): Promise<PosSettingsRow | null>;
     upsert(args: {
       where: { workspaceId: string };
-      create: InScope & { keymap: PosJsonInput; updatedById: string };
-      update: { keymap: PosJsonInput; updatedById: string; version: { increment: 1 } };
+      // Each save writes ONE setting: a missing field keeps what is stored, so saving the
+      // reference options never resets the keymap (and the reverse).
+      create: InScope & {
+        keymap?: PosJsonInput;
+        referenceOptions?: PosJsonInput;
+        defaultReference?: string | null;
+        updatedById: string;
+      };
+      update: {
+        keymap?: PosJsonInput;
+        referenceOptions?: PosJsonInput;
+        defaultReference?: string | null;
+        updatedById: string;
+        version: { increment: 1 };
+      };
     }): Promise<PosSettingsRow>;
   };
 }

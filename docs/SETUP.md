@@ -193,7 +193,8 @@ The schema is owned by `apps/web-server`; each module ships a fragment of it
 | `pnpm db:seed` | `db:sync` plus once-per-environment data: plans, your account from `SEED_USER_*` (⚠ this RESETS its password to `SEED_USER_PASSWORD`), the optional demo user | first setup, or to reset your password |
 | `pnpm db:snapshot [--no-open]` | export the dev data to `seed-data/snapshot.json` (gitignored), then show it in Explorer. **Local only.** Credentials, sessions and codes are left out | to keep a scrubbed copy of the data on this machine |
 | `pnpm db:restore [--force]` | load that snapshot into an empty, migrated database, then run the seeders. `--force` empties it first. Never against production | to go back to it |
-| `pnpm db:backup [--no-open]` | a FULL copy of the local database (`pg_dump`, credentials included) to `backups/<db>-<date>-<time>.dump`, gitignored, then shown in Explorer. **Local only** | to carry the database to another computer |
+| `pnpm db:backup [--no-open]` | a FULL copy of the local database (`pg_dump`, credentials included) to `backups/<db>-<date>-<time>-manual.dump`, gitignored, then shown in Explorer. **Local only.** The same backup as Database → Backups in the app (`backup:create` below) | to carry the database to another computer |
+| `pnpm --filter @kwtech/web-server backup:create` / `backup:list` / `backup:restore <file> [--yes]` | the app's backups from the command line, on any environment: into `BACKUP_DIR`, keeping the newest `BACKUP_KEEP` (30). Restore makes a safety backup first, then signs everybody out. ⚠ Stop the API before a restore | on a server, or when the app is down |
 | `pnpm db:studio` | Prisma Studio, a browser UI over the tables | to look at data |
 | `pnpm db:deploy` | apply committed migrations, no new ones | deploys |
 
@@ -214,12 +215,25 @@ with Postgres's own tools. The file holds password hashes and every row, so it
 stays out of git (`backups/` and `*.dump` are ignored) and travels privately:
 
 ```bash
-# here: writes backups/kwtech-<date>-<time>.dump and opens Explorer on it
+# here: writes backups/kwtech-<date>-<time>-manual.dump and opens Explorer on it
 pnpm db:backup
-# there, on the same git commit, before or after its first `pnpm dev`
-pnpm db:up
-docker exec -i kwtech-postgres pg_restore -U postgres -d kwtech --clean --if-exists --no-owner < backups/kwtech-YYYY-MM-DD.dump
+# there, on the same git commit, after its first `pnpm dev` (stop it first):
+# copy the file into that machine's backups/, then
+pnpm --filter @kwtech/web-server backup:restore kwtech-YYYY-MM-DD-HHMMSS-manual.dump
 ```
+
+The restore asks for the database's name typed out, makes a safety backup of
+what is there first, brings the schema up to this commit
+(`prisma migrate deploy`), and signs everybody out. A file from before
+2026-10-26 (`kwtech-<date>-<time>.dump`, no kind) is not listed by the new
+commands; rename it with a `-manual` before `.dump`, or restore it with
+`docker exec -i kwtech-postgres pg_restore -U postgres -d kwtech --clean --if-exists --no-owner < backups/<file>`.
+
+**Backups in the app** (Database → Backups, super admins only) are the same
+files: Back up now, download, delete, restore, and a daily backup at 9 PM.
+Set `BACKUP_DOCKER_CONTAINER="kwtech-postgres"` in `envs/local/web-server.env`
+so the local API runs pg_dump inside the container (`pnpm env:check` lists it as
+missing until then). See `packages/module-backup/README.md`.
 
 ⚠ Give the other machine's profile the same `AUTH_MFA_SECRET_KEY`: it
 encrypts the stored 2FA secrets, and with a different key every account with

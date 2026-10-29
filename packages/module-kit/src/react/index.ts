@@ -13,6 +13,12 @@ export {
   useHoldsFeature,
 } from './feature-access.js';
 export {
+  MobileSectionProvider,
+  type MobileSectionProviderProps,
+  type MobileSectionState,
+  useMobileSection,
+} from './mobile-section.js';
+export {
   PrinterProvider,
   type PrinterProviderProps,
   type PrintersState,

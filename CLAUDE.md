@@ -45,6 +45,7 @@ packages/module-basic-inventory/ stock sub-app: goods and materials, what each P
 packages/module-booking/    booking sub-app: services, resources and their hours, the day's bookings, no double booking
 packages/module-print-studio/ print studio sub-app: layouts of cells on paper, photos placed at exact sizes, PDFs as whole pages; files stay in the browser
 packages/module-print/      printing side: paired computers (print agents), the printers they report, and a job's PDF relayed to one, never saved
+packages/module-backup/     database backups: a super admin's Backups page, a daily 9 PM backup, the command line; files in a folder, nothing in the database
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 

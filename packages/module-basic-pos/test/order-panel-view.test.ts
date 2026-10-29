@@ -1,0 +1,60 @@
+import {
+  clampOrderPanelWidth,
+  ORDER_PANEL_WIDTH,
+  orderPanelWidthAfterDrag,
+  orderPanelWidthAfterKey,
+  parseStoredOrderPanelWidth,
+  WAITING_COLUMN_RULES,
+  WAITING_COLUMN_WIDTH,
+} from '../src/react/view/order-panel.js';
+
+describe('the order panel’s width', () => {
+  it('stays within its bounds', () => {
+    expect(clampOrderPanelWidth(10)).toBe(ORDER_PANEL_WIDTH.min);
+    expect(clampOrderPanelWidth(5000)).toBe(ORDER_PANEL_WIDTH.max);
+    expect(clampOrderPanelWidth(400.4)).toBe(400);
+  });
+
+  it('⚠ widens when its LEFT edge is dragged left', () => {
+    expect(orderPanelWidthAfterDrag(352, 800, 700)).toBe(452);
+    expect(orderPanelWidthAfterDrag(352, 800, 850)).toBe(302);
+    expect(orderPanelWidthAfterDrag(352, 800, 2000)).toBe(ORDER_PANEL_WIDTH.min);
+  });
+
+  it('moves the edge the way the arrow points, and Home / End go to the bounds', () => {
+    expect(orderPanelWidthAfterKey(352, 'ArrowLeft', false)).toBe(368);
+    expect(orderPanelWidthAfterKey(352, 'ArrowRight', true)).toBe(288);
+    expect(orderPanelWidthAfterKey(352, 'Home', false)).toBe(ORDER_PANEL_WIDTH.min);
+    expect(orderPanelWidthAfterKey(352, 'End', false)).toBe(ORDER_PANEL_WIDTH.max);
+    expect(orderPanelWidthAfterKey(352, 'Enter', false)).toBeNull();
+  });
+
+  it('reads back a stored width, clamped, and anything unreadable as the default', () => {
+    expect(parseStoredOrderPanelWidth('500')).toBe(500);
+    expect(parseStoredOrderPanelWidth('99999')).toBe(ORDER_PANEL_WIDTH.max);
+    expect(parseStoredOrderPanelWidth(null)).toBe(ORDER_PANEL_WIDTH.default);
+    expect(parseStoredOrderPanelWidth('wide')).toBe(ORDER_PANEL_WIDTH.default);
+    expect(parseStoredOrderPanelWidth('')).toBe(ORDER_PANEL_WIDTH.default);
+  });
+});
+
+describe('the Cashier’s waiting column (issue #23)', () => {
+  it('⚠ is dragged by its RIGHT edge: moving right widens it, the opposite of the order panel', () => {
+    expect(WAITING_COLUMN_RULES.afterDrag(320, 500, 560)).toBe(380);
+    expect(WAITING_COLUMN_RULES.afterDrag(320, 500, 440)).toBe(260);
+  });
+
+  it('→ widens and ← narrows, Home and End go to the bounds', () => {
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'ArrowRight', false)).toBe(336);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'ArrowLeft', true)).toBe(256);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'Home', false)).toBe(WAITING_COLUMN_WIDTH.min);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'End', false)).toBe(WAITING_COLUMN_WIDTH.max);
+    expect(WAITING_COLUMN_RULES.afterKey(320, 'Enter', false)).toBeNull();
+  });
+
+  it('stays within its bounds, and reads a bad stored width as the default', () => {
+    expect(WAITING_COLUMN_RULES.afterDrag(320, 0, 5000)).toBe(WAITING_COLUMN_WIDTH.max);
+    expect(WAITING_COLUMN_RULES.parseStored('NaN')).toBe(WAITING_COLUMN_WIDTH.default);
+    expect(WAITING_COLUMN_RULES.parseStored('100')).toBe(WAITING_COLUMN_WIDTH.min);
+  });
+});
