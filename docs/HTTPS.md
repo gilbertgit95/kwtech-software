@@ -153,6 +153,13 @@ Other devices reach Windows, not WSL, unless WSL shares Windows' network:
 
 The address in step 1 is then the Windows PC's.
 
+⚠ **Not yet tried on WSL:** with `LISTEN_HOST="127.0.0.1"` (step 4) the apps
+answer only on WSL's own `localhost`. Mirrored networking shares `localhost`
+with Windows, so a browser on the Windows PC (`http://localhost:8081`) and a
+print agent on that PC (`http://localhost:8080`) should still reach them.
+If either does not connect, open `https://<address>` there instead, as the
+phones do. Phones are unaffected: they come in through Caddy.
+
 ### Step 4 — Run the setup
 
 From the repository, with the right profile active (`pnpm env:show`):
