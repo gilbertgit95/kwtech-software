@@ -680,6 +680,21 @@ Decisions 1, 2, 3 and 5 gate the next step.
     `myDisplay(layout)` defaults to `desktop`, so nothing that called it
     before changed. Two-step verification and "sign out everywhere" are
     still full-site only.
+  - **Display sizes and the layout choice are per person AND device** (the
+    operator, the same day: "a user might have multiple devices, and desktop
+    settings must not affect mobile"). Sizes: this device's own for the layout
+    → the account's for the layout → defaults; `auth_display_preference` keyed
+    `(userId, layout, deviceId)`, migration
+    `20261029180000_auth_display_per_device`, existing rows the account's
+    (`deviceId ''`). A device is a random id the proxy issues in a
+    five-year, non-httpOnly cookie (`kwtech_device`) — not a credential, it
+    only keeps one person's rows apart; the API takes the user from the
+    session, never the request. The layout choice: one cookie per person
+    (`kwtech_layout_<userId>`), the proxy reading whose from the session
+    token's `sub` UNVERIFIED — acceptable only because it picks a layout,
+    never access. **Not done:** naming devices or listing them ("my iPhone"),
+    and clearing a device's rows at sign-out — a device's sizes outlive the
+    session on purpose.
   - **Not done on the phone: chat's message tone** (the desktop header tool
     plays it) **and the chat and notification preference pages**, which stay
     on the full site.
