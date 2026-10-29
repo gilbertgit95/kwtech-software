@@ -32,17 +32,23 @@ The web server only needs the registry, for `db:sync`:
 
 ## On a phone (issue #22)
 
-`@kwtech/module-basic-pos/mobile` offers the phone layout ONE app, **Sell**:
-the till and nothing else (Orders, Items, Customers, Reports and Settings stay
-on the full site). It is gated by `pos:sell`, not `pos:read` — the phone app
-is selling, and a till that refuses every sale is no app at all.
+`@kwtech/module-basic-pos/mobile` offers the phone layout the **Point of sale**
+app, gated by `pos:read` as on the Apps page, with its parts as SECTIONS in the
+phone frame's strip. Today there is one, **Sell** (`pos:sell`), the operator's
+choice for the phone; Orders, Items, Customers, Reports and Settings stay on
+the full site and join as sections when they come to the phone, each gated by
+its own key, without the app or its address (`?screen=pos&section=…`)
+changing. The frame offers the app only while its holder has at least one
+section, so somebody who may not sell is not shown an empty point of sale.
 
-It is the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
+Sell is the same `useTill` and `Till`, in `Till`'s `phone` mode: the item grid
 fills the screen and the order waits in a summary bar at the foot ("2 items ·
 ₱250 · View order"), opening over the items with "‹ Items" and opening by
 itself to show the receipt. No shortcut bar and no shortcut help (a phone has
 no function keys), and the search does not take focus on arrival, which would
-raise the keyboard before anybody asked to type.
+raise the keyboard before anybody asked to type. `useTill` sits above the
+sections (`PosMobileApp`), so a later section never costs the order being
+built.
 
 ## Entry points
 
