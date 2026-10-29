@@ -54,8 +54,10 @@ module.exports = {
     },
     /*
      * HTTPS in front of both, on 443 (deploy/https/Caddyfile), only when
-     * FRONTEND_URL is https://. ⚠ `caddy` must be installed on the machine
-     * (README.md); without it this one service shows `errored` and the other
+     * FRONTEND_URL is https:// on a PRIVATE address (the shop's own network;
+     * `httpsHost`). A domain runs no Caddy: a remote server's HTTPS is its
+     * host's. ⚠ `caddy` must be installed on the machine (docs/HTTPS.md);
+     * without it this one service shows `errored` and the other
      * two run as before. On Linux it needs leave to bind 443 without root:
      * `sudo setcap cap_net_bind_service=+ep "$(command -v caddy)"`.
      */

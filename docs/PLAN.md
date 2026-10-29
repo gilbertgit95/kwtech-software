@@ -608,6 +608,35 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-29** — **Caddy is optional and only for the shop's own network: it runs only when `FRONTEND_URL` is `https://` on a PRIVATE address; a remote server's HTTPS comes from its host, with no Caddy.**
+
+  Caddy's one job is HTTPS for the devices on the shop's network when there
+  is no domain (the local certificate authority of 2026-10-26). It ran for
+  ANY `https://` address but localhost, so a remote server with
+  `FRONTEND_URL="https://pos.example.com"` would have started it there too,
+  with the LOCAL authority, clashing with the host's proxy on 443 or serving
+  a certificate nobody trusts.
+  - **`httpsHost()` accepts only 10.x, 172.16–31.x and 192.168.x** (the
+    ranges `pnpm https:setup` detects). A domain, `http://` or localhost
+    starts no Caddy, under pm2 or `pnpm https`.
+  - **A remote server**: a domain, HTTPS from the platform, Cloudflare or
+    nginx + Let's Encrypt, `/api/v1/*` (with the WebSocket upgrade) to 8080
+    and the rest to 8081. No device registration: the certificate is public.
+  - **One guide, `docs/HTTPS.md`**: which setup, first-time installation,
+    registering each device (Android, iPhone, Mac, Windows, Firefox),
+    installing the app, a remote server (with an nginx example), another
+    computer becoming the server (copy `.caddy/`), troubleshooting. The
+    README keeps a summary and the link.
+  - **Found testing #23 from an Android phone**: plain
+    `http://<address>:8081` crashes off localhost — no
+    `crypto.randomUUID()` on a non-secure page — in development too. The
+    docs said dev http worked; they now say it does not.
+  - **Not done:** making the browser code independent of
+    `crypto.randomUUID()` (a `randomId()` in module-kit), which would let
+    development run over plain http from phones; and an opt-out from
+    `Secure` cookies for a built app on plain http, which would send
+    sessions over the Wi-Fi in the clear. Both wait for a decision.
+
 - **2026-10-29** — **POS order types ("Dine-in", "Takeout") are a store list on the Items tab, optional on an order, with a per-store default; the order reference options and a default reference move to the Items tab too.**
 
   Restaurants tell dine-in from takeout, and that is not the reference: a

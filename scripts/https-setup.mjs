@@ -1,6 +1,6 @@
 /**
  * `pnpm https:setup` — turns on HTTPS for the shop's network on THIS machine,
- * doing every step a script can (README.md, "HTTPS on the local network"):
+ * doing every step a script can (docs/HTTPS.md):
  *
  *   pnpm https:setup                          detect the address, ask, set it up
  *   pnpm https:setup --address=192.168.1.186  that address, no detection
@@ -252,7 +252,7 @@ async function turnOn() {
      (The web app must be BUILT again: NEXT_PUBLIC_WS_URL is baked in.)
   3. On each phone or tablet, on this Wi-Fi, open
        http://${address}/kwtech-local-ca.crt
-     and trust it (README.md: iPhone needs Install, then Certificate Trust
+     and trust it (docs/HTTPS.md: iPhone needs Install, then Certificate Trust
      Settings). Then open ${origin}.
 
   Moving to another machine later? Copy the .caddy/ folder with the rest, and

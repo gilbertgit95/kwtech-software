@@ -16,6 +16,7 @@ link to the longer documents rather than copying them.
 | [packages/web-ui/README.md](packages/web-ui/README.md) | themes, tokens, layout components |
 | [apps/web-server/src/seed/README.md](apps/web-server/src/seed/README.md) | seeders, sync versus seed, the snapshot |
 | [docs/STANDARDS.md](docs/STANDARDS.md) | the coding standards: what is in `.claude/rules/`, and the known inconsistencies |
+| [docs/HTTPS.md](docs/HTTPS.md) | other devices reaching the app: the shop's network (Caddy, registering phones), a remote server (no Caddy), moving to another computer |
 | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | what may import what, and the ports modules use instead. Enforced by `pnpm check:boundaries` |
 
 `docs/PLAN.md` is over 9,000 lines. Search it (`grep -n "§12.40" docs/PLAN.md`)
@@ -72,7 +73,7 @@ pnpm db:restore [--force]                      # load seed-data/snapshot.json (l
 pnpm db:backup [--no-open]                     # full pg_dump to backups/ (gitignored), then shown in Explorer
 pnpm env:show | env:use <name> | env:new <name> | env:check   # env profiles in envs/ (local by default)
 pnpm db:up | db:down                           # the kwtech-postgres Docker container
-pnpm https:setup [--off] | https               # HTTPS on the local network (Caddy): set up | run beside pnpm dev; README "HTTPS on the local network"
+pnpm https:setup [--off] | https               # HTTPS on the shop's network (Caddy, optional): set up | run beside pnpm dev; docs/HTTPS.md
 ```
 
 **Running the app while developing: `pnpm dev:focus <the package being worked

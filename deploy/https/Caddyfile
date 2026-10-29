@@ -1,7 +1,7 @@
 # HTTPS for the shop's own network (no domain, no internet): Caddy in front of
 # both apps on 443, with a certificate from its OWN local authority. Started by
 # pm2 from ecosystem.config.cjs when the API's FRONTEND_URL is https://; see
-# README.md, "HTTPS on the local network".
+# docs/HTTPS.md.
 #
 # Why it is needed at all: the production build marks the session cookies
 # Secure, and a browser drops a Secure cookie on plain http:// anywhere but
@@ -23,7 +23,7 @@
 	default_sni {$KWTECH_HTTPS_HOST}
 	# Never add the local authority to THIS machine's trust store on its own
 	# (that asks for a password at boot, under pm2). Trusting it is a step
-	# done once per device, on purpose: README.md says how.
+	# done once per device, on purpose: docs/HTTPS.md says how.
 	skip_install_trust
 }
 

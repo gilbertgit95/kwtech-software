@@ -17,7 +17,8 @@ const { caddyLaunch, httpsHost } = createRequire(import.meta.url)('../deploy/htt
 const host = httpsHost();
 if (!host) {
   console.error('  ✗ FRONTEND_URL in apps/web-server/.env.local is not an https:// address on this network.');
-  console.error('    Set it to e.g. https://192.168.1.186 (README.md, "HTTPS on the local network").');
+  console.error('    Caddy is only for the shop\'s own network (a 192.168.x / 10.x / 172.16–31.x address):');
+  console.error('    run pnpm https:setup. A server with a domain gets HTTPS from its host (docs/HTTPS.md).');
   process.exit(1);
 }
 
