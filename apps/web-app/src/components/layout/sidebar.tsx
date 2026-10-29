@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, Tooltip } from '@kwtech/web-ui/react';
+import { cn, ResizeGrip, Tooltip } from '@kwtech/web-ui/react';
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -227,12 +227,15 @@ export function Sidebar({
               onDoubleClick={() => resizeTo(SIDEBAR_WIDTH.default)}
               className={cn(
                 // touch-none: a finger dragging the edge resizes instead of scrolling.
-                'absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none',
+                'group absolute inset-y-0 -right-1 z-10 flex w-2 cursor-col-resize touch-none items-center justify-center',
                 'after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:transition-colors',
                 'hover:after:bg-primary/40 focus-visible:outline-none focus-visible:after:bg-ring',
                 resizing && 'after:bg-primary/60',
               )}
-            />
+            >
+              {/* The ellipsis every resizable border carries, so the edge reads as a handle before it is hovered. */}
+              <ResizeGrip onBorder active={resizing} />
+            </div>
           )}
         </Tooltip>
       )}

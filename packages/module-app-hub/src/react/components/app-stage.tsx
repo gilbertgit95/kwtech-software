@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ResizeGrip,
   Tooltip,
 } from '@kwtech/web-ui/react';
 import { EllipsisVertical, GripVertical, X } from 'lucide-react';
@@ -414,25 +415,6 @@ function withSizes(grid: AppHubGrid, axis: Axis, sizes: number[]): AppHubGrid {
 }
 
 /**
- * An ellipsis at the middle of a border, so it reads as something to drag — a
- * bare 8px gap looks like empty space. Three dots along the border (stacked on
- * a vertical one, in a row on a horizontal one), sized to fit inside the gap.
- * Decorative: the separator itself carries the role and label.
- */
-function Grip({ vertical }: { vertical: boolean }) {
-  return (
-    <span aria-hidden className={cn('pointer-events-none flex gap-0.5', vertical ? 'flex-col' : 'flex-row')}>
-      {[0, 1, 2].map((dot) => (
-        <span
-          key={dot}
-          className="size-1 rounded-full bg-muted-foreground/60 transition-colors group-hover:bg-primary group-focus-visible:bg-primary-foreground"
-        />
-      ))}
-    </span>
-  );
-}
-
-/**
  * The draggable borders, laid over the gaps between cells.
  *
  * A vertical border resizes the two columns beside it, full height. A
@@ -517,11 +499,12 @@ function TrackHandles({
         onKeyDown={(event) => onKeyDown(event, axis, index)}
         style={place}
         className={cn(
-          'group absolute z-10 flex touch-none items-center justify-center rounded-full transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none',
+          // A light focus tint, so `ResizeGrip`'s primary dots still show on it.
+          'group absolute z-10 flex touch-none items-center justify-center rounded-full transition-colors hover:bg-primary/40 focus-visible:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           vertical ? 'cursor-col-resize' : 'cursor-row-resize',
         )}
       >
-        <Grip vertical={vertical} />
+        <ResizeGrip orientation={vertical ? 'vertical' : 'horizontal'} />
       </div>
     );
   };

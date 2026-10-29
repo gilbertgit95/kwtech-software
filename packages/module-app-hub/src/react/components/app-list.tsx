@@ -1,7 +1,7 @@
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';
-import { cn, Tooltip, type TooltipTriggerProps } from '@kwtech/web-ui/react';
+import { cn, ResizeGrip, Tooltip, type TooltipTriggerProps } from '@kwtech/web-ui/react';
 import { ChevronLeft, GripVertical } from 'lucide-react';
 import { type KeyboardEvent, type PointerEvent, useId, useRef, useState } from 'react';
 import { type AppHubGrid, assignCell } from '../../domain/layout.js';
@@ -145,12 +145,15 @@ export function AppList({
               onDoubleClick={() => resizeTo(APP_LIST_WIDTH.default)}
               className={cn(
                 // touch-none: a finger dragging the edge resizes instead of scrolling.
-                'absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none',
+                'group absolute inset-y-0 -right-1 z-10 flex w-2 cursor-col-resize touch-none items-center justify-center',
                 'after:absolute after:inset-y-2 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:rounded-full after:transition-colors',
                 'hover:after:bg-primary/40 focus-visible:outline-none focus-visible:after:bg-ring',
                 resizing && 'after:bg-primary/60',
               )}
-            />
+            >
+              {/* The ellipsis every resizable border carries, so the edge reads as a handle before it is hovered. */}
+              <ResizeGrip onBorder active={resizing} />
+            </div>
           )}
         </Tooltip>
       )}
