@@ -57,6 +57,12 @@ Every control is the app's own, in the theme's colours — no browser-drawn
 The calendar, `Popover` and `popoverPlacement` moved to `@kwtech/web-ui/react`
 when the books' Money tab became their second user (PLAN §13, 2026-10-15).
 
+### On a phone (issue #22)
+
+`@kwtech/module-task/mobile` offers the phone layout Tasks — the same sub-app
+as the Apps page's, full screen, gated by `task:read`. A sub-app already lays
+out by its box and never navigates, which is all a phone screen asks.
+
 ## In a NestJS app
 
 ```ts

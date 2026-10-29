@@ -10,6 +10,10 @@
       "default": "./dist/index.js"
     },
     "./prisma": "./prisma/task.prisma",
+    "./mobile": {
+      "types": "./dist/mobile/index.d.ts",
+      "default": "./dist/mobile/index.js"
+    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
