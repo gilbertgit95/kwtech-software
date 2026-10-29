@@ -1,5 +1,6 @@
 import { SessionKeeper } from '@kwtech/module-auth/react';
 import { FeatureAccessProvider, WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
+import { scopePath } from '@kwtech/module-permissions';
 import { displayApplyScript } from '@kwtech/web-ui';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -9,6 +10,7 @@ import { BareShell } from '@/components/layout/bare-shell';
 import { AppIconSet } from '@/components/layout/icon-set';
 import { RememberOrganization } from '@/components/layout/remember-organization';
 import { AccountDisplay } from '@/components/mobile/account-display';
+import { mobileDestinations } from '@/components/mobile/mobile-destinations';
 import type { MobilePlaceContext } from '@/components/mobile/mobile-place';
 import {
   FullSiteProvider,
@@ -100,6 +102,23 @@ export async function MobileShell({
   const fullSiteAllowed = canUseFullSite(userAgent({ headers: requestHeaders }).device.type);
   const fullLoad = fetchDest === null || fetchDest === 'document';
 
+  /*
+   * THE BOTTOM BAR ON EVERY PAGE THAT KNOWS THE WORKSPACE. The workspace's
+   * own page hands its destinations in. Any other phone page — a picker,
+   * "not on the mobile view yet" — used to have no bar at all, which left
+   * somebody who arrived there (switching layout lands on whatever page was
+   * open) with no way to Home, Apps, Chat or the Inbox. Here the same
+   * destinations, under the same permission filter, LINK to the workspace's
+   * page instead (`linkBase`).
+   */
+  const linked =
+    screens.length === 0 && tabs.length === 0 && activeOrganizationId && activeWorkspaceId
+      ? {
+          base: scopePath({ organizationId: activeOrganizationId, workspaceId: activeWorkspaceId }),
+          ...(await mobileDestinations(activeOrganizationId, activeWorkspaceId, { withNodes: false })),
+        }
+      : null;
+
   const ownOrganization = organizations.some((organization) => organization.organizationId === scope.organizationId);
 
   return (
@@ -127,8 +146,9 @@ export async function MobileShell({
           <MobileScreensProvider
             key={activeWorkspaceId ?? 'none'}
             workspaceId={activeWorkspaceId}
-            screens={screens}
-            tabs={tabs}
+            linkBase={linked?.base ?? null}
+            screens={linked?.screens ?? screens}
+            tabs={linked?.tabs ?? tabs}
             initial={initialView}
           >
             {/*

@@ -16,6 +16,7 @@ import {
   Settings,
   Shield,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { switchLayout } from '@/components/layout/layout-switch';
 import { iconFor } from '@/components/layout/nav-icons';
@@ -69,6 +70,13 @@ export interface ManagePlaceNames {
 }
 
 interface ScreensState {
+  /**
+   * Null on the workspace's own phone page, where the frame moves between
+   * destinations in place. Otherwise the workspace's address: on a page that
+   * is NOT the workspace's (a picker, "not on the mobile view yet") the
+   * bottom bar still shows, and each destination is a trip there.
+   */
+  linkBase: string | null;
   screens: readonly MobileScreenEntry[];
   /** Module destinations for the bottom bar, in order — at most what fits beside the frame's own. */
   tabs: readonly MobileTabEntry[];
@@ -85,6 +93,7 @@ interface ScreensState {
 }
 
 const ScreensContext = createContext<ScreensState>({
+  linkBase: null,
   screens: [],
   tabs: [],
   view: { tab: 'home', app: null, section: null },
@@ -110,6 +119,7 @@ const ScreensContext = createContext<ScreensState>({
  */
 export function MobileScreensProvider({
   workspaceId,
+  linkBase = null,
   screens,
   tabs: offered,
   initial,
@@ -117,6 +127,8 @@ export function MobileScreensProvider({
 }: {
   /** Whose pins: they are kept per workspace. Null outside one, where there are no apps. */
   workspaceId: string | null;
+  /** See `ScreensState.linkBase`. */
+  linkBase?: string | null;
   screens: readonly MobileScreenEntry[];
   tabs: readonly MobileTabEntry[];
   initial: MobileView;
@@ -167,14 +179,24 @@ export function MobileScreensProvider({
     window.history.replaceState(window.history.state, '', url);
   }, []);
 
+  const router = useRouter();
+
   const value = useMemo<ScreensState>(
     () => ({
+      linkBase,
       screens,
       tabs,
       view,
       sections,
       pins,
-      goTab: (tab) => show({ tab, app: null, section: null }),
+      goTab: (tab) => {
+        // Not the workspace's own page: go there, opening the tab asked for.
+        if (linkBase) {
+          router.push(tab === 'home' ? linkBase : `${linkBase}?tab=${encodeURIComponent(tab)}`);
+          return;
+        }
+        show({ tab, app: null, section: null });
+      },
       openApp: (key) => show({ tab: view.tab, app: key, section: sections[key] ?? null }),
       closeApp: () => show({ tab: view.tab, app: null, section: null }),
       openSection: (app, section) => {
@@ -192,7 +214,7 @@ export function MobileScreensProvider({
         }
       },
     }),
-    [screens, tabs, view, sections, pins, show, workspaceId],
+    [linkBase, router, screens, tabs, view, sections, pins, show, workspaceId],
   );
   return <ScreensContext.Provider value={value}>{children}</ScreensContext.Provider>;
 }
@@ -346,12 +368,17 @@ export function MobileSectionStrip() {
  * Nothing at all when there is nothing but Home: Home says what to do instead.
  */
 export function MobileBottomNav() {
-  const { screens, tabs, view, goTab } = useMobileScreens();
+  const { linkBase, screens, tabs, view, goTab } = useMobileScreens();
   const app = useOpenApp();
   if (screens.length === 0 && tabs.length === 0) return null;
 
-  // An open app belongs to Apps, an open administration page to Manage — whichever tab it was reached from.
-  const current: MobileTab = app ? (app.kind === 'manage' ? 'manage' : 'apps') : view.tab;
+  /*
+   * An open app belongs to Apps, an open administration page to Manage —
+   * whichever tab it was reached from. On a page that is not the workspace's
+   * own (`linkBase`), none is current: the page is none of them.
+   */
+  const workspaceTab: MobileTab = app ? (app.kind === 'manage' ? 'manage' : 'apps') : view.tab;
+  const current: MobileTab | null = linkBase ? null : workspaceTab;
   const hasApps = screens.some((screen) => screen.kind === 'app');
   const canManage = screens.some((screen) => screen.kind === 'manage');
 

@@ -4,6 +4,7 @@ import type { Viewport } from 'next';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { greetingFor } from '@/components/mobile/greeting';
+import { mobileDestinations } from '@/components/mobile/mobile-destinations';
 import { getMobilePlace } from '@/components/mobile/mobile-place';
 import { mobileRoute } from '@/components/mobile/mobile-routes';
 import {
@@ -17,7 +18,6 @@ import { MobileShell } from '@/components/mobile/mobile-shell';
 import { initialView } from '@/components/mobile/mobile-view';
 import { NotOnMobile } from '@/components/mobile/not-on-mobile';
 import { PlacePicker } from '@/components/mobile/place-picker';
-import { MOBILE_MANAGE, MOBILE_SCREENS, MOBILE_TABS } from '@/mobile-modules';
 
 /**
  * Edge to edge: the bars pad themselves by the notch's and the home
@@ -50,9 +50,10 @@ export default async function MobilePage({
   const [{ slug = [] }, query] = await Promise.all([params, searchParams]);
   const route = mobileRoute(slug);
 
+  // The place the address names — on a page the phone does not have too, so its bottom bar is that workspace's.
   const place = await getMobilePlace(
-    route.kind === 'organization' || route.kind === 'workspace' ? route.organizationId : null,
-    route.kind === 'workspace' ? route.workspaceId : null,
+    route.kind === 'home' ? null : (route.organizationId ?? null),
+    route.kind === 'workspace' || route.kind === 'elsewhere' ? (route.workspaceId ?? null) : null,
   );
   const { snapshot, activeOrganizationId, activeWorkspaceId, workspaces, activeWorkspace } = place;
   const { viewer } = snapshot;
@@ -122,72 +123,8 @@ export default async function MobilePage({
         );
       }
 
-      /*
-       * THE PERMISSION FILTER for the phone's apps, at workspace scope — the
-       * reading the snapshot was taken at. An app shows only to somebody
-       * holding its `feature`; each of its sections only to somebody holding
-       * that section's (a section with none goes to everybody holding the
-       * app). Fails closed: no context, nothing held, no apps. The frame
-       * receives only what passed, so it cannot launch, pin or open from the
-       * address anything else — and every app's API authorises again anyway.
-       */
-      const held = snapshot.permissions?.effective ?? [];
-      const apps: MobileScreenEntry[] = MOBILE_SCREENS.filter((screen) => held.includes(screen.feature)).map(
-        (screen) => ({
-          key: screen.key,
-          label: screen.label,
-          icon: screen.icon,
-          kind: 'app',
-          sections: (screen.sections ?? [])
-            .filter((section) => section.feature === undefined || held.includes(section.feature))
-            .map((section) => ({ key: section.key, label: section.label })),
-          node: <screen.component organizationId={route.organizationId} workspaceId={route.workspaceId} />,
-        }),
-      );
-      /*
-       * THE PERMISSION FILTER for the Manage tab: each page at ITS level's
-       * reading — the workspace's effective grants (as for the apps), the
-       * organization's effective grants (granted, cut to the plan, app roles
-       * passing the plan as the guard lets them), or the app-level grants for
-       * the platform. The same readings the desktop drawer filters each level
-       * with. Fails closed: an unread level holds nothing.
-       *
-       * Keys are prefixed `manage.` in the frame so a page can never be taken
-       * for an app of the same name in `?screen=`.
-       */
-      const heldAt = { workspace: held, organization: place.organizationEffective, app: place.appGranted };
-      const manage: MobileScreenEntry[] = MOBILE_MANAGE.filter((page) => heldAt[page.level].includes(page.feature)).map(
-        (page) => ({
-          key: `manage.${page.key}`,
-          label: page.label,
-          icon: page.icon,
-          kind: 'manage',
-          level: page.level,
-          sections: [],
-          node: (
-            <page.component
-              organizationId={page.level === 'app' ? null : route.organizationId}
-              workspaceId={page.level === 'workspace' ? route.workspaceId : null}
-            />
-          ),
-        }),
-      );
-      const screens = [...apps, ...manage];
-      /*
-       * THE PERMISSION FILTER for the modules' bottom-bar tabs (Chat, Inbox):
-       * APP-level grants, as the desktop header tools are filtered — a
-       * person's chat is not a fact about the workspace that is open. A tab
-       * with no `feature` is for everybody signed in.
-       */
-      const tabs: MobileTabEntry[] = MOBILE_TABS.filter(
-        (tab) => tab.feature === undefined || place.appGranted.includes(tab.feature),
-      ).map((tab) => ({
-        key: tab.key,
-        label: tab.label,
-        icon: tab.icon,
-        node: <tab.component />,
-        badge: tab.badge ? <tab.badge /> : null,
-      }));
+      // What the viewer may reach here — apps, Manage pages, Chat and Inbox — filtered by their keys at each level.
+      const { screens, tabs } = await mobileDestinations(route.organizationId, route.workspaceId, { withNodes: true });
       const param = (name: string) => (typeof query[name] === 'string' ? query[name] : undefined);
       const view = initialView(
         { tab: param('tab'), screen: param('screen'), section: param('section') },

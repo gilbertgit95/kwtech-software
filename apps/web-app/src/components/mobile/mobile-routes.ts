@@ -25,7 +25,12 @@ export type MobileRoute =
   | { kind: 'home' }
   | { kind: 'organization'; organizationId: string }
   | { kind: 'workspace'; organizationId: string; workspaceId: string }
-  | { kind: 'elsewhere' };
+  /**
+   * Not on the phone. Still carries the place the address names, when it names
+   * one — `/organizations/:id/workspaces/:id/members` is in that workspace — so
+   * the frame can show that workspace's bottom bar instead of none.
+   */
+  | { kind: 'elsewhere'; organizationId?: string; workspaceId?: string };
 
 export function mobileRoute(slug: readonly string[]): MobileRoute {
   if (slug.length === 0) return { kind: 'home' };
@@ -35,11 +40,11 @@ export function mobileRoute(slug: readonly string[]): MobileRoute {
   if (first !== 'organizations' || !organizationId || organizationId === 'new') return { kind: 'elsewhere' };
 
   if (third === undefined) return { kind: 'organization', organizationId };
-  if (third !== 'workspaces') return { kind: 'elsewhere' };
+  if (third !== 'workspaces') return { kind: 'elsewhere', organizationId };
   if (workspaceId === undefined) return { kind: 'organization', organizationId };
-  if (!workspaceId || workspaceId === 'new') return { kind: 'elsewhere' };
+  if (!workspaceId || workspaceId === 'new') return { kind: 'elsewhere', organizationId };
 
-  if (rest.length > 0) return { kind: 'elsewhere' };
+  if (rest.length > 0) return { kind: 'elsewhere', organizationId, workspaceId };
   if (fifth === undefined || fifth === 'apps') return { kind: 'workspace', organizationId, workspaceId };
-  return { kind: 'elsewhere' };
+  return { kind: 'elsewhere', organizationId, workspaceId };
 }
