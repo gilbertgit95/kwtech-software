@@ -1,8 +1,11 @@
 import { DEFAULT_COOKIE_NAME, renewSessionIfNeeded } from '@kwtech/module-auth/next';
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse, userAgent } from 'next/server';
+import { chooseLayout, mobileRewritePath, parseLayoutPreference } from '@/lib/layout-choice';
+import { LAYOUT_COOKIE } from '@/lib/preferences';
 
 /**
- * Renews an expired session BEFORE the page renders.
+ * Renews an expired session BEFORE the page renders, and sends a phone to the
+ * phone layout (issue #22, `@/lib/layout-choice`).
  *
  * ## Why this file exists
  *
@@ -45,7 +48,10 @@ export async function proxy(request: NextRequest) {
     refreshToken: request.cookies.get(`${name}_refresh`)?.value ?? null,
   });
 
-  if (!decision.cookies?.length) return NextResponse.next();
+  const renewed = decision.cookies?.length ? decision.cookies : null;
+  const mobileTarget = mobileTargetFor(request);
+
+  if (!renewed && !mobileTarget) return NextResponse.next();
 
   /*
    * The renewed token is put on the REQUEST as well as in the response cookies.
@@ -56,7 +62,7 @@ export async function proxy(request: NextRequest) {
    * is the whole bug, half-fixed, which is worse than obvious.
    */
   const headers = new Headers(request.headers);
-  if (decision.kind === 'renewed' && decision.accessToken) {
+  if (renewed && decision.kind === 'renewed' && decision.accessToken) {
     const others = request.cookies
       .getAll()
       .filter((cookie) => cookie.name !== name)
@@ -64,9 +70,46 @@ export async function proxy(request: NextRequest) {
     headers.set('cookie', [...others, `${name}=${decision.accessToken}`].join('; '));
   }
 
-  const response = NextResponse.next({ request: { headers } });
-  for (const cookie of decision.cookies) response.headers.append('set-cookie', cookie);
+  /*
+   * A phone's page is REWRITTEN, not redirected (issue #22): the address bar
+   * keeps the URL that was asked for, and the phone page renders it. The
+   * renewed token rides on the rewritten request too — the same headers — or
+   * the phone page would render with the expired one and send its reader to
+   * sign in, the bug above in a new place.
+   */
+  let response = NextResponse.next({ request: { headers } });
+  if (mobileTarget) {
+    const url = request.nextUrl.clone();
+    url.pathname = mobileTarget;
+    response = NextResponse.rewrite(url, { request: { headers } });
+  }
+  for (const cookie of renewed ?? []) response.headers.append('set-cookie', cookie);
   return response;
+}
+
+/**
+ * The phone page to render this request with, or null for the page it asked for.
+ *
+ * Allowlisted paths only (`mobileRewritePath`), and only when the layout is
+ * `mobile` — by the device, or by the person's own `LAYOUT_COOKIE`, which
+ * always wins. Not a guard: the phone page resolves the viewer's grants
+ * itself, exactly as the desktop one does.
+ *
+ * ⚠ One URL therefore answers differently by device. Safe today because these
+ * pages are rendered per request and sent `no-store`, so nothing between here
+ * and the browser keeps one. A `Vary: User-Agent, Cookie` set here does not
+ * survive: Next writes the page's own `Vary` over it. A CDN put in front later
+ * must be told to bypass these paths, or one phone's page could reach a
+ * computer.
+ */
+function mobileTargetFor(request: NextRequest): string | null {
+  const target = mobileRewritePath(request.nextUrl.pathname);
+  if (!target) return null;
+  const layout = chooseLayout(
+    userAgent(request).device.type,
+    parseLayoutPreference(request.cookies.get(LAYOUT_COOKIE)?.value),
+  );
+  return layout === 'mobile' ? target : null;
 }
 
 export const config = {

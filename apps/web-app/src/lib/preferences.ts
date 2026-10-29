@@ -108,6 +108,20 @@ export const ACTIVE_ORGANIZATION_COOKIE = 'kwtech_active_organization';
  */
 export const ACTIVE_WORKSPACE_COOKIE = 'kwtech_active_workspace';
 
+/**
+ * Cookie. `mobile` or `full`: the layout this browser asked for, overriding
+ * what its device suggests (issue #22). Absent means "decide by the device".
+ *
+ * A COOKIE because the PROXY decides the layout, before any page renders,
+ * and the proxy sees only the request. A preference about this device rather
+ * than this person, so it survives a sign-out as the theme does: the phone at
+ * the counter stays on the layout it was set to whoever signs in next.
+ *
+ * Not authorisation: either layout resolves the viewer's real grants, and the
+ * phone layout offers less, never more.
+ */
+export const LAYOUT_COOKIE = 'kwtech_layout';
+
 /** A year. A preference should outlive the session that set it. */
 export const PREFERENCE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 

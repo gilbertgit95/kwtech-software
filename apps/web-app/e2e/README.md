@@ -25,8 +25,10 @@ What runs:
 | wrong code | a TV with a bad code gets the one refusal sentence |
 | installable | the manifest is linked, says `standalone`, and every icon it names loads |
 | install page | a signed-out iPhone gets `/install` with the iPhone steps |
+| phone, signed out | a phone opening a workspace address gets the shared sign-in page |
+| phone layout | a phone opens the workspace in the phone layout **at the same address**, and can **never reach the full site**: no switch, an old `full` cookie ignored, and desktop-only pages (members, settings) show the phone notice |
 
-Without the `E2E_*` variables the first two are **skipped** with that reason, not
+Without the `E2E_*` variables the first two, and the phone layout, are **skipped** with that reason, not
 failed. The wrong-code test needs no account and always runs. Locally, the seed
 account from `apps/web-server/.env.local` (`SEED_USER_EMAIL`, `SEED_USER_PASSWORD`)
 works once the queue is on its organization's plan.

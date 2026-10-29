@@ -3,8 +3,9 @@ import { WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { FEATURE } from '@kwtech/module-permissions';
 import { PermissionsProvider } from '@kwtech/module-permissions/react';
 import { displayApplyScript } from '@kwtech/web-ui';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { userAgent } from 'next/server';
 import type { ReactNode } from 'react';
 import {
   ACTIVE_ORGANIZATION_COOKIE,
@@ -24,9 +25,14 @@ import {
   SIDEBAR_COOKIE,
   SIDEBAR_WIDTH_COOKIE,
 } from '@/components/layout/sidebar-state';
+import { getMobilePlace } from '@/components/mobile/mobile-place';
+import { MobileShell } from '@/components/mobile/mobile-shell';
+import { NotOnMobile } from '@/components/mobile/not-on-mobile';
 import { ConnectivityMonitor } from '@/components/status/connectivity-monitor';
 import { StatusBarHost } from '@/components/status/status-bar-host';
 import { appBrand } from '@/config/env';
+import { canUseFullSite, offersMobileView, parseLayoutPreference } from '@/lib/layout-choice';
+import { LAYOUT_COOKIE } from '@/lib/preferences';
 import {
   getNavContext,
   getOrganizationIdentity,
@@ -104,10 +110,8 @@ export async function AppShell({
    * The seam is unchanged in kind, only in shape: neither module names the
    * other, and the APP composes the query — see @/lib/session-query.
    */
-  const [{ viewer, permissions, organizations, expiresAt, display, reachable }, cookieStore] = await Promise.all([
-    getSessionSnapshot(scope),
-    cookies(),
-  ]);
+  const [{ viewer, permissions, organizations, expiresAt, display, reachable }, cookieStore, requestHeaders] =
+    await Promise.all([getSessionSnapshot(scope), cookies(), headers()]);
 
   /*
    * NO VIEWER SPLITS TWO WAYS, and conflating them was a real bug: with the API
@@ -236,6 +240,27 @@ export async function AppShell({
           </div>
         </div>
       </BareShell>
+    );
+  }
+
+  /*
+   * ⚠ NEVER ON A PHONE (the operator, 2026-10-29; issue #22). A phone always
+   * gets the phone layout: the proxy sends it the phone page for `/` and a
+   * tenant's pages, and every other signed-in page — settings, administration,
+   * a chat's preferences — arrives here, the one shell they all render
+   * through. Here it draws the phone frame saying the page is not on the
+   * mobile view yet, at the same address, instead of the desktop shell. The
+   * desktop page is not rendered at all.
+   *
+   * After the session checks above on purpose: signed out still goes to the
+   * shared sign-in page, and an outage still says so.
+   */
+  if (!canUseFullSite(userAgent({ headers: requestHeaders }).device.type)) {
+    const place = await getMobilePlace(scope.organizationId ?? null, scope.workspaceId ?? null);
+    return (
+      <MobileShell place={place}>
+        <NotOnMobile />
+      </MobileShell>
     );
   }
 
@@ -486,6 +511,15 @@ export async function AppShell({
                * reported as a bug in the API.
                */
               roles={permissions?.appRoles ?? []}
+              /*
+               * The way back to the phone layout (issue #22), offered on a
+               * handheld device or after somebody chose the full site. From
+               * the same two inputs the proxy decides the layout with.
+               */
+              offerMobileView={offersMobileView(
+                userAgent({ headers: requestHeaders }).device.type,
+                parseLayoutPreference(cookieStore.get(LAYOUT_COOKIE)?.value),
+              )}
             />
             {/* `min-h-0` for the same reason as the column. */}
             <main
