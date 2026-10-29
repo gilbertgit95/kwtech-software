@@ -7,7 +7,7 @@
  * pages. All decorative: every control that shows one carries its own
  * accessible name.
  */
-export type ChatIconName = 'message' | 'minimize' | 'restore' | 'expand' | 'close';
+export type ChatIconName = 'message' | 'minimize' | 'restore' | 'expand' | 'close' | 'back';
 
 /*
  * A switch rather than a lookup object of JSX: an object literal would build
@@ -23,6 +23,9 @@ function iconPaths(name: ChatIconName): React.ReactNode {
       return <path d="M5 12h14" />;
     case 'restore':
       return <path d="m18 15-6-6-6 6" />;
+    case 'back':
+      // The phone view's "‹ Chats" (issue #22).
+      return <path d="m15 18-6-6 6-6" />;
     case 'expand':
       return (
         <>
