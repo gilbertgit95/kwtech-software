@@ -137,12 +137,19 @@ export class AuthResolver {
    * signed-in caller, so "not signed in" and "never chose" stay apart.
    *
    * Session only, no feature key: see AuthDisplayService for why.
+   *
+   * `layout` picks the full site's sizes (`desktop`, the default) or the phone
+   * layout's (`mobile`) — kept apart since issue #22. The shell asks for the
+   * one it is drawing.
    */
   @Query(() => DisplayPreferencesType, { name: 'myDisplay', nullable: true })
-  async myDisplay(@Context() gqlContext: { req?: Record<string, unknown> }): Promise<DisplayPreferencesType | null> {
+  async myDisplay(
+    @Context() gqlContext: { req?: Record<string, unknown> },
+    @Args('layout', { type: () => String, nullable: true }) layout: string | null,
+  ): Promise<DisplayPreferencesType | null> {
     const principal = principalOf(gqlContext);
     if (!principal) return null;
-    return this.display.read(principal.userId);
+    return this.display.read(principal.userId, this.display.layoutOf(layout));
   }
 
   /** Changes the caller's own display sizes, and returns them as saved. */
@@ -154,7 +161,7 @@ export class AuthResolver {
     const principal = principalOf(gqlContext);
     // The guard has already refused an unauthenticated caller; this is the narrowing.
     if (!principal) throw new UnauthorizedException('Not signed in');
-    return this.display.update(principal.userId, {
+    return this.display.update(principal.userId, this.display.layoutOf(input.layout), {
       ...(input.textSize != null ? { textSize: input.textSize } : {}),
       ...(input.spacing != null ? { spacing: input.spacing } : {}),
     });

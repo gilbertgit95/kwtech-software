@@ -23,6 +23,10 @@ import { Field, InputType } from '@nestjs/graphql';
  */
 @InputType()
 export class UpdateDisplayInput {
+  /** `desktop` (the default, the full site) or `mobile` (the phone layout) — issue #22. */
+  @Field(() => String, { nullable: true })
+  layout?: string;
+
   @Field(() => String, { nullable: true })
   textSize?: string;
 

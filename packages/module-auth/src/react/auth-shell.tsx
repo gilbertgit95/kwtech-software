@@ -57,6 +57,7 @@ export function AuthField({
   minLength,
   defaultValue,
   inputMode,
+  size = 'default',
 }: {
   label: string;
   name: string;
@@ -73,6 +74,12 @@ export function AuthField({
    * in ten — so the field stays `type="text"` and asks for the keypad here.
    */
   inputMode?: 'text' | 'numeric';
+  /**
+   * `large` for the phone layout (issue #22): 16px text, a taller field and
+   * rounder corners. ⚠ 16px is not taste — an iPhone zooms the whole page in
+   * when a field under 16px takes focus, and leaves it zoomed.
+   */
+  size?: 'default' | 'large';
 }) {
   const id = `auth-${name}`;
 
@@ -114,7 +121,9 @@ export function AuthField({
           required={required}
           minLength={minLength}
           defaultValue={defaultValue}
-          className={`w-full rounded-md border border-input bg-transparent py-2 pl-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          className={`w-full border border-input bg-transparent pl-3 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            size === 'large' ? 'min-h-12 rounded-xl py-3 text-base' : 'rounded-md py-2 text-sm'
+          } ${
             // Room for the button, so a long password does not run underneath it.
             isPassword ? 'pr-10' : 'pr-3'
           }`}

@@ -10,7 +10,8 @@
 const DISPLAY = 'textSize spacing';
 
 export const AUTH_OPERATIONS = {
-  myDisplay: `query MyDisplay { myDisplay { ${DISPLAY} } }`,
+  /** `$layout`: `desktop` (omitted) or `mobile` — the full site's sizes and the phone layout's are kept apart. */
+  myDisplay: `query MyDisplay($layout: String) { myDisplay(layout: $layout) { ${DISPLAY} } }`,
   updateMyDisplay: `mutation UpdateMyDisplay($input: UpdateDisplayInput!) {
     updateMyDisplay(input: $input) { ${DISPLAY} }
   }`,

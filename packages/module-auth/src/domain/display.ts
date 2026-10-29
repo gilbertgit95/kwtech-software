@@ -24,7 +24,23 @@ export interface AuthDisplayPreferences {
 /** What somebody who never chose sees: the page as designed. */
 export const AUTH_DEFAULT_DISPLAY: AuthDisplayPreferences = { textSize: 'normal', spacing: 'comfortable' };
 
-export type AuthDisplayRefusal = 'invalid_text_size' | 'invalid_spacing';
+/**
+ * Which layout a set of display sizes is for (issue #22): the full site on a
+ * computer or tablet, or the phone layout. Kept apart because the two are
+ * read at different distances on different screens — larger text that suits
+ * a phone at arm's length makes a desktop table scroll sideways.
+ */
+export const AUTH_DISPLAY_LAYOUTS = ['desktop', 'mobile'] as const;
+export type AuthDisplayLayout = (typeof AUTH_DISPLAY_LAYOUTS)[number];
+
+/** The layout a request names when it names none: the full site, as before the split. */
+export const AUTH_DEFAULT_DISPLAY_LAYOUT: AuthDisplayLayout = 'desktop';
+
+export function isAuthDisplayLayout(value: unknown): value is AuthDisplayLayout {
+  return typeof value === 'string' && (AUTH_DISPLAY_LAYOUTS as readonly string[]).includes(value);
+}
+
+export type AuthDisplayRefusal = 'invalid_text_size' | 'invalid_spacing' | 'invalid_layout';
 
 /**
  * A change to the display sizes, checked: the stored preferences with the

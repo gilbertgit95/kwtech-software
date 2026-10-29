@@ -1,6 +1,6 @@
 'use client';
 
-import type { AuthDisplayPreferences } from '../domain/display.js';
+import type { AuthDisplayLayout, AuthDisplayPreferences } from '../domain/display.js';
 import { AUTH_OPERATIONS } from '../operations.js';
 import type {
   MfaEmailCodeSent,
@@ -78,10 +78,14 @@ export interface AuthClient {
   /** Display name and username. Carries no secret, so it is a GraphQL mutation. */
   updateProfile(input: { displayName?: string | null; username?: string }): Promise<Viewer>;
 
-  /** The caller's display sizes (issue #20): the defaults when they never chose. */
-  myDisplay(): Promise<AuthDisplayPreferences>;
-  /** Changes the given display sizes, leaving the other alone; answers with what was saved. */
-  updateMyDisplay(input: Partial<AuthDisplayPreferences>): Promise<AuthDisplayPreferences>;
+  /**
+   * The caller's display sizes (issue #20) for one layout — the full site's
+   * (`desktop`, the default) or the phone layout's (`mobile`, issue #22): the
+   * defaults when they never chose for it.
+   */
+  myDisplay(layout?: AuthDisplayLayout): Promise<AuthDisplayPreferences>;
+  /** Changes the given display sizes of one layout, leaving the other alone; answers with what was saved. */
+  updateMyDisplay(input: Partial<AuthDisplayPreferences>, layout?: AuthDisplayLayout): Promise<AuthDisplayPreferences>;
 
   /** REST, not a mutation: it takes the CURRENT password, so it is guessable. */
   changePassword(input: { currentPassword: string; newPassword: string }): Promise<void>;
@@ -158,16 +162,18 @@ export function createAuthClient(basePath = '/api/auth'): AuthClient {
       return data.updateProfile;
     },
 
-    myDisplay: async () => {
-      const data = await graphql<{ myDisplay: AuthDisplayPreferences | null }>(AUTH_OPERATIONS.myDisplay);
+    myDisplay: async (layout = 'desktop') => {
+      const data = await graphql<{ myDisplay: AuthDisplayPreferences | null }>(AUTH_OPERATIONS.myDisplay, {
+        layout,
+      });
       // Null only when signed out, which a settings page under a session cannot be.
       if (!data.myDisplay) throw new AuthClientError('Your session has ended. Sign in again.', 401);
       return data.myDisplay;
     },
 
-    updateMyDisplay: async (input) => {
+    updateMyDisplay: async (input, layout = 'desktop') => {
       const data = await graphql<{ updateMyDisplay: AuthDisplayPreferences }>(AUTH_OPERATIONS.updateMyDisplay, {
-        input,
+        input: { ...input, layout },
       });
       return data.updateMyDisplay;
     },

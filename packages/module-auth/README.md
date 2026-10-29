@@ -195,22 +195,45 @@ it reaches the loading and error states too — not just the loaded form.
 A person's text size and spacing are kept on the ACCOUNT, so they follow them
 to every device, and on a shared till the person signed in gets theirs.
 
-- **`AuthDisplayPreference`** (`auth_display_preference`), one row per user,
-  created on the first change. No row is the defaults (`normal`,
-  `comfortable`). Its own table, so signing in never reads it.
-- **`myDisplay`** (query, null when signed out) and **`updateMyDisplay(input:
-  { textSize?, spacing? })`**, in `src/operations.ts`. Strings on the wire,
+- **Per LAYOUT (issue #22): the full site (`desktop`) and the phone layout
+  (`mobile`) each keep their own**, because text sized for a phone at arm's
+  length is wrong on a desk. A layout never set is the defaults there — never
+  the other layout's sizes.
+- **`AuthDisplayPreference`** (`auth_display_preference`), one row per user
+  and layout (`@@id([userId, layout])`), created on the first change. No row is
+  the defaults (`normal`, `comfortable`). Rows from before the split are the
+  desktop's. Its own table, so signing in never reads it.
+- **`myDisplay(layout?)`** (query, null when signed out) and
+  **`updateMyDisplay(input: { layout?, textSize?, spacing? })`**, in
+  `src/operations.ts`. `layout` omitted is `desktop`, so callers from before
+  the split are unchanged; any other value is refused by name. Strings on the wire,
   checked by `prepareDisplayChange`. Session only, with **no feature key**:
   a role that withheld larger text would lock somebody out by eyesight.
-- **`/settings/display`**, the Display page, in the Account group after
-  Security (nav icon `text-size`). A choice applies at once and saves; a
+- **`/settings/display`**, the full site's Display page, in the Account group
+  after Security (nav icon `text-size`), sets the `desktop` sizes. The phone
+  sets its own from `DisplayMobilePanel` (below). Both run on one hook,
+  `useDisplaySettings(layout)`. A choice applies at once and saves; a
   failed save puts back what is stored and says so.
 - **The steps are `@kwtech/web-ui`'s**, copied as `AUTH_TEXT_SIZES` and
   `AUTH_SPACINGS` because this core may not import web-ui. The app checks the
   copies agree at compile time (`apps/web-app/src/lib/display.ts`). What each
   step looks like is web-ui's README, "Text size and spacing".
-- **The app applies them**: it asks for `myDisplay` with `viewer` in its
-  session query and renders `displayApplyScript` in its shell.
+- **The app applies them**: it asks for both layouts with `viewer` in its
+  session query (`myDisplay` and `mobileDisplay: myDisplay(layout: "mobile")`)
+  and each shell renders `displayApplyScript` with its own.
+
+## On a phone (issue #22)
+
+A phone may never open the full site, so its account settings come from
+**`@kwtech/module-auth/mobile`**: `ProfileMobilePanel`, `PasswordMobilePanel`
+and `DisplayMobilePanel` (the phone's sizes). The web app opens them as
+full-screen panels from the phone layout's account sheet. The same API, keys
+and rules as the settings pages — the profile write is still
+`account:profile_write`, checked by `useHoldsFeature`, so the host must give
+these panels the viewer's APP-level keys — laid out for a phone, with
+`AuthField`'s `size="large"` (16px: an iPhone zooms the page in on a smaller
+field). Two-step verification and "sign out everywhere" stay on the full
+site's Security page for now.
 
 ## Features this module declares
 
@@ -350,6 +373,7 @@ a lie about somebody's permissions.
 |---|---|---|
 | `@kwtech/module-auth` | pure core — types, policy, no framework | anywhere |
 | `@kwtech/module-auth/react` | pages and the browser client (`'use client'`) | browser |
+| `@kwtech/module-auth/mobile` | the account panels for the phone layout (`'use client'`) | browser |
 | `@kwtech/module-auth/next` | route handlers and the server session read | Next server |
 | `@kwtech/module-auth/server` | Nest module, guard, services | Nest |
 | `@kwtech/module-auth/prisma` | the schema fragment | `prisma` composition |

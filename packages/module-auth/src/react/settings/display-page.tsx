@@ -1,18 +1,11 @@
 'use client';
 
-import {
-  applyDisplay,
-  DEFAULT_DISPLAY,
-  type DisplayPreferences,
-  SPACING_LABELS,
-  SPACINGS,
-  TEXT_SIZE_LABELS,
-  TEXT_SIZES,
-} from '@kwtech/web-ui';
+import { DEFAULT_DISPLAY, SPACING_LABELS, SPACINGS, TEXT_SIZE_LABELS, TEXT_SIZES } from '@kwtech/web-ui';
 import { cn } from '@kwtech/web-ui/react';
-import { useEffect, useId, useMemo, useState } from 'react';
-import { type AuthClient, createAuthClient } from '../auth-client.js';
+import { useId } from 'react';
+import type { AuthClient } from '../auth-client.js';
 import { SettingsCard, SettingsPage } from './settings-shell.js';
+import { useDisplaySettings } from './use-display-settings.js';
 
 /**
  * How big things are, for this person, on every screen they sign in to
@@ -33,61 +26,15 @@ export function DisplayPage({
   client?: AuthClient;
   backTo?: { href: string; label: string };
 }) {
-  const api = useMemo(() => client ?? createAuthClient(), [client]);
-  /** What the account holds: what a failed save goes back to. Null while loading. */
-  const [saved, setSaved] = useState<DisplayPreferences | null>(null);
-  const [shown, setShown] = useState<DisplayPreferences | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .myDisplay()
-      .then((display) => {
-        if (cancelled) return;
-        setSaved(display);
-        setShown(display);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load your display settings.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
-
-  const choose = async (change: Partial<DisplayPreferences>) => {
-    if (!saved || !shown || saving) return;
-    const next = { ...shown, ...change };
-    setShown(next);
-    applyDisplay(next);
-    setError(null);
-    setStatus(null);
-    setSaving(true);
-    try {
-      const stored = await api.updateMyDisplay(change);
-      setSaved(stored);
-      setShown(stored);
-      applyDisplay(stored);
-      setStatus('Saved. Every screen you sign in to uses these sizes.');
-    } catch (cause) {
-      setShown(saved);
-      applyDisplay(saved);
-      setError(cause instanceof Error ? cause.message : 'Could not save your display settings.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const isDefault =
-    shown !== null && shown.textSize === DEFAULT_DISPLAY.textSize && shown.spacing === DEFAULT_DISPLAY.spacing;
+  const { shown, saving, error, status, isDefault, choose } = useDisplaySettings('desktop', {
+    client,
+    savedMessage: 'Saved. The full site uses these sizes on every computer and tablet you sign in on.',
+  });
 
   return (
     <SettingsPage
       title="Display"
-      description="Make text and the space around it larger or smaller. It follows you to every device you sign in on."
+      description="Make text and the space around it larger or smaller on the full site, on every computer and tablet you sign in on. Phones have sizes of their own, set from the phone."
       backTo={backTo}
     >
       {error ? (

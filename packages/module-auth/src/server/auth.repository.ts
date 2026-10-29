@@ -1,4 +1,4 @@
-import type { AuthDisplayPreferences } from '../domain/display.js';
+import type { AuthDisplayLayout, AuthDisplayPreferences } from '../domain/display.js';
 
 /**
  * The narrow slice of a Prisma client this module needs — declared
@@ -30,6 +30,7 @@ export interface AuthUserRow {
 
 export interface AuthDisplayPreferenceRow extends AuthDisplayPreferences {
   userId: string;
+  layout: AuthDisplayLayout;
 }
 
 export interface AuthCredentialRow {
@@ -431,10 +432,12 @@ export interface AuthPrismaClient {
 
   /** A person's display sizes (`AuthDisplayService`). No row is the defaults. */
   authDisplayPreference: {
-    findUnique(args: { where: { userId: string } }): Promise<AuthDisplayPreferenceRow | null>;
+    findUnique(args: {
+      where: { userId_layout: { userId: string; layout: AuthDisplayLayout } };
+    }): Promise<AuthDisplayPreferenceRow | null>;
     upsert(args: {
-      where: { userId: string };
-      create: { userId: string } & AuthDisplayPreferences;
+      where: { userId_layout: { userId: string; layout: AuthDisplayLayout } };
+      create: { userId: string; layout: AuthDisplayLayout } & AuthDisplayPreferences;
       update: AuthDisplayPreferences;
     }): Promise<AuthDisplayPreferenceRow>;
   };
