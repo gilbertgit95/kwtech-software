@@ -1,8 +1,9 @@
 'use client';
 
 import { BottomSheet, cn } from '@kwtech/web-ui/react';
-import { ChevronDown, Hand, Hash, Info, Minus, Plus, Trash2, User } from 'lucide-react';
+import { Ban, ChevronDown, Hand, Hash, Info, Minus, Plus, ToggleRight, Trash2, User } from 'lucide-react';
 import { useEffect, useId, useMemo, useState } from 'react';
+import { isPosItemAvailable, isPosVariantAvailable } from '../../domain/availability.js';
 import { searchItems } from '../../domain/search.js';
 import type { PosItemView } from '../pos-client.js';
 import { useNow } from '../use-now.js';
@@ -19,13 +20,23 @@ import {
   type PosItemGroup,
   waitMinutes,
 } from '../view/take-orders.js';
-import { itemCount, lineLabel, liveVariants, priceRange, searchCatalogue } from '../view/till.js';
-import { buttonClass, INPUT_CLASS, Modal, PhoneDialogs, StockBadge } from './controls.js';
+import { itemCount, lineLabel, pickerVariants, priceRange, searchCatalogue } from '../view/till.js';
+import { AvailabilityPanel } from './availability-panel.js';
+import {
+  buttonClass,
+  INPUT_CLASS,
+  Modal,
+  PhoneDialogs,
+  StockBadge,
+  UNAVAILABLE_ROW_CLASS,
+  UNAVAILABLE_TEXT_CLASS,
+  UnavailableBadge,
+} from './controls.js';
 import { CustomerDialog, ReferenceDialog, VariantPicker } from './dialogs.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { WaitBadge } from './wait-badge.js';
 
-type Sheet = 'none' | 'order' | 'hold' | 'reference' | 'customer';
+type Sheet = 'none' | 'order' | 'hold' | 'reference' | 'customer' | 'availability';
 
 /**
  * TAKE ORDERS (issue #23): the seller's screen, made for a phone or a handheld
@@ -101,6 +112,12 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
   const pick = (itemId: string, variantId: string | null) => {
     const item = catalogue?.items.find((candidate) => candidate.id === itemId);
     if (!item) return;
+    // The rows are greyed out and cannot be tapped, but a list re-read under the thumb can still land here (issue #37).
+    const variant = variantId ? item.variants.find((candidate) => candidate.id === variantId) : null;
+    if (!isPosItemAvailable(item) || (variant && !isPosVariantAvailable(item, variant))) {
+      setNotice(`${variant ? `${item.name} — ${variant.name}` : item.name} is marked not available.`);
+      return;
+    }
     if (!variantId && item.variants.some((variant) => variant.archivedAt === null)) {
       setVariantItem(item);
       return;
@@ -247,15 +264,27 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
           Search items
         </label>
         {/* No autofocus: on a phone it raises the keyboard over the items before anybody asked to type. */}
-        <input
-          id={searchId}
-          type="search"
-          autoComplete="off"
-          placeholder="Search items"
-          className={cn(INPUT_CLASS, 'h-12 shrink-0 rounded-xl text-base')}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="flex shrink-0 gap-2">
+          <input
+            id={searchId}
+            type="search"
+            autoComplete="off"
+            placeholder="Search items"
+            className={cn(INPUT_CLASS, 'h-12 min-w-0 flex-1 rounded-xl text-base')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {state.canSetAvailability ? (
+            <button
+              type="button"
+              className={cn(buttonClass('secondary'), 'h-12 shrink-0 rounded-xl')}
+              onClick={() => setSheet('availability')}
+            >
+              <ToggleRight aria-hidden="true" className="size-5" />
+              Availability
+            </button>
+          ) : null}
+        </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
           {!catalogue ? <p className="text-sm text-muted-foreground">Loading items…</p> : null}
@@ -275,6 +304,7 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
                     sizes={result.opensPicker}
                     onOrder={countOnOrder(lines, result.itemId)}
                     left={leftOf(state.stock, result.itemId, result.variantId)}
+                    unavailable={result.unavailable}
                     disabled={state.busy}
                     onPick={() => {
                       pick(result.itemId, result.variantId);
@@ -462,6 +492,9 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
           }}
           onClose={() => setDetailsItem(null)}
         />
+        <Modal open={sheet === 'availability'} title="Availability" wide onClose={() => setSheet('none')}>
+          {catalogue ? <AvailabilityPanel state={state} catalogue={catalogue} /> : null}
+        </Modal>
         <VariantPicker
           item={variantItem}
           stock={state.stock}
@@ -594,6 +627,7 @@ function ItemGroupSection({
                 sizes={item.variants.some((variant) => variant.archivedAt === null)}
                 onOrder={countOnOrder(lines, item.id)}
                 left={tileLeft(state.stock, item)}
+                unavailable={!isPosItemAvailable(item)}
                 disabled={state.busy}
                 onPick={() => onPick(item.id)}
                 onDetails={hasMoreToRead(item) ? () => onDetails(item) : undefined}
@@ -614,6 +648,7 @@ function ItemRow({
   sizes,
   onOrder,
   left,
+  unavailable,
   disabled,
   onPick,
   onDetails,
@@ -625,6 +660,8 @@ function ItemRow({
   sizes: boolean;
   onOrder: number;
   left: number | null;
+  /** Marked not available (issue #37): the row stays, greyed out, and cannot be tapped. */
+  unavailable: boolean;
   disabled: boolean;
   onPick: () => void;
   /** Opens the item's whole text (ⓘ); omitted when the row already shows it all (`hasMoreToRead`). */
@@ -635,11 +672,13 @@ function ItemRow({
     <div className="flex min-w-0 items-stretch gap-1.5">
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || unavailable}
         onClick={onPick}
         className={cn(
           'flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl border bg-background px-3 py-2 text-left active:bg-accent disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           onOrder > 0 ? 'border-primary' : 'border-border',
+          // After `disabled:opacity-70` so its own fade wins while the order is saving too.
+          unavailable && cn(UNAVAILABLE_ROW_CLASS, 'disabled:opacity-75'),
         )}
       >
         <span className="min-w-0 flex-1">
@@ -650,15 +689,26 @@ function ItemRow({
            * its text.
            */}
           <span className="flex min-w-0 items-start gap-2">
-            <span className="line-clamp-2 min-w-0 text-base font-medium [overflow-wrap:anywhere]">{name}</span>
-            <StockBadge left={left} />
+            <span
+              className={cn(
+                'line-clamp-2 min-w-0 text-base font-medium [overflow-wrap:anywhere]',
+                unavailable && UNAVAILABLE_TEXT_CLASS,
+              )}
+            >
+              {name}
+            </span>
+            {unavailable ? null : <StockBadge left={left} />}
           </span>
           {description ? (
             <span className="block min-w-0 truncate text-xs text-muted-foreground">{description}</span>
           ) : null}
-          <span className="block text-sm tabular-nums text-muted-foreground">
-            {price.min === price.max ? formatPeso(price.min) : `${formatPeso(price.min)}–${formatPeso(price.max)}`}
-            {sizes ? ' · choose size ›' : ''}
+          {/* The tag on the price's line, not after the name: a name's length would move it on every row. */}
+          <span className="flex flex-wrap items-center gap-2 text-sm tabular-nums text-muted-foreground">
+            <span className={unavailable ? UNAVAILABLE_TEXT_CLASS : undefined}>
+              {price.min === price.max ? formatPeso(price.min) : `${formatPeso(price.min)}–${formatPeso(price.max)}`}
+              {sizes && !unavailable ? ' · choose size ›' : ''}
+            </span>
+            {unavailable ? <UnavailableBadge /> : null}
           </span>
         </span>
         {onOrder > 0 ? (
@@ -666,6 +716,9 @@ function ItemRow({
             {onOrder}
             <span className="sr-only"> on the order</span>
           </span>
+        ) : unavailable ? (
+          // No "+": nothing here can be added.
+          <Ban aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
         ) : (
           <Plus aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
         )}
@@ -703,7 +756,8 @@ function ItemDetailsSheet({
   onAdd: (variantId: string | null) => void;
   onClose: () => void;
 }) {
-  const variants = item ? liveVariants(item) : [];
+  const variants = item ? pickerVariants(item) : [];
+  const onSale = item ? isPosItemAvailable(item) : false;
   const price = item ? priceRange(item) : { min: 0, max: 0 };
   return (
     <Modal open={item !== null} title={item?.name ?? ''} onClose={onClose}>
@@ -712,7 +766,8 @@ function ItemDetailsSheet({
           {item.description ? <p className="whitespace-pre-line text-sm">{item.description}</p> : null}
           <p className="flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
             {price.min === price.max ? formatPeso(price.min) : `${formatPeso(price.min)}–${formatPeso(price.max)}`}
-            {variants.length === 0 ? <StockBadge left={leftOf(state.stock, item.id, null)} /> : null}
+            {onSale ? null : <UnavailableBadge />}
+            {variants.length === 0 && onSale ? <StockBadge left={leftOf(state.stock, item.id, null)} /> : null}
             {onOrder > 0 ? <span>· {onOrder} on the order</span> : null}
           </p>
           {variants.length > 0 ? (
@@ -721,15 +776,37 @@ function ItemDetailsSheet({
                 <li key={variant.id}>
                   <button
                     type="button"
-                    disabled={state.busy}
+                    disabled={state.busy || !isPosVariantAvailable(item, variant)}
                     onClick={() => onAdd(variant.id)}
-                    className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 text-left active:bg-accent disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={cn(
+                      'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 text-left active:bg-accent disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      isPosVariantAvailable(item, variant) ? null : cn(UNAVAILABLE_ROW_CLASS, 'disabled:opacity-75'),
+                    )}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="min-w-0 font-medium">{variant.name}</span>
-                      <StockBadge left={leftOf(state.stock, item.id, variant.id)} />
+                      <span
+                        className={cn(
+                          'min-w-0 font-medium',
+                          isPosVariantAvailable(item, variant) ? null : UNAVAILABLE_TEXT_CLASS,
+                        )}
+                      >
+                        {variant.name}
+                      </span>
+                      {isPosVariantAvailable(item, variant) ? (
+                        <StockBadge left={leftOf(state.stock, item.id, variant.id)} />
+                      ) : null}
                     </span>
-                    <span className="shrink-0 tabular-nums">{formatPeso(variant.price)}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {isPosVariantAvailable(item, variant) ? null : <UnavailableBadge />}
+                      <span
+                        className={cn(
+                          'tabular-nums',
+                          isPosVariantAvailable(item, variant) ? null : UNAVAILABLE_TEXT_CLASS,
+                        )}
+                      >
+                        {formatPeso(variant.price)}
+                      </span>
+                    </span>
                   </button>
                 </li>
               ))}
@@ -737,7 +814,7 @@ function ItemDetailsSheet({
           ) : (
             <button
               type="button"
-              disabled={state.busy}
+              disabled={state.busy || !onSale}
               onClick={() => onAdd(null)}
               className={cn(buttonClass('primary'), 'h-12 w-full rounded-xl text-base')}
             >

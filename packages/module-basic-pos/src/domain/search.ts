@@ -13,6 +13,8 @@ export interface PosSearchVariant {
   code: string | null;
   price: number;
   archived: boolean;
+  /** Marked not available (issue #37): still found, greyed out, and never added. */
+  unavailable: boolean;
 }
 
 /** An item as the search sees it. */
@@ -23,6 +25,8 @@ export interface PosSearchItem {
   categoryName: string | null;
   price: number;
   archived: boolean;
+  /** The item's OWN switch (issue #37). Off, every variant is off with it. */
+  unavailable: boolean;
   variants: readonly PosSearchVariant[];
 }
 
@@ -40,6 +44,11 @@ export interface PosSearchResult {
   price: { min: number; max: number };
   /** True when the item has variants and one must still be picked. */
   opensPicker: boolean;
+  /**
+   * Nothing here can be added (issue #37): the item is off, the variant is, or
+   * — for a picker — every size is. Shown greyed out, after what can be sold.
+   */
+  unavailable: boolean;
 }
 
 /** How many results the till shows. More than a screenful means the search is not narrow enough yet. */
@@ -91,6 +100,10 @@ function rank(tokens: readonly string[], fields: readonly (string | null)[]): nu
  *   picker. Listing all seven variants for "lam" would bury the item.
  * - Archived items and variants never show; an item whose variants are all
  *   archived cannot be sold, so it does not show either.
+ * - Not-available ones DO show (issue #37) — the cashier can tell a customer
+ *   it is out — after everything that can be sold. ⚠ EXCEPT AN EXACT CODE,
+ *   which stays on top even when off: a scan must never fall through to
+ *   whatever matched second, so the till refuses that one instead.
  */
 export function searchItems(
   catalogue: readonly PosSearchItem[],
@@ -134,7 +147,11 @@ export function searchItems(
     }
   }
 
-  scored.sort((a, b) => a.score - b.score || a.result.label.localeCompare(b.result.label));
+  const tier = (entry: { result: PosSearchResult; score: number }) => {
+    if (entry.score === 0) return 0;
+    return entry.result.unavailable ? 2 : 1;
+  };
+  scored.sort((a, b) => tier(a) - tier(b) || a.score - b.score || a.result.label.localeCompare(b.result.label));
   return scored.slice(0, limit).map((entry) => entry.result);
 }
 
@@ -147,6 +164,7 @@ function itemResult(item: PosSearchItem, variants: readonly PosSearchVariant[]):
       code: item.code,
       price: { min: item.price, max: item.price },
       opensPicker: false,
+      unavailable: item.unavailable,
     };
   }
   const prices = variants.map((variant) => variant.price);
@@ -157,6 +175,7 @@ function itemResult(item: PosSearchItem, variants: readonly PosSearchVariant[]):
     code: item.code,
     price: { min: Math.min(...prices), max: Math.max(...prices) },
     opensPicker: true,
+    unavailable: item.unavailable || variants.every((variant) => variant.unavailable),
   };
 }
 
@@ -168,6 +187,7 @@ function variantResult(item: PosSearchItem, variant: PosSearchVariant): PosSearc
     code: variant.code,
     price: { min: variant.price, max: variant.price },
     opensPicker: false,
+    unavailable: item.unavailable || variant.unavailable,
   };
 }
 

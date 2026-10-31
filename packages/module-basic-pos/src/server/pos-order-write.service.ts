@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { checkPosAvailable } from '../domain/availability.js';
 import { posCustomerContactLine } from '../domain/customers.js';
 import { checkPosDiscount, checkPosQuantity, discountSurvivesEdit } from '../domain/money.js';
 import {
@@ -155,6 +156,8 @@ export class PosOrderWriteService {
       const variant = input.variantId ? variants.find((candidate) => candidate.id === input.variantId) : null;
       if (input.variantId && !variant) throw refusalError('item_archived');
       if (!variant && variants.length > 0) throw refusalError('variant_required');
+      // ⚠ Before the merge below: tapping an item that is off again must not add to its line either (issue #37).
+      refuse(checkPosAvailable(item, variant ?? null));
 
       const same = lines.find(
         (line) =>
@@ -224,6 +227,9 @@ export class PosOrderWriteService {
     return this.change(scope, actorId, ref, ['open'], async (tx, order, lines) => {
       const line = findLine(lines, lineId);
       const quantityChanges = input.quantity != null && input.quantity !== line.quantity;
+      // ⚠ RAISING a line is selling more of it, and an item that is off is not for sale (issue #37).
+      // Lowering it, a note, or removing the line stay open: the order already had it.
+      if (input.quantity != null && input.quantity > line.quantity) await this.checkStillAvailable(tx, scope, line);
       const data: Partial<PosOrderLineRow> = {};
       if (note !== undefined) data.note = note;
       if (quantityChanges && input.quantity != null) {
@@ -530,6 +536,20 @@ export class PosOrderWriteService {
   }
 
   // ── the one way an order changes ──────────────────────────────────────────
+
+  /**
+   * Refuses selling more of a line whose item or variant is now switched off
+   * (issue #37), read inside the order's transaction. Only the switch is
+   * checked here: an archived item's line behaves as it always has.
+   */
+  private async checkStillAvailable(tx: PosTransaction, scope: InScope, line: PosOrderLineRow): Promise<void> {
+    const [item, variant] = await Promise.all([
+      tx.posItem.findFirst({ where: { ...scope, id: line.itemId } }),
+      line.variantId ? tx.posItemVariant.findFirst({ where: { ...scope, id: line.variantId } }) : null,
+    ]);
+    if (!item) return;
+    refuse(checkPosAvailable(item, variant));
+  }
 
   private async change(
     scope: InScope,

@@ -76,6 +76,10 @@ export class PosVariantType {
 
   @Field(() => String, { nullable: true })
   archivedAt!: string | null;
+
+  /** When it was marked not available (issue #37); null is available. The item's own switch wins. */
+  @Field(() => String, { nullable: true })
+  unavailableAt!: string | null;
 }
 
 @ObjectType('PosItem')
@@ -111,9 +115,23 @@ export class PosItemType {
   @Field(() => String, { nullable: true })
   archivedAt!: string | null;
 
+  /** When it was marked not available (issue #37); null is available. Still in the catalogue, greyed out on the till. */
+  @Field(() => String, { nullable: true })
+  unavailableAt!: string | null;
+
   /** In the picker's order. Archived ones only when the catalogue was asked for them. */
   @Field(() => [PosVariantType])
   variants!: PosVariantType[];
+}
+
+/** What one availability switch named (issue #37). */
+@ObjectType('PosAvailabilityChange')
+export class PosAvailabilityChangeType {
+  @Field(() => Int)
+  items!: number;
+
+  @Field(() => Int)
+  variants!: number;
 }
 
 @ObjectType('PosCatalogue')

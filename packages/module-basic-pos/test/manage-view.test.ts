@@ -34,6 +34,7 @@ const LAMINATION: PosItemView = {
   cost: null,
   categoryId: 'c-lam',
   archivedAt: null,
+  unavailableAt: null,
   variants: [
     {
       id: 'v1',
@@ -44,6 +45,7 @@ const LAMINATION: PosItemView = {
       cost: 900,
       sortOrder: 0,
       archivedAt: null,
+      unavailableAt: null,
     },
     {
       id: 'v-old',
@@ -54,6 +56,7 @@ const LAMINATION: PosItemView = {
       cost: null,
       sortOrder: 1,
       archivedAt: '2026-01-01',
+      unavailableAt: null,
     },
   ],
 };
@@ -68,6 +71,7 @@ const MAGNET: PosItemView = {
   cost: null,
   categoryId: null,
   archivedAt: null,
+  unavailableAt: null,
   variants: [],
 };
 

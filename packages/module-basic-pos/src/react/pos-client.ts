@@ -48,6 +48,8 @@ export interface PosVariantView {
   cost: number | null;
   sortOrder: number;
   archivedAt: string | null;
+  /** When it was marked not available (issue #37); null is available. */
+  unavailableAt: string | null;
 }
 
 export interface PosItemView {
@@ -61,6 +63,8 @@ export interface PosItemView {
   cost: number | null;
   categoryId: string | null;
   archivedAt: string | null;
+  /** When it was marked not available (issue #37); null is available. Its variants may be off on their own. */
+  unavailableAt: string | null;
   variants: PosVariantView[];
 }
 
@@ -340,6 +344,12 @@ export interface PosClient {
   stockLevels(scope: PosScopeView): Promise<PosStockLevelsView>;
   saveItem(scope: PosScopeView, input: PosItemInput): Promise<PosItemView>;
   setItemArchived(scope: PosScopeView, itemId: string, archived: boolean): Promise<PosItemView>;
+  /** "Not available" (false) or back on sale (true), for items and variants at once: all or nothing (issue #37). */
+  setAvailability(
+    scope: PosScopeView,
+    target: { itemIds: readonly string[]; variantIds: readonly string[] },
+    available: boolean,
+  ): Promise<{ items: number; variants: number }>;
   saveCategory(
     scope: PosScopeView,
     name: string,
@@ -482,6 +492,8 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
     stockLevels: (scope) => call('posStockLevels', scope, {}),
     saveItem: (scope, input) => call('savePosItem', scope, { input }),
     setItemArchived: (scope, itemId, archived) => call('setPosItemArchived', scope, { itemId, archived }),
+    setAvailability: (scope, target, available) =>
+      call('setPosAvailability', scope, { itemIds: target.itemIds, variantIds: target.variantIds, available }),
     saveCategory: (scope, name, categoryId = null, sortOrder = null) =>
       call('savePosCategory', scope, { name, categoryId, sortOrder }),
     setCategoryArchived: (scope, categoryId, archived) =>

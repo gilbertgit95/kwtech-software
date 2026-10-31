@@ -249,6 +249,52 @@ there too, from Settings.
   to `pos:manage_items` now, not `pos:manage_settings` (never both: the guard
   would demand both).
 
+## Not available (issue #37)
+
+An item, or a single variant ("only the Large"), can be switched **Not
+available** for a while — sold out for the day, an ingredient ran out, a
+machine is down — **without archiving it**. Only a person switches it back:
+there is no daily reset and no background process.
+
+- **Schema:** `unavailableAt` (null is available) and `unavailableById` on
+  `pos_item` and `pos_item_variant`. Switching off again keeps the first time
+  and who; switching on clears both. Neither touches `updatedById`.
+- **The rule** is `src/domain/availability.ts`, read by the server and the
+  till alike. ⚠ **The item's switch wins**: a variant still on under an item
+  switched off is not for sale, and an item whose every live variant is off
+  counts as not available.
+- **Key:** `pos:set_availability` ("Mark items not available"), held by
+  `pos-cashier` and `pos-manager`, not `pos-order-taker`. It changes
+  availability only, never a price or a name, so it needs no
+  `pos:manage_items`. ⚠ A plan created before it does not carry it: an
+  operator adds it on `/admin/plans` (see `seed/plans.ts`).
+- **One mutation** for one item and for a selection:
+  `setPosAvailability(itemIds, variantIds, available)` → `{ items, variants }`.
+  At most `POS_AVAILABILITY_BATCH_MAX` (1000) ids. Every id is found by id and
+  scope in **one transaction**; one id from another store refuses the whole call
+  (`not_found`). One `catalogue` event after the commit, however many rows.
+  An empty selection is `empty_selection`.
+- **The server refuses** `item_unavailable` on `addPosOrderLine` (tapping it
+  again onto its line too) and on `updatePosOrderLine` when the quantity goes
+  **up**. An order that already has the item keeps its lines: they can be
+  lowered, refreshed, removed and paid.
+- **Sell views** (the till, Take orders, the phone): the tile stays, greyed out
+  with a **Not available** badge, and cannot be tapped. Not-available items sort
+  after the rest in each category (`sellOrder`), and a category with nothing to
+  sell sorts last (`gridCategories`, `itemGroups`). The variant picker lists
+  sizes that are off last, greyed. Search still finds them, after what can be
+  sold, ⚠ except an exact code, which stays on top so a scan never adds whatever
+  matched second; the till refuses it in the notice line instead. The printed
+  price list is unchanged.
+- **Switching:** an **Availability** tab on Items, and an **Availability**
+  button on the till's category row and beside Take orders' search, for whoever
+  holds the key. Both open `AvailabilityPanel`: a switch per item and per size,
+  checkboxes with "select all" per category and overall, a filter (text,
+  category, available / not available), and a bar that marks the selection
+  available or not available in one request. Only rows still shown are sent.
+- **Archived and not available stay separate.** A not-available item is still
+  listed under Items (with the badge) and still counts toward `pos:items`.
+
 ## Stock (issue #10)
 
 Stock is its own module, `module-basic-inventory` (`docs/INVENTORY-PLAN.md`).

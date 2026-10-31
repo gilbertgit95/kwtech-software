@@ -68,6 +68,8 @@ export interface TillState {
   canTakePayment: boolean;
   canDiscount: boolean;
   canRefund: boolean;
+  /** Mark items and sizes not available and back (`pos:set_availability`, issue #37): the sell views' Availability button. */
+  canSetAvailability: boolean;
   live: boolean;
   error: string | null;
   dismissError: () => void;
@@ -106,6 +108,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const canTakePayment = useHoldsFeature(POS_FEATURE.takePayment);
   const canDiscount = useHoldsFeature(POS_FEATURE.discount);
   const canRefund = useHoldsFeature(POS_FEATURE.refund);
+  const canSetAvailability = useHoldsFeature(POS_FEATURE.setAvailability);
 
   const [catalogue, setCatalogue] = useState<PosCatalogueView | null>(null);
   const [stock, setStock] = useState<PosStockMap | null>(null);
@@ -325,6 +328,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     canTakePayment,
     canDiscount,
     canRefund,
+    canSetAvailability,
     live: realtime !== null,
     error,
     dismissError: () => setError(null),

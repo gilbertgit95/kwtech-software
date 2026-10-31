@@ -3,6 +3,7 @@
 import { cn, LIST_ITEM, LIST_KEYS, useDebouncedValue } from '@kwtech/web-ui/react';
 import { UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { isPosVariantAvailable } from '../../domain/availability.js';
 import { posContactAsCustomerFields, posCustomerContactLine } from '../../domain/customers.js';
 import {
   heldReferenceKeys,
@@ -21,10 +22,22 @@ import { useOptionList } from '../use-option-list.js';
 import type { TillState } from '../use-till.js';
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../view/money.js';
 import { leftOf, type PosStockMap } from '../view/stock.js';
-import { liveVariants } from '../view/till.js';
-import { buttonClass, Field, INPUT_CLASS, Modal, StockBadge } from './controls.js';
+import { pickerVariants } from '../view/till.js';
+import {
+  buttonClass,
+  Field,
+  INPUT_CLASS,
+  Modal,
+  StockBadge,
+  UNAVAILABLE_ROW_CLASS,
+  UNAVAILABLE_TEXT_CLASS,
+  UnavailableBadge,
+} from './controls.js';
 
-/** The variants of one item, in order (D9). Picking one adds it. */
+/**
+ * The variants of one item, in order (D9). Picking one adds it. Sizes marked
+ * not available (issue #37) are listed last, greyed out, and cannot be picked.
+ */
 export function VariantPicker({
   item,
   stock,
@@ -37,28 +50,41 @@ export function VariantPicker({
   onPick: (variantId: string) => void;
   onClose: () => void;
 }) {
-  const variants = item ? liveVariants(item) : [];
+  const variants = item ? pickerVariants(item) : [];
   return (
     <Modal open={item !== null} title={item?.name ?? ''} onClose={onClose}>
       <ul className="flex flex-col gap-1" {...LIST_KEYS}>
-        {variants.map((variant, index) => (
-          <li key={variant.id}>
-            <button
-              type="button"
-              {...LIST_ITEM}
-              // biome-ignore lint/a11y/noAutofocus: The first choice takes focus, so ↓ / Enter work at once (D20).
-              autoFocus={index === 0}
-              className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => onPick(variant.id)}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                {variant.name}
-                <StockBadge left={item ? leftOf(stock, item.id, variant.id) : null} />
-              </span>
-              <span className="tabular-nums text-muted-foreground">{formatPeso(variant.price)}</span>
-            </button>
-          </li>
-        ))}
+        {variants.map((variant, index) => {
+          const onSale = item ? isPosVariantAvailable(item, variant) : false;
+          return (
+            <li key={variant.id}>
+              <button
+                type="button"
+                {...LIST_ITEM}
+                // biome-ignore lint/a11y/noAutofocus: The first choice takes focus, so ↓ / Enter work at once (D20). Available ones come first.
+                autoFocus={index === 0}
+                disabled={!onSale}
+                className={cn(
+                  'flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  onSale ? null : UNAVAILABLE_ROW_CLASS,
+                )}
+                onClick={() => onPick(variant.id)}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className={onSale ? undefined : UNAVAILABLE_TEXT_CLASS}>{variant.name}</span>
+                  {onSale ? <StockBadge left={item ? leftOf(stock, item.id, variant.id) : null} /> : null}
+                </span>
+                {/* The tag with the price, at the row's end, so the tags of several sizes line up. */}
+                <span className="flex shrink-0 items-center gap-2">
+                  {onSale ? null : <UnavailableBadge />}
+                  <span className={cn('tabular-nums text-muted-foreground', onSale ? null : UNAVAILABLE_TEXT_CLASS)}>
+                    {formatPeso(variant.price)}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </Modal>
   );

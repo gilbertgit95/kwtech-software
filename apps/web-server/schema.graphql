@@ -910,6 +910,7 @@ type Mutation {
   setNoteVisibility(noteId: String!, organizationId: String!, visibility: String!, workspaceId: String!): Note!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
+  setPosAvailability(available: Boolean!, itemIds: [String!]!, organizationId: String!, variantIds: [String!]!, workspaceId: String!): PosAvailabilityChange!
   setPosCategoryArchived(archived: Boolean!, categoryId: String!, organizationId: String!, workspaceId: String!): PosCategory!
   setPosCustomerArchived(archived: Boolean!, customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer!
   setPosDefaultOrderType(orderTypeId: String, organizationId: String!, workspaceId: String!): PosOrderTypeOption
@@ -1416,6 +1417,11 @@ input PlanLimitInput {
   value: String!
 }
 
+type PosAvailabilityChange {
+  items: Int!
+  variants: Int!
+}
+
 type PosBreakdownRow {
   cost: Float
   key: String!
@@ -1490,6 +1496,7 @@ type PosItem {
   kind: String!
   name: String!
   price: Float!
+  unavailableAt: String
   variants: [PosVariant!]!
 }
 
@@ -1683,6 +1690,7 @@ type PosVariant {
   name: String!
   price: Float!
   sortOrder: Int!
+  unavailableAt: String
 }
 
 type PosZeroDays {
