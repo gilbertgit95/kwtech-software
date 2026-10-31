@@ -52,3 +52,27 @@ test('the install page gives a phone its steps without signing in', async ({ bro
   await expect(page).toHaveURL(/\/install$/);
   await context.close();
 });
+
+/*
+ * Issue #42: the page sits in the sign-in frame, with no header or drawer, and
+ * the installed app has no browser bar. Its own link is the only way back.
+ */
+test('the install page links back to the app', async ({ page }) => {
+  // Opened directly (the QR code): there is no page of this app to go back to, so the link goes to `/`.
+  await page.goto('/install');
+  await page.getByRole('link', { name: 'Back to the app' }).click();
+  // Signed out, `/` ends on sign-in: away from /install, and no error page.
+  await expect(page).not.toHaveURL(/\/install$/);
+  await expect(page).toHaveURL(/\/auth\/signin/);
+});
+
+test('the install page goes back to the page it was opened from', async ({ page }) => {
+  // Not sign-in: that is where the `/` fallback ends too, and the test could not tell the two apart.
+  await page.goto('/auth/forgot-password');
+  // A real navigation, as the user menu's link makes, so the browser sends a same-origin referrer.
+  await page.evaluate(() => window.location.assign('/install'));
+  await expect(page).toHaveURL(/\/install$/);
+
+  await page.getByRole('link', { name: 'Back to the app' }).click();
+  await expect(page).toHaveURL(/\/auth\/forgot-password$/);
+});
