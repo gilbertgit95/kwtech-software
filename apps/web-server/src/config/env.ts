@@ -92,7 +92,7 @@ const envSchema = z
      * configuration, so the value is set twice and the two are expected to
      * match. Nothing enforces it — see that app's .env.example.
      */
-    APP_NAME: z.string().min(1).default('KWTech'),
+    APP_NAME: z.string().min(1).default('Kwtech Software'),
 
     /** Where the Next app lives. The CORS allow-list and reset links both need it. */
     FRONTEND_URL: z.url().default('http://localhost:8081'),
