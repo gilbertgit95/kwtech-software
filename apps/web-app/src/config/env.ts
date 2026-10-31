@@ -70,7 +70,7 @@ const envSchema = z.object({
    * authenticator entry. Separate processes, separate environments, no shared
    * configuration: set both, and keep them equal.
    */
-  APP_NAME: z.string().min(1).default('KWTech'),
+  APP_NAME: z.string().min(1).default('Kwtech Software'),
 
   /**
    * The quieter second line under the wordmark. Optional because not every
@@ -112,7 +112,7 @@ export function assertEnv(): Env {
  */
 export function appBrand(): { name: string; tagline: string | null } {
   return {
-    name: process.env.APP_NAME?.trim() || 'KWTech',
+    name: process.env.APP_NAME?.trim() || 'Kwtech Software',
     tagline: process.env.APP_TAGLINE?.trim() || null,
   };
 }

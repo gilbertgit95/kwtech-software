@@ -321,6 +321,22 @@ remote server's — the app can live on the home screen and open full screen.
 - **iPhone / iPad (Safari):** open the address → **Share** → **Add to Home
   Screen** → **Add**.
 
+### The installed app's name
+
+The name under the icon, in the app drawer and in Settings → Apps is
+`APP_NAME` from the web app's profile (`envs/<name>/web-app.env`). It is read
+per request, so a rename needs a restart, not a rebuild; check it at
+`/manifest.webmanifest`. Rename the web server's `APP_NAME` at the same time,
+or the emails keep the old name.
+
+A device that installed the app before the rename keeps the old name:
+
+- **iPhone / iPad:** the name is fixed when the app is added. Remove it from
+  the home screen and add it again.
+- **Android (Chrome):** Chrome re-reads the manifest from time to time and
+  updates the name by itself, sometimes after asking. Uninstall and install
+  again to get it at once.
+
 ## 7. A remote server with a domain (no Caddy)
 
 On a server reachable from the internet, HTTPS is **required** — passwords
