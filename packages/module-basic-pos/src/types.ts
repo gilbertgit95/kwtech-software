@@ -70,6 +70,8 @@ export type PosRefusal =
   | 'reason_required'
   | 'variant_required'
   | 'item_archived'
+  | 'item_unavailable'
+  | 'empty_selection'
   | 'exceeds_sold'
   | 'exceeds_paid'
   | 'unknown_line'

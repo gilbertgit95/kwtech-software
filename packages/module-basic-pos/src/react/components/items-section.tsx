@@ -3,6 +3,7 @@
 import { cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
 import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isPosItemAvailable } from '../../domain/availability.js';
 import type { PosCatalogueView, PosCategoryView, PosOrderTypeOptionView } from '../pos-client.js';
 import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
@@ -18,13 +19,14 @@ import {
 } from '../view/manage.js';
 import { formatPeso } from '../view/money.js';
 import { priceRange } from '../view/till.js';
-import { buttonClass, Field, INPUT_CLASS } from './controls.js';
+import { AvailabilityPanel } from './availability-panel.js';
+import { buttonClass, Field, INPUT_CLASS, UnavailableBadge } from './controls.js';
 import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PriceListButtons } from './price-list-buttons.js';
 import { ReferenceOptionsPanel } from './reference-options-panel.js';
 
-type ItemsTab = 'items' | 'categories' | 'order_types' | 'references';
+type ItemsTab = 'items' | 'availability' | 'categories' | 'order_types' | 'references';
 
 /**
  * Items (D23): the store's catalogue — items with their variants, the
@@ -45,6 +47,8 @@ export function ItemsSection({ state }: { state: TillState }) {
         label="What to manage"
         tabs={[
           { key: 'items', label: 'Items' },
+          // Its own key (issue #37): shown to whoever may switch, never only to `manage_items`.
+          ...(state.canSetAvailability ? [{ key: 'availability' as const, label: 'Availability' }] : []),
           { key: 'categories', label: 'Categories' },
           { key: 'order_types', label: 'Order types' },
           { key: 'references', label: 'References' },
@@ -60,6 +64,9 @@ export function ItemsSection({ state }: { state: TillState }) {
       ) : null}
       {tab === 'items' && catalogue.data ? (
         <ItemsPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
+      ) : null}
+      {tab === 'availability' && catalogue.data ? (
+        <AvailabilityPanel state={state} catalogue={catalogue.data} onChanged={() => void catalogue.reload()} />
       ) : null}
       {tab === 'categories' && catalogue.data ? (
         <CategoriesPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
@@ -162,6 +169,8 @@ function ItemsPanel({
                       <span className="flex items-center gap-2">
                         <span className="truncate font-medium">{row.name}</span>
                         {row.archivedAt ? <StatusChip label="Archived" tone="neutral" /> : null}
+                        {/* Archived and not available stay separate (issue #37): a row may carry both. */}
+                        {isPosItemAvailable(row) ? null : <UnavailableBadge />}
                       </span>
                       <span className="truncate text-xs text-muted-foreground">
                         {[

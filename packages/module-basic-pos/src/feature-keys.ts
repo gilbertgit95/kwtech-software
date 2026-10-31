@@ -38,6 +38,12 @@ export const POS_FEATURE = {
   manageItems: 'pos:manage_items',
   /** The dashboard and the reports, with profit and CSV export (D22). */
   reports: 'pos:reports',
+  /**
+   * Mark items and variants "Not available" and back (issue #37): sold out for
+   * the day, a machine down. ⚠ AVAILABILITY ONLY, never a price or a name, so
+   * a cashier holds it without `manageItems`.
+   */
+  setAvailability: 'pos:set_availability',
   /** Store settings: the time zone, the hot keys and item keys (D18). */
   manageSettings: 'pos:manage_settings',
 } as const;
@@ -190,6 +196,17 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     bindings: [op('Query.posReport')],
   },
   {
+    key: POS_FEATURE.setAvailability,
+    module: 'pos',
+    level: 'workspace',
+    label: 'Mark items not available',
+    description:
+      'Take items or single variants off sale for a while, and put them back, from the till or the Items tab. Prices and names stay as they are.',
+    tags: ['pos'],
+    /* One mutation for one item and for a whole selection: one binding, one guard. */
+    bindings: [op('Mutation.setPosAvailability')],
+  },
+  {
     key: POS_FEATURE.manageSettings,
     module: 'pos',
     level: 'workspace',
@@ -267,7 +284,12 @@ export const POS_ROLE_PRESETS: readonly PosRolePreset[] = [
     label: 'Cashier',
     icon: 'store',
     level: 'workspace',
-    features: [POS_FEATURE.read, POS_FEATURE.sell, POS_FEATURE.takePayment],
+    /*
+     * `setAvailability` (issue #37): the cashier at the counter is who hears
+     * "we ran out". Not the order taker's, for now — a store whose order
+     * takers should mark items off builds a role with it.
+     */
+    features: [POS_FEATURE.read, POS_FEATURE.sell, POS_FEATURE.takePayment, POS_FEATURE.setAvailability],
   },
   {
     key: 'pos-manager',
@@ -281,6 +303,7 @@ export const POS_ROLE_PRESETS: readonly PosRolePreset[] = [
       POS_FEATURE.discount,
       POS_FEATURE.refund,
       POS_FEATURE.manageItems,
+      POS_FEATURE.setAvailability,
       POS_FEATURE.reports,
       POS_FEATURE.manageSettings,
     ],

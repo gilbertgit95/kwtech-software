@@ -14,10 +14,12 @@ import {
   Printer,
   RefreshCw,
   StickyNote,
+  ToggleRight,
   Trash2,
   User,
 } from 'lucide-react';
 import { type CSSProperties, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { isPosItemAvailable, isPosVariantAvailable } from '../../domain/availability.js';
 import { type PosSearchResult, parseQuantityPrefix, searchItems } from '../../domain/search.js';
 import type { PosItemView, PosOrderLineView, PosOrderView } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
@@ -37,8 +39,18 @@ import {
   priceRange,
   QUANTITY_PROBLEM,
   searchCatalogue,
+  sellOrder,
 } from '../view/till.js';
-import { buttonClass, INPUT_CLASS, StockBadge } from './controls.js';
+import { AvailabilityPanel } from './availability-panel.js';
+import {
+  buttonClass,
+  INPUT_CLASS,
+  Modal,
+  StockBadge,
+  UNAVAILABLE_ROW_CLASS,
+  UNAVAILABLE_TEXT_CLASS,
+  UnavailableBadge,
+} from './controls.js';
 import {
   CustomerDialog,
   DiscountDialog,
@@ -64,6 +76,7 @@ type Dialog =
   | { kind: 'note'; line: PosOrderLineView }
   | { kind: 'lineDiscount'; line: PosOrderLineView }
   | { kind: 'orderDiscount' }
+  | { kind: 'availability' }
   | { kind: 'help' };
 
 /**
@@ -111,8 +124,10 @@ export function Till({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' });
   /**
-   * Said after a line goes past what the stock app counts (INVENTORY-PLAN §6).
-   * ⚠ A WARNING: the line is already on the order, and the sale goes through (I5).
+   * Said after a line goes past what the stock app counts (INVENTORY-PLAN §6)
+   * — a WARNING: the line is already on the order, and the sale goes through
+   * (I5). Also what the till says when an item marked not available was
+   * tapped, keyed or scanned (issue #37): nothing was added.
    */
   const [stockNotice, setStockNotice] = useState<string | null>(null);
   /** The line the cart's keys act on (D20); null while the cashier is in search. */
@@ -197,6 +212,20 @@ export function Till({
   const pick = (itemId: string, variantId: string | null, count: number) => {
     const item = catalogue?.items.find((candidate) => candidate.id === itemId);
     if (!item) return;
+    /*
+     * ⚠ EVERY WAY IN COMES THROUGH HERE — a tile, a match, Enter on a scanned
+     * code, an item key — so this is the one place the till refuses an item
+     * marked not available (issue #37). Said in the notice line, since the tile
+     * or match itself may not be on screen (a key, a scan). The server refuses
+     * too, for a till that has not heard of the switch yet.
+     */
+    const variant = variantId ? item.variants.find((candidate) => candidate.id === variantId) : null;
+    if (!isPosItemAvailable(item) || (variant && !isPosVariantAvailable(item, variant))) {
+      setQuery('');
+      setStockNotice(`${variant ? `${item.name} — ${variant.name}` : item.name} is marked not available.`);
+      focusHome();
+      return;
+    }
     if (!variantId && item.variants.some((variant) => variant.archivedAt === null)) {
       setDialog({ kind: 'variant', item, quantity: count });
       return;
@@ -436,6 +465,7 @@ export function Till({
               categoryId={categoryId}
               onCategory={setCategoryId}
               onPick={(id) => pick(id, null, quantity ?? 1)}
+              onAvailability={state.canSetAvailability ? () => setDialog({ kind: 'availability' }) : null}
             />
           )}
         </section>
@@ -646,6 +676,9 @@ export function Till({
           onClose={close}
         />
         <ShortcutHelp open={dialog.kind === 'help'} state={state} onClose={close} />
+        <Modal open={dialog.kind === 'availability'} title="Availability" wide onClose={close}>
+          {catalogue ? <AvailabilityPanel state={state} catalogue={catalogue} /> : null}
+        </Modal>
       </div>
       {/* No function keys on a phone: nothing for the bar to name. */}
       {phone ? null : (
@@ -688,27 +721,34 @@ function SearchResults({
             type="button"
             // The focus stays in the search box, so the choice is marked here rather than focused.
             aria-current={index === active ? 'true' : undefined}
+            // Greyed out, not hidden (issue #37): the cashier can still tell a customer it is out.
+            disabled={result.unavailable}
             className={cn(
               'flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               index === active && 'border-primary bg-accent text-accent-foreground',
+              result.unavailable && UNAVAILABLE_ROW_CLASS,
             )}
             onClick={() => onPick(result.itemId, result.variantId, quantity)}
           >
             <span className="min-w-0 truncate">
-              {result.label}
-              {result.opensPicker ? ' ▾' : ''}
+              <span className={result.unavailable ? UNAVAILABLE_TEXT_CLASS : undefined}>{result.label}</span>
+              {result.opensPicker && !result.unavailable ? ' ▾' : ''}
               {result.code ? <span className="ml-2 text-xs text-muted-foreground">{result.code}</span> : null}
-              {result.opensPicker ? null : (
+              {result.opensPicker || result.unavailable ? null : (
                 <span className="ml-2">
                   <StockBadge left={leftOf(stock, result.itemId, result.variantId)} />
                 </span>
               )}
             </span>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              {result.price.min === result.price.max
-                ? formatPeso(result.price.min)
-                : `${formatPeso(result.price.min)}–${formatPeso(result.price.max)}`}
+            {/* The tag sits with the price, at the row's end, so every one lines up whatever the name's length. */}
+            <span className="flex shrink-0 items-center gap-2">
+              {result.unavailable ? <UnavailableBadge /> : null}
+              <span className={cn('tabular-nums text-muted-foreground', result.unavailable && UNAVAILABLE_TEXT_CLASS)}>
+                {result.price.min === result.price.max
+                  ? formatPeso(result.price.min)
+                  : `${formatPeso(result.price.min)}–${formatPeso(result.price.max)}`}
+              </span>
             </span>
           </button>
         </li>
@@ -727,15 +767,18 @@ function ItemGrid({
   categoryId,
   onCategory,
   onPick,
+  onAvailability,
 }: {
   state: TillState;
   categoryId: string | null;
   onCategory: (id: string | null) => void;
   onPick: (itemId: string) => void;
+  /** Opens the availability sheet; null without `pos:set_availability`. */
+  onAvailability: (() => void) | null;
 }) {
   const { catalogue } = state;
   if (!catalogue) return <p className="text-sm text-muted-foreground">Loading items…</p>;
-  const items = gridItems(catalogue, categoryId);
+  const items = sellOrder(gridItems(catalogue, categoryId));
   const categories = gridCategories(catalogue);
   if (catalogue.items.length === 0) {
     return (
@@ -746,57 +789,86 @@ function ItemGrid({
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      {categories.length > 0 ? (
-        <div role="tablist" aria-label="Categories" className="flex flex-wrap gap-1">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={categoryId === null}
-            className={buttonClass(categoryId === null ? 'primary' : 'ghost', 'sm')}
-            onClick={() => onCategory(null)}
-          >
-            All
-          </button>
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              role="tab"
-              aria-selected={categoryId === category.id}
-              className={buttonClass(categoryId === category.id ? 'primary' : 'ghost', 'sm')}
-              onClick={() => onCategory(category.id)}
-            >
-              {category.name}
+      {categories.length > 0 || onAvailability ? (
+        <div className="flex items-start gap-1">
+          {categories.length > 0 ? (
+            <div role="tablist" aria-label="Categories" className="flex flex-1 flex-wrap gap-1">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={categoryId === null}
+                className={buttonClass(categoryId === null ? 'primary' : 'ghost', 'sm')}
+                onClick={() => onCategory(null)}
+              >
+                All
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={categoryId === category.id}
+                  className={buttonClass(categoryId === category.id ? 'primary' : 'ghost', 'sm')}
+                  onClick={() => onCategory(category.id)}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="flex-1" />
+          )}
+          {onAvailability ? (
+            <button type="button" className={buttonClass('secondary', 'sm')} onClick={onAvailability}>
+              <ToggleRight aria-hidden="true" className="size-3.5" />
+              Availability
             </button>
-          ))}
+          ) : null}
         </div>
       ) : null}
       <ul className="grid min-h-0 grid-cols-2 content-start gap-2 overflow-y-auto @md:grid-cols-3 @5xl:grid-cols-4">
         {items.map((item) => {
           const range = priceRange(item);
           const hasVariants = item.variants.some((variant) => variant.archivedAt === null);
+          const onSale = isPosItemAvailable(item);
           return (
             <li key={item.id}>
               <Tooltip text={item.description ?? null} describes={false}>
                 {(tooltip) => (
                   <button
                     type="button"
-                    className="flex h-full w-full flex-col items-start gap-1 rounded-md border border-border bg-background p-2.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    // Keeps its tile, greyed out and not tappable (issue #37): "we're out of that" is still an answer.
+                    disabled={!onSale}
+                    className={cn(
+                      'flex h-full w-full flex-col items-start gap-1 rounded-md border border-border bg-background p-2.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      onSale ? null : UNAVAILABLE_ROW_CLASS,
+                    )}
                     onClick={() => onPick(item.id)}
                     {...tooltip}
                   >
                     <span className="flex w-full items-start justify-between gap-1">
-                      <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
-                      <StockBadge left={tileLeft(state.stock, item)} />
+                      <span className={cn('line-clamp-2 text-sm font-medium', onSale ? null : UNAVAILABLE_TEXT_CLASS)}>
+                        {item.name}
+                      </span>
+                      {onSale ? <StockBadge left={tileLeft(state.stock, item)} /> : null}
                     </span>
                     {item.description ? (
                       <span className="line-clamp-2 text-xs text-muted-foreground">{item.description}</span>
                     ) : null}
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {range.min === range.max
-                        ? formatPeso(range.min)
-                        : `${formatPeso(range.min)}–${formatPeso(range.max)}`}
-                      {hasVariants ? ' ▾' : ''}
+                    {/* The tag on the price's line, not after the name: a name's length would move it on every tile. */}
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={cn(
+                          'text-xs tabular-nums text-muted-foreground',
+                          onSale ? null : UNAVAILABLE_TEXT_CLASS,
+                        )}
+                      >
+                        {range.min === range.max
+                          ? formatPeso(range.min)
+                          : `${formatPeso(range.min)}–${formatPeso(range.max)}`}
+                        {hasVariants && onSale ? ' ▾' : ''}
+                      </span>
+                      {onSale ? null : <UnavailableBadge />}
                     </span>
                   </button>
                 )}

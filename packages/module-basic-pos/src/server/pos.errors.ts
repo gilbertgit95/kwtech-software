@@ -110,6 +110,10 @@ function refusalMessage(reason: PosRefusal): string {
       return 'Choose which one: this item comes in several variants';
     case 'item_archived':
       return 'That item is no longer for sale';
+    case 'item_unavailable':
+      return 'That item is marked not available right now. Someone who can mark items available has to switch it back on';
+    case 'empty_selection':
+      return 'Pick at least one item or variant';
     case 'exceeds_sold':
       return 'That is more than was sold, counting earlier refunds';
     case 'exceeds_paid':

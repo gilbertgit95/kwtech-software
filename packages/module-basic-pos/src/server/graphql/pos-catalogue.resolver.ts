@@ -13,6 +13,7 @@ import { PosCustomerService } from '../pos-customer.service.js';
 import { PosSettingsService, type PosStoreSettings } from '../pos-settings.service.js';
 import { PosStockService } from '../pos-stock.service.js';
 import {
+  PosAvailabilityChangeType,
   PosCatalogueType,
   PosCategoryType,
   PosCustomerType,
@@ -123,6 +124,24 @@ export class PosCatalogueResolver {
   ): Promise<PosItemType> {
     const scope = { organizationId, workspaceId };
     return renderItem(await this.catalogue.setItemArchived(scope, this.actor(gql.req), itemId, archived), true);
+  }
+
+  /**
+   * "Not available" and back (issue #37), for one item or a whole selection:
+   * every id in one transaction, one live event. Bound to
+   * `pos:set_availability` — the answer carries counts, never a cost.
+   */
+  @Mutation(() => PosAvailabilityChangeType, { name: 'setPosAvailability' })
+  async setPosAvailability(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('itemIds', { type: () => [String] }) itemIds: string[],
+    @Args('variantIds', { type: () => [String] }) variantIds: string[],
+    @Args('available') available: boolean,
+  ): Promise<PosAvailabilityChangeType> {
+    const scope = { organizationId, workspaceId };
+    return this.catalogue.setAvailability(scope, this.actor(gql.req), { itemIds, variantIds, available });
   }
 
   /** Omit `categoryId` for a new one. */
@@ -369,6 +388,7 @@ function renderVariant(row: PosItemVariantRow, costsVisible: boolean): PosVarian
     cost: costsVisible ? row.cost : null,
     sortOrder: row.sortOrder,
     archivedAt: iso(row.archivedAt),
+    unavailableAt: iso(row.unavailableAt),
   };
 }
 
@@ -385,6 +405,7 @@ export function renderItem(entry: PosCatalogueItem, costsVisible: boolean): PosI
     cost: costsVisible ? item.cost : null,
     categoryId: item.categoryId,
     archivedAt: iso(item.archivedAt),
+    unavailableAt: iso(item.unavailableAt),
     variants: entry.variants.map((variant) => renderVariant(variant, costsVisible)),
   };
 }

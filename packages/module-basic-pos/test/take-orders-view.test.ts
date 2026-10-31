@@ -26,6 +26,7 @@ function item(id: string, name: string, categoryId: string | null, extra: Partia
     cost: null,
     categoryId,
     archivedAt: null,
+    unavailableAt: null,
     variants: [],
     ...extra,
   };
@@ -55,6 +56,7 @@ const CATALOGUE: PosCatalogueView = {
           cost: null,
           sortOrder: 0,
           archivedAt: null,
+          unavailableAt: null,
         },
         {
           id: 'big',
@@ -65,6 +67,7 @@ const CATALOGUE: PosCatalogueView = {
           cost: null,
           sortOrder: 1,
           archivedAt: null,
+          unavailableAt: null,
         },
       ],
     }),

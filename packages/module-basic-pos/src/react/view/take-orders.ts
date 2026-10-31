@@ -1,3 +1,4 @@
+import { availableFirst, isPosItemAvailable } from '../../domain/availability.js';
 import type {
   PosCatalogueView,
   PosItemView,
@@ -5,7 +6,7 @@ import type {
   PosOrderSummaryView,
   PosOrderTypeOptionView,
 } from '../pos-client.js';
-import { gridItems } from './till.js';
+import { gridItems, sellOrder } from './till.js';
 
 /**
  * The rules of the Take orders view (issue #23): the seller's screen, made for
@@ -32,13 +33,17 @@ export interface PosItemGroup {
  *
  * ⚠ An item whose category is archived goes under Other rather than out of
  * sight: archiving a category must never take its items off the till.
+ *
+ * Not available (issue #37): inside each group those items come after the
+ * ones that can be sold, and a group with NOTHING to sell right now comes
+ * after the groups that still have something. Both follow the switch live.
  */
 export function itemGroups(catalogue: PosCatalogueView): PosItemGroup[] {
   const live = catalogue.categories
     .filter((category) => category.archivedAt === null)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
   const liveIds = new Set(live.map((category) => category.id));
-  const items = gridItems(catalogue, null);
+  const items = sellOrder(gridItems(catalogue, null));
   const groups: PosItemGroup[] = live.map((category) => ({
     id: category.id,
     name: category.name,
@@ -49,7 +54,10 @@ export function itemGroups(catalogue: PosCatalogueView): PosItemGroup[] {
     name: groups.length === 0 ? 'Items' : 'Other',
     items: items.filter((item) => item.categoryId === null || !liveIds.has(item.categoryId)),
   });
-  return groups.filter((group) => group.items.length > 0);
+  return availableFirst(
+    groups.filter((group) => group.items.length > 0),
+    (group) => group.items.some(isPosItemAvailable),
+  );
 }
 
 /**

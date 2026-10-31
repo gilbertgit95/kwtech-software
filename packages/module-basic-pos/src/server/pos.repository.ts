@@ -62,6 +62,9 @@ export interface PosItemRow extends InScope {
   price: number;
   cost: number | null;
   archivedAt: Date | null;
+  /** Off sale for a while (issue #37); null is available. */
+  unavailableAt: Date | null;
+  unavailableById: string | null;
   createdById: string;
   updatedById: string;
   createdAt: Date;
@@ -77,9 +80,28 @@ export interface PosItemVariantRow extends InScope {
   cost: number | null;
   sortOrder: number;
   archivedAt: Date | null;
+  /** Off sale for a while (issue #37); the item's own switch wins. */
+  unavailableAt: Date | null;
+  unavailableById: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
+/**
+ * What the availability switch writes (issue #37): both fields at once, so
+ * "since when" and "who" never disagree. ⚠ NEVER `updatedById`: switching an
+ * item off is not editing it, and a cashier may do it without `pos:manage_items`.
+ */
+export interface PosAvailabilityData {
+  unavailableAt: Date | null;
+  unavailableById: string | null;
+}
+
+/**
+ * The rows one switch reaches: those named, and — when switching off — only
+ * those still on, so an item already off keeps the time it went off.
+ */
+export type PosAvailabilityWhere = InScope & { id: { in: string[] }; unavailableAt?: null };
 
 /** What a save writes on a customer. */
 export interface PosCustomerFields {
@@ -318,10 +340,14 @@ export interface PosTransaction {
     /** The live-item half of the count behind `pos:items`. */
     count(args: { where: InScope & { archivedAt: null } }): Promise<number>;
     create(args: { data: InScope & PosItemFields & { createdById: string; updatedById: string } }): Promise<PosItemRow>;
-    updateMany(args: {
-      where: InScope & { id: string };
-      data: Partial<PosItemFields> & { archivedAt?: Date | null; updatedById: string };
-    }): Promise<{ count: number }>;
+    updateMany(
+      args:
+        | {
+            where: InScope & { id: string };
+            data: Partial<PosItemFields> & { archivedAt?: Date | null; updatedById: string };
+          }
+        | { where: PosAvailabilityWhere; data: PosAvailabilityData },
+    ): Promise<{ count: number }>;
   };
 
   posItemVariant: {
@@ -329,7 +355,7 @@ export interface PosTransaction {
       where: InScope & ({ id: string; itemId?: string } | { code: string });
     }): Promise<PosItemVariantRow | null>;
     findMany(args: {
-      where: InScope & { itemId?: string | { in: string[] }; archivedAt?: ArchivedFilter };
+      where: InScope & { itemId?: string | { in: string[] }; archivedAt?: ArchivedFilter; id?: { in: string[] } };
       orderBy: Array<{ sortOrder: SortOrder } | { id: SortOrder }>;
       take: number;
     }): Promise<PosItemVariantRow[]>;
@@ -349,17 +375,21 @@ export interface PosTransaction {
         sortOrder: number;
       };
     }): Promise<PosItemVariantRow>;
-    updateMany(args: {
-      where: InScope & { id: string; itemId: string };
-      data: {
-        name?: string;
-        code?: string | null;
-        price?: number;
-        cost?: number | null;
-        sortOrder?: number;
-        archivedAt?: Date | null;
-      };
-    }): Promise<{ count: number }>;
+    updateMany(
+      args:
+        | {
+            where: InScope & { id: string; itemId: string };
+            data: {
+              name?: string;
+              code?: string | null;
+              price?: number;
+              cost?: number | null;
+              sortOrder?: number;
+              archivedAt?: Date | null;
+            };
+          }
+        | { where: PosAvailabilityWhere; data: PosAvailabilityData },
+    ): Promise<{ count: number }>;
   };
 
   posCustomer: {

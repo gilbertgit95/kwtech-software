@@ -1,7 +1,7 @@
 import { type PosSearchItem, parseQuantityPrefix, searchItems } from '../src/domain/search.js';
 
-function variant(id: string, name: string, code: string | null, price: number, archived = false) {
-  return { id, name, code, price, archived };
+function variant(id: string, name: string, code: string | null, price: number, archived = false, unavailable = false) {
+  return { id, name, code, price, archived, unavailable };
 }
 
 const CATALOGUE: PosSearchItem[] = [
@@ -12,6 +12,7 @@ const CATALOGUE: PosSearchItem[] = [
     categoryName: 'Lamination',
     price: 0,
     archived: false,
+    unavailable: false,
     variants: [
       variant('l1-id', '125 mic · ID', 'L1-ID', 2000),
       variant('l1-a4', '125 mic · A4', 'L1-A4', 3500),
@@ -26,10 +27,29 @@ const CATALOGUE: PosSearchItem[] = [
     categoryName: 'Souvenirs',
     price: 1500,
     archived: false,
+    unavailable: false,
     variants: [],
   },
-  { id: 'cafe', name: 'Café latte', code: null, categoryName: null, price: 12_000, archived: false, variants: [] },
-  { id: 'old', name: 'Old folder', code: 'OLD', categoryName: null, price: 1200, archived: true, variants: [] },
+  {
+    id: 'cafe',
+    name: 'Café latte',
+    code: null,
+    categoryName: null,
+    price: 12_000,
+    archived: false,
+    unavailable: false,
+    variants: [],
+  },
+  {
+    id: 'old',
+    name: 'Old folder',
+    code: 'OLD',
+    categoryName: null,
+    price: 1200,
+    archived: true,
+    unavailable: false,
+    variants: [],
+  },
 ];
 
 describe('searchItems', () => {
@@ -58,9 +78,36 @@ describe('searchItems', () => {
 
   it('ranks word starts above matches inside a word', () => {
     const catalogue: PosSearchItem[] = [
-      { id: 'a', name: 'Premium ink', code: null, categoryName: null, price: 1, archived: false, variants: [] },
-      { id: 'b', name: 'Ink refill', code: null, categoryName: null, price: 1, archived: false, variants: [] },
-      { id: 'c', name: 'Pink paper', code: null, categoryName: null, price: 1, archived: false, variants: [] },
+      {
+        id: 'a',
+        name: 'Premium ink',
+        code: null,
+        categoryName: null,
+        price: 1,
+        archived: false,
+        unavailable: false,
+        variants: [],
+      },
+      {
+        id: 'b',
+        name: 'Ink refill',
+        code: null,
+        categoryName: null,
+        price: 1,
+        archived: false,
+        unavailable: false,
+        variants: [],
+      },
+      {
+        id: 'c',
+        name: 'Pink paper',
+        code: null,
+        categoryName: null,
+        price: 1,
+        archived: false,
+        unavailable: false,
+        variants: [],
+      },
     ];
     expect(searchItems(catalogue, 'ink').map((result) => result.itemId)).toEqual(['b', 'a', 'c']);
   });

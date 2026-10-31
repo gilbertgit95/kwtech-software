@@ -1,3 +1,4 @@
+import { availableFirst, isPosItemAvailable, isPosVariantAvailable } from '../../domain/availability.js';
 import { checkPosQuantity, POS_QUANTITY_MAX } from '../../domain/money.js';
 import type { PosSearchItem } from '../../domain/search.js';
 import type { PosCatalogueView, PosItemView, PosOrderLineView } from '../pos-client.js';
@@ -17,12 +18,14 @@ export function searchCatalogue(catalogue: PosCatalogueView): PosSearchItem[] {
     categoryName: item.categoryId ? (categories.get(item.categoryId) ?? null) : null,
     price: item.price,
     archived: item.archivedAt !== null,
+    unavailable: item.unavailableAt !== null,
     variants: item.variants.map((variant) => ({
       id: variant.id,
       name: variant.name,
       code: variant.code,
       price: variant.price,
       archived: variant.archivedAt !== null,
+      unavailable: variant.unavailableAt !== null,
     })),
   }));
 }
@@ -30,6 +33,15 @@ export function searchCatalogue(catalogue: PosCatalogueView): PosSearchItem[] {
 /** The live variants of an item, in the picker's order. None means it is sold as it is. */
 export function liveVariants(item: PosItemView): PosItemView['variants'] {
   return item.variants.filter((variant) => variant.archivedAt === null);
+}
+
+/**
+ * The sizes the picker offers: the live ones, those that can be sold first
+ * and the not-available ones after, greyed out (issue #37) — each half in the
+ * store's order.
+ */
+export function pickerVariants(item: PosItemView): PosItemView['variants'] {
+  return availableFirst(liveVariants(item), (variant) => isPosVariantAvailable(item, variant));
 }
 
 /** The price range a tile shows: one price, or "₱20–₱60" across its variants. */
@@ -49,10 +61,30 @@ export function gridItems(catalogue: PosCatalogueView, categoryId: string | null
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The categories that have something to sell, for the grid's tabs. */
+/**
+ * The order every sell view shows items in (issue #37): those that can be sold
+ * first, then the not-available ones, greyed out — each half keeping the order
+ * it came in. Applied on top of `gridItems`, never inside it: the printed
+ * price list reads `gridItems` too, and a size out for the afternoon does not
+ * move on paper.
+ */
+export function sellOrder(items: readonly PosItemView[]): PosItemView[] {
+  return availableFirst(items, isPosItemAvailable);
+}
+
+/**
+ * The categories that have something on the till, for the grid's tabs — those
+ * with nothing available right now after the rest (issue #37), so the first
+ * tabs are the ones that sell.
+ */
 export function gridCategories(catalogue: PosCatalogueView): PosCatalogueView['categories'] {
-  const used = new Set(gridItems(catalogue, null).map((item) => item.categoryId));
-  return catalogue.categories.filter((category) => category.archivedAt === null && used.has(category.id));
+  const items = gridItems(catalogue, null);
+  const used = new Set(items.map((item) => item.categoryId));
+  const selling = new Set(items.filter(isPosItemAvailable).map((item) => item.categoryId));
+  return availableFirst(
+    catalogue.categories.filter((category) => category.archivedAt === null && used.has(category.id)),
+    (category) => selling.has(category.id),
+  );
 }
 
 /**

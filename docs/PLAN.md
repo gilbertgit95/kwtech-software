@@ -609,6 +609,34 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-10-31** — **POS items and variants get a "Not available" switch, separate from archiving and from stock, under its own key `pos:set_availability` (issue #37).**
+
+  The only way to stop an item selling was to archive it, which is meant for
+  items the store no longer sells; running out for an afternoon is temporary
+  and frequent. The stock app's "Out of stock" is a warning that needs counted
+  stock, and the sale still goes through.
+  - **`unavailableAt` / `unavailableById`** on `pos_item` and
+    `pos_item_variant`, null is available, following `archivedAt`. The rule is
+    one pure file (`domain/availability.ts`) read by server and till. **The
+    item's switch wins** over its variants; an item with every live variant off
+    counts as off.
+  - **Its own key, held by cashiers and managers**, not order takers: it changes
+    availability only, so it is not `pos:manage_items`. A plan made before it
+    lacks it until an operator adds it (the `pos:take_payment` case).
+  - **One mutation, all or nothing, one event**: `setPosAvailability(itemIds,
+    variantIds, available)`, capped at 1000 ids, every id found by scope in one
+    transaction, one `catalogue` event. The existing event already reloads every
+    till and the Items tab, so no new subscription.
+  - **Only adding is refused** (`item_unavailable`): a new line, a tap onto its
+    line, or a quantity going up. Orders that already have it keep their lines
+    and can be lowered, refreshed, removed and paid.
+  - **Greyed out and sorted last, never hidden**; an exact code still tops the
+    search so a scan cannot add the second match.
+  - **Not done:** no automatic reset and no schedule (decided in the issue); no
+    long-press on a tile, since the Availability sheet on the sell views gives a
+    one-tap switch per row with nothing to discover; the order taker does not
+    hold the key by default.
+
 - **2026-10-29** — **Caddy is optional and only for the shop's own network: it runs only when `FRONTEND_URL` is `https://` on a PRIVATE address; a remote server's HTTPS comes from its host, with no Caddy.**
 
   Caddy's one job is HTTPS for the devices on the shop's network when there

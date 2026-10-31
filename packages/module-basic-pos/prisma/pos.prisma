@@ -126,6 +126,12 @@ model PosItem {
   cost  Int?
 
   archivedAt  DateTime?
+  /// Taken off sale for a while (issue #37): sold out, a machine down. Null is
+  /// available. NOT archiving: it stays in the catalogue and counts toward
+  /// `pos:items`, and only a person switches it back (no daily reset).
+  unavailableAt   DateTime?
+  /// Who switched it off; null while available.
+  unavailableById String?
   createdById String
   updatedById String
   createdAt   DateTime  @default(now())
@@ -157,6 +163,10 @@ model PosItemVariant {
   sortOrder Int     @default(0)
 
   archivedAt DateTime?
+  /// One size off sale (issue #37), as on the item. The item's own switch wins:
+  /// a variant of an unavailable item cannot be sold either way.
+  unavailableAt   DateTime?
+  unavailableById String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

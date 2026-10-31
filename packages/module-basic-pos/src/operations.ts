@@ -12,8 +12,8 @@
 
 const CATEGORY = 'id name sortOrder archivedAt';
 const ORDER_TYPE_OPTION = 'id name sortOrder isDefault archivedAt';
-const VARIANT = 'id itemId name code price cost sortOrder archivedAt';
-const ITEM = `id kind name code description price cost categoryId archivedAt variants { ${VARIANT} }`;
+const VARIANT = 'id itemId name code price cost sortOrder archivedAt unavailableAt';
+const ITEM = `id kind name code description price cost categoryId archivedAt unavailableAt variants { ${VARIANT} }`;
 const CUSTOMER = 'id name phone email facebookUrl note archivedAt';
 const SETTINGS = 'timeZone keymap referenceOptions defaultReference version';
 const DISCOUNT = 'kind value reason givenById givenAt';
@@ -52,6 +52,11 @@ export const POS_OPERATIONS = {
 
   setPosItemArchived: `mutation SetPosItemArchived(${SCOPE_VARS}, $itemId: String!, $archived: Boolean!) {
     setPosItemArchived(${SCOPE_ARGS}, itemId: $itemId, archived: $archived) { ${ITEM} }
+  }`,
+
+  /** "Not available" and back, for one item or a selection (issue #37). One transaction, one live event. */
+  setPosAvailability: `mutation SetPosAvailability(${SCOPE_VARS}, $itemIds: [String!]!, $variantIds: [String!]!, $available: Boolean!) {
+    setPosAvailability(${SCOPE_ARGS}, itemIds: $itemIds, variantIds: $variantIds, available: $available) { items variants }
   }`,
 
   savePosCategory: `mutation SavePosCategory(${SCOPE_VARS}, $name: String!, $categoryId: String, $sortOrder: Int) {

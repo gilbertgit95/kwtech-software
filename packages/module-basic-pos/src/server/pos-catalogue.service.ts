@@ -1,5 +1,6 @@
 import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { POS_AVAILABILITY_BATCH_MAX, preparePosAvailabilityTargets } from '../domain/availability.js';
 import { checkPosCost, checkPosPrice } from '../domain/money.js';
 import { preparePosCode, preparePosDescription, preparePosName } from '../domain/text.js';
 import { POS_LIMIT, POS_LIMIT_REGISTRY } from '../feature-keys.js';
@@ -8,7 +9,9 @@ import { PosWriteError, refusalError, unwrap } from './pos.errors.js';
 import { PosEventPublisher } from './pos.events.js';
 import type {
   InScope,
+  PosAvailabilityData,
   PosCategoryRow,
+  PosItemFields,
   PosItemRow,
   PosItemVariantRow,
   PosOrderTypeRow,
@@ -84,6 +87,19 @@ export interface SavePosItemInput {
    * variants are left as they are.
    */
   variants?: readonly SavePosVariantInput[] | null | undefined;
+}
+
+export interface SetPosAvailabilityInput {
+  itemIds: readonly string[];
+  variantIds: readonly string[];
+  /** True: back on sale. False: "Not available". */
+  available: boolean;
+}
+
+/** What one switch named, so the screen can say "3 items and 2 sizes marked not available". */
+export interface PosAvailabilityChange {
+  items: number;
+  variants: number;
 }
 
 interface PreparedVariant {
@@ -384,6 +400,75 @@ export class PosCatalogueService {
     return saved;
   }
 
+  // ── availability (issue #37) ──────────────────────────────────────────────
+
+  /**
+   * Switches items and variants off sale, or back on — one item from the
+   * till's toggle, or a whole selection from the bulk view, through the SAME
+   * write. Bound to `pos:set_availability`, never `pos:manage_items`: a
+   * cashier who can do this cannot touch a price or a name, and nothing here
+   * writes one.
+   *
+   * ⚠ ALL OR NOTHING. Every id is found by id and scope in ONE transaction
+   * before anything is written; one id that is not this store's refuses the
+   * whole call, so a selection is never half switched.
+   *
+   * ⚠ ONE EVENT, after the commit, however many rows: a bulk switch of 300
+   * items is one re-read on every till, not 300.
+   *
+   * Archived rows may be switched too: restoring an item brings it back in the
+   * state it was left in.
+   */
+  async setAvailability(
+    scope: InScope,
+    actorId: string,
+    input: SetPosAvailabilityInput,
+  ): Promise<PosAvailabilityChange> {
+    const targets = preparePosAvailabilityTargets(input);
+    if ('refused' in targets) {
+      if (targets.refused !== 'limit_reached') throw refusalError(targets.refused);
+      throw new PosWriteError(
+        'limit_reached',
+        `At most ${POS_AVAILABILITY_BATCH_MAX} items and variants can be switched at once — select fewer`,
+        { limit: POS_AVAILABILITY_BATCH_MAX },
+      );
+    }
+    const { itemIds, variantIds } = targets;
+    // Switching off keeps the time an item ALREADY off went off; switching on clears both.
+    const data: PosAvailabilityData = input.available
+      ? { unavailableAt: null, unavailableById: null }
+      : { unavailableAt: new Date(), unavailableById: actorId };
+    const stillOn = input.available ? {} : { unavailableAt: null };
+
+    await this.transact('conflict', async (tx) => {
+      const [items, variants] = await Promise.all([
+        itemIds.length > 0
+          ? tx.posItem.findMany({
+              where: { ...scope, id: { in: itemIds } },
+              orderBy: [{ id: 'asc' }],
+              take: POS_AVAILABILITY_BATCH_MAX,
+            })
+          : [],
+        variantIds.length > 0
+          ? tx.posItemVariant.findMany({
+              where: { ...scope, id: { in: variantIds } },
+              orderBy: [{ id: 'asc' }],
+              take: POS_AVAILABILITY_BATCH_MAX,
+            })
+          : [],
+      ]);
+      if (items.length !== itemIds.length || variants.length !== variantIds.length) throw refusalError('not_found');
+      if (itemIds.length > 0) {
+        await tx.posItem.updateMany({ where: { ...scope, id: { in: itemIds }, ...stillOn }, data });
+      }
+      if (variantIds.length > 0) {
+        await tx.posItemVariant.updateMany({ where: { ...scope, id: { in: variantIds }, ...stillOn }, data });
+      }
+    });
+    await this.events.changed(scope, 'catalogue', actorId);
+    return { items: itemIds.length, variants: variantIds.length };
+  }
+
   // ── inside the transaction ────────────────────────────────────────────────
 
   private async writeVariants(
@@ -468,7 +553,7 @@ export class PosCatalogueService {
     tx: PosTransaction,
     scope: InScope,
     id: string,
-    data: Parameters<PosTransaction['posItem']['updateMany']>[0]['data'],
+    data: Partial<PosItemFields> & { archivedAt?: Date | null; updatedById: string },
   ): Promise<PosItemRow> {
     await tx.posItem.updateMany({ where: { ...scope, id }, data });
     return this.requireItem(tx, scope, id);

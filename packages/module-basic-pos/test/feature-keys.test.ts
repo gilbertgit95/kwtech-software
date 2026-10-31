@@ -105,7 +105,13 @@ describe('POS_ROLE_PRESETS', () => {
 
   it('sells at the listed price only: a cashier cannot discount, refund, see costs or reports', () => {
     const cashier = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-cashier');
-    expect(cashier?.features).toEqual([POS_FEATURE.read, POS_FEATURE.sell, POS_FEATURE.takePayment]);
+    // `setAvailability` changes no price or name: the counter is who hears "we ran out" (issue #37).
+    expect(cashier?.features).toEqual([
+      POS_FEATURE.read,
+      POS_FEATURE.sell,
+      POS_FEATURE.takePayment,
+      POS_FEATURE.setAvailability,
+    ]);
   });
 
   it('⚠ an order taker builds and holds, and never settles an order (issue #23)', () => {

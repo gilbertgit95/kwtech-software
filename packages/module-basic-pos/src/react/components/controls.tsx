@@ -1,7 +1,7 @@
 'use client';
 
 import { BottomSheet, cn } from '@kwtech/web-ui/react';
-import { X } from 'lucide-react';
+import { Ban, X } from 'lucide-react';
 import { createContext, type ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { stockBadge } from '../view/stock.js';
 
@@ -242,3 +242,30 @@ export function StockBadge({ left }: { left: number | null }) {
     </span>
   );
 }
+
+/**
+ * "Not available" (issue #37): an item or size switched off sale. Text, not
+ * just the greyed-out tile, so it reads the same to everyone — and so the
+ * cashier can tell a customer it is out rather than that it is missing.
+ */
+export function UnavailableBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+      <Ban aria-hidden="true" className="size-3" />
+      Not available
+    </span>
+  );
+}
+
+/**
+ * A row or tile that is NOT AVAILABLE (issue #37), merged over the row's own
+ * classes with `cn` so it wins over their hover and border: a flat muted
+ * fill, a dashed edge, faded, and a "not allowed" pointer. It must read as
+ * "cannot be picked" at a glance, not as one more item with a small tag — a
+ * faint grey alone was missed (the operator, 2026-10-31).
+ */
+export const UNAVAILABLE_ROW_CLASS =
+  'cursor-not-allowed border-dashed border-border bg-muted text-muted-foreground opacity-75 hover:bg-muted active:scale-100 active:bg-muted';
+
+/** The name and price of something not available, struck through: no longer an offer. */
+export const UNAVAILABLE_TEXT_CLASS = 'line-through decoration-muted-foreground/60';
