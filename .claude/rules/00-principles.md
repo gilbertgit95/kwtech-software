@@ -82,3 +82,5 @@ and the rule is stale. Say so, and fix the rule in the same change.
   `- **YYYY-MM-DD** — **One-line decision.**`, then the cause, bold-led bullets,
   what was NOT done and why. A known gap goes in §12.
 - Conventional commit, scoped by package directory: `feat(module-queuing-window): …`.
+  The header, and the PR's title, at most 80 characters with the issue number:
+  commitlint refuses over 100, and a squash merge adds ` (#NN)`.
