@@ -25,6 +25,7 @@ What runs:
 | wrong code | a TV with a bad code gets the one refusal sentence |
 | installable | the manifest is linked, says `standalone`, and every icon it names loads |
 | install page | a signed-out iPhone gets `/install` with the iPhone steps |
+| install page, way back | `/install` has **Back to the app**: opened directly it goes to `/` (sign-in when signed out), opened from a page of the app it goes back to that page |
 | phone, signed out | a phone opening a workspace address gets the shared sign-in page |
 | phone layout | a phone opens the workspace in the phone layout **at the same address**, and can **never reach the full site**: no switch, an old `full` cookie ignored, and desktop-only pages (members, settings) show the phone notice |
 

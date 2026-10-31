@@ -1,9 +1,15 @@
 'use client';
 
 import { QrCode } from '@kwtech/web-ui/react';
-import { Download, MoreVertical, Share, SquarePlus } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
-import { detectInstallPlatform, type InstallPlatform, isRunningInstalled } from './install-platform';
+import { ArrowLeft, Download, MoreVertical, Share, SquarePlus } from 'lucide-react';
+import { type MouseEvent, type ReactNode, useEffect, useState } from 'react';
+import {
+  cameFromThisApp,
+  detectInstallPlatform,
+  type InstallPlatform,
+  isRunningInstalled,
+  watchRunningInstalled,
+} from './install-platform';
 
 /**
  * Chrome's install prompt, which the DOM typings do not declare yet. The event
@@ -53,9 +59,11 @@ export function InstallGuide({ appName }: { appName: string }) {
     }
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
+    const unwatch = watchRunningInstalled(setInstalled);
     return () => {
       window.removeEventListener('beforeinstallprompt', onPrompt);
       window.removeEventListener('appinstalled', onInstalled);
+      unwatch();
     };
   }, []);
 
@@ -69,8 +77,33 @@ export function InstallGuide({ appName }: { appName: string }) {
     setOutcome(choice.outcome);
   }
 
+  /*
+   * BACK when the person came here from a page of this app, so they land on
+   * the module they left rather than the dashboard; otherwise the link's own
+   * `/`, which is the dashboard signed in and sign-in signed out.
+   */
+  function goBack(event: MouseEvent<HTMLAnchorElement>) {
+    if (!cameFromThisApp(document.referrer, window.location.origin) || window.history.length < 2) return;
+    event.preventDefault();
+    window.history.back();
+  }
+
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-24 pt-24 sm:pt-28">
+      {/*
+       * ALWAYS here, installed or not. This page sits in the sign-in frame,
+       * which has no header or drawer, and the installed app has no browser
+       * bar: without a link of its own the only way back to the modules was
+       * to close the window (issue #42).
+       */}
+      <a
+        href="/"
+        onClick={goBack}
+        className="-ml-1 mb-4 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ArrowLeft aria-hidden className="size-4" />
+        Back to the app
+      </a>
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">Install {appName} on your phone</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         No app store needed. It installs from your phone's browser, opens full screen from its own icon, and updates
@@ -91,9 +124,15 @@ export function InstallGuide({ appName }: { appName: string }) {
       {platform !== null && !installed ? (
         <>
           {outcome === 'accepted' ? (
-            <p role="status" className="mt-6 rounded-lg border border-border bg-card p-4 text-sm text-card-foreground">
-              Installed. Open {appName} from its icon on your home screen or in your apps list.
-            </p>
+            <div
+              role="status"
+              className="mt-6 rounded-lg border border-border bg-card p-4 text-sm text-card-foreground"
+            >
+              <p>Installed. Open {appName} from its icon on your home screen or in your apps list.</p>
+              <a href="/" className="mt-3 inline-block font-medium text-primary underline-offset-4 hover:underline">
+                Go to the dashboard
+              </a>
+            </div>
           ) : null}
 
           {prompt ? (
