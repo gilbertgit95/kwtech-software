@@ -121,44 +121,115 @@ http://<address>/*                    →  redirected to https://
 ## 4. The shop's network: first-time installation on the server
 
 Once, on the computer that serves the shop, after the app itself runs
-([SETUP.md](SETUP.md)). About ten minutes.
+([SETUP.md](SETUP.md)). About ten minutes. Do the steps in this order: each
+one needs the one before it.
 
-### Step 1 — Give the server a fixed address
+### Before you start
+
+Have these ready. Then nothing stops halfway.
+
+| Have ready | Why, and how to get it |
+|---|---|
+| **The app running on this computer** | [SETUP.md](SETUP.md): `http://localhost:8081` opens and you can sign in. The right profile is active: `pnpm env:show` (normally `local`) |
+| **This computer's address** on the shop's network, written down | Steps 2 and 4 use it. Windows: `ipconfig` in PowerShell, the *IPv4 Address* of the Ethernet or Wi-Fi adapter (e.g. `192.168.1.68`). ⚠ Not WSL's `hostname -I` before step 1: that prints a `172.x.x.x` address inside WSL. Mac: `ipconfig getifaddr en0`. Linux: `hostname -I` |
+| **`.caddy/` from the old server**, only if this computer **replaces** one | The certificate authority the shop's phones already trust (section 3). Without it, every device must be registered again. Copy the whole folder from the old server's repository root, e.g. `tar czf caddy.tgz .caddy` there, then `tar xzf caddy.tgz` in this repository's root, inside WSL. ⚠ It holds a private key: a USB stick or `scp`, never chat or email, and delete `caddy.tgz` afterwards. Moving the profile and the database too: section 8 |
+| **The passwords** | `sudo` on Linux/WSL (steps 3 and 4). On Windows, an **administrator** account for PowerShell *Run as Administrator* (step 1). The **router's admin page** (step 2) |
+| **Internet** on this computer | Step 3 downloads Caddy |
+| **Windows with WSL only:** Windows 11 and a current WSL | Mirrored networking needs both. `wsl --version` in PowerShell; `wsl --update` if it is old |
+| **Ports 80 and 443 free** | Caddy needs both. Something else using them (IIS, another web server, Skype) stops it. Windows: `netstat -ano \| findstr /C:":80 " /C:":443 "` in PowerShell (the space after each port keeps out `:8080` and `:8081`) should show nothing *LISTENING* before the setup |
+| **A phone on the shop's Wi-Fi** | To check it at the end (step 6, section 5) |
+
+### Step 1 — Windows with WSL only: share the network, open the ports
+
+Skip this on a Mac or Linux server.
+
+The app, Caddy and the database all run inside WSL. Phones and other
+computers reach **Windows**, not WSL, so Windows has to share its network
+with WSL and let ports 80 and 443 through. No `netsh interface portproxy` is
+needed. Set up this way on 2026-10-31 (Windows 11 build 26300, WSL 3.0.3).
+
+**1a. Mirrored networking.** In `%USERPROFILE%\.wslconfig` (Windows side,
+e.g. `C:\Users\<you>\.wslconfig`), under `[wsl2]`:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+# optional, for a server: keep WSL (and pm2's services) running with no terminal open
+vmIdleTimeout=-1
+```
+
+Then, in PowerShell, `wsl --shutdown`, and open WSL again. Check it in WSL:
+`hostname -I` now prints the **PC's own network address** (e.g.
+`192.168.1.68`), not a `172.x.x.x` one. That is the server's address from
+here on.
+
+**1b. Mark the shop's network Private.** The firewall rules below cover the
+Private profile only. In PowerShell, `Get-NetConnectionProfile` shows the
+category. If it says *Public*, change it with `Set-NetConnectionProfile
+-InterfaceAlias "<alias it shows>" -NetworkCategory Private` (as
+Administrator), or with Settings → Network → *Private network*.
+
+**1c. Open ports 80 and 443**, in **PowerShell as Administrator**. With
+mirrored networking there are **two** firewalls: Windows Defender Firewall,
+and the **Hyper-V firewall** that stands in front of WSL and blocks
+everything coming in by default. Opening only the first one is not enough.
+Phones then time out.
+
+```powershell
+# Windows Defender Firewall
+New-NetFirewallRule -DisplayName "kwtech HTTPS" -Direction Inbound -Action Allow `
+  -Protocol TCP -LocalPort 80,443 -Profile Private
+
+# the Hyper-V firewall in front of WSL ({40E0AC32-…} is WSL's id, the same on every PC)
+New-NetFirewallHyperVRule -Name "kwtech-https" -DisplayName "kwtech HTTPS" -Direction Inbound `
+  -Action Allow -Protocol TCP -LocalPorts 80,443 `
+  -VMCreatorId "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
+```
+
+Check the rules with `Get-NetFirewallRule -DisplayName "kwtech HTTPS"` and
+`Get-NetFirewallHyperVRule -DisplayName "kwtech HTTPS"`. Remove them with
+`Remove-NetFirewallRule` and `Remove-NetFirewallHyperVRule`, using the same
+`-DisplayName`.
+
+Everything from step 2 on runs **inside WSL**, in WSL's copy of the
+repository, as on a Linux server.
+
+### Step 2 — Give the server a fixed address
 
 On the router's admin page, reserve the server's current address for it (a
 *DHCP reservation*, also called *static lease* or *address reservation*).
 Otherwise the router may give the server a new address after a restart, and
 every device shows a warning until step 4 is run again.
 
-To see the address: `ipconfig getifaddr en0` (Mac), `hostname -I` (Linux),
-`ipconfig` (Windows). `pnpm https:setup` finds it too.
+To see the address: `ipconfig getifaddr en0` (Mac), `hostname -I` (Linux, and
+WSL after step 1), `ipconfig` (Windows). `pnpm https:setup` finds it too.
 
-### Step 2 — Install Caddy (2.8 or newer)
+### Step 3 — Install Caddy (2.8 or newer)
 
 | System | Install |
 |---|---|
 | **Mac** | `brew install caddy` |
-| **Ubuntu, or Windows with WSL** | Caddy's own apt repository (caddyserver.com/docs/install), then `sudo apt install caddy`. Then `sudo systemctl disable --now caddy`: the app runs Caddy itself, not the system service |
+| **Ubuntu, or Windows with WSL** (inside WSL) | Caddy's own apt repository, below. Ubuntu's own `caddy` package is too old |
 
-Check it: `caddy version`.
+On Ubuntu, and inside WSL on Windows (Caddy's instructions,
+caddyserver.com/docs/install):
 
-### Step 3 — Windows with WSL only
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
+sudo systemctl disable --now caddy   # the app runs Caddy itself (pm2 or `pnpm https`), not the system service
+```
 
-Other devices reach Windows, not WSL, unless WSL shares Windows' network:
+The system service has to stay off. Otherwise it holds ports 80 and 443,
+and the app's Caddy cannot start.
 
-1. In `%USERPROFILE%\.wslconfig`, under `[wsl2]`, add
-   `networkingMode=mirrored` (Windows 11).
-2. Run `wsl --shutdown`, then open WSL again.
-3. In **Windows Defender Firewall**, allow inbound TCP ports **80** and **443**.
-
-The address in step 1 is then the Windows PC's.
-
-⚠ **Not yet tried on WSL:** with `LISTEN_HOST="127.0.0.1"` (step 4) the apps
-answer only on WSL's own `localhost`. Mirrored networking shares `localhost`
-with Windows, so a browser on the Windows PC (`http://localhost:8081`) and a
-print agent on that PC (`http://localhost:8080`) should still reach them.
-If either does not connect, open `https://<address>` there instead, as the
-phones do. Phones are unaffected: they come in through Caddy.
+Check it: `caddy version` (2.11.7 on the WSL server, 2026-10-31).
 
 ### Step 4 — Run the setup
 
@@ -170,11 +241,24 @@ pnpm https:setup
 
 It finds the address and asks you to confirm it; checks Caddy (and prints
 the install command if it is missing); on Linux lets Caddy use ports 80 and
-443 without root (`setcap`, asks for the sudo password once); writes three
-settings into the active profile and **nothing else** — `FRONTEND_URL`,
-`CORS_ORIGINS` and `LISTEN_HOST="127.0.0.1"` in `envs/<name>/web-server.env`,
-`NEXT_PUBLIC_WS_URL` in `envs/<name>/web-app.env`; checks the Caddyfile for
-that address; and prints what is left.
+443 without root (`setcap`, asks for the sudo password once; check it with
+`getcap /usr/bin/caddy`, which prints `cap_net_bind_service=ep`); writes
+three settings into the active profile and **nothing else** —
+`FRONTEND_URL`, `CORS_ORIGINS` and `LISTEN_HOST="127.0.0.1"` in
+`envs/<name>/web-server.env`, `NEXT_PUBLIC_WS_URL` in
+`envs/<name>/web-app.env`; checks the Caddyfile for that address; and prints
+what is left.
+
+**On WSL, give the address yourself.** WSL reports more than one address,
+Docker's `172.17.0.1` among them, and the one to use is the PC's address on
+the shop's network (step 2):
+
+```bash
+pnpm https:setup --address=192.168.1.68
+```
+
+On that PC it wrote `FRONTEND_URL="https://192.168.1.68"` and
+`NEXT_PUBLIC_WS_URL="wss://192.168.1.68/api/v1/graphql"`.
 
 ⚠ From the next start, the apps answer **only to Caddy**: other devices use
 `https://<address>`, and `http://<address>:8081` is refused (section 1, "One
@@ -184,6 +268,14 @@ Options: `--address=192.168.1.186` (no detection), `--yes` (no questions),
 `--off` (back to `http://localhost`, section 9).
 
 ### Step 5 — Start it
+
+**If this computer replaces another server**, put the `.caddy/` folder
+you got ready (Before you start) in the repository's root **now**, before
+the first start. On WSL, put it in WSL's copy of the repository, not the
+Windows file system. Keep its private keys private: `chmod -R go-rwx
+.caddy`. With it, the devices
+already registered keep working. Without it, the first start below makes a
+new authority, and every device must be registered again (section 5).
 
 **The built apps** (the shop's server):
 
@@ -200,9 +292,11 @@ and in a second terminal:
 pnpm https                 # Caddy beside the dev servers; Ctrl+C stops it
 ```
 
-The first start creates the authority in `.caddy/`.
+The first start creates the authority in `.caddy/`, unless one was copied.
 
 ### Step 6 — Check it from the server
+
+On WSL, run these inside WSL:
 
 ```bash
 curl -sk -o /dev/null -w "%{http_code}\n" https://192.168.1.186/api/health          # 200
@@ -212,7 +306,17 @@ curl -s -m 3 http://192.168.1.186:8081/ || echo "refused — good: the only way 
 ```
 
 Then register each device (section 5), the server's own browser too if it
-will use the `https://` address.
+will use the `https://` address. That browser cannot use it on WSL (below).
+
+**On WSL, what reaches what** (checked on 2026-10-31, with
+`LISTEN_HOST="127.0.0.1"`):
+
+| From | Use | Works |
+|---|---|---|
+| A phone or another computer on the network | `https://<address>` | yes, through both firewalls to Caddy in WSL |
+| **The Windows PC itself**, browser | `http://localhost:8081` (or `https://localhost`) | yes: mirrored networking shares `localhost` with WSL |
+| The Windows PC itself | `https://<address>` (its own network address) | ⚠ **no**, it times out: Windows does not route its own address back into WSL. Use `localhost` on this PC |
+| A print agent on the Windows PC | `http://localhost:8080/api/v1` | yes |
 
 ## 5. The shop's network: registering a device
 
@@ -464,7 +568,7 @@ on another computer):
      <name>`.
    - **The database**, if it moves too: SETUP.md §7, "Moving a database to
      another computer".
-3. **On the new server**, section 4: steps 1–3 (address, Caddy, WSL), then
+3. **On the new server**, section 4: steps 1–3 (WSL, address, Caddy), then
    `pnpm https:setup` (step 4), which writes the NEW address, and step 5.
 4. **Devices**: nothing, if `.caddy/` was copied — they trust the authority,
    which signs a certificate for the new address. They just open the new
@@ -493,7 +597,7 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 | What is running | `pnpm pm2:status`: `kwtech-web-server`, `kwtech-web-app`, and on the shop's network `kwtech-https` |
 | Caddy's log | `pnpm pm2:logs kwtech-https` (built), or the `pnpm https` terminal |
 | Stop | `pnpm pm2:stop` — all of them (e.g. before `pnpm dev`, which needs the same ports) |
-| **The address changed** (new router, another network) | `pnpm https:setup` again, then `pnpm build && pnpm pm2:start`. Devices need **nothing** new. Then reserve the address (section 4, step 1) |
+| **The address changed** (new router, another network) | `pnpm https:setup` again, then `pnpm build && pnpm pm2:start`. Devices need **nothing** new. Then reserve the address (section 4, step 2) |
 | **A new phone, tablet or computer** | section 5 only |
 | **Turn local HTTPS off** | `pnpm https:setup --off` (the profile goes back to `http://localhost`), then `pnpm build && pnpm pm2:start` |
 
@@ -513,7 +617,10 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 | `kwtech-https` errored in `pnpm pm2:status` | Caddy is not installed, or on Linux may not use port 443: `pnpm https:setup` says which. `pnpm pm2:logs kwtech-https` shows the error |
 | `pnpm https` says *FRONTEND_URL … is not an https:// address on this network* | Run `pnpm https:setup` first. On a remote server with a domain this is expected: there is no Caddy there (section 7) |
 | A remote server shows `kwtech-https` | `FRONTEND_URL` is a private address, not the domain: fix the profile (section 7), then `pnpm pm2:start` |
-| The page does not open from a phone | Not on the shop's Wi-Fi; ports 80/443 blocked (Windows: section 4, step 3); or Caddy is not running |
+| The page does not open from a phone | Not on the shop's Wi-Fi; ports 80/443 blocked (Windows: section 4, step 1); or Caddy is not running |
+| WSL: phones time out though the Windows firewall allows 80/443 | The **Hyper-V firewall** rule is missing (`Get-NetFirewallHyperVRule -DisplayName "kwtech HTTPS"`), or the network is marked *Public* (section 4, step 1) |
+| WSL: `hostname -I` prints `172.x.x.x` | Mirrored networking is not on: `.wslconfig`, then `wsl --shutdown` (section 4, step 1) |
+| WSL: `https://<address>` times out **on the Windows PC itself** but works from phones | Expected with mirrored networking: on that PC use `http://localhost:8081` (section 4, step 6) |
 | Mac: *Error: -25294* importing the certificate | `security add-trusted-cert`, or Keychain Access with *Destination: login* (section 5, Mac) |
 | Phones get *502 Bad Gateway* after the ports were changed | The Caddyfile still says `localhost:8080` / `localhost:8081`: [SETUP.md §8, "Changing the ports"](SETUP.md#changing-the-ports) lists every place |
 | Uploads fail on a remote server | The proxy's body limit: nginx's `client_max_body_size` (section 7) |
