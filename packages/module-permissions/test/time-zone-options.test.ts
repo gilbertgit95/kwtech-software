@@ -11,6 +11,13 @@ describe('zoneOffset', () => {
     expect(zoneOffset('UTC', WINTER)).toEqual({ offset: 'GMT', offsetMinutes: 0 });
   });
 
+  it('⚠ spells a zero offset "GMT" whatever the runtime says (ICU 78 says "GMT+0")', () => {
+    expect(zoneOffset('Europe/London', WINTER)).toEqual({ offset: 'GMT', offsetMinutes: 0 });
+    expect(zoneOffset('Etc/GMT', WINTER)).toEqual({ offset: 'GMT', offsetMinutes: 0 });
+    // Summer moves London off zero, and then the runtime's own spelling stands.
+    expect(zoneOffset('Europe/London', SUMMER)).toEqual({ offset: 'GMT+1', offsetMinutes: 60 });
+  });
+
   it('⚠ is the offset at that moment: daylight saving moves it', () => {
     expect(zoneOffset('America/New_York', WINTER).offsetMinutes).toBe(-300);
     expect(zoneOffset('America/New_York', SUMMER).offsetMinutes).toBe(-240);
