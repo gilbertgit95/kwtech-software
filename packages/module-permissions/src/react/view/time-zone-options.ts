@@ -38,6 +38,13 @@ export function zoneOffset(zone: string, now: Date): { offset: string; offsetMin
   const match = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/u.exec(offset);
   if (!match) return { offset, offsetMinutes: 0 };
   const minutes = Number(match[2]) * 60 + Number(match[3] ?? 0);
+  /*
+   * ⚠ ZERO is always "GMT". The runtime's ICU data decides how a zero offset
+   * is spelled — "GMT" in older data, "GMT+0" in ICU 78 (Node 24) — so the
+   * same zone read differently from one browser to the next, and the test
+   * pinned to one spelling failed on the other (issue #44).
+   */
+  if (minutes === 0) return { offset: 'GMT', offsetMinutes: 0 };
   return { offset, offsetMinutes: match[1] === '-' ? -minutes : minutes };
 }
 
