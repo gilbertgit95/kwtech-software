@@ -263,6 +263,11 @@ answer *how many*. The details are in DESIGN-NOTES Part 4 and
 - **Conventional commits**, checked by commitlint:
   `feat(module-queuing-window): …`, `fix(web-server): …`,
   `test(web-app): …`. The scope is the package directory name.
+- **A commit header and a PR title are 80 characters or less**, counting the
+  `type(scope): ` prefix and the issue number (`echo ${#title}` before
+  committing). commitlint refuses a header over 100, and a squash merge adds
+  ` (#NN)` to the PR title, so a title near 100 passes when the PR is opened
+  and goes over when it is merged. The detail goes in the body.
 - ESM throughout. Relative imports in packages end in `.js`.
 - Shared dependency versions go in the pnpm `catalog:` in `pnpm-workspace.yaml`.
   Nest, `@nestjs/graphql` and `graphql` **must** come from the catalog: a
