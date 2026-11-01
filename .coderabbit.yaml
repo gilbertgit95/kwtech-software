@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit review settings. Everything not set here is CodeRabbit's default:
+# it reviews pull requests into the default branch (main), skips drafts, and
+# runs Biome.
+# CodeRabbit already reads CLAUDE.md and .claude/rules/**/*.md as code
+# guidelines (its default file patterns), so the standards are not restated
+# here. Restated, they would drift from the rules they copy.
+reviews:
+  # Never review generated or vendored output (CLAUDE.md: "Never edit generated files").
+  path_filters:
+    - "!apps/web-server/src/generated/**"
+    - "!apps/web-server/prisma/_modules/**"
+    - "!apps/web-app/next-env.d.ts"
+    - "!pnpm-lock.yaml"
+    - "!**/dist/**"
+
+  path_instructions:
+    - path: "apps/web-server/schema.graphql"
+      instructions: |
+        Generated from the code-first resolvers when the API boots. Don't comment
+        on its style. Flag only breaking changes to existing types or fields.
