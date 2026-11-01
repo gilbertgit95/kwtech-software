@@ -257,7 +257,7 @@ export interface BooksOverviewView {
   /** Σ what current and former investors are still owed (advances count against it). */
   owedToInvestors: number;
   loans: BooksLoanView[];
-  /** `loans` grouped by borrower name; the same 500 loans, so the totals agree with the list. */
+  /** `loans` grouped by borrower name; the same `BOOKS_OVERVIEW_LOANS`, so the totals agree with the list. */
   borrowers: BooksBorrowerView[];
   lentOutstanding: number;
   /** The first day not yet shared, or null with nothing recorded. */

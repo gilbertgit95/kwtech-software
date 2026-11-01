@@ -8,10 +8,12 @@ import { type BooksContext, useBooksAction, useBooksData } from '../use-books.js
 import { formatDay, kindLabel, placeLabel, whoName } from '../view/labels.js';
 import { ledgerLines } from '../view/ledger.js';
 import {
+  BOOKS_LOANS_CAPPED_NOTE,
   BOOKS_LOANS_VIEW_STORAGE_KEY,
   BOOKS_LOANS_VIEWS,
   type BooksLoansView,
   borrowerSummary,
+  isLoansCapped,
   loanCountLabel,
   parseLoansView,
 } from '../view/loans.js';
@@ -199,6 +201,9 @@ function BorrowersList({
           <Figure label="Still owing" value={`${totals.owing} of ${totals.borrowers}`} />
         </div>
       ) : null}
+      {isLoansCapped(overview.loans.length) ? (
+        <p className="text-xs text-muted-foreground">{BOOKS_LOANS_CAPPED_NOTE}</p>
+      ) : null}
       <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
         {overview.borrowers.length === 0 ? <Empty>The business has not lent anybody money.</Empty> : null}
         {overview.borrowers.map((borrower) => (
@@ -207,6 +212,7 @@ function BorrowersList({
               <span className="truncate font-medium">{borrower.borrowerName}</span>
               <span className="text-xs text-muted-foreground">
                 Lent {formatPeso(borrower.lent)} · {loanCountLabel(borrower)}
+                {borrower.lastDay ? ` · ${formatDay(borrower.lastDay)}` : ''}
               </span>
             </span>
             {borrower.outstanding > 0 ? (

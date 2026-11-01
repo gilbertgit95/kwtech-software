@@ -13,6 +13,14 @@ import { normalizeBooksLine } from './text.js';
  * record to tell them apart (issue #48, out of scope).
  */
 
+/**
+ * How many loans the overview reads, newest first. Above it the oldest are
+ * left out of the list AND of the borrower totals, so the Loans tab says so
+ * when it is reached (`isLoansCapped`). Named once here: the server's query
+ * and the screen's notice must agree on the number.
+ */
+export const BOOKS_OVERVIEW_LOANS = 500;
+
 /** A loan, as grouping needs one. */
 export interface BooksBorrowerLoan {
   id: string;

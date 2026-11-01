@@ -1,4 +1,5 @@
-import { borrowerSummary, loanCountLabel, parseLoansView } from '../src/react/view/loans.js';
+import { BOOKS_OVERVIEW_LOANS } from '../src/domain/borrowers.js';
+import { borrowerSummary, isLoansCapped, loanCountLabel, parseLoansView } from '../src/react/view/loans.js';
 
 describe('parseLoansView', () => {
   it('restores a stored view', () => {
@@ -34,5 +35,12 @@ describe('loanCountLabel', () => {
     expect(loanCountLabel({ loanCount: 1, openCount: 1 })).toBe('1 loan');
     expect(loanCountLabel({ loanCount: 3, openCount: 0 })).toBe('3 loans');
     expect(loanCountLabel({ loanCount: 3, openCount: 1 })).toBe('3 loans · 1 open');
+  });
+});
+
+describe('isLoansCapped', () => {
+  it('says so only once the overview reached its loan limit', () => {
+    expect(isLoansCapped(BOOKS_OVERVIEW_LOANS - 1)).toBe(false);
+    expect(isLoansCapped(BOOKS_OVERVIEW_LOANS)).toBe(true);
   });
 });

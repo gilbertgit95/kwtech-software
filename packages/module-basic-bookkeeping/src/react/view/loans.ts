@@ -1,3 +1,4 @@
+import { BOOKS_OVERVIEW_LOANS } from '../../domain/borrowers.js';
 import type { BooksBorrowerView } from '../books-client.js';
 
 /**
@@ -58,3 +59,15 @@ export function loanCountLabel(borrower: Pick<BooksBorrowerView, 'loanCount' | '
   if (borrower.loanCount === 1 || borrower.openCount === 0) return count;
   return `${count} · ${borrower.openCount} open`;
 }
+
+/**
+ * Whether the overview stopped at its loan limit, so older loans are missing
+ * from the totals. Not `overview.truncated`: that is the LEDGER's own limit,
+ * a separate one.
+ */
+export function isLoansCapped(loanCount: number): boolean {
+  return loanCount >= BOOKS_OVERVIEW_LOANS;
+}
+
+/** What the By borrower view says when `isLoansCapped`. */
+export const BOOKS_LOANS_CAPPED_NOTE = `Only the newest ${BOOKS_OVERVIEW_LOANS} loans are counted, so older loans are left out of these totals.`;

@@ -31,7 +31,8 @@ rules are `src/react/view/loans.ts`. The overview
 answers it (`borrowers`, from `borrowerTotals`), grouped by NAME — normalised
 and lower-cased, as an investor's `nameKey` is — because a loan has no borrower
 record: "Jun" and "jun" are one borrower, and two people with one name are
-too. It groups the same 500 loans the list shows, so its unpaid total is
+too. It groups the same `BOOKS_OVERVIEW_LOANS` (500) loans the list shows, and says so
+when that many are reached, so its unpaid total is
 `lentOutstanding`. A borrower's loan opens on the Loans view, where repayments
 and lending more are recorded (issue #48).
 
