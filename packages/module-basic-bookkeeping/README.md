@@ -25,7 +25,9 @@ list; `RowButton` is its choice).
 
 **Loans** shows the loans one by one, or **By borrower**: one row per person
 with total borrowed, paid and unpaid, how many loans (and how many are open)
-and the last day anything moved, under a strip of the totals. The overview
+and the last day anything moved, under a strip of the totals. The view picked is
+remembered per device (`kwtech:books-loans-view` in localStorage), and its
+rules are `src/react/view/loans.ts`. The overview
 answers it (`borrowers`, from `borrowerTotals`), grouped by NAME — normalised
 and lower-cased, as an investor's `nameKey` is — because a loan has no borrower
 record: "Jun" and "jun" are one borrower, and two people with one name are

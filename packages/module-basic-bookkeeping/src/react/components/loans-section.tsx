@@ -7,19 +7,36 @@ import type { BooksBorrowerView, BooksLoanView, BooksOverviewView } from '../boo
 import { type BooksContext, useBooksAction, useBooksData } from '../use-books.js';
 import { formatDay, kindLabel, placeLabel, whoName } from '../view/labels.js';
 import { ledgerLines } from '../view/ledger.js';
+import {
+  BOOKS_LOANS_VIEW_STORAGE_KEY,
+  BOOKS_LOANS_VIEWS,
+  type BooksLoansView,
+  borrowerSummary,
+  loanCountLabel,
+  parseLoansView,
+} from '../view/loans.js';
 import { formatPeso, formatSignedPeso } from '../view/money.js';
 import { buttonClass, Modal } from './controls.js';
 import { LendDialog, RecordEntryDialog } from './dialogs.js';
 import { Figure, FormActions, TextField } from './form-fields.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 
-/** The Loans tab lists loans one by one, or added up per borrower. */
-type LoansView = 'loans' | 'borrowers';
+function readLoansView(): BooksLoansView {
+  try {
+    return parseLoansView(window.localStorage.getItem(BOOKS_LOANS_VIEW_STORAGE_KEY));
+  } catch {
+    // Storage is blocked: the tab opens on Loans every time, nothing worse.
+    return 'loans';
+  }
+}
 
-const LOANS_VIEWS: readonly { key: LoansView; label: string }[] = [
-  { key: 'loans', label: 'Loans' },
-  { key: 'borrowers', label: 'By borrower' },
-];
+function writeLoansView(view: BooksLoansView): void {
+  try {
+    window.localStorage.setItem(BOOKS_LOANS_VIEW_STORAGE_KEY, view);
+  } catch {
+    // As above: remembering is a convenience.
+  }
+}
 
 /**
  * Money the business lent: to whom, how much is still owed, and every amount
@@ -39,7 +56,10 @@ export function LoansSection({
   canRecord: boolean;
   onChanged: () => void;
 }) {
-  const [view, setView] = useState<LoansView>('loans');
+  const [view, setView] = useState<BooksLoansView>('loans');
+  // Restored after the first render, not in useState: the server renders
+  // without storage, and a different first frame would not hydrate.
+  useEffect(() => setView(readLoansView()), []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [lending, setLending] = useState<BooksLoanView | 'new' | null>(null);
@@ -91,10 +111,11 @@ export function LoansSection({
           </button>
         ) : null}
         <Tabs
-          tabs={LOANS_VIEWS}
+          tabs={BOOKS_LOANS_VIEWS}
           current={view}
           onChange={(next) => {
             setView(next);
+            writeLoansView(next);
             setSelectedId(null);
             setSelectedKey(null);
           }}
@@ -166,12 +187,7 @@ function BorrowersList({
   selectedKey: string | null;
   onSelect: (key: string) => void;
 }) {
-  const totals = { lent: 0, repaid: 0, owing: 0 };
-  for (const borrower of overview.borrowers) {
-    totals.lent += borrower.lent;
-    totals.repaid += borrower.repaid;
-    if (borrower.outstanding > 0) totals.owing += 1;
-  }
+  const totals = borrowerSummary(overview.borrowers);
 
   return (
     <>
@@ -179,8 +195,8 @@ function BorrowersList({
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 @md:grid-cols-4">
           <Figure label="Total lent" value={formatPeso(totals.lent)} />
           <Figure label="Repaid" value={formatPeso(totals.repaid)} />
-          <Figure label="Unpaid" value={formatPeso(overview.lentOutstanding)} />
-          <Figure label="Still owing" value={`${totals.owing} of ${overview.borrowers.length}`} />
+          <Figure label="Unpaid" value={formatPeso(totals.unpaid)} />
+          <Figure label="Still owing" value={`${totals.owing} of ${totals.borrowers}`} />
         </div>
       ) : null}
       <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
@@ -203,13 +219,6 @@ function BorrowersList({
       </div>
     </>
   );
-}
-
-/** "1 loan", "3 loans · 1 open". */
-function loanCountLabel(borrower: Pick<BooksBorrowerView, 'loanCount' | 'openCount'>): string {
-  const count = borrower.loanCount === 1 ? '1 loan' : `${borrower.loanCount} loans`;
-  if (borrower.loanCount === 1 || borrower.openCount === 0) return count;
-  return `${count} · ${borrower.openCount} open`;
 }
 
 /** One borrower's totals and their loans; a loan opens on the Loans view, where repayments are recorded. */
