@@ -42,6 +42,7 @@ function overview(fields: Partial<BooksOverviewView> = {}): BooksOverviewView {
     investors: [],
     owedToInvestors: 0,
     loans: [],
+    borrowers: [],
     lentOutstanding: 0,
     unsharedFrom: null,
     unshared: null,

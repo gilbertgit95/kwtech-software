@@ -136,6 +136,39 @@ export class BooksLoanType {
   createdAt!: string;
 }
 
+/** One borrower's loans added up, grouped by name (`borrowerTotals`). */
+@ObjectType('BooksBorrower')
+export class BooksBorrowerType {
+  /** The name normalised and lower-cased: what makes two loans the same borrower's. */
+  @Field()
+  key!: string;
+
+  @Field()
+  borrowerName!: string;
+
+  @Field(() => Float)
+  lent!: number;
+
+  @Field(() => Float)
+  repaid!: number;
+
+  @Field(() => Float)
+  outstanding!: number;
+
+  @Field(() => Int)
+  loanCount!: number;
+
+  @Field(() => Int)
+  openCount!: number;
+
+  @Field(() => String, { nullable: true })
+  lastDay!: string | null;
+
+  /** Newest first. */
+  @Field(() => [String])
+  loanIds!: string[];
+}
+
 @ObjectType('BooksSharePart')
 export class BooksSharePartType {
   @Field()
@@ -247,6 +280,9 @@ export class BooksOverviewType {
 
   @Field(() => [BooksLoanType])
   loans!: BooksLoanType[];
+
+  @Field(() => [BooksBorrowerType])
+  borrowers!: BooksBorrowerType[];
 
   @Field(() => Float)
   lentOutstanding!: number;

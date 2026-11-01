@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { investorBalance, investorBalances, loanBalances, moneyOnHand, profitShares } from '../domain/balances.js';
+import { borrowerTotals } from '../domain/borrowers.js';
 import {
   booksDayToDate,
   isBooksMonth,
@@ -120,6 +121,7 @@ export class BooksLedgerService {
       investors,
       owedToInvestors: investors.reduce((sum, investor) => sum + investor.owed, 0),
       loans,
+      borrowers: borrowerTotals(loans),
       lentOutstanding: loans.reduce((sum, loan) => sum + loan.outstanding, 0),
       unsharedFrom,
       unshared,

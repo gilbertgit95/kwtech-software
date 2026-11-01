@@ -1,4 +1,5 @@
 import type { BooksInvestorBalance, BooksLoanBalance, BooksMoney } from '../domain/balances.js';
+import type { BooksBorrowerTotals } from '../domain/borrowers.js';
 import { booksDayFromDate } from '../domain/days.js';
 import type { BooksProfit } from '../domain/profit.js';
 import type { BooksDay } from '../types.js';
@@ -109,6 +110,9 @@ export interface BooksLoanView extends Omit<BooksLoanBalance, 'lastDay'> {
   lastDay: BooksDay | null;
   createdAt: string;
 }
+
+/** One borrower's loans added up (`borrowerTotals`), as the Loans tab's "By borrower" view shows it. */
+export type BooksBorrowerView = BooksBorrowerTotals;
 
 export function renderLoan(row: BooksLoanRow, balance: BooksLoanBalance): BooksLoanView {
   return {
@@ -253,6 +257,8 @@ export interface BooksOverviewView {
   /** Σ what current and former investors are still owed (advances count against it). */
   owedToInvestors: number;
   loans: BooksLoanView[];
+  /** `loans` grouped by borrower name; the same 500 loans, so the totals agree with the list. */
+  borrowers: BooksBorrowerView[];
   lentOutstanding: number;
   /** The first day not yet shared, or null with nothing recorded. */
   unsharedFrom: BooksDay | null;

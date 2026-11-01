@@ -3,7 +3,7 @@
 import { cn, LIST_KEYS, ListDrawer, listNeighbours } from '@kwtech/web-ui/react';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { loanStatement } from '../../domain/statements.js';
-import type { BooksLoanView, BooksOverviewView } from '../books-client.js';
+import type { BooksBorrowerView, BooksLoanView, BooksOverviewView } from '../books-client.js';
 import { type BooksContext, useBooksAction, useBooksData } from '../use-books.js';
 import { formatDay, kindLabel, placeLabel, whoName } from '../view/labels.js';
 import { ledgerLines } from '../view/ledger.js';
@@ -11,12 +11,22 @@ import { formatPeso, formatSignedPeso } from '../view/money.js';
 import { buttonClass, Modal } from './controls.js';
 import { LendDialog, RecordEntryDialog } from './dialogs.js';
 import { Figure, FormActions, TextField } from './form-fields.js';
-import { Alert, Empty, RowButton, StatusChip } from './layout.js';
+import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
+
+/** The Loans tab lists loans one by one, or added up per borrower. */
+type LoansView = 'loans' | 'borrowers';
+
+const LOANS_VIEWS: readonly { key: LoansView; label: string }[] = [
+  { key: 'loans', label: 'Loans' },
+  { key: 'borrowers', label: 'By borrower' },
+];
 
 /**
  * Money the business lent: to whom, how much is still owed, and every amount
  * lent and repaid. A loan is never edited — lending more and repayments are
- * entries — only who it is with.
+ * entries — only who it is with. "By borrower" adds a person's loans up
+ * (grouped by name on the server, `borrowerTotals`), so what one person owes
+ * in all is one row.
  */
 export function LoansSection({
   books,
@@ -29,39 +39,73 @@ export function LoansSection({
   canRecord: boolean;
   onChanged: () => void;
 }) {
+  const [view, setView] = useState<LoansView>('loans');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [lending, setLending] = useState<BooksLoanView | 'new' | null>(null);
   const selected = overview.loans.find((loan) => loan.id === selectedId) ?? null;
-  const around = listNeighbours(
-    overview.loans.map((loan) => loan.id),
-    selected?.id ?? null,
+  const selectedBorrower = overview.borrowers.find((borrower) => borrower.key === selectedKey) ?? null;
+  const showingBorrowers = view === 'borrowers' && selectedBorrower !== null;
+  const around = showingBorrowers
+    ? listNeighbours(
+        overview.borrowers.map((borrower) => borrower.key),
+        selectedBorrower.key,
+      )
+    : listNeighbours(
+        overview.loans.map((loan) => loan.id),
+        selected?.id ?? null,
+      );
+  const step = (to: string | null) => (showingBorrowers ? setSelectedKey(to) : setSelectedId(to));
+  /** From a borrower's list of loans to that loan, on the Loans view where it can be repaid. */
+  const openLoan = (loanId: string) => {
+    setView('loans');
+    setSelectedKey(null);
+    setSelectedId(loanId);
+  };
+
+  const loansList = (
+    <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
+      {overview.loans.length === 0 ? <Empty>The business has not lent anybody money.</Empty> : null}
+      {overview.loans.map((loan) => (
+        <RowButton key={loan.id} selected={loan.id === selectedId} onClick={() => setSelectedId(loan.id)}>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{loan.borrowerName}</span>
+            <span className="text-xs text-muted-foreground">Lent {formatPeso(loan.lent)}</span>
+          </span>
+          {loan.outstanding > 0 ? (
+            <span className="shrink-0 text-xs tabular-nums">Owes {formatPeso(loan.outstanding)}</span>
+          ) : (
+            <StatusChip label="Paid" tone="success" />
+          )}
+        </RowButton>
+      ))}
+    </div>
   );
 
   const list = (
     <>
-      {canRecord ? (
-        <div>
+      <div className="flex flex-wrap items-center gap-2">
+        {canRecord ? (
           <button type="button" className={buttonClass('primary', 'sm')} onClick={() => setLending('new')}>
             Lend money
           </button>
-        </div>
-      ) : null}
-      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
-        {overview.loans.length === 0 ? <Empty>The business has not lent anybody money.</Empty> : null}
-        {overview.loans.map((loan) => (
-          <RowButton key={loan.id} selected={loan.id === selectedId} onClick={() => setSelectedId(loan.id)}>
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate font-medium">{loan.borrowerName}</span>
-              <span className="text-xs text-muted-foreground">Lent {formatPeso(loan.lent)}</span>
-            </span>
-            {loan.outstanding > 0 ? (
-              <span className="shrink-0 text-xs tabular-nums">Owes {formatPeso(loan.outstanding)}</span>
-            ) : (
-              <StatusChip label="Paid" tone="success" />
-            )}
-          </RowButton>
-        ))}
+        ) : null}
+        <Tabs
+          tabs={LOANS_VIEWS}
+          current={view}
+          onChange={(next) => {
+            setView(next);
+            setSelectedId(null);
+            setSelectedKey(null);
+          }}
+          label="Show loans"
+        />
       </div>
+      {view === 'loans' ? (
+        loansList
+      ) : (
+        <BorrowersList overview={overview} selectedKey={selectedKey} onSelect={setSelectedKey} />
+      )}
     </>
   );
 
@@ -70,7 +114,9 @@ export function LoansSection({
       <ListDrawer
         list={list}
         detail={
-          selected ? (
+          showingBorrowers ? (
+            <BorrowerDetail borrower={selectedBorrower} loans={overview.loans} onOpenLoan={openLoan} />
+          ) : view === 'loans' && selected ? (
             <LoanDetail
               key={selected.id}
               books={books}
@@ -82,11 +128,11 @@ export function LoansSection({
             />
           ) : null
         }
-        onClose={() => setSelectedId(null)}
-        label="loan"
+        onClose={() => (showingBorrowers ? setSelectedKey(null) : setSelectedId(null))}
+        label={showingBorrowers ? 'borrower' : 'loan'}
         step={{
-          onPrevious: around.previous ? () => setSelectedId(around.previous) : null,
-          onNext: around.next ? () => setSelectedId(around.next) : null,
+          onPrevious: around.previous ? () => step(around.previous) : null,
+          onNext: around.next ? () => step(around.next) : null,
           position: around.position,
         }}
       />
@@ -97,11 +143,124 @@ export function LoansSection({
         today={overview.today}
         onClose={() => setLending(null)}
         onDone={(loanId) => {
+          setView('loans');
+          setSelectedKey(null);
           setSelectedId(loanId);
           onChanged();
         }}
       />
     </>
+  );
+}
+
+/**
+ * Every borrower, their loans added up, under a strip of the totals. The
+ * unpaid total is the overview's `lentOutstanding` by another road.
+ */
+function BorrowersList({
+  overview,
+  selectedKey,
+  onSelect,
+}: {
+  overview: BooksOverviewView;
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
+}) {
+  const totals = { lent: 0, repaid: 0, owing: 0 };
+  for (const borrower of overview.borrowers) {
+    totals.lent += borrower.lent;
+    totals.repaid += borrower.repaid;
+    if (borrower.outstanding > 0) totals.owing += 1;
+  }
+
+  return (
+    <>
+      {overview.borrowers.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 @md:grid-cols-4">
+          <Figure label="Total lent" value={formatPeso(totals.lent)} />
+          <Figure label="Repaid" value={formatPeso(totals.repaid)} />
+          <Figure label="Unpaid" value={formatPeso(overview.lentOutstanding)} />
+          <Figure label="Still owing" value={`${totals.owing} of ${overview.borrowers.length}`} />
+        </div>
+      ) : null}
+      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto" {...LIST_KEYS}>
+        {overview.borrowers.length === 0 ? <Empty>The business has not lent anybody money.</Empty> : null}
+        {overview.borrowers.map((borrower) => (
+          <RowButton key={borrower.key} selected={borrower.key === selectedKey} onClick={() => onSelect(borrower.key)}>
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-medium">{borrower.borrowerName}</span>
+              <span className="text-xs text-muted-foreground">
+                Lent {formatPeso(borrower.lent)} · {loanCountLabel(borrower)}
+              </span>
+            </span>
+            {borrower.outstanding > 0 ? (
+              <span className="shrink-0 text-xs tabular-nums">Owes {formatPeso(borrower.outstanding)}</span>
+            ) : (
+              <StatusChip label="Paid" tone="success" />
+            )}
+          </RowButton>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/** "1 loan", "3 loans · 1 open". */
+function loanCountLabel(borrower: Pick<BooksBorrowerView, 'loanCount' | 'openCount'>): string {
+  const count = borrower.loanCount === 1 ? '1 loan' : `${borrower.loanCount} loans`;
+  if (borrower.loanCount === 1 || borrower.openCount === 0) return count;
+  return `${count} · ${borrower.openCount} open`;
+}
+
+/** One borrower's totals and their loans; a loan opens on the Loans view, where repayments are recorded. */
+function BorrowerDetail({
+  borrower,
+  loans,
+  onOpenLoan,
+}: {
+  borrower: BooksBorrowerView;
+  loans: readonly BooksLoanView[];
+  onOpenLoan: (loanId: string) => void;
+}) {
+  const byId = new Map(loans.map((loan) => [loan.id, loan]));
+  const theirs = borrower.loanIds.flatMap((id) => {
+    const loan = byId.get(id);
+    return loan ? [loan] : [];
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <header>
+        <h2 className="text-lg font-semibold tracking-tight">{borrower.borrowerName}</h2>
+        <p className="text-xs text-muted-foreground">
+          {loanCountLabel(borrower)}
+          {borrower.lastDay ? ` · last activity ${formatDay(borrower.lastDay)}` : ''}
+        </p>
+      </header>
+      <div className="grid grid-cols-3 gap-3 rounded-lg border border-border p-3">
+        <Figure label="Total borrowed" value={formatPeso(borrower.lent)} />
+        <Figure label="Paid" value={formatPeso(borrower.repaid)} />
+        <Figure label="Unpaid" value={formatPeso(borrower.outstanding)} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {theirs.map((loan) => (
+          <RowButton key={loan.id} selected={false} onClick={() => onOpenLoan(loan.id)}>
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-medium">Lent {formatPeso(loan.lent)}</span>
+              <span className="text-xs text-muted-foreground">
+                Repaid {formatPeso(loan.repaid)}
+                {loan.lastDay ? ` · ${formatDay(loan.lastDay)}` : ''}
+              </span>
+            </span>
+            {loan.outstanding > 0 ? (
+              <span className="shrink-0 text-xs tabular-nums">Owes {formatPeso(loan.outstanding)}</span>
+            ) : (
+              <StatusChip label="Paid" tone="success" />
+            )}
+          </RowButton>
+        ))}
+      </div>
+    </div>
   );
 }
 

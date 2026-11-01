@@ -15,6 +15,7 @@ const PROFIT = 'sales refunds costOfGoods expenses profit purchases';
 const INVESTOR =
   'id name contact note agreedShare formerAt putIn reinvested capitalReturned capital profitShared paidOut owed share';
 const LOAN = 'id borrowerName contact note lent repaid outstanding lastDay createdAt';
+const BORROWER = 'key borrowerName lent repaid outstanding loanCount openCount lastDay loanIds';
 const PART = 'investorId share amount';
 const SHARE = `id fromDay toDay sales refunds costOfGoods expenses profit kept shared parts { ${PART} } recordedById recordedByName recordedAt voidedAt voidReason`;
 const ENTRY =
@@ -34,7 +35,7 @@ export const BOOKS_OPERATIONS = {
     booksOverview(${SCOPE_ARGS}) {
       timeZone today money { ${MONEY} } shareMode sharedThrough
       investors { ${INVESTOR} } owedToInvestors
-      loans { ${LOAN} } lentOutstanding
+      loans { ${LOAN} } borrowers { ${BORROWER} } lentOutstanding
       unsharedFrom unshared { ${PROFIT} }
       months { month ${PROFIT} }
       shares { ${SHARE} }

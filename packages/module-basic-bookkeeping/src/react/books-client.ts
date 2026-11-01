@@ -67,6 +67,20 @@ export interface BooksLoanView {
   createdAt: string;
 }
 
+/** One borrower's loans added up, grouped by name. */
+export interface BooksBorrowerView {
+  key: string;
+  borrowerName: string;
+  lent: number;
+  repaid: number;
+  outstanding: number;
+  loanCount: number;
+  openCount: number;
+  lastDay: string | null;
+  /** Newest first. */
+  loanIds: string[];
+}
+
 export interface BooksSharePartView {
   investorId: string;
   share: number;
@@ -105,6 +119,7 @@ export interface BooksOverviewView {
   investors: BooksInvestorView[];
   owedToInvestors: number;
   loans: BooksLoanView[];
+  borrowers: BooksBorrowerView[];
   lentOutstanding: number;
   unsharedFrom: string | null;
   unshared: BooksProfitView | null;
