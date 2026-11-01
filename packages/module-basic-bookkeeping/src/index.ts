@@ -11,6 +11,7 @@
  */
 
 export * from './domain/balances.js';
+export * from './domain/borrowers.js';
 export * from './domain/days.js';
 export * from './domain/entries.js';
 export * from './domain/investors.js';

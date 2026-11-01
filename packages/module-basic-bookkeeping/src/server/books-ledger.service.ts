@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { investorBalance, investorBalances, loanBalances, moneyOnHand, profitShares } from '../domain/balances.js';
+import { BOOKS_OVERVIEW_LOANS, borrowerTotals } from '../domain/borrowers.js';
 import {
   booksDayToDate,
   isBooksMonth,
@@ -67,7 +68,11 @@ export class BooksLedgerService {
       readSettings(this.prisma, scope),
       readEntries(this.prisma, { ...scope, voidedAt: null }),
       this.prisma.booksInvestor.findMany({ where: scope, orderBy: [{ name: 'asc' }, { id: 'asc' }], take: 500 }),
-      this.prisma.booksLoan.findMany({ where: scope, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 500 }),
+      this.prisma.booksLoan.findMany({
+        where: scope,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: BOOKS_OVERVIEW_LOANS,
+      }),
       allImports(this.prisma, scope),
       this.prisma.booksProfitShare.findMany({
         where: scope,
@@ -120,6 +125,7 @@ export class BooksLedgerService {
       investors,
       owedToInvestors: investors.reduce((sum, investor) => sum + investor.owed, 0),
       loans,
+      borrowers: borrowerTotals(loans),
       lentOutstanding: loans.reduce((sum, loan) => sum + loan.outstanding, 0),
       unsharedFrom,
       unshared,

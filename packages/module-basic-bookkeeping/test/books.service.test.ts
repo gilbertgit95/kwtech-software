@@ -286,6 +286,36 @@ describe('loans', () => {
     expect([overview.lentOutstanding, overview.money.cash]).toEqual([400_000, -400_000]);
   });
 
+  it('adds up loans with the same borrower name in the overview, whatever the case', async () => {
+    const h = harness();
+    const first = await h.entries.lend(
+      SCOPE,
+      ANA,
+      { borrowerName: 'Jun', amount: 500_000, place: 'cash', day: '2026-09-10', clientId: cid() },
+      NOW,
+    );
+    await record(h, { kind: 'loan_repayment', amount: 500_000, loanId: first.id, day: '2026-09-20' });
+    await h.entries.lend(
+      SCOPE,
+      ANA,
+      { borrowerName: 'jun', amount: 200_000, place: 'cash', day: '2026-09-25', clientId: cid() },
+      NOW,
+    );
+    await h.entries.lend(
+      SCOPE,
+      ANA,
+      { borrowerName: 'Ria', amount: 100_000, place: 'cash', day: '2026-09-26', clientId: cid() },
+      NOW,
+    );
+
+    const overview = await h.ledger.overview(SCOPE, NOW);
+    expect(overview.borrowers.map((b) => [b.key, b.lent, b.repaid, b.outstanding, b.loanCount, b.openCount])).toEqual([
+      ['jun', 700_000, 500_000, 200_000, 2, 1],
+      ['ria', 100_000, 0, 100_000, 1, 1],
+    ]);
+    expect(overview.borrowers.reduce((sum, b) => sum + b.outstanding, 0)).toBe(overview.lentOutstanding);
+  });
+
   it('needs a borrower for a new loan', async () => {
     const h = harness();
     await refusedWith(

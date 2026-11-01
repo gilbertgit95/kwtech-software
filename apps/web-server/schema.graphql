@@ -319,6 +319,18 @@ input BookingSettingsInput {
   slotMinutes: Int
 }
 
+type BooksBorrower {
+  borrowerName: String!
+  key: String!
+  lastDay: String
+  lent: Float!
+  loanCount: Int!
+  loanIds: [String!]!
+  openCount: Int!
+  outstanding: Float!
+  repaid: Float!
+}
+
 type BooksEntries {
   entries: [BooksEntry!]!
   opening: Float!
@@ -401,6 +413,7 @@ type BooksMonthProfit {
 }
 
 type BooksOverview {
+  borrowers: [BooksBorrower!]!
   investors: [BooksInvestor!]!
   lentOutstanding: Float!
   loans: [BooksLoan!]!

@@ -23,6 +23,19 @@ Investors, Loans, and Settings for `books:manage_investors`. The investors and
 loans lists take ↑ ↓ and Enter (`LIST_KEYS` from `@kwtech/web-ui/react`, on the
 list; `RowButton` is its choice).
 
+**Loans** shows the loans one by one, or **By borrower**: one row per person
+with total borrowed, paid and unpaid, how many loans (and how many are open)
+and the last day anything moved, under a strip of the totals. The view picked is
+remembered per device (`kwtech:books-loans-view` in localStorage), and its
+rules are `src/react/view/loans.ts`. The overview
+answers it (`borrowers`, from `borrowerTotals`), grouped by NAME — normalised
+and lower-cased, as an investor's `nameKey` is — because a loan has no borrower
+record: "Jun" and "jun" are one borrower, and two people with one name are
+too. It groups the same `BOOKS_OVERVIEW_LOANS` (500) loans the list shows, and says so
+when that many are reached, so its unpaid total is
+`lentOutstanding`. A borrower's loan opens on the Loans view, where repayments
+and lending more are recorded (issue #48).
+
 **Money** reads any run of days: quick periods (this month, last month, last 7
 and 30 days, this year), or two days from `web-ui`'s `DatePicker` (given the
 workspace's today), stepped with ← →. `booksEntries(fromDay, toDay)` answers
@@ -103,7 +116,7 @@ read the overview again.
 ## The domain entry point
 
 `@kwtech/module-basic-bookkeeping` is pure: `moneyOnHand`, `investorBalances`,
-`loanBalances`, `profitShares`, `allocate` (largest remainder, to the centavo),
+`loanBalances`, `borrowerTotals` and `borrowerKey`, `profitShares`, `allocate` (largest remainder, to the centavo),
 `profitBetween`, `profitByMonth`, `planProfitShare`, `checkInvestorEntry`,
 `checkLoanRepayment`, `prepareBooksEntry`, `prepareBooksDay`, the statements
 (`investorStatement`, `loanStatement`, `cashBook`), the registry, presets and
