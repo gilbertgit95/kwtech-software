@@ -35,6 +35,9 @@ export const TABLES = [
   'posRefundLine',
   'posCounter',
   'posSettings',
+  'posItemRank',
+  'posVariantRank',
+  'posRanking',
 ] as const;
 export type TableName = (typeof TABLES)[number];
 export type FakeState = Record<TableName, Row[]>;
@@ -52,6 +55,9 @@ const UNIQUES: Record<TableName, string[][]> = {
   posRefundLine: [['id']],
   posCounter: [['workspaceId']],
   posSettings: [['workspaceId']],
+  posItemRank: [['workspaceId', 'itemId']],
+  posVariantRank: [['workspaceId', 'variantId']],
+  posRanking: [['workspaceId']],
 };
 
 /** Relation filters the services send, and how to follow them. */
@@ -170,6 +176,10 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     createdAt: now,
     updatedAt: now,
   }),
+  // Keyed by their composite ids, which the service always writes: no generated id.
+  posItemRank: () => ({}),
+  posVariantRank: () => ({}),
+  posRanking: () => ({}),
 };
 
 export function emptyState(): FakeState {
@@ -325,6 +335,18 @@ export function fakeClient(state: FakeState = emptyState()): FakeClient {
       },
       count: async ({ where }: { where: Where }) => state[table].filter((row) => matches(table, row, where)).length,
       create,
+      // All or nothing, as one INSERT is: a clash part way leaves none of the rows.
+      createMany: async ({ data }: { data: Row[] }) => {
+        // A copy: `create` pushes onto the live array, which is what a clash must undo.
+        const before = [...state[table]];
+        try {
+          for (const row of data) await create({ data: row });
+        } catch (error) {
+          state[table] = before;
+          throw error;
+        }
+        return { count: data.length };
+      },
       updateMany: async ({ where, data }: { where: Where; data: Row }) => {
         const rows = state[table].filter((row) => matches(table, row, where));
         for (const row of rows) apply(table, row, data);

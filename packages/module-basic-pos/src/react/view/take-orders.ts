@@ -6,6 +6,7 @@ import type {
   PosOrderSummaryView,
   PosOrderTypeOptionView,
 } from '../pos-client.js';
+import type { PosRankMap } from './popularity.js';
 import { gridItems, sellOrder } from './till.js';
 
 /**
@@ -27,8 +28,9 @@ export interface PosItemGroup {
 
 /**
  * The items to sell, grouped by category (issue #21's "beef ▸ bulalo,
- * balbacua"): the categories in the store's order, each item by name, and
- * the uncategorised ones last as "Other". A group with nothing to sell is
+ * balbacua"): the categories in the store's order, each item most ordered
+ * first (issue #47) and then by name, and the uncategorised ones last as
+ * "Other". A group with nothing to sell is
  * left out, so an empty heading never has to be opened to find that out.
  *
  * ⚠ An item whose category is archived goes under Other rather than out of
@@ -38,12 +40,12 @@ export interface PosItemGroup {
  * ones that can be sold, and a group with NOTHING to sell right now comes
  * after the groups that still have something. Both follow the switch live.
  */
-export function itemGroups(catalogue: PosCatalogueView): PosItemGroup[] {
+export function itemGroups(catalogue: PosCatalogueView, ranks: PosRankMap | null): PosItemGroup[] {
   const live = catalogue.categories
     .filter((category) => category.archivedAt === null)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
   const liveIds = new Set(live.map((category) => category.id));
-  const items = sellOrder(gridItems(catalogue, null));
+  const items = sellOrder(gridItems(catalogue, null), ranks);
   const groups: PosItemGroup[] = live.map((category) => ({
     id: category.id,
     name: category.name,

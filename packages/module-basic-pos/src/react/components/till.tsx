@@ -142,7 +142,10 @@ export function Till({
   const open = order?.status === 'open' ? order : null;
   const finished = order && order.status !== 'open' ? order : null;
 
-  const searchable = useMemo(() => (catalogue ? searchCatalogue(catalogue) : []), [catalogue]);
+  const searchable = useMemo(
+    () => (catalogue ? searchCatalogue(catalogue, state.ranks) : []),
+    [catalogue, state.ranks],
+  );
   const parsed = parseQuantityPrefix(query);
   const quantity = 'refused' in parsed ? null : parsed.quantity;
   const results: PosSearchResult[] = 'refused' in parsed ? [] : searchItems(searchable, parsed.text);
@@ -557,6 +560,7 @@ export function Till({
         <VariantPicker
           item={dialog.kind === 'variant' ? dialog.item : null}
           stock={state.stock}
+          ranks={state.ranks}
           onPick={(variantId) => {
             if (dialog.kind === 'variant') void add(dialog.item.id, variantId, dialog.quantity);
           }}
@@ -778,7 +782,7 @@ function ItemGrid({
 }) {
   const { catalogue } = state;
   if (!catalogue) return <p className="text-sm text-muted-foreground">Loading items…</p>;
-  const items = sellOrder(gridItems(catalogue, categoryId));
+  const items = sellOrder(gridItems(catalogue, categoryId), state.ranks);
   const categories = gridCategories(catalogue);
   if (catalogue.items.length === 0) {
     return (

@@ -18,6 +18,7 @@ import { PosCatalogueService } from './pos-catalogue.service.js';
 import { PosCustomerService } from './pos-customer.service.js';
 import { PosOrderService } from './pos-order.service.js';
 import { PosOrderWriteService } from './pos-order-write.service.js';
+import { PosRankItemsProcess } from './pos-rank.process.js';
 import { PosRefundService } from './pos-refund.service.js';
 import { PosReportService } from './pos-report.service.js';
 import { PosSettingsService } from './pos-settings.service.js';
@@ -36,6 +37,8 @@ const SERVICES = [
   PosReportService,
   PosStockService,
   PosEventPublisher,
+  // Resolved by the background runner from this module's container (`processes` in server-module.ts).
+  PosRankItemsProcess,
 ] as const;
 
 /**

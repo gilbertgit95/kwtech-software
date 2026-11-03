@@ -288,6 +288,12 @@ export interface PosStockLevelsView {
   levels: { itemId: string; variantId: string | null; left: number | null }[];
 }
 
+/** The store's "most ordered" ranking (issue #47): 1 is the most; what is not listed has no rank. */
+export interface PosRanksView {
+  items: { id: string; rank: number }[];
+  variants: { id: string; rank: number }[];
+}
+
 export interface PosEventView {
   /** `sync`, `catalogue`, `customers`, `settings`, `order` or `stock`. */
   kind: string;
@@ -342,6 +348,8 @@ export interface PosRefundInput {
 export interface PosClient {
   catalogue(scope: PosScopeView, includeArchived?: boolean): Promise<PosCatalogueView>;
   stockLevels(scope: PosScopeView): Promise<PosStockLevelsView>;
+  /** "Most ordered first" (issue #47). Read once per sell view, never on a live event. */
+  ranks(scope: PosScopeView): Promise<PosRanksView>;
   saveItem(scope: PosScopeView, input: PosItemInput): Promise<PosItemView>;
   setItemArchived(scope: PosScopeView, itemId: string, archived: boolean): Promise<PosItemView>;
   /** "Not available" (false) or back on sale (true), for items and variants at once: all or nothing (issue #37). */
@@ -490,6 +498,7 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
   return {
     catalogue: (scope, includeArchived = false) => call('posCatalogue', scope, { includeArchived }),
     stockLevels: (scope) => call('posStockLevels', scope, {}),
+    ranks: (scope) => call('posRanks', scope, {}),
     saveItem: (scope, input) => call('savePosItem', scope, { input }),
     setItemArchived: (scope, itemId, archived) => call('setPosItemArchived', scope, { itemId, archived }),
     setAvailability: (scope, target, available) =>

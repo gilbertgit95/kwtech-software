@@ -140,7 +140,7 @@ const line = (overrides: Partial<PosOrderLineView>): PosOrderLineView => ({
 
 describe('the till’s view rules', () => {
   it('feeds the search the catalogue with category names and archived flags', () => {
-    const lamination = searchCatalogue(CATALOGUE)[0];
+    const lamination = searchCatalogue(CATALOGUE, null)[0];
     expect(lamination).toMatchObject({
       categoryName: 'Lamination',
       variants: [{ archived: false }, { archived: true }],

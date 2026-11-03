@@ -15,6 +15,7 @@ import {
   type PosOrderView,
   type PosScopeView,
 } from './pos-client.js';
+import { type PosRankMap, rankMap } from './view/popularity.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
 /** How long after the last event the till reads again — a burst of events is one read. */
@@ -55,6 +56,12 @@ export interface TillState {
   catalogue: PosCatalogueView | null;
   /** How many are left per item and variant, from the stock app; null when the store counts no stock. */
   stock: PosStockMap | null;
+  /**
+   * The store's "most ordered" ranking (issue #47); null until read, or when it
+   * could not be — the sell views then keep their old order. ⚠ READ ONCE, when
+   * the till opens, never on a live event: tiles must not move mid-order.
+   */
+  ranks: PosRankMap | null;
   keymap: PosKeymap;
   /** The store's order reference options (issue #30), in its order; empty for none — the plain text box. */
   referenceOptions: readonly string[];
@@ -112,6 +119,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
 
   const [catalogue, setCatalogue] = useState<PosCatalogueView | null>(null);
   const [stock, setStock] = useState<PosStockMap | null>(null);
+  const [ranks, setRanks] = useState<PosRankMap | null>(null);
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
   const [referenceOptions, setReferenceOptions] = useState<readonly string[]>([]);
   // The workspace's zone, from the app's shell: receipts and "today" follow it.
@@ -174,6 +182,15 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     }
   }, [client, scope]);
 
+  const loadRanks = useCallback(async () => {
+    try {
+      setRanks(rankMap(await client.ranks(scope)));
+    } catch {
+      // A courtesy, like the counts: without it the till lists by name, and sells the same.
+      setRanks(null);
+    }
+  }, [client, scope]);
+
   const reloadPending = useCallback(async () => {
     try {
       setPending(await client.orders(scope, 'pending'));
@@ -216,8 +233,10 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     void loadCatalogue();
     void loadSettings();
     void loadStock();
+    // ⚠ Here only, never in `onEvent` below: the ranking is fixed while the till is open.
+    void loadRanks();
     void reloadPending();
-  }, [loadCatalogue, loadSettings, loadStock, reloadPending]);
+  }, [loadCatalogue, loadSettings, loadStock, loadRanks, reloadPending]);
 
   // ── live ──────────────────────────────────────────────────────────────────
 
@@ -319,6 +338,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     client,
     catalogue,
     stock,
+    ranks,
     keymap,
     referenceOptions,
     timeZone,

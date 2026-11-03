@@ -2,6 +2,7 @@ import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { POS_AVAILABILITY_BATCH_MAX, preparePosAvailabilityTargets } from '../domain/availability.js';
 import { checkPosCost, checkPosPrice } from '../domain/money.js';
+import { rankPosOrders } from '../domain/popularity.js';
 import { preparePosCode, preparePosDescription, preparePosName } from '../domain/text.js';
 import { POS_LIMIT, POS_LIMIT_REGISTRY } from '../feature-keys.js';
 import type { PosItemKind, PosRefusal } from '../types.js';
@@ -54,6 +55,21 @@ export interface PosCatalogue {
   /** The store's order types, in its order. Loaded with the catalogue, so a new one reaches every till live. */
   orderTypes: readonly PosOrderTypeRow[];
   items: readonly PosCatalogueItem[];
+}
+
+/** One item's or variant's place in the store's "most ordered" ranking: 1 is the most. */
+export interface PosRank {
+  id: string;
+  rank: number;
+}
+
+/**
+ * The store's last daily ranking (issue #47), as the sell views sort by it.
+ * Only what was ordered in the window is listed; anything else has no rank.
+ */
+export interface PosRanks {
+  items: readonly PosRank[];
+  variants: readonly PosRank[];
 }
 
 export interface SavePosVariantInput {
@@ -162,6 +178,29 @@ export class PosCatalogueService {
       take: POS_CATALOGUE_READ_MAX,
     });
     return { categories, orderTypes, items: items.map((item) => withVariants(item, variants)) };
+  }
+
+  /**
+   * The store's "most ordered" ranking (issue #47), from the snapshot the daily
+   * `pos.rank_items` run keeps — two small reads by workspace, and ⚠ NEVER A
+   * READ OF ORDER LINES: a till opening at the busiest hour costs what it
+   * always did. Ranks, never the counts: what sells how much is the reports'.
+   *
+   * Its own query rather than a field on the catalogue: the catalogue is read
+   * again on every live change (a price, a switch), and the ranking must not
+   * move with it — a till takes it once, when a sell view opens.
+   */
+  async ranks(scope: InScope): Promise<PosRanks> {
+    const where = { workspaceId: scope.workspaceId };
+    const [items, variants] = await Promise.all([
+      this.prisma.posItemRank.findMany({ where, take: POS_CATALOGUE_READ_MAX }),
+      this.prisma.posVariantRank.findMany({ where, take: POS_CATALOGUE_READ_MAX }),
+    ]);
+    const asRanks = (ranks: Map<string, number>): PosRank[] => [...ranks].map(([id, rank]) => ({ id, rank }));
+    return {
+      items: asRanks(rankPosOrders(items.map((row) => ({ id: row.itemId, orders: row.orders })))),
+      variants: asRanks(rankPosOrders(variants.map((row) => ({ id: row.variantId, orders: row.orders })))),
+    };
   }
 
   // ── categories ────────────────────────────────────────────────────────────

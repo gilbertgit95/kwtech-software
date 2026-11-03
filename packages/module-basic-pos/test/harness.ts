@@ -10,6 +10,7 @@ import { PosCatalogueService } from '../src/server/pos-catalogue.service.js';
 import { PosCustomerService } from '../src/server/pos-customer.service.js';
 import { PosOrderService } from '../src/server/pos-order.service.js';
 import { PosOrderWriteService } from '../src/server/pos-order-write.service.js';
+import { PosRankItemsProcess } from '../src/server/pos-rank.process.js';
 import { PosRefundService } from '../src/server/pos-refund.service.js';
 import { PosReportService } from '../src/server/pos-report.service.js';
 import { PosSettingsService } from '../src/server/pos-settings.service.js';
@@ -84,6 +85,7 @@ export function harness(options: HarnessOptions = {}) {
     describe: async (ids) => ids.map((userId) => ({ userId, displayName: userId.replace('user-', '') })),
   });
   const orderResolver = new PosOrderResolver(orders, writes, refunds, reports, access, moduleOptions);
+  const ranker = new PosRankItemsProcess(prisma);
   return {
     prisma,
     pubsub,
@@ -99,6 +101,7 @@ export function harness(options: HarnessOptions = {}) {
     reports,
     stock,
     orderResolver,
+    ranker,
   };
 }
 

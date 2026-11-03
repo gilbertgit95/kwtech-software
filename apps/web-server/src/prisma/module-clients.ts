@@ -357,6 +357,9 @@ export const posWritePrismaProvider: Provider = {
       posRefundLine: prisma.posRefundLine,
       posCounter: prisma.posCounter,
       posSettings: prisma.posSettings,
+      posItemRank: prisma.posItemRank,
+      posVariantRank: prisma.posVariantRank,
+      posRanking: prisma.posRanking,
     }),
 };
 

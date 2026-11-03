@@ -75,11 +75,14 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
     return () => clearTimeout(timer);
   }, [passingNotice]);
 
-  const groups = useMemo(() => (catalogue ? itemGroups(catalogue) : []), [catalogue]);
+  const groups = useMemo(() => (catalogue ? itemGroups(catalogue, state.ranks) : []), [catalogue, state.ranks]);
   /** Which groups are open; null until the seller first taps one, so the default follows the catalogue. */
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string> | null>(null);
   const shownGroups = openGroups ?? initiallyOpenGroups(groups);
-  const searchable = useMemo(() => (catalogue ? searchCatalogue(catalogue) : []), [catalogue]);
+  const searchable = useMemo(
+    () => (catalogue ? searchCatalogue(catalogue, state.ranks) : []),
+    [catalogue, state.ranks],
+  );
   const results = query.trim() ? searchItems(searchable, query) : [];
   const isHeld = open !== null && state.pending.some((one) => one.id === open.id);
 
@@ -498,6 +501,7 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
         <VariantPicker
           item={variantItem}
           stock={state.stock}
+          ranks={state.ranks}
           onPick={(variantId) => {
             if (variantItem) void add(variantItem.id, variantId);
           }}
@@ -756,7 +760,7 @@ function ItemDetailsSheet({
   onAdd: (variantId: string | null) => void;
   onClose: () => void;
 }) {
-  const variants = item ? pickerVariants(item) : [];
+  const variants = item ? pickerVariants(item, state.ranks) : [];
   const onSale = item ? isPosItemAvailable(item) : false;
   const price = item ? priceRange(item) : { min: 0, max: 0 };
   return (

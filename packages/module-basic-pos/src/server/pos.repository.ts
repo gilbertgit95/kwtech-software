@@ -245,6 +245,30 @@ export interface PosSettingsRow {
   updatedAt: Date;
 }
 
+/** How many orders included an item in its store's last ranking window (issue #47). A snapshot row. */
+export interface PosItemRankRow extends InScope {
+  itemId: string;
+  orders: number;
+}
+
+/** The same per variant. */
+export interface PosVariantRankRow extends InScope {
+  itemId: string;
+  variantId: string;
+  orders: number;
+}
+
+/** Which day a store was last ranked for: the daily run's "done today". */
+export interface PosRankingRow extends InScope {
+  /** The store's day, as a `@db.Date` (UTC midnight of that day key). */
+  rankedFor: Date;
+  outcome: PosRankingOutcome;
+  rankedAt: Date;
+}
+
+/** What the daily run did for a store's day: ranked it, or came too late and left the old ranking. */
+export type PosRankingOutcome = 'ranked' | 'skipped_late';
+
 /** Live rows, or archived ones. */
 type ArchivedFilter = null | { not: null };
 
@@ -277,6 +301,8 @@ export interface PosOrderListWhere extends InScope {
   paidAt?: { gte: Date; lt: Date } | { lt: Date };
   /** `{ gte }` alone: the stock feed, everything finalised since its cursor. */
   finalisedAt?: { gte: Date; lt: Date } | { gte: Date };
+  /** Keyset paging by id: the ranking run reads a week of orders a page at a time. */
+  id?: { gt: string };
   voidedAt?: { gte: Date };
   cancelledAt?: { gte: Date; lt: Date };
   OR?: Array<
@@ -504,6 +530,32 @@ export interface PosTransaction {
       create: InScope & { nextNumber: number };
       update: { nextNumber: { increment: 1 } };
     }): Promise<PosCounterRow>;
+  };
+
+  /**
+   * The daily "most ordered" snapshot (issue #47). ⚠ WRITTEN ONLY BY THE
+   * `pos.rank_items` RUN, replaced whole in one transaction (delete the
+   * store's rows, write the new ones); a sale never touches it.
+   */
+  posItemRank: {
+    findMany(args: { where: { workspaceId: string }; take: number }): Promise<PosItemRankRow[]>;
+    deleteMany(args: { where: { workspaceId: string } }): Promise<{ count: number }>;
+    createMany(args: { data: PosItemRankRow[] }): Promise<{ count: number }>;
+  };
+
+  posVariantRank: {
+    findMany(args: { where: { workspaceId: string }; take: number }): Promise<PosVariantRankRow[]>;
+    deleteMany(args: { where: { workspaceId: string } }): Promise<{ count: number }>;
+    createMany(args: { data: PosVariantRankRow[] }): Promise<{ count: number }>;
+  };
+
+  posRanking: {
+    findUnique(args: { where: { workspaceId: string } }): Promise<PosRankingRow | null>;
+    upsert(args: {
+      where: { workspaceId: string };
+      create: PosRankingRow;
+      update: { rankedFor: Date; outcome: PosRankingOutcome; rankedAt: Date };
+    }): Promise<PosRankingRow>;
   };
 
   posSettings: {

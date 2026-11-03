@@ -1,15 +1,17 @@
 import { availableFirst, isPosItemAvailable, isPosVariantAvailable } from '../../domain/availability.js';
 import { checkPosQuantity, POS_QUANTITY_MAX } from '../../domain/money.js';
+import { byPopularity } from '../../domain/popularity.js';
 import type { PosSearchItem } from '../../domain/search.js';
 import type { PosCatalogueView, PosItemView, PosOrderLineView } from '../pos-client.js';
+import { itemRank, type PosRankMap, variantRank } from './popularity.js';
 
 /**
  * The till's view rules: what the search and the grid show, and what a held
  * order's lines should say about prices that moved. Pure, and tested.
  */
 
-/** The catalogue as `searchItems` reads it (D19). */
-export function searchCatalogue(catalogue: PosCatalogueView): PosSearchItem[] {
+/** The catalogue as `searchItems` reads it (D19), with the store's ranking (issue #47) for equal matches. */
+export function searchCatalogue(catalogue: PosCatalogueView, ranks: PosRankMap | null): PosSearchItem[] {
   const categories = new Map(catalogue.categories.map((category) => [category.id, category.name]));
   return catalogue.items.map((item) => ({
     id: item.id,
@@ -19,6 +21,7 @@ export function searchCatalogue(catalogue: PosCatalogueView): PosSearchItem[] {
     price: item.price,
     archived: item.archivedAt !== null,
     unavailable: item.unavailableAt !== null,
+    popularity: itemRank(ranks, item.id),
     variants: item.variants.map((variant) => ({
       id: variant.id,
       name: variant.name,
@@ -26,6 +29,7 @@ export function searchCatalogue(catalogue: PosCatalogueView): PosSearchItem[] {
       price: variant.price,
       archived: variant.archivedAt !== null,
       unavailable: variant.unavailableAt !== null,
+      popularity: variantRank(ranks, variant.id),
     })),
   }));
 }
@@ -37,11 +41,12 @@ export function liveVariants(item: PosItemView): PosItemView['variants'] {
 
 /**
  * The sizes the picker offers: the live ones, those that can be sold first
- * and the not-available ones after, greyed out (issue #37) — each half in the
- * store's order.
+ * and the not-available ones after, greyed out (issue #37) — each half most
+ * ordered first (issue #47), then in the store's order.
  */
-export function pickerVariants(item: PosItemView): PosItemView['variants'] {
-  return availableFirst(liveVariants(item), (variant) => isPosVariantAvailable(item, variant));
+export function pickerVariants(item: PosItemView, ranks: PosRankMap | null): PosItemView['variants'] {
+  const ranked = byPopularity(liveVariants(item), (variant) => variantRank(ranks, variant.id));
+  return availableFirst(ranked, (variant) => isPosVariantAvailable(item, variant));
 }
 
 /** The price range a tile shows: one price, or "₱20–₱60" across its variants. */
@@ -62,14 +67,18 @@ export function gridItems(catalogue: PosCatalogueView, categoryId: string | null
 }
 
 /**
- * The order every sell view shows items in (issue #37): those that can be sold
- * first, then the not-available ones, greyed out — each half keeping the order
- * it came in. Applied on top of `gridItems`, never inside it: the printed
- * price list reads `gridItems` too, and a size out for the afternoon does not
- * move on paper.
+ * The order every sell view shows items in: those that can be sold first,
+ * then the not-available ones, greyed out (issue #37) — each half most ordered
+ * first (issue #47), and ties and the unranked keeping the order they came in
+ * (by name). Applied on top of `gridItems`, never inside it: the printed price
+ * list reads `gridItems` too, and neither a size out for the afternoon nor
+ * last week's best seller moves anything on paper.
  */
-export function sellOrder(items: readonly PosItemView[]): PosItemView[] {
-  return availableFirst(items, isPosItemAvailable);
+export function sellOrder(items: readonly PosItemView[], ranks: PosRankMap | null): PosItemView[] {
+  return availableFirst(
+    byPopularity(items, (item) => itemRank(ranks, item.id)),
+    isPosItemAvailable,
+  );
 }
 
 /**
