@@ -68,6 +68,14 @@ describe('column kinds', () => {
     expect(cellIn(column, '1,200')).toEqual({ value: 1200 });
     expect(cellIn(column, 2.5)).toEqual({ refused: 'Write a whole number.' });
     expect(cellIn(column, 'three')).toEqual({ refused: 'Write a whole number.' });
+    expect(cellIn(column, '-2')).toEqual({ value: -2 });
+  });
+
+  it('⚠ integer: refuses text that Number() would read as a number nobody typed', () => {
+    const column = text('Sort order', { kind: 'integer' });
+    for (const typed of ['2,5', '1,2,3', '1e3', '0x10', '12,00', ' ', 'Infinity', '1.0']) {
+      expect(cellIn(column, typed)).toEqual(typed.trim() ? { refused: 'Write a whole number.' } : { value: null });
+    }
   });
 
   it('money: pesos to centavos, as a number or as text with ₱ and thousands commas', () => {
@@ -289,6 +297,16 @@ describe('the import plan', () => {
       'Rows 2, 3 are the same existing row. Keep one.',
       'Rows 2, 3 are the same existing row. Keep one.',
     ]);
+  });
+
+  it('⚠ never guesses between two existing rows that share a code, and archives neither', () => {
+    const copy: Existing = { ...LATTE, id: 'i8', name: 'Latte copy' };
+    const result = plan([{ code: 'LAT', name: 'Latte', price: 1 }], [LATTE, copy, MOCHA], { mode: 'replace' });
+    expect(result.steps).toEqual([]);
+    expect(result.problems.map((problem) => problem.message)).toEqual([
+      '2 existing rows have the code LAT. Give each its own code first.',
+    ]);
+    expect(result.archive).toEqual([MOCHA]);
   });
 
   it('Add and update never archives', () => {

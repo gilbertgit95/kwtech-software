@@ -151,6 +151,13 @@ const NO = new Set(['no', 'n', 'false', '0']);
 const MONEY_TEXT = /^₱?\s*(\d{1,3}(,\d{3})+|\d+)(\.\d{1,2})?$/u;
 
 /**
+ * A whole number as text: digits, optional thousands commas IN THEIR PLACES,
+ * an optional minus. ⚠ `Number()` alone would read "2,5" as 25, "1e3" as 1000
+ * and "0x10" as 16 — numbers nobody typed.
+ */
+const INTEGER_TEXT = /^-?(\d{1,3}(,\d{3})+|\d+)$/u;
+
+/**
  * One cell → the column's typed value, or why it is not one. Empty is `null`
  * (the module decides what a blank means); a required column refuses it.
  */
@@ -176,9 +183,11 @@ export function prepareSheetValue(column: SheetColumn, raw: unknown): { value: S
       return { value: text };
     }
     case 'integer': {
-      const number = typeof cell === 'number' ? cell : Number(String(cell).replace(/,/gu, ''));
-      if (typeof cell === 'boolean' || !Number.isSafeInteger(number)) return { refused: 'Write a whole number.' };
-      return { value: number };
+      const refused = { refused: 'Write a whole number.' };
+      if (typeof cell === 'boolean') return refused;
+      if (typeof cell === 'string' && !INTEGER_TEXT.test(cell)) return refused;
+      const number = typeof cell === 'number' ? cell : Number(cell.replace(/,/gu, ''));
+      return Number.isSafeInteger(number) ? { value: number } : refused;
     }
     case 'money':
       return prepareMoney(cell);
@@ -395,11 +404,16 @@ export interface SheetPlanInput<R, E> {
  * file twice changes nothing the second time: every row is `unchanged`.
  */
 export function planSheetImport<R, E>(input: SheetPlanInput<R, E>): SheetPlan<R, E> {
-  const byCode = new Map<string, E>();
+  /*
+   * ⚠ EVERY ROW PER CODE, not the last one. A module normally keeps its codes
+   * unique, but this planner cannot assume it: with two rows on one code,
+   * keeping one would update it and let Replace archive the other.
+   */
+  const byCode = new Map<string, E[]>();
   const byName = new Map<string, E[]>();
   for (const existing of input.existing) {
     const key = input.existingKey(existing);
-    if (key.code) byCode.set(key.code, existing);
+    if (key.code) byCode.set(key.code, [...(byCode.get(key.code) ?? []), existing]);
     byName.set(key.name, [...(byName.get(key.name) ?? []), existing]);
   }
 
@@ -412,9 +426,8 @@ export function planSheetImport<R, E>(input: SheetPlanInput<R, E>): SheetPlan<R,
    */
   const kept = new Set<E>();
   const keep = (key: SheetMatchKey) => {
-    const byItsCode = key.code ? byCode.get(key.code) : undefined;
-    if (byItsCode !== undefined) kept.add(byItsCode);
-    if (!key.code) for (const existing of byName.get(key.name) ?? []) kept.add(existing);
+    const matches = key.code ? byCode.get(key.code) : byName.get(key.name);
+    for (const existing of matches ?? []) kept.add(existing);
   };
   for (const key of input.held ?? []) keep(key);
 
@@ -441,7 +454,13 @@ export function planSheetImport<R, E>(input: SheetPlanInput<R, E>): SheetPlan<R,
     if (twice.has(line)) continue;
     const key = input.rowKey(row);
     if (key.code) {
-      found.push({ line, row, existing: byCode.get(key.code) ?? null });
+      const coded = byCode.get(key.code) ?? [];
+      if (coded.length > 1) {
+        problem(line, `${coded.length} existing rows have the code ${key.code}. Give each its own code first.`);
+        keep(key);
+        continue;
+      }
+      found.push({ line, row, existing: coded[0] ?? null });
       continue;
     }
     const named = byName.get(key.name) ?? [];

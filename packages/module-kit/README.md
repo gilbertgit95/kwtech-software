@@ -639,12 +639,13 @@ are `@kwtech/web-ui`'s, in the browser — the server never receives a file.
   with no result, and a third decimal in money are refused, never guessed.
 - **Which tabs:** `matchSheets(specs, tabNames)`. ⚠ A tab missing from the file
   is LEFT ALONE, never read as empty.
-- **The plan:** `planSheetImport({ rows, existing, rowKey, existingKey,
-  isUnchanged, isArchived, mode, held })` → create / update / unchanged steps,
+- **The plan:** `planSheetImport({ sheet, rows, existing, rowKey,
+  existingKey, isUnchanged, isArchived, mode, held })` (`sheet` names the tab
+  in each problem) → create / update / unchanged steps,
   what Replace archives, and problems. A row with a code is found by its code;
   without one, by its name (the module folds names, and may scope them, e.g. a
-  size's name within its item). Two existing rows with the name, or one thing
-  twice in the file, is an error on the row — never a guess. ⚠ Replace never
+  size's name within its item). Two existing rows with the name (or the code),
+  or one thing twice in the file, is an error on the row — never a guess. ⚠ Replace never
   archives what a row with a problem meant: pass the keys of rows that did not
   read as `held`. The same file twice gives all `unchanged`.
 - **The rest:** `sheetReadMe(title, specs)` (the Read me tab's rows) and
