@@ -617,7 +617,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
   - **One pure history** (`domain/undo.ts`: `past`, `present`, `future`;
     `commitUndo`, `undoStep`, `redoStep`), kept 100 steps deep
     (`STUDIO_UNDO_LIMIT`). A new change after an undo clears the redo history.
-    A change that returns its input adds no step.
+    A change that leaves the snapshot's VALUES as they were adds no step
+    (`sameUndoValue`), so Portrait pressed on a portrait sheet, a nudge
+    against the edge or a zoom at its limit never costs the redo history.
   - **Each screen's undoable state is ONE snapshot**, so a step restores all
     of it together. On the Print screen that is `StudioPrintSheet`: the
     tray's photo ids, the cells' photos and frames, each photo's edits, the

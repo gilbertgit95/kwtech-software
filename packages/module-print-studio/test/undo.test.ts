@@ -6,6 +6,7 @@ import {
   STUDIO_UNDO_GESTURE_MS,
   STUDIO_UNDO_LIMIT,
   type StudioUndo,
+  sameUndoValue,
   startUndo,
   undoLabel,
   undoStates,
@@ -74,6 +75,15 @@ describe('the undo history', () => {
     expect(commitUndo(made, made.present, { label: 'nothing' })).toBe(made);
   });
 
+  it('⚠ adds no step for a NEW object with the same values: Portrait pressed on a portrait sheet', () => {
+    const sheet = { orientation: 'portrait', cells: [{ x: 0, y: 0 }], edits: new Map([['a', { flipH: false }]]) };
+    const made = startUndo(sheet);
+    const same = { ...sheet, cells: [{ x: 0, y: 0 }], edits: new Map([['a', { flipH: false }]]) };
+    expect(commitUndo(made, same, { label: 'orientation' })).toBe(made);
+    const moved = { ...sheet, cells: [{ x: 1, y: 0 }] };
+    expect(commitUndo(made, moved, { label: 'move' }).past).toHaveLength(1);
+  });
+
   it('⚠ keeps at most the cap, dropping the oldest steps', () => {
     let made = startUndo(0);
     for (let value = 1; value <= STUDIO_UNDO_LIMIT + 20; value += 1) {
@@ -90,6 +100,17 @@ describe('the undo history', () => {
   it('lists every snapshot it holds, so nothing they name is let go of', () => {
     const undone = undoStep(history(1, 2, 3));
     expect(undoStates(undone)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('sameUndoValue', () => {
+  it('compares plain data by value', () => {
+    expect(sameUndoValue({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] })).toBe(true);
+    expect(sameUndoValue([1, 2], [1, 2, 3])).toBe(false);
+    expect(sameUndoValue(new Map([['x', 1]]), new Map([['x', 2]]))).toBe(false);
+    expect(sameUndoValue(new Map([['x', 1]]), { x: 1 })).toBe(false);
+    expect(sameUndoValue({ a: undefined }, {})).toBe(false);
+    expect(sameUndoValue(null, {})).toBe(false);
   });
 });
 

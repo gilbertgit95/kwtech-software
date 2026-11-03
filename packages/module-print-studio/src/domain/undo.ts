@@ -79,12 +79,15 @@ export function startUndo<T>(present: T): StudioUndo<T> {
  * The history after a change: `next` is the present, and the redo history is
  * cleared, because what was undone no longer follows from this.
  *
- * ⚠ THE SAME PRESENT IS NO CHANGE. An update that returned its input (a nudge
- * against the edge, a zoom already at its limit) adds no step that would
- * take an Undo to do nothing.
+ * ⚠ THE SAME PRESENT IS NO CHANGE, COMPARED BY VALUE (`sameUndoValue`). The
+ * screens' updaters build new objects whatever they were asked: a nudge
+ * against the edge, a zoom already at its limit, Reset on a frame never
+ * touched, Portrait pressed on a portrait sheet. Compared by reference, each
+ * added a step that took an Undo to do nothing, and cleared the redo
+ * history on the way (CodeRabbit on #56).
  */
 export function commitUndo<T>(history: StudioUndo<T>, next: T, change: StudioUndoChange): StudioUndo<T> {
-  if (Object.is(next, history.present)) return history;
+  if (sameUndoValue(next, history.present)) return history;
   const gesture = change.gesture;
   const last = history.gesture;
   const joins =
@@ -103,6 +106,34 @@ export function commitUndo<T>(history: StudioUndo<T>, next: T, change: StudioUnd
     future: [],
     gesture: nextGesture,
   };
+}
+
+/**
+ * Whether two snapshots hold the same values: plain objects and arrays by
+ * their contents, Maps by their entries, anything else by `Object.is`. The
+ * snapshots are plain data (photos are held by id), so this is all they need.
+ * ⚠ A property set to `undefined` is not the same as one left out: no screen
+ * writes one, and treating them alike would hide a real change if one did.
+ */
+export function sameUndoValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (a instanceof Map || b instanceof Map) {
+    if (!(a instanceof Map) || !(b instanceof Map) || a.size !== b.size) return false;
+    for (const [key, value] of a) {
+      if (!b.has(key) || !sameUndoValue(value, b.get(key))) return false;
+    }
+    return true;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((value, index) => sameUndoValue(value, b[index]));
+  }
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  return keys.every((key) => Object.hasOwn(right, key) && sameUndoValue(left[key], right[key]));
 }
 
 /** The history one step back, or the same history when there is nothing to undo. */

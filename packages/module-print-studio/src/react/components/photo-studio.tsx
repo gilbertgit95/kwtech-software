@@ -275,8 +275,15 @@ export function PhotoStudio({
     [sheetState.background, backgroundPhoto],
   );
   const [movingWanted, setMovingBackground] = useState(false);
-  // An Undo that takes the picture away ends moving it.
   const movingBackground = movingWanted && background !== null;
+  /*
+   * An Undo that takes the picture away ends moving it FOR GOOD: a Redo that brings the picture back must not
+   * bring back the layer that takes every press on the sheet (CodeRabbit on #56).
+   */
+  const hasBackground = sheetState.background !== null;
+  useEffect(() => {
+    if (!hasBackground) setMovingBackground(false);
+  }, [hasBackground]);
   const [loadingBackground, setLoadingBackground] = useState(false);
 
   const loadCalibrations = useCallback(() => state.client.calibrations(state.scope), [state.client, state.scope]);
