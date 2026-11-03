@@ -18,6 +18,7 @@ export * from './domain/fill.js';
 export * from './domain/keymap.js';
 export * from './domain/layout.js';
 export * from './domain/log.js';
+export * from './domain/marquee.js';
 export * from './domain/page-layout.js';
 export * from './domain/papers.js';
 export * from './domain/place.js';

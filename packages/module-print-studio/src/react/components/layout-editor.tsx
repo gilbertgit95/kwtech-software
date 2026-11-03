@@ -20,6 +20,7 @@ import {
 import { type DragEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   borderOf,
+  cellOnSheet,
   checkCells,
   checkPrintableArea,
   layoutOnPage,
@@ -33,20 +34,24 @@ import {
   type StudioPagePatch,
   type StudioSize,
   type StudioSizing,
+  sheetSize,
   sizingOf,
   textsOf,
 } from '../../domain/layout.js';
 import { findStudioPaper, STUDIO_PAPER_MAX, STUDIO_PAPER_MIN, STUDIO_PAPERS } from '../../domain/papers.js';
 import {
   addBlock,
-  duplicateCell,
+  boundsOf,
+  duplicateCells,
   fillWithSize,
   moveCell,
-  removeCell,
-  resizeCell,
-  rotateCell,
+  moveCells,
+  removeCells,
+  resizeCells,
+  rotateCells,
   STUDIO_COPY_BESIDE,
   type StudioCopyOffset,
+  snapGroupPosition,
   snapPosition,
   splitIntoGrid,
 } from '../../domain/place.js';
@@ -74,6 +79,7 @@ import { formatSize, mm } from '../../domain/units.js';
 import type { StudioRefusal } from '../../types.js';
 import { measureText } from '../render/texts.js';
 import type { StudioAppState } from '../studio-state.js';
+import { useMarquee } from '../use-marquee.js';
 import { useStudioAction } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { editorKeyAction, editorShortcutBar } from '../view/keys.js';
@@ -86,6 +92,7 @@ import {
   STUDIO_UNITS,
   type StudioUnit,
 } from '../view/lengths.js';
+import { marqueeIndexes, toggleIndex } from '../view/marquee.js';
 import { cellGroups, paperName, plural, sizeName } from '../view/summary.js';
 import { stepViewZoom } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
@@ -194,8 +201,12 @@ export function LayoutEditor({
   const [visibility, setVisibility] = useState(target.visibility);
   const [spec, setSpec] = useState(target.spec);
   const [unit, setUnit] = useState<StudioUnit>('mm');
-  const [selected, setSelected] = useState<number | null>(null);
-  /** The selected text's id. ⚠ A cell and a text are never selected at once: one set clears the other (`pick*`). */
+  /**
+   * The selected cells' indexes; the last is the one pressed last. Several can be selected — a rectangle dragged
+   * over them, or Ctrl-clicks (issue #53) — and the panel, the keys and a drag then act on all of them.
+   */
+  const [selected, setSelected] = useState<number[]>([]);
+  /** The selected text's id. ⚠ Cells and a text are never selected at once: one set clears the other (`pick*`). */
   const [selectedText, setSelectedText] = useState<string | null>(null);
   /** What the last action did, said plainly: "Added a 2 × 2." */
   const [note, setNote] = useState<string | null>(null);
@@ -216,17 +227,23 @@ export function LayoutEditor({
   const texts = textsOf(spec);
   const problem = checkPrintableArea(spec) ?? checkCells(spec.cells, area) ?? checkTexts(texts, area);
   const groups = cellGroups(spec.cells, unit);
-  const selectedCell = selected === null ? undefined : spec.cells[selected];
+  // ⚠ Only indexes that are still cells: a grid split or a fill gives a new list, and a stale index would act on nothing.
+  const selection = selected.filter((index) => index < spec.cells.length);
+  const primary = selection[selection.length - 1];
+  const selectedCell = primary === undefined ? undefined : spec.cells[primary];
+  const selectionBox = boundsOf(spec.cells, selection);
   const chosenText = selectedText === null ? undefined : texts.find((text) => text.id === selectedText);
 
-  function pickCell(index: number | null) {
-    setSelected(index);
+  /** One cell selected alone, or with `adding` (Ctrl, ⌘ or Shift) added to the selection or taken out; null: none. */
+  function pickCell(index: number | null, adding = false) {
+    if (index === null) setSelected([]);
+    else setSelected(adding ? toggleIndex(selection, index) : [index]);
     setSelectedText(null);
   }
 
   function pickText(id: string | null) {
     setSelectedText(id);
-    setSelected(null);
+    setSelected([]);
   }
 
   function change(patch: Partial<StudioLayoutSpec>) {
@@ -277,6 +294,8 @@ export function LayoutEditor({
    * both come through here. Answers whether it did anything.
    */
   function performKey(key: string): boolean {
+    // Esc during a selection rectangle gives it up and leaves the selection as it was.
+    if (key === 'Escape' && marquee.cancel()) return true;
     const action = editorKeyAction(key, selectedCell !== undefined || chosenText !== undefined, state.keymap);
     if (!action) return false;
     switch (action.kind) {
@@ -293,11 +312,11 @@ export function LayoutEditor({
         break;
     }
     if (chosenText) return performTextKey(chosenText.id, action);
-    if (selected === null || !selectedCell) return false;
+    if (selection.length === 0 || !selectedCell) return false;
     switch (action.kind) {
       case 'move': {
         // A step is a millimetre; the keys ask for one, or five with Shift.
-        const index = selected;
+        const indexes = selection;
         /*
          * ⚠ FROM THE CELLS AS THEY ARE WHEN THIS RUNS, not as they were when
          * the key was pressed: a held arrow key repeats faster than the screen
@@ -305,10 +324,11 @@ export function LayoutEditor({
          * ten repeats move the cell one step.
          */
         setSpec((current) => {
-          const cell = current.cells[index];
-          if (!cell) return current;
-          const to = { x: cell.x + action.dx * NUDGE, y: cell.y + action.dy * NUDGE };
-          const moved = moveCell(printableArea(current), current.cells, index, to);
+          // The selection's bounding box moves, and every cell in it with it (`moveCells`).
+          const box = boundsOf(current.cells, indexes);
+          if (!box) return current;
+          const to = { x: box.x + action.dx * NUDGE, y: box.y + action.dy * NUDGE };
+          const moved = moveCells(printableArea(current), current.cells, indexes, to);
           return 'cells' in moved ? { ...current, cells: moved.cells } : current;
         });
         break;
@@ -320,7 +340,7 @@ export function LayoutEditor({
         copySelected();
         break;
       case 'turn':
-        tryCells(rotateCell(area, spec.cells, selected));
+        tryCells(rotateCells(area, spec.cells, selection));
         break;
     }
     return true;
@@ -423,23 +443,72 @@ export function LayoutEditor({
   }
 
   function removeSelected() {
-    if (selected === null) return;
-    setCells(removeCell(spec.cells, selected), 'Removed the cell.');
-    setSelected(null);
+    if (selection.length === 0) return;
+    setCells(
+      removeCells(spec.cells, selection),
+      selection.length === 1 ? 'Removed the cell.' : `Removed ${selection.length} cells.`,
+    );
+    setSelected([]);
   }
 
+  /** A copy of the selection, keeping its shape; the copies are then the selection, ready to be dragged. */
   function copySelected() {
-    if (selected === null) return;
-    const copy = duplicateCell(area, spec.cells, selected, copyOffset);
-    if (copy.placed === 0) return setNote('There is no room left for a copy.');
+    if (selection.length === 0) return;
+    const one = selection.length === 1;
+    const copy = duplicateCells(area, spec.cells, selection, copyOffset);
+    if (copy.placed === 0)
+      return setNote(
+        one ? 'There is no room left for a copy.' : 'There is no room for a copy of all of them together.',
+      );
+    const it = one ? 'it' : 'them';
     setCells(
       copy.cells,
       copy.beside
-        ? 'Made a copy beside it. Drag it where you want it.'
-        : 'There was no room beside it, so the copy went to the first free place. Drag it where you want it.',
+        ? `Made a copy beside ${it}. Drag it where you want it.`
+        : `There was no room beside ${it}, so the copy went to the first free place. Drag it where you want it.`,
     );
-    pickCell(copy.cells.length - 1);
+    setSelected(copy.added);
+    setSelectedText(null);
   }
+
+  /**
+   * A cell being dragged. One of several selected moves them all, by the distance the pressed one went, their
+   * bounding box snapped to the cells that stay (`snapGroupPosition`); a cell on its own snaps as it always has.
+   */
+  function dragCell(index: number, position: { x: number; y: number }) {
+    const cell = spec.cells[index];
+    if (selection.length > 1 && selection.includes(index) && cell && selectionBox) {
+      const wanted = { x: selectionBox.x + position.x - cell.x, y: selectionBox.y + position.y - cell.y };
+      const snapped = snapGroupPosition(area, spec.cells, selection, wanted);
+      return tryCells(moveCells(area, spec.cells, selection, snapped), true);
+    }
+    tryCells(moveCell(area, spec.cells, index, snapPosition(area, spec.cells, index, position)), true);
+  }
+
+  // ── a rectangle dragged over the sheet selects the cells it covers (issue #53) ──
+
+  /** The selection when the rectangle began: what an adding drag adds to, and what Esc puts back. */
+  const marqueeBase = useRef<{ cells: number[]; text: string | null }>({ cells: [], text: null });
+  const cellsOnSheet = useMemo(() => spec.cells.map((cell) => cellOnSheet(spec, cell)), [spec]);
+  const marquee = useMarquee({
+    sheet: sheetSize(spec),
+    cells: cellsOnSheet,
+    enabled: true,
+    onBegin: () => {
+      marqueeBase.current = { cells: selection, text: selectedText };
+      // Cells and a text are never selected at once: the rectangle selects cells.
+      setSelectedText(null);
+    },
+    onCover: (covered, adding) => setSelected(marqueeIndexes(marqueeBase.current.cells, covered, adding)),
+    onCancel: () => {
+      setSelected(marqueeBase.current.cells);
+      setSelectedText(marqueeBase.current.text);
+    },
+    // A click on the paper, on no cell or text, lets go of the selection — unless it was meant to add to it.
+    onPaperClick: (adding) => {
+      if (!adding) pickCell(null);
+    },
+  });
 
   const root = useRef<HTMLDivElement>(null);
   useStudioKeys(root, performKey);
@@ -566,7 +635,7 @@ export function LayoutEditor({
                 grid,
                 `Divided the sheet into ${columns} across and ${rows} down: ${plural(grid.length, 'equal cell')}.`,
               );
-              setSelected(null);
+              setSelected([]);
             }}
           />
           <TextTools count={texts.length} onAdd={addText} />
@@ -585,43 +654,49 @@ export function LayoutEditor({
             onBorder={(border) => change({ border })}
             onClear={() => {
               setCells([], 'Removed every cell.');
-              setSelected(null);
+              setSelected([]);
             }}
           />
         </div>
 
         {/* ── the sheet ── */}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {selectedCell && selected !== null ? (
+          {selectedCell && selectionBox ? (
             <SelectedCell
-              cell={selectedCell}
+              // Several: the group's place (its bounding box) and the size of the cell pressed last.
+              cell={selection.length === 1 ? selectedCell : { ...selectedCell, x: selectionBox.x, y: selectionBox.y }}
+              count={selection.length}
               unit={unit}
               percentOf={sizingOf(spec) === 'percent' ? area : null}
-              onMove={(position) => tryCells(moveCell(area, spec.cells, selected, position))}
-              onResize={(size) => tryCells(resizeCell(area, spec.cells, selected, size))}
-              onRotate={() => tryCells(rotateCell(area, spec.cells, selected))}
+              onMove={(position) => tryCells(moveCells(area, spec.cells, selection, position))}
+              onResize={(size) => tryCells(resizeCells(area, spec.cells, selection, size))}
+              onRotate={() => tryCells(rotateCells(area, spec.cells, selection))}
               onDuplicate={copySelected}
               onRemove={removeSelected}
               copyOffset={copyOffset}
               onCopyOffset={setCopyOffset}
             />
           ) : null}
-          <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+          {/* Around the whole view, so a selection rectangle can start in the grey beside the paper (`useMarquee`). */}
+          <div
+            ref={marquee.container}
+            className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30"
+            {...marquee.handlers}
+          >
             <SheetFrame zoom={viewZoom} onZoom={setViewZoom}>
               <SheetView
                 fit
                 zoom={viewZoom}
                 spec={spec}
                 label={`${name || 'New layout'}: ${plural(spec.cells.length, 'cell')}`}
-                selected={selected}
+                selected={selection}
                 onSelect={pickCell}
+                marquee={marquee.rect}
                 selectedText={selectedText}
                 onSelectText={pickText}
                 onMoveText={moveText}
-                onMove={(index, position) =>
-                  tryCells(moveCell(area, spec.cells, index, snapPosition(area, spec.cells, index, position)), true)
-                }
-                onResize={(index, size) => tryCells(resizeCell(area, spec.cells, index, size), true)}
+                onMove={dragCell}
+                onResize={(index, size) => tryCells(resizeCells(area, spec.cells, [index], size), true)}
                 accepts={(event) => event.dataTransfer.types.includes(SIZE_DRAG_TYPE)}
                 onDropAt={(event, point) => {
                   const dropped = readDraggedSize(event);
@@ -653,7 +728,8 @@ export function LayoutEditor({
               </p>
             ) : (
               <p role="status" className="text-muted-foreground">
-                {note ?? 'Drag a cell or a text to move it, or a cell’s corner to resize it.'}
+                {note ??
+                  'Drag a cell or a text to move it, or a cell’s corner to resize it. Drag across empty paper to select several cells.'}
               </p>
             )}
           </div>
@@ -1313,6 +1389,7 @@ function SizeRow({
 
 function SelectedCell({
   cell,
+  count,
   unit,
   percentOf,
   onMove,
@@ -1323,12 +1400,17 @@ function SelectedCell({
   copyOffset,
   onCopyOffset,
 }: {
+  /** The cell shown — with several selected, their bounding box's top left and the last pressed one's size. */
   cell: StudioCell;
+  /** How many cells are selected. The numbers and buttons act on all of them. */
+  count: number;
   unit: StudioUnit;
   /** The printable area, in a percent layout: the four numbers are then shares of it. Null shows lengths. */
   percentOf: StudioSize | null;
+  /** The selection's new top left (its bounding box's, for several). */
   onMove: (position: { x: number; y: number }) => void;
-  onResize: (size: StudioSize) => void;
+  /** Only the side that was changed: with several selected, the other keeps each cell's own. */
+  onResize: (size: Partial<StudioSize>) => void;
   onRotate: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -1339,10 +1421,10 @@ function SelectedCell({
   return (
     // Above the sheet, where the eye already is: what is selected, its exact numbers, and what can be done to it.
     <section
-      aria-label="Selected cell"
+      aria-label={count === 1 ? 'Selected cell' : 'Selected cells'}
       className="flex flex-wrap items-end gap-x-3 gap-y-2 rounded-xl border border-primary/50 bg-accent/40 px-3 py-2"
     >
-      <p className="pb-2 text-sm font-semibold">{cell.label ?? 'Cell'}</p>
+      <p className="pb-2 text-sm font-semibold">{count === 1 ? (cell.label ?? 'Cell') : `${count} cells`}</p>
       <div className="grid w-80 grid-cols-4 gap-2">
         <LengthField
           label="Width"
@@ -1350,7 +1432,7 @@ function SelectedCell({
           of={percentOf?.width}
           min={STUDIO_CELL_MIN}
           value={cell.width}
-          onCommit={(width) => onResize({ width, height: cell.height })}
+          onCommit={(width) => onResize({ width })}
         />
         <LengthField
           label="Height"
@@ -1358,7 +1440,7 @@ function SelectedCell({
           of={percentOf?.height}
           min={STUDIO_CELL_MIN}
           value={cell.height}
-          onCommit={(height) => onResize({ width: cell.width, height })}
+          onCommit={(height) => onResize({ height })}
         />
         <LengthField
           label="Left"

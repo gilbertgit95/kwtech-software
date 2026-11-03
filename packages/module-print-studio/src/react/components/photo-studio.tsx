@@ -65,9 +65,11 @@ import { drawSheet, sheetPixels } from '../render/draw-sheet.js';
 import { loadPhoto, releasePhoto, type StudioPhoto } from '../render/photos.js';
 import { makeLayoutResult, type StudioResult } from '../render/result.js';
 import type { StudioAppState } from '../studio-state.js';
+import { useMarquee } from '../use-marquee.js';
 import { useStudioData } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { type PrintKeyContext, printKeyAction, printShortcutBar } from '../view/keys.js';
+import { marqueeSelection } from '../view/marquee.js';
 import {
   cannotTurnNote,
   otherPaperNote,
@@ -562,7 +564,8 @@ export function PhotoStudio({
 
   function beginDrag(event: ReactPointerEvent<HTMLButtonElement>, cellIndex: number) {
     dragged.current = false;
-    if (event.button !== 0 || !page[cellIndex]) return;
+    // With Alt held a drag draws a selection rectangle, even from a photo (`useMarquee`).
+    if (event.button !== 0 || event.altKey || !page[cellIndex]) return;
     const ref = { page: pageIndex, cell: cellIndex };
     // Dragging a cell that is part of the selection moves the whole selection; any other cell moves alone.
     const targets = hasCell(selection, ref) ? filledSelection : [ref];
@@ -625,6 +628,28 @@ export function PhotoStudio({
   function endDrag() {
     drag.current = null;
   }
+
+  // ── a rectangle dragged over the sheet selects the cells it covers (issue #53) ──
+
+  /** The cells of this page on the sheet, which is what the rectangle is measured in. */
+  const cellsOnSheet = useMemo(() => cells.map((cell) => cellOnSheet(spec, cell)), [spec, cells]);
+  /** The selection when the rectangle began: what an adding drag adds to, and what Esc puts back. */
+  const marqueeBase = useRef<StudioCellRef[]>([]);
+  const marquee = useMarquee({
+    sheet,
+    cells: cellsOnSheet,
+    // The background picture being moved takes every press on the sheet.
+    enabled: !movingBackground,
+    onBegin: () => {
+      marqueeBase.current = selection;
+    },
+    onCover: (covered, adding) => setSelection(marqueeSelection(marqueeBase.current, pageIndex, covered, adding)),
+    onCancel: () => setSelection(marqueeBase.current),
+    // A click on the paper, on no cell, lets go of the selection — unless it was meant to add to it.
+    onPaperClick: (adding) => {
+      if (!adding) setSelection([]);
+    },
+  });
 
   // ── pages ─────────────────────────────────────────────────────────────────
 
@@ -719,6 +744,8 @@ export function PhotoStudio({
    * cannot disagree. Answers whether it did anything.
    */
   function performKey(key: string): boolean {
+    // Esc during a rectangle gives the rectangle up and leaves the selection as it was — it does not also deselect.
+    if (key === 'Escape' && marquee.cancel()) return true;
     // Esc ends moving the picture first: the photos are held still until then.
     if (movingBackground && key === 'Escape') {
       setMovingBackground(false);
@@ -1042,7 +1069,8 @@ export function PhotoStudio({
               }
             />
 
-            <div className="flex min-h-0 min-w-0 flex-1 bg-muted/30">
+            {/* Around the whole view, so a rectangle can start in the grey beside the paper (`useMarquee`). */}
+            <div ref={marquee.container} className="flex min-h-0 min-w-0 flex-1 bg-muted/30" {...marquee.handlers}>
               <SheetFrame
                 zoom={viewZoom}
                 onZoom={setViewZoom}
@@ -1076,7 +1104,8 @@ export function PhotoStudio({
                 <section
                   data-studio-paper
                   aria-label="The sheet: drop a batch of photos here"
-                  className="relative shadow-md ring-1 ring-border"
+                  // No text picked and no picture menu while a finger rests to start a rectangle.
+                  className="relative select-none shadow-md ring-1 ring-border [-webkit-touch-callout:none]"
                   style={{ width: fitWidth(sheet, viewZoom) }}
                   // A batch dropped on the sheet but on no cell; one dropped on a cell is that cell's (`dropOnCell`).
                   onDragOver={(event) => {
@@ -1105,6 +1134,9 @@ export function PhotoStudio({
                             type="button"
                             aria-label={`Cell ${index + 1}${cell.label ? `, ${cell.label}` : ''}: ${photo ? photo.name : 'empty'}`}
                             aria-pressed={chosen}
+                            // What a press landed on, for the selection rectangle (`useMarquee`).
+                            data-studio-cell=""
+                            data-filled={photo ? '' : undefined}
                             style={{
                               left: `${(at.x / sheet.width) * 100}%`,
                               top: `${(at.y / sheet.height) * 100}%`,
@@ -1126,7 +1158,7 @@ export function PhotoStudio({
                               photo ? 'cursor-grab active:cursor-grabbing' : null,
                             )}
                             onClick={(event) => {
-                              if (dragged.current) return;
+                              if (dragged.current || marquee.drew()) return;
                               pressCell(index, event.ctrlKey || event.metaKey || event.shiftKey);
                             }}
                             onPointerDown={(event) => beginDrag(event, index)}
@@ -1158,6 +1190,21 @@ export function PhotoStudio({
                       );
                     })}
                   </ul>
+                  {marquee.rect ? (
+                    // The rectangle being drawn, in the selection's own blue: on white paper whatever the theme.
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute z-20"
+                      style={{
+                        left: `${(marquee.rect.x / sheet.width) * 100}%`,
+                        top: `${(marquee.rect.y / sheet.height) * 100}%`,
+                        width: `${(marquee.rect.width / sheet.width) * 100}%`,
+                        height: `${(marquee.rect.height / sheet.height) * 100}%`,
+                        border: `1px solid ${SELECTED}`,
+                        backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                      }}
+                    />
+                  ) : null}
                   {background && movingBackground ? (
                     <BackgroundMover
                       placement={background.placement}

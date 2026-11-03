@@ -41,11 +41,18 @@ import { RulerCorner, STUDIO_RULER_PX, type StudioPaperGeometry, ViewRuler } fro
  */
 export interface SheetViewProps {
   spec: StudioLayoutSpec;
-  /** The selected cell's index, in the editor. */
-  selected?: number | null;
-  /** Given, the cells can be picked, dragged and resized. */
-  onSelect?: (index: number | null) => void;
-  /** A drag in progress: the cell's wanted top left, in units from the printable area's. */
+  /** The selected cells' indexes, in the editor; the last is the one pressed last. */
+  selected?: readonly number[];
+  /**
+   * Given, the cells can be picked, dragged and resized. `adding` (Ctrl, ⌘ or Shift held) asks for the cell to join
+   * the selection or leave it. ⚠ A press on the bare paper is NOT reported here: the editor's selection rectangle
+   * (`useMarquee`, around the frame) decides whether it was a click on nothing or the start of a rectangle.
+   */
+  onSelect?: (index: number | null, adding?: boolean) => void;
+  /**
+   * A drag in progress: the PRESSED cell's wanted top left, in units from the printable area's. When it is one of
+   * several selected, the editor moves them all by the same distance.
+   */
   onMove?: (index: number, position: { x: number; y: number }) => void;
   /** A resize in progress: the cell's wanted size, in units. */
   onResize?: (index: number, size: { width: number; height: number }) => void;
@@ -73,6 +80,8 @@ export interface SheetViewProps {
   zoom?: number;
   /** What the drawing is, for a screen reader. */
   label: string;
+  /** The selection rectangle being drawn, in SHEET units (`useMarquee`), or null. */
+  marquee?: StudioRect | null;
 }
 
 /** What a drag is doing, held in a ref so a pointer move never re-renders by itself. */
@@ -88,7 +97,14 @@ interface Drag {
   /** The cell's or text's x/y (a move) or the cell's width/height (a resize) when the drag began. */
   fromA: number;
   fromB: number;
+  /** Whether it has moved far enough to count; a press that never did is a click. */
+  moved: boolean;
+  /** A click on a cell that was one of several selected selects it alone, once it is clear it was not a drag. */
+  collapse: boolean;
 }
+
+/** How far, in pixels, a press must travel before it is a drag and not a click — so a click never nudges a cell. */
+const DRAG_START_PX = 3;
 
 const PAPER = '#ffffff';
 /** The unprintable border: a grey that reads as "not here" on white. */
@@ -101,7 +117,7 @@ const CELL = '#2563eb';
 
 export function SheetView({
   spec,
-  selected = null,
+  selected = [],
   onSelect,
   onMove,
   onResize,
@@ -115,6 +131,7 @@ export function SheetView({
   zoom = 1,
   className,
   label,
+  marquee = null,
 }: SheetViewProps) {
   const sheet = sheetSize(spec);
   const area = printableArea(spec);
@@ -133,13 +150,22 @@ export function SheetView({
    * outlives the drag.
    */
   function begin(event: ReactPointerEvent<SVGElement>, index: number, kind: 'move' | 'resize') {
-    if (!interactive) return;
+    if (!interactive || event.button !== 0) return;
+    // Alt + drag on a cell draws a selection rectangle instead: left to bubble up to it (`useMarquee`).
+    if (kind === 'move' && event.altKey) return;
     const cell = spec.cells[index];
     const box = svg.current?.getBoundingClientRect();
     if (!cell || !box || box.width === 0) return;
     event.stopPropagation();
+    // Ctrl, ⌘ or Shift + click: the cell joins the selection or leaves it, and nothing is dragged.
+    if (kind === 'move' && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+      onSelect?.(index, true);
+      return;
+    }
     svg.current?.setPointerCapture(event.pointerId);
-    onSelect?.(index);
+    // A cell already in the selection keeps the selection: dragging it moves them all.
+    const inSelection = selected.includes(index);
+    if (!inSelection) onSelect?.(index);
     drag.current = {
       index,
       textId: null,
@@ -149,6 +175,8 @@ export function SheetView({
       startY: event.clientY,
       fromA: kind === 'move' ? cell.x : cell.width,
       fromB: kind === 'move' ? cell.y : cell.height,
+      moved: false,
+      collapse: inSelection && selected.length > 1,
     };
   }
 
@@ -169,12 +197,18 @@ export function SheetView({
       startY: event.clientY,
       fromA: from.x,
       fromB: from.y,
+      moved: false,
+      collapse: false,
     };
   }
 
   function during(event: ReactPointerEvent<SVGElement>) {
     const current = drag.current;
     if (!current) return;
+    if (!current.moved && Math.hypot(event.clientX - current.startX, event.clientY - current.startY) < DRAG_START_PX) {
+      return;
+    }
+    current.moved = true;
     const a = current.fromA + (event.clientX - current.startX) * current.scale;
     const b = current.fromB + (event.clientY - current.startY) * current.scale;
     if (current.kind === 'text' && current.textId !== null) onMoveText?.(current.textId, { x: a, y: b });
@@ -183,7 +217,9 @@ export function SheetView({
   }
 
   function end() {
+    const current = drag.current;
     drag.current = null;
+    if (current && !current.moved && current.collapse) onSelect?.(current.index);
   }
 
   return (
@@ -195,8 +231,8 @@ export function SheetView({
       // As wide as the frame, or as wide as its height allows — whichever is less — so a tall paper never scrolls.
       style={fit ? { width: fitWidth(sheet, zoom) } : undefined}
       className={cn('block h-auto w-full touch-none select-none rounded-sm shadow-md ring-1 ring-border', className)}
-      // A press on the paper itself, not a cell, lets go of the selection.
-      onPointerDown={interactive ? () => onSelect?.(null) : undefined}
+      // The paper the selection rectangle measures against (`useMarquee`); a press on it is the rectangle's.
+      data-studio-paper={interactive ? '' : undefined}
       onPointerMove={interactive ? during : undefined}
       onPointerUp={interactive ? end : undefined}
       onPointerCancel={interactive ? end : undefined}
@@ -226,7 +262,7 @@ export function SheetView({
 
       <g transform={`translate(${area.x} ${area.y})`}>
         {spec.cells.map((cell, index) => {
-          const chosen = index === selected;
+          const chosen = selected.includes(index);
           // Sized to the label as well as the cell, so a long one stays inside its own cell.
           const text = cell.label ? cellLabelSize(cell, cell.label) : 0;
           return (
@@ -242,6 +278,9 @@ export function SheetView({
                 fill={CELL}
                 fillOpacity={chosen ? 0.32 : 0.1}
                 className={cn(interactive ? 'cursor-move hover:[fill-opacity:0.2]' : null)}
+                // What a press landed on, for the selection rectangle: a drag here moves the cell (`useMarquee`).
+                data-studio-cell=""
+                data-filled=""
                 onPointerDown={(event) => begin(event, index, 'move')}
               />
               {labels && cell.label ? (
@@ -259,7 +298,8 @@ export function SheetView({
                   {cell.label}
                 </text>
               ) : null}
-              {chosen && interactive ? (
+              {/* One cell's corner to resize it by; a group is resized from the panel, all at once. */}
+              {chosen && interactive && selected.length === 1 ? (
                 <rect
                   x={cell.x + cell.width - handle / 2}
                   y={cell.y + cell.height - handle / 2}
@@ -342,6 +382,21 @@ export function SheetView({
           );
         })}
       </g>
+
+      {marquee ? (
+        // The selection rectangle, in the cells' own blue — literal, for the same reason as theirs.
+        <rect
+          x={marquee.x}
+          y={marquee.y}
+          width={marquee.width}
+          height={marquee.height}
+          fill={CELL}
+          fillOpacity={0.12}
+          stroke={CELL}
+          strokeWidth={hair}
+          pointerEvents="none"
+        />
+      ) : null}
     </svg>
   );
 }
@@ -507,6 +562,8 @@ export function SheetFrame({
        */}
       <div
         ref={scroller}
+        // What the Print screen's selection rectangle starts in and scrolls (`useMarquee`): the view, not the controls.
+        data-studio-view=""
         className="isolate min-h-0 min-w-0 overflow-auto p-4"
         onPointerMove={unit ? track : undefined}
         onPointerLeave={unit ? () => setPointer(null) : undefined}
