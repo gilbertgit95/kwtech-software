@@ -325,6 +325,49 @@ describe('planning against a store that already sells', () => {
     expect(plan.problems.map((problem) => problem.message)).toEqual(['This code belongs to a size of another item.']);
   });
 
+  it('⚠ gives a code to an item that had none — its sizes stay with it, and no second item is made', () => {
+    // Exported, then a code typed for Tea (which had none) and imported back.
+    const rows = posSetupExportRows(STORE, true);
+    const tea = rows.items.find((row) => row.name === 'Tea');
+    if (tea) tea.code = 'TEA';
+    for (const size of rows.variants)
+      if (size.itemName === 'Tea') Object.assign(size, { itemCode: 'TEA', itemName: null });
+    const file = (['categories', 'orderTypes', 'items', 'variants', 'references'] as const).map((key) =>
+      tab(key, rows[key]),
+    );
+    const plan = planPosSetup(inputOf(file), STORE, 'replace');
+    expect(plan.problems).toEqual([]);
+    expect(
+      plan.items?.steps
+        .filter((step) => step.kind !== 'unchanged')
+        .map((step) => [step.kind, 'existing' in step ? step.existing.id : null]),
+    ).toEqual([['update', 'i2']]);
+    expect(plan.items?.steps.some((step) => step.kind === 'create')).toBe(false);
+    expect([...plan.variantItems.values()].every((ref) => ref.kind === 'store' && ref.id === 'i2')).toBe(true);
+  });
+
+  it('⚠ refuses a size whose code is a store size’s, put under an item NEW in this file', () => {
+    const plan = planPosSetup(
+      inputOf([
+        tab('items', [{ code: 'NEW', name: 'Green tea', price: null }]),
+        tab('variants', [{ itemCode: 'NEW', code: 'TEA-L', name: 'Large', price: 8000 }]),
+      ]),
+      STORE,
+      'merge',
+    );
+    expect(plan.problems.map((problem) => [problem.sheet, problem.line, problem.message])).toEqual([
+      ['Variants', 2, 'This code belongs to a size of another item.'],
+    ]);
+  });
+
+  it('refuses a Category the server would refuse, in the preview already', () => {
+    const reading = readPosSetup([tab('items', [{ name: 'Latte', category: 'Drinks\u0007', price: 100 }])]);
+    expect(reading.problems.map((problem) => [problem.line, problem.column])).toEqual([[2, 'Category']]);
+    const spaced = readPosSetup([tab('items', [{ name: 'Latte', category: 'Hot   drinks', price: 100 }])]);
+    expect(spaced.problems).toEqual([]);
+    expect(spaced.input.items?.[0]?.row.category).toBe('Hot drinks');
+  });
+
   it('references: Add and update keeps the store’s options; Replace makes the list the file’s', () => {
     const file = inputOf([tab('references', [{ option: 'Table 3', isDefault: true }])]);
     expect(planPosSetup(file, STORE, 'merge').references).toEqual({

@@ -450,13 +450,18 @@ export function readPosSetup(tabs: readonly PosSetupTab[]): PosSetupReading {
       const cost = numberOrNull(values.cost);
       if (price !== null && checkPosPrice(price)) problem('Price', priceMessage());
       if (checkPosCost(cost)) problem('Cost', priceMessage());
-      const category = text(values.category).trim();
+      // Through the same rule as a category's own name, so the preview refuses what the server would.
+      const rawCategory = text(values.category).trim();
+      const preparedCategory = rawCategory === '' ? null : preparePosName(rawCategory);
+      if (preparedCategory && 'refused' in preparedCategory) problem('Category', NAME_MESSAGE);
+      const category = preparedCategory && 'name' in preparedCategory ? preparedCategory.name : null;
       if (name === null || code === undefined || 'refused' in description) return null;
+      if (preparedCategory && 'refused' in preparedCategory) return null;
       return {
         code,
         name,
         kind: values.kind === 'service' ? 'service' : 'product',
-        category: category === '' ? null : category,
+        category,
         description: description.description,
         price,
         cost,
@@ -762,11 +767,16 @@ export function planPosSetup(input: PosSetupInput, store: PosSetupStore, mode: S
           mode,
           held: input.held.variants,
         });
-  // A planned size must stay with the item it was found under: moving a size between items is not setup.
+  /*
+   * ⚠ A SIZE STAYS WITH ITS ITEM. A row whose code finds a store size, but
+   * whose item is another — a store item, or one NEW in this file — would
+   * update that size where it is and leave the item it names with none (and,
+   * priced by its sizes, at ₱0). Moving a size between items is not setup.
+   */
   for (const step of variants?.steps ?? []) {
     if (step.kind === 'create') continue;
     const ref = variantItems.get(step.line);
-    if (ref?.kind === 'store' && ref.id !== step.existing.itemId) {
+    if (ref && (ref.kind === 'file' || ref.id !== step.existing.itemId)) {
       problem(POS_SETUP_SHEET.variants, step.line, 'Code', 'This code belongs to a size of another item.');
     }
   }

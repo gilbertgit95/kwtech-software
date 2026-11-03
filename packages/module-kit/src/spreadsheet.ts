@@ -403,7 +403,9 @@ export interface SheetPlanInput<R, E> {
  * Sorts each row into create, update or unchanged, and — in Replace — lists
  * what will be archived. ⚠ NEVER A GUESS:
  *
- *   - A row WITH a code is found by its code only. Not found: it is new.
+ *   - A row WITH a code is found by its code. Not found, it is the row of that
+ *     name that has NO code yet — a code being added — or else new. A row
+ *     whose code differs is never claimed: that is another thing.
  *   - A row WITHOUT a code is found by its name. Two existing rows with that
  *     name: an error on the row, naming both — never "the first one".
  *   - Two rows of the file that are the same thing (one code, or one name
@@ -435,8 +437,12 @@ export function planSheetImport<R, E>(input: SheetPlanInput<R, E>): SheetPlan<R,
    */
   const kept = new Set<E>();
   const keep = (key: SheetMatchKey) => {
-    const matches = key.code ? byCode.get(key.code) : byName.get(key.name);
-    for (const existing of matches ?? []) kept.add(existing);
+    const coded = key.code ? byCode.get(key.code) : undefined;
+    // A code nobody has yet may be meant for a same-name row without one (below): keep those too.
+    const matches = coded?.length
+      ? coded
+      : (byName.get(key.name) ?? []).filter((existing) => !key.code || !input.existingKey(existing).code);
+    for (const existing of matches) kept.add(existing);
   };
   for (const key of input.held ?? []) keep(key);
 
@@ -469,7 +475,26 @@ export function planSheetImport<R, E>(input: SheetPlanInput<R, E>): SheetPlan<R,
         keep(key);
         continue;
       }
-      found.push({ line, row, existing: coded[0] ?? null });
+      if (coded[0]) {
+        found.push({ line, row, existing: coded[0] });
+        continue;
+      }
+      /*
+       * ⚠ A CODE ADDED TO A ROW THAT HAD NONE. Exported, given a code, imported
+       * back: matching by code alone would create a SECOND row. So a new code
+       * finds the row of that name that has NO code yet — never one with a
+       * code of its own, which is a different thing. Two such rows: an error.
+       */
+      const uncoded = (byName.get(key.name) ?? []).filter((existing) => !input.existingKey(existing).code);
+      if (uncoded.length > 1) {
+        problem(
+          line,
+          `${uncoded.length} existing rows have this name and no code. Give them their codes one at a time.`,
+        );
+        keep(key);
+        continue;
+      }
+      found.push({ line, row, existing: uncoded[0] ?? null });
       continue;
     }
     const named = byName.get(key.name) ?? [];
