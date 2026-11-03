@@ -610,6 +610,25 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **The print studio's side panels are resizable by the app's three-dot grip: the Print screen's settings, and the layout editor's palette and inspector.**
+
+  The operator asked for them to resize "just like the other resizable panels
+  on the app".
+  - **The point of sale's `PanelEdgeHandle`, copied structurally** (a module
+    never imports another), with `ResizeGrip` from web-ui. It is the ARIA
+    window splitter: drag, ← → (Shift for bigger steps) on the focused grip,
+    Home / End for the bounds, double-click for the default. The rules are
+    pure in `view/panel-width.ts`: each panel defaults to the 18rem it had,
+    and sits between 240 and 480 px (520 for Print's settings).
+  - **The widths are NOT stored.** The point of sale keeps its widths in the
+    browser, but the studio writes nothing to browser storage
+    (`test/web-module.test.ts`). The widths live in a context at the
+    studio's root, so they survive switching sections and reopening the
+    editor, and a reload starts from the defaults.
+  - **Each grip is shown only where its panel sits beside the sheet.** The
+    inspector's appears only at @5xl, its own column. Over the palette it
+    shares the palette's width and grip.
+
 - **2026-11-03** — **The layout editor's selection rectangle takes texts as well as cells, and a group of both moves, copies and is removed together (issue #57).**
 
   The rectangle (#53) selected cells only, and a text could only ever be

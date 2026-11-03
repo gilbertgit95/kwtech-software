@@ -17,7 +17,7 @@ import {
   Type,
   Underline,
 } from 'lucide-react';
-import { type DragEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type DragEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { copyGroup, isEmptyGroup, moveGroup, removeGroup } from '../../domain/group.js';
 import {
   borderOf,
@@ -81,6 +81,7 @@ import type { StudioRefusal } from '../../types.js';
 import { measureText } from '../render/texts.js';
 import type { StudioAppState } from '../studio-state.js';
 import { useMarquee } from '../use-marquee.js';
+import { usePanelWidth } from '../use-panel-widths.js';
 import { useStudioAction } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
 import { useUndo } from '../use-undo.js';
@@ -95,12 +96,14 @@ import {
   type StudioUnit,
 } from '../view/lengths.js';
 import { marqueeIndexes, splitCovered, toggleIndex } from '../view/marquee.js';
+import { STUDIO_PANELS } from '../view/panel-width.js';
 import { cellGroups, groupName, paperName, plural, sizeName } from '../view/summary.js';
 import { pageChangeLabel } from '../view/undo-steps.js';
 import { stepViewZoom } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert } from './layout.js';
+import { PanelEdgeHandle } from './panel-edge-handle.js';
 import { SheetFrame, SheetView } from './sheet-view.js';
 import { ShortcutBar } from './shortcut-bar.js';
 import { TagInput } from './tag-input.js';
@@ -239,6 +242,11 @@ export function LayoutEditor({
   /** How closely the sheet is being looked at. 1 fits the panel. */
   const [viewZoom, setViewZoom] = useState(1);
   const save = useStudioAction('Could not save the layout.');
+  /** The palette's and the inspector's widths, as dragged; held while the studio is open (`use-panel-widths.tsx`). */
+  const [paletteWidth, setPaletteWidth] = usePanelWidth('editor_palette');
+  const [inspectorWidth, setInspectorWidth] = usePanelWidth('editor_inspector');
+  const paletteId = useId();
+  const inspectorId = useId();
 
   const area = useMemo(() => printableArea(spec), [spec]);
   const texts = textsOf(spec);
@@ -845,46 +853,63 @@ export function LayoutEditor({
        *   narrower     the inspector over the palette in the left column, so the sheet keeps its width
        * The sheet still follows the panel's own size: it is fitted to whatever its cell of the grid is.
        */}
-      <div className="hidden min-h-0 flex-1 gap-4 @2xl:grid @2xl:grid-cols-[18rem_minmax(0,1fr)] @2xl:grid-rows-[auto_minmax(0,1fr)] @5xl:grid-cols-[18rem_minmax(0,1fr)_18rem] @5xl:grid-rows-[minmax(0,1fr)]">
+      <div
+        // The two side columns are as wide as they were dragged (`PanelEdgeHandle`), read by the grid as variables.
+        style={
+          { '--editor-palette': `${paletteWidth}px`, '--editor-inspector': `${inspectorWidth}px` } as CSSProperties
+        }
+        className="hidden min-h-0 flex-1 gap-3 @2xl:grid @2xl:grid-cols-[var(--editor-palette)_minmax(0,1fr)] @2xl:grid-rows-[auto_minmax(0,1fr)] @5xl:grid-cols-[var(--editor-palette)_minmax(0,1fr)_var(--editor-inspector)] @5xl:grid-rows-[minmax(0,1fr)]"
+      >
         {/* ── the palette ── */}
-        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1 @2xl:col-start-1 @2xl:row-start-2 @5xl:row-start-1">
-          <SizePalette
-            unit={unit}
-            area={area}
-            cellCount={spec.cells.length}
-            onAdd={addCells}
-            onFill={fillWith}
-            onSplit={(rows, columns, gap) => {
-              const grid = splitIntoGrid(area, rows, columns, { gap });
-              if (!grid) return setNote('Those cells would be too small.');
-              setCells(
-                grid,
-                `Divided the sheet into ${columns} across and ${rows} down: ${plural(grid.length, 'equal cell')}.`,
-                'divide the sheet',
-              );
-              setSelected([]);
-            }}
+        {/* ⚠ The handle sits on this wrapper, not the scrolling palette inside it, or it would scroll away. */}
+        <div className="relative flex min-h-0 @2xl:col-start-1 @2xl:row-start-2 @5xl:row-start-1">
+          <PanelEdgeHandle
+            panelId={paletteId}
+            label="Resize the sizes and tools"
+            width={paletteWidth}
+            rules={STUDIO_PANELS.editor_palette}
+            shownClass="@2xl:flex"
+            onResize={setPaletteWidth}
           />
-          <TextTools count={texts.length} onAdd={addText} />
-          <PageSetup
-            spec={spec}
-            unit={unit}
-            onUnit={setUnit}
-            onChange={changePage}
-            onSizing={(sizing) => change({ sizing }, 'sizing')}
-          />
-          <MoreTools
-            hasCells={spec.cells.length > 0}
-            guides={spec.guides}
-            border={borderOf(spec)}
-            onGuides={(guides) => change({ guides }, 'guides')}
-            // A width slider or a colour being picked sends a change per movement: one step while it moves.
-            onBorder={(border) => change({ border }, 'border', 'border')}
-            onClear={() => {
-              setCells([], 'Removed every cell.', 'remove every cell');
-              setSelected([]);
-            }}
-          />
+          <div id={paletteId} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+            <SizePalette
+              unit={unit}
+              area={area}
+              cellCount={spec.cells.length}
+              onAdd={addCells}
+              onFill={fillWith}
+              onSplit={(rows, columns, gap) => {
+                const grid = splitIntoGrid(area, rows, columns, { gap });
+                if (!grid) return setNote('Those cells would be too small.');
+                setCells(
+                  grid,
+                  `Divided the sheet into ${columns} across and ${rows} down: ${plural(grid.length, 'equal cell')}.`,
+                  'divide the sheet',
+                );
+                setSelected([]);
+              }}
+            />
+            <TextTools count={texts.length} onAdd={addText} />
+            <PageSetup
+              spec={spec}
+              unit={unit}
+              onUnit={setUnit}
+              onChange={changePage}
+              onSizing={(sizing) => change({ sizing }, 'sizing')}
+            />
+            <MoreTools
+              hasCells={spec.cells.length > 0}
+              guides={spec.guides}
+              border={borderOf(spec)}
+              onGuides={(guides) => change({ guides }, 'guides')}
+              // A width slider or a colour being picked sends a change per movement: one step while it moves.
+              onBorder={(border) => change({ border }, 'border', 'border')}
+              onClear={() => {
+                setCells([], 'Removed every cell.', 'remove every cell');
+                setSelected([]);
+              }}
+            />
+          </div>
         </div>
 
         {/* ── the sheet ── */}
@@ -946,7 +971,19 @@ export function LayoutEditor({
         </div>
 
         {/* ── the inspector: what is selected, what the last action did, and the keys that work now ── */}
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 @2xl:col-start-1 @2xl:row-start-1 @2xl:max-h-[24rem] @5xl:col-start-3 @5xl:max-h-none">
+        <div
+          id={inspectorId}
+          className="relative flex min-h-0 min-w-0 flex-col gap-2 @2xl:col-start-1 @2xl:row-start-1 @2xl:max-h-[24rem] @5xl:col-start-3 @5xl:max-h-none"
+        >
+          {/* Only where it is a column of its own: over the palette, it is as wide as the palette's handle makes it. */}
+          <PanelEdgeHandle
+            panelId={inspectorId}
+            label="Resize the selection panel"
+            width={inspectorWidth}
+            rules={STUDIO_PANELS.editor_inspector}
+            shownClass="@5xl:flex"
+            onResize={setInspectorWidth}
+          />
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
             {!grouped && !chosenText && !(selectedCell && selectionBox && textSelection.length === 0) ? (
               <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">

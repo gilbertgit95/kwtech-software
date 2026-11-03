@@ -14,6 +14,7 @@ import { PrintSection } from './components/print-section.js';
 import { ShortcutsSection } from './components/shortcuts-section.js';
 import { createStudioClient, type StudioClient } from './studio-client.js';
 import type { StudioAppState } from './studio-state.js';
+import { StudioPanelWidthsProvider } from './use-panel-widths.js';
 import { useStudioData } from './use-studio-data.js';
 
 type Section = 'print' | 'layouts' | 'history' | 'calibration' | 'shortcuts';
@@ -68,32 +69,35 @@ export function StudioApp({ organizationId, workspaceId, client }: AppProps & { 
   ];
 
   return (
-    <div className="@container flex h-full min-h-0 w-full flex-col gap-3 p-3 text-foreground">
-      <SectionBar label="Print studio" sections={sections} current={section} onChange={setSection}>
-        Photos and results stay on this computer.
-      </SectionBar>
-      {/* Hidden rather than unmounted: see the note on the photos above. */}
-      <div className={section === 'print' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-        <PrintSection
-          state={state}
-          layout={layout}
-          onLayout={setLayout}
-          onBrowseLayouts={() => setSection('layouts')}
-        />
+    // The side panels' widths, held for as long as the studio is open (`use-panel-widths.tsx`).
+    <StudioPanelWidthsProvider>
+      <div className="@container flex h-full min-h-0 w-full flex-col gap-3 p-3 text-foreground">
+        <SectionBar label="Print studio" sections={sections} current={section} onChange={setSection}>
+          Photos and results stay on this computer.
+        </SectionBar>
+        {/* Hidden rather than unmounted: see the note on the photos above. */}
+        <div className={section === 'print' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+          <PrintSection
+            state={state}
+            layout={layout}
+            onLayout={setLayout}
+            onBrowseLayouts={() => setSection('layouts')}
+          />
+        </div>
+        {section === 'layouts' ? (
+          <LayoutsSection
+            state={state}
+            onUse={(chosen) => {
+              setLayout(chosen);
+              setSection('print');
+            }}
+          />
+        ) : null}
+        {section === 'history' ? <HistorySection state={state} /> : null}
+        {section === 'calibration' ? <CalibrationSection state={state} /> : null}
+        {section === 'shortcuts' ? <ShortcutsSection state={state} onSaved={settings.reload} /> : null}
       </div>
-      {section === 'layouts' ? (
-        <LayoutsSection
-          state={state}
-          onUse={(chosen) => {
-            setLayout(chosen);
-            setSection('print');
-          }}
-        />
-      ) : null}
-      {section === 'history' ? <HistorySection state={state} /> : null}
-      {section === 'calibration' ? <CalibrationSection state={state} /> : null}
-      {section === 'shortcuts' ? <ShortcutsSection state={state} onSaved={settings.reload} /> : null}
-    </div>
+    </StudioPanelWidthsProvider>
   );
 }
 
