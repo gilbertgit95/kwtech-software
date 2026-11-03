@@ -1,9 +1,11 @@
 import {
   effectiveStudioKeymap,
+  fallbackKeys,
   normalizeStudioKey,
   STUDIO_DEFAULT_KEYMAP,
   STUDIO_KEY_ACTION_NAMES,
   STUDIO_KEY_ACTIONS,
+  type StudioKeyAction,
   studioActionOf,
   studioKeyLabel,
   studioKeyOfPress,
@@ -154,6 +156,36 @@ describe('effectiveStudioKeymap', () => {
       ),
     );
     expect(effectiveStudioKeymap(before).turnPhotoLeft).toBe('Alt+Shift+R');
+  });
+
+  it('⚠ never runs out: with Shift+R and every preferred fallback taken, saved keys are still kept', () => {
+    // Fourteen other Print actions — enough to hold Shift+R, Alt+R, Alt+Shift+R and every allowed F key.
+    const taken = ['Shift+R', 'Alt+R', 'Alt+Shift+R', 'F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F9', 'F10'];
+    const others = STUDIO_KEY_ACTION_NAMES.filter(
+      (action) => STUDIO_KEY_ACTIONS[action].zone === 'print' && action !== 'turnPhotoLeft',
+    );
+    expect(others.length).toBeGreaterThanOrEqual(taken.length);
+    const saved: Record<string, string> = { ...KEYS };
+    delete saved.turnPhotoLeft;
+    for (const [at, key] of taken.entries()) {
+      const action = others[at];
+      if (action) saved[action] = key;
+    }
+    // Valid before Turn left existed: one action per key on the Print screen.
+    expect(validateStudioKeymap({ ...saved, turnPhotoLeft: 'Q' })).toHaveProperty('keymap');
+    const effective = effectiveStudioKeymap(saved);
+    expect(effective).not.toBe(KEYS);
+    for (const [at, key] of taken.entries()) expect(effective[others[at] as StudioKeyAction]).toBe(key);
+    expect(taken).not.toContain(effective.turnPhotoLeft);
+    expect(validateStudioKeymap(effective)).toEqual({ keymap: effective });
+  });
+
+  it('the fallback keys outnumber any screen’s actions many times over, and are all allowed', () => {
+    const keys = fallbackKeys('Shift+R');
+    expect(keys.slice(0, 2)).toEqual(['Alt+R', 'Alt+Shift+R']);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys.length).toBeGreaterThan(STUDIO_KEY_ACTION_NAMES.length * 4);
+    expect(keys.some((key) => key.startsWith('Ctrl+') || key === 'F5' || key === 'F11' || key === 'F12')).toBe(false);
   });
 
   it('a saved key for the new action itself is kept as it is', () => {

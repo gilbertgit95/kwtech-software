@@ -632,9 +632,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
     key. **A new action never takes a saved key** (`effectiveStudioKeymap`,
     CodeRabbit on #55): a workspace that already gave Shift+R to another Print
     action keeps it, and Turn left gets the first free key of Alt+R,
-    Alt+Shift+R, then F1–F12. Before, one clashing new default dropped the
-    whole saved map to the defaults; that still happens only for a saved map
-    that is invalid on its own.
+    Alt+Shift+R, then every other safe key (letters bare, with Shift, Alt, and
+    Alt and Shift; function keys), a list far longer than any screen's actions,
+    so it cannot run out (`fallbackKeys`). No Ctrl keys: the browser keeps
+    many the studio's rules do not list. Before, one clashing new default
+    dropped the whole saved map to the defaults; that still happens only for a
+    saved map that is invalid on its own.
   - **Reset's icon is an eraser**, apart from the turns, not an arrow.
   - **Not done:** keys for the mirrors (the bar's buttons only; the issue asked
     for none). The mirror buttons are switches (`role="switch"`,

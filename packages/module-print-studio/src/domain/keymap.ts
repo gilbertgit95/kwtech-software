@@ -281,14 +281,27 @@ function keysInZone(keymap: Record<string, unknown>, zone: StudioKeyZone, except
 
 /**
  * Where a new action's key goes when its default is taken, in order: its own
- * letter with Alt, then Alt and Shift, then the function keys. Each one a key
- * `checkKey` allows, so the result still validates. Fixed, so every computer
- * gives the same answer.
+ * letter with Alt, then Alt and Shift; then EVERY other safe key — the
+ * letters bare, with Shift, Alt, and Alt and Shift, then the function keys
+ * bare, with Shift and with Alt. Fixed, so every computer gives the same
+ * answer, and each one a key `checkKey` allows, so the result validates.
+ *
+ * ⚠ IT CANNOT RUN OUT. A screen has a few dozen actions at most and this has
+ * well over a hundred keys (tested), so a free one always exists — a short
+ * list could be filled by a saved map and drop it whole again (CodeRabbit on
+ * #55). No Ctrl: the browser keeps many Ctrl keys `checkKey` does not know
+ * (Ctrl+Shift+I opens the developer tools).
  */
-function fallbackKeys(key: string): string[] {
+export function fallbackKeys(key: string): string[] {
   const base = key.split('+').at(-1) ?? key;
+  const letters = Array.from({ length: 26 }, (_none, at) => String.fromCharCode(65 + at));
   const functionKeys = Array.from({ length: 12 }, (_none, at) => `F${at + 1}`);
-  return [`Alt+${base}`, `Alt+Shift+${base}`, ...functionKeys].filter((candidate) => checkKey(candidate) === null);
+  const every = [
+    ...['', 'Shift+', 'Alt+', 'Alt+Shift+'].flatMap((modifier) => letters.map((letter) => `${modifier}${letter}`)),
+    ...['', 'Shift+', 'Alt+'].flatMap((modifier) => functionKeys.map((name) => `${modifier}${name}`)),
+  ];
+  const ordered = [`Alt+${base}`, `Alt+Shift+${base}`, ...every];
+  return [...new Set(ordered)].filter((candidate) => checkKey(candidate) === null);
 }
 
 /** The action a key is bound to on a screen, or null. */
