@@ -57,8 +57,9 @@ export interface TillState {
   /** How many are left per item and variant, from the stock app; null when the store counts no stock. */
   stock: PosStockMap | null;
   /**
-   * The store's "most ordered" ranking (issue #47); null until read, or when it
-   * could not be — the sell views then keep their old order. ⚠ READ WHEN A SELL
+   * The store's "most ordered" ranking (issue #47); null until this store's
+   * first read succeeds — the sell views then keep their old order (by name).
+   * A later read that fails KEEPS the last one (see `reloadRanks`). ⚠ READ WHEN A SELL
    * VIEW OPENS (`reloadRanks`), never on a live event: tiles must not move
    * mid-order.
    */
@@ -254,7 +255,15 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
       const answer = await client.ranks(scope);
       if (mine === rankRead.current) setRanks(rankMap(answer));
     } catch (caught) {
-      // A courtesy, like the counts: without it the till lists by name, and sells the same. Said, so it can be found.
+      /*
+       * A courtesy, like the counts: the till sells the same without it. Said, so it can be found.
+       *
+       * ⚠ THE LAST RANKING IS KEPT, deliberately. It is this store's (a change of
+       * store clears it) and at most a day old; dropping it on one failed read
+       * would send every tile back to name order for a network blip and back
+       * again on the next good read — the tiles moving that the ranking exists
+       * to avoid. With nothing read yet, the till keeps its name order.
+       */
       if (mine === rankRead.current) {
         console.warn('Point of sale: could not read the most-ordered ranking.', caught);
       }

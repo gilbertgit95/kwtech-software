@@ -324,7 +324,8 @@ and the printed price list keep sorting by name.
   it opens** (`reloadRanks` — the till's state outlives the Sell tab, so coming
   back to it picks up the day's new ranking), and never on a live event, so
   tiles never move under a cashier's finger. A new ranking puts the search
-  cursor back on the best match.
+  cursor back on the best match. A read that fails is logged and keeps the
+  store's last ranking; with none read yet, the views keep their old order.
 - **The sort** (`byPopularity`, `src/domain/popularity.ts`): by rank, then
   everything unranked; ties and the unranked keep their old order (the name for
   items, `sortOrder` for variants). Not available (#37) is applied **on top**:
