@@ -22,6 +22,7 @@ import { PosRankItemsProcess } from './pos-rank.process.js';
 import { PosRefundService } from './pos-refund.service.js';
 import { PosReportService } from './pos-report.service.js';
 import { PosSettingsService } from './pos-settings.service.js';
+import { PosSetupService } from './pos-setup.service.js';
 import { PosStockService } from './pos-stock.service.js';
 import { PosTimeZoneService } from './pos-time-zone.service.js';
 
@@ -30,6 +31,7 @@ const SERVICES = [
   PosCatalogueService,
   PosCustomerService,
   PosSettingsService,
+  PosSetupService,
   PosTimeZoneService,
   PosOrderService,
   PosOrderWriteService,

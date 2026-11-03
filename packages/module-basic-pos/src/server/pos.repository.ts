@@ -593,5 +593,10 @@ export type PosJsonInput = { [key: string]: PosJsonInput } | PosJsonInput[] | st
 export type PosPrismaClient = PosTransaction;
 
 export interface PosWriteClient extends PosTransaction {
-  $transaction<T>(fn: (tx: PosTransaction) => Promise<T>): Promise<T>;
+  /**
+   * `options.timeout` (ms) only where a write is LONG by nature — the setup
+   * import writes a whole catalogue in one transaction (issue #35). Every other
+   * write keeps Prisma's 5 s default, which is what catches a stuck one.
+   */
+  $transaction<T>(fn: (tx: PosTransaction) => Promise<T>, options?: { timeout?: number; maxWait?: number }): Promise<T>;
 }

@@ -97,13 +97,17 @@ function withTransaction<Tx, Client extends { $transaction: unknown }>(
 ): Client {
   return {
     ...delegates,
-    $transaction: <T>(fn: (tx: Tx) => Promise<T>) =>
+    $transaction: <T>(fn: (tx: Tx) => Promise<T>, options?: { timeout?: number; maxWait?: number }) =>
       // The single cast in the wiring, and a narrow one: Prisma hands the
       // callback its interactive transaction client, which carries every
       // delegate above. What it does NOT carry is `$transaction` itself — which
       // is precisely what the modules' `Tx` type omits, so the shapes agree at
       // runtime and only the compiler needs telling.
-      prisma.$transaction(fn as unknown as (tx: unknown) => Promise<T>),
+      //
+      // `options` passed on, not dropped: a module whose write is long by nature
+      // (the POS setup import, issue #35) asks for a longer timeout than the 5 s
+      // default, and silently losing it would fail that import at 5 s.
+      prisma.$transaction(fn as unknown as (tx: unknown) => Promise<T>, options),
   } as Client;
 }
 

@@ -216,7 +216,8 @@ function plan(rows: Row[], existing: Existing[], extra: Partial<SheetPlanInput<R
     existing,
     rowKey: keyOf,
     existingKey: keyOf,
-    isUnchanged: (row, current) => row.name === current.name && row.price === current.price && !current.archived,
+    isUnchanged: (row, current) =>
+      row.code === current.code && row.name === current.name && row.price === current.price && !current.archived,
     isArchived: (current) => current.archived,
     mode: 'merge',
     ...extra,
@@ -250,6 +251,24 @@ describe('the import plan', () => {
     expect(result.steps).toEqual([
       { kind: 'update', line: 2, row: { code: null, name: 'MOCHA', price: 14000 }, existing: MOCHA },
     ]);
+  });
+
+  it('⚠ gives a code to the row of that name that had none, rather than creating a second', () => {
+    const result = plan([{ code: 'MOC', name: 'Mocha', price: 13000 }], [LATTE, MOCHA], { mode: 'replace' });
+    expect(result.steps).toEqual([
+      { kind: 'update', line: 2, row: { code: 'MOC', name: 'Mocha', price: 13000 }, existing: MOCHA },
+    ]);
+    expect(result.archive).toEqual([LATTE]);
+  });
+
+  it('⚠ never guesses which of two uncoded rows a new code is for', () => {
+    const twin = { ...MOCHA, id: 'i9' };
+    const result = plan([{ code: 'MOC', name: 'Mocha', price: 1 }], [MOCHA, twin], { mode: 'replace' });
+    expect(result.steps).toEqual([]);
+    expect(result.problems.map((problem) => problem.message)).toEqual([
+      '2 existing rows have this name and no code. Give them their codes one at a time.',
+    ]);
+    expect(result.archive).toEqual([]);
   });
 
   it('⚠ treats a row WITH a code as new when the code is new, even if its name is taken', () => {

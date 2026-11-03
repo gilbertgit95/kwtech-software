@@ -1,7 +1,7 @@
 'use client';
 
 import { cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
-import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, FileSpreadsheet, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isPosItemAvailable } from '../../domain/availability.js';
 import type { PosCatalogueView, PosCategoryView, PosOrderTypeOptionView } from '../pos-client.js';
@@ -25,6 +25,7 @@ import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PriceListButtons } from './price-list-buttons.js';
 import { ReferenceOptionsPanel } from './reference-options-panel.js';
+import { SetupExcel, type SetupExcelDialog } from './setup-excel.js';
 
 type ItemsTab = 'items' | 'availability' | 'categories' | 'order_types' | 'references';
 
@@ -40,21 +41,41 @@ export function ItemsSection({ state }: { state: TillState }) {
   const [tab, setTab] = useState<ItemsTab>('items');
   const load = useCallback(() => client.catalogue(scope, true), [client, scope]);
   const catalogue = usePosData(scope, load, ['catalogue'], 'Could not load the items.');
+  // The whole setup to and from Excel (issue #35): every sub-tab's rows in one file.
+  const [excel, setExcel] = useState<SetupExcelDialog>('none');
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <Tabs
-        label="What to manage"
-        tabs={[
-          { key: 'items', label: 'Items' },
-          // Its own key (issue #37): shown to whoever may switch, never only to `manage_items`.
-          ...(state.canSetAvailability ? [{ key: 'availability' as const, label: 'Availability' }] : []),
-          { key: 'categories', label: 'Categories' },
-          { key: 'order_types', label: 'Order types' },
-          { key: 'references', label: 'References' },
-        ]}
-        current={tab}
-        onChange={setTab}
+      <div className="flex flex-wrap items-center gap-2">
+        <Tabs
+          label="What to manage"
+          tabs={[
+            { key: 'items', label: 'Items' },
+            // Its own key (issue #37): shown to whoever may switch, never only to `manage_items`.
+            ...(state.canSetAvailability ? [{ key: 'availability' as const, label: 'Availability' }] : []),
+            { key: 'categories', label: 'Categories' },
+            { key: 'order_types', label: 'Order types' },
+            { key: 'references', label: 'References' },
+          ]}
+          current={tab}
+          onChange={setTab}
+        />
+        <div className="ml-auto flex gap-1">
+          <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => setExcel('import')}>
+            <Upload aria-hidden="true" className="size-4" />
+            Import from Excel
+          </button>
+          <button type="button" className={buttonClass('ghost', 'sm')} onClick={() => setExcel('export')}>
+            <Download aria-hidden="true" className="size-4" />
+            Export to Excel
+          </button>
+        </div>
+      </div>
+      <SetupExcel
+        state={state}
+        open={excel}
+        onClose={() => setExcel('none')}
+        onImported={() => void catalogue.reload()}
       />
       {/* References are settings, read apart from the catalogue. */}
       {tab === 'references' ? <ReferenceOptionsPanel state={state} /> : null}
@@ -63,7 +84,12 @@ export function ItemsSection({ state }: { state: TillState }) {
         <Empty>{catalogue.loading ? 'Loading…' : 'The items could not be loaded.'}</Empty>
       ) : null}
       {tab === 'items' && catalogue.data ? (
-        <ItemsPanel state={state} catalogue={catalogue.data} onSaved={() => void catalogue.reload()} />
+        <ItemsPanel
+          state={state}
+          catalogue={catalogue.data}
+          onSaved={() => void catalogue.reload()}
+          onImport={() => setExcel('import')}
+        />
       ) : null}
       {tab === 'availability' && catalogue.data ? (
         <AvailabilityPanel state={state} catalogue={catalogue.data} onChanged={() => void catalogue.reload()} />
@@ -85,10 +111,13 @@ function ItemsPanel({
   state,
   catalogue,
   onSaved,
+  onImport,
 }: {
   state: TillState;
   catalogue: PosCatalogueView;
   onSaved: () => void;
+  /** Opens the Excel import: how an empty store sets up fastest (issue #35). */
+  onImport: () => void;
 }) {
   const [search, setSearch] = useState('');
   const listRef = useRef<HTMLUListElement>(null);
@@ -154,9 +183,14 @@ function ItemsPanel({
             <PriceListButtons state={state} catalogue={catalogue} />
           </div>
           <ul ref={listRef} className="flex min-h-0 flex-col gap-1 overflow-y-auto" {...LIST_KEYS}>
-            {items.length === 0 ? (
+            {catalogue.items.length === 0 ? (
               <li>
-                <Empty>{catalogue.items.length === 0 ? 'No items yet. Add the first one.' : 'Nothing matches.'}</Empty>
+                <SetUpFromExcel onImport={onImport} />
+              </li>
+            ) : null}
+            {items.length === 0 && catalogue.items.length > 0 ? (
+              <li>
+                <Empty>Nothing matches.</Empty>
               </li>
             ) : null}
             {items.map((row) => {
@@ -813,5 +847,26 @@ function OrderTypesPanel({
         onClose={() => setDialog({ kind: 'none' })}
       />
     </section>
+  );
+}
+
+/**
+ * What an empty catalogue offers (issue #35): the fastest way to start
+ * selling is the whole menu at once, from Excel — or one item at a time.
+ */
+function SetUpFromExcel({ onImport }: { onImport: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed border-border p-4 text-sm">
+      <FileSpreadsheet aria-hidden="true" className="size-5 text-muted-foreground" />
+      <p className="font-medium">No items yet.</p>
+      <p className="text-muted-foreground">
+        Set up the whole store at once from Excel — items, sizes, categories, order types and references — or add the
+        first item with New item.
+      </p>
+      <button type="button" className={buttonClass('primary', 'sm')} onClick={onImport}>
+        <Upload aria-hidden="true" className="size-4" />
+        Set up from Excel
+      </button>
+    </div>
   );
 }

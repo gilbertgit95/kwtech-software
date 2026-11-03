@@ -642,8 +642,9 @@ are `@kwtech/web-ui`'s, in the browser — the server never receives a file.
 - **The plan:** `planSheetImport({ sheet, rows, existing, rowKey,
   existingKey, isUnchanged, isArchived, mode, held })` (`sheet` names the tab
   in each problem) → create / update / unchanged steps,
-  what Replace archives, and problems. A row with a code is found by its code;
-  without one, by its name (the module folds names, and may scope them, e.g. a
+  what Replace archives, and problems. A row with a code is found by its code —
+  or, when no row has that code yet, by the row of its name that has NO code
+  (a code being added, never a second row); without a code, by its name (the module folds names, and may scope them, e.g. a
   size's name within its item). Two existing rows with the name (or the code),
   or one thing twice in the file, is an error on the row — never a guess. ⚠ Replace never
   archives what a row with a problem meant: pass the keys of rows that did not

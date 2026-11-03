@@ -25,7 +25,14 @@ type SettingsTab = 'store' | 'keys';
  * The order reference options moved to the Items tab (2026-10-29), beside
  * categories and order types.
  */
-export function SettingsSection({ state }: { state: TillState }) {
+export function SettingsSection({
+  state,
+  onOpenItems,
+}: {
+  state: TillState;
+  /** Opens Items, where the Excel import and export are (issue #35). Omitted: this person may not manage items. */
+  onOpenItems?: (() => void) | undefined;
+}) {
   const [tab, setTab] = useState<SettingsTab>('store');
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -39,6 +46,21 @@ export function SettingsSection({ state }: { state: TillState }) {
         onChange={setTab}
       />
       {tab === 'store' ? <StoreSettings state={state} /> : null}
+      {tab === 'store' && onOpenItems ? (
+        <section
+          aria-label="Setup in Excel"
+          className="flex max-w-xl flex-col gap-2 rounded-lg border border-border p-4"
+        >
+          <h2 className="text-base font-semibold">The store’s setup in Excel</h2>
+          <p className="text-sm text-muted-foreground">
+            Items, sizes, categories, order types and references can be exported to one Excel file and imported back —
+            to set up a new till or another branch in minutes.
+          </p>
+          <button type="button" className={cn(buttonClass('ghost', 'sm'), 'w-fit')} onClick={onOpenItems}>
+            Import or export on Items
+          </button>
+        </section>
+      ) : null}
       {tab === 'keys' ? <KeySettings state={state} /> : null}
     </div>
   );

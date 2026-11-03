@@ -1,6 +1,7 @@
 'use client';
 
 import { POS_OPERATIONS } from '../operations.js';
+import type { PosSetupMutationInput } from './view/setup.js';
 
 /**
  * How the POS reaches the API — through the app's same-origin route handler,
@@ -294,6 +295,11 @@ export interface PosRanksView {
   variants: { id: string; rank: number }[];
 }
 
+/** What a setup import did, per tab. */
+export interface PosSetupOutcomeView {
+  sheets: { name: string; created: number; updated: number; archived: number }[];
+}
+
 export interface PosEventView {
   /** `sync`, `catalogue`, `customers`, `settings`, `order` or `stock`. */
   kind: string;
@@ -393,6 +399,8 @@ export interface PosClient {
   setCustomerArchived(scope: PosScopeView, customerId: string, archived: boolean): Promise<PosCustomerView>;
   settings(scope: PosScopeView): Promise<PosSettingsView>;
   saveSettings(scope: PosScopeView, keymap: string | null): Promise<PosSettingsView>;
+  /** The store's setup from Excel (issue #35): typed rows, planned again and written in one transaction. */
+  importSetup(scope: PosScopeView, input: PosSetupMutationInput): Promise<PosSetupOutcomeView>;
   /** The whole list, in order; empty removes them. The keymap is left alone. */
   saveReferenceOptions(
     scope: PosScopeView,
@@ -519,6 +527,7 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
       call('setPosCustomerArchived', scope, { customerId, archived }),
     settings: (scope) => call('posSettings', scope),
     saveSettings: (scope, keymap) => call('savePosSettings', scope, { keymap }),
+    importSetup: (scope, input) => call('importPosSetup', scope, { input }),
     saveReferenceOptions: (scope, options, defaultReference = null) =>
       call('savePosReferenceOptions', scope, { options, defaultReference }),
 

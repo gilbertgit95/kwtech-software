@@ -19,6 +19,7 @@ export * from './domain/references.js';
 export * from './domain/refunds.js';
 export * from './domain/reports.js';
 export * from './domain/search.js';
+export * from './domain/setup.js';
 export * from './domain/text.js';
 export * from './feature-keys.js';
 export * from './operations.js';

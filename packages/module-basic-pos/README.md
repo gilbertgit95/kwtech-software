@@ -334,6 +334,50 @@ and the printed price list keep sorting by name.
 - **A new store**, or a store before its first run, has no ranking, and every
   sell view lists exactly as before #47.
 
+## Setup in Excel (issue #35)
+
+How a store gets set up and starts selling quickly: one Excel file with a tab
+for each part of the Items tab — **Items**, **Variants** (the sizes),
+**Categories**, **Order types** and **References** — and a **Read me**. On the
+Items tab: **Import from Excel** and **Export to Excel**; an empty catalogue
+offers **Set up from Excel**; Settings points there for whoever also manages
+items. Built on `module-kit`'s spreadsheet engine and `web-ui`'s wizard.
+
+- **Key:** `pos:manage_items` alone (the references moved to Items). The
+  mutation is `importPosSetup(input)`; the export reads `posCatalogue` (with
+  costs, which that key sees) and `posSettings`, and writes the file in the
+  browser. ⚠ The server never receives a file.
+- **The rules** are `src/domain/setup.ts`, ONE set for both sides:
+  `readPosSetup` (the browser: tabs → typed rows, every problem on its row and
+  column), `planPosSetup` (the browser for the preview, and the server again
+  inside its transaction), `checkPosSetupInput` (the server's look at rows it
+  never trusts) and `posSetupExportRows`.
+- **Matching:** categories and order types by name; items and sizes by code,
+  else by name — a size's name within its item. A size names its item by
+  **Item code**, else **Item name**; the item may be new in the same file. An
+  ambiguous name, one thing twice, a category nobody has, or a code on both an
+  item and a size (in the file or the store) is an error on the row.
+- **Values:** prices and costs in pesos (`12.50`, centavos inside); codes kept
+  as text (the template formats them so Excel keeps `007`); Archived Yes/No,
+  blank is No; a blank Sort order keeps the current one; an item's price may be
+  blank only when it has sizes.
+- **Add and update** (default) or **Replace**, which also archives what each
+  tab in the file leaves out — never deletes, and never what a row with an
+  error meant. ⚠ **A tab missing from the file is left alone.** References:
+  Replace makes the list the file's, Add and update adds to it.
+- **All or nothing:** one transaction (60 s, not Prisma's 5 s), refused whole on
+  any error unless the person chose to skip those rows. The caps hold for the
+  file as a whole: `pos:items` for the store as it will be (the message says
+  how many the file would make), 200 categories and 20 order types (archived
+  included), 100 sizes per item, 50 references, one default order type and
+  one default reference. Importing a file twice changes nothing — not even the
+  settings' version.
+- **Not in the file:** "Not available" (#37) is today's state, not setup —
+  everything imports available. Orders, customers and reports never. A store's
+  stock links (`module-basic-inventory`) and its most-ordered ranking (#47)
+  point at item ids, which a file does not carry: after importing into
+  another store they start empty.
+
 ## Processes
 
 | Key | What | Default schedule | Limits |
