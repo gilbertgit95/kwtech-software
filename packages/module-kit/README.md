@@ -616,6 +616,46 @@ const printing = usePrinters(scope);
 menu renders nothing: the screen is what it was without it. Making the PDF is
 the module's own work, since only it knows what it prints.
 
+## Spreadsheet import and export
+
+A module that lets people move its setup in and out of Excel declares its
+sheets as data and shares everything else (issue #35). The engine is in the
+root (`src/spreadsheet.ts`): pure, no file APIs, no library, tested with
+literals. Reading and writing the `.xlsx` itself, and the step-by-step screen,
+are `@kwtech/web-ui`'s, in the browser — the server never receives a file.
+
+- **A `SheetSpec` per tab:** its name, one line of help, and its columns. Each
+  column has a `header`, a `kind` — `text`, `integer`, `money` (pesos in the
+  file, CENTAVOS in the value: 12.50 → 1250), `yes_no` or `choice` — and
+  `required`, `choices`, `maxLength`, `textFormat` (keep codes as text: Excel
+  turns 007 into 7), an `example` and a line of `help`.
+- **Reading:** `readSheet(spec, rows)` takes the heading row then the rows, each
+  with the row number Excel shows. Headings match loosely (case, spaces, `_`,
+  `-`) and in any order; a column it does not know is ignored. A required
+  heading missing, or a heading twice, refuses the whole sheet. Every row is
+  read, and each problem names its sheet, row and column.
+  `prepareSheetCell` turns what a reader hands back — a formula with its result,
+  styled text, a link — into a plain value. ⚠ A date in any column, a formula
+  with no result, and a third decimal in money are refused, never guessed.
+- **Which tabs:** `matchSheets(specs, tabNames)`. ⚠ A tab missing from the file
+  is LEFT ALONE, never read as empty.
+- **The plan:** `planSheetImport({ sheet, rows, existing, rowKey,
+  existingKey, isUnchanged, isArchived, mode, held })` (`sheet` names the tab
+  in each problem) → create / update / unchanged steps,
+  what Replace archives, and problems. A row with a code is found by its code;
+  without one, by its name (the module folds names, and may scope them, e.g. a
+  size's name within its item). Two existing rows with the name (or the code),
+  or one thing twice in the file, is an error on the row — never a guess. ⚠ Replace never
+  archives what a row with a problem meant: pass the keys of rows that did not
+  read as `held`. The same file twice gives all `unchanged`.
+- **The rest:** `sheetReadMe(title, specs)` (the Read me tab's rows) and
+  `countSheetPlan(plan, readProblems)` ("12 new, 3 updated, 1 unchanged, 2 with
+  errors").
+
+The module keeps what is its own: its rules for a valid row (codes unique
+across its tables, one default, its caps), and a mutation that receives TYPED
+ROWS, checks all of them again, and applies the plan in one transaction.
+
 ## The status channel
 
 The global status bar's vocabulary lives here for the same reason

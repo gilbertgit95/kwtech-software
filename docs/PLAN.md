@@ -610,6 +610,27 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **Spreadsheet import and export get one shared engine in `module-kit`, pure, before the POS uses it (issue #35, first of three PRs).**
+
+  The POS setup import (#35) needs sheets declared as data, cell reading, row
+  errors on their row and column, and a create / update / unchanged / archive
+  plan. `module-permissions`' feature import is the same idea written for one
+  screen, so a second consumer exists (principle 9).
+  - **Pure, in the root:** `src/spreadsheet.ts` has no file API and no
+    library. A workbook reader's cell shapes (a formula with its result, styled
+    text, a link) are described structurally, found in the `exceljs` trial.
+    The `.xlsx` I/O and the wizard come next, in `@kwtech/web-ui`, in the
+    browser; the server receives typed rows, never a file.
+  - **Refuse, never guess:** a date in any column, a formula with no result, a
+    third decimal in money, an ambiguous name, one thing twice in the file.
+    Money is pesos in the file and centavos in the value.
+  - **A missing tab is left alone**, and **Replace never archives what a row
+    with a problem meant** (`held`), so skipping a bad row cannot archive its
+    item.
+  - **Not done:** no module uses it yet (the POS does in the third PR), and
+    `module-permissions` keeps its own parser until the follow-up issue moves
+    it, so the legacy screen is not rewritten as a side effect.
+
 - **2026-11-03** — **The sell views list items and variants most ordered first, from a ranking a daily background process makes, not a live count (issue #47).**
 
   In a store with a long menu, the few items that make up most sales sat far
