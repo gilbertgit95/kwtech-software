@@ -626,8 +626,8 @@ Decisions 1, 2, 3 and 5 gate the next step.
     studio's root, so they survive switching sections and reopening the
     editor, and a reload starts from the defaults.
   - **Each grip is shown only where its panel sits beside the sheet.** The
-    inspector's appears only at @5xl, its own column. Over the palette it
-    shares the palette's width and grip.
+    inspector's grip is on its left edge, as a column at @5xl and as the
+    floating card when narrower.
 
 - **2026-11-03** — **The layout editor's selection rectangle takes texts as well as cells, and a group of both moves, copies and is removed together (issue #57).**
 
@@ -660,8 +660,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
     everything that changes with the selection (a cell's numbers, a group's
     tools, a text's style), the status line and the shortcut bar are in one
     column, the inspector. At @5xl it sits beside the sheet, giving palette,
-    sheet and inspector. Narrower, it sits over the palette in the left
-    column, so the sheet keeps its width. Nothing is above or under the
+    sheet and inspector. Narrower, it floats as a card over the sheet's top
+    right corner, clear of the zoom bar. It is the same element in the same
+    grid cell, overlapping the sheet. It first sat over the palette in the
+    left column, where the operator found it went out of sight. Nothing is above or under the
     sheet, and it still follows the sub-app panel's own size. The Print
     screen is unchanged.
   - **Not done:** snapping for a group with texts (cells alone still snap to

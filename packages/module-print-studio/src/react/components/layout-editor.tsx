@@ -850,7 +850,10 @@ export function LayoutEditor({
        * status line and the shortcut bar are in ONE column beside it, the inspector. Nothing above or under the
        * sheet takes its height, and nothing there comes and goes with the selection and makes it jump.
        *   wide (@5xl)  palette | sheet | inspector, each the full height
-       *   narrower     the inspector over the palette in the left column, so the sheet keeps its width
+       *   narrower     palette | sheet, and the inspector FLOATS over the sheet's top right corner, a card as wide
+       *                as its grip makes it (the operator, 2026-11-03: it went out of sight in the left column).
+       *                ⚠ The same element in the same grid cell as the sheet, overlapping it, never a second
+       *                copy: the text panel's fields hold what is being typed.
        * The sheet still follows the panel's own size: it is fitted to whatever its cell of the grid is.
        */}
       <div
@@ -858,11 +861,11 @@ export function LayoutEditor({
         style={
           { '--editor-palette': `${paletteWidth}px`, '--editor-inspector': `${inspectorWidth}px` } as CSSProperties
         }
-        className="hidden min-h-0 flex-1 gap-3 @2xl:grid @2xl:grid-cols-[var(--editor-palette)_minmax(0,1fr)] @2xl:grid-rows-[auto_minmax(0,1fr)] @5xl:grid-cols-[var(--editor-palette)_minmax(0,1fr)_var(--editor-inspector)] @5xl:grid-rows-[minmax(0,1fr)]"
+        className="hidden min-h-0 flex-1 gap-3 @2xl:grid @2xl:grid-cols-[var(--editor-palette)_minmax(0,1fr)] @2xl:grid-rows-[minmax(0,1fr)] @5xl:grid-cols-[var(--editor-palette)_minmax(0,1fr)_var(--editor-inspector)]"
       >
         {/* ── the palette ── */}
         {/* ⚠ The handle sits on this wrapper, not the scrolling palette inside it, or it would scroll away. */}
-        <div className="relative flex min-h-0 @2xl:col-start-1 @2xl:row-start-2 @5xl:row-start-1">
+        <div className="relative flex min-h-0 @2xl:col-start-1 @2xl:row-start-1">
           <PanelEdgeHandle
             panelId={paletteId}
             label="Resize the sizes and tools"
@@ -916,7 +919,7 @@ export function LayoutEditor({
         {/* Around the whole view, so a selection rectangle can start in the grey beside the paper (`useMarquee`). */}
         <div
           ref={marquee.container}
-          className="relative flex min-h-0 min-w-0 overflow-hidden rounded-xl border border-border bg-muted/30 @2xl:col-start-2 @2xl:row-span-2 @2xl:row-start-1 @5xl:row-span-1"
+          className="relative flex min-h-0 min-w-0 overflow-hidden rounded-xl border border-border bg-muted/30 @2xl:col-start-2 @2xl:row-start-1"
           {...marquee.handlers}
         >
           <SheetFrame
@@ -973,15 +976,26 @@ export function LayoutEditor({
         {/* ── the inspector: what is selected, what the last action did, and the keys that work now ── */}
         <div
           id={inspectorId}
-          className="relative flex min-h-0 min-w-0 flex-col gap-2 @2xl:col-start-1 @2xl:row-start-1 @2xl:max-h-[24rem] @5xl:col-start-3 @5xl:max-h-none"
+          className={cn(
+            'relative flex min-h-0 min-w-0 flex-col gap-2',
+            /*
+             * Floating, narrower than @5xl: over the sheet's top right corner, in front of it (z-30, as the sheet's
+             * own controls), clear of the zoom bar along its foot, and never wider than the sheet less a margin.
+             */
+            '@2xl:z-30 @2xl:col-start-2 @2xl:row-start-1 @2xl:m-2 @2xl:w-[var(--editor-inspector)] @2xl:max-w-[calc(100%-1rem)] @2xl:max-h-[calc(100%-4.5rem)] @2xl:self-start @2xl:justify-self-end',
+            '@2xl:rounded-xl @2xl:border @2xl:border-border @2xl:bg-card/95 @2xl:p-2 @2xl:shadow-lg @2xl:backdrop-blur-sm',
+            // A column of its own from @5xl: the full height beside the sheet, as before.
+            '@5xl:col-start-3 @5xl:m-0 @5xl:w-auto @5xl:max-w-none @5xl:max-h-none @5xl:self-stretch @5xl:justify-self-stretch',
+            '@5xl:rounded-none @5xl:border-0 @5xl:bg-transparent @5xl:p-0 @5xl:shadow-none @5xl:backdrop-blur-none',
+          )}
         >
-          {/* Only where it is a column of its own: over the palette, it is as wide as the palette's handle makes it. */}
+          {/* Its left edge, column or card alike: the card is resized from the side that faces the sheet. */}
           <PanelEdgeHandle
             panelId={inspectorId}
             label="Resize the selection panel"
             width={inspectorWidth}
             rules={STUDIO_PANELS.editor_inspector}
-            shownClass="@5xl:flex"
+            shownClass="@2xl:flex"
             onResize={setInspectorWidth}
           />
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
