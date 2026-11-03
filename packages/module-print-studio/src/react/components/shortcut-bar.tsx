@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from '@kwtech/web-ui/react';
 import { Keyboard } from 'lucide-react';
 import type { StudioShortcut } from '../view/keys.js';
 
@@ -19,9 +20,16 @@ import type { StudioShortcut } from '../view/keys.js';
 export function ShortcutBar({
   entries,
   onPress,
+  oneLine = false,
 }: {
   entries: readonly StudioShortcut[];
   onPress: (key: string) => void;
+  /**
+   * Never wrap: what does not fit scrolls sideways. For the layout editor, whose sheet is fitted to the room left
+   * around it — a bar that wrapped onto a second line and back as the selection changed resized the sheet every
+   * time (the operator, 2026-11-03). Elsewhere the bar wraps, as it always has.
+   */
+  oneLine?: boolean;
 }) {
   if (entries.length === 0) return null;
   return (
@@ -31,14 +39,14 @@ export function ShortcutBar({
       className="flex items-center gap-2 overflow-hidden rounded-md border border-border bg-muted px-2 py-1"
     >
       <Keyboard aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-      {/*
-       * ⚠ ONE LINE, NEVER WRAPPED: the bar's keys change with the selection, and a bar that wrapped onto a second
-       * line and back resized the sheet above it every time (the operator, 2026-11-03). What does not fit scrolls
-       * sideways.
-       */}
-      <ul className="flex min-w-0 flex-1 flex-nowrap gap-x-1 overflow-x-auto [scrollbar-width:none]">
+      <ul
+        className={cn(
+          'flex min-w-0 flex-1 gap-x-1',
+          oneLine ? 'flex-nowrap overflow-x-auto [scrollbar-width:none]' : 'flex-wrap gap-y-0.5',
+        )}
+      >
         {entries.map((entry) => (
-          <li key={`${entry.keys}:${entry.label}`} className="shrink-0">
+          <li key={`${entry.keys}:${entry.label}`} className={oneLine ? 'shrink-0' : undefined}>
             <ShortcutChip entry={entry} onPress={onPress} />
           </li>
         ))}

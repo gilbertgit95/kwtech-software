@@ -641,8 +641,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
     happened many times a second. Now the slot above the sheet has a fixed
     height (its panels stay one row and scroll sideways when narrow), the
     text column stays once the layout has any text, the status line is one
-    line, and the shortcut bar never wraps (on Print too). The sheet still
-    follows the sub-app panel's own size.
+    line, and the editor's shortcut bar never wraps. Only the editor's own
+    panels changed: the Print screen and the sub-app layout around the
+    editor are as they were, and the sheet still follows the panel's size.
   - **Not done:** snapping for a group with texts (cells alone still snap to
     their neighbours), and selecting texts on the Print screen, where they
     are fixed.

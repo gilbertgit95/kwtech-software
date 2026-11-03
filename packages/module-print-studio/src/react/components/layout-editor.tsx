@@ -1002,6 +1002,7 @@ export function LayoutEditor({
               (entry) => selection.length > 0 || entry.press !== state.keymap.turnCell,
             )}
             onPress={(key) => void performKey(key)}
+            oneLine
           />
         </div>
 
