@@ -122,6 +122,15 @@ describe('effectiveStudioKeymap', () => {
     expect(effectiveStudioKeymap(null)).toBe(KEYS);
   });
 
+  it('gives a keymap saved before Turn left existed its default, Shift+R, and keeps the rest (issue #51)', () => {
+    const before = Object.fromEntries(
+      Object.entries({ ...KEYS, turnPhoto: 'T' }).filter(([action]) => action !== 'turnPhotoLeft'),
+    );
+    const effective = effectiveStudioKeymap(before);
+    expect(effective.turnPhotoLeft).toBe('Shift+R');
+    expect(effective.turnPhoto).toBe('T');
+  });
+
   it('⚠ falls back to the defaults whole when what was stored no longer validates', () => {
     expect(effectiveStudioKeymap({ turnPhoto: 'S' })).toBe(KEYS);
     expect(effectiveStudioKeymap('nonsense')).toBe(KEYS);
@@ -147,7 +156,8 @@ describe('printKeyAction', () => {
     expect(printKeyAction('Delete', ONE_SELECTED, KEYS)).toEqual({ kind: 'empty' });
     expect(printKeyAction('+', ONE_SELECTED, KEYS)).toEqual({ kind: 'zoom', by: 0.1 });
     expect(printKeyAction('-', ONE_SELECTED, KEYS)).toEqual({ kind: 'zoom', by: -0.1 });
-    expect(printKeyAction('R', ONE_SELECTED, KEYS)).toEqual({ kind: 'turn' });
+    expect(printKeyAction('R', ONE_SELECTED, KEYS)).toEqual({ kind: 'turn', toward: 'right' });
+    expect(printKeyAction('Shift+R', ONE_SELECTED, KEYS)).toEqual({ kind: 'turn', toward: 'left' });
     expect(printKeyAction('0', ONE_SELECTED, KEYS)).toEqual({ kind: 'reset' });
   });
 
@@ -204,7 +214,7 @@ describe('printShortcutBar', () => {
 
   it('leads with the selection’s keys and explains the arrows once', () => {
     const bar = printShortcutBar(ONE_SELECTED, KEYS);
-    expect(bar.slice(0, 6).map((entry) => entry.keys)).toEqual(['Del', '+', '−', 'R', '0', '← ↑ → ↓']);
+    expect(bar.slice(0, 7).map((entry) => entry.keys)).toEqual(['Del', '+', '−', 'Shift R', 'R', '0', '← ↑ → ↓']);
     expect(bar.filter((entry) => entry.label === 'Move photo')).toHaveLength(1);
   });
 

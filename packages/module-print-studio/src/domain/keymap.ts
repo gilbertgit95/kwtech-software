@@ -27,7 +27,9 @@ export const STUDIO_KEY_ACTIONS = {
   emptyCells: { zone: 'print', label: 'Empty the selected cells' },
   zoomIn: { zone: 'print', label: 'Zoom the photo in' },
   zoomOut: { zone: 'print', label: 'Zoom the photo out' },
-  turnPhoto: { zone: 'print', label: 'Turn the photo' },
+  // ⚠ The stored name stays `turnPhoto` (a workspace's saved key is kept under it); it turns right, clockwise.
+  turnPhoto: { zone: 'print', label: 'Turn the photo right' },
+  turnPhotoLeft: { zone: 'print', label: 'Turn the photo left' },
   resetPhoto: { zone: 'print', label: 'Reset the photo' },
   selectSamePhoto: { zone: 'print', label: 'Select every cell with this photo' },
   selectAll: { zone: 'print', label: 'Select every photo' },
@@ -66,6 +68,11 @@ export const STUDIO_DEFAULT_KEYMAP: StudioKeymap = {
   zoomIn: '+',
   zoomOut: '-',
   turnPhoto: 'R',
+  /*
+   * Added later (issue #51). ⚠ A NEW DEFAULT THAT CLASHES WITH A SAVED KEY DROPS THE WHOLE SAVED MAP
+   * (`effectiveStudioKeymap`), so it is one nobody is likely to have bound: Shift with the turn's own letter.
+   */
+  turnPhotoLeft: 'Shift+R',
   resetPhoto: '0',
   selectSamePhoto: 'S',
   selectAll: 'Ctrl+A',

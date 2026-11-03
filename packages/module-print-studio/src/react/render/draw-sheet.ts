@@ -13,7 +13,14 @@ import {
   type StudioRect,
   sheetSize,
 } from '../../domain/layout.js';
-import { clampCrop, freeRect, type StudioFrame, type StudioSourceRect, sourceRect } from '../../domain/slot-fit.js';
+import {
+  clampCrop,
+  frameFlip,
+  freeRect,
+  type StudioFrame,
+  type StudioSourceRect,
+  sourceRect,
+} from '../../domain/slot-fit.js';
 import { toPixels } from '../../domain/units.js';
 import { frameOf, NO_PHOTO_EDIT, type StudioFrames, type StudioPhotoEdit } from '../view/work.js';
 import type { StudioPhoto } from './photos.js';
@@ -202,8 +209,12 @@ function drawPhoto(
 
   draw.save();
   draw.translate(centre.x, centre.y);
-  // Flips mirror what the cell shows, so they come first; then the quarter turn.
-  draw.scale(edit.flipH ? -1 : 1, edit.flipV ? -1 : 1);
+  /*
+   * Flips mirror what the cell shows, so they come first; then the quarter turn. The photo's own flips and this
+   * cell's mirror combined (`frameFlip`): the screen, the print and the PDF all come through here, so they match.
+   */
+  const flip = frameFlip({ horizontal: edit.flipH, vertical: edit.flipV }, frame);
+  draw.scale(flip.horizontal ? -1 : 1, flip.vertical ? -1 : 1);
   draw.rotate((frame.rotation * Math.PI) / 180);
   draw.drawImage(
     bitmap,

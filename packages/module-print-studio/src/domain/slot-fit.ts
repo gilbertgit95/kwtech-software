@@ -64,7 +64,27 @@ export interface StudioFrame {
   rotation: StudioRotation;
   /** Free placement (see above). Absent means covering, the default. */
   free?: boolean;
+  /**
+   * This CELL shows its photo mirrored sideways / upside down (issue #51) —
+   * not the photo itself: another cell holding the same photo is unchanged.
+   * The photo's own flips (`StudioPhotoEdit`) are for every cell; the two
+   * combine (`frameFlip`). Absent when off, so a frame from before reads the
+   * same.
+   */
+  mirrorH?: true;
+  mirrorV?: true;
 }
+
+/** Mirroring on each of the sheet's axes. */
+export interface StudioFlip {
+  horizontal: boolean;
+  vertical: boolean;
+}
+
+export const NO_FLIP: StudioFlip = { horizontal: false, vertical: false };
+
+/** Which way a quarter turn goes, as the person sees it on the sheet. */
+export type StudioTurn = 'right' | 'left';
 
 export const DEFAULT_FRAME: StudioFrame = { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0 };
 
@@ -107,6 +127,7 @@ export function clampFrame(frame: StudioFrame): StudioFrame {
       offsetY: Number.isNaN(frame.offsetY) ? 0 : clamp(frame.offsetY, -STUDIO_FREE_OFFSET_MAX, STUDIO_FREE_OFFSET_MAX),
       rotation: frame.rotation,
       free: true,
+      ...mirrorOf(frame),
     };
   }
   return {
@@ -114,7 +135,38 @@ export function clampFrame(frame: StudioFrame): StudioFrame {
     offsetX: clamp(frame.offsetX, -1, 1),
     offsetY: clamp(frame.offsetY, -1, 1),
     rotation: frame.rotation,
+    ...mirrorOf(frame),
   };
+}
+
+/**
+ * The cell's mirror, alone, to spread into a frame being rebuilt field by
+ * field. ⚠ EVERY REBUILD CARRIES IT (`clampFrame`, `setFreePlacement`):
+ * dropped there, a zoom or a drag would quietly un-mirror the cell.
+ */
+function mirrorOf(frame: Pick<StudioFrame, 'mirrorH' | 'mirrorV'>): Pick<StudioFrame, 'mirrorH' | 'mirrorV'> {
+  return { ...(frame.mirrorH ? { mirrorH: true } : {}), ...(frame.mirrorV ? { mirrorV: true } : {}) };
+}
+
+/**
+ * How a cell's photo is mirrored in the end: the photo's own flips, then the
+ * cell's mirror over them. Two mirrors on one axis undo each other. What the
+ * renderer draws with, and what dragging and free placement are given, so the
+ * hand and the printed sheet agree with the screen.
+ */
+export function frameFlip(photo: StudioFlip, frame: Pick<StudioFrame, 'mirrorH' | 'mirrorV'>): StudioFlip {
+  return {
+    horizontal: photo.horizontal !== Boolean(frame.mirrorH),
+    vertical: photo.vertical !== Boolean(frame.mirrorV),
+  };
+}
+
+/** The cell's mirror on one axis turned on or off; off removes it, so the frame reads as one never mirrored. */
+export function mirrorFrame(frame: StudioFrame, axis: 'horizontal' | 'vertical', on: boolean): StudioFrame {
+  const { mirrorH, mirrorV, ...rest } = frame;
+  const horizontal = axis === 'horizontal' ? on : Boolean(mirrorH);
+  const vertical = axis === 'vertical' ? on : Boolean(mirrorV);
+  return { ...rest, ...mirrorOf({ ...(horizontal ? { mirrorH: true } : {}), ...(vertical ? { mirrorV: true } : {}) }) };
 }
 
 /** A crop kept inside the photo and never thinner than a hundredth of it. */
@@ -135,7 +187,10 @@ export function zoomFrameBy(frame: StudioFrame, by: number): StudioFrame {
   return { ...frame, zoom: clamp(zoom, zoomFloor(frame), STUDIO_ZOOM_MAX) };
 }
 
-/** Back to the start: centred and filling the cell, unturned. A free frame stays free — the switch is separate. */
+/**
+ * Back to the start: centred and filling the cell, unturned and unmirrored. A
+ * free frame stays free — the switch is separate.
+ */
 export function resetFrame(frame: StudioFrame): StudioFrame {
   return frame.free ? { ...DEFAULT_FRAME, free: true } : DEFAULT_FRAME;
 }
@@ -152,6 +207,36 @@ export function nextRotation(rotation: StudioRotation): StudioRotation {
     case 270:
       return 0;
   }
+}
+
+/** The next quarter turn counter-clockwise: `nextRotation` backwards. Four of them come back to where they began. */
+export function previousRotation(rotation: StudioRotation): StudioRotation {
+  switch (rotation) {
+    case 0:
+      return 270;
+    case 90:
+      return 0;
+    case 180:
+      return 90;
+    case 270:
+      return 180;
+  }
+}
+
+/**
+ * A frame turned a quarter the way the person ASKED, as it will look.
+ *
+ * ⚠ A MIRROR REVERSES A TURN. The renderer mirrors and then turns
+ * (`draw-sheet.ts`), and a mirror image of a clockwise turn is a
+ * counter-clockwise one. So with exactly one axis mirrored — the photo's flip
+ * or the cell's mirror, combined (`frameFlip`) — the stored rotation steps the
+ * other way. Mirrored on both axes is a half turn, which does not reverse
+ * anything. Without this, Turn right turned a flipped photo left.
+ */
+export function turnFrame(frame: StudioFrame, toward: StudioTurn, flip: StudioFlip): StudioFrame {
+  const mirrored = flip.horizontal !== flip.vertical;
+  const clockwise = (toward === 'right') !== mirrored;
+  return { ...frame, rotation: clockwise ? nextRotation(frame.rotation) : previousRotation(frame.rotation) };
 }
 
 /**
@@ -207,7 +292,8 @@ export function sourceRect(
  * at all (a wide photo in a square cell cannot be dragged up or down until it
  * is zoomed).
  *
- * `flip` is the photo's own mirroring: mirrored, the hand's direction is too.
+ * `flip` is how the photo is mirrored in this cell — its own flips and the
+ * cell's mirror combined (`frameFlip`): mirrored, the hand's direction is too.
  */
 export function panFrame(
   image: StudioSize,
@@ -215,7 +301,7 @@ export function panFrame(
   frame: StudioFrame,
   move: { dx: number; dy: number },
   crop: StudioCrop = FULL_CROP,
-  flip: { horizontal: boolean; vertical: boolean } = { horizontal: false, vertical: false },
+  flip: StudioFlip = NO_FLIP,
 ): StudioFrame {
   /*
    * Free, the offsets are the photo's centre on the sheet's own axes, in cells:
@@ -340,7 +426,7 @@ export function setFreePlacement(
   frame: StudioFrame,
   free: boolean,
   crop: StudioCrop = FULL_CROP,
-  flip: { horizontal: boolean; vertical: boolean } = { horizontal: false, vertical: false },
+  flip: StudioFlip = NO_FLIP,
 ): StudioFrame {
   if (Boolean(frame.free) === free) return frame;
   const kept = clampCrop(crop);
@@ -364,7 +450,13 @@ export function setFreePlacement(
 
   const loose = clampFrame(frame);
   const scale = freeScale(image, cell, loose, kept);
-  const covering = clampFrame({ zoom: loose.zoom, offsetX: 0, offsetY: 0, rotation: loose.rotation });
+  const covering = clampFrame({
+    zoom: loose.zoom,
+    offsetX: 0,
+    offsetY: 0,
+    rotation: loose.rotation,
+    ...mirrorOf(loose),
+  });
   // Covering asks for at least 1; the slack is measured at the zoom it will have.
   const centred = sourceRect(image, cell, covering, kept);
   const own = sheetToOwn(
@@ -420,7 +512,7 @@ function offsetOnCell(moveX: number, moveY: number, rotation: StudioRotation): {
 function ownToSheet(
   own: { x: number; y: number },
   rotation: StudioRotation,
-  flip: { horizontal: boolean; vertical: boolean },
+  flip: StudioFlip,
 ): { x: number; y: number } {
   const turned = turn(own, rotation);
   return { x: flip.horizontal ? -turned.x : turned.x, y: flip.vertical ? -turned.y : turned.y };
@@ -430,7 +522,7 @@ function ownToSheet(
 function sheetToOwn(
   onSheet: { x: number; y: number },
   rotation: StudioRotation,
-  flip: { horizontal: boolean; vertical: boolean },
+  flip: StudioFlip,
 ): { x: number; y: number } {
   const unmirrored = { x: flip.horizontal ? -onSheet.x : onSheet.x, y: flip.vertical ? -onSheet.y : onSheet.y };
   return turn(unmirrored, ((360 - rotation) % 360) as StudioRotation);
