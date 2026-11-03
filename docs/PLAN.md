@@ -604,11 +604,38 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 122 | ~~The installed app is the whole site: there is no phone-first section with only a few screens~~ **Closed** | — | **One set of addresses, a layout per device (§13, 2026-10-29, issue #22).** `proxy.ts` rewrites a phone's `/` and `/organizations/...` to the phone page; modules opt in with `/mobile` screens. A native app only if a device feature the browser lacks is needed |
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 | 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
-| 125 | Texts in the print studio are selected one at a time; a selection rectangle takes cells only | when a layout carries many texts that move together | The rectangle (issue #53) selects cells on the Print screen and in the layout editor. A text there is still pressed on its own: cells and a text are never selected at once, and a mixed group would need a panel for both. On the Print screen texts are painted into the canvas and are not selectable at all |
+| 125 | ~~Texts in the print studio are selected one at a time; a selection rectangle takes cells only~~ **Settled 2026-11-03 for the layout editor** (issue #57, see §13). On the Print screen texts are still painted into the canvas and not selectable | when texts need moving on the Print screen | The editor's rectangle takes cells and texts, and a group of both moves, copies and is removed together. Print keeps texts fixed once the layout is used |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-03** — **The layout editor's selection rectangle takes texts as well as cells, and a group of both moves, copies and is removed together (issue #57).**
+
+  The rectangle (#53) selected cells only, and a text could only ever be
+  selected by itself (§12 row 125). A label under each photo had to be moved
+  one at a time after the photos.
+  - **One selection of cell indexes and text ids.** The rectangle covers one
+    list, the cells then the texts' measured boxes (`splitCovered`). Ctrl, ⌘
+    or Shift + click adds or removes a text, as for a cell. A press on one of
+    several selected keeps them all, and a click without moving selects it
+    alone.
+  - **The group is one thing** (`domain/group.ts`, pure, with the text
+    measure passed in). `moveGroup` clamps the group's bounding box, cells and
+    texts together, so it stops at the edge as a whole. It is refused whole
+    when a cell would land on one that stays. `copyGroup` lets the cells
+    decide where the copy goes (`duplicateCells`) and moves the texts the same
+    distance. Texts alone go under the group. It copies nothing if it cannot
+    copy everything. Each action is one undo step (#52), and a drag measures
+    from the layout as it is when the update runs, so a fast pointer never
+    moves the group twice.
+  - **Panels:** cells alone keep their numbers panel and one text alone keeps
+    its style panel. A mixed group, or several texts, gets a short bar: what
+    is selected, Turn cells (when there are cells), Copy and Remove. A text is
+    never turned.
+  - **Not done:** snapping for a group with texts (cells alone still snap to
+    their neighbours), and selecting texts on the Print screen, where they
+    are fixed.
 
 - **2026-11-03** — **Undo and redo on the print studio's Print screen and in its layout editor: Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and buttons that say what they would take back (issue #52).**
 

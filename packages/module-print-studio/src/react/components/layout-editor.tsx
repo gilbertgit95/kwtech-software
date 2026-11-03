@@ -18,6 +18,7 @@ import {
   Underline,
 } from 'lucide-react';
 import { type DragEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { copyGroup, isEmptyGroup, moveGroup, removeGroup } from '../../domain/group.js';
 import {
   borderOf,
   cellOnSheet,
@@ -93,8 +94,8 @@ import {
   STUDIO_UNITS,
   type StudioUnit,
 } from '../view/lengths.js';
-import { marqueeIndexes, toggleIndex } from '../view/marquee.js';
-import { cellGroups, paperName, plural, sizeName } from '../view/summary.js';
+import { marqueeIndexes, splitCovered, toggleIndex } from '../view/marquee.js';
+import { cellGroups, groupName, paperName, plural, sizeName } from '../view/summary.js';
 import { pageChangeLabel } from '../view/undo-steps.js';
 import { stepViewZoom } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
@@ -219,8 +220,11 @@ export function LayoutEditor({
    * over them, or Ctrl-clicks (issue #53) — and the panel, the keys and a drag then act on all of them.
    */
   const [selected, setSelected] = useState<number[]>([]);
-  /** The selected text's id. ⚠ Cells and a text are never selected at once: one set clears the other (`pick*`). */
-  const [selectedText, setSelectedText] = useState<string | null>(null);
+  /**
+   * The selected texts' ids. Texts and cells can be selected together (issue #57): a rectangle takes both, and a
+   * drag, the arrows, Delete and Copy then act on the whole group as one (`domain/group.ts`).
+   */
+  const [selectedTexts, setSelectedTexts] = useState<string[]>([]);
   /** What the last action did, said plainly: "Added a 2 × 2." */
   const [note, setNote] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
@@ -245,18 +249,102 @@ export function LayoutEditor({
   const primary = selection[selection.length - 1];
   const selectedCell = primary === undefined ? undefined : spec.cells[primary];
   const selectionBox = boundsOf(spec.cells, selection);
-  const chosenText = selectedText === null ? undefined : texts.find((text) => text.id === selectedText);
+  // ⚠ Only ids that are still texts: an Undo or a removal can take a selected one away.
+  const textSelection = selectedTexts.filter((id) => texts.some((text) => text.id === id));
+  /** Everything selected, as one group: what a drag, the arrows, Delete and Copy act on. */
+  const group = { cells: selection, texts: textSelection };
+  /** Texts are in the selection with something else: the group's tools replace one cell's or one text's panel. */
+  const grouped = textSelection.length > 0 && (selection.length > 0 || textSelection.length > 1);
+  /** The one text selected by itself, whose style panel is shown. */
+  const chosenText =
+    textSelection.length === 1 && selection.length === 0
+      ? texts.find((text) => text.id === textSelection[0])
+      : undefined;
+  const anySelected = selection.length > 0 || textSelection.length > 0;
 
-  /** One cell selected alone, or with `adding` (Ctrl, ⌘ or Shift) added to the selection or taken out; null: none. */
+  /**
+   * One cell selected alone, or with `adding` (Ctrl, ⌘ or Shift) added to the selection or taken out, keeping any
+   * texts selected with it; null: nothing selected at all.
+   */
   function pickCell(index: number | null, adding = false) {
-    if (index === null) setSelected([]);
-    else setSelected(adding ? toggleIndex(selection, index) : [index]);
-    setSelectedText(null);
+    if (index === null) {
+      setSelected([]);
+      setSelectedTexts([]);
+      return;
+    }
+    setSelected(adding ? toggleIndex(selection, index) : [index]);
+    if (!adding) setSelectedTexts([]);
   }
 
-  function pickText(id: string | null) {
-    setSelectedText(id);
+  /** The same for a text: alone, or joining the selection (or leaving it) with `adding`. */
+  function pickText(id: string | null, adding = false) {
+    if (id === null) return pickCell(null);
+    if (adding)
+      return setSelectedTexts(
+        textSelection.includes(id) ? textSelection.filter((one) => one !== id) : [...textSelection, id],
+      );
+    setSelectedTexts([id]);
     setSelected([]);
+  }
+
+  /** The cells and texts of the layout, for a change to a group of both (`domain/group.ts`). */
+  function layoutParts(current: StudioLayoutSpec) {
+    return { cells: current.cells, texts: [...textsOf(current)] };
+  }
+
+  /**
+   * The whole group moved as one (`moveGroup`), from the layout AS IT IS when this runs. Refused (a cell in the
+   * way) leaves everything where it was.
+   *
+   * ⚠ A DRAG GIVES WHERE THE PRESSED ONE SHOULD BE, and the distance is measured from where it is in THAT
+   * layout (`deltaOf`): a pointer move that arrives before the last one was drawn must not add its distance twice.
+   * A nudge is a distance, the same from wherever the group is.
+   */
+  function moveSelectedGroup(
+    deltaOf: (current: StudioLayoutSpec) => { x: number; y: number } | null,
+    gesture: string | { key: string; untimed: boolean },
+  ) {
+    const moving = group;
+    record(
+      'move selection',
+      (current) => {
+        const delta = deltaOf(current);
+        if (!delta) return current;
+        const moved = moveGroup(printableArea(current), layoutParts(current), moving, delta, measureText);
+        if ('refused' in moved) return current;
+        return withTextList({ ...current, cells: moved.cells }, moved.texts);
+      },
+      gesture,
+    );
+  }
+
+  function removeSelectedGroup() {
+    const removing = group;
+    record('remove selection', (current) => {
+      const left = removeGroup(layoutParts(current), removing);
+      return withTextList({ ...current, cells: left.cells }, left.texts);
+    });
+    setNote(`Removed ${groupName(removing)}.`);
+    pickCell(null);
+  }
+
+  /** A copy of the group that keeps its shape; the copies are then the selection, ready to be dragged. */
+  function copySelectedGroup() {
+    const copy = copyGroup(area, layoutParts(spec), group, {
+      measure: measureText,
+      newId: () => crypto.randomUUID(),
+      cellOffset: copyOffset,
+      textOffset: textCopyOffset,
+    });
+    if (isEmptyGroup(copy.added)) return setNote('There is no room for a copy of all of them together.');
+    record('copy selection', (current) => withTextList({ ...current, cells: copy.cells }, copy.texts));
+    setNote(
+      copy.beside
+        ? 'Made a copy of them. Drag it where you want it.'
+        : 'There was no room beside them, so the copy went to the first free place. Drag it where you want it.',
+    );
+    setSelected([...copy.added.cells]);
+    setSelectedTexts([...copy.added.texts]);
   }
 
   function change(patch: Partial<StudioLayoutSpec>, label: string, gesture?: string) {
@@ -332,7 +420,7 @@ export function LayoutEditor({
   function performKey(key: string): boolean {
     // Esc during a selection rectangle gives it up and leaves the selection as it was.
     if (key === 'Escape' && marquee.cancel()) return true;
-    const action = editorKeyAction(key, selectedCell !== undefined || chosenText !== undefined, state.keymap, undoable);
+    const action = editorKeyAction(key, anySelected, state.keymap, undoable);
     if (!action) return false;
     switch (action.kind) {
       case 'undo':
@@ -352,6 +440,7 @@ export function LayoutEditor({
         break;
     }
     if (chosenText) return performTextKey(chosenText.id, action);
+    if (grouped) return performGroupKey(action);
     if (selection.length === 0 || !selectedCell) return false;
     switch (action.kind) {
       case 'move': {
@@ -389,6 +478,32 @@ export function LayoutEditor({
         break;
     }
     return true;
+  }
+
+  /** A key while texts are selected with other things: the same keys, for the whole group (`domain/group.ts`). */
+  function performGroupKey(
+    action: { kind: 'move'; dx: number; dy: number } | { kind: 'remove' | 'copy' | 'turn' },
+  ): boolean {
+    switch (action.kind) {
+      case 'move':
+        // A held arrow, or a run of presses, is one step.
+        moveSelectedGroup(
+          () => ({ x: action.dx * NUDGE, y: action.dy * NUDGE }),
+          `nudge-group:${group.cells.join(',')}:${group.texts.join(',')}`,
+        );
+        return true;
+      case 'remove':
+        removeSelectedGroup();
+        return true;
+      case 'copy':
+        copySelectedGroup();
+        return true;
+      case 'turn':
+        // Only the cells turn: a text is never turned.
+        if (selection.length === 0) return false;
+        tryCells(rotateCells(area, spec.cells, selection), 'turn');
+        return true;
+    }
   }
 
   /** A key while a text is selected: the same keys as for a cell, but a text is not turned. */
@@ -474,6 +589,14 @@ export function LayoutEditor({
   }
 
   function moveText(id: string, to: { x: number; y: number }, gesture?: { key: string; untimed: boolean }) {
+    const text = texts.find((one) => one.id === id);
+    // One of a group, dragged: everything selected goes the same way.
+    if (grouped && text && textSelection.includes(id) && gesture) {
+      return moveSelectedGroup((current) => {
+        const now = textsOf(current).find((one) => one.id === id);
+        return now ? { x: to.x - now.x, y: to.y - now.y } : null;
+      }, gesture);
+    }
     setTexts(
       texts.map((text) => (text.id === id ? { ...text, ...placeText(area, measureText(text), to) } : text)),
       null,
@@ -536,7 +659,7 @@ export function LayoutEditor({
       one ? 'copy cell' : 'copy cells',
     );
     setSelected(copy.added);
-    setSelectedText(null);
+    setSelectedTexts([]);
   }
 
   /**
@@ -545,6 +668,13 @@ export function LayoutEditor({
    */
   function dragCell(index: number, position: { x: number; y: number }) {
     const cell = spec.cells[index];
+    // With texts in the selection: the group goes the distance the pressed cell went, cells and texts as one.
+    if (grouped && cell && selection.includes(index)) {
+      return moveSelectedGroup((current) => {
+        const now = current.cells[index];
+        return now ? { x: position.x - now.x, y: position.y - now.y } : null;
+      }, dragGesture());
+    }
     if (selection.length > 1 && selection.includes(index) && cell && selectionBox) {
       const wanted = { x: selectionBox.x + position.x - cell.x, y: selectionBox.y + position.y - cell.y };
       const snapped = snapGroupPosition(area, spec.cells, selection, wanted);
@@ -558,24 +688,37 @@ export function LayoutEditor({
     );
   }
 
-  // ── a rectangle dragged over the sheet selects the cells it covers (issue #53) ──
+  // ── a rectangle dragged over the sheet selects the cells and texts it covers (issues #53, #57) ──
 
   /** The selection when the rectangle began: what an adding drag adds to, and what Esc puts back. */
-  const marqueeBase = useRef<{ cells: number[]; text: string | null }>({ cells: [], text: null });
-  const cellsOnSheet = useMemo(() => spec.cells.map((cell) => cellOnSheet(spec, cell)), [spec]);
+  const marqueeBase = useRef<{ cells: number[]; texts: string[] }>({ cells: [], texts: [] });
+  /*
+   * What the rectangle can cover, on the sheet: the cells, then each text's box. ⚠ ONE LIST, SPLIT BY POSITION:
+   * an index below the cells' count is a cell, and the rest are the texts in order (`splitCovered`).
+   */
+  const coverable = useMemo(
+    () => [
+      ...spec.cells.map((cell) => cellOnSheet(spec, cell)),
+      ...textsOf(spec).map((text) => cellOnSheet(spec, { x: text.x, y: text.y, ...measureText(text) })),
+    ],
+    [spec],
+  );
   const marquee = useMarquee({
     sheet: sheetSize(spec),
-    cells: cellsOnSheet,
+    cells: coverable,
     enabled: true,
     onBegin: () => {
-      marqueeBase.current = { cells: selection, text: selectedText };
-      // Cells and a text are never selected at once: the rectangle selects cells.
-      setSelectedText(null);
+      marqueeBase.current = { cells: selection, texts: textSelection };
     },
-    onCover: (covered, adding) => setSelected(marqueeIndexes(marqueeBase.current.cells, covered, adding)),
+    onCover: (covered, adding) => {
+      const split = splitCovered(covered, spec.cells.length, texts);
+      setSelected(marqueeIndexes(marqueeBase.current.cells, split.cells, adding));
+      const base = marqueeBase.current.texts;
+      setSelectedTexts(adding ? [...base, ...split.texts.filter((id) => !base.includes(id))] : split.texts);
+    },
     onCancel: () => {
       setSelected(marqueeBase.current.cells);
-      setSelectedText(marqueeBase.current.text);
+      setSelectedTexts(marqueeBase.current.texts);
     },
     // A click on the paper, on no cell or text, lets go of the selection — unless it was meant to add to it.
     onPaperClick: (adding) => {
@@ -737,7 +880,15 @@ export function LayoutEditor({
 
         {/* ── the sheet ── */}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {selectedCell && selectionBox ? (
+          {grouped ? (
+            <SelectedGroup
+              name={groupName(group)}
+              onRotate={selection.length > 0 ? () => tryCells(rotateCells(area, spec.cells, selection), 'turn') : null}
+              onDuplicate={copySelectedGroup}
+              onRemove={removeSelectedGroup}
+            />
+          ) : null}
+          {selectedCell && selectionBox && textSelection.length === 0 ? (
             <SelectedCell
               // Several: the group's place (its bounding box) and the size of the cell pressed last.
               cell={selection.length === 1 ? selectedCell : { ...selectedCell, x: selectionBox.x, y: selectionBox.y }}
@@ -781,7 +932,7 @@ export function LayoutEditor({
                 selected={selection}
                 onSelect={pickCell}
                 marquee={marquee.rect}
-                selectedText={selectedText}
+                selectedTexts={textSelection}
                 onSelectText={pickText}
                 onGrab={() => {
                   drags.current += 1;
@@ -828,13 +979,9 @@ export function LayoutEditor({
             )}
           </div>
           <ShortcutBar
-            entries={editorShortcutBar(
-              selectedCell !== undefined || chosenText !== undefined,
-              state.keymap,
-              undoable,
-            ).filter(
-              // A text is not turned, so its bar does not offer it.
-              (entry) => !chosenText || entry.press !== state.keymap.turnCell,
+            entries={editorShortcutBar(anySelected, state.keymap, undoable).filter(
+              // A text is not turned, so with no cell selected the bar does not offer it.
+              (entry) => selection.length > 0 || entry.press !== state.keymap.turnCell,
             )}
             onPress={(key) => void performKey(key)}
           />
@@ -1484,6 +1631,56 @@ function SizeRow({
 }
 
 // ── the selected cell ────────────────────────────────────────────────────────
+
+/**
+ * Texts selected with cells, or several texts (issue #57): what is selected, and what can be done to all of it.
+ * The numbers belong to one cell's or one text's panel; a group of both has none of its own.
+ */
+function SelectedGroup({
+  name,
+  onRotate,
+  onDuplicate,
+  onRemove,
+}: {
+  /** What is selected, in words: "2 cells and 1 text". */
+  name: string;
+  /** Turns the selected cells; null when none is selected, as a text is never turned. */
+  onRotate: (() => void) | null;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <section
+      aria-label="Selected cells and texts"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-primary/50 bg-accent/40 px-3 py-2"
+    >
+      <p className="text-sm font-semibold">{name}</p>
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        Drag any of them, or use the arrow keys, to move them all together.
+      </p>
+      <div className="flex gap-1.5">
+        {onRotate ? (
+          <button type="button" className={buttonClass('secondary', 'sm')} onClick={onRotate}>
+            <RotateCw aria-hidden="true" className="size-3.5" />
+            Turn cells
+          </button>
+        ) : null}
+        <button type="button" className={buttonClass('secondary', 'sm')} onClick={onDuplicate}>
+          <Copy aria-hidden="true" className="size-3.5" />
+          Copy
+        </button>
+        <button
+          type="button"
+          className={cn(buttonClass('ghost', 'sm'), 'text-destructive hover:bg-destructive/10')}
+          onClick={onRemove}
+        >
+          <Trash2 aria-hidden="true" className="size-3.5" />
+          Remove
+        </button>
+      </div>
+    </section>
+  );
+}
 
 function SelectedCell({
   cell,

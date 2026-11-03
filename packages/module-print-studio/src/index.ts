@@ -15,6 +15,7 @@ export * from './domain/border.js';
 export * from './domain/calibration.js';
 export * from './domain/custom-document.js';
 export * from './domain/fill.js';
+export * from './domain/group.js';
 export * from './domain/keymap.js';
 export * from './domain/layout.js';
 export * from './domain/log.js';

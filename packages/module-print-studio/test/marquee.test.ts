@@ -1,4 +1,5 @@
 import { cellsInRect, clampToSheet, rectBetween, rectContains } from '../src/domain/marquee.js';
+import { newText } from '../src/domain/texts.js';
 import {
   createCoverTracker,
   edgeScrollStep,
@@ -8,8 +9,10 @@ import {
   marqueeSelection,
   marqueeStart,
   sameIndexes,
+  splitCovered,
   toggleIndex,
 } from '../src/react/view/marquee.js';
+import { groupName } from '../src/react/view/summary.js';
 
 /** Six cells, two rows of three, 100 square with 10 between them, starting at (10, 10). */
 const CELLS = [0, 1].flatMap((row) =>
@@ -169,5 +172,18 @@ describe('reporting what a rectangle covers', () => {
     tracker.report(cells);
     cells.push(3);
     expect(tracker.report([1, 2])).toBe(false);
+  });
+});
+
+describe('the editor’s rectangle over cells and texts (issue #57)', () => {
+  it('splits what it covers into cell indexes and text ids', () => {
+    const texts = [newText('a'), newText('b')];
+    expect(splitCovered([0, 2, 4, 9], 3, texts)).toEqual({ cells: [0, 2], texts: ['b'] });
+    expect(splitCovered([], 3, texts)).toEqual({ cells: [], texts: [] });
+  });
+
+  it('names a group in words', () => {
+    expect(groupName({ cells: [0, 1], texts: ['a'] })).toBe('2 cells and 1 text');
+    expect(groupName({ cells: [], texts: ['a', 'b'] })).toBe('2 texts');
   });
 });
