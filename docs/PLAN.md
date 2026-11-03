@@ -633,6 +633,16 @@ Decisions 1, 2, 3 and 5 gate the next step.
     its style panel. A mixed group, or several texts, gets a short bar: what
     is selected, Turn cells (when there are cells), Copy and Remove. A text is
     never turned.
+  - **The sheet no longer jumps as the selection changes** (the operator, on
+    trying it). It is fitted to the room left around it, and that room
+    changed with every selection: the panel above it came and went, the
+    text column beside it came and went, and the status line and the
+    shortcut bar wrapped onto a second line. During a rectangle that
+    happened many times a second. Now the slot above the sheet has a fixed
+    height (its panels stay one row and scroll sideways when narrow), the
+    text column stays once the layout has any text, the status line is one
+    line, and the shortcut bar never wraps (on Print too). The sheet still
+    follows the sub-app panel's own size.
   - **Not done:** snapping for a group with texts (cells alone still snap to
     their neighbours), and selecting texts on the Print screen, where they
     are fixed.

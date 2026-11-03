@@ -31,9 +31,14 @@ export function ShortcutBar({
       className="flex items-center gap-2 overflow-hidden rounded-md border border-border bg-muted px-2 py-1"
     >
       <Keyboard aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-      <ul className="flex min-w-0 flex-1 flex-wrap gap-x-1 gap-y-0.5">
+      {/*
+       * ⚠ ONE LINE, NEVER WRAPPED: the bar's keys change with the selection, and a bar that wrapped onto a second
+       * line and back resized the sheet above it every time (the operator, 2026-11-03). What does not fit scrolls
+       * sideways.
+       */}
+      <ul className="flex min-w-0 flex-1 flex-nowrap gap-x-1 overflow-x-auto [scrollbar-width:none]">
         {entries.map((entry) => (
-          <li key={`${entry.keys}:${entry.label}`}>
+          <li key={`${entry.keys}:${entry.label}`} className="shrink-0">
             <ShortcutChip entry={entry} onPress={onPress} />
           </li>
         ))}
