@@ -349,6 +349,175 @@ export function snapPosition(
   };
 }
 
+// ── several cells at once (issue #53) ────────────────────────────────────────
+//
+// The editor can select several cells (a rectangle dragged over them, or
+// Ctrl-clicks) and move, resize, turn, copy or remove them together. Each tool
+// takes the selected INDEXES and, like the one-cell tools above, either gives
+// back every cell or refuses: ⚠ ALL OR NOTHING. A group move that would put
+// one cell on a cell outside the group leaves every cell where it was, never
+// some moved and some not. A single index behaves exactly as the one-cell tool.
+
+/** The smallest rectangle around the cells at `indexes`; null when none of them is there. */
+export function boundsOf(cells: readonly StudioRect[], indexes: readonly number[]): StudioRect | null {
+  const chosen = indexes.flatMap((index) => cells[index] ?? []);
+  if (chosen.length === 0) return null;
+  const left = Math.min(...chosen.map((cell) => cell.x));
+  const top = Math.min(...chosen.map((cell) => cell.y));
+  const right = Math.max(...chosen.map((cell) => cell.x + cell.width));
+  const bottom = Math.max(...chosen.map((cell) => cell.y + cell.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * Move a group so its bounding box's top left is at `position`, every cell by
+ * the same distance: the group keeps its shape. ⚠ CLAMPED AS ONE: the box
+ * stops at the area's edge, rather than each cell stopping on its own and the
+ * group folding up against the edge.
+ */
+export function moveCells(
+  area: StudioSize,
+  cells: readonly StudioCell[],
+  indexes: readonly number[],
+  position: { x: number; y: number },
+): { cells: StudioCell[] } | { refused: StudioRefusal } {
+  const box = boundsOf(cells, indexes);
+  if (!box) return { refused: 'invalid_spec' };
+  const dx = clamp(Math.round(position.x), 0, Math.max(area.width - box.width, 0)) - box.x;
+  const dy = clamp(Math.round(position.y), 0, Math.max(area.height - box.height, 0)) - box.y;
+  const moving = new Set(indexes);
+  return checked(
+    area,
+    cells.map((cell, at) => (moving.has(at) ? { ...cell, x: cell.x + dx, y: cell.y + dy } : cell)),
+  );
+}
+
+/**
+ * Where a dragged GROUP's top left lands once snapped: its bounding box's
+ * edges pulled to the area's edges and to the edges of the cells NOT in it
+ * (`snapPosition` for one cell). The result still goes through `moveCells`.
+ */
+export function snapGroupPosition(
+  area: StudioSize,
+  cells: readonly StudioCell[],
+  indexes: readonly number[],
+  position: { x: number; y: number },
+  distance: number = STUDIO_SNAP_DISTANCE,
+): { x: number; y: number } {
+  const box = boundsOf(cells, indexes);
+  if (!box) return position;
+  const moving = new Set(indexes);
+  const others = cells.filter((_cell, at) => !moving.has(at));
+  const xEdges = [0, area.width, ...others.flatMap((other) => [other.x, other.x + other.width])];
+  const yEdges = [0, area.height, ...others.flatMap((other) => [other.y, other.y + other.height])];
+  return {
+    x: snapAxis(position.x, box.width, xEdges, distance),
+    y: snapAxis(position.y, box.height, yEdges, distance),
+  };
+}
+
+/**
+ * Give every cell of a group a new width, a new height, or both — each from
+ * its OWN top left, so a row of cells made wider grows to the right one by
+ * one, and refuses if they would then overlap. A side left out keeps each
+ * cell's own. Their labels are dropped, as `resizeCell` drops one.
+ */
+export function resizeCells(
+  area: StudioSize,
+  cells: readonly StudioCell[],
+  indexes: readonly number[],
+  size: Partial<StudioSize>,
+): { cells: StudioCell[] } | { refused: StudioRefusal } {
+  if (!indexes.some((index) => cells[index])) return { refused: 'invalid_spec' };
+  const resizing = new Set(indexes);
+  return checked(
+    area,
+    cells.map((cell, at) => {
+      if (!resizing.has(at)) return cell;
+      const width = size.width ?? cell.width;
+      const height = size.height ?? cell.height;
+      return {
+        x: cell.x,
+        y: cell.y,
+        width: clamp(Math.round(width), STUDIO_CELL_MIN, Math.max(area.width - cell.x, STUDIO_CELL_MIN)),
+        height: clamp(Math.round(height), STUDIO_CELL_MIN, Math.max(area.height - cell.y, STUDIO_CELL_MIN)),
+      };
+    }),
+  );
+}
+
+/** Turn every cell of a group a quarter, each about its own top left (`rotateCell`), or refuse them all. */
+export function rotateCells(
+  area: StudioSize,
+  cells: readonly StudioCell[],
+  indexes: readonly number[],
+): { cells: StudioCell[] } | { refused: StudioRefusal } {
+  if (!indexes.some((index) => cells[index])) return { refused: 'invalid_spec' };
+  const turning = new Set(indexes);
+  const turned: StudioCell[] = [];
+  for (const [at, cell] of cells.entries()) {
+    if (!turning.has(at)) {
+      turned.push(cell);
+      continue;
+    }
+    if (cell.height > area.width || cell.width > area.height) return { refused: 'cell_outside' };
+    turned.push({
+      ...cell,
+      x: clamp(cell.x, 0, area.width - cell.height),
+      y: clamp(cell.y, 0, area.height - cell.width),
+      width: cell.height,
+      height: cell.width,
+    });
+  }
+  return checked(area, turned);
+}
+
+/** The cells without the ones at `indexes`. */
+export function removeCells(cells: readonly StudioCell[], indexes: readonly number[]): StudioCell[] {
+  const removing = new Set(indexes);
+  return cells.filter((_cell, at) => !removing.has(at));
+}
+
+/**
+ * A copy of a whole group, keeping its shape, BESIDE it: the copies' bounding
+ * box starts at the group's top right corner plus `offset` (`duplicateCell`
+ * for one cell). Where that place is off the area or on another cell, the
+ * group goes to the first free place its bounding box fits, and `beside` says
+ * which. `added` are the copies' indexes, for the editor to select.
+ *
+ * ⚠ THE COPY STAYS TOGETHER OR IS NOT MADE: a group that fits nowhere whole
+ * places nothing, rather than scattering its cells.
+ */
+export function duplicateCells(
+  area: StudioSize,
+  cells: readonly StudioCell[],
+  indexes: readonly number[],
+  offset: StudioCopyOffset = STUDIO_COPY_BESIDE,
+): StudioPlacement & { beside: boolean; added: number[] } {
+  const box = boundsOf(cells, indexes);
+  const group = [...new Set(indexes)].flatMap((index) => cells[index] ?? []);
+  const none = { cells: [...cells], placed: 0, left: group.length, beside: false, added: [] };
+  if (!box || cells.length + group.length > STUDIO_CELLS_MAX) return none;
+
+  const shifted = (dx: number, dy: number) => group.map((cell) => ({ ...cell, x: cell.x + dx, y: cell.y + dy }));
+  const added = group.map((_cell, at) => cells.length + at);
+  const beside = shifted(box.width + offset.x, offset.y);
+  const free = (copies: readonly StudioCell[]) =>
+    copies.every((copy) => fitsInside(copy, area) && !cells.some((other) => rectsOverlap(copy, other)));
+  if (free(beside)) return { cells: [...cells, ...beside], placed: group.length, left: 0, beside: true, added };
+
+  const spot = firstFit(area, cells, box, 0);
+  if (!spot) return none;
+  const elsewhere = shifted(spot.x - box.x, spot.y - box.y);
+  return { cells: [...cells, ...elsewhere], placed: group.length, left: 0, beside: false, added };
+}
+
+/** The cells as given, or the refusal `checkCells` has for them. */
+function checked(area: StudioSize, cells: StudioCell[]): { cells: StudioCell[] } | { refused: StudioRefusal } {
+  const refusal = checkCells(cells, area);
+  return refusal ? { refused: refusal } : { cells };
+}
+
 /** The indexes of the cells in reading order: top row first, left to right. */
 export function readingOrder(cells: readonly StudioRect[]): number[] {
   return cells

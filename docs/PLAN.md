@@ -604,10 +604,51 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 122 | ~~The installed app is the whole site: there is no phone-first section with only a few screens~~ **Closed** | — | **One set of addresses, a layout per device (§13, 2026-10-29, issue #22).** `proxy.ts` rewrites a phone's `/` and `/organizations/...` to the phone page; modules opt in with `/mobile` screens. A native app only if a device feature the browser lacks is needed |
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 | 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
+| 125 | Texts in the print studio are selected one at a time; a selection rectangle takes cells only | when a layout carries many texts that move together | The rectangle (issue #53) selects cells on the Print screen and in the layout editor. A text there is still pressed on its own: cells and a text are never selected at once, and a mixed group would need a panel for both. On the Print screen texts are painted into the canvas and are not selectable at all |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-03** — **The print studio selects several cells by dragging a rectangle, on the Print screen and in the layout editor, where they then move, resize, turn, copy and are removed together (issue #53).**
+
+  Ctrl/Shift-clicking each cell was the only way to build a selection, slow on
+  a sheet of twenty-one ID photos.
+  - **The drag on a photo keeps moving the photo.** A rectangle starts only
+    where a drag did nothing: the paper, the margin, the grey around the sheet,
+    or an EMPTY cell (most layouts leave little paper between cells). Alt + drag
+    starts one on a photo.
+  - **A cell is taken if the rectangle overlaps any of it** (`cellsInRect`,
+    `domain/marquee.ts`); touching an edge is not overlapping. Measured in sheet
+    units, so the view's zoom and scroll change nothing. Held at the view's
+    edge, it scrolls.
+  - **Plain replaces the selection, Ctrl/⌘/Shift adds to it**, Esc during the
+    drag puts it back. A click on the paper now clears the selection, which it
+    did not before on this screen.
+  - **On touch, a finger rests 400 ms first** (`MARQUEE_HOLD_MS`). A one-finger
+    drag is how a zoomed sheet is scrolled on a phone, so it could not also
+    draw; once the finger has rested, its moves are kept from the browser by a
+    non-passive `touchmove` listener.
+  - **Every view that edits a layout has it**: the Layouts tab's editor, the
+    one-time layout and Adjust on the Print screen all render `LayoutEditor`.
+    Its selection became a list of cells. A drag on a selected cell moves the
+    group, its bounding box snapped to the cells that stay; the arrows, Turn,
+    Copy and Remove act on the group; the panel's Width and Height set every
+    cell's, each from its own top left, and Left and Top place the group.
+  - **A group is all or nothing** (`moveCells`, `resizeCells`, `rotateCells`,
+    `duplicateCells`, `removeCells` in `domain/place.ts`): one cell that would
+    land on a cell outside the group, or leave the area, refuses the whole
+    change. A copy keeps the group's shape, beside it or at the first place its
+    bounding box fits, or is not made, rather than scattering. One index is
+    exactly the one-cell tool (tested).
+  - **A click on a cell of a group selects it alone; Ctrl/⌘/Shift + click adds
+    or removes one.** A press now travels 3 px before it is a drag, so a click
+    never nudges a cell.
+  - **Not done:** texts in a rectangle (cells and a text are never selected at
+    once, §12 row 125); texts on the Print screen (painted into the canvas, not
+    selectable); a "wholly inside" mode in the UI (the domain has it); a 50%
+    view zoom, which the issue named but the studio does not have (it starts
+    at Fit).
 
 - **2026-10-31** — **POS items and variants get a "Not available" switch, separate from archiving and from stock, under its own key `pos:set_availability` (issue #37).**
 
