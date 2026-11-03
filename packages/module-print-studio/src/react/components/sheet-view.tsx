@@ -190,7 +190,8 @@ export function SheetView({
       fromA: kind === 'move' ? cell.x : cell.width,
       fromB: kind === 'move' ? cell.y : cell.height,
       moved: false,
-      collapse: inSelection && selectedCount > 1,
+      // Only a move: a press on the resize corner is never a click that selects the cell alone.
+      collapse: kind === 'move' && inSelection && selectedCount > 1,
     };
   }
 
@@ -326,7 +327,8 @@ export function SheetView({
                 </text>
               ) : null}
               {/* One cell's corner to resize it by; a group is resized from the panel, all at once. */}
-              {chosen && interactive && selected.length === 1 ? (
+              {/* Only when it is ALL that is selected: a group with texts is moved, not resized, from the sheet. */}
+              {chosen && interactive && selectedCount === 1 ? (
                 <rect
                   x={cell.x + cell.width - handle / 2}
                   y={cell.y + cell.height - handle / 2}

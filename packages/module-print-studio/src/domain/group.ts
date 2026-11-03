@@ -153,27 +153,22 @@ export function copyGroup(
     delta = { x: x - box.x, y: y - box.y };
   }
 
-  const fresh = copied.map((text) => clampedText(area, { ...text, id: options.newId() }, delta, options.measure));
+  /*
+   * ⚠ EVERY TEXT GOES THE SAME DISTANCE, OR NONE IS COPIED. The cells' copy was placed for the cells alone, and a
+   * caption wider than its cell can then hang past the edge. Pulling that one text back in by itself would move it
+   * against its cell, onto it even: a design nobody drew (CodeRabbit on #58).
+   */
+  const fresh = copied.map((text) => ({ ...text, id: options.newId(), x: text.x + delta.x, y: text.y + delta.y }));
+  const outside = fresh.some((text) => {
+    const box = options.measure(text);
+    return text.x < 0 || text.y < 0 || text.x + box.width > area.width || text.y + box.height > area.height;
+  });
+  if (outside) return none;
   return {
     cells,
     texts: [...layout.texts, ...fresh],
     added: { cells: addedCells, texts: fresh.map((text) => text.id) },
     beside,
-  };
-}
-
-/** A text moved by `delta` and kept inside the area: a copy that followed its cells past the edge comes back in. */
-function clampedText(
-  area: StudioSize,
-  text: StudioText,
-  delta: { x: number; y: number },
-  measure: StudioMeasure,
-): StudioText {
-  const box = measure(text);
-  return {
-    ...text,
-    x: clamp(Math.round(text.x + delta.x), 0, Math.max(area.width - box.width, 0)),
-    y: clamp(Math.round(text.y + delta.y), 0, Math.max(area.height - box.height, 0)),
   };
 }
 

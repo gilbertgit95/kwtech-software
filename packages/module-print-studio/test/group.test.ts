@@ -105,6 +105,30 @@ describe('copying a group', () => {
     expect(copy.beside).toBe(true);
   });
 
+  it('⚠ copies nothing when a text would leave the area, rather than pulling it back in alone', () => {
+    // A caption wider than its cell, by the right edge: the cell's copy fits beside it on the left, the text not.
+    const edge = { cells: [cell(85, 0), cell(60, 0)], texts: [text('a', 75, 12)] };
+    const copy = copyGroup(AREA, edge, { cells: [0], texts: ['a'] }, { measure, newId });
+    if (!isEmptyGroup(copy.added)) {
+      // Wherever the cells went, the text went the same distance, and it is inside.
+      const original = edge.texts[0];
+      const placed = copy.texts.find((one) => one.id === copy.added.texts[0]);
+      const added = copy.cells[copy.added.cells[0] ?? -1];
+      expect([(placed?.x ?? 0) - (original?.x ?? 0), (placed?.y ?? 0) - (original?.y ?? 0)]).toEqual([
+        (added?.x ?? 0) - mm(85),
+        added?.y ?? 0,
+      ]);
+      expect((placed?.x ?? 0) + mm(20)).toBeLessThanOrEqual(AREA.width);
+    }
+    // A text that cannot go where its cells went is never copied on its own terms.
+    const stuck = { cells: [cell(0, 0, 50), cell(50, 0, 50), cell(0, 50, 50)], texts: [text('b', 85, 52)] };
+    const none = copyGroup(AREA, stuck, { cells: [2], texts: ['b'] }, { measure, newId });
+    expect(isEmptyGroup(none.added)).toBe(true);
+    expect(none.texts).toEqual(stuck.texts);
+    // …though the cell alone has room: it is the text that stops it.
+    expect(isEmptyGroup(copyGroup(AREA, stuck, { cells: [2], texts: [] }, { measure, newId }).added)).toBe(false);
+  });
+
   it('⚠ copies nothing when the cells have no room', () => {
     const full = { cells: [cell(0, 0, 100)], texts: [text('a', 0, 0)] };
     const copy = copyGroup(AREA, full, { cells: [0], texts: ['a'] }, { measure, newId });
