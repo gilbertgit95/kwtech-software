@@ -142,7 +142,28 @@ export function Till({
   const open = order?.status === 'open' ? order : null;
   const finished = order && order.status !== 'open' ? order : null;
 
-  const searchable = useMemo(() => (catalogue ? searchCatalogue(catalogue) : []), [catalogue]);
+  // Opening this view (Cashier or Classic) reads the ranking again: the till's state outlives it (issue #47).
+  const { reloadRanks } = state;
+  useEffect(() => {
+    void reloadRanks();
+  }, [reloadRanks]);
+
+  /*
+   * ⚠ A new ranking reorders the results under the cursor, so the cursor goes
+   * back to the best match — or Enter would add whatever moved into its place.
+   * Adjusted while rendering, as React advises for state that follows a prop,
+   * so the reordered list never renders with the old cursor.
+   */
+  const [rankedBy, setRankedBy] = useState(state.ranks);
+  if (rankedBy !== state.ranks) {
+    setRankedBy(state.ranks);
+    setActiveResult(0);
+  }
+
+  const searchable = useMemo(
+    () => (catalogue ? searchCatalogue(catalogue, state.ranks) : []),
+    [catalogue, state.ranks],
+  );
   const parsed = parseQuantityPrefix(query);
   const quantity = 'refused' in parsed ? null : parsed.quantity;
   const results: PosSearchResult[] = 'refused' in parsed ? [] : searchItems(searchable, parsed.text);
@@ -557,6 +578,7 @@ export function Till({
         <VariantPicker
           item={dialog.kind === 'variant' ? dialog.item : null}
           stock={state.stock}
+          ranks={state.ranks}
           onPick={(variantId) => {
             if (dialog.kind === 'variant') void add(dialog.item.id, variantId, dialog.quantity);
           }}
@@ -778,7 +800,7 @@ function ItemGrid({
 }) {
   const { catalogue } = state;
   if (!catalogue) return <p className="text-sm text-muted-foreground">Loading items…</p>;
-  const items = sellOrder(gridItems(catalogue, categoryId));
+  const items = sellOrder(gridItems(catalogue, categoryId), state.ranks);
   const categories = gridCategories(catalogue);
   if (catalogue.items.length === 0) {
     return (

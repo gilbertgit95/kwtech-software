@@ -23,6 +23,7 @@ export * from './pos-catalogue.service.js';
 export * from './pos-customer.service.js';
 export * from './pos-order.service.js';
 export * from './pos-order-write.service.js';
+export * from './pos-rank.process.js';
 export * from './pos-refund.service.js';
 export * from './pos-report.service.js';
 export * from './pos-settings.service.js';

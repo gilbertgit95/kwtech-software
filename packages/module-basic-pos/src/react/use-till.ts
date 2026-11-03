@@ -15,6 +15,7 @@ import {
   type PosOrderView,
   type PosScopeView,
 } from './pos-client.js';
+import { type PosRankMap, rankMap } from './view/popularity.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
 /** How long after the last event the till reads again — a burst of events is one read. */
@@ -55,6 +56,21 @@ export interface TillState {
   catalogue: PosCatalogueView | null;
   /** How many are left per item and variant, from the stock app; null when the store counts no stock. */
   stock: PosStockMap | null;
+  /**
+   * The store's "most ordered" ranking (issue #47); null until this store's
+   * first read succeeds — the sell views then keep their old order (by name).
+   * A later read that fails KEEPS the last one (see `reloadRanks`). ⚠ READ WHEN A SELL
+   * VIEW OPENS (`reloadRanks`), never on a live event: tiles must not move
+   * mid-order.
+   */
+  ranks: PosRankMap | null;
+  /**
+   * Reads the ranking again. Called by each sell view as it opens: this state
+   * outlives them (the app keeps it while the Orders or Items tab is open), so
+   * coming back to Sell picks up the day's new ranking, or retries one that
+   * failed.
+   */
+  reloadRanks: () => Promise<void>;
   keymap: PosKeymap;
   /** The store's order reference options (issue #30), in its order; empty for none — the plain text box. */
   referenceOptions: readonly string[];
@@ -112,6 +128,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
 
   const [catalogue, setCatalogue] = useState<PosCatalogueView | null>(null);
   const [stock, setStock] = useState<PosStockMap | null>(null);
+  const [ranks, setRanks] = useState<PosRankMap | null>(null);
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
   const [referenceOptions, setReferenceOptions] = useState<readonly string[]>([]);
   // The workspace's zone, from the app's shell: receipts and "today" follow it.
@@ -219,6 +236,49 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     void reloadPending();
   }, [loadCatalogue, loadSettings, loadStock, reloadPending]);
 
+  /*
+   * The store's ranking (issue #47): read by `reloadRanks` when a sell view
+   * opens — never in `onEvent` below, because the ranking is fixed while a
+   * sell view is open.
+   *
+   * ⚠ ONLY THE LATEST READ IS KEPT. The catalogue and stock reads correct
+   * themselves on the next live event; the ranking is not read again until a
+   * sell view reopens, so an answer for the store the till just LEFT would stay
+   * on the new one. Each read takes a number, a change of store retires every
+   * number, and an answer that is no longer the latest is dropped.
+   */
+  const rankRead = useRef(0);
+  const reloadRanks = useCallback(async () => {
+    rankRead.current += 1;
+    const mine = rankRead.current;
+    try {
+      const answer = await client.ranks(scope);
+      if (mine === rankRead.current) setRanks(rankMap(answer));
+    } catch (caught) {
+      /*
+       * A courtesy, like the counts: the till sells the same without it. Said, so it can be found.
+       *
+       * ⚠ THE LAST RANKING IS KEPT, deliberately. It is this store's (a change of
+       * store clears it) and at most a day old; dropping it on one failed read
+       * would send every tile back to name order for a network blip and back
+       * again on the next good read — the tiles moving that the ranking exists
+       * to avoid. With nothing read yet, the till keeps its name order.
+       */
+      if (mine === rankRead.current) {
+        console.warn('Point of sale: could not read the most-ordered ranking.', caught);
+      }
+    }
+  }, [client, scope]);
+
+  // A new store starts with no ranking, and an answer still coming for the old one is dropped.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the store IS the trigger — it runs exactly when the scope (or client) changes.
+  useEffect(() => {
+    setRanks(null);
+    return () => {
+      rankRead.current += 1;
+    };
+  }, [client, scope]);
+
   // ── live ──────────────────────────────────────────────────────────────────
 
   const kinds = useRef(new Set<string>());
@@ -319,6 +379,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     client,
     catalogue,
     stock,
+    ranks,
+    reloadRanks,
     keymap,
     referenceOptions,
     timeZone,

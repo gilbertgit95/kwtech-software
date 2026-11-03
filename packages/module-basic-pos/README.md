@@ -295,6 +295,57 @@ there is no daily reset and no background process.
 - **Archived and not available stay separate.** A not-available item is still
   listed under Items (with the badge) and still counts toward `pos:items`.
 
+## Most ordered first (issue #47)
+
+On the sell views — the till's grid, Take orders, Cashier, search and the
+variant picker — items within a category are listed by **how many orders
+included them in the last 7 days**, most first, and an item's variants the same
+way. The items a store sells most take the fewest taps to reach. The Items tab
+and the printed price list keep sorting by name.
+
+- **Counted once a day, not live.** A background process, `pos.rank_items`
+  (below), counts each store's last 7 *complete* days in the store's own time
+  zone and stores the result. Today's sales count from tomorrow. A till never
+  counts order lines itself (the operator, 2026-11-03: the order does not need
+  to be up to the minute).
+- **Orders, not units.** An order with the same item on three lines, or a
+  quantity of 50, counts **once** for it; a variant counts once per order it
+  was on (`countPosOrders`). Only finalised orders count — paid, and unpaid
+  (pay later). Voided and cancelled ones never do; a refund changes nothing.
+- **Storage:** `pos_item_rank` and `pos_variant_rank` (the counts, one row per
+  item or variant ordered in the window) and `pos_ranking` (the day each store
+  was last dealt with). ⚠ A **snapshot**, replaced whole by each run in one
+  transaction, never added to and never written by a sale — so it can always be
+  rebuilt from `pos_order_line`, and a void is gone by the next day.
+- **`posRanks`** (`pos:read`) gives `{ items: [{ id, rank }], variants: [...] }`
+  — ranks (1 is the most, ties share one), ⚠ never the counts. Its own query,
+  not a field of `posCatalogue`: the till re-reads the catalogue on every live
+  change, and the ranking must not move with it. Each sell view reads it **as
+  it opens** (`reloadRanks` — the till's state outlives the Sell tab, so coming
+  back to it picks up the day's new ranking), and never on a live event, so
+  tiles never move under a cashier's finger. A new ranking puts the search
+  cursor back on the best match. A read that fails is logged and keeps the
+  store's last ranking; with none read yet, the views keep their old order.
+- **The sort** (`byPopularity`, `src/domain/popularity.ts`): by rank, then
+  everything unranked; ties and the unranked keep their old order (the name for
+  items, `sortOrder` for variants). Not available (#37) is applied **on top**:
+  a sold-out best seller still goes after everything that can be sold. In
+  search, the rank only breaks ties between equally good matches.
+- **A new store**, or a store before its first run, has no ranking, and every
+  sell view lists exactly as before #47.
+
+## Processes
+
+| Key | What | Default schedule | Limits |
+|---|---|---|---|
+| `pos.rank_items` | Ranks each store's items and variants by the orders that included them in the 7 days before today (above). Serves `pos:read`. | 03:00 every day, in each store's own time | `daily` only, swept every 15 min; 300 s a run; 200 stores a run (the rest wait for the next sweep); too late after 20 h — the day is recorded `skipped_late` and the day before's ranking stays |
+
+It replaces each store's snapshot rather than adding to it, and records the day
+in `pos_ranking` in the same transaction, so a second sweep the same day does
+nothing. One store's ranking reads at most `POS_RANK_ORDERS_MAX` (20,000)
+orders. **Paused**, nobody sees an error: the tills keep the last ranking it
+made, which simply stops moving.
+
 ## Stock (issue #10)
 
 Stock is its own module, `module-basic-inventory` (`docs/INVENTORY-PLAN.md`).

@@ -21,6 +21,7 @@ import type {
 import { useOptionList } from '../use-option-list.js';
 import type { TillState } from '../use-till.js';
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../view/money.js';
+import type { PosRankMap } from '../view/popularity.js';
 import { leftOf, type PosStockMap } from '../view/stock.js';
 import { pickerVariants } from '../view/till.js';
 import {
@@ -41,16 +42,19 @@ import {
 export function VariantPicker({
   item,
   stock,
+  ranks,
   onPick,
   onClose,
 }: {
   item: PosItemView | null;
   /** How many are left of each, from the stock app; null shows no counts. */
   stock: PosStockMap | null;
+  /** The store's "most ordered" ranking (issue #47): the sizes sold most first. */
+  ranks: PosRankMap | null;
   onPick: (variantId: string) => void;
   onClose: () => void;
 }) {
-  const variants = item ? pickerVariants(item) : [];
+  const variants = item ? pickerVariants(item, ranks) : [];
   return (
     <Modal open={item !== null} title={item?.name ?? ''} onClose={onClose}>
       <ul className="flex flex-col gap-1" {...LIST_KEYS}>

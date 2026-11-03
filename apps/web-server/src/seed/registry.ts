@@ -3,7 +3,7 @@ import { AUTH_FEATURE_REGISTRY } from '@kwtech/module-auth';
 import { BACKUP_FEATURE_REGISTRY, BACKUP_PROCESS_REGISTRY } from '@kwtech/module-backup';
 import { BOOKS_FEATURE_REGISTRY } from '@kwtech/module-basic-bookkeeping';
 import { STOCK_FEATURE_REGISTRY, STOCK_LIMIT_REGISTRY, STOCK_PROCESS_REGISTRY } from '@kwtech/module-basic-inventory';
-import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY } from '@kwtech/module-basic-pos';
+import { POS_FEATURE_REGISTRY, POS_LIMIT_REGISTRY, POS_PROCESS_REGISTRY } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE_REGISTRY, BOOKING_LIMIT_REGISTRY, BOOKING_PROCESS_REGISTRY } from '@kwtech/module-booking';
 import {
   CHAT_DEFAULT_MOMENT_REGISTRY,
@@ -191,7 +191,7 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * reachable by anybody signed in, and its caps never mirrored for plans.
    */
   { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY, processes: TASK_PROCESS_REGISTRY },
-  { key: 'pos', features: POS_FEATURE_REGISTRY, limits: POS_LIMIT_REGISTRY },
+  { key: 'pos', features: POS_FEATURE_REGISTRY, limits: POS_LIMIT_REGISTRY, processes: POS_PROCESS_REGISTRY },
   /*
    * ⚠ And the books' — who put in what, who is owed what. Leave this out and
    * every bookkeeping operation is reachable by anybody signed in.

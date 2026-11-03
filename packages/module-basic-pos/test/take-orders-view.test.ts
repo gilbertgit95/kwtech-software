@@ -79,7 +79,7 @@ const CATALOGUE: PosCatalogueView = {
 
 describe('the Take orders groups (issue #23)', () => {
   it('groups items by category, in the store’s order, each by name, uncategorised last as Other', () => {
-    expect(itemGroups(CATALOGUE).map((group) => [group.name, group.items.map((one) => one.id)])).toEqual([
+    expect(itemGroups(CATALOGUE, null).map((group) => [group.name, group.items.map((one) => one.id)])).toEqual([
       ['Beef', ['bulalo', 'hinalang']],
       ['Pork', ['adobo']],
       ['Other', ['rice']],
@@ -87,19 +87,19 @@ describe('the Take orders groups (issue #23)', () => {
   });
 
   it('leaves out a group with nothing to sell, and archived items', () => {
-    const names = itemGroups(CATALOGUE).map((group) => group.name);
+    const names = itemGroups(CATALOGUE, null).map((group) => group.name);
     expect(names).not.toContain('Fish');
-    expect(itemGroups(CATALOGUE).flatMap((group) => group.items.map((one) => one.id))).not.toContain('old');
+    expect(itemGroups(CATALOGUE, null).flatMap((group) => group.items.map((one) => one.id))).not.toContain('old');
   });
 
   it('⚠ keeps an archived category’s items on the till, under Other', () => {
     const catalogue = { ...CATALOGUE, categories: [category('beef', 'Beef', 1, '2026-10-01T00:00:00Z')] };
-    const other = itemGroups(catalogue).find((group) => group.id === POS_UNGROUPED);
+    const other = itemGroups(catalogue, null).find((group) => group.id === POS_UNGROUPED);
     expect(other?.items.map((one) => one.id)).toEqual(['adobo', 'bulalo', 'hinalang', 'rice']);
   });
 
   it('calls the one group "Items" when the store has no categories', () => {
-    expect(itemGroups({ ...CATALOGUE, categories: [] }).map((group) => group.name)).toEqual(['Items']);
+    expect(itemGroups({ ...CATALOGUE, categories: [] }, null).map((group) => group.name)).toEqual(['Items']);
   });
 
   it('opens a lone group at once, and none when there are several', () => {

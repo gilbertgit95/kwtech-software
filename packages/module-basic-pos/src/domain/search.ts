@@ -1,4 +1,5 @@
 import { checkPosQuantity } from './money.js';
+import { compareRanks } from './popularity.js';
 
 /**
  * Item search at the till (D19): as you type, in the BROWSER, over the store's
@@ -15,6 +16,8 @@ export interface PosSearchVariant {
   archived: boolean;
   /** Marked not available (issue #37): still found, greyed out, and never added. */
   unavailable: boolean;
+  /** Its place in the store's "most ordered" ranking (issue #47), or null/absent for none. */
+  popularity?: number | null;
 }
 
 /** An item as the search sees it. */
@@ -27,6 +30,8 @@ export interface PosSearchItem {
   archived: boolean;
   /** The item's OWN switch (issue #37). Off, every variant is off with it. */
   unavailable: boolean;
+  /** Its place in the store's "most ordered" ranking (issue #47), or null/absent for none. */
+  popularity?: number | null;
   variants: readonly PosSearchVariant[];
 }
 
@@ -104,6 +109,9 @@ function rank(tokens: readonly string[], fields: readonly (string | null)[]): nu
  *   it is out — after everything that can be sold. ⚠ EXCEPT AN EXACT CODE,
  *   which stays on top even when off: a scan must never fall through to
  *   whatever matched second, so the till refuses that one instead.
+ * - Among equally good matches, the most ordered first (issue #47), then by
+ *   name. ⚠ AFTER the match quality, never before: "lam" must still find
+ *   Lamination ahead of a best seller that only contains the letters.
  */
 export function searchItems(
   catalogue: readonly PosSearchItem[],
@@ -114,7 +122,7 @@ export function searchItems(
   if (tokens.length === 0) return [];
   const exactCode = query.trim().toUpperCase();
 
-  const scored: { result: PosSearchResult; score: number }[] = [];
+  const scored: { result: PosSearchResult; score: number; popularity: number | null }[] = [];
   for (const item of catalogue) {
     if (item.archived) continue;
     const variants = item.variants.filter((variant) => !variant.archived);
@@ -123,35 +131,47 @@ export function searchItems(
 
     if (!hasVariants) {
       if (item.code === exactCode) {
-        scored.push({ result: itemResult(item, []), score: 0 });
+        scored.push({ result: itemResult(item, []), score: 0, popularity: item.popularity ?? null });
         continue;
       }
       const score = rank(tokens, [item.name, item.code, item.categoryName]);
-      if (score !== null) scored.push({ result: itemResult(item, []), score });
+      if (score !== null) scored.push({ result: itemResult(item, []), score, popularity: item.popularity ?? null });
       continue;
     }
 
     const exactVariant = variants.find((variant) => variant.code === exactCode);
     if (exactVariant) {
-      scored.push({ result: variantResult(item, exactVariant), score: 0 });
+      scored.push({ result: variantResult(item, exactVariant), score: 0, popularity: exactVariant.popularity ?? null });
       continue;
     }
     const itemScore = rank(tokens, [item.name, item.code, item.categoryName]);
     if (itemScore !== null) {
-      scored.push({ result: itemResult(item, variants), score: item.code === exactCode ? 0 : itemScore });
+      scored.push({
+        result: itemResult(item, variants),
+        score: item.code === exactCode ? 0 : itemScore,
+        popularity: item.popularity ?? null,
+      });
       continue;
     }
     for (const variant of variants) {
       const score = rank(tokens, [item.name, variant.name, variant.code, item.categoryName]);
-      if (score !== null) scored.push({ result: variantResult(item, variant), score });
+      if (score !== null) {
+        scored.push({ result: variantResult(item, variant), score, popularity: variant.popularity ?? null });
+      }
     }
   }
 
-  const tier = (entry: { result: PosSearchResult; score: number }) => {
+  const tier = (entry: { result: PosSearchResult; score: number }): number => {
     if (entry.score === 0) return 0;
     return entry.result.unavailable ? 2 : 1;
   };
-  scored.sort((a, b) => tier(a) - tier(b) || a.score - b.score || a.result.label.localeCompare(b.result.label));
+  scored.sort(
+    (a, b) =>
+      tier(a) - tier(b) ||
+      a.score - b.score ||
+      compareRanks(a.popularity, b.popularity) ||
+      a.result.label.localeCompare(b.result.label),
+  );
   return scored.slice(0, limit).map((entry) => entry.result);
 }
 

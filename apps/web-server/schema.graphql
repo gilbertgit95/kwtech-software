@@ -1611,6 +1611,16 @@ type PosOwed {
   since: String!
 }
 
+type PosRank {
+  id: String!
+  rank: Int!
+}
+
+type PosRanks {
+  items: [PosRank!]!
+  variants: [PosRank!]!
+}
+
 type PosRefund {
   amount: Float!
   id: String!
@@ -1890,6 +1900,7 @@ type Query {
   posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!
   posOrder(orderId: String!, organizationId: String!, workspaceId: String!): PosOrder
   posOrders(customerId: String, fromDay: String, organizationId: String!, search: String, tab: String!, toDay: String, workspaceId: String!): [PosOrderSummary!]!
+  posRanks(organizationId: String!, workspaceId: String!): PosRanks!
   posReport(fromDay: String!, organizationId: String!, toDay: String!, workspaceId: String!): PosReport!
   posSettings(organizationId: String!, workspaceId: String!): PosSettings!
   posStockLevels(organizationId: String!, workspaceId: String!): PosStockLevels!

@@ -610,6 +610,36 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **The sell views list items and variants most ordered first, from a ranking a daily background process makes, not a live count (issue #47).**
+
+  In a store with a long menu, the few items that make up most sales sat far
+  down their category, and the cashier scrolled for them on every order. The
+  issue's design kept per-day counters bumped in the finalise transaction and
+  taken back on a void; the operator decided the ranking does not need to be
+  up to the minute — the 7 days before are enough.
+  - **`pos.rank_items`, run by `module-jobs`** at 03:00 in each store's own
+    time, counts the 7 complete days before today and REPLACES the store's
+    snapshot (`pos_item_rank`, `pos_variant_rank`) in one transaction with the
+    day it was made for (`pos_ranking`). A second sweep the same day finds the
+    day recorded and does nothing. Today's sales count from tomorrow.
+  - **Orders, not units:** an order counts once for each item and each variant
+    on it. Paid and unpaid count; voided and cancelled never do; refunds change
+    nothing. Because each run recounts from `pos_order_line`, a void is gone by
+    the next day with no write in the void path.
+  - **Its own query, `posRanks`, read once when a sell view opens.** A field on
+    `posCatalogue` would have re-ranked tiles on every live catalogue event,
+    since the till re-reads the whole catalogue. Ranks only, never counts:
+    every till may read it, and what sells how much is the reports'.
+  - **Availability (#37) still wins:** the rank orders each half, never moves
+    a not-available item above one that can be sold. In search it only breaks
+    ties between equally good matches.
+  - **Not done:** no live counters and nothing in the finalise or void
+    transactions (the cost of a write in every payment, for a number nobody
+    needs before tomorrow); no backfill step — the first run is the backfill;
+    no pruning — the snapshot never holds more than one row per item. The
+    Items tab and the printed price list keep sorting by name, and there is no
+    switch to turn it off (a `PosSettings` flag if a store asks).
+
 - **2026-11-03** — **The print studio's side panels are resizable by the app's three-dot grip: the Print screen's settings, and the layout editor's palette and inspector.**
 
   The operator asked for them to resize "just like the other resizable panels

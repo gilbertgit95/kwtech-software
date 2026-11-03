@@ -274,13 +274,19 @@ const MENU: PosCatalogueView = {
 
 describe('the sell views’ order (issue #37)', () => {
   it('sorts not-available items after the rest in each category, keeping name order in each half', () => {
-    expect(sellOrder(gridItems(MENU, 'c-beef')).map((one) => one.id)).toEqual(['kare', 'bulalo']);
-    expect(sellOrder(gridItems(MENU, null)).map((one) => one.id)).toEqual(['tea', 'kare', 'water', 'bulalo', 'pancit']);
+    expect(sellOrder(gridItems(MENU, 'c-beef'), null).map((one) => one.id)).toEqual(['kare', 'bulalo']);
+    expect(sellOrder(gridItems(MENU, null), null).map((one) => one.id)).toEqual([
+      'tea',
+      'kare',
+      'water',
+      'bulalo',
+      'pancit',
+    ]);
   });
 
   it('⚠ sorts a category with nothing to sell after those that still have something — tabs and groups alike', () => {
     expect(gridCategories(MENU).map((one) => one.id)).toEqual(['c-beef', 'c-drinks', 'c-noodles']);
-    expect(itemGroups(MENU).map((group) => [group.name, group.items.map((one) => one.id)])).toEqual([
+    expect(itemGroups(MENU, null).map((group) => [group.name, group.items.map((one) => one.id)])).toEqual([
       ['Beef', ['kare', 'bulalo']],
       ['Drinks', ['tea', 'water']],
       ['Noodles', ['pancit']],
@@ -290,7 +296,7 @@ describe('the sell views’ order (issue #37)', () => {
   it('lists the sizes that are off last in the picker', () => {
     const tea = MENU.items.find((one) => one.id === 'tea');
     if (!tea) throw new Error('the menu has tea');
-    expect(pickerVariants(tea).map((one) => one.id)).toEqual(['tea-r', 'tea-l']);
+    expect(pickerVariants(tea, null).map((one) => one.id)).toEqual(['tea-r', 'tea-l']);
   });
 
   it('⚠ still finds them, after what can be sold — but an exact code stays on top so a scan never adds the wrong thing', () => {

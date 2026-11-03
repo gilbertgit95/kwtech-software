@@ -46,6 +46,11 @@ export const POS_OPERATIONS = {
     posStockLevels(${SCOPE_ARGS}) { counts levels { itemId variantId left } }
   }`,
 
+  /** "Most ordered first" (issue #47): read once when a sell view opens, never on a live event. */
+  posRanks: `query PosRanks(${SCOPE_VARS}) {
+    posRanks(${SCOPE_ARGS}) { items { id rank } variants { id rank } }
+  }`,
+
   savePosItem: `mutation SavePosItem(${SCOPE_VARS}, $input: SavePosItemInput!) {
     savePosItem(${SCOPE_ARGS}, input: $input) { ${ITEM} }
   }`,

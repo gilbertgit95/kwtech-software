@@ -20,6 +20,7 @@ import {
   PosEventType,
   PosItemType,
   PosOrderTypeOptionType,
+  PosRanksType,
   PosSettingsType,
   PosStockLevelsType,
   PosVariantType,
@@ -79,6 +80,21 @@ export class PosCatalogueResolver {
   ): Promise<PosStockLevelsType> {
     const levels = await this.stock.tillLevels({ organizationId, workspaceId });
     return { counts: this.stock.counts, levels };
+  }
+
+  /**
+   * The store's "most ordered" ranking (issue #47), made once a day by the
+   * `pos.rank_items` process. A till reads it ONCE, when a sell view opens,
+   * and never again on a live event: tiles must not move under a cashier's
+   * finger.
+   */
+  @Query(() => PosRanksType, { name: 'posRanks' })
+  async posRanks(
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+  ): Promise<PosRanksType> {
+    const ranks = await this.catalogue.ranks({ organizationId, workspaceId });
+    return { items: [...ranks.items], variants: [...ranks.variants] };
   }
 
   @Query(() => PosCatalogueType, { name: 'posCatalogue' })

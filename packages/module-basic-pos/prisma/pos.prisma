@@ -7,6 +7,7 @@
 //   customer ◀── order ──▶ line (copies of the item as sold)
 //                  └────▶ refund ──▶ refund line
 //   counter (the next order number), settings (time zone, keymap): one per workspace
+//   item rank, variant rank, ranking: the daily "most ordered" snapshot (issue #47)
 //
 // ⚠ MONEY IS AN INTEGER NUMBER OF CENTAVOS in every `Int` below that holds an
 // amount: ₱12.50 is 1250. Never a float, never a decimal string.
@@ -33,6 +34,12 @@ enum PosOrderStatus {
   paid
   cancelled
   voided
+}
+
+/// What the daily `pos.rank_items` run did for a store's day (issue #47).
+enum PosRankingOutcome {
+  ranked
+  skipped_late
 }
 
 /// Recorded, never processed (D6).
@@ -444,4 +451,57 @@ model PosSettings {
 
   @@index([organizationId])
   @@map("pos_settings")
+}
+
+/// How many orders included an item in the 7 days before its store's
+/// `PosRanking.rankedFor` (issue #47) — what the sell views sort by, most
+/// ordered first. ⚠ A SNAPSHOT, replaced whole by the daily `pos.rank_items`
+/// run and never written by a sale, so it can always be rebuilt from
+/// `PosOrderLine`. Only items ordered in the window have a row, so a store
+/// holds at most one per item. No relation: an archived item's row is
+/// harmless, and the next run drops it.
+model PosItemRank {
+  workspaceId    String
+  organizationId String
+  itemId         String
+  /// Orders, not units: an order with the item on three lines counts once.
+  orders         Int
+
+  @@id([workspaceId, itemId])
+  @@index([organizationId])
+  @@map("pos_item_rank")
+}
+
+/// The same per variant: an order counts once for each size it had. Its own
+/// table rather than a nullable `variantId` on `PosItemRank`, so neither key
+/// holds a null — Postgres treats nulls as distinct, and a `@@id` cannot have one.
+model PosVariantRank {
+  workspaceId    String
+  organizationId String
+  itemId         String
+  variantId      String
+  orders         Int
+
+  @@id([workspaceId, variantId])
+  @@index([organizationId])
+  @@map("pos_variant_rank")
+}
+
+/// Which day a store's ranking was last made for. What the daily run checks
+/// for "done today", written in the transaction that replaces the snapshot,
+/// so the marker and the ranks never disagree. None: never ranked yet, and
+/// the till keeps its old order.
+model PosRanking {
+  workspaceId    String   @id
+  organizationId String
+  /// The store's day the run dealt with; a ranking made on it counts the 7 days before it.
+  rankedFor      DateTime @db.Date
+  /// `ranked`, or `skipped_late`: the run came past `tooLateAfterMinutes` and
+  /// left the day before's ranking in place. Recorded so a late store is
+  /// counted once, not on every sweep until midnight.
+  outcome        PosRankingOutcome
+  rankedAt       DateTime
+
+  @@index([organizationId])
+  @@map("pos_ranking")
 }

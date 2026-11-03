@@ -150,6 +150,27 @@ export class PosCatalogueType {
   costsVisible!: boolean;
 }
 
+/** An item's or a variant's place in the store's "most ordered" ranking (issue #47): 1 is the most. */
+@ObjectType('PosRank')
+export class PosRankType {
+  @Field()
+  id!: string;
+
+  /** Ties share a rank ("1, 2, 2, 4"). */
+  @Field(() => Int)
+  rank!: number;
+}
+
+/** The store's last daily ranking. Only what was ordered in the 7 days before it is listed. */
+@ObjectType('PosRanks')
+export class PosRanksType {
+  @Field(() => [PosRankType])
+  items!: PosRankType[];
+
+  @Field(() => [PosRankType])
+  variants!: PosRankType[];
+}
+
 @ObjectType('PosCustomer')
 export class PosCustomerType {
   @Field()
