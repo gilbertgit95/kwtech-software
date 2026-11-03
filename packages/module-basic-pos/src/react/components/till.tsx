@@ -142,6 +142,24 @@ export function Till({
   const open = order?.status === 'open' ? order : null;
   const finished = order && order.status !== 'open' ? order : null;
 
+  // Opening this view (Cashier or Classic) reads the ranking again: the till's state outlives it (issue #47).
+  const { reloadRanks } = state;
+  useEffect(() => {
+    void reloadRanks();
+  }, [reloadRanks]);
+
+  /*
+   * ⚠ A new ranking reorders the results under the cursor, so the cursor goes
+   * back to the best match — or Enter would add whatever moved into its place.
+   * Adjusted while rendering, as React advises for state that follows a prop,
+   * so the reordered list never renders with the old cursor.
+   */
+  const [rankedBy, setRankedBy] = useState(state.ranks);
+  if (rankedBy !== state.ranks) {
+    setRankedBy(state.ranks);
+    setActiveResult(0);
+  }
+
   const searchable = useMemo(
     () => (catalogue ? searchCatalogue(catalogue, state.ranks) : []),
     [catalogue, state.ranks],

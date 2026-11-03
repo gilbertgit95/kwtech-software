@@ -54,9 +54,13 @@ type Sheet = 'none' | 'order' | 'hold' | 'reference' | 'customer' | 'availabilit
  * - The same `useTill` state as the till: one order, saved as it is built.
  */
 export function TakeOrders({ state, phone = false }: { state: TillState; phone?: boolean }) {
-  const { catalogue, order, client, scope } = state;
+  const { catalogue, order, client, scope, reloadRanks } = state;
   const open = order?.status === 'open' ? order : null;
   const lines = open?.lines ?? [];
+  // Opening Take orders reads the ranking again: the till's state outlives this view (issue #47).
+  useEffect(() => {
+    void reloadRanks();
+  }, [reloadRanks]);
   const searchId = useId();
   /** Ticks every half minute, so each chip's waiting time moves on its own. */
   const now = useNow();

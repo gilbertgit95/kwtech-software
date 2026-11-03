@@ -320,9 +320,11 @@ and the printed price list keep sorting by name.
 - **`posRanks`** (`pos:read`) gives `{ items: [{ id, rank }], variants: [...] }`
   — ranks (1 is the most, ties share one), ⚠ never the counts. Its own query,
   not a field of `posCatalogue`: the till re-reads the catalogue on every live
-  change, and the ranking must not move with it. `useTill` reads it **once**,
-  when a sell view opens, and never on a live event, so tiles never move under
-  a cashier's finger.
+  change, and the ranking must not move with it. Each sell view reads it **as
+  it opens** (`reloadRanks` — the till's state outlives the Sell tab, so coming
+  back to it picks up the day's new ranking), and never on a live event, so
+  tiles never move under a cashier's finger. A new ranking puts the search
+  cursor back on the best match.
 - **The sort** (`byPopularity`, `src/domain/popularity.ts`): by rank, then
   everything unranked; ties and the unranked keep their old order (the name for
   items, `sortOrder` for variants). Not available (#37) is applied **on top**:

@@ -58,10 +58,18 @@ export interface TillState {
   stock: PosStockMap | null;
   /**
    * The store's "most ordered" ranking (issue #47); null until read, or when it
-   * could not be — the sell views then keep their old order. ⚠ READ ONCE, when
-   * the till opens, never on a live event: tiles must not move mid-order.
+   * could not be — the sell views then keep their old order. ⚠ READ WHEN A SELL
+   * VIEW OPENS (`reloadRanks`), never on a live event: tiles must not move
+   * mid-order.
    */
   ranks: PosRankMap | null;
+  /**
+   * Reads the ranking again. Called by each sell view as it opens: this state
+   * outlives them (the app keeps it while the Orders or Items tab is open), so
+   * coming back to Sell picks up the day's new ranking, or retries one that
+   * failed.
+   */
+  reloadRanks: () => Promise<void>;
   keymap: PosKeymap;
   /** The store's order reference options (issue #30), in its order; empty for none — the plain text box. */
   referenceOptions: readonly string[];
@@ -228,27 +236,37 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   }, [loadCatalogue, loadSettings, loadStock, reloadPending]);
 
   /*
-   * The store's ranking (issue #47): read once per store, here only — never in
-   * `onEvent` below, because the ranking is fixed while the till is open.
+   * The store's ranking (issue #47): read by `reloadRanks` when a sell view
+   * opens — never in `onEvent` below, because the ranking is fixed while a
+   * sell view is open.
    *
-   * ⚠ ITS OWN EFFECT, WITH A CANCELLED GUARD. The catalogue and stock reads
-   * correct themselves on the next live event; the ranking is never read
-   * again, so an answer for the store the till just LEFT would stay on the new
-   * one until it reopened. The old store's ranks are cleared at once, and a
-   * late answer for it is dropped.
+   * ⚠ ONLY THE LATEST READ IS KEPT. The catalogue and stock reads correct
+   * themselves on the next live event; the ranking is not read again until a
+   * sell view reopens, so an answer for the store the till just LEFT would stay
+   * on the new one. Each read takes a number, a change of store retires every
+   * number, and an answer that is no longer the latest is dropped.
    */
+  const rankRead = useRef(0);
+  const reloadRanks = useCallback(async () => {
+    rankRead.current += 1;
+    const mine = rankRead.current;
+    try {
+      const answer = await client.ranks(scope);
+      if (mine === rankRead.current) setRanks(rankMap(answer));
+    } catch (caught) {
+      // A courtesy, like the counts: without it the till lists by name, and sells the same. Said, so it can be found.
+      if (mine === rankRead.current) {
+        console.warn('Point of sale: could not read the most-ordered ranking.', caught);
+      }
+    }
+  }, [client, scope]);
+
+  // A new store starts with no ranking, and an answer still coming for the old one is dropped.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the store IS the trigger — it runs exactly when the scope (or client) changes.
   useEffect(() => {
-    let cancelled = false;
     setRanks(null);
-    client
-      .ranks(scope)
-      .then((answer) => {
-        if (!cancelled) setRanks(rankMap(answer));
-      })
-      // A courtesy, like the counts: without it the till lists by name, and sells the same.
-      .catch(() => {});
     return () => {
-      cancelled = true;
+      rankRead.current += 1;
     };
   }, [client, scope]);
 
@@ -353,6 +371,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     catalogue,
     stock,
     ranks,
+    reloadRanks,
     keymap,
     referenceOptions,
     timeZone,
