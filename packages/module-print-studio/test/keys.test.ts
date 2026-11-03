@@ -211,8 +211,17 @@ describe('studioKeyLabel', () => {
   });
 });
 
-const NOTHING: PrintKeyContext = { selected: 0, filledSelected: 0, filled: 0, photos: 0, pages: 1, pageIndex: 0 };
-const ONE_SELECTED: PrintKeyContext = { selected: 1, filledSelected: 1, filled: 8, photos: 2, pages: 2, pageIndex: 0 };
+const NOTHING: PrintKeyContext = {
+  selected: 0,
+  filledSelected: 0,
+  filled: 0,
+  photos: 0,
+  pages: 1,
+  pageIndex: 0,
+  canUndo: false,
+  canRedo: false,
+};
+const ONE_SELECTED: PrintKeyContext = { ...NOTHING, selected: 1, filledSelected: 1, filled: 8, photos: 2, pages: 2 };
 
 describe('printKeyAction', () => {
   it('empties, zooms, turns and resets the selected photos', () => {
@@ -331,5 +340,60 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget('SELECT', 'ArrowDown')).toBe(true);
     expect(isTypingTarget('INPUT', 'Escape')).toBe(false);
     expect(isTypingTarget('BUTTON', 'D')).toBe(false);
+  });
+
+  it('⚠ keeps Ctrl+Z for a text field’s own typing, and gives it to the screen on a slider (issue #52)', () => {
+    expect(isTypingTarget('INPUT', 'Ctrl+Z', 'text')).toBe(true);
+    expect(isTypingTarget('TEXTAREA', 'Ctrl+Z')).toBe(true);
+    expect(isTypingTarget('INPUT', 'Ctrl+Z', 'range')).toBe(false);
+    expect(isTypingTarget('INPUT', 'Ctrl+Y', 'checkbox')).toBe(false);
+    // An arrow still moves the slider, not the photo.
+    expect(isTypingTarget('INPUT', 'ArrowLeft', 'range')).toBe(true);
+  });
+});
+
+describe('undo and redo keys (issue #52)', () => {
+  it('are Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y, on both screens', () => {
+    expect(press('z', { ctrlKey: true })).toBe('Ctrl+Z');
+    expect(press('Z', { ctrlKey: true, shiftKey: true })).toBe('Ctrl+Shift+Z');
+    expect([KEYS.undo, KEYS.redo, KEYS.redoAlt]).toEqual(['Ctrl+Z', 'Ctrl+Shift+Z', 'Ctrl+Y']);
+    expect([KEYS.undoLayout, KEYS.redoLayout, KEYS.redoLayoutAlt]).toEqual(['Ctrl+Z', 'Ctrl+Shift+Z', 'Ctrl+Y']);
+  });
+
+  it('act only when there is something to undo or redo', () => {
+    expect(printKeyAction('Ctrl+Z', NOTHING, KEYS)).toBeNull();
+    expect(printKeyAction('Ctrl+Z', { ...NOTHING, canUndo: true }, KEYS)).toEqual({ kind: 'undo' });
+    expect(printKeyAction('Ctrl+Shift+Z', { ...NOTHING, canUndo: true }, KEYS)).toBeNull();
+    for (const key of ['Ctrl+Shift+Z', 'Ctrl+Y']) {
+      expect(printKeyAction(key, { ...NOTHING, canRedo: true }, KEYS)).toEqual({ kind: 'redo' });
+    }
+    expect(editorKeyAction('Ctrl+Z', false, KEYS)).toBeNull();
+    expect(editorKeyAction('Ctrl+Z', false, KEYS, { canUndo: true, canRedo: false })).toEqual({ kind: 'undo' });
+    expect(editorKeyAction('Ctrl+Y', false, KEYS, { canUndo: false, canRedo: true })).toEqual({ kind: 'redo' });
+  });
+
+  it('show on the bar once they can act, Redo once though it has two keys', () => {
+    const bar = printShortcutBar({ ...NOTHING, canUndo: true, canRedo: true }, KEYS);
+    expect(bar.map((entry) => [entry.keys, entry.label])).toEqual([
+      ['Ctrl Z', 'Undo'],
+      ['Ctrl Shift Z', 'Redo'],
+    ]);
+    const editor = editorShortcutBar(false, KEYS, { canUndo: true, canRedo: false });
+    expect(editor.map((entry) => entry.label)).toEqual(['Zoom in', 'Zoom out', 'Fit', 'Undo']);
+  });
+
+  it('can be rebound like any other key', () => {
+    const custom = { ...KEYS, undo: 'Alt+Z' };
+    expect(validateStudioKeymap(custom)).toEqual({ keymap: custom });
+    expect(printKeyAction('Alt+Z', { ...NOTHING, canUndo: true }, custom)).toEqual({ kind: 'undo' });
+  });
+
+  it('⚠ never take a key a workspace saved before they existed', () => {
+    const saved: Record<string, string> = { ...KEYS, selectAll: 'Ctrl+Z' };
+    for (const action of ['undo', 'redo', 'redoAlt', 'undoLayout', 'redoLayout', 'redoLayoutAlt']) delete saved[action];
+    const keymap = effectiveStudioKeymap(saved);
+    expect(keymap.selectAll).toBe('Ctrl+Z');
+    expect(keymap.undo).not.toBe('Ctrl+Z');
+    expect(keymap.redo).toBe('Ctrl+Shift+Z');
   });
 });

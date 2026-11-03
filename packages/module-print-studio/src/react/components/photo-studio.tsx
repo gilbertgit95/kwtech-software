@@ -64,6 +64,7 @@ import {
   turnFrame,
   zoomFrameBy,
 } from '../../domain/slot-fit.js';
+import { undoStates } from '../../domain/undo.js';
 import { drawSheet, sheetPixels } from '../render/draw-sheet.js';
 import { loadPhoto, releasePhoto, type StudioPhoto } from '../render/photos.js';
 import { makeLayoutResult, type StudioResult } from '../render/result.js';
@@ -71,6 +72,7 @@ import type { StudioAppState } from '../studio-state.js';
 import { useMarquee } from '../use-marquee.js';
 import { useStudioData } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
+import { useUndo } from '../use-undo.js';
 import { type PrintKeyContext, printKeyAction, printShortcutBar } from '../view/keys.js';
 import { marqueeSelection } from '../view/marquee.js';
 import {
@@ -81,6 +83,16 @@ import {
   tooSmallPapersWarning,
 } from '../view/print-paper.js';
 import { paperName, plural } from '../view/summary.js';
+import {
+  clearedPrintSheet,
+  keptSelection,
+  newPrintSheet,
+  photoEditStep,
+  printSheetPhotoIds,
+  selectionKey,
+  withAddedPhotos,
+  withoutPhoto,
+} from '../view/undo-steps.js';
 import {
   blurryWarning,
   cellsLike,
@@ -120,6 +132,7 @@ import { SelectionBar } from './selection-bar.js';
 import { RulerMenu, useRulerUnit } from './sheet-rulers.js';
 import { fitWidth, SheetFrame } from './sheet-view.js';
 import { ShortcutBar } from './shortcut-bar.js';
+import { UndoButtons } from './undo-buttons.js';
 
 /** How wide, in pixels, the on-screen sheet is drawn. Sharp on a large monitor, quick to redraw as a photo is dragged. */
 const PREVIEW_PIXELS = 1000;
@@ -179,38 +192,29 @@ export function PhotoStudio({
   modeSwitch: ReactNode;
 }) {
   /*
-   * The layout as ADJUSTED FOR THIS PRINT, or null while it is as chosen. One
-   * customer wants the ID package with a 2 × 2 more: the cells are changed
-   * here, in the editor, and the saved layout is never touched (the operator,
-   * 2026-10-09). Held in memory like the photos, and gone with them.
+   * ⚠ EVERYTHING UNDO TAKES BACK IS ONE SNAPSHOT (issue #52, `StudioPrintSheet`): the photos in the tray and in
+   * the cells, each cell's frame, each photo's edits, the border, the paper, the background and the layout as
+   * adjusted for this print. One step restores all of it together, so the sheet, its preview and the PDF can
+   * never disagree after an Undo. Changed only through `change`, which names the step.
+   *
+   * The layout as ADJUSTED FOR THIS PRINT, or null while it is as chosen: one customer wants the ID package with
+   * a 2 × 2 more. The cells are changed here, in the editor, and the saved layout is never touched (the operator,
+   * 2026-10-09). The border and the paper are for THIS print too: they start as the layout says and can be
+   * changed without touching it. A fixed layout's cells stay exactly where they were drawn on another paper; a
+   * percent layout's are resized to the page (`layoutOnPage`).
+   * ⚠ ONLY A PAGE THE CELLS FIT ON CAN BE CHOSEN (`checkLayoutOnPaper`); the rest are shown, disabled, with the
+   * reason said under them. Null, or a pick that no longer fits, is as the layout says (`printPage`).
    */
-  const [adjusted, setAdjusted] = useState<StudioLayoutSpec | null>(null);
+  const work = useUndo(() => newPrintSheet(layout.spec));
+  const { change } = work;
+  const sheetState = work.present;
+  const { adjusted, guides, border, paperValue, orientationValue, pages, frames, edits } = sheetState;
   const [adjusting, setAdjusting] = useState(false);
   const chosen = adjusted ?? layout.spec;
   // ⚠ A layout that was adjusted is no longer the saved one: the history gets no id for it, and a name that says so.
   const layoutId = adjusted ? null : layout.id;
   const layoutName = printLayoutName(layout.name, adjusted !== null && !layout.once);
 
-  /*
-   * The border, for THIS print. It starts as the layout says and can be
-   * changed here without touching the layout: a pale design wants a darker
-   * line today, and the layout is not wrong for it.
-   */
-  const [guides, setGuides] = useState(layout.spec.guides);
-  const [border, setBorder] = useState<StudioBorder>(() => borderOf(layout.spec));
-  /*
-   * The paper and which way round it is, for THIS print. They start as the
-   * layout's and can be another — the shop is out of A4 today, or the sheet
-   * goes through sideways — without touching the layout. A fixed layout's
-   * cells stay exactly where they were drawn; a percent layout's are resized
-   * to the page (`layoutOnPage`). Which cell is which never changes, so the
-   * photos placed and how each is framed carry over.
-   * ⚠ ONLY A PAGE THE CELLS FIT ON CAN BE CHOSEN (`checkLayoutOnPaper`); the
-   * rest are shown, disabled, with the reason said under them. Null, or a
-   * pick that no longer fits, is as the layout says (`printPage`).
-   */
-  const [paperValue, setPaperValue] = useState<string | null>(null);
-  const [orientationValue, setOrientationValue] = useState<StudioOrientation | null>(null);
   const printOn = useMemo(
     () => printPage(chosen, 'mm', paperValue, orientationValue),
     [chosen, paperValue, orientationValue],
@@ -227,7 +231,13 @@ export function PhotoStudio({
   const cells = spec.cells;
   const sheet = useMemo(() => sheetSize(spec), [spec]);
 
-  const [photos, setPhotos] = useState<StudioPhoto[]>([]);
+  /**
+   * Every photo decoded on this screen, by id: the tray's, the background's, and any an Undo could bring back.
+   * ⚠ A photo is released only once NO step of the history names it (the effect below): one removed from the
+   * tray stays decoded while an Undo can still put it back, and goes when that step falls off the history.
+   */
+  const pool = useRef(new Map<string, StudioPhoto>());
+  const photos = useMemo(() => sheetState.photoIds.flatMap((id) => pool.current.get(id) ?? []), [sheetState.photoIds]);
   /** Which upload each photo came in and its number in that selection (`StudioPhotoTag`), shown in the tray. */
   const [photoTags, setPhotoTags] = useState<ReadonlyMap<string, StudioPhotoTag>>(new Map());
   /**
@@ -236,9 +246,6 @@ export function PhotoStudio({
    * still reading) must never be given one number, which a state read when each began would do.
    */
   const nextBatch = useRef(1);
-  const [pages, setPages] = useState<StudioPageFill[]>(() => planFill(cells, [], 'manual').pages);
-  const [frames, setFrames] = useState<StudioFrames>({});
-  const [edits, setEdits] = useState<ReadonlyMap<string, StudioPhotoEdit>>(new Map());
   const [pageIndex, setPageIndex] = useState(0);
   /**
    * The selected cells, on any page; the last is the one pressed last, and the one the toolbar shows.
@@ -255,14 +262,21 @@ export function PhotoStudio({
   const [viewZoom, setViewZoom] = useState(1);
   const [rulerUnit, setRulerUnit] = useRulerUnit();
   /*
-   * A picture behind every page, for THIS print (the operator, 2026-10-22):
-   * decoded like a photo and held like one, never part of the layout. Its
-   * place is in sheet coordinates, so it stays put when the paper changes.
-   * While `movingBackground` is on, a layer over the sheet takes the presses
-   * and the photos are held still.
+   * A picture behind every page, for THIS print (the operator, 2026-10-22): decoded like a photo and held like
+   * one, never part of the layout. Its place is in sheet coordinates, so it stays put when the paper changes.
+   * While `movingBackground` is on, a layer over the sheet takes the presses and the photos are held still.
    */
-  const [background, setBackground] = useState<{ photo: StudioPhoto; placement: StudioBackground } | null>(null);
-  const [movingBackground, setMovingBackground] = useState(false);
+  const backgroundPhoto = sheetState.background ? pool.current.get(sheetState.background.photoId) : undefined;
+  const background = useMemo(
+    () =>
+      sheetState.background && backgroundPhoto
+        ? { photo: backgroundPhoto, placement: sheetState.background.placement }
+        : null,
+    [sheetState.background, backgroundPhoto],
+  );
+  const [movingWanted, setMovingBackground] = useState(false);
+  // An Undo that takes the picture away ends moving it.
+  const movingBackground = movingWanted && background !== null;
   const [loadingBackground, setLoadingBackground] = useState(false);
 
   const loadCalibrations = useCallback(() => state.client.calibrations(state.scope), [state.client, state.scope]);
@@ -270,27 +284,59 @@ export function PhotoStudio({
   const calibration = calibrations.data?.find((profile) => profile.id === calibrationId) ?? NO_CALIBRATION;
 
   const photoMap = useMemo(() => new Map(photos.map((photo) => [photo.id, photo])), [photos]);
+  // ⚠ The photo picked in the tray only while it is IN the tray: an Undo can take it out again.
+  const pickedId = activePhotoId !== null && photoMap.has(activePhotoId) ? activePhotoId : null;
   const page = pages[pageIndex] ?? [];
   const primary = selection[selection.length - 1] ?? null;
   const cellPhotoId = primary ? (pages[primary.page]?.[primary.cell] ?? null) : null;
   // The photo the adjustments act on: the selected cell's, else the one picked in the tray.
-  const toolPhoto = photoMap.get(cellPhotoId ?? activePhotoId ?? '') ?? null;
+  const toolPhoto = photoMap.get(cellPhotoId ?? pickedId ?? '') ?? null;
   const filled = filledCellCount(pages);
   const filledSelection = filledCells(pages, selection);
 
-  /** The photos as last rendered or added, for an upload that finishes after another (`addFiles`). */
-  const latestPhotos = useRef(photos);
-  latestPhotos.current = photos;
+  /** The sheet as last rendered or changed, for an upload that finishes after another (`addFiles`). */
+  const latestSheet = useRef(sheetState);
+  latestSheet.current = sheetState;
+
+  /*
+   * ⚠ A PHOTO GOES ONLY WHEN NOTHING CAN BRING IT BACK: none of the history's steps names it. Run after every
+   * change, undo and redo. A photo is put in the pool in the same moment the change naming it is made
+   * (`addFiles`, `chooseBackground`), so this never sees a photo that is about to be named.
+   */
+  useEffect(() => {
+    const named = new Set(undoStates(work.history).flatMap(printSheetPhotoIds));
+    const gone: string[] = [];
+    for (const [id, photo] of pool.current) {
+      if (named.has(id)) continue;
+      releasePhoto(photo);
+      pool.current.delete(id);
+      gone.push(id);
+    }
+    if (gone.length === 0) return;
+    setPhotoTags((current) => {
+      const next = new Map(current);
+      for (const id of gone) next.delete(id);
+      return next;
+    });
+  }, [work.history]);
 
   // ⚠ Every photo is released when the studio goes, whatever made it go.
-  const held = useRef<StudioPhoto[]>([]);
-  held.current = background ? [...photos, background.photo] : photos;
-  useEffect(
-    () => () => {
-      for (const photo of held.current) releasePhoto(photo);
-    },
-    [],
-  );
+  useEffect(() => {
+    const held = pool.current;
+    return () => {
+      for (const photo of held.values()) releasePhoto(photo);
+      held.clear();
+    };
+  }, []);
+
+  /*
+   * An Undo can take away a page, or the cells of an adjusted layout: the page shown and the selection are kept
+   * to what is still there. Any change that removes them does the same, so this is the one place it happens.
+   */
+  useEffect(() => {
+    if (pageIndex > pages.length - 1) setPageIndex(Math.max(pages.length - 1, 0));
+    setSelection((current) => keptSelection(current, pages, cells.length));
+  }, [pages, pageIndex, cells.length]);
 
   /*
    * ⚠ A RESULT IS OF THE ARRANGEMENT IT WAS MADE FROM. Change a photo, a frame,
@@ -343,11 +389,10 @@ export function PhotoStudio({
     setError(null);
     try {
       const photo = await loadPhoto(file);
-      if (background) releasePhoto(background.photo);
-      setBackground({
-        photo,
-        placement: newBackground({ width: photo.width, height: photo.height }, printableArea(spec)),
-      });
+      // The picture it replaces stays in the pool while an Undo could put it back.
+      pool.current.set(photo.id, photo);
+      const placement = newBackground({ width: photo.width, height: photo.height }, printableArea(spec));
+      change('background', (current) => ({ ...current, background: { photoId: photo.id, placement } }));
       setMovingBackground(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : `“${file.name}” could not be read.`);
@@ -357,9 +402,17 @@ export function PhotoStudio({
   }
 
   function removeBackground() {
-    if (background) releasePhoto(background.photo);
-    setBackground(null);
+    change('remove background', (current) => ({ ...current, background: null }));
     setMovingBackground(false);
+  }
+
+  /** The picture moved, resized or faded: a drag or a slider is one step (`background` is its gesture). */
+  function placeBackground(placement: StudioBackground) {
+    change(
+      'move background',
+      (current) => (current.background ? { ...current, background: { ...current.background, placement } } : current),
+      'background',
+    );
   }
 
   // ── photos ────────────────────────────────────────────────────────────────
@@ -372,7 +425,7 @@ export function PhotoStudio({
     /** Each added photo's place in the files as chosen: its number in this batch. */
     const chosenAt: { id: string; index: number }[] = [];
     const problems: string[] = [];
-    const room = STUDIO_PHOTOS_MAX - latestPhotos.current.length;
+    const room = STUDIO_PHOTOS_MAX - latestSheet.current.photoIds.length;
     // In order, one at a time: each decode holds a full-size bitmap, and a dozen at once is a dozen in memory.
     for (const [index, file] of files.slice(0, Math.max(room, 0)).entries()) {
       try {
@@ -390,57 +443,40 @@ export function PhotoStudio({
       setPhotoTags((current) => new Map([...current, ...tagUpload(chosenAt, batch)]));
     }
     if (files.length > room) problems.push(`Only ${STUDIO_PHOTOS_MAX} photos can be held at once.`);
-    /*
-     * ⚠ ONTO THE PHOTOS AS THEY ARE NOW, not as they were when this began: an upload dropped while another was
-     * still reading finishes after it, and adding to the older list would throw the first upload's photos away.
-     */
-    const all = [...latestPhotos.current, ...added];
-    latestPhotos.current = all;
-    setPhotos((current) => [...current, ...added]);
-    if (added[0] && activePhotoId === null) setActivePhotoId(added[0].id);
-    /*
-     * ⚠ THE FIRST PHOTOS FILL THE SHEET BY THEMSELVES. Somebody who adds one
-     * photo to an ID layout wants it in every cell; somebody who adds several
-     * wants one each. Only while every cell is still empty — once anything has
-     * been placed, adding photos never rearranges it.
-     */
-    if (added.length > 0 && filled === 0) {
-      const plan = planFill(
-        cells,
-        all.map((photo) => photo.id),
-        all.length === 1 ? 'same' : 'sequence',
-      );
-      setPages(plan.pages);
-      setFrames({});
-      if (plan.dropped > 0) problems.push(`${plural(plan.dropped, 'photo')} did not fit in 50 pages.`);
+    if (added.length > 0) {
+      const ids = added.map((photo) => photo.id);
+      for (const photo of added) pool.current.set(photo.id, photo);
+      /*
+       * ⚠ ONTO THE SHEET AS IT IS NOW, not as it was when this began: an upload dropped while another was still
+       * reading finishes after it, and adding to the older sheet would throw the first upload's photos away.
+       * The first photos fill the empty sheet in the same step (`withAddedPhotos`): one Undo takes both back.
+       */
+      const { sheet: next, dropped } = withAddedPhotos(latestSheet.current, ids, cells);
+      latestSheet.current = next;
+      change(added.length === 1 ? 'add photo' : 'add photos', (current) => withAddedPhotos(current, ids, cells).sheet);
+      if (dropped > 0) problems.push(`${plural(dropped, 'photo')} did not fit in 50 pages.`);
+      if (pickedId === null) setActivePhotoId(ids[0] ?? null);
     }
     setError(problems.length > 0 ? problems.join(' ') : null);
     setLoading(false);
   }
 
+  /** Out of the tray and every cell. ⚠ NOT RELEASED HERE: an Undo can bring it back (the pool's effect). */
   function removePhoto(photo: StudioPhoto) {
-    const cleared = pages.map((one) => one.map((id) => (id === photo.id ? null : id)));
-    setPages(cleared);
-    setFrames((current) => pruneFrames(current, cleared));
-    setPhotos((current) => current.filter((other) => other.id !== photo.id));
-    setPhotoTags((current) => {
-      const next = new Map(current);
-      next.delete(photo.id);
-      return next;
-    });
-    if (activePhotoId === photo.id) setActivePhotoId(null);
-    releasePhoto(photo);
+    change('remove photo', (current) => withoutPhoto(current, photo.id));
   }
 
   // ── filling ───────────────────────────────────────────────────────────────
 
   function fill(mode: StudioFillMode) {
-    const ids =
-      mode === 'same' ? [activePhotoId ?? photos[0]?.id ?? ''].filter(Boolean) : photos.map((photo) => photo.id);
+    const ids = mode === 'same' ? [pickedId ?? photos[0]?.id ?? ''].filter(Boolean) : photos.map((photo) => photo.id);
     const plan = planFill(cells, ids, mode);
-    setPages(plan.pages);
     // A new arrangement: nobody's old zoom carries over to a different photo.
-    setFrames({});
+    change(mode === 'manual' ? 'empty every cell' : 'arrange', (current) => ({
+      ...current,
+      pages: plan.pages,
+      frames: {},
+    }));
     setPageIndex(0);
     setSelection([]);
     setError(
@@ -464,7 +500,7 @@ export function PhotoStudio({
     if (!ids || ids.length === 0) return;
     const start = from ?? primary ?? { page: pageIndex, cell: readingOrder(cells)[0] ?? 0 };
     const plan = fillFromCell(cells, pages, ids, start);
-    setPages(plan.pages);
+    change('place batch', (current) => ({ ...current, pages: plan.pages }));
     if (plan.firstPage !== null) setPageIndex(plan.firstPage);
     setSelection([]);
     setError(
@@ -490,17 +526,24 @@ export function PhotoStudio({
   }
 
   function place(cellIndex: number, photoId: string | null) {
-    const next = setCellPhoto(pages, pageIndex, cellIndex, photoId);
-    setPages(next);
-    // A different photo starts centred: the last one's zoom is not its own.
-    setFrames((current) => pruneFrames(withFrame(current, pageIndex, cellIndex, DEFAULT_FRAME), next));
+    change(photoId === null ? 'empty cell' : 'put photo', (current) => {
+      const next = setCellPhoto(current.pages, pageIndex, cellIndex, photoId);
+      // A different photo starts centred: the last one's zoom is not its own.
+      const framed = pruneFrames(withFrame(current.frames, pageIndex, cellIndex, DEFAULT_FRAME), next);
+      return { ...current, pages: next, frames: framed };
+    });
   }
 
-  /** One photo into every selected cell, or all of them emptied. Each starts centred again. */
+  /** One photo into every selected cell, or all of them emptied. Each starts centred again. One step for all. */
   function placeInSelection(photoId: string | null) {
-    const next = setCellsPhoto(pages, selection, photoId);
-    setPages(next);
-    setFrames((current) => pruneFrames(withFrames(current, selection, DEFAULT_FRAME), next));
+    change(photoId === null ? 'empty cells' : 'put photo', (current) => {
+      const next = setCellsPhoto(current.pages, selection, photoId);
+      return {
+        ...current,
+        pages: next,
+        frames: pruneFrames(withFrames(current.frames, selection, DEFAULT_FRAME), next),
+      };
+    });
   }
 
   /**
@@ -516,7 +559,7 @@ export function PhotoStudio({
       return;
     }
     setSelection([ref]);
-    if (!page[cellIndex] && activePhotoId) place(cellIndex, activePhotoId);
+    if (!page[cellIndex] && pickedId) place(cellIndex, pickedId);
   }
 
   function dropOnCell(event: DragEvent, cellIndex: number) {
@@ -535,29 +578,39 @@ export function PhotoStudio({
     setSelection([{ page: pageIndex, cell: cellIndex }]);
   }
 
-  /** Change the frame of every selected cell that holds a photo, each from its own. */
-  function reframe(change: (frame: StudioFrame) => StudioFrame) {
-    setFrames((current) => {
-      let next = current;
-      for (const ref of filledSelection) {
-        next = withFrame(next, ref.page, ref.cell, change(frameOf(current, ref.page, ref.cell)));
-      }
-      return next;
-    });
+  /**
+   * Change the frame of every selected cell that holds a photo, each from its own: ONE step for all of them.
+   * `gesture` joins a slider's or a held key's changes into that step; it is keyed by the cells, so the same
+   * zoom on other photos is a step of its own.
+   */
+  function reframe(label: string, update: (frame: StudioFrame) => StudioFrame, gesture?: string) {
+    const targets = filledSelection;
+    change(
+      label,
+      (current) => {
+        let next = current.frames;
+        for (const ref of targets) {
+          next = withFrame(next, ref.page, ref.cell, update(frameOf(current.frames, ref.page, ref.cell)));
+        }
+        return { ...current, frames: next };
+      },
+      gesture === undefined ? undefined : `${gesture}:${selectionKey(targets)}`,
+    );
   }
   /**
    * Every selected photo turned a quarter the way it will LOOK (`turnFrame`): each by its own mirroring, the
    * photo's flip and its cell's mirror together, since a mirror reverses a turn.
    */
   function turnSelection(toward: StudioTurn) {
-    setFrames((current) => {
-      let next = current;
-      for (const ref of filledSelection) {
-        const edit = edits.get(pages[ref.page]?.[ref.cell] ?? '') ?? NO_PHOTO_EDIT;
-        const frame = frameOf(current, ref.page, ref.cell);
+    const targets = filledSelection;
+    change('turn', (current) => {
+      let next = current.frames;
+      for (const ref of targets) {
+        const edit = current.edits.get(current.pages[ref.page]?.[ref.cell] ?? '') ?? NO_PHOTO_EDIT;
+        const frame = frameOf(current.frames, ref.page, ref.cell);
         next = withFrame(next, ref.page, ref.cell, turnFrame(frame, toward, photoFlip(edit, frame)));
       }
-      return next;
+      return { ...current, frames: next };
     });
   }
 
@@ -576,7 +629,11 @@ export function PhotoStudio({
     targets: StudioCellRef[];
     from: StudioFrames;
     moved: boolean;
+    /** This drag's gesture: every move of it is one undo step, however long the hand rests (`untimed`). */
+    gesture: string;
   } | null>(null);
+  /** Counts drags, so each has a gesture key of its own and two drags in a row are two steps. */
+  const drags = useRef(0);
   /** Set when a press turned into a drag, so the click that follows it is not also a selection. */
   const dragged = useRef(false);
 
@@ -593,6 +650,7 @@ export function PhotoStudio({
      */
     const sheetBox = overlay.current?.getBoundingClientRect();
     if (!sheetBox || !(sheetBox.width > 0)) return;
+    drags.current += 1;
     drag.current = {
       x: event.clientX,
       y: event.clientY,
@@ -601,6 +659,7 @@ export function PhotoStudio({
       targets,
       from: frames,
       moved: false,
+      gesture: `drag:${drags.current}`,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -622,7 +681,7 @@ export function PhotoStudio({
     if (!pressed) return;
     const across = dx * current.unitsPerPixel;
     const down = dy * current.unitsPerPixel;
-    let next = frames;
+    const moves: { ref: StudioCellRef; frame: StudioFrame }[] = [];
     for (const ref of current.targets) {
       const photo = photoMap.get(pages[ref.page]?.[ref.cell] ?? '');
       const cell = cells[ref.cell];
@@ -639,9 +698,17 @@ export function PhotoStudio({
         : { dx: across / pressed.width, dy: down / pressed.height };
       // Mirrored — the photo's flip and this cell's mirror together — the photo still follows the hand.
       const moved = panFrame(photo, cell, start, move, edit.crop, photoFlip(edit, start));
-      next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
+      moves.push({ ref, frame: keepInCell(photo, cell, moved, edit.crop) });
     }
-    setFrames(next);
+    change(
+      'move photo',
+      (sheetNow) => {
+        let next = sheetNow.frames;
+        for (const { ref, frame } of moves) next = withFrame(next, ref.page, ref.cell, frame);
+        return { ...sheetNow, frames: next };
+      },
+      { key: current.gesture, untimed: true },
+    );
   }
 
   function endDrag() {
@@ -675,15 +742,19 @@ export function PhotoStudio({
   function addOnePage() {
     const next = addPage(pages, cells.length);
     if (!next) return setError('A result can have at most 50 pages.');
-    setPages(next);
+    change('add page', (current) => ({ ...current, pages: next }));
     setPageIndex(next.length - 1);
   }
 
   function removeCurrentPage() {
     if (pages.length <= 1) return;
     const next = pages.filter((_page, at) => at !== pageIndex);
-    setPages(next);
-    setFrames((current) => removePageFrames(current, pageIndex));
+    const removed = pageIndex;
+    change('remove page', (current) => ({
+      ...current,
+      pages: next,
+      frames: removePageFrames(current.frames, removed),
+    }));
     setPageIndex(Math.min(pageIndex, next.length - 1));
     // Page numbers after the removed one all moved: a selection made by number no longer means what it did.
     setSelection([]);
@@ -706,15 +777,16 @@ export function PhotoStudio({
     return made;
   }
 
+  /**
+   * Start over: the photos, the cells and the background go, with this print's layout, border and paper kept.
+   * ⚠ IT ALSO ENDS THE UNDO HISTORY. Start over is how the photos are let go of; a history that could bring
+   * them back would keep every one of them decoded. It was never undoable, and asks first (`OutputBar`).
+   */
   function clearEverything() {
-    for (const photo of photos) releasePhoto(photo);
-    removeBackground();
-    setPhotos([]);
+    work.reset(clearedPrintSheet(sheetState, cells));
+    setMovingBackground(false);
     setPhotoTags(new Map());
     nextBatch.current = 1;
-    setPages(planFill(cells, [], 'manual').pages);
-    setFrames({});
-    setEdits(new Map());
     setPageIndex(0);
     setSelection([]);
     setActivePhotoId(null);
@@ -730,14 +802,17 @@ export function PhotoStudio({
    */
   function applyAdjusted(next: StudioLayoutSpec) {
     const refit = refitPages(pages, next.cells);
-    setAdjusted(next);
-    setGuides(next.guides);
-    setBorder(borderOf(next));
-    setPaperValue(null);
-    setOrientationValue(null);
-    setPages(refit.pages);
-    // Photos that moved to other cells start centred: a frame belongs to a photo IN a cell.
-    if (!refit.kept) setFrames({});
+    change('adjust layout', (current) => ({
+      ...current,
+      adjusted: next,
+      guides: next.guides,
+      border: borderOf(next),
+      paperValue: null,
+      orientationValue: null,
+      pages: refit.pages,
+      // Photos that moved to other cells start centred: a frame belongs to a photo IN a cell.
+      frames: refit.kept ? current.frames : {},
+    }));
     setPageIndex(Math.max(Math.min(pageIndex, refit.pages.length - 1), 0));
     setSelection([]);
     setError(refit.dropped > 0 ? `${plural(refit.dropped, 'photo')} did not fit in 50 pages.` : null);
@@ -755,6 +830,8 @@ export function PhotoStudio({
     photos: photos.length,
     pages: pages.length,
     pageIndex,
+    canUndo: work.undoLabel !== null,
+    canRedo: work.redoLabel !== null,
   };
 
   /**
@@ -777,13 +854,14 @@ export function PhotoStudio({
         placeInSelection(null);
         break;
       case 'zoom':
-        reframe((frame) => zoomFrameBy(frame, action.by));
+        // A held key repeats: one step for as long as it is held.
+        reframe('zoom', (frame) => zoomFrameBy(frame, action.by), 'zoom');
         break;
       case 'turn':
         turnSelection(action.toward);
         break;
       case 'reset':
-        reframe(resetFrame);
+        reframe('reset', resetFrame);
         break;
       case 'move':
         nudge(action.dx, action.dy);
@@ -800,25 +878,37 @@ export function PhotoStudio({
       case 'output':
         output.current?.[action.how]();
         break;
+      case 'undo':
+        work.undo();
+        break;
+      case 'redo':
+        work.redo();
+        break;
     }
     return true;
   }
 
   /** The arrow keys: every selected photo moved inside its cell by the same share of it. */
+  /** A run of nudges, held or pressed in quick succession, is one step (`nudge` is its gesture). */
   function nudge(dx: number, dy: number) {
-    setFrames((current) => {
-      let next = current;
-      for (const ref of filledSelection) {
-        const photo = photoMap.get(pages[ref.page]?.[ref.cell] ?? '');
-        const cell = cells[ref.cell];
-        if (!photo || !cell) continue;
-        const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
-        const from = frameOf(current, ref.page, ref.cell);
-        const moved = panFrame(photo, cell, from, { dx, dy }, edit.crop, photoFlip(edit, from));
-        next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
-      }
-      return next;
-    });
+    const targets = filledSelection;
+    change(
+      'move photo',
+      (current) => {
+        let next = current.frames;
+        for (const ref of targets) {
+          const photo = photoMap.get(current.pages[ref.page]?.[ref.cell] ?? '');
+          const cell = cells[ref.cell];
+          if (!photo || !cell) continue;
+          const edit = current.edits.get(photo.id) ?? NO_PHOTO_EDIT;
+          const from = frameOf(current.frames, ref.page, ref.cell);
+          const moved = panFrame(photo, cell, from, { dx, dy }, edit.crop, photoFlip(edit, from));
+          next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
+        }
+        return { ...current, frames: next };
+      },
+      `nudge:${selectionKey(targets)}`,
+    );
   }
 
   /**
@@ -826,19 +916,30 @@ export function PhotoStudio({
    * stays where it is and as large as it is — only what it may do changes.
    */
   function setFree(free: boolean) {
-    setFrames((current) => {
-      let next = current;
-      for (const ref of filledSelection) {
-        const photo = photoMap.get(pages[ref.page]?.[ref.cell] ?? '');
+    const targets = filledSelection;
+    change('free placement', (current) => {
+      let next = current.frames;
+      for (const ref of targets) {
+        const photo = photoMap.get(current.pages[ref.page]?.[ref.cell] ?? '');
         const cell = cells[ref.cell];
         if (!photo || !cell) continue;
-        const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
-        const from = frameOf(current, ref.page, ref.cell);
+        const edit = current.edits.get(photo.id) ?? NO_PHOTO_EDIT;
+        const from = frameOf(current.frames, ref.page, ref.cell);
         const changed = setFreePlacement(photo, cell, from, free, edit.crop, photoFlip(edit, from));
         next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, changed, edit.crop));
       }
-      return next;
+      return { ...current, frames: next };
     });
+  }
+
+  /** A change from the photo panel: a slider is one step while it moves, a flip a step by itself (`photoEditStep`). */
+  function editPhoto(photoId: string, edit: StudioPhotoEdit) {
+    const step = photoEditStep(edits.get(photoId) ?? NO_PHOTO_EDIT, edit);
+    change(
+      step.label,
+      (current) => ({ ...current, edits: new Map(current.edits).set(photoId, edit) }),
+      step.gesture === null ? undefined : `${step.gesture}:${photoId}`,
+    );
   }
 
   function selectByKey(what: 'photo' | 'all' | 'none') {
@@ -929,8 +1030,8 @@ export function PhotoStudio({
               </section>
               <PaperChoice
                 page={printOn}
-                onPaper={setPaperValue}
-                onOrientation={setOrientationValue}
+                onPaper={(value) => change('paper', (current) => ({ ...current, paperValue: value }))}
+                onOrientation={(value) => change('orientation', (current) => ({ ...current, orientationValue: value }))}
                 otherPaperNote={otherPaperNote(chosen)}
               />
               {layout.foreign ? (
@@ -943,7 +1044,7 @@ export function PhotoStudio({
                 photos={photos}
                 tags={photoTags}
                 onPlaceBatch={placeBatch}
-                activeId={activePhotoId}
+                activeId={pickedId}
                 edits={edits}
                 loading={loading}
                 onPick={setActivePhotoId}
@@ -990,7 +1091,13 @@ export function PhotoStudio({
                 </section>
               ) : null}
 
-              <BorderCard guides={guides} border={border} onGuides={setGuides} onBorder={setBorder} />
+              <BorderCard
+                guides={guides}
+                border={border}
+                onGuides={(on) => change('guides', (current) => ({ ...current, guides: on }))}
+                // A width slider or a colour being picked sends a change per movement: one step while it moves.
+                onBorder={(next) => change('border', (current) => ({ ...current, border: next }), 'border')}
+              />
 
               <BackgroundCard
                 photo={background?.photo ?? null}
@@ -1001,7 +1108,7 @@ export function PhotoStudio({
                 loading={loadingBackground}
                 onChoose={(file) => void chooseBackground(file)}
                 onRemove={removeBackground}
-                onChange={(placement) => setBackground((current) => (current ? { ...current, placement } : current))}
+                onChange={placeBackground}
                 onMoving={setMovingBackground}
               />
 
@@ -1009,7 +1116,7 @@ export function PhotoStudio({
                 <PhotoPanel
                   name={toolPhoto.name}
                   edit={edits.get(toolPhoto.id) ?? NO_PHOTO_EDIT}
-                  onChange={(edit) => setEdits((current) => new Map(current).set(toolPhoto.id, edit))}
+                  onChange={(edit) => editPhoto(toolPhoto.id, edit)}
                 />
               ) : null}
             </>
@@ -1065,11 +1172,12 @@ export function PhotoStudio({
               filled={filledSelection.length}
               frame={selectedPhoto ? selectedFrame : null}
               warning={warning}
-              pickedPhoto={photoMap.get(activePhotoId ?? '')?.name ?? null}
-              onZoom={(zoom) => reframe((frame) => ({ ...frame, zoom }))}
+              pickedPhoto={photoMap.get(pickedId ?? '')?.name ?? null}
+              // The slider and a held − / + send a zoom per movement: one step while they move.
+              onZoom={(zoom) => reframe('zoom', (frame) => ({ ...frame, zoom }), 'zoom')}
               onTurn={turnSelection}
-              onMirror={(axis, on) => reframe((frame) => mirrorFrame(frame, axis, on))}
-              onReset={() => reframe(resetFrame)}
+              onMirror={(axis, on) => reframe('mirror', (frame) => mirrorFrame(frame, axis, on))}
+              onReset={() => reframe('reset', resetFrame)}
               onFree={setFree}
               onSelectSamePhoto={
                 selectedPhoto && primary ? () => setSelection(cellsLike(pages, 'photo', primary)) : null
@@ -1079,7 +1187,7 @@ export function PhotoStudio({
                 const from = selectedPhoto && primary ? primary : firstFilled(pages);
                 if (from) setSelection(cellsLike(pages, 'all', from));
               }}
-              onPut={() => placeInSelection(activePhotoId)}
+              onPut={() => placeInSelection(pickedId)}
               onClear={() => placeInSelection(null)}
               onDone={() => setSelection([])}
               idleHint={
@@ -1097,28 +1205,40 @@ export function PhotoStudio({
                 tools={<RulerMenu unit={rulerUnit} onUnit={setRulerUnit} />}
                 rulers={{ unit: rulerUnit, sheet, highlight: selectedOnSheet }}
                 dock={
-                  pages.length > 1 || filled > 0 ? (
-                    <>
-                      {/* The selection is kept across pages: it may span them ("every cell with this photo"). */}
-                      <Pager count={pages.length} current={pageIndex} noun="Page" onChange={setPageIndex} />
-                      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
-                      <button type="button" className={buttonClass('ghost', 'sm')} onClick={addOnePage}>
-                        <Plus aria-hidden="true" className="size-3.5" />
-                        Add a page
-                      </button>
-                      {pages.length > 1 ? (
-                        <button
-                          type="button"
-                          aria-label={`Remove page ${pageIndex + 1}`}
-                          title={`Remove page ${pageIndex + 1}`}
-                          className={cn(buttonClass('ghost', 'sm'), 'px-2 text-destructive hover:bg-destructive/10')}
-                          onClick={removeCurrentPage}
-                        >
-                          <Trash2 aria-hidden="true" className="size-3.5" />
+                  <>
+                    {/* Undo and Redo, always there: disabled with nothing to take back, and saying what they would. */}
+                    <UndoButtons
+                      undoLabel={work.undoLabel}
+                      redoLabel={work.redoLabel}
+                      undoKey={state.keymap.undo}
+                      redoKey={state.keymap.redo}
+                      onUndo={work.undo}
+                      onRedo={work.redo}
+                    />
+                    {pages.length > 1 || filled > 0 ? (
+                      <>
+                        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+                        {/* The selection is kept across pages: it may span them ("every cell with this photo"). */}
+                        <Pager count={pages.length} current={pageIndex} noun="Page" onChange={setPageIndex} />
+                        <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+                        <button type="button" className={buttonClass('ghost', 'sm')} onClick={addOnePage}>
+                          <Plus aria-hidden="true" className="size-3.5" />
+                          Add a page
                         </button>
-                      ) : null}
-                    </>
-                  ) : undefined
+                        {pages.length > 1 ? (
+                          <button
+                            type="button"
+                            aria-label={`Remove page ${pageIndex + 1}`}
+                            title={`Remove page ${pageIndex + 1}`}
+                            className={cn(buttonClass('ghost', 'sm'), 'px-2 text-destructive hover:bg-destructive/10')}
+                            onClick={removeCurrentPage}
+                          >
+                            <Trash2 aria-hidden="true" className="size-3.5" />
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </>
                 }
               >
                 <section
@@ -1230,9 +1350,7 @@ export function PhotoStudio({
                       placement={background.placement}
                       image={{ width: background.photo.width, height: background.photo.height }}
                       sheet={sheet}
-                      onChange={(placement) =>
-                        setBackground((current) => (current ? { ...current, placement } : current))
-                      }
+                      onChange={placeBackground}
                       onDone={() => setMovingBackground(false)}
                     />
                   ) : null}
