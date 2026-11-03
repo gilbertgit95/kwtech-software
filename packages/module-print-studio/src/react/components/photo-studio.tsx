@@ -53,12 +53,15 @@ import { readingOrder } from '../../domain/place.js';
 import {
   DEFAULT_FRAME,
   effectiveDpi,
+  frameFlip,
   keepInCell,
-  nextRotation,
+  mirrorFrame,
   panFrame,
   resetFrame,
   type StudioFrame,
+  type StudioTurn,
   setFreePlacement,
+  turnFrame,
   zoomFrameBy,
 } from '../../domain/slot-fit.js';
 import { drawSheet, sheetPixels } from '../render/draw-sheet.js';
@@ -542,6 +545,21 @@ export function PhotoStudio({
       return next;
     });
   }
+  /**
+   * Every selected photo turned a quarter the way it will LOOK (`turnFrame`): each by its own mirroring, the
+   * photo's flip and its cell's mirror together, since a mirror reverses a turn.
+   */
+  function turnSelection(toward: StudioTurn) {
+    setFrames((current) => {
+      let next = current;
+      for (const ref of filledSelection) {
+        const edit = edits.get(pages[ref.page]?.[ref.cell] ?? '') ?? NO_PHOTO_EDIT;
+        const frame = frameOf(current, ref.page, ref.cell);
+        next = withFrame(next, ref.page, ref.cell, turnFrame(frame, toward, photoFlip(edit, frame)));
+      }
+      return next;
+    });
+  }
 
   // ── dragging a photo inside its cell ──────────────────────────────────────
 
@@ -619,7 +637,8 @@ export function PhotoStudio({
       const move = start.free
         ? { dx: across / cell.width, dy: down / cell.height }
         : { dx: across / pressed.width, dy: down / pressed.height };
-      const moved = panFrame(photo, cell, start, move, edit.crop, { horizontal: edit.flipH, vertical: edit.flipV });
+      // Mirrored — the photo's flip and this cell's mirror together — the photo still follows the hand.
+      const moved = panFrame(photo, cell, start, move, edit.crop, photoFlip(edit, start));
       next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
     }
     setFrames(next);
@@ -761,7 +780,7 @@ export function PhotoStudio({
         reframe((frame) => zoomFrameBy(frame, action.by));
         break;
       case 'turn':
-        reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }));
+        turnSelection(action.toward);
         break;
       case 'reset':
         reframe(resetFrame);
@@ -794,8 +813,8 @@ export function PhotoStudio({
         const cell = cells[ref.cell];
         if (!photo || !cell) continue;
         const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
-        const flip = { horizontal: edit.flipH, vertical: edit.flipV };
-        const moved = panFrame(photo, cell, frameOf(current, ref.page, ref.cell), { dx, dy }, edit.crop, flip);
+        const from = frameOf(current, ref.page, ref.cell);
+        const moved = panFrame(photo, cell, from, { dx, dy }, edit.crop, photoFlip(edit, from));
         next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, moved, edit.crop));
       }
       return next;
@@ -814,8 +833,8 @@ export function PhotoStudio({
         const cell = cells[ref.cell];
         if (!photo || !cell) continue;
         const edit = edits.get(photo.id) ?? NO_PHOTO_EDIT;
-        const flip = { horizontal: edit.flipH, vertical: edit.flipV };
-        const changed = setFreePlacement(photo, cell, frameOf(current, ref.page, ref.cell), free, edit.crop, flip);
+        const from = frameOf(current, ref.page, ref.cell);
+        const changed = setFreePlacement(photo, cell, from, free, edit.crop, photoFlip(edit, from));
         next = withFrame(next, ref.page, ref.cell, keepInCell(photo, cell, changed, edit.crop));
       }
       return next;
@@ -1048,7 +1067,8 @@ export function PhotoStudio({
               warning={warning}
               pickedPhoto={photoMap.get(activePhotoId ?? '')?.name ?? null}
               onZoom={(zoom) => reframe((frame) => ({ ...frame, zoom }))}
-              onTurn={() => reframe((frame) => ({ ...frame, rotation: nextRotation(frame.rotation) }))}
+              onTurn={turnSelection}
+              onMirror={(axis, on) => reframe((frame) => mirrorFrame(frame, axis, on))}
               onReset={() => reframe(resetFrame)}
               onFree={setFree}
               onSelectSamePhoto={
@@ -1227,6 +1247,11 @@ export function PhotoStudio({
 }
 
 // ── pieces ───────────────────────────────────────────────────────────────────
+
+/** How a photo is mirrored in one cell: its own flips, then that cell's mirror (`frameFlip`). */
+function photoFlip(edit: StudioPhotoEdit, frame: StudioFrame) {
+  return frameFlip({ horizontal: edit.flipH, vertical: edit.flipV }, frame);
+}
 
 /** Any cell that holds a photo, to start "every photo" from when the pressed cell is empty. */
 function firstFilled(pages: readonly StudioPageFill[]): StudioCellRef | null {

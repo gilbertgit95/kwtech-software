@@ -513,7 +513,12 @@ describe('the workspace’s shortcut keys', () => {
 
   it('⚠ never trusts what was stored: a row that no longer validates reads as the defaults', async () => {
     const { settings, prisma } = harness();
-    prisma.state.studioSettings.push({ ...SCOPE, keymap: { turnPhoto: 'S' }, version: 3, updatedById: ANA });
+    prisma.state.studioSettings.push({
+      ...SCOPE,
+      keymap: { turnPhoto: 'S', selectSamePhoto: 'S' },
+      version: 3,
+      updatedById: ANA,
+    });
     expect(await settings.get(SCOPE)).toEqual({ keymap: STUDIO_DEFAULT_KEYMAP, version: 3 });
   });
 

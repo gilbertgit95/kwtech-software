@@ -1,9 +1,11 @@
 import {
   effectiveStudioKeymap,
+  fallbackKeys,
   normalizeStudioKey,
   STUDIO_DEFAULT_KEYMAP,
   STUDIO_KEY_ACTION_NAMES,
   STUDIO_KEY_ACTIONS,
+  type StudioKeyAction,
   studioActionOf,
   studioKeyLabel,
   studioKeyOfPress,
@@ -122,8 +124,78 @@ describe('effectiveStudioKeymap', () => {
     expect(effectiveStudioKeymap(null)).toBe(KEYS);
   });
 
+  it('gives a keymap saved before Turn left existed its default, Shift+R, and keeps the rest (issue #51)', () => {
+    const before = Object.fromEntries(
+      Object.entries({ ...KEYS, turnPhoto: 'T' }).filter(([action]) => action !== 'turnPhotoLeft'),
+    );
+    const effective = effectiveStudioKeymap(before);
+    expect(effective.turnPhotoLeft).toBe('Shift+R');
+    expect(effective.turnPhoto).toBe('T');
+  });
+
+  it('⚠ keeps a saved key that a NEW default would take, and gives the new action a free one (CodeRabbit on #55)', () => {
+    // Saved before Turn left existed, with Shift+R on "select same photo": valid then.
+    const before = Object.fromEntries(
+      Object.entries({ ...KEYS, selectSamePhoto: 'Shift+R', turnPhoto: 'T' }).filter(
+        ([action]) => action !== 'turnPhotoLeft',
+      ),
+    );
+    const effective = effectiveStudioKeymap(before);
+    expect(effective).not.toBe(KEYS);
+    expect(effective.selectSamePhoto).toBe('Shift+R');
+    expect(effective.turnPhoto).toBe('T');
+    expect(effective.turnPhotoLeft).toBe('Alt+R');
+    // And what comes out is a keymap with one action per key on each screen.
+    expect(validateStudioKeymap(effective)).toEqual({ keymap: effective });
+  });
+
+  it('takes the next free key when the first fallback is taken too', () => {
+    const before = Object.fromEntries(
+      Object.entries({ ...KEYS, selectSamePhoto: 'Shift+R', selectAll: 'Alt+R' }).filter(
+        ([action]) => action !== 'turnPhotoLeft',
+      ),
+    );
+    expect(effectiveStudioKeymap(before).turnPhotoLeft).toBe('Alt+Shift+R');
+  });
+
+  it('⚠ never runs out: with Shift+R and every preferred fallback taken, saved keys are still kept', () => {
+    // Fourteen other Print actions — enough to hold Shift+R, Alt+R, Alt+Shift+R and every allowed F key.
+    const taken = ['Shift+R', 'Alt+R', 'Alt+Shift+R', 'F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F9', 'F10'];
+    const others = STUDIO_KEY_ACTION_NAMES.filter(
+      (action) => STUDIO_KEY_ACTIONS[action].zone === 'print' && action !== 'turnPhotoLeft',
+    );
+    expect(others.length).toBeGreaterThanOrEqual(taken.length);
+    const saved: Record<string, string> = { ...KEYS };
+    delete saved.turnPhotoLeft;
+    for (const [at, key] of taken.entries()) {
+      const action = others[at];
+      if (action) saved[action] = key;
+    }
+    // Valid before Turn left existed: one action per key on the Print screen.
+    expect(validateStudioKeymap({ ...saved, turnPhotoLeft: 'Q' })).toHaveProperty('keymap');
+    const effective = effectiveStudioKeymap(saved);
+    expect(effective).not.toBe(KEYS);
+    for (const [at, key] of taken.entries()) expect(effective[others[at] as StudioKeyAction]).toBe(key);
+    expect(taken).not.toContain(effective.turnPhotoLeft);
+    expect(validateStudioKeymap(effective)).toEqual({ keymap: effective });
+  });
+
+  it('the fallback keys outnumber any screen’s actions many times over, and are all allowed', () => {
+    const keys = fallbackKeys('Shift+R');
+    expect(keys.slice(0, 2)).toEqual(['Alt+R', 'Alt+Shift+R']);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys.length).toBeGreaterThan(STUDIO_KEY_ACTION_NAMES.length * 4);
+    expect(keys.some((key) => key.startsWith('Ctrl+') || key === 'F5' || key === 'F11' || key === 'F12')).toBe(false);
+  });
+
+  it('a saved key for the new action itself is kept as it is', () => {
+    expect(effectiveStudioKeymap({ turnPhotoLeft: 'L' }).turnPhotoLeft).toBe('L');
+  });
+
   it('⚠ falls back to the defaults whole when what was stored no longer validates', () => {
-    expect(effectiveStudioKeymap({ turnPhoto: 'S' })).toBe(KEYS);
+    // Invalid on its own: two of its keys on one screen, or a key the browser keeps.
+    expect(effectiveStudioKeymap({ turnPhoto: 'S', selectSamePhoto: 'S' })).toBe(KEYS);
+    expect(effectiveStudioKeymap({ turnPhoto: 'F5' })).toBe(KEYS);
     expect(effectiveStudioKeymap('nonsense')).toBe(KEYS);
   });
 });
@@ -147,7 +219,8 @@ describe('printKeyAction', () => {
     expect(printKeyAction('Delete', ONE_SELECTED, KEYS)).toEqual({ kind: 'empty' });
     expect(printKeyAction('+', ONE_SELECTED, KEYS)).toEqual({ kind: 'zoom', by: 0.1 });
     expect(printKeyAction('-', ONE_SELECTED, KEYS)).toEqual({ kind: 'zoom', by: -0.1 });
-    expect(printKeyAction('R', ONE_SELECTED, KEYS)).toEqual({ kind: 'turn' });
+    expect(printKeyAction('R', ONE_SELECTED, KEYS)).toEqual({ kind: 'turn', toward: 'right' });
+    expect(printKeyAction('Shift+R', ONE_SELECTED, KEYS)).toEqual({ kind: 'turn', toward: 'left' });
     expect(printKeyAction('0', ONE_SELECTED, KEYS)).toEqual({ kind: 'reset' });
   });
 
@@ -204,7 +277,7 @@ describe('printShortcutBar', () => {
 
   it('leads with the selection’s keys and explains the arrows once', () => {
     const bar = printShortcutBar(ONE_SELECTED, KEYS);
-    expect(bar.slice(0, 6).map((entry) => entry.keys)).toEqual(['Del', '+', '−', 'R', '0', '← ↑ → ↓']);
+    expect(bar.slice(0, 7).map((entry) => entry.keys)).toEqual(['Del', '+', '−', 'Shift R', 'R', '0', '← ↑ → ↓']);
     expect(bar.filter((entry) => entry.label === 'Move photo')).toHaveLength(1);
   });
 

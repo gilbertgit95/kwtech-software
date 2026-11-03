@@ -3,16 +3,21 @@ import {
   clampFrame,
   DEFAULT_FRAME,
   effectiveDpi,
+  frameFlip,
   freeRect,
   keepInCell,
+  mirrorFrame,
+  NO_FLIP,
   nextRotation,
   panFrame,
+  previousRotation,
   resetFrame,
   STUDIO_FREE_ZOOM_MIN,
   type StudioFrame,
   type StudioRotation,
   setFreePlacement,
   sourceRect,
+  turnFrame,
   zoomFrameBy,
 } from '../src/domain/slot-fit.js';
 import { inches } from '../src/domain/units.js';
@@ -233,5 +238,90 @@ describe('free placement', () => {
     expect(zoomFrameBy({ ...FREE, zoom: 0.5 }, -0.1).zoom).toBe(0.4);
     expect(resetFrame({ ...FREE, zoom: 0.4, offsetX: 2 })).toEqual(FREE);
     expect(resetFrame({ ...DEFAULT_FRAME, zoom: 3 })).toBe(DEFAULT_FRAME);
+  });
+});
+
+describe('turning left, and mirroring one cell (issue #51)', () => {
+  const ROTATIONS: StudioRotation[] = [0, 90, 180, 270];
+
+  it('previousRotation turns a quarter counter-clockwise; four come back upright', () => {
+    expect(previousRotation(0)).toBe(270);
+    let rotation: StudioRotation = 0;
+    for (let i = 0; i < 4; i += 1) rotation = previousRotation(rotation);
+    expect(rotation).toBe(0);
+    for (const one of ROTATIONS) expect(previousRotation(nextRotation(one))).toBe(one);
+  });
+
+  it('turns an unmirrored photo the way it was asked', () => {
+    expect(turnFrame(DEFAULT_FRAME, 'right', NO_FLIP).rotation).toBe(90);
+    expect(turnFrame(DEFAULT_FRAME, 'left', NO_FLIP).rotation).toBe(270);
+  });
+
+  it('⚠ steps the stored turn the other way when exactly one axis is mirrored, so it LOOKS right', () => {
+    const sideways = { horizontal: true, vertical: false };
+    expect(turnFrame(DEFAULT_FRAME, 'right', sideways).rotation).toBe(270);
+    expect(turnFrame(DEFAULT_FRAME, 'left', sideways).rotation).toBe(90);
+    // Both axes is a half turn: nothing reversed.
+    expect(turnFrame(DEFAULT_FRAME, 'right', { horizontal: true, vertical: true }).rotation).toBe(90);
+  });
+
+  it('combines the photo’s flip with the cell’s mirror: two on one axis undo each other', () => {
+    expect(frameFlip(NO_FLIP, { mirrorH: true })).toEqual({ horizontal: true, vertical: false });
+    expect(frameFlip({ horizontal: true, vertical: false }, { mirrorH: true })).toEqual(NO_FLIP);
+    expect(frameFlip({ horizontal: true, vertical: false }, { mirrorV: true })).toEqual({
+      horizontal: true,
+      vertical: true,
+    });
+    expect(frameFlip({ horizontal: false, vertical: true }, {})).toEqual({ horizontal: false, vertical: true });
+  });
+
+  it('a mirror is turned on and off per axis, and off leaves no trace', () => {
+    const on = mirrorFrame(DEFAULT_FRAME, 'horizontal', true);
+    expect(on).toEqual({ ...DEFAULT_FRAME, mirrorH: true });
+    expect(mirrorFrame(on, 'vertical', true)).toEqual({ ...DEFAULT_FRAME, mirrorH: true, mirrorV: true });
+    expect(mirrorFrame(on, 'horizontal', false)).toEqual(DEFAULT_FRAME);
+  });
+
+  it('⚠ the mirror survives a turn, a zoom, a clamp, a drag and free placement both ways', () => {
+    const mirrored: StudioFrame = { ...DEFAULT_FRAME, zoom: 2, mirrorH: true };
+    const flip = frameFlip(NO_FLIP, mirrored);
+    expect(turnFrame(mirrored, 'right', flip).mirrorH).toBe(true);
+    expect(zoomFrameBy(mirrored, 0.1).mirrorH).toBe(true);
+    expect(clampFrame({ ...mirrored, zoom: 99 }).mirrorH).toBe(true);
+    expect(clampFrame({ ...mirrored, free: true }).mirrorH).toBe(true);
+    expect(panFrame(WIDE, SQUARE, mirrored, { dx: 0.1, dy: 0 }, undefined, flip).mirrorH).toBe(true);
+    const free = setFreePlacement(WIDE, SQUARE, mirrored, true, undefined, flip);
+    expect(free.mirrorH).toBe(true);
+    expect(setFreePlacement(WIDE, SQUARE, free, false, undefined, flip).mirrorH).toBe(true);
+  });
+
+  it('Reset clears the mirror with the zoom, the move and the turn; a free frame stays free', () => {
+    const changed: StudioFrame = { zoom: 2, offsetX: 0.5, offsetY: 0, rotation: 90, mirrorH: true, mirrorV: true };
+    expect(resetFrame(changed)).toEqual(DEFAULT_FRAME);
+    expect(resetFrame({ ...changed, free: true })).toEqual({ ...DEFAULT_FRAME, free: true });
+  });
+
+  it('dragging a mirrored cell still moves the photo with the hand', () => {
+    // A wide photo in a square cell has slack across. Unmirrored, a drag right shows more of the LEFT (offset down).
+    const plain = panFrame(WIDE, SQUARE, DEFAULT_FRAME, { dx: 0.1, dy: 0 }, undefined, NO_FLIP);
+    const mirrored = { ...DEFAULT_FRAME, mirrorH: true as const };
+    const mirroredMove = panFrame(WIDE, SQUARE, mirrored, { dx: 0.1, dy: 0 }, undefined, frameFlip(NO_FLIP, mirrored));
+    expect(plain.offsetX).toBeLessThan(0);
+    expect(mirroredMove.offsetX).toBeCloseTo(-plain.offsetX, 9);
+    // The photo's own flip and the cell's mirror together are no mirror: the drag goes as unmirrored.
+    const both = panFrame(
+      WIDE,
+      SQUARE,
+      mirrored,
+      { dx: 0.1, dy: 0 },
+      undefined,
+      frameFlip({ horizontal: true, vertical: false }, mirrored),
+    );
+    expect(both.offsetX).toBeCloseTo(plain.offsetX, 9);
+  });
+
+  it('a frame from before the mirror existed reads as unmirrored', () => {
+    expect(frameFlip(NO_FLIP, DEFAULT_FRAME)).toEqual(NO_FLIP);
+    expect(clampFrame(DEFAULT_FRAME)).toEqual(DEFAULT_FRAME);
   });
 });

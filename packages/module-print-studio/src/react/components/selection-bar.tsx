@@ -11,6 +11,9 @@ import {
   Tooltip,
 } from '@kwtech/web-ui/react';
 import {
+  Eraser,
+  FlipHorizontal2,
+  FlipVertical2,
   ImagePlus,
   Images,
   type LucideIcon,
@@ -27,7 +30,7 @@ import {
   X,
 } from 'lucide-react';
 import { type MouseEvent, type PointerEvent, useEffect, useId, useRef } from 'react';
-import { type StudioFrame, zoomFloor, zoomFrameBy } from '../../domain/slot-fit.js';
+import { type StudioFrame, type StudioTurn, zoomFloor, zoomFrameBy } from '../../domain/slot-fit.js';
 import { sliderAtZoom, ZOOM_SLIDER_STEPS, zoomAtSlider } from '../view/zoom-slider.js';
 
 /** Where the zoom slider stops. Past it a photo is mostly a blur; the keys still go to `STUDIO_ZOOM_MAX`. */
@@ -58,7 +61,10 @@ export interface SelectionBarProps {
   /** The name of the photo picked in the tray, when there is one to put in the selection. */
   pickedPhoto: string | null;
   onZoom: (zoom: number) => void;
-  onTurn: () => void;
+  /** A quarter turn of every selected photo, the way it will look. */
+  onTurn: (toward: StudioTurn) => void;
+  /** This cell's mirror on one axis, on or off, for every selected cell holding a photo (not the photo itself). */
+  onMirror: (axis: 'horizontal' | 'vertical', on: boolean) => void;
   onReset: () => void;
   onFree: (free: boolean) => void;
   /** Null when the pressed cell is empty: there is no photo to match. */
@@ -135,6 +141,7 @@ function SelectedTools({
   pickedPhoto,
   onZoom,
   onTurn,
+  onMirror,
   onReset,
   onFree,
   onSelectSamePhoto,
@@ -199,8 +206,25 @@ function SelectedTools({
             {Math.round(zoom * 100)}%
           </span>
           <Divider />
-          <IconButton icon={RotateCw} label="Turn a quarter" onClick={onTurn} />
-          <IconButton icon={RotateCcw} label="Reset: centred, 100%, upright" onClick={onReset} />
+          {/* Left, then right, as the arrows read. Reset is apart from them and no arrow: it once sat beside the turn
+              with a counter-clockwise arrow, and was taken for "turn left" (issue #51). */}
+          <IconButton icon={RotateCcw} label="Turn left a quarter" onClick={() => onTurn('left')} />
+          <IconButton icon={RotateCw} label="Turn right a quarter" onClick={() => onTurn('right')} />
+          <Toggle
+            on={frame.mirrorH === true}
+            icon={FlipHorizontal2}
+            label="Mirror sideways"
+            hint="Mirror sideways in this cell only. The photo panel’s Flip changes the photo in every cell holding it."
+            onChange={(on) => onMirror('horizontal', on)}
+          />
+          <Toggle
+            on={frame.mirrorV === true}
+            icon={FlipVertical2}
+            label="Mirror upside down"
+            hint="Mirror upside down in this cell only. The photo panel’s Flip changes the photo in every cell holding it."
+            onChange={(on) => onMirror('vertical', on)}
+          />
+          <IconButton icon={Eraser} label="Reset: centred, 100%, upright, not mirrored" onClick={onReset} />
           <Divider />
           <Toggle
             on={free}

@@ -610,6 +610,40 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **A cell can mirror its photo sideways or upside down, and the Print screen gets a real Turn left; the counter-clockwise icon that was really Reset is gone (issue #51).**
+
+  The selection bar had Turn (clockwise) and, beside it, Reset drawn as a
+  counter-clockwise arrow. On a photo nobody had touched, "turn left" did
+  nothing; after one right turn it seemed to work, because Reset put the photo
+  upright again.
+  - **The mirror is the CELL's, on `StudioFrame`** (`mirrorH` / `mirrorV`,
+    absent when off, so frames from before read the same). The photo panel's
+    Flip stays the PHOTO's, for every cell holding it. Combined by XOR
+    (`frameFlip`) wherever a flip is used: the renderer (screen, print and PDF
+    are one function), dragging, the arrows and free placement. Every frame
+    rebuilt field by field (`clampFrame`, `setFreePlacement`) carries it.
+  - **A mirror reverses a turn.** The renderer mirrors, then turns, and the
+    mirror image of a clockwise turn is counter-clockwise. `turnFrame` steps
+    the stored rotation backwards when exactly one axis is mirrored, so Turn
+    right turns right on screen. This also fixes the photo panel's Flip
+    sideways, which made the old Turn go left.
+  - **Turn left is a new key action, `turnPhotoLeft`, default `Shift+R`.**
+    Turn right keeps the stored name `turnPhoto`, so saved keymaps keep their
+    key. **A new action never takes a saved key** (`effectiveStudioKeymap`,
+    CodeRabbit on #55): a workspace that already gave Shift+R to another Print
+    action keeps it, and Turn left gets the first free key of Alt+R,
+    Alt+Shift+R, then every other safe key (letters bare, with Shift, Alt, and
+    Alt and Shift; function keys), a list far longer than any screen's actions,
+    so it cannot run out (`fallbackKeys`). No Ctrl keys: the browser keeps
+    many the studio's rules do not list. Before, one clashing new default
+    dropped the whole saved map to the defaults; that still happens only for a
+    saved map that is invalid on its own.
+  - **Reset's icon is an eraser**, apart from the turns, not an arrow.
+  - **Not done:** keys for the mirrors (the bar's buttons only; the issue asked
+    for none). The mirror buttons are switches (`role="switch"`,
+    `aria-checked`) like Free placement beside them, rather than
+    `aria-pressed`: the same thing said the way this rail already says it.
+
 - **2026-11-03** — **The print studio selects several cells by dragging a rectangle, on the Print screen and in the layout editor, where they then move, resize, turn, copy and are removed together (issue #53).**
 
   Ctrl/Shift-clicking each cell was the only way to build a selection, slow on

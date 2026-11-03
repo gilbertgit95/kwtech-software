@@ -5,6 +5,7 @@ import {
   studioActionOf,
   studioKeyLabel,
 } from '../../domain/keymap.js';
+import type { StudioTurn } from '../../domain/slot-fit.js';
 
 /**
  * What a key DOES, right now, on the Print screen and in the layout editor —
@@ -33,7 +34,8 @@ const BAR_LABELS: Record<StudioKeyAction, string> = {
   emptyCells: 'Empty',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
-  turnPhoto: 'Turn',
+  turnPhoto: 'Turn right',
+  turnPhotoLeft: 'Turn left',
   resetPhoto: 'Reset',
   selectSamePhoto: 'Select same photo',
   selectAll: 'Select every photo',
@@ -63,7 +65,8 @@ const PHOTO_ZOOM_STEP = 0.1;
 export type PrintKeyAction =
   | { kind: 'empty' }
   | { kind: 'zoom'; by: number }
-  | { kind: 'turn' }
+  /** A quarter turn, the way it LOOKS on the sheet (`turnFrame`). */
+  | { kind: 'turn'; toward: StudioTurn }
   | { kind: 'reset' }
   /** As shares of the cell: positive `dx` moves the photo right. */
   | { kind: 'move'; dx: number; dy: number }
@@ -98,7 +101,9 @@ function printAction(action: StudioKeyAction, context: PrintKeyContext): PrintKe
     case 'zoomOut':
       return framing ? { kind: 'zoom', by: -PHOTO_ZOOM_STEP } : null;
     case 'turnPhoto':
-      return framing ? { kind: 'turn' } : null;
+      return framing ? { kind: 'turn', toward: 'right' } : null;
+    case 'turnPhotoLeft':
+      return framing ? { kind: 'turn', toward: 'left' } : null;
     case 'resetPhoto':
       return framing ? { kind: 'reset' } : null;
     case 'selectSamePhoto':
@@ -150,6 +155,7 @@ const PRINT_BAR_ORDER: readonly StudioKeyAction[] = [
   'emptyCells',
   'zoomIn',
   'zoomOut',
+  'turnPhotoLeft',
   'turnPhoto',
   'resetPhoto',
   'selectSamePhoto',
