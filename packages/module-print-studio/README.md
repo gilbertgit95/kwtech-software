@@ -162,6 +162,35 @@ shows when the Layouts section is opened again.
   was stored, and an action added later never takes a saved key: it gets the
   next free one), `studioKeyOfPress`. The arrows and Esc are fixed and not in the
   map.
+- **Undo** (`undo.ts`): `startUndo`, `commitUndo` (a change, with an
+  optional gesture that joins a slider's or a drag's events into one step),
+  `undoStep`, `redoStep`, `undoLabel` / `redoLabel`, `undoStates`.
+  `STUDIO_UNDO_LIMIT` (100 steps) and `STUDIO_UNDO_GESTURE_MS`.
+
+## Undo and redo
+
+Both the Print screen and the layout editor have Undo and Redo (issue #52):
+buttons at the foot of the sheet that say what they would do ("Undo: zoom"),
+and **Ctrl+Z**, **Ctrl+Shift+Z** and **Ctrl+Y**, which can be rebound
+(`undo`, `redo`, `redoAlt`, and `undoLayout`, `redoLayout`, `redoLayoutAlt`).
+
+- **What a step holds.** On Print, one `StudioPrintSheet`
+  (`react/view/undo-steps.ts`): the photos in the tray and in the cells, the
+  frames, the photos' edits, the border and guides, the paper and way round,
+  the background and the layout as adjusted for this print. In the editor, the
+  layout spec. The selection, the page shown and the view's zoom are not
+  changes. Neither are the copies, the calibration, or the editor's name, tag
+  and audience.
+- **One gesture is one step**: a whole drag, a slider, a held − / + or zoom
+  key, a run of arrow nudges. A change applied to several selected boxes is
+  one step.
+- **Photos are held by id.** A decoded photo is released once no step names
+  it, so a photo removed from the tray can still come back. Start over clears
+  the history and lets go of every photo.
+- **Typing is the field's.** In a text field the keys undo the typing. On a
+  slider or a tick box, Ctrl+Z is the screen's.
+- **Nothing is saved.** The history is the screen's state, and it goes when
+  the layout changes or the page reloads.
 
 ## Printing on the workspace's printers
 

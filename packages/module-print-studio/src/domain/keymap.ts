@@ -40,12 +40,18 @@ export const STUDIO_KEY_ACTIONS = {
   previousPage: { zone: 'print', label: 'Previous page' },
   download: { zone: 'print', label: 'Download the PDF' },
   print: { zone: 'print', label: 'Print' },
+  undo: { zone: 'print', label: 'Undo the last change' },
+  redo: { zone: 'print', label: 'Redo what was undone' },
+  redoAlt: { zone: 'print', label: 'Redo, a second key' },
   removeCell: { zone: 'editor', label: 'Remove the selected cell' },
   copyCell: { zone: 'editor', label: 'Copy the selected cell' },
   turnCell: { zone: 'editor', label: 'Turn the selected cell' },
   viewZoomIn: { zone: 'editor', label: 'Zoom the view in' },
   viewZoomOut: { zone: 'editor', label: 'Zoom the view out' },
   viewFit: { zone: 'editor', label: 'Fit the sheet to the panel' },
+  undoLayout: { zone: 'editor', label: 'Undo the last change' },
+  redoLayout: { zone: 'editor', label: 'Redo what was undone' },
+  redoLayoutAlt: { zone: 'editor', label: 'Redo, a second key' },
 } as const satisfies Record<string, { zone: StudioKeyZone; label: string }>;
 
 export type StudioKeyAction = keyof typeof STUDIO_KEY_ACTIONS;
@@ -83,12 +89,23 @@ export const STUDIO_DEFAULT_KEYMAP: StudioKeymap = {
   previousPage: 'PageUp',
   download: 'D',
   print: 'P',
+  /*
+   * Added with issue #52. Redo has two keys, as on most programs: Ctrl+Shift+Z beside Undo's own, and Ctrl+Y. Each
+   * is an action of its own, because a keymap gives an action one key. A text field keeps all three for its own
+   * text: no key acts while somebody is typing (`isTypingTarget`).
+   */
+  undo: 'Ctrl+Z',
+  redo: 'Ctrl+Shift+Z',
+  redoAlt: 'Ctrl+Y',
   removeCell: 'Delete',
   copyCell: 'D',
   turnCell: 'R',
   viewZoomIn: '+',
   viewZoomOut: '-',
   viewFit: '0',
+  undoLayout: 'Ctrl+Z',
+  redoLayout: 'Ctrl+Shift+Z',
+  redoLayoutAlt: 'Ctrl+Y',
 };
 
 /** Keys that are never rebindable: the fixed ones above. */

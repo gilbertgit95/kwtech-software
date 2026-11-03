@@ -82,6 +82,7 @@ import type { StudioAppState } from '../studio-state.js';
 import { useMarquee } from '../use-marquee.js';
 import { useStudioAction } from '../use-studio-data.js';
 import { useStudioKeys } from '../use-studio-keys.js';
+import { useUndo } from '../use-undo.js';
 import { editorKeyAction, editorShortcutBar } from '../view/keys.js';
 import {
   lengthText,
@@ -94,6 +95,7 @@ import {
 } from '../view/lengths.js';
 import { marqueeIndexes, toggleIndex } from '../view/marquee.js';
 import { cellGroups, paperName, plural, sizeName } from '../view/summary.js';
+import { pageChangeLabel } from '../view/undo-steps.js';
 import { stepViewZoom } from '../view/work.js';
 import { BorderControls, borderSummary } from './border-controls.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
@@ -101,6 +103,7 @@ import { Alert } from './layout.js';
 import { SheetFrame, SheetView } from './sheet-view.js';
 import { ShortcutBar } from './shortcut-bar.js';
 import { TagInput } from './tag-input.js';
+import { UndoButtons } from './undo-buttons.js';
 
 /** What the editor was opened on: a new layout, or a saved one being changed. */
 export interface EditorTarget {
@@ -199,7 +202,17 @@ export function LayoutEditor({
   const [name, setName] = useState(target.name);
   const [tag, setTag] = useState(target.tag ?? '');
   const [visibility, setVisibility] = useState(target.visibility);
-  const [spec, setSpec] = useState(target.spec);
+  /*
+   * ⚠ THE LAYOUT IS THE UNDO HISTORY'S PRESENT (issue #52): every change to the cells, the texts, the page, the
+   * border and the sizing goes through `record`, which names the step. The name, tag and audience are text
+   * fields with the browser's own undo, and the selection and the view are not changes.
+   */
+  const work = useUndo(() => target.spec);
+  const spec = work.present;
+  const record = work.change;
+  /** Counts drags on the sheet, so each is one step of its own however long the hand rests (`onGrab`). */
+  const drags = useRef(0);
+  const dragGesture = () => ({ key: `drag:${drags.current}`, untimed: true });
   const [unit, setUnit] = useState<StudioUnit>('mm');
   /**
    * The selected cells' indexes; the last is the one pressed last. Several can be selected — a rectangle dragged
@@ -246,8 +259,17 @@ export function LayoutEditor({
     setSelected([]);
   }
 
-  function change(patch: Partial<StudioLayoutSpec>) {
-    setSpec((current) => ({ ...current, ...patch }));
+  function change(patch: Partial<StudioLayoutSpec>, label: string, gesture?: string) {
+    record(label, (current) => ({ ...current, ...patch }), gesture);
+  }
+
+  /** Undo or redo, and say what it was: the last note described a change that may no longer be there. */
+  function stepHistory(kind: 'undo' | 'redo') {
+    const label = kind === 'undo' ? work.undoLabel : work.redoLabel;
+    if (label === null) return;
+    if (kind === 'undo') work.undo();
+    else work.redo();
+    setNote(kind === 'undo' ? `Undid: ${label}.` : `Redid: ${label}.`);
   }
 
   /**
@@ -256,17 +278,27 @@ export function LayoutEditor({
    * as they will when a print goes on another paper.
    */
   function changePage(patch: StudioPagePatch) {
-    setSpec((current) => layoutOnPage(current, patch));
+    record(pageChangeLabel(patch), (current) => layoutOnPage(current, patch));
   }
 
-  function setCells(cells: StudioCell[], message: string | null = null) {
-    change({ cells });
+  function setCells(
+    cells: StudioCell[],
+    message: string | null,
+    label: string,
+    gesture?: string | { key: string; untimed: boolean },
+  ) {
+    record(label, (current) => ({ ...current, cells }), gesture);
     setNote(message);
   }
 
   /** A hand edit the domain refused leaves the cells as they were, and says why when it matters. */
-  function tryCells(result: { cells: StudioCell[] } | { refused: StudioRefusal }, quiet = false) {
-    if ('cells' in result) return setCells(result.cells);
+  function tryCells(
+    result: { cells: StudioCell[] } | { refused: StudioRefusal },
+    label: string,
+    quiet = false,
+    gesture?: { key: string; untimed: boolean },
+  ) {
+    if ('cells' in result) return setCells(result.cells, null, label, gesture);
     if (!quiet) setNote(result.refused === 'cell_overlap' ? 'There is another cell in the way.' : 'That does not fit.');
   }
 
@@ -279,14 +311,18 @@ export function LayoutEditor({
     if (placed.placed === 0) return setNote(`There is no room left for ${label}. Move or remove a cell first.`);
     const left = placed.left > 0 ? ` ${placed.left} more did not fit.` : '';
     const what = placed.placed === 1 ? label : `${placed.placed} of ${label}`;
-    setCells(placed.cells, `Added ${what}.${left} Drag a cell to move it.`);
+    setCells(placed.cells, `Added ${what}.${left} Drag a cell to move it.`, 'add cells');
     // One cell is selected, ready to be moved; a block is left unselected.
     pickCell(placed.placed === 1 ? placed.cells.length - 1 : null);
   }
 
   function fillWith(size: StudioSize, label: string, gap: number) {
     const placed = fillWithSize(area, spec.cells, size, { gap, label });
-    setCells(placed.cells, placed.placed === 0 ? `No more ${label} fit.` : `Added ${placed.placed} of ${label}.`);
+    setCells(
+      placed.cells,
+      placed.placed === 0 ? `No more ${label} fit.` : `Added ${placed.placed} of ${label}.`,
+      'fill the sheet',
+    );
   }
 
   /**
@@ -296,9 +332,13 @@ export function LayoutEditor({
   function performKey(key: string): boolean {
     // Esc during a selection rectangle gives it up and leaves the selection as it was.
     if (key === 'Escape' && marquee.cancel()) return true;
-    const action = editorKeyAction(key, selectedCell !== undefined || chosenText !== undefined, state.keymap);
+    const action = editorKeyAction(key, selectedCell !== undefined || chosenText !== undefined, state.keymap, undoable);
     if (!action) return false;
     switch (action.kind) {
+      case 'undo':
+      case 'redo':
+        stepHistory(action.kind);
+        return true;
       case 'view':
         setViewZoom(viewAfter(viewZoom, action.zoom));
         return true;
@@ -323,14 +363,19 @@ export function LayoutEditor({
          * redraws, and each repeat must start where the last one ended — or
          * ten repeats move the cell one step.
          */
-        setSpec((current) => {
-          // The selection's bounding box moves, and every cell in it with it (`moveCells`).
-          const box = boundsOf(current.cells, indexes);
-          if (!box) return current;
-          const to = { x: box.x + action.dx * NUDGE, y: box.y + action.dy * NUDGE };
-          const moved = moveCells(printableArea(current), current.cells, indexes, to);
-          return 'cells' in moved ? { ...current, cells: moved.cells } : current;
-        });
+        record(
+          'move cell',
+          (current) => {
+            // The selection's bounding box moves, and every cell in it with it (`moveCells`).
+            const box = boundsOf(current.cells, indexes);
+            if (!box) return current;
+            const to = { x: box.x + action.dx * NUDGE, y: box.y + action.dy * NUDGE };
+            const moved = moveCells(printableArea(current), current.cells, indexes, to);
+            return 'cells' in moved ? { ...current, cells: moved.cells } : current;
+          },
+          // A held arrow, or a run of presses, is one step.
+          `nudge:${indexes.join(',')}`,
+        );
         break;
       }
       case 'remove':
@@ -340,7 +385,7 @@ export function LayoutEditor({
         copySelected();
         break;
       case 'turn':
-        tryCells(rotateCells(area, spec.cells, selection));
+        tryCells(rotateCells(area, spec.cells, selection), 'turn');
         break;
     }
     return true;
@@ -354,20 +399,24 @@ export function LayoutEditor({
     switch (action.kind) {
       case 'move':
         // From the texts as they are when this runs, for the same reason as a held arrow on a cell.
-        setSpec((current) => {
-          const currentArea = printableArea(current);
-          return withTexts(current, (text) =>
-            text.id === id
-              ? {
-                  ...text,
-                  ...placeText(currentArea, measureText(text), {
-                    x: text.x + action.dx * NUDGE,
-                    y: text.y + action.dy * NUDGE,
-                  }),
-                }
-              : text,
-          );
-        });
+        record(
+          'move text',
+          (current) => {
+            const currentArea = printableArea(current);
+            return withTexts(current, (text) =>
+              text.id === id
+                ? {
+                    ...text,
+                    ...placeText(currentArea, measureText(text), {
+                      x: text.x + action.dx * NUDGE,
+                      y: text.y + action.dy * NUDGE,
+                    }),
+                  }
+                : text,
+            );
+          },
+          `nudge-text:${id}`,
+        );
         return true;
       case 'remove':
         removeText(id);
@@ -381,8 +430,13 @@ export function LayoutEditor({
   }
 
   /** Change the texts and say what happened. An empty list is stored as none. */
-  function setTexts(next: StudioText[], message: string | null = null) {
-    setSpec((current) => withTextList(current, next));
+  function setTexts(
+    next: StudioText[],
+    message: string | null,
+    label: string,
+    gesture?: string | { key: string; untimed: boolean },
+  ) {
+    record(label, (current) => withTextList(current, next), gesture);
     setNote(message);
   }
 
@@ -395,6 +449,7 @@ export function LayoutEditor({
     setTexts(
       [...texts, { ...fresh, ...at }],
       'Added a text. Type in the box beside the sheet, and drag it where it goes.',
+      'add text',
     );
     pickText(fresh.id);
   }
@@ -411,17 +466,27 @@ export function LayoutEditor({
         const next = { ...text, ...patch };
         return { ...next, ...placeText(area, measureText(next), next) };
       }),
+      null,
+      'text',
+      // Typing the words, or picking a colour, sends a change per letter or movement: one step while it goes on.
+      `text:${id}:${Object.keys(patch).join(',')}`,
     );
   }
 
-  function moveText(id: string, to: { x: number; y: number }) {
-    setTexts(texts.map((text) => (text.id === id ? { ...text, ...placeText(area, measureText(text), to) } : text)));
+  function moveText(id: string, to: { x: number; y: number }, gesture?: { key: string; untimed: boolean }) {
+    setTexts(
+      texts.map((text) => (text.id === id ? { ...text, ...placeText(area, measureText(text), to) } : text)),
+      null,
+      'move text',
+      gesture,
+    );
   }
 
   function removeText(id: string) {
     setTexts(
       texts.filter((text) => text.id !== id),
       'Removed the text.',
+      'remove text',
     );
     pickText(null);
   }
@@ -438,6 +503,7 @@ export function LayoutEditor({
       at.x === wanted.x && at.y === wanted.y
         ? 'Made a copy under it. Drag it where you want it.'
         : 'Made a copy, moved inside the printable area: there was no room under it. Drag it where you want it.',
+      'copy text',
     );
     pickText(copy.id);
   }
@@ -447,6 +513,7 @@ export function LayoutEditor({
     setCells(
       removeCells(spec.cells, selection),
       selection.length === 1 ? 'Removed the cell.' : `Removed ${selection.length} cells.`,
+      selection.length === 1 ? 'remove cell' : 'remove cells',
     );
     setSelected([]);
   }
@@ -466,6 +533,7 @@ export function LayoutEditor({
       copy.beside
         ? `Made a copy beside ${it}. Drag it where you want it.`
         : `There was no room beside ${it}, so the copy went to the first free place. Drag it where you want it.`,
+      one ? 'copy cell' : 'copy cells',
     );
     setSelected(copy.added);
     setSelectedText(null);
@@ -480,9 +548,14 @@ export function LayoutEditor({
     if (selection.length > 1 && selection.includes(index) && cell && selectionBox) {
       const wanted = { x: selectionBox.x + position.x - cell.x, y: selectionBox.y + position.y - cell.y };
       const snapped = snapGroupPosition(area, spec.cells, selection, wanted);
-      return tryCells(moveCells(area, spec.cells, selection, snapped), true);
+      return tryCells(moveCells(area, spec.cells, selection, snapped), 'move cells', true, dragGesture());
     }
-    tryCells(moveCell(area, spec.cells, index, snapPosition(area, spec.cells, index, position)), true);
+    tryCells(
+      moveCell(area, spec.cells, index, snapPosition(area, spec.cells, index, position)),
+      'move cell',
+      true,
+      dragGesture(),
+    );
   }
 
   // ── a rectangle dragged over the sheet selects the cells it covers (issue #53) ──
@@ -511,6 +584,7 @@ export function LayoutEditor({
   });
 
   const root = useRef<HTMLDivElement>(null);
+  const undoable = { canUndo: work.undoLabel !== null, canRedo: work.redoLabel !== null };
   useStudioKeys(root, performKey);
 
   async function submit() {
@@ -634,6 +708,7 @@ export function LayoutEditor({
               setCells(
                 grid,
                 `Divided the sheet into ${columns} across and ${rows} down: ${plural(grid.length, 'equal cell')}.`,
+                'divide the sheet',
               );
               setSelected([]);
             }}
@@ -644,16 +719,17 @@ export function LayoutEditor({
             unit={unit}
             onUnit={setUnit}
             onChange={changePage}
-            onSizing={(sizing) => change({ sizing })}
+            onSizing={(sizing) => change({ sizing }, 'sizing')}
           />
           <MoreTools
             hasCells={spec.cells.length > 0}
             guides={spec.guides}
             border={borderOf(spec)}
-            onGuides={(guides) => change({ guides })}
-            onBorder={(border) => change({ border })}
+            onGuides={(guides) => change({ guides }, 'guides')}
+            // A width slider or a colour being picked sends a change per movement: one step while it moves.
+            onBorder={(border) => change({ border }, 'border', 'border')}
             onClear={() => {
-              setCells([], 'Removed every cell.');
+              setCells([], 'Removed every cell.', 'remove every cell');
               setSelected([]);
             }}
           />
@@ -668,9 +744,9 @@ export function LayoutEditor({
               count={selection.length}
               unit={unit}
               percentOf={sizingOf(spec) === 'percent' ? area : null}
-              onMove={(position) => tryCells(moveCells(area, spec.cells, selection, position))}
-              onResize={(size) => tryCells(resizeCells(area, spec.cells, selection, size))}
-              onRotate={() => tryCells(rotateCells(area, spec.cells, selection))}
+              onMove={(position) => tryCells(moveCells(area, spec.cells, selection, position), 'move cell')}
+              onResize={(size) => tryCells(resizeCells(area, spec.cells, selection, size), 'resize cell')}
+              onRotate={() => tryCells(rotateCells(area, spec.cells, selection), 'turn')}
               onDuplicate={copySelected}
               onRemove={removeSelected}
               copyOffset={copyOffset}
@@ -683,7 +759,20 @@ export function LayoutEditor({
             className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30"
             {...marquee.handlers}
           >
-            <SheetFrame zoom={viewZoom} onZoom={setViewZoom}>
+            <SheetFrame
+              zoom={viewZoom}
+              onZoom={setViewZoom}
+              dock={
+                <UndoButtons
+                  undoLabel={work.undoLabel}
+                  redoLabel={work.redoLabel}
+                  undoKey={state.keymap.undoLayout}
+                  redoKey={state.keymap.redoLayout}
+                  onUndo={() => stepHistory('undo')}
+                  onRedo={() => stepHistory('redo')}
+                />
+              }
+            >
               <SheetView
                 fit
                 zoom={viewZoom}
@@ -694,9 +783,14 @@ export function LayoutEditor({
                 marquee={marquee.rect}
                 selectedText={selectedText}
                 onSelectText={pickText}
-                onMoveText={moveText}
+                onGrab={() => {
+                  drags.current += 1;
+                }}
+                onMoveText={(id, to) => moveText(id, to, dragGesture())}
                 onMove={dragCell}
-                onResize={(index, size) => tryCells(resizeCells(area, spec.cells, [index], size), true)}
+                onResize={(index, size) =>
+                  tryCells(resizeCells(area, spec.cells, [index], size), 'resize cell', true, dragGesture())
+                }
                 accepts={(event) => event.dataTransfer.types.includes(SIZE_DRAG_TYPE)}
                 onDropAt={(event, point) => {
                   const dropped = readDraggedSize(event);
@@ -734,7 +828,11 @@ export function LayoutEditor({
             )}
           </div>
           <ShortcutBar
-            entries={editorShortcutBar(selectedCell !== undefined || chosenText !== undefined, state.keymap).filter(
+            entries={editorShortcutBar(
+              selectedCell !== undefined || chosenText !== undefined,
+              state.keymap,
+              undoable,
+            ).filter(
               // A text is not turned, so its bar does not offer it.
               (entry) => !chosenText || entry.press !== state.keymap.turnCell,
             )}

@@ -46,12 +46,18 @@ const BAR_LABELS: Record<StudioKeyAction, string> = {
   previousPage: 'Previous page',
   download: 'Download',
   print: 'Print',
+  undo: 'Undo',
+  redo: 'Redo',
+  redoAlt: 'Redo',
   removeCell: 'Remove',
   copyCell: 'Copy',
   turnCell: 'Turn',
   viewZoomIn: 'Zoom in',
   viewZoomOut: 'Zoom out',
   viewFit: 'Fit',
+  undoLayout: 'Undo',
+  redoLayout: 'Redo',
+  redoLayoutAlt: 'Redo',
 };
 
 // ── the Print screen ─────────────────────────────────────────────────────────
@@ -73,7 +79,9 @@ export type PrintKeyAction =
   | { kind: 'select'; what: 'photo' | 'all' | 'none' }
   | { kind: 'arrange'; mode: 'same' | 'sequence' | 'per_page' }
   | { kind: 'page'; by: 1 | -1 }
-  | { kind: 'output'; how: 'download' | 'print' };
+  | { kind: 'output'; how: 'download' | 'print' }
+  | { kind: 'undo' }
+  | { kind: 'redo' };
 
 /** What is on the Print screen right now — all a key needs to know whether it has anything to do. */
 export interface PrintKeyContext {
@@ -88,6 +96,9 @@ export interface PrintKeyContext {
   pages: number;
   /** The page being shown, from 0. */
   pageIndex: number;
+  /** Whether there is a change to undo, and one to redo (issue #52). */
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 /** What a bound action does on the Print screen now, or null when it has nothing to act on. */
@@ -124,6 +135,11 @@ function printAction(action: StudioKeyAction, context: PrintKeyContext): PrintKe
       return context.filled > 0 ? { kind: 'output', how: 'download' } : null;
     case 'print':
       return context.filled > 0 ? { kind: 'output', how: 'print' } : null;
+    case 'undo':
+      return context.canUndo ? { kind: 'undo' } : null;
+    case 'redo':
+    case 'redoAlt':
+      return context.canRedo ? { kind: 'redo' } : null;
     // The editor's actions mean nothing on this screen.
     case 'removeCell':
     case 'copyCell':
@@ -131,6 +147,9 @@ function printAction(action: StudioKeyAction, context: PrintKeyContext): PrintKe
     case 'viewZoomIn':
     case 'viewZoomOut':
     case 'viewFit':
+    case 'undoLayout':
+    case 'redoLayout':
+    case 'redoLayoutAlt':
       return null;
   }
 }
@@ -167,13 +186,21 @@ const PRINT_BAR_ORDER: readonly StudioKeyAction[] = [
   'previousPage',
   'download',
   'print',
+  'undo',
+  'redo',
 ];
+
+/**
+ * The bar shows one Redo, its first key. ⚠ Both keys still work, and settings lists both (`KEYMAP_GROUPS`): the
+ * second is only left off the bar, which is one line and would say "Redo" twice.
+ */
+const BAR_SECOND_KEYS: ReadonlySet<StudioKeyAction> = new Set(['redoAlt', 'redoLayoutAlt']);
 
 /** The bar on the Print screen: the keys that do something RIGHT NOW, the most useful first. */
 export function printShortcutBar(context: PrintKeyContext, keymap: StudioKeymap): StudioShortcut[] {
   const bar: StudioShortcut[] = [];
   for (const action of PRINT_BAR_ORDER) {
-    if (printAction(action, context) === null) continue;
+    if (BAR_SECOND_KEYS.has(action) || printAction(action, context) === null) continue;
     bar.push({ keys: studioKeyLabel(keymap[action]), label: BAR_LABELS[action], press: keymap[action] });
     // The arrows are four keys with one meaning: one entry, after the framing keys, that only explains.
     if (action === 'resetPhoto') bar.push({ keys: '← ↑ → ↓', label: 'Move photo' });
@@ -191,10 +218,26 @@ export type EditorKeyAction =
   | { kind: 'copy' }
   | { kind: 'turn' }
   | { kind: 'deselect' }
-  | { kind: 'view'; zoom: 'in' | 'out' | 'fit' };
+  | { kind: 'view'; zoom: 'in' | 'out' | 'fit' }
+  | { kind: 'undo' }
+  | { kind: 'redo' };
 
-function editorAction(action: StudioKeyAction, selected: boolean): EditorKeyAction | null {
+/** Whether the editor has a change to undo, and one to redo (issue #52). */
+export interface StudioUndoAvailable {
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+/** Nothing to undo or redo: an editor just opened. */
+export const NOTHING_TO_UNDO: StudioUndoAvailable = { canUndo: false, canRedo: false };
+
+function editorAction(action: StudioKeyAction, selected: boolean, undo: StudioUndoAvailable): EditorKeyAction | null {
   switch (action) {
+    case 'undoLayout':
+      return undo.canUndo ? { kind: 'undo' } : null;
+    case 'redoLayout':
+    case 'redoLayoutAlt':
+      return undo.canRedo ? { kind: 'redo' } : null;
     case 'viewZoomIn':
       return { kind: 'view', zoom: 'in' };
     case 'viewZoomOut':
@@ -214,27 +257,41 @@ function editorAction(action: StudioKeyAction, selected: boolean): EditorKeyActi
 }
 
 /** What a key does in the layout editor right now. `selected`: whether a cell is. */
-export function editorKeyAction(key: string | null, selected: boolean, keymap: StudioKeymap): EditorKeyAction | null {
+export function editorKeyAction(
+  key: string | null,
+  selected: boolean,
+  keymap: StudioKeymap,
+  undo: StudioUndoAvailable = NOTHING_TO_UNDO,
+): EditorKeyAction | null {
   if (key === null) return null;
   if (key === 'Escape') return selected ? { kind: 'deselect' } : null;
   // One step, or five with Shift: the editor turns steps into millimetres.
   const move = arrowMove(key, 1, 5);
   if (move) return selected ? move : null;
   const action = studioActionOf(key, 'editor', keymap);
-  return action ? editorAction(action, selected) : null;
+  return action ? editorAction(action, selected, undo) : null;
 }
 
 const EDITOR_CELL_ORDER: readonly StudioKeyAction[] = ['removeCell', 'copyCell', 'turnCell'];
 const EDITOR_VIEW_ORDER: readonly StudioKeyAction[] = ['viewZoomIn', 'viewZoomOut', 'viewFit'];
+const EDITOR_UNDO_ORDER: readonly StudioKeyAction[] = ['undoLayout', 'redoLayout', 'redoLayoutAlt'];
 
 /** The bar in the layout editor. */
-export function editorShortcutBar(selected: boolean, keymap: StudioKeymap): StudioShortcut[] {
+export function editorShortcutBar(
+  selected: boolean,
+  keymap: StudioKeymap,
+  undo: StudioUndoAvailable = NOTHING_TO_UNDO,
+): StudioShortcut[] {
   const entry = (action: StudioKeyAction): StudioShortcut => ({
     keys: studioKeyLabel(keymap[action]),
     label: BAR_LABELS[action],
     press: keymap[action],
   });
-  const view = EDITOR_VIEW_ORDER.map(entry);
+  // Only what can be done now: Undo once there is a change, Redo once there is an undo.
+  const history = EDITOR_UNDO_ORDER.filter(
+    (action) => !BAR_SECOND_KEYS.has(action) && editorAction(action, selected, undo) !== null,
+  ).map(entry);
+  const view = [...EDITOR_VIEW_ORDER.map(entry), ...history];
   if (!selected) return view;
   return [
     { keys: '← ↑ → ↓', label: 'Move 1 mm' },
@@ -263,20 +320,34 @@ function arrowMove(key: string, small: number, large: number): { kind: 'move'; d
   }
 }
 
+/** Inputs nobody types text into: a slider, a tick box, a colour. */
+const UNTYPED_INPUTS: ReadonlySet<string> = new Set(['range', 'checkbox', 'radio', 'color', 'button', 'file']);
+
 /**
  * Whether a press should be left alone because somebody is typing or choosing
  * in a field: a "D" in the copies box is a letter, and an arrow on a slider
  * moves the slider. Escape is the exception — it means "let go" everywhere.
+ *
+ * ⚠ CTRL ON A FIELD WITH NO TEXT IS THE SCREEN'S. After a slider is dragged
+ * the focus stays on it, and Ctrl+Z there must undo the slider's change: the
+ * browser has nothing of its own to undo in a slider. In a text field Ctrl+Z
+ * stays the field's own, and undoes the typing (issue #52).
  */
-export function isTypingTarget(tagName: string, key: string | null): boolean {
+export function isTypingTarget(tagName: string, key: string | null, inputType?: string): boolean {
   if (key === 'Escape') return false;
+  const untyped = tagName === 'SELECT' || (tagName === 'INPUT' && UNTYPED_INPUTS.has(inputType ?? ''));
+  if (untyped && key?.startsWith('Ctrl+')) return false;
   return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
 }
 
 /** The settings screen's groups: each screen's actions, in the order its bar shows them. */
 export const KEYMAP_GROUPS: readonly { zone: string; title: string; actions: readonly StudioKeyAction[] }[] = [
-  { zone: 'print', title: 'Printing photos', actions: PRINT_BAR_ORDER },
-  { zone: 'editor', title: 'Making a layout', actions: [...EDITOR_CELL_ORDER, ...EDITOR_VIEW_ORDER] },
+  { zone: 'print', title: 'Printing photos', actions: [...PRINT_BAR_ORDER, 'redoAlt'] },
+  {
+    zone: 'editor',
+    title: 'Making a layout',
+    actions: [...EDITOR_CELL_ORDER, ...EDITOR_VIEW_ORDER, ...EDITOR_UNDO_ORDER],
+  },
 ];
 
 /** An action's full name, as the settings screen lists it. */

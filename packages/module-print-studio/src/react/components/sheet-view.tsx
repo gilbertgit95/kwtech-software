@@ -54,6 +54,11 @@ export interface SheetViewProps {
    * several selected, the editor moves them all by the same distance.
    */
   onMove?: (index: number, position: { x: number; y: number }) => void;
+  /**
+   * A drag of a cell or a text has begun: it moved far enough to be one. Called once per drag, before its first
+   * `onMove`, `onResize` or `onMoveText`, so the editor can make the whole drag one undo step (issue #52).
+   */
+  onGrab?: () => void;
   /** A resize in progress: the cell's wanted size, in units. */
   onResize?: (index: number, size: { width: number; height: number }) => void;
   /** The selected text's id, in the editor. A text and a cell are never selected at once. */
@@ -120,6 +125,7 @@ export function SheetView({
   selected = [],
   onSelect,
   onMove,
+  onGrab,
   onResize,
   selectedText = null,
   onSelectText,
@@ -208,6 +214,7 @@ export function SheetView({
     if (!current.moved && Math.hypot(event.clientX - current.startX, event.clientY - current.startY) < DRAG_START_PX) {
       return;
     }
+    if (!current.moved) onGrab?.();
     current.moved = true;
     const a = current.fromA + (event.clientX - current.startX) * current.scale;
     const b = current.fromB + (event.clientY - current.startY) * current.scale;

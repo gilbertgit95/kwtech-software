@@ -610,6 +610,53 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **Undo and redo on the print studio's Print screen and in its layout editor: Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and buttons that say what they would take back (issue #52).**
+
+  A box moved to the wrong place, a wrong zoom or turn, a photo in the wrong
+  box or a cell deleted in the editor had to be put right by hand.
+  - **One pure history** (`domain/undo.ts`: `past`, `present`, `future`;
+    `commitUndo`, `undoStep`, `redoStep`), kept 100 steps deep
+    (`STUDIO_UNDO_LIMIT`). A new change after an undo clears the redo history.
+    A change that leaves the snapshot's VALUES as they were adds no step
+    (`sameUndoValue`), so Portrait pressed on a portrait sheet, a nudge
+    against the edge or a zoom at its limit never costs the redo history.
+  - **Each screen's undoable state is ONE snapshot**, so a step restores all
+    of it together. On the Print screen that is `StudioPrintSheet`: the
+    tray's photo ids, the cells' photos and frames, each photo's edits, the
+    border and guides, the paper and orientation, the background and the
+    layout as adjusted for this print. Before this they were ten separate
+    `useState`s. In the editor it is the layout spec. Not in either: the
+    selection, the page shown, the view's zoom, the copies, the calibration,
+    and the editor's name, tag and audience (text fields keep the browser's
+    own undo).
+  - **One gesture is one step.** Each event names a gesture key. A timed
+    gesture (a slider, a held zoom key, a run of arrow nudges) joins while
+    its events come within `STUDIO_UNDO_GESTURE_MS` (1 s) of each other. A
+    drag gets a new key on every press and joins however long the hand
+    rests (`untimed`). Keys include the cells acted on, so the same zoom on
+    other photos is a new step. A change across a multi-box selection is one
+    update, so one step. A flip is a press, so two quick flips are two steps.
+  - **Photos are held by id, and released only when no step names them.**
+    The Print screen keeps a pool of decoded photos beside the history. After
+    each change, undo and redo it releases those no snapshot refers to. A
+    photo removed from the tray stays decoded while an Undo can bring it
+    back, and goes when that step drops off the cap. That costs memory for
+    up to 100 steps, which seemed better than an Undo that brings back an
+    empty cell. **Start over clears the history**: it is how photos are let
+    go of, and it was never undoable.
+  - **Six new key actions**, two keys for Redo as most programs have:
+    `undo` / `redo` / `redoAlt` on Print and `undoLayout` / `redoLayout` /
+    `redoLayoutAlt` in the editor (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y). They can be
+    rebound, and a saved keymap that already used one of these keys keeps it
+    (`effectiveStudioKeymap`). The bar shows Undo and one Redo only while they
+    can act. **Ctrl on a field with no text is the screen's**
+    (`isTypingTarget`): after a slider is dragged the focus stays on it, and
+    Ctrl+Z there undoes the slider. In a text field Ctrl+Z stays the field's.
+  - **Not done:** the history is not saved anywhere and goes with the screen,
+    as the issue asked. The editor's Undo does not reach back into the Print
+    screen's: an adjusted layout comes back to Print as ONE step ("adjust
+    layout"). The PDF side keeps canvas-editor's own undo.
+
 - **2026-11-03** — **A cell can mirror its photo sideways or upside down, and the Print screen gets a real Turn left; the counter-clockwise icon that was really Reset is gone (issue #51).**
 
   The selection bar had Turn (clockwise) and, beside it, Reset drawn as a

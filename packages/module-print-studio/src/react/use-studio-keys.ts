@@ -38,7 +38,8 @@ export function useStudioKeys(root: RefObject<HTMLElement | null>, perform: (key
       if (!inside && target !== document.body) return;
       if (target.closest('dialog, [contenteditable]')) return;
       const key = studioKeyOfPress(event);
-      if (key === null || isTypingTarget(target.tagName, key)) return;
+      const inputType = target instanceof HTMLInputElement ? target.type : undefined;
+      if (key === null || isTypingTarget(target.tagName, key, inputType)) return;
       if (latest.current(key)) event.preventDefault();
     };
     document.addEventListener('keydown', onKey);
