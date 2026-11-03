@@ -1,3 +1,4 @@
+import type { StudioText } from '../../domain/texts.js';
 import type { StudioCellRef } from './work.js';
 
 /**
@@ -125,4 +126,18 @@ function axisStep(at: number, start: number, end: number): number {
   const after = at - (end - MARQUEE_EDGE_PX);
   if (after > 0) return Math.ceil(MARQUEE_SCROLL_MAX_PX * Math.min(after / MARQUEE_EDGE_PX, 1));
   return 0;
+}
+
+/**
+ * The layout editor's rectangle covers the cells, then the texts' boxes, in one list (issue #57): its covered
+ * indexes split back into cell indexes and text ids. An index past the texts is nothing.
+ */
+export function splitCovered(
+  covered: readonly number[],
+  cellCount: number,
+  texts: readonly StudioText[],
+): { cells: number[]; texts: string[] } {
+  const cells = covered.filter((index) => index < cellCount);
+  const ids = covered.flatMap((index) => (index < cellCount ? [] : (texts[index - cellCount]?.id ?? [])));
+  return { cells, texts: ids };
 }

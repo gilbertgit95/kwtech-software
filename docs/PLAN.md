@@ -604,11 +604,71 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 122 | ~~The installed app is the whole site: there is no phone-first section with only a few screens~~ **Closed** | — | **One set of addresses, a layout per device (§13, 2026-10-29, issue #22).** `proxy.ts` rewrites a phone's `/` and `/organizations/...` to the phone page; modules opt in with `/mobile` screens. A native app only if a device feature the browser lacks is needed |
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 | 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
-| 125 | Texts in the print studio are selected one at a time; a selection rectangle takes cells only | when a layout carries many texts that move together | The rectangle (issue #53) selects cells on the Print screen and in the layout editor. A text there is still pressed on its own: cells and a text are never selected at once, and a mixed group would need a panel for both. On the Print screen texts are painted into the canvas and are not selectable at all |
+| 125 | ~~Texts in the print studio are selected one at a time; a selection rectangle takes cells only~~ **Settled 2026-11-03 for the layout editor** (issue #57, see §13). On the Print screen texts are still painted into the canvas and not selectable | when texts need moving on the Print screen | The editor's rectangle takes cells and texts, and a group of both moves, copies and is removed together. Print keeps texts fixed once the layout is used |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-03** — **The print studio's side panels are resizable by the app's three-dot grip: the Print screen's settings, and the layout editor's palette and inspector.**
+
+  The operator asked for them to resize "just like the other resizable panels
+  on the app".
+  - **The point of sale's `PanelEdgeHandle`, copied structurally** (a module
+    never imports another), with `ResizeGrip` from web-ui. It is the ARIA
+    window splitter: drag, ← → (Shift for bigger steps) on the focused grip,
+    Home / End for the bounds, double-click for the default. The rules are
+    pure in `view/panel-width.ts`: each panel defaults to the 18rem it had,
+    and sits between 240 and 480 px (520 for Print's settings).
+  - **The widths are NOT stored.** The point of sale keeps its widths in the
+    browser, but the studio writes nothing to browser storage
+    (`test/web-module.test.ts`). The widths live in a context at the
+    studio's root, so they survive switching sections and reopening the
+    editor, and a reload starts from the defaults.
+  - **Each grip is shown only where its panel sits beside the sheet.** The
+    inspector's grip is on its left edge, as a column at @5xl and as the
+    floating card when narrower.
+
+- **2026-11-03** — **The layout editor's selection rectangle takes texts as well as cells, and a group of both moves, copies and is removed together (issue #57).**
+
+  The rectangle (#53) selected cells only, and a text could only ever be
+  selected by itself (§12 row 125). A label under each photo had to be moved
+  one at a time after the photos.
+  - **One selection of cell indexes and text ids.** The rectangle covers one
+    list, the cells then the texts' measured boxes (`splitCovered`). Ctrl, ⌘
+    or Shift + click adds or removes a text, as for a cell. A press on one of
+    several selected keeps them all, and a click without moving selects it
+    alone.
+  - **The group is one thing** (`domain/group.ts`, pure, with the text
+    measure passed in). `moveGroup` clamps the group's bounding box, cells and
+    texts together, so it stops at the edge as a whole. It is refused whole
+    when a cell would land on one that stays. `copyGroup` lets the cells
+    decide where the copy goes (`duplicateCells`) and moves the texts the same
+    distance. Texts alone go under the group. It copies nothing if it cannot
+    copy everything. Each action is one undo step (#52), and a drag measures
+    from the layout as it is when the update runs, so a fast pointer never
+    moves the group twice.
+  - **Panels:** cells alone keep their numbers panel and one text alone keeps
+    its style panel. A mixed group, or several texts, gets a short bar: what
+    is selected, Turn cells (when there are cells), Copy and Remove. A text is
+    never turned.
+  - **The sheet takes the editor's whole height, and no longer jumps as the
+    selection changes** (the operator, on trying it). It is fitted to the
+    room left around it, and that room changed with every selection: the
+    panel above it came and went, and the status line and shortcut bar under
+    it wrapped. During a rectangle that happened many times a second. Now
+    everything that changes with the selection (a cell's numbers, a group's
+    tools, a text's style), the status line and the shortcut bar are in one
+    column, the inspector. At @5xl it sits beside the sheet, giving palette,
+    sheet and inspector. Narrower, it floats as a card over the sheet's top
+    right corner, clear of the zoom bar. It is the same element in the same
+    grid cell, overlapping the sheet. It first sat over the palette in the
+    left column, where the operator found it went out of sight. Nothing is above or under the
+    sheet, and it still follows the sub-app panel's own size. The Print
+    screen is unchanged.
+  - **Not done:** snapping for a group with texts (cells alone still snap to
+    their neighbours), and selecting texts on the Print screen, where they
+    are fixed.
 
 - **2026-11-03** — **Undo and redo on the print studio's Print screen and in its layout editor: Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and buttons that say what they would take back (issue #52).**
 

@@ -94,3 +94,12 @@ export function cellLabelSize(cell: { width: number; height: number }, label: st
   const fitted = (cell.width * LABEL_WIDTH_SHARE) / (characters * LABEL_CHARACTER_WIDTH);
   return Math.min(cell.width / 5, cell.height / 3, fitted);
 }
+
+/** A group in words: "2 cells and 1 text". */
+export function groupName(group: { cells: readonly number[]; texts: readonly string[] }): string {
+  const parts = [
+    group.cells.length > 0 ? plural(group.cells.length, 'cell') : null,
+    group.texts.length > 0 ? plural(group.texts.length, 'text') : null,
+  ].filter((part) => part !== null);
+  return parts.join(' and ');
+}

@@ -61,10 +61,16 @@ export interface SheetViewProps {
   onGrab?: () => void;
   /** A resize in progress: the cell's wanted size, in units. */
   onResize?: (index: number, size: { width: number; height: number }) => void;
-  /** The selected text's id, in the editor. A text and a cell are never selected at once. */
-  selectedText?: string | null;
-  /** Given, the texts can be picked and dragged. Without it they are drawn and take no presses (a thumbnail). */
-  onSelectText?: (id: string) => void;
+  /**
+   * The selected texts' ids, in the editor. Texts and cells can be selected together (issue #57): a drag on any of
+   * them then moves them all.
+   */
+  selectedTexts?: readonly string[];
+  /**
+   * Given, the texts can be picked and dragged. Without it they are drawn and take no presses (a thumbnail).
+   * `adding` (Ctrl, ⌘ or Shift held) asks for the text to join the selection or leave it, as for a cell.
+   */
+  onSelectText?: (id: string, adding?: boolean) => void;
   /** A text being dragged: its wanted top left, in units from the printable area's. */
   onMoveText?: (id: string, position: { x: number; y: number }) => void;
   /**
@@ -127,7 +133,7 @@ export function SheetView({
   onMove,
   onGrab,
   onResize,
-  selectedText = null,
+  selectedTexts = [],
   onSelectText,
   onMoveText,
   onDropAt,
@@ -144,6 +150,8 @@ export function SheetView({
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const interactive = onSelect !== undefined;
+  /** Everything selected, cells and texts: a press on one of several keeps them all, to drag them together. */
+  const selectedCount = selected.length + selectedTexts.length;
 
   // Line weights in units, relative to the sheet, so a thumbnail and the editor both read.
   const hair = Math.max(sheet.width, sheet.height) / 400;
@@ -182,18 +190,28 @@ export function SheetView({
       fromA: kind === 'move' ? cell.x : cell.width,
       fromB: kind === 'move' ? cell.y : cell.height,
       moved: false,
-      collapse: inSelection && selected.length > 1,
+      // Only a move: a press on the resize corner is never a click that selects the cell alone.
+      collapse: kind === 'move' && inSelection && selectedCount > 1,
     };
   }
 
   /** A text picked up. The same capture as a cell's, for the same reason: the text is redrawn on every step. */
   function beginText(event: ReactPointerEvent<SVGElement>, id: string, from: { x: number; y: number }) {
-    if (!onSelectText) return;
+    if (!onSelectText || event.button !== 0) return;
+    // Alt + drag draws a selection rectangle from here, as from a cell (`useMarquee`).
+    if (event.altKey) return;
     const box = svg.current?.getBoundingClientRect();
     if (!box || box.width === 0) return;
     event.stopPropagation();
+    // Ctrl, ⌘ or Shift + click: the text joins the selection or leaves it, and nothing is dragged.
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      onSelectText(id, true);
+      return;
+    }
     svg.current?.setPointerCapture(event.pointerId);
-    onSelectText(id);
+    // A text already in the selection keeps the selection: dragging it moves everything selected.
+    const inSelection = selectedTexts.includes(id);
+    if (!inSelection) onSelectText(id);
     drag.current = {
       index: -1,
       textId: id,
@@ -204,7 +222,7 @@ export function SheetView({
       fromA: from.x,
       fromB: from.y,
       moved: false,
-      collapse: false,
+      collapse: inSelection && selectedCount > 1,
     };
   }
 
@@ -226,7 +244,10 @@ export function SheetView({
   function end() {
     const current = drag.current;
     drag.current = null;
-    if (current && !current.moved && current.collapse) onSelect?.(current.index);
+    if (!current || current.moved || !current.collapse) return;
+    // A click, not a drag, on one of several selected: it is selected alone.
+    if (current.textId !== null) onSelectText?.(current.textId);
+    else onSelect?.(current.index);
   }
 
   return (
@@ -306,7 +327,8 @@ export function SheetView({
                 </text>
               ) : null}
               {/* One cell's corner to resize it by; a group is resized from the panel, all at once. */}
-              {chosen && interactive && selected.length === 1 ? (
+              {/* Only when it is ALL that is selected: a group with texts is moved, not resized, from the sheet. */}
+              {chosen && interactive && selectedCount === 1 ? (
                 <rect
                   x={cell.x + cell.width - handle / 2}
                   y={cell.y + cell.height - handle / 2}
@@ -328,7 +350,7 @@ export function SheetView({
 
         {/* The texts, over the cells as they print, each in its own ink whatever the theme. */}
         {textsOf(spec).map((text) => {
-          const chosen = text.id === selectedText;
+          const chosen = selectedTexts.includes(text.id);
           const box = measureText(text);
           const lines = textLines(text);
           const decorations = textDecorations(text);
@@ -380,6 +402,9 @@ export function SheetView({
                   strokeWidth={hair * 2}
                   strokeDasharray={`${hair * 6} ${hair * 4}`}
                   className="cursor-move hover:stroke-[#2563eb]"
+                  // What a press landed on, for the selection rectangle: a drag here moves the text (`useMarquee`).
+                  data-studio-cell=""
+                  data-filled=""
                   onPointerDown={(event) => beginText(event, text.id, { x: text.x, y: text.y })}
                 >
                   <title>Drag to move this text</title>

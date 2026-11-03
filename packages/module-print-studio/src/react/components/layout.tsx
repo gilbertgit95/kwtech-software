@@ -2,8 +2,11 @@
 
 import { cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@kwtech/web-ui/react';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useId } from 'react';
+import { usePanelWidth } from '../use-panel-widths.js';
+import { STUDIO_PANELS } from '../view/panel-width.js';
 import { buttonClass } from './controls.js';
+import { PanelEdgeHandle } from './panel-edge-handle.js';
 
 /*
  * The app's shared frame — the booking app's, copied structurally: the
@@ -180,10 +183,33 @@ export function StudioSplit({
   /** The sheet's card. */
   children: ReactNode;
 }) {
+  /*
+   * The settings column is as wide as it was dragged (the operator, 2026-11-03), by the handle on its right
+   * edge: a variable the side-by-side grid reads, so the stacked layout below @3xl is not given a width.
+   */
+  const [sideWidth, setSideWidth] = usePanelWidth('print_settings');
+  const sideId = useId();
   return (
-    <div className="grid shrink-0 grid-cols-1 gap-3 @3xl:min-h-0 @3xl:flex-1 @3xl:grid-cols-[18rem_minmax(0,1fr)] @3xl:grid-rows-[minmax(0,1fr)_auto]">
-      <div className="flex min-w-0 flex-col gap-3 @3xl:col-start-1 @3xl:row-start-1 @3xl:min-h-0 @3xl:overflow-y-auto @3xl:pr-1">
-        {side}
+    <div
+      style={{ '--studio-side-width': `${sideWidth}px` } as CSSProperties}
+      className="grid shrink-0 grid-cols-1 gap-3 @3xl:min-h-0 @3xl:flex-1 @3xl:grid-cols-[var(--studio-side-width)_minmax(0,1fr)] @3xl:grid-rows-[minmax(0,1fr)_auto]"
+    >
+      {/* ⚠ The handle sits on this wrapper, not the scrolling column inside it, or it would scroll away. */}
+      <div className="relative flex min-w-0 flex-col @3xl:col-start-1 @3xl:row-start-1 @3xl:min-h-0">
+        <div
+          id={sideId}
+          className="flex min-w-0 flex-col gap-3 @3xl:min-h-0 @3xl:flex-1 @3xl:overflow-y-auto @3xl:pr-1"
+        >
+          {side}
+        </div>
+        <PanelEdgeHandle
+          panelId={sideId}
+          label="Resize the settings"
+          width={sideWidth}
+          rules={STUDIO_PANELS.print_settings}
+          shownClass="@3xl:flex"
+          onResize={setSideWidth}
+        />
       </div>
       {/* min-h: a grid item is otherwise as tall as its content at least, and a canvas has no height of its own to give. */}
       <div className="flex min-h-112 min-w-0 flex-col @3xl:col-start-2 @3xl:row-span-2 @3xl:row-start-1 @3xl:min-h-64">
