@@ -187,6 +187,12 @@ describe('the Read me sheet', () => {
     expect(rows).toContainEqual(['Price', 'Yes', 'Pesos, like 12.50', 'In pesos.']);
     expect(rows).toContainEqual(['Archived', 'No', 'Yes or No', 'Yes hides it.']);
   });
+
+  it('says where a column’s values come from when they are another sheet’s', () => {
+    const category = text('Category', { listFrom: { sheet: 'Categories', header: 'Name' }, help: 'Pick one.' });
+    const rows = sheetReadMe('POS setup', [{ name: 'Items', help: 'h', columns: [category] }]);
+    expect(rows).toContainEqual(['Category', 'No', 'A Name from the Categories sheet', 'Pick one.']);
+  });
 });
 
 // ── the plan ─────────────────────────────────────────────────────────────────

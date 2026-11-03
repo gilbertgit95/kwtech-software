@@ -34,7 +34,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 
 | Package | `@kwtech` dependencies | Peers | Imported by |
 |---|---|---|---|
-| `web-ui` | none | react, react-dom, tailwindcss, lucide-react, AG Grid, Radix dropdown | modules' `/react`, web-app |
+| `web-ui` | none | react, react-dom, tailwindcss, lucide-react, AG Grid, Radix dropdown, exceljs (loaded on demand) | modules' `/react`, web-app |
 | `module-kit` | none | react, graphql-ws | every module, both apps |
 | `module-auth` | module-kit | web-ui, Nest, React, Next, jsonwebtoken | both apps |
 | `module-permissions` | module-kit | web-ui, Nest, React, read-excel-file | both apps |

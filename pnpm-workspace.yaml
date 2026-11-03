@@ -6,6 +6,11 @@ catalog:
   typescript: 7.0.2
   '@types/node': 24.10.1
 
+  # Reading and writing .xlsx in the BROWSER (issue #35): web-ui's workbook
+  # helpers and import wizard, loaded only when a screen opens one. One version
+  # for web-ui (dev, and its optional peer) and web-app (which installs it).
+  exceljs: 4.4.0
+
   # Nest is catalogued, not merely pinned per package, because a SECOND copy is
   # not a duplicate — it is a bug. Nest's exception filter decides an HTTP
   # status with `instanceof HttpException`, and a module that threw an

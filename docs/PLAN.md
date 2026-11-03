@@ -610,6 +610,28 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **`.xlsx` is read and written in the browser with `exceljs`, loaded on demand, and the import wizard and export dialog live in `@kwtech/web-ui` (issue #35, second of three PRs).**
+
+  The POS setup import needs a template with dropdowns, so a read-only library
+  (`read-excel-file`, which `module-permissions` uses) is not enough.
+  - **Tried before chosen:** Excel 16 opened a file written with `exceljs`
+    with no repair, kept its dropdowns and kept `007` as text, and both Node
+    and Chrome read Excel's own file back correctly. The production `next
+    build` puts it in its own 930 KB chunk that no page loads until a
+    workbook is read or written.
+  - **Browser only, the server never sees a file.** `readWorkbook` gives raw
+    cells; the module types them with `module-kit`'s `readSheet` and sends
+    rows its mutation checks again.
+  - **Structural shapes:** `web-ui` imports no `@kwtech` package, so
+    `WorkbookSheet` / `WorkbookColumn` copy the parts of `SheetSpec` they
+    need. `module-kit` gained `listFrom` (a column whose values are another
+    tab's) for the template's dropdowns.
+  - **Not done:** `module-permissions` keeps `read-excel-file` until the
+    follow-up issue moves its feature import here, so two `.xlsx` libraries
+    coexist for now. `npm audit` reports moderate advisories in glob matching
+    inside `exceljs`' zip dependencies, which reading and writing a workbook
+    does not reach.
+
 - **2026-11-03** — **Spreadsheet import and export get one shared engine in `module-kit`, pure, before the POS uses it (issue #35, first of three PRs).**
 
   The POS setup import (#35) needs sheets declared as data, cell reading, row

@@ -83,6 +83,14 @@ export interface SheetColumn<K extends string = string> {
   required?: boolean;
   /** For `choice`: the allowed values, as they should read. The template offers them as a dropdown. */
   choices?: readonly string[];
+  /**
+   * For `text`: the values are another tab's column — an item's Category is one
+   * of the Names on the Categories tab. The template offers them as a dropdown
+   * read from that tab, so it grows as the person adds rows there. ⚠ Only a
+   * hint to the person: the MODULE checks that the value is one of them, since
+   * the other tab may be missing from the file or the value already stored.
+   */
+  listFrom?: { sheet: string; header: string };
   /** For `text`: the most characters it may hold. */
   maxLength?: number;
   /**
@@ -326,6 +334,7 @@ export function sheetReadMe(title: string, specs: readonly SheetSpec[]): string[
 function describeKind(column: SheetColumn): string {
   switch (column.kind) {
     case 'text':
+      if (column.listFrom) return `A ${column.listFrom.header} from the ${column.listFrom.sheet} sheet`;
       return column.maxLength === undefined ? 'Text' : `Text, at most ${column.maxLength} characters`;
     case 'integer':
       return 'A whole number';
