@@ -842,3 +842,44 @@ and swipe-down to close, an optional `footer` kept in view, and on a tablet a
 card floating above the bottom edge. Every sheet on the phone layout uses it
 (issue #22): the frame's account and switcher, the inbox's filters, notes' and
 tasks' actions and filters.
+
+## Spreadsheets: import and export (issue #35)
+
+Reading and writing `.xlsx` in the browser, and the screens around it. The
+rules a module's sheets follow — columns, reading cells, the import plan — are
+`module-kit`'s (`src/spreadsheet.ts`); this is the file and the UI.
+
+- **`exceljs` is an optional peer, loaded only when used** (a dynamic import in
+  `workbook.ts`): about 265 KB compressed, paid by the screen that opens an
+  import or an export, never by every page. An app that offers either lists it
+  (`web-app` does, from the pnpm catalog).
+- **The shapes are structural.** `web-ui` imports no `@kwtech` package, so
+  `WorkbookSheet` and `WorkbookColumn` (`workbook-rules.ts`) are the parts of
+  `module-kit`'s `SheetSpec` it needs: pass a `SheetSpec` as it is.
+- **`writeWorkbook({ readMe, sheets })` → `Blob`.** A Read me tab first, then
+  each sheet with a bold, frozen heading row. `rows` are in the module's units
+  (money in centavos, written as pesos with 2 decimals; yes/no as Yes/No);
+  without `rows` the sheet gets its columns' `example` row — the template. On
+  the rows written and `WORKBOOK_PREPARED_ROWS` (1000) below: `textFormat`
+  columns are text (so Excel keeps 007), and dropdowns for yes/no, `choices`
+  and `listFrom` (another tab's column). A list Excel would reject (past 255
+  characters) gets no dropdown; the import checks the value anyway.
+- **`readWorkbook(file)` → every tab as rows of RAW cells** with the row number
+  Excel shows; hand a tab's rows to `module-kit`'s `readSheet`. Only `.xlsx`, up
+  to `WORKBOOK_MAX_BYTES` (5 MB) and `WORKBOOK_MAX_ROWS` (10,000) a tab; each
+  refusal is a sentence (`checkWorkbookFile`).
+- **`downloadWorkbook(blob, workbookFileName(what, whose, dayKey))`** — the day
+  is the WORKSPACE's (`useWorkspaceTimeZone`), never the browser's.
+- **`ImportWizard`**: Upload → How (Add and update, or Replace) → Check →
+  Done. It knows nothing about what is imported: the module's `preview(reading,
+  mode)` says what the file would do, per sheet (counts, problems on their row
+  and column, what Replace archives, a tab missing from the file), and
+  `apply(reading, mode, skipErrorRows)` does it — handed the FILE again, so the
+  module plans afresh and its mutation checks every row once more. ⚠ Nothing
+  changes before the last step, and rows with errors stop the import unless the
+  person ticks "skip the rows with errors"; a problem with the whole file never
+  can be skipped (`importBlocker`). `onTemplate` offers the template on the
+  first step; `done` is the last step's way on ("Go to Items").
+- **`ExportDialog`**: which sheets (all by default) and whether archived rows go
+  in (on by default); the module writes the file in `onExport`.
+

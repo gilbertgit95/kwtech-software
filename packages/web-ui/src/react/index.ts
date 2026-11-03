@@ -47,6 +47,7 @@ export {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './dropdown-menu.js';
+export { ExportDialog, type ExportDialogProps } from './export-dialog.js';
 export {
   type IconOption,
   IconPicker,
@@ -54,6 +55,7 @@ export {
   IconSetProvider,
   useIconSet,
 } from './icon-picker.js';
+export { ImportWizard, type ImportWizardProps } from './import-wizard.js';
 export { ListDrawer, type ListDrawerStep } from './list-drawer.js';
 export {
   focusFirstListItem,
@@ -102,3 +104,37 @@ export {
 export { TreeSelect, type TreeSelectNode, type TreeSelectProps } from './tree-select.js';
 export { useDebouncedValue } from './use-debounced-value.js';
 export { cn } from './utils.js';
+export {
+  downloadWorkbook,
+  readWorkbook,
+  type WorkbookSheetInput,
+  type WriteWorkbookInput,
+  writeWorkbook,
+} from './workbook.js';
+export {
+  checkWorkbookFile,
+  columnLetter,
+  type ImportWizardCounts,
+  type ImportWizardMode,
+  type ImportWizardOutcome,
+  type ImportWizardPreview,
+  type ImportWizardProblem,
+  type ImportWizardSheet,
+  importBlocker,
+  importButtonLabel,
+  importSummary,
+  importTotals,
+  problemPlace,
+  WORKBOOK_MAX_BYTES,
+  WORKBOOK_MAX_ROWS,
+  WORKBOOK_PREPARED_ROWS,
+  type WorkbookColumn,
+  type WorkbookReading,
+  type WorkbookRow,
+  type WorkbookSheet,
+  type WorkbookTab,
+  type WorkbookValue,
+  workbookCell,
+  workbookDropdown,
+  workbookFileName,
+} from './workbook-rules.js';
