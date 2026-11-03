@@ -1,6 +1,6 @@
 import { cellsInRect, clampToSheet, rectBetween, rectContains } from '../src/domain/marquee.js';
 import {
-  coverChanged,
+  createCoverTracker,
   edgeScrollStep,
   MARQUEE_EDGE_PX,
   MARQUEE_SCROLL_MAX_PX,
@@ -146,14 +146,28 @@ describe('the editor’s selection by rectangle', () => {
 });
 
 describe('reporting what a rectangle covers', () => {
-  it('reports the first cover even when it is nothing, so a rectangle over bare paper clears the selection', () => {
-    expect(coverChanged(null, [])).toBe(true);
-    expect(coverChanged(null, [2])).toBe(true);
+  it('a new press reports its first cover even when it is nothing, so a rectangle over bare paper clears', () => {
+    // ⚠ Through the same tracker the hook makes for every press: a tracker that started from "an empty cover"
+    // would answer false here, and the old selection would stay (CodeRabbit on #54).
+    expect(createCoverTracker().report([])).toBe(true);
+    expect(createCoverTracker().report([2])).toBe(true);
   });
 
-  it('after that, only a change', () => {
-    expect(coverChanged([], [])).toBe(false);
-    expect(coverChanged([1, 2], [1, 2])).toBe(false);
-    expect(coverChanged([1, 2], [1])).toBe(true);
+  it('after that, reports only a change', () => {
+    const tracker = createCoverTracker();
+    expect(tracker.report([])).toBe(true);
+    expect(tracker.report([])).toBe(false);
+    expect(tracker.report([1, 2])).toBe(true);
+    expect(tracker.report([1, 2])).toBe(false);
+    expect(tracker.report([1])).toBe(true);
+    expect(tracker.report([])).toBe(true);
+  });
+
+  it('remembers a copy, so a caller changing its list afterwards changes nothing', () => {
+    const tracker = createCoverTracker();
+    const cells = [1, 2];
+    tracker.report(cells);
+    cells.push(3);
+    expect(tracker.report([1, 2])).toBe(false);
   });
 });

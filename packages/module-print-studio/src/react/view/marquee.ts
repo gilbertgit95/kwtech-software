@@ -77,14 +77,29 @@ export function toggleIndex(selection: readonly number[], index: number): number
   return selection.includes(index) ? selection.filter((one) => one !== index) : [...selection, index];
 }
 
+/** What one press's rectangle has reported of the cells it covers (`createCoverTracker`). */
+export interface StudioCoverTracker {
+  /** Whether these covered cells must be reported now; when so, they are remembered as reported. */
+  report: (cells: readonly number[]) => boolean;
+}
+
 /**
- * Whether the cells a rectangle covers must be reported: always the first
- * time (`previous` null), even when it covers nothing — a plain rectangle over
- * bare paper replaces the selection with nothing — and after that only when
- * they changed, so a drag that covers nothing new re-renders nothing.
+ * A fresh tracker for each press. ⚠ IT STARTS HAVING REPORTED NOTHING — not
+ * "an empty cover": the first cover is always reported, even when it is no
+ * cell at all, so a plain rectangle over bare paper replaces the selection
+ * with nothing rather than leaving the old one (CodeRabbit on #54). After
+ * that, only a change is reported, so a drag that covers nothing new
+ * re-renders nothing.
  */
-export function coverChanged(previous: readonly number[] | null, next: readonly number[]): boolean {
-  return previous === null || !sameIndexes(previous, next);
+export function createCoverTracker(): StudioCoverTracker {
+  let reported: readonly number[] | null = null;
+  return {
+    report(cells) {
+      if (reported !== null && sameIndexes(reported, cells)) return false;
+      reported = [...cells];
+      return true;
+    },
+  };
 }
 
 /** Whether two lists of cell indexes are the same — so a drag that covers nothing new re-renders nothing. */

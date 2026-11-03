@@ -10,7 +10,14 @@ import {
 } from 'react';
 import type { StudioRect, StudioSize } from '../domain/layout.js';
 import { cellsInRect, clampToSheet, rectBetween, type StudioPoint } from '../domain/marquee.js';
-import { coverChanged, edgeScrollStep, MARQUEE_HOLD_MS, marqueeStart, type StudioPressTarget } from './view/marquee.js';
+import {
+  createCoverTracker,
+  edgeScrollStep,
+  MARQUEE_HOLD_MS,
+  marqueeStart,
+  type StudioCoverTracker,
+  type StudioPressTarget,
+} from './view/marquee.js';
 
 /** How far the pointer must travel, in pixels, before a press is a rectangle and not a click. */
 const MARQUEE_START_PX = 4;
@@ -79,11 +86,8 @@ interface Press {
   armed: boolean;
   /** Is drawing: it moved far enough, and holds the pointer. */
   drawing: boolean;
-  /**
-   * What `onCover` last reported; null until the first report, so a plain rectangle over nothing still replaces
-   * the selection (with nothing) rather than leaving the old one.
-   */
-  covered: readonly number[] | null;
+  /** What this press's rectangle has reported of the cells it covers. */
+  cover: StudioCoverTracker;
   hold: ReturnType<typeof setTimeout> | null;
 }
 
@@ -129,8 +133,7 @@ export function useMarquee(options: MarqueeOptions): Marquee {
     const next = rectBetween(clampToSheet(current.start, sheet), clampToSheet(at, sheet));
     setRect((shown) => (shown && sameRect(shown, next) ? shown : next));
     const covered = cellsInRect(next, cells);
-    if (!coverChanged(current.covered, covered)) return;
-    current.covered = covered;
+    if (!current.cover.report(covered)) return;
     onCover(covered, current.adding);
   }
 
@@ -186,7 +189,7 @@ export function useMarquee(options: MarqueeOptions): Marquee {
       lastY: event.clientY,
       armed: start === 'now',
       drawing: false,
-      covered: null,
+      cover: createCoverTracker(),
       hold:
         start === 'hold'
           ? setTimeout(() => {
