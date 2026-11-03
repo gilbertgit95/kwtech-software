@@ -836,9 +836,18 @@ export function LayoutEditor({
         The layout editor needs more room. Widen this panel, or open the print studio by itself.
       </p>
 
-      <div className="hidden min-h-0 flex-1 gap-4 @2xl:flex">
+      {/*
+       * ⚠ THE SHEET TAKES THE WHOLE HEIGHT (the operator, 2026-11-03: the preview as tall as the editor allows).
+       * Everything that changes with the selection (a cell's numbers, a group's tools, a text's style), the
+       * status line and the shortcut bar are in ONE column beside it, the inspector. Nothing above or under the
+       * sheet takes its height, and nothing there comes and goes with the selection and makes it jump.
+       *   wide (@5xl)  palette | sheet | inspector, each the full height
+       *   narrower     the inspector over the palette in the left column, so the sheet keeps its width
+       * The sheet still follows the panel's own size: it is fitted to whatever its cell of the grid is.
+       */}
+      <div className="hidden min-h-0 flex-1 gap-4 @2xl:grid @2xl:grid-cols-[18rem_minmax(0,1fr)] @2xl:grid-rows-[auto_minmax(0,1fr)] @5xl:grid-cols-[18rem_minmax(0,1fr)_18rem] @5xl:grid-rows-[minmax(0,1fr)]">
         {/* ── the palette ── */}
-        <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto pr-1">
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1 @2xl:col-start-1 @2xl:row-start-2 @5xl:row-start-1">
           <SizePalette
             unit={unit}
             area={area}
@@ -879,19 +888,70 @@ export function LayoutEditor({
         </div>
 
         {/* ── the sheet ── */}
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {/*
-           * ⚠ ONE SLOT OF A FIXED HEIGHT, ALWAYS THERE, for whatever is selected. The sheet is fitted to the room
-           * left under it (`SheetFrame`), and a panel that came and went with the selection resized the sheet on
-           * every change: during a selection rectangle, many times a second (the operator, 2026-11-03). The panels
-           * stay one row and scroll sideways when the editor is narrow, rather than wrapping taller.
-           */}
-          <div className="h-[4.75rem] shrink-0">
-            {!grouped && !(selectedCell && selectionBox && textSelection.length === 0) ? (
-              <p className="flex h-full items-center rounded-xl border border-dashed border-border px-3 text-sm text-muted-foreground">
-                {chosenText
-                  ? 'A text is selected: its words, font and colour are beside the sheet.'
-                  : 'Select a cell to see its size and position here. Drag across the paper to select several.'}
+        {/* Around the whole view, so a selection rectangle can start in the grey beside the paper (`useMarquee`). */}
+        <div
+          ref={marquee.container}
+          className="relative flex min-h-0 min-w-0 overflow-hidden rounded-xl border border-border bg-muted/30 @2xl:col-start-2 @2xl:row-span-2 @2xl:row-start-1 @5xl:row-span-1"
+          {...marquee.handlers}
+        >
+          <SheetFrame
+            zoom={viewZoom}
+            onZoom={setViewZoom}
+            dock={
+              <UndoButtons
+                undoLabel={work.undoLabel}
+                redoLabel={work.redoLabel}
+                undoKey={state.keymap.undoLayout}
+                redoKey={state.keymap.redoLayout}
+                onUndo={() => stepHistory('undo')}
+                onRedo={() => stepHistory('redo')}
+              />
+            }
+          >
+            <SheetView
+              fit
+              zoom={viewZoom}
+              spec={spec}
+              label={`${name || 'New layout'}: ${plural(spec.cells.length, 'cell')}`}
+              selected={selection}
+              onSelect={pickCell}
+              marquee={marquee.rect}
+              selectedTexts={textSelection}
+              onSelectText={pickText}
+              onGrab={() => {
+                drags.current += 1;
+              }}
+              onMoveText={(id, to) => moveText(id, to, dragGesture())}
+              onMove={dragCell}
+              onResize={(index, size) =>
+                tryCells(resizeCells(area, spec.cells, [index], size), 'resize cell', true, dragGesture())
+              }
+              accepts={(event) => event.dataTransfer.types.includes(SIZE_DRAG_TYPE)}
+              onDropAt={(event, point) => {
+                const dropped = readDraggedSize(event);
+                if (!dropped) return;
+                event.preventDefault();
+                addCells(dropped.size, dropped.label, dropped.many, point);
+              }}
+            />
+          </SheetFrame>
+          {spec.cells.length === 0 && texts.length === 0 ? (
+            <div className="pointer-events-none absolute inset-x-0 top-1/3 flex justify-center px-6">
+              <p className="max-w-xs rounded-xl border border-dashed border-border bg-card/95 px-4 py-3 text-center text-sm text-muted-foreground shadow-sm">
+                <span className="block font-semibold text-foreground">This sheet is empty</span>
+                Press a size on the left to add it, or drag it onto the sheet.
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* ── the inspector: what is selected, what the last action did, and the keys that work now ── */}
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 @2xl:col-start-1 @2xl:row-start-1 @2xl:max-h-[24rem] @5xl:col-start-3 @5xl:max-h-none">
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            {!grouped && !chosenText && !(selectedCell && selectionBox && textSelection.length === 0) ? (
+              <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
+                Select a cell or a text to see its size, position and tools here. Drag across the paper to select
+                several.
               </p>
             ) : null}
             {grouped ? (
@@ -920,123 +980,48 @@ export function LayoutEditor({
                 onCopyOffset={setCopyOffset}
               />
             ) : null}
-          </div>
-          {/* Around the whole view, so a selection rectangle can start in the grey beside the paper (`useMarquee`). */}
-          <div
-            ref={marquee.container}
-            className="relative flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30"
-            {...marquee.handlers}
-          >
-            <SheetFrame
-              zoom={viewZoom}
-              onZoom={setViewZoom}
-              dock={
-                <UndoButtons
-                  undoLabel={work.undoLabel}
-                  redoLabel={work.redoLabel}
-                  undoKey={state.keymap.undoLayout}
-                  redoKey={state.keymap.redoLayout}
-                  onUndo={() => stepHistory('undo')}
-                  onRedo={() => stepHistory('redo')}
-                />
-              }
-            >
-              <SheetView
-                fit
-                zoom={viewZoom}
-                spec={spec}
-                label={`${name || 'New layout'}: ${plural(spec.cells.length, 'cell')}`}
-                selected={selection}
-                onSelect={pickCell}
-                marquee={marquee.rect}
-                selectedTexts={textSelection}
-                onSelectText={pickText}
-                onGrab={() => {
-                  drags.current += 1;
-                }}
-                onMoveText={(id, to) => moveText(id, to, dragGesture())}
-                onMove={dragCell}
-                onResize={(index, size) =>
-                  tryCells(resizeCells(area, spec.cells, [index], size), 'resize cell', true, dragGesture())
-                }
-                accepts={(event) => event.dataTransfer.types.includes(SIZE_DRAG_TYPE)}
-                onDropAt={(event, point) => {
-                  const dropped = readDraggedSize(event);
-                  if (!dropped) return;
-                  event.preventDefault();
-                  addCells(dropped.size, dropped.label, dropped.many, point);
-                }}
+            {chosenText ? (
+              <SelectedText
+                key={chosenText.id}
+                text={chosenText}
+                unit={unit}
+                onChange={(patch) => changeText(chosenText.id, patch)}
+                onMove={(position) => moveText(chosenText.id, position)}
+                onDuplicate={() => copyText(chosenText.id)}
+                onRemove={() => removeText(chosenText.id)}
+                copyOffset={textCopyOffset}
+                onCopyOffset={setTextCopyOffset}
               />
-            </SheetFrame>
-            {spec.cells.length === 0 && texts.length === 0 ? (
-              <div className="pointer-events-none absolute inset-x-0 top-1/3 flex justify-center px-6">
-                <p className="max-w-xs rounded-xl border border-dashed border-border bg-card/95 px-4 py-3 text-center text-sm text-muted-foreground shadow-sm">
-                  <span className="block font-semibold text-foreground">This sheet is empty</span>
-                  Press a size on the left to add it, or drag it onto the sheet.
-                </p>
-              </div>
             ) : null}
           </div>
-          {/* One line, whatever it says: a note that wrapped onto a second line moved the sheet too. */}
-          <div className="flex h-5 shrink-0 items-center justify-between gap-4 text-sm">
-            <p className="min-w-0 shrink truncate text-muted-foreground">
-              {groups.length === 0
-                ? paperName(spec, unit)
-                : `${paperName(spec, unit)} · ${groups.map((group) => `${group.count} of ${group.label}`).join(', ')}`}
-              {texts.length > 0 ? ` · ${plural(texts.length, 'text')}` : null}
-            </p>
-            {problem ? (
-              <p role="alert" className="min-w-0 truncate text-destructive" title={PROBLEMS[problem]}>
-                {PROBLEMS[problem] ?? 'This layout cannot be saved yet.'}
+          <div className="mt-auto flex shrink-0 flex-col gap-2">
+            <div className="flex flex-col gap-0.5 text-xs">
+              <p className="text-muted-foreground">
+                {groups.length === 0
+                  ? paperName(spec, unit)
+                  : `${paperName(spec, unit)} · ${groups.map((group) => `${group.count} of ${group.label}`).join(', ')}`}
+                {texts.length > 0 ? ` · ${plural(texts.length, 'text')}` : null}
               </p>
-            ) : (
-              <p role="status" className="min-w-0 truncate text-muted-foreground" title={note ?? undefined}>
-                {note ??
-                  'Drag a cell or a text to move it, or a cell’s corner to resize it. Drag across empty paper to select several cells.'}
-              </p>
-            )}
+              {problem ? (
+                <p role="alert" className="text-destructive">
+                  {PROBLEMS[problem] ?? 'This layout cannot be saved yet.'}
+                </p>
+              ) : (
+                <p role="status" className="text-muted-foreground">
+                  {note ??
+                    'Drag a cell or a text to move it, or a cell’s corner to resize it. Drag across empty paper to select several cells.'}
+                </p>
+              )}
+            </div>
+            <ShortcutBar
+              entries={editorShortcutBar(anySelected, state.keymap, undoable).filter(
+                // A text is not turned, so with no cell selected the bar does not offer it.
+                (entry) => selection.length > 0 || entry.press !== state.keymap.turnCell,
+              )}
+              onPress={(key) => void performKey(key)}
+            />
           </div>
-          <ShortcutBar
-            entries={editorShortcutBar(anySelected, state.keymap, undoable).filter(
-              // A text is not turned, so with no cell selected the bar does not offer it.
-              (entry) => selection.length > 0 || entry.press !== state.keymap.turnCell,
-            )}
-            onPress={(key) => void performKey(key)}
-            oneLine
-          />
         </div>
-
-        {/*
-         * ── the selected text, beside the sheet ──
-         * A column of its own, not a panel above the sheet (the operator, 2026-10-22): the sheet keeps its full
-         * height, and a portrait page is limited by height, not width.
-         */}
-        {/*
-         * ⚠ The column stays once the layout HAS texts, a text selected or not, for the same reason as the slot
-         * above the sheet: one that came and went with the selection resized the sheet. A layout with no text
-         * gives it no room.
-         */}
-        {chosenText ? (
-          <SelectedText
-            key={chosenText.id}
-            text={chosenText}
-            unit={unit}
-            onChange={(patch) => changeText(chosenText.id, patch)}
-            onMove={(position) => moveText(chosenText.id, position)}
-            onDuplicate={() => copyText(chosenText.id)}
-            onRemove={() => removeText(chosenText.id)}
-            copyOffset={textCopyOffset}
-            onCopyOffset={setTextCopyOffset}
-          />
-        ) : texts.length > 0 ? (
-          <aside
-            aria-label="Selected text"
-            className="flex w-72 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground"
-          >
-            <span className="font-medium text-foreground">No text selected</span>
-            Press a text on the sheet to change its words, font, size and colour here.
-          </aside>
-        ) : null}
       </div>
     </div>
   );
@@ -1684,13 +1669,13 @@ function SelectedGroup({
   return (
     <section
       aria-label="Selected cells and texts"
-      className="flex h-full flex-nowrap items-center gap-3 overflow-x-auto rounded-xl border border-primary/50 bg-accent/40 px-3 py-2"
+      className="flex flex-col gap-2 rounded-xl border border-primary/50 bg-accent/40 p-3"
     >
-      <p className="shrink-0 text-sm font-semibold">{name}</p>
-      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+      <p className="text-sm font-semibold">{name}</p>
+      <p className="text-xs text-muted-foreground">
         Drag any of them, or use the arrow keys, to move them all together.
       </p>
-      <div className="flex shrink-0 gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
         {onRotate ? (
           <button type="button" className={buttonClass('secondary', 'sm')} onClick={onRotate}>
             <RotateCw aria-hidden="true" className="size-3.5" />
@@ -1746,13 +1731,13 @@ function SelectedCell({
   onCopyOffset: (offset: StudioCopyOffset) => void;
 }) {
   return (
-    // Above the sheet, where the eye already is: what is selected, its exact numbers, and what can be done to it.
+    // In the inspector beside the sheet: what is selected, its exact numbers, and what can be done to it.
     <section
       aria-label={count === 1 ? 'Selected cell' : 'Selected cells'}
-      className="flex h-full flex-nowrap items-end gap-3 overflow-x-auto rounded-xl border border-primary/50 bg-accent/40 px-3 py-2"
+      className="flex flex-col gap-3 rounded-xl border border-primary/50 bg-accent/40 p-3"
     >
-      <p className="shrink-0 pb-2 text-sm font-semibold">{count === 1 ? (cell.label ?? 'Cell') : `${count} cells`}</p>
-      <div className="grid w-80 shrink-0 grid-cols-4 gap-2">
+      <p className="text-sm font-semibold">{count === 1 ? (cell.label ?? 'Cell') : `${count} cells`}</p>
+      <div className="grid grid-cols-2 gap-2">
         <LengthField
           label="Width"
           unit={unit}
@@ -1784,11 +1769,8 @@ function SelectedCell({
           onCommit={(y) => onMove({ x: cell.x, y })}
         />
       </div>
-      {/* Beside Copy, because it is where Copy puts the copy: from this cell's top right corner. */}
-      <fieldset
-        className="grid w-44 shrink-0 grid-cols-2 gap-2"
-        title="Where a copy goes, from this cell’s top right corner"
-      >
+      {/* Just above Copy, because it is where Copy puts the copy: from this cell's top right corner. */}
+      <fieldset className="grid grid-cols-2 gap-2" title="Where a copy goes, from this cell’s top right corner">
         <legend className="sr-only">Where a copy goes, from this cell’s top right corner</legend>
         <LengthField
           label="Copy: right"
@@ -1805,7 +1787,7 @@ function SelectedCell({
           onCommit={(y) => onCopyOffset({ ...copyOffset, y })}
         />
       </fieldset>
-      <div className="ml-auto flex shrink-0 gap-1.5 pb-0.5">
+      <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
           className={buttonClass('secondary', 'sm')}
@@ -1891,7 +1873,8 @@ function SelectedText({
   return (
     <aside
       aria-label="Selected text"
-      className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto rounded-xl border border-primary/50 bg-accent/40 p-3"
+      // The inspector scrolls, not the panel: one scroll for whatever is selected.
+      className="flex flex-col gap-3 rounded-xl border border-primary/50 bg-accent/40 p-3"
     >
       <div className="flex flex-col gap-1">
         <label htmlFor={wordsId} className="text-sm font-semibold">
