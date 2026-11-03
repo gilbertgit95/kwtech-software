@@ -2,6 +2,7 @@ import { declareScope, REQUIRED_SCOPE_METADATA, withCatchUp } from '@kwtech/modu
 import { Inject, Optional, SetMetadata } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import type { PosKeymap } from '../../domain/keymap.js';
+import type { PosSetupInput } from '../../domain/setup.js';
 import { PosWriteError } from '../pos.errors.js';
 import type { PosModuleOptions } from '../pos.options.js';
 import { isPosEventFor, NULL_POS_PUBSUB, POS_EVENT, type PosEvent, type PosPubSub } from '../pos.pubsub.js';
@@ -11,8 +12,10 @@ import { PosAccessService } from '../pos-access.service.js';
 import { type PosCatalogueItem, PosCatalogueService } from '../pos-catalogue.service.js';
 import { PosCustomerService } from '../pos-customer.service.js';
 import { PosSettingsService, type PosStoreSettings } from '../pos-settings.service.js';
+import { PosSetupService } from '../pos-setup.service.js';
 import { PosStockService } from '../pos-stock.service.js';
 import {
+  ImportPosSetupInputType,
   PosAvailabilityChangeType,
   PosCatalogueType,
   PosCategoryType,
@@ -22,6 +25,7 @@ import {
   PosOrderTypeOptionType,
   PosRanksType,
   PosSettingsType,
+  PosSetupOutcomeType,
   PosStockLevelsType,
   PosVariantType,
   SavePosCustomerInputType,
@@ -53,6 +57,7 @@ export class PosCatalogueResolver {
     private readonly settings: PosSettingsService,
     private readonly access: PosAccessService,
     private readonly stock: PosStockService,
+    private readonly setup: PosSetupService,
     @Inject(POS_OPTIONS) private readonly options: PosModuleOptions,
     /** Absent means not live: `posEvents` sends `sync` and ends. */
     @Optional() @Inject(POS_PUBSUB) private readonly pubsub?: PosPubSub,
@@ -359,11 +364,97 @@ export class PosCatalogueResolver {
     });
   }
 
+  /**
+   * Imports the store's setup from Excel (issue #35): the TYPED rows the
+   * browser read, planned again and written in one transaction. Bound to
+   * `pos:manage_items`, which covers the references too since they moved to
+   * the Items tab. A refusal says which rows, and that nothing was changed.
+   */
+  @Mutation(() => PosSetupOutcomeType, { name: 'importPosSetup' })
+  async importPosSetup(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('input', { type: () => ImportPosSetupInputType }) input: ImportPosSetupInputType,
+  ): Promise<PosSetupOutcomeType> {
+    if (input.mode !== 'merge' && input.mode !== 'replace') {
+      throw new PosWriteError('invalid_setup', 'Choose Add and update, or Replace.');
+    }
+    return this.setup.import(
+      { organizationId, workspaceId },
+      this.actor(gql.req),
+      toSetupInput(input),
+      input.mode,
+      input.skipErrorRows,
+    );
+  }
+
   private actor(request: unknown): string {
     const actorId = this.options.resolveActorId?.(request);
     if (!actorId) throw new PosWriteError('not_permitted', 'Not signed in');
     return actorId;
   }
+}
+
+/**
+ * The wire's rows → the domain's, every omitted optional made an explicit
+ * null: the plan compares `null` with what is stored, and `undefined` would
+ * read as a change. A list left out stays null — a tab not in the file.
+ */
+function toSetupInput(input: ImportPosSetupInputType): PosSetupInput {
+  const keys = (list: { code?: string | null; name: string }[]) =>
+    list.map((key) => ({ code: key.code ?? null, name: key.name }));
+  return {
+    categories:
+      input.categories?.map(({ line, ...row }) => ({
+        line,
+        row: { name: row.name, sortOrder: row.sortOrder ?? null, archived: row.archived },
+      })) ?? null,
+    orderTypes:
+      input.orderTypes?.map(({ line, ...row }) => ({
+        line,
+        row: { name: row.name, sortOrder: row.sortOrder ?? null, isDefault: row.isDefault, archived: row.archived },
+      })) ?? null,
+    items:
+      input.items?.map(({ line, ...row }) => ({
+        line,
+        row: {
+          code: row.code ?? null,
+          name: row.name,
+          // Narrowed for the type; `checkPosSetupInput` refuses anything else on its row.
+          kind: row.kind as 'product' | 'service',
+          category: row.category ?? null,
+          description: row.description ?? null,
+          price: row.price ?? null,
+          cost: row.cost ?? null,
+          archived: row.archived,
+        },
+      })) ?? null,
+    variants:
+      input.variants?.map(({ line, ...row }) => ({
+        line,
+        row: {
+          itemCode: row.itemCode ?? null,
+          itemName: row.itemName ?? null,
+          code: row.code ?? null,
+          name: row.name,
+          price: row.price,
+          cost: row.cost ?? null,
+          sortOrder: row.sortOrder ?? null,
+          archived: row.archived,
+        },
+      })) ?? null,
+    references:
+      input.references?.map(({ line, ...row }) => ({ line, row: { option: row.option, isDefault: row.isDefault } })) ??
+      null,
+    held: {
+      categories: keys(input.held.categories),
+      orderTypes: keys(input.held.orderTypes),
+      items: keys(input.held.items),
+      variants: keys(input.held.variants),
+      references: keys(input.held.references),
+    },
+  };
 }
 
 /** A keymap off the wire: JSON text, shaped by `validateKeymap` in the service. */

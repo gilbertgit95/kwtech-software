@@ -610,6 +610,28 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-03** — **A store's POS setup moves in and out of Excel from the Items tab: one workbook, a tab per sub-tab, one set of rules on both sides (issue #35, last of three PRs).**
+
+  Setting up a new till or branch meant re-typing every item, size, category,
+  order type and reference. The operator chose one file for the whole Items
+  tab (2026-11-03).
+  - **One set of rules, run twice.** `domain/setup.ts` reads the file in the
+    browser and plans it for the preview; the server receives typed rows,
+    checks them again (`checkPosSetupInput`) and plans again inside its
+    transaction with the same `planPosSetup`, so the preview and the import
+    cannot disagree.
+  - **One transaction, 60 s.** The app's `withTransaction` now passes Prisma's
+    options through; only this write asks for more than the 5 s default.
+  - **Refuse, never guess**, and **a tab missing from the file is left alone**;
+    Replace archives, never deletes, and never what a bad row meant.
+  - **Writing only what changed:** found by the first service test — an
+    unchanged reference list was being rewritten, bumping the settings'
+    version and sending a live event on a no-op import.
+  - **Not done:** no availability (#37) in the file, and stock links and the
+    #47 ranking do not travel (they point at ids). The Settings tab links to
+    Items rather than hosting a second copy of the screen. `module-permissions`'
+    feature import moves onto the shared pieces in a follow-up issue.
+
 - **2026-11-03** — **`.xlsx` is read and written in the browser with `exceljs`, loaded on demand, and the import wizard and export dialog live in `@kwtech/web-ui` (issue #35, second of three PRs).**
 
   The POS setup import needs a template with dropdowns, so a read-only library

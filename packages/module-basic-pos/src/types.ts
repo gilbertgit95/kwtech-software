@@ -42,6 +42,8 @@ export type PosRefusal =
   | 'not_permitted'
   | 'conflict'
   | 'limit_reached'
+  /** An Excel setup import with rows that cannot be imported (issue #35): the message lists them. */
+  | 'invalid_setup'
   | 'not_open'
   | 'not_unpaid'
   | 'not_paid'

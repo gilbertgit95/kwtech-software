@@ -64,6 +64,11 @@ export const POS_OPERATIONS = {
     setPosAvailability(${SCOPE_ARGS}, itemIds: $itemIds, variantIds: $variantIds, available: $available) { items variants }
   }`,
 
+  /** The store's setup from Excel (issue #35): typed rows, planned again on the server. */
+  importPosSetup: `mutation ImportPosSetup(${SCOPE_VARS}, $input: ImportPosSetupInput!) {
+    importPosSetup(${SCOPE_ARGS}, input: $input) { sheets { name created updated archived } }
+  }`,
+
   savePosCategory: `mutation SavePosCategory(${SCOPE_VARS}, $name: String!, $categoryId: String, $sortOrder: Int) {
     savePosCategory(${SCOPE_ARGS}, name: $name, categoryId: $categoryId, sortOrder: $sortOrder) { ${CATEGORY} }
   }`,

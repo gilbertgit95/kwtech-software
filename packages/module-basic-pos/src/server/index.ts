@@ -27,6 +27,7 @@ export * from './pos-rank.process.js';
 export * from './pos-refund.service.js';
 export * from './pos-report.service.js';
 export * from './pos-settings.service.js';
+export * from './pos-setup.service.js';
 export * from './pos-stock.service.js';
 export * from './pos-time-zone.service.js';
 export * from './server-module.js';

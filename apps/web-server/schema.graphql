@@ -636,6 +636,17 @@ type FoundUser {
   username: String
 }
 
+input ImportPosSetupInput {
+  categories: [PosSetupCategoryInput!]
+  held: PosSetupHeldInput!
+  items: [PosSetupItemInput!]
+  mode: String!
+  orderTypes: [PosSetupOrderTypeInput!]
+  references: [PosSetupReferenceInput!]
+  skipErrorRows: Boolean!
+  variants: [PosSetupVariantInput!]
+}
+
 type InvitationDeclineResult {
   declined: Boolean!
   organizationName: String
@@ -818,6 +829,7 @@ type Mutation {
   forgetMyDeviceDisplay(device: String!, layout: String!): DisplayPreferences!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
   holdPosOrder(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
+  importPosSetup(input: ImportPosSetupInput!, organizationId: String!, workspaceId: String!): PosSetupOutcome!
   inviteMember(email: String!, organizationId: String!, roleId: String): PermissionInvitationResult!
   inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
@@ -1671,6 +1683,75 @@ type PosSettings {
   referenceOptions: [String!]!
   timeZone: String!
   version: Int!
+}
+
+input PosSetupCategoryInput {
+  archived: Boolean!
+  line: Int!
+  name: String!
+  sortOrder: Int
+}
+
+input PosSetupHeldInput {
+  categories: [PosSetupKeyInput!]!
+  items: [PosSetupKeyInput!]!
+  orderTypes: [PosSetupKeyInput!]!
+  references: [PosSetupKeyInput!]!
+  variants: [PosSetupKeyInput!]!
+}
+
+input PosSetupItemInput {
+  archived: Boolean!
+  category: String
+  code: String
+  cost: Float
+  description: String
+  kind: String!
+  line: Int!
+  name: String!
+  price: Float
+}
+
+input PosSetupKeyInput {
+  code: String
+  name: String!
+}
+
+input PosSetupOrderTypeInput {
+  archived: Boolean!
+  isDefault: Boolean!
+  line: Int!
+  name: String!
+  sortOrder: Int
+}
+
+type PosSetupOutcome {
+  sheets: [PosSetupSheetOutcome!]!
+}
+
+input PosSetupReferenceInput {
+  isDefault: Boolean!
+  line: Int!
+  option: String!
+}
+
+type PosSetupSheetOutcome {
+  archived: Int!
+  created: Int!
+  name: String!
+  updated: Int!
+}
+
+input PosSetupVariantInput {
+  archived: Boolean!
+  code: String
+  cost: Float
+  itemCode: String
+  itemName: String
+  line: Int!
+  name: String!
+  price: Float!
+  sortOrder: Int
 }
 
 type PosStockLevel {

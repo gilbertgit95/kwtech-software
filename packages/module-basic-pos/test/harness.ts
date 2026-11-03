@@ -14,6 +14,7 @@ import { PosRankItemsProcess } from '../src/server/pos-rank.process.js';
 import { PosRefundService } from '../src/server/pos-refund.service.js';
 import { PosReportService } from '../src/server/pos-report.service.js';
 import { PosSettingsService } from '../src/server/pos-settings.service.js';
+import { PosSetupService } from '../src/server/pos-setup.service.js';
 import { PosStockService } from '../src/server/pos-stock.service.js';
 import { PosTimeZoneService } from '../src/server/pos-time-zone.service.js';
 import { type FakeClient, fakeClient } from './fake-client.js';
@@ -77,7 +78,17 @@ export function harness(options: HarnessOptions = {}) {
   const settings = new PosSettingsService(prisma, events, zones);
   const moduleOptions = { resolveActorId: (request: unknown) => (request as { userId?: string } | undefined)?.userId };
   const stock = new PosStockService(prisma, options.stock?.events, options.stock?.levels);
-  const resolver = new PosCatalogueResolver(catalogue, customers, settings, access, stock, moduleOptions, pubsub);
+  const setup = new PosSetupService(prisma, events, catalogue);
+  const resolver = new PosCatalogueResolver(
+    catalogue,
+    customers,
+    settings,
+    access,
+    stock,
+    setup,
+    moduleOptions,
+    pubsub,
+  );
   const orders = new PosOrderService(prisma, zones);
   const writes = new PosOrderWriteService(prisma, events, access, stock);
   const refunds = new PosRefundService(prisma, events, stock);
@@ -102,6 +113,7 @@ export function harness(options: HarnessOptions = {}) {
     stock,
     orderResolver,
     ranker,
+    setup,
   };
 }
 

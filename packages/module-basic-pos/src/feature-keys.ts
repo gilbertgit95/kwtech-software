@@ -186,6 +186,8 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Mutation.setPosOrderTypeOptionArchived'),
       op('Mutation.setPosDefaultOrderType'),
       op('Mutation.savePosReferenceOptions'),
+      /* The whole setup from Excel (issue #35): items, sizes, categories, order types and references, one transaction. */
+      op('Mutation.importPosSetup'),
     ],
   },
   {

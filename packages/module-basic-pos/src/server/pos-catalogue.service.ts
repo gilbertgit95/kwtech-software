@@ -582,7 +582,12 @@ export class PosCatalogueService {
     }
   }
 
-  private async checkCap(scope: InScope, actorId: string, current: number): Promise<LimitDecision> {
+  /**
+   * Whether one more item or variant fits under `pos:items`, given `current`.
+   * Public for the setup import (issue #35), which checks a whole file's worth
+   * against the same cap — one rule, read in one place.
+   */
+  async checkCap(scope: InScope, actorId: string, current: number): Promise<LimitDecision> {
     if (this.limits) return this.limits.check({ actorId, key: POS_LIMIT.items, current, ...scope });
     const cap = POS_LIMIT_REGISTRY.find((spec) => spec.key === POS_LIMIT.items)?.defaultValue ?? 0;
     return { allowed: current < cap, limit: cap, current, remaining: Math.max(cap - current, 0) };

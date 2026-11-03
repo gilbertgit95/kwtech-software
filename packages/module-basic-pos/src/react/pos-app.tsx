@@ -174,7 +174,10 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
       {section === 'items' && canManageItems ? <ItemsSection state={state} /> : null}
       {section === 'customers' ? <CustomersSection state={state} onOpenOrder={openOrder} /> : null}
       {section === 'reports' && canSeeReports ? <ReportsSection state={state} onOpenOrder={openOrder} /> : null}
-      {section === 'settings' && canManageSettings ? <SettingsSection state={state} /> : null}
+      {section === 'settings' && canManageSettings ? (
+        // The Excel setup lives on Items; Settings points there for whoever may use it (issue #35).
+        <SettingsSection state={state} onOpenItems={canManageItems ? () => setSection('items') : undefined} />
+      ) : null}
     </div>
   );
 }

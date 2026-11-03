@@ -902,3 +902,198 @@ export class PosReportType {
   @Field()
   truncated!: boolean;
 }
+
+// ── the setup import (issue #35) ────────────────────────────────────────────
+//
+// TYPED rows, never a file: the browser read the workbook with `readPosSetup`.
+// Each row carries `line`, the row number Excel shows, so a problem the server
+// finds still points at it. A list left out (null) is a tab NOT in the file:
+// that part of the store is left alone. Money is centavos, as everywhere.
+
+@InputType('PosSetupCategoryInput')
+export class PosSetupCategoryInputType {
+  @Field(() => Int)
+  line!: number;
+
+  @Field()
+  name!: string;
+
+  /** Null: keep the current one (0 for a new category). */
+  @Field(() => Int, { nullable: true })
+  sortOrder?: number | null;
+
+  @Field()
+  archived!: boolean;
+}
+
+@InputType('PosSetupOrderTypeInput')
+export class PosSetupOrderTypeInputType {
+  @Field(() => Int)
+  line!: number;
+
+  @Field()
+  name!: string;
+
+  @Field(() => Int, { nullable: true })
+  sortOrder?: number | null;
+
+  @Field()
+  isDefault!: boolean;
+
+  @Field()
+  archived!: boolean;
+}
+
+@InputType('PosSetupItemInput')
+export class PosSetupItemInputType {
+  @Field(() => Int)
+  line!: number;
+
+  @Field(() => String, { nullable: true })
+  code?: string | null;
+
+  @Field()
+  name!: string;
+
+  /** `product` or `service`. */
+  @Field()
+  kind!: string;
+
+  /** A category's name. */
+  @Field(() => String, { nullable: true })
+  category?: string | null;
+
+  @Field(() => String, { nullable: true })
+  description?: string | null;
+
+  /** Null only for an item whose sizes carry the prices. */
+  @Field(() => Float, { nullable: true })
+  price?: number | null;
+
+  @Field(() => Float, { nullable: true })
+  cost?: number | null;
+
+  @Field()
+  archived!: boolean;
+}
+
+@InputType('PosSetupVariantInput')
+export class PosSetupVariantInputType {
+  @Field(() => Int)
+  line!: number;
+
+  /** Its item, by code; else `itemName`. */
+  @Field(() => String, { nullable: true })
+  itemCode?: string | null;
+
+  @Field(() => String, { nullable: true })
+  itemName?: string | null;
+
+  @Field(() => String, { nullable: true })
+  code?: string | null;
+
+  @Field()
+  name!: string;
+
+  @Field(() => Float)
+  price!: number;
+
+  @Field(() => Float, { nullable: true })
+  cost?: number | null;
+
+  @Field(() => Int, { nullable: true })
+  sortOrder?: number | null;
+
+  @Field()
+  archived!: boolean;
+}
+
+@InputType('PosSetupReferenceInput')
+export class PosSetupReferenceInputType {
+  @Field(() => Int)
+  line!: number;
+
+  @Field()
+  option!: string;
+
+  @Field()
+  isDefault!: boolean;
+}
+
+/** How a row that could not be read is found again: so Replace never archives what it meant. */
+@InputType('PosSetupKeyInput')
+export class PosSetupKeyInputType {
+  @Field(() => String, { nullable: true })
+  code?: string | null;
+
+  @Field()
+  name!: string;
+}
+
+@InputType('PosSetupHeldInput')
+export class PosSetupHeldInputType {
+  @Field(() => [PosSetupKeyInputType])
+  categories!: PosSetupKeyInputType[];
+
+  @Field(() => [PosSetupKeyInputType])
+  orderTypes!: PosSetupKeyInputType[];
+
+  @Field(() => [PosSetupKeyInputType])
+  items!: PosSetupKeyInputType[];
+
+  @Field(() => [PosSetupKeyInputType])
+  variants!: PosSetupKeyInputType[];
+
+  @Field(() => [PosSetupKeyInputType])
+  references!: PosSetupKeyInputType[];
+}
+
+@InputType('ImportPosSetupInput')
+export class ImportPosSetupInputType {
+  /** `merge` (Add and update) or `replace` (also archive what each sheet in the file leaves out). */
+  @Field()
+  mode!: string;
+
+  /** Import the rest when some rows have errors. Off: any error refuses the whole file. */
+  @Field()
+  skipErrorRows!: boolean;
+
+  @Field(() => [PosSetupCategoryInputType], { nullable: true })
+  categories?: PosSetupCategoryInputType[] | null;
+
+  @Field(() => [PosSetupOrderTypeInputType], { nullable: true })
+  orderTypes?: PosSetupOrderTypeInputType[] | null;
+
+  @Field(() => [PosSetupItemInputType], { nullable: true })
+  items?: PosSetupItemInputType[] | null;
+
+  @Field(() => [PosSetupVariantInputType], { nullable: true })
+  variants?: PosSetupVariantInputType[] | null;
+
+  @Field(() => [PosSetupReferenceInputType], { nullable: true })
+  references?: PosSetupReferenceInputType[] | null;
+
+  @Field(() => PosSetupHeldInputType)
+  held!: PosSetupHeldInputType;
+}
+
+@ObjectType('PosSetupSheetOutcome')
+export class PosSetupSheetOutcomeType {
+  @Field()
+  name!: string;
+
+  @Field(() => Int)
+  created!: number;
+
+  @Field(() => Int)
+  updated!: number;
+
+  @Field(() => Int)
+  archived!: number;
+}
+
+@ObjectType('PosSetupOutcome')
+export class PosSetupOutcomeType {
+  @Field(() => [PosSetupSheetOutcomeType])
+  sheets!: PosSetupSheetOutcomeType[];
+}
