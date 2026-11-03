@@ -182,15 +182,6 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     }
   }, [client, scope]);
 
-  const loadRanks = useCallback(async () => {
-    try {
-      setRanks(rankMap(await client.ranks(scope)));
-    } catch {
-      // A courtesy, like the counts: without it the till lists by name, and sells the same.
-      setRanks(null);
-    }
-  }, [client, scope]);
-
   const reloadPending = useCallback(async () => {
     try {
       setPending(await client.orders(scope, 'pending'));
@@ -233,10 +224,33 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     void loadCatalogue();
     void loadSettings();
     void loadStock();
-    // ⚠ Here only, never in `onEvent` below: the ranking is fixed while the till is open.
-    void loadRanks();
     void reloadPending();
-  }, [loadCatalogue, loadSettings, loadStock, loadRanks, reloadPending]);
+  }, [loadCatalogue, loadSettings, loadStock, reloadPending]);
+
+  /*
+   * The store's ranking (issue #47): read once per store, here only — never in
+   * `onEvent` below, because the ranking is fixed while the till is open.
+   *
+   * ⚠ ITS OWN EFFECT, WITH A CANCELLED GUARD. The catalogue and stock reads
+   * correct themselves on the next live event; the ranking is never read
+   * again, so an answer for the store the till just LEFT would stay on the new
+   * one until it reopened. The old store's ranks are cleared at once, and a
+   * late answer for it is dropped.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setRanks(null);
+    client
+      .ranks(scope)
+      .then((answer) => {
+        if (!cancelled) setRanks(rankMap(answer));
+      })
+      // A courtesy, like the counts: without it the till lists by name, and sells the same.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [client, scope]);
 
   // ── live ──────────────────────────────────────────────────────────────────
 
