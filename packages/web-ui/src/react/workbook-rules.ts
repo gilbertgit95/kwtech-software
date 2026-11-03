@@ -92,9 +92,11 @@ export function workbookCell(column: Pick<WorkbookColumn, 'kind'>, value: Workbo
 /**
  * The dropdown a column offers in Excel, as a data-validation formula, or null.
  *
- * ⚠ Excel limits a typed-in list to 255 characters. A longer one is left with
- * no dropdown rather than written into a file Excel then "repairs" by
- * dropping every dropdown; the import still checks the value.
+ * ⚠ Excel limits a typed-in list to 255 characters, and separates it with
+ * commas. A longer list, or a choice holding a comma or a quote, is left with
+ * no dropdown — rather than one Excel "repairs" away, or one that splits
+ * "Dine in, large" in two and then refuses it; the import still checks the
+ * value.
  */
 export function workbookDropdown(
   column: Pick<WorkbookColumn, 'kind' | 'choices' | 'listFrom'>,
@@ -103,8 +105,11 @@ export function workbookDropdown(
 ): string | null {
   if (column.kind === 'yes_no') return '"Yes,No"';
   if (column.kind === 'choice') {
-    const list = (column.choices ?? []).join(',');
-    if (!list || list.length > 255 || list.includes('"')) return null;
+    const choices = column.choices ?? [];
+    // A comma SEPARATES Excel's list and a quote ends it: a choice holding either cannot be offered as itself.
+    if (choices.some((choice) => choice.includes(',') || choice.includes('"'))) return null;
+    const list = choices.join(',');
+    if (!list || list.length > 255) return null;
     return `"${list}"`;
   }
   if (!column.listFrom) return null;

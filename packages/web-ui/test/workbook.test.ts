@@ -71,6 +71,8 @@ describe('cells written', () => {
   it('⚠ leaves out a dropdown Excel would reject: a list past 255 characters, or another tab that is not written', () => {
     const long = Array.from({ length: 60 }, (_, index) => `choice-${index}`);
     expect(workbookDropdown({ kind: 'choice', choices: long }, [])).toBeNull();
+    expect(workbookDropdown({ kind: 'choice', choices: ['Dine in, large', 'Takeout'] }, [])).toBeNull();
+    expect(workbookDropdown({ kind: 'choice', choices: ['12" pizza', 'Slice'] }, [])).toBeNull();
     expect(workbookDropdown({ kind: 'text', listFrom: { sheet: 'Categories', header: 'Name' } }, [ITEMS])).toBeNull();
   });
 
