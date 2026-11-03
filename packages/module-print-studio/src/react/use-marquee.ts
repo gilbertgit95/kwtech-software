@@ -10,7 +10,7 @@ import {
 } from 'react';
 import type { StudioRect, StudioSize } from '../domain/layout.js';
 import { cellsInRect, clampToSheet, rectBetween, type StudioPoint } from '../domain/marquee.js';
-import { edgeScrollStep, MARQUEE_HOLD_MS, marqueeStart, type StudioPressTarget, sameIndexes } from './view/marquee.js';
+import { coverChanged, edgeScrollStep, MARQUEE_HOLD_MS, marqueeStart, type StudioPressTarget } from './view/marquee.js';
 
 /** How far the pointer must travel, in pixels, before a press is a rectangle and not a click. */
 const MARQUEE_START_PX = 4;
@@ -79,7 +79,11 @@ interface Press {
   armed: boolean;
   /** Is drawing: it moved far enough, and holds the pointer. */
   drawing: boolean;
-  covered: readonly number[];
+  /**
+   * What `onCover` last reported; null until the first report, so a plain rectangle over nothing still replaces
+   * the selection (with nothing) rather than leaving the old one.
+   */
+  covered: readonly number[] | null;
   hold: ReturnType<typeof setTimeout> | null;
 }
 
@@ -125,7 +129,7 @@ export function useMarquee(options: MarqueeOptions): Marquee {
     const next = rectBetween(clampToSheet(current.start, sheet), clampToSheet(at, sheet));
     setRect((shown) => (shown && sameRect(shown, next) ? shown : next));
     const covered = cellsInRect(next, cells);
-    if (sameIndexes(covered, current.covered)) return;
+    if (!coverChanged(current.covered, covered)) return;
     current.covered = covered;
     onCover(covered, current.adding);
   }
@@ -163,7 +167,7 @@ export function useMarquee(options: MarqueeOptions): Marquee {
     // Only presses in the view itself: the zoom, the pager and the rulers are beside it, and keep theirs.
     if (!(target instanceof Element) || !target.closest(VIEW_SELECTOR)) return;
     const cell = target.closest(CELL_SELECTOR);
-    const from: StudioPressTarget = !cell ? 'paper' : cell.hasAttribute('data-filled') ? 'filled_cell' : 'empty_cell';
+    const from = pressTarget(cell);
     const start = marqueeStart(from, event.pointerType, event.altKey);
     const at = toSheet(event.clientX, event.clientY);
     if (start === 'none' || !at) return;
@@ -182,7 +186,7 @@ export function useMarquee(options: MarqueeOptions): Marquee {
       lastY: event.clientY,
       armed: start === 'now',
       drawing: false,
-      covered: [],
+      covered: null,
       hold:
         start === 'hold'
           ? setTimeout(() => {
@@ -272,6 +276,12 @@ export function useMarquee(options: MarqueeOptions): Marquee {
     cancel,
     drew: () => drewLast.current,
   };
+}
+
+/** What a press landed on: the paper, or a cell that a drag moves (`data-filled`) or does not. */
+function pressTarget(cell: Element | null): StudioPressTarget {
+  if (!cell) return 'paper';
+  return cell.hasAttribute('data-filled') ? 'filled_cell' : 'empty_cell';
 }
 
 function sameRect(a: StudioRect, b: StudioRect): boolean {

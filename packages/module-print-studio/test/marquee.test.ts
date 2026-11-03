@@ -1,5 +1,6 @@
 import { cellsInRect, clampToSheet, rectBetween, rectContains } from '../src/domain/marquee.js';
 import {
+  coverChanged,
   edgeScrollStep,
   MARQUEE_EDGE_PX,
   MARQUEE_SCROLL_MAX_PX,
@@ -141,5 +142,18 @@ describe('the editor’s selection by rectangle', () => {
   it('a Ctrl-click adds a cell last, or takes it out', () => {
     expect(toggleIndex([1, 3], 5)).toEqual([1, 3, 5]);
     expect(toggleIndex([1, 3, 5], 3)).toEqual([1, 5]);
+  });
+});
+
+describe('reporting what a rectangle covers', () => {
+  it('reports the first cover even when it is nothing, so a rectangle over bare paper clears the selection', () => {
+    expect(coverChanged(null, [])).toBe(true);
+    expect(coverChanged(null, [2])).toBe(true);
+  });
+
+  it('after that, only a change', () => {
+    expect(coverChanged([], [])).toBe(false);
+    expect(coverChanged([1, 2], [1, 2])).toBe(false);
+    expect(coverChanged([1, 2], [1])).toBe(true);
   });
 });

@@ -77,6 +77,16 @@ export function toggleIndex(selection: readonly number[], index: number): number
   return selection.includes(index) ? selection.filter((one) => one !== index) : [...selection, index];
 }
 
+/**
+ * Whether the cells a rectangle covers must be reported: always the first
+ * time (`previous` null), even when it covers nothing — a plain rectangle over
+ * bare paper replaces the selection with nothing — and after that only when
+ * they changed, so a drag that covers nothing new re-renders nothing.
+ */
+export function coverChanged(previous: readonly number[] | null, next: readonly number[]): boolean {
+  return previous === null || !sameIndexes(previous, next);
+}
+
 /** Whether two lists of cell indexes are the same — so a drag that covers nothing new re-renders nothing. */
 export function sameIndexes(a: readonly number[], b: readonly number[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
