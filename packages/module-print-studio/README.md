@@ -159,7 +159,8 @@ shows when the Layouts section is opened again.
 - **Shortcut keys** (`keymap.ts`): `STUDIO_KEY_ACTIONS`, `STUDIO_DEFAULT_KEYMAP`,
   `validateStudioKeymap` (run by the settings screen AND the server),
   `effectiveStudioKeymap` (a saved keymap over the defaults; never trusts what
-  was stored), `studioKeyOfPress`. The arrows and Esc are fixed and not in the
+  was stored, and an action added later never takes a saved key: it gets the
+  next free one), `studioKeyOfPress`. The arrows and Esc are fixed and not in the
   map.
 
 ## Printing on the workspace's printers

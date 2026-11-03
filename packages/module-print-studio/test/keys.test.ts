@@ -131,8 +131,39 @@ describe('effectiveStudioKeymap', () => {
     expect(effective.turnPhoto).toBe('T');
   });
 
+  it('⚠ keeps a saved key that a NEW default would take, and gives the new action a free one (CodeRabbit on #55)', () => {
+    // Saved before Turn left existed, with Shift+R on "select same photo": valid then.
+    const before = Object.fromEntries(
+      Object.entries({ ...KEYS, selectSamePhoto: 'Shift+R', turnPhoto: 'T' }).filter(
+        ([action]) => action !== 'turnPhotoLeft',
+      ),
+    );
+    const effective = effectiveStudioKeymap(before);
+    expect(effective).not.toBe(KEYS);
+    expect(effective.selectSamePhoto).toBe('Shift+R');
+    expect(effective.turnPhoto).toBe('T');
+    expect(effective.turnPhotoLeft).toBe('Alt+R');
+    // And what comes out is a keymap with one action per key on each screen.
+    expect(validateStudioKeymap(effective)).toEqual({ keymap: effective });
+  });
+
+  it('takes the next free key when the first fallback is taken too', () => {
+    const before = Object.fromEntries(
+      Object.entries({ ...KEYS, selectSamePhoto: 'Shift+R', selectAll: 'Alt+R' }).filter(
+        ([action]) => action !== 'turnPhotoLeft',
+      ),
+    );
+    expect(effectiveStudioKeymap(before).turnPhotoLeft).toBe('Alt+Shift+R');
+  });
+
+  it('a saved key for the new action itself is kept as it is', () => {
+    expect(effectiveStudioKeymap({ turnPhotoLeft: 'L' }).turnPhotoLeft).toBe('L');
+  });
+
   it('⚠ falls back to the defaults whole when what was stored no longer validates', () => {
-    expect(effectiveStudioKeymap({ turnPhoto: 'S' })).toBe(KEYS);
+    // Invalid on its own: two of its keys on one screen, or a key the browser keeps.
+    expect(effectiveStudioKeymap({ turnPhoto: 'S', selectSamePhoto: 'S' })).toBe(KEYS);
+    expect(effectiveStudioKeymap({ turnPhoto: 'F5' })).toBe(KEYS);
     expect(effectiveStudioKeymap('nonsense')).toBe(KEYS);
   });
 });

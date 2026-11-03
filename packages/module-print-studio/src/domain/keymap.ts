@@ -69,8 +69,8 @@ export const STUDIO_DEFAULT_KEYMAP: StudioKeymap = {
   zoomOut: '-',
   turnPhoto: 'R',
   /*
-   * Added later (issue #51). ⚠ A NEW DEFAULT THAT CLASHES WITH A SAVED KEY DROPS THE WHOLE SAVED MAP
-   * (`effectiveStudioKeymap`), so it is one nobody is likely to have bound: Shift with the turn's own letter.
+   * Added later (issue #51): Shift with the turn's own letter. A workspace that already gave Shift+R to another
+   * Print action keeps it, and Turn left gets the next free key (`effectiveStudioKeymap`).
    */
   turnPhotoLeft: 'Shift+R',
   resetPhoto: '0',
@@ -238,15 +238,57 @@ export function validateStudioKeymap(value: unknown): { keymap: StudioKeymap } |
  * A saved keymap merged over the defaults: an action added in a later version
  * gets its default key rather than none. What the screens and the bar read.
  *
- * ⚠ NEVER TRUSTS WHAT WAS STORED. A saved map that no longer validates — a
- * default added later now clashes with a custom key, a row edited by hand —
- * falls back to the defaults whole, rather than leaving a screen with two
- * actions on one key.
+ * ⚠ A NEW ACTION NEVER TAKES A SAVED KEY. When an action the saved map never
+ * had (added since it was saved) has a default the workspace already gave to
+ * another action on the same screen, the saved key stays where it was and the
+ * new action gets the first free key of `fallbackKeys` instead. Before this,
+ * one new default that clashed made the whole saved map invalid and every
+ * custom key fell back to the defaults (CodeRabbit on #55: `Shift+R`, added
+ * for Turn left, may already be somebody's key).
+ *
+ * ⚠ STILL NEVER TRUSTS WHAT WAS STORED. A saved map that does not validate on
+ * its own — a row edited by hand, two of its keys on one action — falls back
+ * to the defaults whole, rather than leaving a screen with two actions on one
+ * key.
  */
 export function effectiveStudioKeymap(saved: unknown): StudioKeymap {
   if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return STUDIO_DEFAULT_KEYMAP;
-  const checked = validateStudioKeymap({ ...STUDIO_DEFAULT_KEYMAP, ...(saved as Record<string, unknown>) });
+  const given = saved as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...STUDIO_DEFAULT_KEYMAP, ...given };
+  for (const action of STUDIO_KEY_ACTION_NAMES) {
+    if (Object.hasOwn(given, action)) continue;
+    const used = keysInZone(merged, STUDIO_KEY_ACTIONS[action].zone, action);
+    const wanted = STUDIO_DEFAULT_KEYMAP[action];
+    if (!used.has(wanted)) continue;
+    const free = fallbackKeys(wanted).find((key) => !used.has(key));
+    if (free) merged[action] = free;
+  }
+  const checked = validateStudioKeymap(merged);
   return 'keymap' in checked ? checked.keymap : STUDIO_DEFAULT_KEYMAP;
+}
+
+/** The keys the other actions of one screen hold in a keymap being built, as stored (`normalizeStudioKey`). */
+function keysInZone(keymap: Record<string, unknown>, zone: StudioKeyZone, except: StudioKeyAction): Set<string> {
+  const keys = new Set<string>();
+  for (const action of STUDIO_KEY_ACTION_NAMES) {
+    if (action === except || STUDIO_KEY_ACTIONS[action].zone !== zone) continue;
+    const raw = keymap[action];
+    const key = typeof raw === 'string' ? normalizeStudioKey(raw) : null;
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+/**
+ * Where a new action's key goes when its default is taken, in order: its own
+ * letter with Alt, then Alt and Shift, then the function keys. Each one a key
+ * `checkKey` allows, so the result still validates. Fixed, so every computer
+ * gives the same answer.
+ */
+function fallbackKeys(key: string): string[] {
+  const base = key.split('+').at(-1) ?? key;
+  const functionKeys = Array.from({ length: 12 }, (_none, at) => `F${at + 1}`);
+  return [`Alt+${base}`, `Alt+Shift+${base}`, ...functionKeys].filter((candidate) => checkKey(candidate) === null);
 }
 
 /** The action a key is bound to on a screen, or null. */

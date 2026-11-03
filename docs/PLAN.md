@@ -629,9 +629,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
     sideways, which made the old Turn go left.
   - **Turn left is a new key action, `turnPhotoLeft`, default `Shift+R`.**
     Turn right keeps the stored name `turnPhoto`, so saved keymaps keep their
-    key. A new default that clashes with a saved key drops the whole saved map
-    (`effectiveStudioKeymap`), so the default is one nobody is likely to have
-    bound.
+    key. **A new action never takes a saved key** (`effectiveStudioKeymap`,
+    CodeRabbit on #55): a workspace that already gave Shift+R to another Print
+    action keeps it, and Turn left gets the first free key of Alt+R,
+    Alt+Shift+R, then F1–F12. Before, one clashing new default dropped the
+    whole saved map to the defaults; that still happens only for a saved map
+    that is invalid on its own.
   - **Reset's icon is an eraser**, apart from the turns, not an arrow.
   - **Not done:** keys for the mirrors (the bar's buttons only; the issue asked
     for none). The mirror buttons are switches (`role="switch"`,
