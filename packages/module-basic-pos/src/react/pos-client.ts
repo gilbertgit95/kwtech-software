@@ -1,6 +1,7 @@
 'use client';
 
 import { POS_OPERATIONS } from '../operations.js';
+import { announcePosWrite, isPosWrite } from './pos-local-events.js';
 import type { PosSetupMutationInput } from './view/setup.js';
 
 /**
@@ -498,7 +499,17 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
     const body = (await response.json()) as { data?: Record<string, unknown>; errors?: { message: string }[] };
     if (body.errors?.length) throw new Error(body.errors[0]?.message ?? 'The request was refused.');
     if (!body.data || !(operation in body.data)) throw new Error('The server returned no data.');
-    return body.data[operation] as T;
+    const answer = body.data[operation];
+    /*
+     * Saved: this page's other screens hear it NOW, not when (or if) the
+     * socket brings the server's copy back (issue #50, `pos-local-events.ts`).
+     * An order write answers with the order, which names it.
+     */
+    if (isPosWrite(operation)) {
+      const id = typeof answer === 'object' && answer !== null ? (answer as { id?: unknown }).id : null;
+      announcePosWrite(scope, operation, typeof id === 'string' ? id : null);
+    }
+    return answer as T;
   }
 
   const ref = (order: PosOrderRefView) => ({ orderId: order.id, version: order.version });

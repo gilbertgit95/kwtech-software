@@ -111,6 +111,8 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
     setSection('orders');
   };
   const go = (next: Section) => {
+    // ⚠ The till outlives its tab, so coming BACK to Sell reads it again: whatever an event missed is current (#50).
+    if (next === 'sell' && section !== 'sell') state.refresh();
     setSection(next);
     if (next !== 'orders') setOpenOrderId(null);
   };
@@ -127,7 +129,7 @@ export function PosApp({ organizationId, workspaceId, client }: AppProps & { cli
       }}
     >
       <SectionBar label="Point of sale" sections={sections} current={section} onChange={go}>
-        {!state.live ? 'Not live — other tills’ changes show when you reload.' : null}
+        {!state.live ? 'Not live — other tills’ changes show when you switch tabs or come back to this window.' : null}
       </SectionBar>
 
       {section === 'sell' ? (

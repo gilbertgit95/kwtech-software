@@ -238,7 +238,15 @@ async function turnOn() {
       file: SERVER_ENV,
       set: { FRONTEND_URL: origin, CORS_ORIGINS: `${origin},${LOCAL_WEB}`, LISTEN_HOST: '127.0.0.1' },
     },
-    { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: `wss://${address}/api/v1/graphql` } },
+    /*
+     * ⚠ A PATH, NOT wss://<address> (issue #50). The browser resolves it against
+     * the address the page was opened on, so phones reach the socket at
+     * wss://<address> and this computer at wss://localhost — through Caddy
+     * both times. A full address sent THIS computer's browser to its own
+     * network address too, which on WSL never answers (docs/HTTPS.md §4): the
+     * page loaded, and nothing on it was ever live.
+     */
+    { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: '/api/v1/graphql' } },
   ]);
   validateCaddyfile(address);
 
@@ -260,7 +268,9 @@ async function turnOn() {
      Development:  pnpm dev:focus …   and, in a second terminal,  pnpm https
      (The web app must be BUILT again: NEXT_PUBLIC_WS_URL is baked in. And
      restart both apps: from now on they answer only to Caddy, so phones use
-     https://${address}, never :8081 or :8080.)
+     https://${address}, never :8081 or :8080. ⚠ THIS computer uses
+     https://localhost — its own network address may not answer it, and on
+     http://localhost:8081 live updates cannot connect.)
   3. On each phone or tablet, on this Wi-Fi, open
        http://${address}/kwtech-local-ca.crt
      and trust it (docs/HTTPS.md: iPhone needs Install, then Certificate Trust

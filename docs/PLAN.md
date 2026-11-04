@@ -610,6 +610,33 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-04** — **The live-updates socket address is a path resolved against the page, and a screen's "not live" is the socket's real state (issue #50).**
+
+  The POS cashier never showed a phone's held order without a reload. The
+  server delivered every event (checked over the running API's own socket,
+  through Caddy and the ticket proxy); the browser never connected.
+  `NEXT_PUBLIC_WS_URL` was baked in as `wss://192.168.1.68/...`, and the shop's
+  PC, which opens the app on `localhost` (HTTPS.md §4), cannot reach its own
+  network address inside WSL: `ERR_CONNECTION_TIMED_OUT`, forever, while the
+  till said it was live and the console said `[object Event]`.
+  - **A path, resolved in the browser.** `resolveSocketUrl` (module-kit)
+    turns `/api/v1/graphql` into `wss://<the page's host>/...`, so one build
+    serves phones on the network address and the PC on `https://localhost`.
+    `https:setup` writes the path; a full `ws://`/`wss://` address still
+    works, for a socket on another host. module-print resolves it the same
+    way for the print agent's setup addresses.
+  - **Errors say where.** `describeRealtimeError` replaces `String(event)`.
+  - **The POS's "not live" reads `useRealtimeStatus()`** (5 s of not
+    connecting, or refused) instead of `realtime !== null`.
+  - **The POS no longer relies on the socket alone:** a write announces
+    itself to the same page (`pos-local-events.ts`), and opening Sell or
+    returning to the window re-reads as a `sync`.
+  - **Not done:** `http://localhost:8081` on the server is no longer live
+    (the socket follows the page to Next, which has no WebSocket); the PC uses
+    `https://localhost`. `hostAddressLoopback` in `.wslconfig` was rejected as
+    the fix: experimental, and per machine. Other modules' "not live" notes
+    were not moved onto the status; the bell already was.
+
 - **2026-11-03** — **A store's POS setup moves in and out of Excel from the Items tab: one workbook, a tab per sub-tab, one set of rules on both sides (issue #35, last of three PRs).**
 
   Setting up a new till or branch meant re-typing every item, size, category,

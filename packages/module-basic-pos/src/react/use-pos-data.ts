@@ -4,6 +4,7 @@ import { useRealtime } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { POS_OPERATIONS } from '../operations.js';
 import type { PosEventView, PosScopeView } from './pos-client.js';
+import { onPosWrite } from './pos-local-events.js';
 
 /** How long after the last event a section reads again — a burst of events is one read. */
 const REREAD_DEBOUNCE_MS = 250;
@@ -23,6 +24,11 @@ export interface PosData<T> {
  * One read for a management section (Orders, Items, Customers, Settings),
  * kept fresh by `posEvents` the way the till is: another till selling, or an
  * admin renaming an item elsewhere, shows here without a reload.
+ *
+ * And kept fresh WITHOUT the socket too (issue #50): a write made elsewhere in
+ * this page is heard at once (`pos-local-events.ts`), and coming back to the
+ * window reads again, as a reconnect's `sync` does. A section also reads when
+ * it opens, so switching POS tabs always shows the store as it is.
  *
  * `load` changes whenever what it reads changes (a tab, a search), and the
  * read runs again then. An answer that arrives after a newer read started is
@@ -64,27 +70,43 @@ export function usePosData<T>(
 
   // The kinds as one string, so a new array literal each render does not resubscribe.
   const kindList = kinds.join(',');
+
+  /** Reads again soon, once for a burst — from the socket, this page's writes, or the window coming back. */
+  const hear = useCallback(
+    (event: PosEventView) => {
+      if (event.kind !== 'sync' && !kindList.split(',').includes(event.kind)) return;
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        void reload();
+      }, REREAD_DEBOUNCE_MS);
+    },
+    [kindList, reload],
+  );
+
   useEffect(() => {
-    if (!realtime) return;
-    const wanted = new Set(kindList.split(','));
-    const unsubscribe = realtime.subscribe<{ posEvents: PosEventView }>(
-      POS_OPERATIONS.posEvents,
-      (event) => {
-        if (event.posEvents.kind !== 'sync' && !wanted.has(event.posEvents.kind)) return;
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(() => {
-          timer.current = null;
-          void reload();
-        }, REREAD_DEBOUNCE_MS);
-      },
-      { organizationId: scope.organizationId, workspaceId: scope.workspaceId },
-    );
+    const stopLocal = onPosWrite(scope, hear);
+    const sync = () => hear({ kind: 'sync', orderId: null, actorId: null });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', sync);
+    const unsubscribe = realtime
+      ? realtime.subscribe<{ posEvents: PosEventView }>(POS_OPERATIONS.posEvents, (event) => hear(event.posEvents), {
+          organizationId: scope.organizationId,
+          workspaceId: scope.workspaceId,
+        })
+      : null;
     return () => {
-      unsubscribe();
+      stopLocal();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', sync);
+      unsubscribe?.();
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
     };
-  }, [realtime, scope, kindList, reload]);
+  }, [realtime, scope, hear]);
 
   return { data, error, loading, reload };
 }
