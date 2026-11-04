@@ -627,6 +627,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
   - **Chat says so in the thread** (`MessageThread`'s `live`, required — it
     caught the phone layout's thread, which a search had missed). It computed
     `live` and showed it nowhere.
+  - **The phone layouts of notes and tasks say so too**, above either screen;
+    they had the value and showed nothing. Each module's wiring is checked by
+    `test/live-status.test.ts`, reading the source (no render tests here).
   - **Not done:** the bell keeps its two-step indicator (`liveIndicator`),
     which says more than true/false; and only the POS refreshes without the
     socket (`pos-local-events.ts`). The others have not needed it.

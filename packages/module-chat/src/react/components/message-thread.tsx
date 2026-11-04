@@ -219,7 +219,7 @@ export function MessageThread({
       */}
       {!live ? (
         <p role="status" className="px-4 pb-1 text-xs text-muted-foreground">
-          Not live — new messages show when the connection is back, or when you reopen this conversation.
+          Not live — new messages will not appear here. Reopen this conversation to see any you missed.
         </p>
       ) : null}
 
