@@ -1,7 +1,12 @@
 'use client';
 
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
-import type { RealtimeConnection, RealtimeStatusSnapshot } from '../realtime.js';
+import {
+  isRealtimeLive,
+  type RealtimeConnection,
+  type RealtimeStatusSnapshot,
+  realtimeLiveChangeIn,
+} from '../realtime.js';
 
 /**
  * ONE socket per tab, owned by the app, read by every module.
@@ -115,4 +120,31 @@ export function useRealtimeStatus(): RealtimeStatusSnapshot | null {
   }, [connection]);
 
   return snapshot;
+}
+
+/**
+ * Whether this screen is live, by its own threshold (`isRealtimeLive`): the one
+ * answer to show "Not live" from (issues #50, #64).
+ *
+ * "Now" moves on by ONE timer, set for the moment a (re)connect becomes long
+ * enough to say so — never a poll. Before mount, and in an app with no socket,
+ * there is no connection and the answer is false, as it always was.
+ */
+export function useRealtimeLive(notLiveAfterMs: number): boolean {
+  const connection = useRealtime();
+  const status = useRealtimeStatus();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    setNow(Date.now());
+    if (!status) return;
+    // From when the OUTAGE began, not this status: see `nextOutageSince`.
+    const wait = realtimeLiveChangeIn(status.status, status.outageSince, Date.now(), notLiveAfterMs);
+    if (wait === null) return;
+    // +1: on the boundary itself the reconnect is not yet "long enough".
+    const timeout = setTimeout(() => setNow(Date.now()), wait + 1);
+    return () => clearTimeout(timeout);
+  }, [status, notLiveAfterMs]);
+
+  return isRealtimeLive(connection !== null, status?.status ?? null, status?.outageSince ?? 0, now, notLiveAfterMs);
 }

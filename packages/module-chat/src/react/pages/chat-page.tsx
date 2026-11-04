@@ -206,6 +206,7 @@ export function ChatPage({
                 onDelete={(messageId) => void chat.removeMessage(messageId)}
                 presence={chat.presence}
                 typing={chat.typingHere}
+                live={chat.live}
                 onTyping={chat.noteTyping}
                 onInvite={(userId) => void chat.invite(selected.id, userId)}
                 onLeave={() => void chat.leave(selected.id)}

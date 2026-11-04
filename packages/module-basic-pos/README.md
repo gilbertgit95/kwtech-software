@@ -400,7 +400,7 @@ against the page (`resolveSocketUrl`), and the PC uses `https://localhost`
 So that a dead socket can never again leave a screen stale without anyone
 knowing:
 
-- **"Not live" is the socket's real state** (`posIsLive`): refused, or not
+- **"Not live" is the socket's real state** (module-kit's `useRealtimeLive`, issue #64): refused, or not
   connected for 5 s. It used to be "the app has a connection", which was true
   while it timed out.
 - **This page's own writes refresh this page at once** (`pos-local-events.ts`):

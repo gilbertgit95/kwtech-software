@@ -1,61 +1,13 @@
 /**
- * Whether the till may call itself live (issue #50).
+ * How long the till may be (re)connecting before it says it is not live
+ * (issue #50). The rule itself is module-kit's `isRealtimeLive`, one copy for
+ * every screen (issue #64); the threshold is the till's.
  *
- * module-kit reports the socket's state and when it began; how long counts as
- * a problem is each screen's decision (as the notification bell's). The till's:
- *
- *   no connection at all                 not live (the app wires no socket)
- *   live, idle, or a status not reported live
- *   refused                              not live at once: nothing will retry it
- *   connecting / reconnecting < 5 s      live — the routine reconnect
- *   connecting / reconnecting ≥ 5 s      not live
- *
- * ⚠ IT USED TO BE `realtime !== null`, which is true as soon as the app HAS a
- * connection — before it ever connects, and while it times out forever. The
- * cashier's till in issue #50 said nothing while its socket could not reach
- * the server at all, and the staff trusted a screen that never changed.
- *
- * ⚠ The five seconds stop the note flashing on the reconnect every socket
- * makes when its authorization runs out. They are shorter than the bell's
- * thirty because a till is where money changes hands on what the screen says.
+ * ⚠ Five seconds stop the note flashing on the reconnect every socket makes
+ * when its authorization runs out. Shorter than other screens' because a till
+ * is where money changes hands on what the screen says.
  */
-
 export const POS_NOT_LIVE_AFTER_MS = 5_000;
-
-/** The subset of module-kit's `RealtimeStatus` this rule reads — structural, as the bell's. */
-export type PosConnectionStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'refused';
-
-/**
- * `hasConnection` is whether the app gave a connection at all; `status` is
- * null for one that does not report (a test's fake), which counts as live —
- * what every screen assumed before statuses existed.
- */
-export function posIsLive(
-  hasConnection: boolean,
-  status: PosConnectionStatus | null,
-  since: number,
-  now: number,
-): boolean {
-  if (!hasConnection) return false;
-  if (status === null) return true;
-  switch (status) {
-    case 'idle':
-    case 'live':
-      return true;
-    case 'refused':
-      return false;
-    case 'connecting':
-    case 'reconnecting':
-      return now - since < POS_NOT_LIVE_AFTER_MS;
-  }
-}
-
-/** When `posIsLive` will next change by itself, in ms from now — so the till sets one timer, never polls. */
-export function posLiveChangeIn(status: PosConnectionStatus | null, since: number, now: number): number | null {
-  if (status !== 'connecting' && status !== 'reconnecting') return null;
-  const left = POS_NOT_LIVE_AFTER_MS - (now - since);
-  return left > 0 ? left : null;
-}
 
 /** What the till reads again after a burst of events: one flag per read. */
 export interface TillRereads {

@@ -191,6 +191,35 @@ export interface RealtimeStatusSnapshot {
   status: RealtimeStatus;
   /** Epoch milliseconds when this status began. A screen measures "how long" from it. */
   since: number;
+  /**
+   * Epoch milliseconds when the socket stopped being usable, across every
+   * status of one outage: `connecting`, `reconnecting` and `refused` in any
+   * order. Equal to `since` while live or idle. See `nextOutageSince`.
+   */
+  outageSince: number;
+}
+
+/** Whether a status is part of an outage: the socket is not delivering. */
+function isOutage(status: RealtimeStatus): boolean {
+  return status === 'connecting' || status === 'reconnecting' || status === 'refused';
+}
+
+/**
+ * When the outage behind `next` began.
+ *
+ * ⚠ IT CARRIES OVER A CHANGE OF STATUS within one outage. A socket that times
+ * out goes `connecting` → (about twenty seconds later) `reconnecting`, and
+ * `since` restarts there. A "not live" measured from `since` therefore said
+ * not live after five seconds and then LIVE again for the next five — a false
+ * all-clear in the middle of an outage (CodeRabbit on PR #65). Measured from
+ * this, it stays not live until the socket is back.
+ */
+export function nextOutageSince(
+  previous: Pick<RealtimeStatusSnapshot, 'status' | 'outageSince'>,
+  next: RealtimeStatus,
+  now: number,
+): number {
+  return isOutage(previous.status) && isOutage(next) ? previous.outageSince : now;
 }
 
 /** What the socket client reports, narrowed to what moves the status. */
@@ -314,4 +343,59 @@ export function describeRealtimeError(error: unknown, url: string | null): Error
     );
   }
   return new Error(String(error));
+}
+
+/**
+ * Whether a screen may call itself live (issues #50, #64): the SOCKET'S state,
+ * never merely that the app has a connection.
+ *
+ *   no connection at all                      not live (the app wires no socket)
+ *   live or idle, or a status not reported    live
+ *   refused                                   not live at once: nothing will retry it
+ *   connecting / reconnecting < the screen's threshold   live — the routine reconnect
+ *   connecting / reconnecting ≥ it                       not live
+ *
+ * ⚠ `realtime !== null` IS NOT THIS. It is true as soon as the app HAS a
+ * connection — before it ever connects, and while it times out forever. That is
+ * how the POS cashier's till looked live in issue #50 with nothing reaching it.
+ *
+ * `since` is when the OUTAGE began (`RealtimeStatusSnapshot.outageSince`),
+ * not when the current status did — see `nextOutageSince`.
+ *
+ * `notLiveAfterMs` is the SCREEN'S decision (a till, where money changes hands,
+ * says so sooner than a notes list), so it is a parameter; the rule is one copy.
+ * A status of `null` is a connection that does not report one (a test's fake),
+ * which counts as live — what every screen assumed before statuses existed.
+ */
+export function isRealtimeLive(
+  hasConnection: boolean,
+  status: RealtimeStatus | null,
+  since: number,
+  now: number,
+  notLiveAfterMs: number,
+): boolean {
+  if (!hasConnection) return false;
+  if (status === null) return true;
+  switch (status) {
+    case 'idle':
+    case 'live':
+      return true;
+    case 'refused':
+      return false;
+    case 'connecting':
+    case 'reconnecting':
+      return now - since < notLiveAfterMs;
+  }
+}
+
+/** When `isRealtimeLive` will next change by itself, in ms from now — so a screen sets one timer, never polls. */
+export function realtimeLiveChangeIn(
+  status: RealtimeStatus | null,
+  since: number,
+  now: number,
+  notLiveAfterMs: number,
+): number | null {
+  if (status !== 'connecting' && status !== 'reconnecting') return null;
+  const left = notLiveAfterMs - (now - since);
+  return left > 0 ? left : null;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRealtime } from '@kwtech/module-kit/react';
+import { useRealtime, useRealtimeLive } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { shouldPlayTone } from '../domain/tone.js';
 import {
@@ -52,6 +52,8 @@ export interface ChatState {
 export function useChat(options: UseChatOptions = {}) {
   const api = useMemo(() => options.client ?? createChatClient(), [options.client]);
   const realtime = useRealtime();
+  // The SOCKET'S state, not "the app has a connection" — which looked live while timing out (#50, #64).
+  const live = useRealtimeLive(CHAT_NOT_LIVE_AFTER_MS);
 
   const [conversations, setConversations] = useState<ChatConversationView[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -577,7 +579,7 @@ export function useChat(options: UseChatOptions = {}) {
       .filter((one) => one.conversationId === selected?.id && Date.now() - one.at < TYPING_TTL_MS)
       .map((one) => one.userId),
     /** ⚠ Null before mount and in an app with no socket — the screen still works. */
-    live: realtime !== null,
+    live,
     open,
     loadOlder,
     send,
@@ -609,6 +611,14 @@ export function useChat(options: UseChatOptions = {}) {
  * written here and their relationship is what matters rather than their exact
  * values.
  */
+/**
+ * How long chat may be (re)connecting before the thread says it is not live
+ * (issue #64; the rule is module-kit's `isRealtimeLive`). Ten seconds: a
+ * routine reconnect is not worth a line under somebody's conversation; a
+ * socket down longer is, because their messages have stopped arriving.
+ */
+const CHAT_NOT_LIVE_AFTER_MS = 10_000;
+
 const TYPING_TTL_MS = 6_000;
 const TYPING_THROTTLE_MS = 3_000;
 

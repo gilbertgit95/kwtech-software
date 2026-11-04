@@ -57,7 +57,25 @@ const TABS: readonly { tab: NoteTab; label: string }[] = [
  */
 export function NotesMobileApp({ organizationId, workspaceId }: AppProps) {
   const state = useNotes(organizationId, workspaceId);
-  return state.editor.note ? <NoteScreen state={state} /> : <NoteList state={state} />;
+  /*
+   * "Not live" above both screens (issue #64): a phone is where a socket drops
+   * most, and the list and an open note go stale alike. The screen keeps the
+   * rest of the height, so its own scrolling and bottom bar are unchanged.
+   * ⚠ "Refresh the page", never "reopen notes": the phone layout HIDES an app
+   * it leaves rather than unmounting it, so reopening shows the same list.
+   */
+  return (
+    <div className="flex h-full flex-col">
+      {!state.live ? (
+        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+          Not live — refresh the page to see other people’s changes.
+        </p>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        {state.editor.note ? <NoteScreen state={state} /> : <NoteList state={state} />}
+      </div>
+    </div>
+  );
 }
 
 // ── the list ──────────────────────────────────────────────────────────────

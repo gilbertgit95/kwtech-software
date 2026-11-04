@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature, useRealtime } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useRealtime, useRealtimeLive } from '@kwtech/module-kit/react';
 import { useDebouncedValue } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TASK_FEATURE } from '../feature-keys.js';
@@ -22,6 +22,14 @@ import { type ColumnLane, lanesOf } from './view/board.js';
 
 /** How long after the last event the app reads again — several events in a burst are one read. */
 const REREAD_DEBOUNCE_MS = 200;
+
+/**
+ * How long this screen may be (re)connecting before it says it is not live
+ * (issue #64; the rule is module-kit's `isRealtimeLive`). Its own threshold:
+ * a board is worked at a desk, and a ten-second reconnect is not worth a
+ * note; a socket down longer is — others' moves stop arriving.
+ */
+const TASKS_NOT_LIVE_AFTER_MS = 10_000;
 
 /** How long the search box settles before it asks. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -95,6 +103,8 @@ export function useTasks(
   const scope = useMemo(() => ({ organizationId, workspaceId }), [organizationId, workspaceId]);
   const client = useMemo(() => options.client ?? createTaskClient(), [options.client]);
   const realtime = useRealtime();
+  // The SOCKET'S state, not "the app has a connection" — which looked live while timing out (#50, #64).
+  const live = useRealtimeLive(TASKS_NOT_LIVE_AFTER_MS);
   const canWrite = useHoldsFeature(TASK_FEATURE.write);
   const canCreateBoards = useHoldsFeature(TASK_FEATURE.createBoards);
   const canAssign = useHoldsFeature(TASK_FEATURE.assign);
@@ -396,7 +406,7 @@ export function useTasks(
     canCreateBoards,
     canAssign,
     canManageAll,
-    live: realtime !== null,
+    live,
     error,
     dismissError: () => setError(null),
     busy,

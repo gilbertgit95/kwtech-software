@@ -605,11 +605,34 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 | 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
 | 125 | ~~Texts in the print studio are selected one at a time; a selection rectangle takes cells only~~ **Settled 2026-11-03 for the layout editor** (issue #57, see §13). On the Print screen texts are still painted into the canvas and not selectable | when texts need moving on the Print screen | The editor's rectangle takes cells and texts, and a group of both moves, copies and is removed together. Print keeps texts fixed once the layout is used |
-| 126 | Chat, notes, queue and tasks decide "live" without the socket's status: a dead socket still looks live there | when any of them is next touched, or a stale screen is reported in one (issue #64) | Only the POS (`posIsLive`, `view/live.ts`) and the notification bell read `useRealtimeStatus()`. The others test `realtime !== null`, which is true while a socket times out forever — how the cashier's till looked live in issue #50. Move each onto its own threshold rule, as the POS does; the socket itself already works for all of them (§13, 2026-11-04) |
+| 126 | ~~Chat, notes, queue and tasks decide "live" without the socket's status: a dead socket still looks live there~~ **Closed** | — | **Every screen reads module-kit's `useRealtimeLive` (§13, 2026-11-04, issue #64).** One rule (`isRealtimeLive`), each screen its own threshold; chat now says so in the thread, where it said nothing before |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-04** — **"Not live" is one rule in module-kit, `useRealtimeLive(notLiveAfterMs)`, and every live screen uses it (issue #64).**
+
+  After issue #50 only the POS till and the notification bell read the
+  socket's real status; chat, notes, the queue console and tasks still said
+  "live" whenever the app had a connection object — true while a socket times
+  out forever (§12.126).
+  - **One rule, the threshold per screen.** `isRealtimeLive` and
+    `realtimeLiveChangeIn` (pure, in `realtime.ts`) and the hook that sets one
+    timer for them. The bell's comment already said only HOW LONG is a screen's
+    decision; four more copies of the rest would be the two-copies incident
+    Part 7 warns about. The POS's own copy (`posIsLive`) moved onto it.
+  - **Thresholds:** till and queue console 5 s (people act on what the screen
+    says), chat, notes and tasks 10 s.
+  - **Chat says so in the thread** (`MessageThread`'s `live`, required — it
+    caught the phone layout's thread, which a search had missed). It computed
+    `live` and showed it nowhere.
+  - **The phone layouts of notes and tasks say so too**, above either screen;
+    they had the value and showed nothing. Each module's wiring is checked by
+    `test/live-status.test.ts`, reading the source (no render tests here).
+  - **Not done:** the bell keeps its two-step indicator (`liveIndicator`),
+    which says more than true/false; and only the POS refreshes without the
+    socket (`pos-local-events.ts`). The others have not needed it.
 
 - **2026-11-04** — **The live-updates socket address is a path resolved against the page, and a screen's "not live" is the socket's real state (issue #50).**
 

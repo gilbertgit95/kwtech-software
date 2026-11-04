@@ -1,9 +1,12 @@
 import {
   closeEvent,
   describeRealtimeError,
+  isRealtimeLive,
   MAX_RECONNECT_DELAY_MS,
+  nextOutageSince,
   nextRealtimeStatus,
   REALTIME_REFUSED_CODE,
+  realtimeLiveChangeIn,
   reconnectDelay,
   resolveSocketUrl,
 } from '../src/realtime.js';
@@ -115,5 +118,73 @@ describe('describeRealtimeError — a sentence, never "[object Event]"', () => {
   it('passes an Error through untouched', () => {
     const error = new Error('Could not authorize the realtime connection.');
     expect(describeRealtimeError(error, url)).toBe(error);
+  });
+});
+
+describe('isRealtimeLive — the socket’s state, not "the app has a connection" (#50, #64)', () => {
+  const SINCE = 1_000_000;
+  const AFTER = 5_000;
+
+  it('⚠ is not live with a connection that never connects, once the attempt has run past the threshold', () => {
+    // The POS cashier's till in #50: a connection object, and a socket timing out behind it.
+    expect(isRealtimeLive(true, 'connecting', SINCE, SINCE + AFTER, AFTER)).toBe(false);
+    expect(isRealtimeLive(true, 'reconnecting', SINCE, SINCE + 60_000, AFTER)).toBe(false);
+  });
+
+  it('stays live through a routine reconnect', () => {
+    expect(isRealtimeLive(true, 'reconnecting', SINCE, SINCE + AFTER - 1, AFTER)).toBe(true);
+    expect(isRealtimeLive(true, 'connecting', SINCE, SINCE, AFTER)).toBe(true);
+  });
+
+  it('follows each screen’s own threshold', () => {
+    expect(isRealtimeLive(true, 'reconnecting', SINCE, SINCE + 8_000, 5_000)).toBe(false);
+    expect(isRealtimeLive(true, 'reconnecting', SINCE, SINCE + 8_000, 10_000)).toBe(true);
+  });
+
+  it('is not live at once when refused, nor with no connection at all', () => {
+    expect(isRealtimeLive(true, 'refused', SINCE, SINCE, AFTER)).toBe(false);
+    expect(isRealtimeLive(false, null, SINCE, SINCE, AFTER)).toBe(false);
+  });
+
+  it('is live when connected or idle, and for a connection that reports no status', () => {
+    expect(isRealtimeLive(true, 'live', SINCE, SINCE + 600_000, AFTER)).toBe(true);
+    expect(isRealtimeLive(true, 'idle', SINCE, SINCE, AFTER)).toBe(true);
+    expect(isRealtimeLive(true, null, SINCE, SINCE, AFTER)).toBe(true);
+  });
+});
+
+describe('realtimeLiveChangeIn', () => {
+  const SINCE = 1_000_000;
+
+  it('says when a reconnect will become long enough to say so, then nothing', () => {
+    expect(realtimeLiveChangeIn('reconnecting', SINCE, SINCE + 2_000, 5_000)).toBe(3_000);
+    expect(realtimeLiveChangeIn('connecting', SINCE, SINCE + 5_000, 5_000)).toBeNull();
+    expect(realtimeLiveChangeIn('live', SINCE, SINCE, 5_000)).toBeNull();
+    expect(realtimeLiveChangeIn(null, SINCE, SINCE, 5_000)).toBeNull();
+  });
+});
+
+describe('nextOutageSince — one outage, however many statuses it passes through', () => {
+  const T0 = 1_000_000;
+
+  it('⚠ keeps the outage’s start when connecting becomes reconnecting — no false "live" mid-outage', () => {
+    // The socket that times out: connecting at T0, the attempt fails ~20 s later and the retry is `reconnecting`.
+    const outageSince = nextOutageSince({ status: 'connecting', outageSince: T0 }, 'reconnecting', T0 + 20_000);
+    expect(outageSince).toBe(T0);
+    // Just after the change of status, measured from the outage: still not live.
+    expect(isRealtimeLive(true, 'reconnecting', outageSince, T0 + 20_001, 5_000)).toBe(false);
+  });
+
+  it('carries over refused, and back', () => {
+    expect(nextOutageSince({ status: 'reconnecting', outageSince: T0 }, 'refused', T0 + 9_000)).toBe(T0);
+  });
+
+  it('starts a new outage when a live or idle socket loses its connection', () => {
+    expect(nextOutageSince({ status: 'live', outageSince: T0 }, 'reconnecting', T0 + 50_000)).toBe(T0 + 50_000);
+    expect(nextOutageSince({ status: 'idle', outageSince: T0 }, 'connecting', T0 + 3_000)).toBe(T0 + 3_000);
+  });
+
+  it('ends the outage when the socket is back', () => {
+    expect(nextOutageSince({ status: 'reconnecting', outageSince: T0 }, 'live', T0 + 7_000)).toBe(T0 + 7_000);
   });
 });

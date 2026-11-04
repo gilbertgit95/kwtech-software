@@ -41,8 +41,23 @@ import { cardDates, DAY_GROUP_LABELS, groupMyTasks, initials, PRIORITY_LABELS } 
  */
 export function TasksMobileApp({ organizationId, workspaceId }: AppProps) {
   const state = useTasks(organizationId, workspaceId);
-  if (state.openTaskId) return <TaskScreen state={state} />;
-  return <TaskBoard state={state} />;
+  /*
+   * "Not live" above both screens (issue #64): a phone is where a socket drops
+   * most, and the board and an open task go stale alike. The screen keeps the
+   * rest of the height, so its own scrolling and bottom bar are unchanged.
+   */
+  return (
+    <div className="flex h-full flex-col">
+      {!state.live ? (
+        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+          Not live — changes show when you reload.
+        </p>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        {state.openTaskId ? <TaskScreen state={state} /> : <TaskBoard state={state} />}
+      </div>
+    </div>
+  );
 }
 
 // ── the board ─────────────────────────────────────────────────────────────
