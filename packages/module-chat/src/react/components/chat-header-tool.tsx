@@ -280,6 +280,7 @@ export function ChatHeaderTool({ client }: { client?: ChatClient } = {}) {
               onDelete={(messageId) => void chat.removeMessage(messageId)}
               presence={chat.presence}
               typing={chat.typingHere}
+              live={chat.live}
               onTyping={chat.noteTyping}
               onInvite={(userId) => void chat.invite(selected.id, userId)}
               onLeave={() => {

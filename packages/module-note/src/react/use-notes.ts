@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature, useRealtime } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useRealtime, useRealtimeLive } from '@kwtech/module-kit/react';
 import { useDebouncedValue } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_NOTE_SETTINGS, type NoteSettings } from '../domain/appearance.js';
@@ -19,6 +19,14 @@ import { type NoteEventView, planNoteEvent } from './view/editing.js';
 
 /** Several events in a burst — a save and the index change it implies — become one re-read. */
 const REREAD_DEBOUNCE_MS = 200;
+
+/**
+ * How long this screen may be (re)connecting before it says it is not live
+ * (issue #64; the rule is module-kit's `isRealtimeLive`). Its own threshold:
+ * notes are read and written at a desk, and a ten-second reconnect is not
+ * worth a note; a socket down longer is — others' edits stop arriving.
+ */
+const NOTES_NOT_LIVE_AFTER_MS = 10_000;
 
 /** Typing in the search box settles for this long before it is sent. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -88,6 +96,8 @@ export function useNotes(
   const scope = useMemo(() => ({ organizationId, workspaceId }), [organizationId, workspaceId]);
   const client = useMemo(() => options.client ?? createNoteClient(), [options.client]);
   const realtime = useRealtime();
+  // The SOCKET'S state, not "the app has a connection" — which looked live while timing out (#50, #64).
+  const live = useRealtimeLive(NOTES_NOT_LIVE_AFTER_MS);
   const canWrite = useHoldsFeature(NOTE_FEATURE.write);
   const canManageAll = useHoldsFeature(NOTE_FEATURE.manageAll);
 
@@ -272,7 +282,7 @@ export function useNotes(
     editor,
     error,
     busy,
-    live: realtime !== null,
+    live,
     dismissError: () => setError(null),
     createNote,
     setShared: (shared) => act((noteId) => client.setVisibility(scope, noteId, shared ? 'workspace' : 'private')),

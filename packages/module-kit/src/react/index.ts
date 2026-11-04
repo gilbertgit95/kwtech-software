@@ -25,7 +25,13 @@ export {
   usePrinter,
   usePrinters,
 } from './printers.js';
-export { RealtimeProvider, type RealtimeProviderProps, useRealtime, useRealtimeStatus } from './realtime-context.js';
+export {
+  RealtimeProvider,
+  type RealtimeProviderProps,
+  useRealtime,
+  useRealtimeLive,
+  useRealtimeStatus,
+} from './realtime-context.js';
 export {
   PublishStatus,
   type PublishStatusProps,

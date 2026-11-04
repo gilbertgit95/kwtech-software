@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature, useRealtime, useRealtimeStatus, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useRealtime, useRealtimeLive, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { effectiveKeymap, type PosKeymap } from '../domain/keymap.js';
 import { POS_CONFLICT_MESSAGE } from '../domain/orders.js';
@@ -16,7 +16,7 @@ import {
   type PosScopeView,
 } from './pos-client.js';
 import { onPosWrite } from './pos-local-events.js';
-import { posIsLive, posLiveChangeIn, tillEventKind, tillRereads } from './view/live.js';
+import { POS_NOT_LIVE_AFTER_MS, tillEventKind, tillRereads } from './view/live.js';
 import { type PosRankMap, rankMap } from './view/popularity.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
@@ -132,7 +132,6 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const scope = useMemo(() => ({ organizationId, workspaceId }), [organizationId, workspaceId]);
   const client = useMemo(() => options.client ?? createPosClient(), [options.client]);
   const realtime = useRealtime();
-  const realtimeStatus = useRealtimeStatus();
   const canSell = useHoldsFeature(POS_FEATURE.sell);
   const canTakePayment = useHoldsFeature(POS_FEATURE.takePayment);
   const canDiscount = useHoldsFeature(POS_FEATURE.discount);
@@ -382,20 +381,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     };
   }, [sync]);
 
-  /*
-   * Live is the socket's own state, seen now — and "now" moves on by one timer
-   * at the moment a reconnect becomes long enough to say so (`view/live.ts`).
-   */
-  const [liveNow, setLiveNow] = useState(() => Date.now());
-  useEffect(() => {
-    setLiveNow(Date.now());
-    if (!realtimeStatus) return;
-    const wait = posLiveChangeIn(realtimeStatus.status, realtimeStatus.since, Date.now());
-    if (wait === null) return;
-    const timeout = setTimeout(() => setLiveNow(Date.now()), wait + 1);
-    return () => clearTimeout(timeout);
-  }, [realtimeStatus]);
-  const live = posIsLive(realtime !== null, realtimeStatus?.status ?? null, realtimeStatus?.since ?? 0, liveNow);
+  // The socket's own state, by the till's threshold (module-kit's one rule, `isRealtimeLive`).
+  const live = useRealtimeLive(POS_NOT_LIVE_AFTER_MS);
 
   // ── acts ──────────────────────────────────────────────────────────────────
 

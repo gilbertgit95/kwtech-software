@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature, useRealtime } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useRealtime, useRealtimeLive } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QUEUE_FEATURE } from '../feature-keys.js';
 import { QUEUE_OPERATIONS } from '../operations.js';
@@ -18,6 +18,14 @@ const DISPLAY_COUNT_REFRESH_MS = 15_000;
 
 /** Several events in a burst — a call, and the Done it implied — become one re-read. */
 const REREAD_DEBOUNCE_MS = 200;
+
+/**
+ * How long this screen may be (re)connecting before it says it is not live
+ * (issue #64; the rule is module-kit's `isRealtimeLive`). Its own threshold:
+ * staff call the next person from what this screen says, so it says so
+ * as soon as the POS till does.
+ */
+const QUEUE_CONSOLE_NOT_LIVE_AFTER_MS = 5_000;
 
 export interface QueueConsoleState {
   scope: QueueScopeView;
@@ -57,6 +65,8 @@ export function useQueueConsole(
   const scope = useMemo(() => ({ organizationId, workspaceId }), [organizationId, workspaceId]);
   const client = useMemo(() => options.client ?? createQueueClient(), [options.client]);
   const realtime = useRealtime();
+  // The SOCKET'S state, not "the app has a connection" — which looked live while timing out (#50, #64).
+  const live = useRealtimeLive(QUEUE_CONSOLE_NOT_LIVE_AFTER_MS);
   const canSeeCode = useHoldsFeature(QUEUE_FEATURE.start);
 
   const [view, setView] = useState<QueueConsoleView | null>(null);
@@ -138,5 +148,5 @@ export function useQueueConsole(
 
   const dismissError = useCallback(() => setError(null), []);
 
-  return { scope, client, view, code, error, busy, live: realtime !== null, reload, run, dismissError };
+  return { scope, client, view, code, error, busy, live, reload, run, dismissError };
 }

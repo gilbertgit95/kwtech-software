@@ -315,3 +315,55 @@ export function describeRealtimeError(error: unknown, url: string | null): Error
   }
   return new Error(String(error));
 }
+
+/**
+ * Whether a screen may call itself live (issues #50, #64): the SOCKET'S state,
+ * never merely that the app has a connection.
+ *
+ *   no connection at all                      not live (the app wires no socket)
+ *   live or idle, or a status not reported    live
+ *   refused                                   not live at once: nothing will retry it
+ *   connecting / reconnecting < the screen's threshold   live — the routine reconnect
+ *   connecting / reconnecting ≥ it                       not live
+ *
+ * ⚠ `realtime !== null` IS NOT THIS. It is true as soon as the app HAS a
+ * connection — before it ever connects, and while it times out forever. That is
+ * how the POS cashier's till looked live in issue #50 with nothing reaching it.
+ *
+ * `notLiveAfterMs` is the SCREEN'S decision (a till, where money changes hands,
+ * says so sooner than a notes list), so it is a parameter; the rule is one copy.
+ * A status of `null` is a connection that does not report one (a test's fake),
+ * which counts as live — what every screen assumed before statuses existed.
+ */
+export function isRealtimeLive(
+  hasConnection: boolean,
+  status: RealtimeStatus | null,
+  since: number,
+  now: number,
+  notLiveAfterMs: number,
+): boolean {
+  if (!hasConnection) return false;
+  if (status === null) return true;
+  switch (status) {
+    case 'idle':
+    case 'live':
+      return true;
+    case 'refused':
+      return false;
+    case 'connecting':
+    case 'reconnecting':
+      return now - since < notLiveAfterMs;
+  }
+}
+
+/** When `isRealtimeLive` will next change by itself, in ms from now — so a screen sets one timer, never polls. */
+export function realtimeLiveChangeIn(
+  status: RealtimeStatus | null,
+  since: number,
+  now: number,
+  notLiveAfterMs: number,
+): number | null {
+  if (status !== 'connecting' && status !== 'reconnecting') return null;
+  const left = notLiveAfterMs - (now - since);
+  return left > 0 ? left : null;
+}

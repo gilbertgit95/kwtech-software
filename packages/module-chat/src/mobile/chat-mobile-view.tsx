@@ -85,6 +85,7 @@ export function ChatMobileView({ client }: { client?: ChatClient } = {}) {
                 presence={chat.presence}
                 typing={chat.typingHere}
                 onTyping={chat.noteTyping}
+                live={chat.live}
                 onInvite={(userId) => void chat.invite(selected.id, userId)}
                 onLeave={() => void chat.leave(selected.id)}
                 onFind={chat.lookUp}

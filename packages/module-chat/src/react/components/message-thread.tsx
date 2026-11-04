@@ -28,6 +28,7 @@ export function MessageThread({
   presence,
   typing,
   onTyping,
+  live,
   compact = false,
 }: {
   conversation: ChatConversationView;
@@ -44,6 +45,12 @@ export function MessageThread({
   /** Who is writing here right now. Already pruned of stale signals. */
   typing: readonly string[];
   onTyping: () => void;
+  /**
+   * Whether messages arrive by themselves: the socket's real state
+   * (`useRealtimeLive`, issue #64). Required, so neither the page nor the
+   * floating window can leave a dead socket unsaid.
+   */
+  live: boolean;
   /**
    * For the floating window, whose own title bar already names the
    * conversation: the heading here would say it twice in 360px. The actions
@@ -202,6 +209,17 @@ export function MessageThread({
       {typing.length > 0 ? (
         <p aria-live="polite" className="px-4 pb-1 text-xs italic text-muted-foreground">
           {describeTyping(typing, names)}
+        </p>
+      ) : null}
+
+      {/*
+        Where the typing line is, for the same reason: the one place a person
+        writing here looks. Without it a dead socket is a conversation that has
+        simply gone quiet (issue #64).
+      */}
+      {!live ? (
+        <p role="status" className="px-4 pb-1 text-xs text-muted-foreground">
+          Not live — new messages show when the connection is back, or when you reopen this conversation.
         </p>
       ) : null}
 
