@@ -5,6 +5,7 @@ import {
   closeEvent,
   DEFAULT_WS_TICKET_PATH,
   describeRealtimeError,
+  nextOutageSince,
   nextRealtimeStatus,
   REALTIME_PONG_TIMEOUT_MS,
   REALTIME_REFUSED_CODE,
@@ -106,12 +107,14 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
    * whether its own events happen to be arriving — which on a quiet stream is
    * indistinguishable from a dead one.
    */
-  let snapshot: RealtimeStatusSnapshot = { status: 'idle', since: Date.now() };
+  const openedAt = Date.now();
+  let snapshot: RealtimeStatusSnapshot = { status: 'idle', since: openedAt, outageSince: openedAt };
   const listeners = new Set<(next: RealtimeStatusSnapshot) => void>();
   const move = (event: RealtimeStatusEvent) => {
     const status = nextRealtimeStatus(snapshot.status, event);
     if (status === snapshot.status) return;
-    snapshot = { status, since: Date.now() };
+    const now = Date.now();
+    snapshot = { status, since: now, outageSince: nextOutageSince(snapshot, status, now) };
     for (const listener of listeners) listener(snapshot);
   };
 
@@ -278,7 +281,8 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
  * fine, which is the failure issue #50 was.
  */
 function unreachableConnection(): RealtimeConnection {
-  const snapshot: RealtimeStatusSnapshot = { status: 'refused', since: Date.now() };
+  const now = Date.now();
+  const snapshot: RealtimeStatusSnapshot = { status: 'refused', since: now, outageSince: now };
   return {
     subscribe: () => () => undefined,
     close: () => undefined,

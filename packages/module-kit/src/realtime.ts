@@ -191,6 +191,35 @@ export interface RealtimeStatusSnapshot {
   status: RealtimeStatus;
   /** Epoch milliseconds when this status began. A screen measures "how long" from it. */
   since: number;
+  /**
+   * Epoch milliseconds when the socket stopped being usable, across every
+   * status of one outage: `connecting`, `reconnecting` and `refused` in any
+   * order. Equal to `since` while live or idle. See `nextOutageSince`.
+   */
+  outageSince: number;
+}
+
+/** Whether a status is part of an outage: the socket is not delivering. */
+function isOutage(status: RealtimeStatus): boolean {
+  return status === 'connecting' || status === 'reconnecting' || status === 'refused';
+}
+
+/**
+ * When the outage behind `next` began.
+ *
+ * ⚠ IT CARRIES OVER A CHANGE OF STATUS within one outage. A socket that times
+ * out goes `connecting` → (about twenty seconds later) `reconnecting`, and
+ * `since` restarts there. A "not live" measured from `since` therefore said
+ * not live after five seconds and then LIVE again for the next five — a false
+ * all-clear in the middle of an outage (CodeRabbit on PR #65). Measured from
+ * this, it stays not live until the socket is back.
+ */
+export function nextOutageSince(
+  previous: Pick<RealtimeStatusSnapshot, 'status' | 'outageSince'>,
+  next: RealtimeStatus,
+  now: number,
+): number {
+  return isOutage(previous.status) && isOutage(next) ? previous.outageSince : now;
 }
 
 /** What the socket client reports, narrowed to what moves the status. */
@@ -329,6 +358,9 @@ export function describeRealtimeError(error: unknown, url: string | null): Error
  * ⚠ `realtime !== null` IS NOT THIS. It is true as soon as the app HAS a
  * connection — before it ever connects, and while it times out forever. That is
  * how the POS cashier's till looked live in issue #50 with nothing reaching it.
+ *
+ * `since` is when the OUTAGE began (`RealtimeStatusSnapshot.outageSince`),
+ * not when the current status did — see `nextOutageSince`.
  *
  * `notLiveAfterMs` is the SCREEN'S decision (a till, where money changes hands,
  * says so sooner than a notes list), so it is a parameter; the rule is one copy.

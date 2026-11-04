@@ -138,12 +138,13 @@ export function useRealtimeLive(notLiveAfterMs: number): boolean {
   useEffect(() => {
     setNow(Date.now());
     if (!status) return;
-    const wait = realtimeLiveChangeIn(status.status, status.since, Date.now(), notLiveAfterMs);
+    // From when the OUTAGE began, not this status: see `nextOutageSince`.
+    const wait = realtimeLiveChangeIn(status.status, status.outageSince, Date.now(), notLiveAfterMs);
     if (wait === null) return;
     // +1: on the boundary itself the reconnect is not yet "long enough".
     const timeout = setTimeout(() => setNow(Date.now()), wait + 1);
     return () => clearTimeout(timeout);
   }, [status, notLiveAfterMs]);
 
-  return isRealtimeLive(connection !== null, status?.status ?? null, status?.since ?? 0, now, notLiveAfterMs);
+  return isRealtimeLive(connection !== null, status?.status ?? null, status?.outageSince ?? 0, now, notLiveAfterMs);
 }

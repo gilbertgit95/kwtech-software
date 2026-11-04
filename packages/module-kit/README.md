@@ -558,7 +558,9 @@ createRealtimeConnection({ wsUrl, retryForever: true });
   `nextRealtimeStatus` is the pure transition rule, tested in `realtime.test.ts`.
 - **`useRealtimeLive(notLiveAfterMs)`** is what a screen shows "Not live"
   from: false with no connection, when refused, or after `notLiveAfterMs` of
-  (re)connecting; true otherwise. It sets one timer, never polls. The rule is
+  (re)connecting; true otherwise. It sets one timer, never polls. "How long"
+  runs from when the OUTAGE began (`outageSince`), not the current status:
+  `connecting` turning `reconnecting` mid-outage must not restart the clock. The rule is
   `isRealtimeLive` (pure, one copy); the threshold is the screen's (POS till
   and queue console 5 s, chat, notes and tasks 10 s). ⚠ Never `realtime !==
   null`: that is true while a socket times out forever, which is how the POS
