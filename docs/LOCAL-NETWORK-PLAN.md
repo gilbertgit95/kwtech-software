@@ -1,0 +1,222 @@
+# `module-local-network` — plan
+
+Status: **planned (2026-11-04, issue #66). Nothing is built yet.** L1–L10 (§8)
+are the operator's decisions of 2026-11-04. Once it is built, the decision goes
+in PLAN §13, and §10 here records what was built and where it differs from this
+plan.
+
+## 1. Why
+
+A shop runs the app on its own computer, and phones and tablets reach it
+through Caddy on the shop's Wi-Fi (`docs/HTTPS.md` §3–6). Before a device can
+use it, someone has to:
+
+1. know the server's network address, today `192.168.1.68`;
+2. type `http://<address>/kwtech-local-ca.crt` by hand, install the
+   certificate, and trust it;
+3. then open `https://<address>`.
+
+Nothing in the app helps with any of it: the address and the steps are in the
+docs only. The docs also go out of date: `docs/HTTPS.md` §5 still gives
+`192.168.1.186`. The server computer itself can't reach its own network
+address, so it has to get the certificate another way (on 2026-11-04 it was
+copied into Windows' Downloads folder by hand).
+
+## 2. What v1 is
+
+A **Local Network** page for super admins, in a new **Server** drawer group
+beside Backups. It shows:
+
+1. **The certificate**:
+   - a **Download certificate** button for the public root certificate,
+     saved as `kwtech-local-ca.crt`;
+   - its **SHA-256 fingerprint**, subject and expiry date, so a person can
+     compare the fingerprint with what the phone shows before trusting it (the
+     download a phone uses is plain `http://`);
+   - an explanation in plain words: what it is for (devices on the shop's
+     Wi-Fi open the app without a warning, and live updates work), and ⚠ what
+     installing it means. A device that trusts it trusts **any** site this
+     authority signs: it has no name limits and is valid until 2036. So it goes
+     only on the shop's own devices, never a customer's.
+2. **The server's address**:
+   - `https://<address>` as plain text, with a copy button;
+   - the same address as a **QR code**, so a phone opens it by scanning
+     (`QrCode` from `@kwtech/web-ui`);
+   - a second QR code for `http://<address>/kwtech-local-ca.crt`, because that
+     is the first thing a new phone needs.
+3. **This computer**: a line saying the server itself uses `https://localhost`,
+   not its network address and not `http://localhost:8081`, where live updates
+   cannot connect.
+
+The page reads; it changes nothing. There are no models and no migration.
+
+## 3. The drawer: a shared Server group
+
+```
+Server
+  ├─ Backups        (module-backup: only its group name changes)
+  └─ Local Network  (module-local-network, new)
+```
+
+- `module-backup`'s group, `DATABASE_NAV_GROUP` (`'Database'`), becomes
+  `SERVER_NAV_GROUP` (`'Server'`), in the same position below
+  Administration. Its comment says the group is a place the database's other
+  tasks can join later. "Server" keeps that possible, and it also fits Local
+  Network, which isn't about the database.
+- **The modules stay separate.** Backups is a whole feature (schedule,
+  restore, downloads, the command line) and applies on every installation,
+  including a remote server. Local Network applies only to a shop's network.
+  Modules never import each other (PLAN §9), so each declares the same group
+  **name**, a shared string pinned by each module's `web-module.test.ts`, as
+  `ADMINISTRATION_NAV_GROUP` is today. No code moves between them.
+
+## 4. On a remote server: switched off, not just empty
+
+The app may later run on a real remote server with a domain
+(`docs/HTTPS.md` §7). There, devices use the domain's normal certificate and
+install nothing, and the address is the domain. **Local Network does not
+apply**, so it must not show up as a page that only ever says "not available".
+The rest of the Server group applies everywhere.
+
+- **One switch, read in one place**, copying `module-chat`'s `enabled`
+  option (`packages/module-chat/src/enabled.ts`):
+  `localNetworkServerModule({ enabled })` and
+  `localNetworkWebModule({ enabled })`, both answered by one
+  `localNetworkIsEnabled()` in the module's root.
+- ⚠ **The default is OFF**, the opposite of chat. Chat is on because a host
+  that composed it wanted it. This page is right for one kind of installation
+  only, and on any other it would show an address and a certificate that are
+  wrong there. Fail closed: `enabled !== true` means off.
+- **Off means absent**: no resolvers, no page, no drawer entry. An operation
+  reached anyway is refused with "not enabled on this server".
+- ⚠ **The feature registry stays composed while off**, as chat's does (its
+  comment explains why). Otherwise `db:sync` deprecates `local-network:*`, and
+  turning the page back on would bring it back without its grants.
+- **What turns it on is the profile, written by the setup that makes it
+  true.**
+  - `LOCAL_NETWORK="on"` in `web-server.env` and
+    `NEXT_PUBLIC_LOCAL_NETWORK="on"` in `web-app.env`. The web app bakes the
+    second in at build, like `NEXT_PUBLIC_WS_URL`. Both are validated in each
+    app's `src/config/env.ts` and documented in the `.env.example` files,
+    off by default.
+  - `pnpm https:setup` sets both, and `pnpm https:setup --off` removes them,
+    so the page appears and disappears with local HTTPS itself. The setup
+    already says `pnpm build` is needed afterwards.
+  - A remote server's profile (`pnpm env:new <name>`, `docs/HTTPS.md` §7)
+    never has them, so nothing has to be remembered on a remote server.
+- **On, but local HTTPS missing** (`.caddy/` deleted, or not copied to a new
+  machine): the page stays and says why. "Local HTTPS is on in this profile,
+  but its certificate is not on this computer: run `pnpm https:setup`
+  (`docs/HTTPS.md` §4)." It shows no certificate and no address. This is the
+  only "not available" state left, and it is a real fault worth showing.
+
+## 5. The rules
+
+- **Never the private key.** Only `root.crt` is read. `root.key`,
+  `intermediate.key` and `intermediate.crt` are never read, listed or served.
+  The module is given the path of that one file, not the folder, and a test
+  checks that no other file in the folder is opened.
+- **The module knows no paths and no addresses.** The app passes both as
+  options to `localNetworkServerModule({...})`:
+  - the certificate: `.caddy/pki/authorities/local/root.crt`, the folder
+    `pnpm https:setup` uses;
+  - the address: from the profile's `FRONTEND_URL`, which `pnpm https:setup`
+    writes. It is not guessed from network interfaces: under WSL, what Linux
+    sees and what phones reach can differ.
+- **The certificate is returned as text** by a guarded GraphQL query (a few
+  hundred bytes of PEM), with its fingerprint, subject and expiry worked out on
+  the server (`node:crypto`'s `X509Certificate`). The browser saves it as a
+  file. Unlike a backup, it is public and small, so it needs no ticket and no
+  REST route.
+- **Pure logic in `src/domain/`**, tested there: the addresses built from
+  the published origin (`https://<address>`, `http://<address>/kwtech-local-ca.crt`),
+  and the switch (`localNetworkIsEnabled`).
+- **The resolver declares app scope.** Super admins hold every registered
+  key, so only they have `local-network:read` after `db:sync`, as with
+  `backup:*`.
+
+## 6. Keys (app level)
+
+| Key | What it allows |
+|---|---|
+| `local-network:read` | the page: the certificate, its details, and the addresses |
+
+Granted to nobody by the module. `super-admin` holds every registered key.
+
+## 7. Later pages for the Server group
+
+These aren't part of Local Network. Each would be its own page, and probably
+its own module or part of the module that owns the subject, in the same
+drawer group. **All of them apply on a remote server too**, so none of them
+uses Local Network's switch, and each must report "unknown here" rather than a
+wrong answer when it can't tell.
+
+- **Steps per device type**, inside Local Network: Android, iPhone and iPad
+  (Install, then *Certificate Trust Settings*), Mac, Windows, Firefox, taken
+  from `docs/HTTPS.md` §5 and shown in tabs.
+- **A connection check**, inside Local Network: is Caddy answering on 443,
+  does a WebSocket upgrade on `/api/v1/graphql` succeed, does the certificate
+  download answer. Each check is green or red, with what to do when red
+  (`docs/HTTPS.md` §10).
+- **Address changed**, inside Local Network: a warning when the machine's
+  current address isn't the one the profile publishes ("Run
+  `pnpm https:setup` again; phones keep their certificate").
+- **Print agents**, inside Local Network: the address a print agent on another
+  computer should use, with a copy button.
+- **Installing the app on a phone**, inside Local Network: a pointer to
+  `docs/HTTPS.md` §6 after the certificate step.
+- **Server status**: version and commit running, uptime, the active env
+  profile's name (never its values), and whether the built web app is older
+  than the code (merged but not rebuilt).
+- **Disk space**: free space on the drive holding the database and
+  `backups/`, with a warning before backups start failing.
+- **Services**: the API, the web app and Caddy, running or not, read only. No
+  restart button at first: a restart from the page would stop the page itself.
+  ⚠ A remote server may not use pm2 (Docker, systemd, a hosting platform) or
+  Caddy at all: there it says "not managed by pm2 here", not "stopped".
+- **Logs**: the last few hundred lines of the API's log, filtered by level,
+  for diagnosing without a terminal. Secrets must not appear in them, which
+  the API's logger already has to guarantee.
+- **Database**: size, the last migration applied, and `db:sync` state, beside
+  Backups.
+
+## 8. Decisions (operator, 2026-11-04)
+
+| # | Decision |
+|---|---|
+| L1 | A module of its own, administrative, for super admins only |
+| L2 | Named **Local Network**, not "Local Setup", which could mean a developer's own computer or the dev database |
+| L3 | v1 is the certificate download with its explanation, and the server's address as text and as a QR code |
+| L4 | A **Server** drawer group, below Administration, replaces the Database group. Backups moves into it; the modules stay separate |
+| L5 | On a remote server the page does not exist: a switch, off by default, turned on by `pnpm https:setup` |
+| L6 | The private key is never read or served |
+| L7 | The address comes from the profile, not from the network interfaces |
+| L8 | The certificate is returned as text by a query, not through a ticket and a REST route |
+| L9 | The other Server pages (§7) are direction only, each its own issue |
+| L10 | The page reads and changes nothing; no restart or setup buttons in v1 |
+
+## 9. Phases, one commit each
+
+1. **The Server group.** `module-backup`'s group renamed to "Server" and its
+   test updated. The drawer shows Server → Backups. PLAN §12.123 and other
+   docs that say "Database → Backups" are updated.
+2. **The module's core.** `packages/module-local-network`: feature key and
+   registry, the switch, the address helpers in `src/domain/`, the GraphQL
+   operation in `src/operations.ts`, with tests.
+3. **The server side.** `localNetworkServerModule({ enabled, certificatePath, publishedOrigin })`:
+   the guarded query, app scope, the certificate read and its details, the
+   "not enabled" and "not set up" answers. Tests against a temporary folder,
+   including that the key files are never opened.
+4. **The page.** `localNetworkWebModule({ enabled })`: the page in the Server
+   group, the certificate section, the address and both QR codes, the
+   "this computer" line, the not-set-up message.
+5. **Wiring and the switch.** Both apps (`DECLARING_MODULES`,
+   `MODULE_DECLARATIONS`, `WEB_MODULES`, the env vars and their validation),
+   `pnpm https:setup` writing the switch and `--off` removing it.
+6. **Docs.** The module's README, `docs/HTTPS.md` (§5 points to the page, its
+   address corrected, §7 says the page is off on a remote server), the
+   CLAUDE.md package list, and the PLAN §13 entry.
+
+## 10. Built, and where it differs
+
+Not built yet.
