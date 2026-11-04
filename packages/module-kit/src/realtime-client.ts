@@ -4,6 +4,7 @@ import { type Client, createClient } from 'graphql-ws';
 import {
   closeEvent,
   DEFAULT_WS_TICKET_PATH,
+  describeRealtimeError,
   nextRealtimeStatus,
   REALTIME_PONG_TIMEOUT_MS,
   REALTIME_REFUSED_CODE,
@@ -12,6 +13,7 @@ import {
   type RealtimeStatusEvent,
   type RealtimeStatusSnapshot,
   reconnectDelay,
+  resolveSocketUrl,
 } from './realtime.js';
 
 /**
@@ -32,10 +34,11 @@ import {
  * ticket and puts that in `connectionParams`. Two things therefore come from
  * the app rather than from any package:
  *
- *   wsUrl       the API's socket origin. No package can know it, and the app
+ *   wsUrl       the API's socket address. No package can know it, and the app
  *               publishes it as NEXT_PUBLIC_WS_URL because a browser genuinely
  *               has to know where to connect — unlike the HTTP path, which is
- *               proxied precisely so the origin stays private.
+ *               proxied precisely so the origin stays private. A PATH is
+ *               resolved against the page (`resolveSocketUrl`, issue #50).
  *   ticketPath  the mint endpoint, which belongs to `@kwtech/module-auth`.
  *               Hardcoding it would be this package naming a module's URL, so
  *               the default is a default rather than an assumption.
@@ -63,6 +66,21 @@ import {
  */
 export function createRealtimeConnection(options: RealtimeOptions): RealtimeConnection {
   const ticketPath = options.ticketPath ?? DEFAULT_WS_TICKET_PATH;
+
+  /*
+   * A path is resolved against the page HERE, once: this runs in an effect, in
+   * the browser, so `window.location` is the address the person opened. See
+   * `resolveSocketUrl` for why a path is what an app should usually give.
+   */
+  const url = resolveSocketUrl(options.wsUrl, typeof window === 'undefined' ? null : window.location);
+  if (!url) {
+    options.onError?.(
+      new Error(
+        `The realtime address "${options.wsUrl}" is neither a path (/api/v1/graphql) nor a ws:// or wss:// address. Fix NEXT_PUBLIC_WS_URL and rebuild the web app.`,
+      ),
+    );
+    return unreachableConnection();
+  }
 
   const mintTicket = async () => {
     const response = await fetch(ticketPath, {
@@ -149,7 +167,7 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
   let pongTimer: ReturnType<typeof setTimeout> | undefined;
 
   let client: Client | null = createClient({
-    url: options.wsUrl,
+    url,
     /*
      * Lazy: the socket is not opened until something subscribes. A page that
      * mounts the provider but never subscribes should not hold a connection,
@@ -172,7 +190,7 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
     // Called on EVERY attempt — see above. A display's pass, or a fresh ticket.
     connectionParams: options.connectionParams ?? mintTicket,
     on: {
-      error: (error) => options.onError?.(error instanceof Error ? error : new Error(String(error))),
+      error: (error) => options.onError?.(describeRealtimeError(error, url)),
       connecting: () => move('connecting'),
       ping: (received) => {
         if (received) return;
@@ -218,7 +236,7 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
           next: (result) => {
             if (result.data) onNext(result.data as T);
           },
-          error: (error) => options.onError?.(error instanceof Error ? error : new Error(String(error))),
+          error: (error) => options.onError?.(describeRealtimeError(error, url)),
           complete: () => undefined,
         },
       );
@@ -244,5 +262,29 @@ export function createRealtimeConnection(options: RealtimeOptions): RealtimeConn
       };
     },
     reconnectNow,
+  };
+}
+
+/**
+ * A connection that never connects, for an address that cannot be one.
+ *
+ * ⚠ RETURNED, NOT THROWN. This is called from the app's provider effect, and
+ * a throw there takes the whole page down over what `RealtimeOptions.onError`
+ * promises is only an enhancement failing. The caller was already told why.
+ *
+ * ⚠ `refused`, NOT `idle`. Every screen reading `useRealtimeStatus()` must
+ * say it is not live — the POS counts `idle` as live (a lazy socket with
+ * nothing subscribed yet), and so would leave a till with no socket looking
+ * fine, which is the failure issue #50 was.
+ */
+function unreachableConnection(): RealtimeConnection {
+  const snapshot: RealtimeStatusSnapshot = { status: 'refused', since: Date.now() };
+  return {
+    subscribe: () => () => undefined,
+    close: () => undefined,
+    status: () => snapshot,
+    // Nothing will ever change, so nothing is kept to tell.
+    onStatus: () => () => undefined,
+    reconnectNow: () => undefined,
   };
 }

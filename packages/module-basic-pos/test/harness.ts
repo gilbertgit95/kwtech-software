@@ -26,15 +26,46 @@ export const OTHER_STORE = { organizationId: 'org-2', workspaceId: 'ws-2' };
 export const ANA = 'user-ana';
 export const BEN = 'user-ben';
 
-/** A recording engine: every publish kept, nobody listening. */
+/**
+ * A recording engine: every publish kept, and streamed to whoever subscribed
+ * after it — like the app's in-memory engine, which has no replay. Only
+ * `pos.realtime.test.ts` subscribes; the other suites read `sent`.
+ */
 export function recordingPubSub(): PosPubSub & { sent: PosEvent[] } {
+  const waiting = new Set<(payload: unknown) => void>();
   const engine = {
     sent: [] as PosEvent[],
     async publish(_trigger: string, payload: unknown) {
       engine.sent.push(payload as PosEvent);
+      for (const deliver of [...waiting]) deliver(payload);
     },
-    async *asyncIterableIterator<T>(): AsyncIterableIterator<T> {
-      // Nothing streams in these suites.
+    asyncIterableIterator<T>(): AsyncIterableIterator<T> {
+      const queued: T[] = [];
+      let wake: (() => void) | null = null;
+      let done = false;
+      const deliver = (payload: unknown) => {
+        queued.push(payload as T);
+        wake?.();
+      };
+      waiting.add(deliver);
+      const iterator: AsyncIterableIterator<T> = {
+        async next(): Promise<IteratorResult<T>> {
+          while (queued.length === 0 && !done) await new Promise<void>((resolve) => (wake = resolve));
+          wake = null;
+          const value = queued.shift();
+          return value === undefined ? { value: undefined, done: true } : { value, done: false };
+        },
+        async return(): Promise<IteratorResult<T>> {
+          done = true;
+          waiting.delete(deliver);
+          wake?.();
+          return { value: undefined, done: true };
+        },
+        [Symbol.asyncIterator]() {
+          return iterator;
+        },
+      };
+      return iterator;
     },
   };
   return engine;

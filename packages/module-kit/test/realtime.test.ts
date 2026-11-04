@@ -1,9 +1,11 @@
 import {
   closeEvent,
+  describeRealtimeError,
   MAX_RECONNECT_DELAY_MS,
   nextRealtimeStatus,
   REALTIME_REFUSED_CODE,
   reconnectDelay,
+  resolveSocketUrl,
 } from '../src/realtime.js';
 
 describe('reconnectDelay — for a screen nobody is watching', () => {
@@ -56,5 +58,62 @@ describe('closeEvent — reading a close code', () => {
     expect(closeEvent(1000)).toBe('closed_normally');
     expect(closeEvent(4499)).toBe('closed');
     expect(closeEvent(undefined)).toBe('closed');
+  });
+});
+
+describe('resolveSocketUrl — the socket goes where the page came from (issue #50)', () => {
+  const lan = { protocol: 'https:', host: '192.168.1.68' };
+  const thisPc = { protocol: 'https:', host: 'localhost' };
+
+  it('⚠ sends the same build to whichever address the page was opened on', () => {
+    expect(resolveSocketUrl('/api/v1/graphql', lan)).toBe('wss://192.168.1.68/api/v1/graphql');
+    expect(resolveSocketUrl('/api/v1/graphql', thisPc)).toBe('wss://localhost/api/v1/graphql');
+  });
+
+  it('follows the page’s scheme and keeps its port', () => {
+    expect(resolveSocketUrl('/api/v1/graphql', { protocol: 'http:', host: 'localhost:8081' })).toBe(
+      'ws://localhost:8081/api/v1/graphql',
+    );
+  });
+
+  it('leaves a full address alone: a socket on another host is the app’s decision', () => {
+    expect(resolveSocketUrl('wss://pos.example.com/api/v1/graphql', thisPc)).toBe(
+      'wss://pos.example.com/api/v1/graphql',
+    );
+    expect(resolveSocketUrl('ws://localhost:8080/api/v1/graphql', null)).toBe('ws://localhost:8080/api/v1/graphql');
+  });
+
+  it('makes nothing up: no page for a path, a protocol-relative or an http address', () => {
+    expect(resolveSocketUrl('/api/v1/graphql', null)).toBeNull();
+    expect(resolveSocketUrl('//elsewhere.example/api/v1/graphql', lan)).toBeNull();
+    expect(resolveSocketUrl('https://192.168.1.68/api/v1/graphql', lan)).toBeNull();
+    expect(resolveSocketUrl('', lan)).toBeNull();
+  });
+});
+
+describe('describeRealtimeError — a sentence, never "[object Event]"', () => {
+  const url = 'wss://192.168.1.68/api/v1/graphql';
+
+  it('says which address could not be reached, for the browser’s bare Event', () => {
+    expect(describeRealtimeError({ type: 'error' }, url).message).toBe(
+      'Could not reach the live-updates socket at wss://192.168.1.68/api/v1/graphql. Screens update only on a reload until it connects.',
+    );
+  });
+
+  it('gives the close code of a CloseEvent', () => {
+    expect(describeRealtimeError({ type: 'close', code: 1006 }, url).message).toBe(
+      'The live-updates socket to wss://192.168.1.68/api/v1/graphql closed (code 1006).',
+    );
+  });
+
+  it('lists the messages of a refused subscription', () => {
+    expect(describeRealtimeError([{ message: 'Not signed in' }, { message: 'Forbidden' }], url).message).toBe(
+      'A live subscription was refused: Not signed in; Forbidden',
+    );
+  });
+
+  it('passes an Error through untouched', () => {
+    const error = new Error('Could not authorize the realtime connection.');
+    expect(describeRealtimeError(error, url)).toBe(error);
   });
 });

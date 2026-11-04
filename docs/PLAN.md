@@ -605,10 +605,38 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 123 | Backups live only on the API's own disk: a lost disk or server loses the database AND its backups together | before a production database holds data nobody can re-enter | Copy each new backup off the machine (object storage, another host) from the daily process, keeping the folder as the list. Until then, download backups from Database → Backups and keep them elsewhere. See the decision log, 2026-10-26 |
 | 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
 | 125 | ~~Texts in the print studio are selected one at a time; a selection rectangle takes cells only~~ **Settled 2026-11-03 for the layout editor** (issue #57, see §13). On the Print screen texts are still painted into the canvas and not selectable | when texts need moving on the Print screen | The editor's rectangle takes cells and texts, and a group of both moves, copies and is removed together. Print keeps texts fixed once the layout is used |
+| 126 | Chat, notes, queue and tasks decide "live" without the socket's status: a dead socket still looks live there | when any of them is next touched, or a stale screen is reported in one (issue #64) | Only the POS (`posIsLive`, `view/live.ts`) and the notification bell read `useRealtimeStatus()`. The others test `realtime !== null`, which is true while a socket times out forever — how the cashier's till looked live in issue #50. Move each onto its own threshold rule, as the POS does; the socket itself already works for all of them (§13, 2026-11-04) |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-04** — **The live-updates socket address is a path resolved against the page, and a screen's "not live" is the socket's real state (issue #50).**
+
+  The POS cashier never showed a phone's held order without a reload. The
+  server delivered every event (checked over the running API's own socket,
+  through Caddy and the ticket proxy); the browser never connected.
+  `NEXT_PUBLIC_WS_URL` was baked in as `wss://192.168.1.68/...`, and the shop's
+  PC, which opens the app on `localhost` (HTTPS.md §4), cannot reach its own
+  network address inside WSL: `ERR_CONNECTION_TIMED_OUT`, forever, while the
+  till said it was live and the console said `[object Event]`.
+  - **A path, resolved in the browser.** `resolveSocketUrl` (module-kit)
+    turns `/api/v1/graphql` into `wss://<the page's host>/...`, so one build
+    serves phones on the network address and the PC on `https://localhost`.
+    `https:setup` writes the path; a full `ws://`/`wss://` address still
+    works, for a socket on another host. module-print resolves it the same
+    way for the print agent's setup addresses.
+  - **Errors say where.** `describeRealtimeError` replaces `String(event)`.
+  - **The POS's "not live" reads `useRealtimeStatus()`** (5 s of not
+    connecting, or refused) instead of `realtime !== null`.
+  - **The POS no longer relies on the socket alone:** a write announces
+    itself to the same page (`pos-local-events.ts`), and opening Sell or
+    returning to the window re-reads as a `sync`.
+  - **Not done:** `http://localhost:8081` on the server is no longer live
+    (the socket follows the page to Next, which has no WebSocket); the PC uses
+    `https://localhost`. `hostAddressLoopback` in `.wslconfig` was rejected as
+    the fix: experimental, and per machine. Other modules' "not live" notes
+    were not moved onto the status; the bell already was (§12.126, issue #64).
 
 - **2026-11-03** — **A store's POS setup moves in and out of Excel from the Items tab: one workbook, a tab per sub-tab, one set of rules on both sides (issue #35, last of three PRs).**
 

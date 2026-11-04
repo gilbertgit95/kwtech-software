@@ -378,6 +378,48 @@ items. Built on `module-kit`'s spreadsheet engine and `web-ui`'s wizard.
   point at item ids, which a file does not carry: after importing into
   another store they start empty.
 
+## Live updates (issue #50)
+
+Every write publishes one `posEvents` change after its commit — `catalogue`,
+`customers`, `settings` or `order` (with the order's id), and `stock` from the
+stock app — carrying ids, never content. The subscription sends `sync` first
+and filters to the workspace (`isPosEventFor`, `test/pos.realtime.test.ts`).
+The till (`useTill`) and every section (`usePosData`) debounce what they hear
+and re-read through the guarded queries; which reads an event calls for is
+`tillRereads` in `src/react/view/live.ts`.
+
+**The cause of #50 was the transport, not the module.** The web app's socket
+address was baked into its build as `wss://192.168.1.68/...`, and the shop's
+PC — which opens the app on `localhost` — could not reach its own network
+address inside WSL. Its socket timed out forever, the till still said it was
+live, and the console said `[object Event]`. The server delivered every
+event. Fixed in the app and module-kit: the address is now a path resolved
+against the page (`resolveSocketUrl`), and the PC uses `https://localhost`
+(docs/HTTPS.md §4).
+
+So that a dead socket can never again leave a screen stale without anyone
+knowing:
+
+- **"Not live" is the socket's real state** (`posIsLive`): refused, or not
+  connected for 5 s. It used to be "the app has a connection", which was true
+  while it timed out.
+- **This page's own writes refresh this page at once** (`pos-local-events.ts`):
+  `createPosClient` announces each successful write with the kind the server
+  will publish (`POS_WRITE_ECHOES`, checked complete by
+  `test/local-events.test.ts`), and the screens treat it as the socket's event.
+  References saved on Items reach Sell's dialog with no socket at all. The till
+  ignores the echo of its own act, whose answer it already has.
+- **Coming back reads again, as a `sync`:** opening Sell (`state.refresh`), and
+  the window becoming visible or focused. A section reads when it opens anyway.
+- **A re-read never puts an older order back on the till.** `reloadOrder`
+  drops an answer when an act is running, another order is on the till, or
+  its version is older than the one there — so an event cannot make the
+  cashier's next act "somebody changed it".
+
+Not done: another BROWSER TAB of the same browser hears this page's writes
+only through the socket (a `BroadcastChannel` would carry them; nothing has
+needed it yet).
+
 ## Processes
 
 | Key | What | Default schedule | Limits |

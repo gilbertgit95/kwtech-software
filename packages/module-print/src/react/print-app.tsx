@@ -1,6 +1,6 @@
 'use client';
 
-import type { AppProps } from '@kwtech/module-kit';
+import { type AppProps, resolveSocketUrl } from '@kwtech/module-kit';
 import { useHoldsFeature, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
 import { BookOpen, CircleAlert, Monitor, Plus, RefreshCw } from 'lucide-react';
@@ -13,7 +13,13 @@ import { SetupGuideDialog } from './components/setup-guide-dialog.js';
 import { TestPrintDialog } from './components/test-print-dialog.js';
 import { createPrintClient, type PrintAgentView, type PrintClient, type PrintPrinterView } from './print-client.js';
 import { buttonClass } from './ui.js';
-import { agentServerSettings, cannotPrintReason, fleetSummary, fleetSummaryText } from './view.js';
+import {
+  type AgentServerSettings,
+  agentServerSettings,
+  cannotPrintReason,
+  fleetSummary,
+  fleetSummaryText,
+} from './view.js';
 
 /** How often the list is read again while a code is waiting to be typed: the new computer should appear by itself. */
 const PAIRING_REREAD_MS = 3000;
@@ -64,7 +70,17 @@ export function PrintApp({
   const [refreshing, setRefreshing] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [guide, setGuide] = useState(false);
-  const server = useMemo(() => agentServerSettings(wsUrl), [wsUrl]);
+  /*
+   * ⚠ IN AN EFFECT, because the app may give a PATH (`/api/v1/graphql`, issue
+   * #50), which only means an address once it is resolved against the page
+   * the person opened — and there is no page during the server's render. The
+   * guide then shows the address this browser reached the server on, which is
+   * the one a computer on the same network can reach too.
+   */
+  const [server, setServer] = useState<AgentServerSettings | null>(null);
+  useEffect(() => {
+    setServer(agentServerSettings(wsUrl ? resolveSocketUrl(wsUrl, window.location) : null));
+  }, [wsUrl]);
   const [revoking, setRevoking] = useState<PrintAgentView | null>(null);
   const [testing, setTesting] = useState<{ agent: PrintAgentView; printer: PrintPrinterView } | null>(null);
 

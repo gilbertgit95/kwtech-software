@@ -71,7 +71,12 @@ export function anonymousAdmission<T extends object>(request: unknown): T | unde
 }
 
 export interface RealtimeOptions {
-  /** `wss://api.example.com/api/v1/graphql`. No default — only the app knows it. */
+  /**
+   * Where the socket is. No default — only the app knows it. Either a full
+   * address (`wss://api.example.com/api/v1/graphql`), or a PATH
+   * (`/api/v1/graphql`) resolved against the page's own address when the
+   * connection is opened — see `resolveSocketUrl` for why a path is usually right.
+   */
   wsUrl: string;
   ticketPath?: string;
   /**
@@ -240,4 +245,73 @@ export function closeEvent(code: number | undefined): RealtimeStatusEvent {
   if (code === REALTIME_REFUSED_CODE) return 'refused';
   if (code === 1000) return 'closed_normally';
   return 'closed';
+}
+
+/** The part of `window.location` a socket address is resolved against. */
+export interface SocketPageAddress {
+  /** `https:` or `http:`, with the colon, as `location.protocol` gives it. */
+  protocol: string;
+  /** Host and port, as `location.host` gives it: `192.168.1.68`, `localhost:8081`. */
+  host: string;
+}
+
+/**
+ * The socket address to open, from what the app was configured with and the
+ * address the page itself was opened on. Null when no address can be made —
+ * a path with no page to resolve it against (a server render), or a value that
+ * is neither a path nor a `ws:` / `wss:` address.
+ *
+ *   `wss://api.example.com/api/v1/graphql`  → itself: a socket on another host
+ *   `/api/v1/graphql`, page `https://192.168.1.68`  → `wss://192.168.1.68/api/v1/graphql`
+ *   `/api/v1/graphql`, page `https://localhost`     → `wss://localhost/api/v1/graphql`
+ *
+ * ⚠ A PATH IS WHAT KEEPS ONE BUILD WORKING FROM EVERY ADDRESS (issue #50). The
+ * value is baked into the web app's build, and a full address baked in sends
+ * EVERY browser to that one host — including a browser that can load the page
+ * but cannot reach that host. On a shop's WSL computer that is the computer
+ * itself: Windows does not route its own network address back into WSL
+ * (docs/HTTPS.md §4), so the cashier's till opened the page on `localhost`,
+ * sent its socket to `wss://192.168.1.68`, timed out, and never showed another
+ * till's order. Resolved against the page, the socket goes wherever the page
+ * came from, which by definition the browser can reach.
+ *
+ * The scheme follows the page: an `https:` page gets `wss:` (a browser refuses
+ * a plain `ws:` from a secure page), anything else `ws:`.
+ */
+export function resolveSocketUrl(configured: string, page: SocketPageAddress | null): string | null {
+  const value = configured.trim();
+  if (/^wss?:\/\//i.test(value)) return value;
+  // `//host/...` is a protocol-relative ADDRESS, not a path: refused rather than guessed at.
+  if (!value.startsWith('/') || value.startsWith('//')) return null;
+  if (!page) return null;
+  const scheme = page.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${scheme}//${page.host}${value}`;
+}
+
+/**
+ * A sentence for whatever a socket failure handed over.
+ *
+ * `graphql-ws` reports a failed connection with the browser's bare `Event` or
+ * `CloseEvent`, and `String()` of those is `[object Event]` — which is all the
+ * console said while the cashier's till sat dead for issue #50. A GraphQL
+ * refusal of one subscription arrives as an array of errors, which `String()`
+ * also flattens to nothing useful.
+ */
+export function describeRealtimeError(error: unknown, url: string | null): Error {
+  if (error instanceof Error) return error;
+  if (Array.isArray(error)) {
+    const messages = error
+      .map((each) => (typeof each === 'object' && each !== null ? (each as { message?: unknown }).message : each))
+      .filter((message): message is string => typeof message === 'string' && message !== '');
+    if (messages.length > 0) return new Error(`A live subscription was refused: ${messages.join('; ')}`);
+  }
+  if (typeof error === 'object' && error !== null) {
+    const code = (error as { code?: unknown }).code;
+    const where = url ?? 'the server';
+    if (typeof code === 'number') return new Error(`The live-updates socket to ${where} closed (code ${code}).`);
+    return new Error(
+      `Could not reach the live-updates socket at ${where}. Screens update only on a reload until it connects.`,
+    );
+  }
+  return new Error(String(error));
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useHoldsFeature, useRealtime, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
+import { useHoldsFeature, useRealtime, useRealtimeStatus, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { effectiveKeymap, type PosKeymap } from '../domain/keymap.js';
 import { POS_CONFLICT_MESSAGE } from '../domain/orders.js';
@@ -15,6 +15,8 @@ import {
   type PosOrderView,
   type PosScopeView,
 } from './pos-client.js';
+import { onPosWrite } from './pos-local-events.js';
+import { posIsLive, posLiveChangeIn, tillEventKind, tillRereads } from './view/live.js';
 import { type PosRankMap, rankMap } from './view/popularity.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
@@ -86,7 +88,17 @@ export interface TillState {
   canRefund: boolean;
   /** Mark items and sizes not available and back (`pos:set_availability`, issue #37): the sell views' Availability button. */
   canSetAvailability: boolean;
+  /**
+   * Whether other tills' changes are arriving by themselves: the SOCKET'S
+   * state (`view/live.ts`), not merely that the app has one (issue #50).
+   */
   live: boolean;
+  /**
+   * Reads everything the till shows again, as a reconnect's `sync` does.
+   * Called when Sell is opened, so a screen that missed an event — the socket
+   * was down — is current when somebody looks at it.
+   */
+  refresh: () => void;
   error: string | null;
   dismissError: () => void;
   /** Shows a failure from outside `act` (saving a customer first) in the till's one alert. */
@@ -120,6 +132,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const scope = useMemo(() => ({ organizationId, workspaceId }), [organizationId, workspaceId]);
   const client = useMemo(() => options.client ?? createPosClient(), [options.client]);
   const realtime = useRealtime();
+  const realtimeStatus = useRealtimeStatus();
   const canSell = useHoldsFeature(POS_FEATURE.sell);
   const canTakePayment = useHoldsFeature(POS_FEATURE.takePayment);
   const canDiscount = useHoldsFeature(POS_FEATURE.discount);
@@ -199,15 +212,34 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     }
   }, [client, scope, fail]);
 
-  const reloadOrder = useCallback(async () => {
-    const current = orderRef.current;
-    if (!current) return;
-    try {
-      setOrder(await client.order(scope, current.id));
-    } catch (caught) {
-      fail(caught, 'Could not reload this order.');
-    }
-  }, [client, scope, fail, setOrder]);
+  /**
+   * Reads the order on the till again.
+   *
+   * ⚠ AN ANSWER THE TILL HAS MOVED PAST IS DROPPED. A re-read started by an
+   * event can land after an act on this till answered with a NEWER version;
+   * putting the older one back would make the cashier's next act "somebody
+   * changed it" for a change that was their own. So it is dropped when an act
+   * is running, when another order is on the till by then, or when it is older
+   * than what is there. `duringAct` is the one caller inside an act: the
+   * conflict path, which wants the order as it now is.
+   */
+  const reloadOrder = useCallback(
+    async (options: { duringAct?: boolean } = {}) => {
+      const current = orderRef.current;
+      if (!current) return;
+      try {
+        const found = await client.order(scope, current.id);
+        const latest = orderRef.current;
+        if (!options.duringAct && inFlight.current) return;
+        if (latest?.id !== current.id) return;
+        if (found && found.version < latest.version) return;
+        setOrder(found);
+      } catch (caught) {
+        fail(caught, 'Could not reload this order.');
+      }
+    },
+    [client, scope, fail, setOrder],
+  );
 
   // The order that was on this till before a reload goes back on it, if it is
   // still open and nothing was started meanwhile.
@@ -284,19 +316,18 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const kinds = useRef(new Set<string>());
   const onEvent = useCallback(
     (event: PosEventView) => {
-      kinds.current.add(event.kind === 'order' && event.orderId === orderRef.current?.id ? 'current' : event.kind);
+      kinds.current.add(tillEventKind(event, orderRef.current?.id ?? null));
       if (timer.current) return;
       timer.current = setTimeout(() => {
         timer.current = null;
-        const seen = kinds.current;
+        // Which reads a burst calls for is `tillRereads` (view/live.ts), where it is tested.
+        const reads = tillRereads(kinds.current);
         kinds.current = new Set();
-        const all = seen.has('sync');
-        if (all || seen.has('catalogue')) void loadCatalogue();
-        // A sale here or at another till, a delivery, a count: the stock app says `stock` once it has moved.
-        if (all || seen.has('catalogue') || seen.has('stock')) void loadStock();
-        if (all || seen.has('settings')) void loadSettings();
-        if (all || seen.has('order') || seen.has('current')) void reloadPending();
-        if (all || seen.has('current')) void reloadOrder();
+        if (reads.catalogue) void loadCatalogue();
+        if (reads.stock) void loadStock();
+        if (reads.settings) void loadSettings();
+        if (reads.pending) void reloadPending();
+        if (reads.order) void reloadOrder();
       }, REREAD_DEBOUNCE_MS);
     },
     [loadCatalogue, loadSettings, loadStock, reloadPending, reloadOrder],
@@ -315,6 +346,56 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
       timer.current = null;
     };
   }, [realtime, scope, onEvent]);
+
+  /*
+   * This page's own writes (issue #50): references saved on Items reach the
+   * Sell tab's dialog with the socket down, and a held order cancelled from
+   * Orders leaves the pending column. ⚠ NOT WHILE AN ACT RUNS: that write is
+   * the till's own, its answer is about to be put on the till, and the act
+   * re-reads the pending list itself when it ends — an echo would only read
+   * the same order twice.
+   */
+  useEffect(
+    () =>
+      onPosWrite(scope, (event) => {
+        if (inFlight.current) return;
+        onEvent(event);
+      }),
+    [scope, onEvent],
+  );
+
+  /*
+   * Coming back to the window — another app, another browser tab, a phone
+   * woken up — reads everything again, as a reconnect does. Whatever the socket
+   * missed meanwhile is on screen before anybody acts on it (issue #50).
+   */
+  const sync = useCallback(() => onEvent({ kind: 'sync', orderId: null, actorId: null }), [onEvent]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', sync);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', sync);
+    };
+  }, [sync]);
+
+  /*
+   * Live is the socket's own state, seen now — and "now" moves on by one timer
+   * at the moment a reconnect becomes long enough to say so (`view/live.ts`).
+   */
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+  useEffect(() => {
+    setLiveNow(Date.now());
+    if (!realtimeStatus) return;
+    const wait = posLiveChangeIn(realtimeStatus.status, realtimeStatus.since, Date.now());
+    if (wait === null) return;
+    const timeout = setTimeout(() => setLiveNow(Date.now()), wait + 1);
+    return () => clearTimeout(timeout);
+  }, [realtimeStatus]);
+  const live = posIsLive(realtime !== null, realtimeStatus?.status ?? null, realtimeStatus?.since ?? 0, liveNow);
 
   // ── acts ──────────────────────────────────────────────────────────────────
 
@@ -341,7 +422,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
       } catch (caught) {
         fail(caught, 'That did not work. Try again.');
         // ⚠ Another till changed this order: show what it is now, then let them act again.
-        if (caught instanceof Error && caught.message === POS_CONFLICT_MESSAGE) await reloadOrder();
+        if (caught instanceof Error && caught.message === POS_CONFLICT_MESSAGE) await reloadOrder({ duringAct: true });
         return null;
       } finally {
         inFlight.current = false;
@@ -391,7 +472,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     canDiscount,
     canRefund,
     canSetAvailability,
-    live: realtime !== null,
+    live,
+    refresh: sync,
     error,
     dismissError: () => setError(null),
     showError: fail,

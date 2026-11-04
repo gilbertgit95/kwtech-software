@@ -258,7 +258,16 @@ pnpm https:setup --address=192.168.1.68
 ```
 
 On that PC it wrote `FRONTEND_URL="https://192.168.1.68"` and
-`NEXT_PUBLIC_WS_URL="wss://192.168.1.68/api/v1/graphql"`.
+`NEXT_PUBLIC_WS_URL="/api/v1/graphql"`.
+
+⚠ **The socket's address is a path, not `wss://<address>`** (issue #50). The
+browser resolves it against the address the page was opened on: a phone on
+`https://192.168.1.68` connects to `wss://192.168.1.68/api/v1/graphql`, and
+the server's own browser on `https://localhost` to
+`wss://localhost/api/v1/graphql`, through Caddy both times. Until 2026-11-04
+the setup wrote the full `wss://<address>`, which sent the server's own
+browser to its own network address as well — on WSL that never answers
+(step 6), so the cashier's till loaded and was never live.
 
 ⚠ From the next start, the apps answer **only to Caddy**: other devices use
 `https://<address>`, and `http://<address>:8081` is refused (section 1, "One
@@ -305,8 +314,9 @@ curl -s  -o /dev/null -w "%{http_code}\n" http://192.168.1.186/kwtech-local-ca.c
 curl -s -m 3 http://192.168.1.186:8081/ || echo "refused — good: the only way in is https"
 ```
 
-Then register each device (section 5), the server's own browser too if it
-will use the `https://` address. That browser cannot use it on WSL (below).
+Then register each device (section 5), **the server's own browser too**: it
+opens the app on `https://localhost`, which is what keeps its tills live. On
+WSL it cannot use the network address (below).
 
 **On WSL, what reaches what** (checked on 2026-10-31, with
 `LISTEN_HOST="127.0.0.1"`):
@@ -314,7 +324,8 @@ will use the `https://` address. That browser cannot use it on WSL (below).
 | From | Use | Works |
 |---|---|---|
 | A phone or another computer on the network | `https://<address>` | yes, through both firewalls to Caddy in WSL |
-| **The Windows PC itself**, browser | `http://localhost:8081` (or `https://localhost`) | yes: mirrored networking shares `localhost` with WSL |
+| **The Windows PC itself**, browser | **`https://localhost`** | yes: mirrored networking shares `localhost` with WSL, and live updates connect to `wss://localhost` through Caddy. Register this PC like a phone (section 5, Windows) so the page opens without a warning |
+| The Windows PC itself, browser | `http://localhost:8081` | the page opens, but ⚠ **live updates do not**: the socket follows the page to `:8081`, where nothing answers a WebSocket. Tills there show *"Not live"* |
 | The Windows PC itself | `https://<address>` (its own network address) | ⚠ **no**, it times out: Windows does not route its own address back into WSL. Use `localhost` on this PC |
 | A print agent on the Windows PC | `http://localhost:8080/api/v1` | yes |
 
@@ -613,14 +624,15 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 | A **remote** server's site is down after setting `LISTEN_HOST` | It runs on a platform or in Docker, whose front door is on another machine: remove `LISTEN_HOST` (section 1) and restart |
 | A print agent on another computer cannot connect | It needs `https://` / `wss://` and `NODE_EXTRA_CA_CERTS` pointing at the shop's certificate (section 8) |
 | A phone cannot stay signed in | It is on `http://`: the built app's cookies need `https://` |
-| *"Not live — other tills' changes show when you reload"* | Live updates cannot connect. Is Caddy (or the remote host's proxy) running and passing the WebSocket upgrade on `/api/v1/`? Is `NEXT_PUBLIC_WS_URL` `wss://<address or domain>/api/v1/graphql`? It is baked in: `pnpm build` after changing it |
+| *"Not live — other tills' changes show when you switch tabs…"* | Live updates cannot connect. The console says where it tried (*Could not reach the live-updates socket at …*). On the server itself: open `https://localhost`, not `http://localhost:8081`. Otherwise: is Caddy (or the remote host's proxy) running and passing the WebSocket upgrade on `/api/v1/`? Is `NEXT_PUBLIC_WS_URL` `/api/v1/graphql` (or, on a remote server, `wss://<domain>/api/v1/graphql`)? It is baked in: `pnpm build` after changing it |
 | `kwtech-https` errored in `pnpm pm2:status` | Caddy is not installed, or on Linux may not use port 443: `pnpm https:setup` says which. `pnpm pm2:logs kwtech-https` shows the error |
 | `pnpm https` says *FRONTEND_URL … is not an https:// address on this network* | Run `pnpm https:setup` first. On a remote server with a domain this is expected: there is no Caddy there (section 7) |
 | A remote server shows `kwtech-https` | `FRONTEND_URL` is a private address, not the domain: fix the profile (section 7), then `pnpm pm2:start` |
 | The page does not open from a phone | Not on the shop's Wi-Fi; ports 80/443 blocked (Windows: section 4, step 1); or Caddy is not running |
 | WSL: phones time out though the Windows firewall allows 80/443 | The **Hyper-V firewall** rule is missing (`Get-NetFirewallHyperVRule -DisplayName "kwtech HTTPS"`), or the network is marked *Public* (section 4, step 1) |
 | WSL: `hostname -I` prints `172.x.x.x` | Mirrored networking is not on: `.wslconfig`, then `wsl --shutdown` (section 4, step 1) |
-| WSL: `https://<address>` times out **on the Windows PC itself** but works from phones | Expected with mirrored networking: on that PC use `http://localhost:8081` (section 4, step 6) |
+| WSL: `https://<address>` times out **on the Windows PC itself** but works from phones | Expected with mirrored networking: on that PC use `https://localhost` (section 4, step 6) |
+| The PC's till is never live, devtools says *WebSocket connection to 'wss://<address>/…' failed: net::ERR_CONNECTION_TIMED_OUT* | The build has the old full `wss://<address>`: `pnpm https:setup` again (it writes the path), `pnpm build`, and open `https://localhost` on that PC (issue #50) |
 | Mac: *Error: -25294* importing the certificate | `security add-trusted-cert`, or Keychain Access with *Destination: login* (section 5, Mac) |
 | Phones get *502 Bad Gateway* after the ports were changed | The Caddyfile still says `localhost:8080` / `localhost:8081`: [SETUP.md §8, "Changing the ports"](SETUP.md#changing-the-ports) lists every place |
 | Uploads fail on a remote server | The proxy's body limit: nginx's `client_max_body_size` (section 7) |
@@ -633,7 +645,9 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 - **The shop's network only** for Caddy: nothing is reachable from the
   internet that way, by design.
 - `NEXT_PUBLIC_WS_URL` is **baked into the web app's build**: rebuild after
-  changing it.
+  changing it. The path `https:setup` writes names no address, so a new
+  address on the network needs no rebuild for it (the API's `FRONTEND_URL`
+  still changes: restart).
 - Plain `http://` from another device does not work today (section 2). Making
   the browser code independent of `crypto.randomUUID()` would let development
   run over plain http from phones; the built app would still need HTTPS to
