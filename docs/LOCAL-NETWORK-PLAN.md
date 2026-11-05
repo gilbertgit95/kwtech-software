@@ -174,24 +174,45 @@ The rest of the Server group applies everywhere.
   host and lead every phone to a port Caddy does not listen on (it serves
   `https://{$KWTECH_HTTPS_HOST}`, port 443). So the published address must be
   exactly `https://<private IPv4>`: no port (443 only), no user or password,
-  no path other than none, no query, no fragment — in practice,
+  no path, no query, no fragment — in practice,
   `new URL(FRONTEND_URL).origin === FRONTEND_URL` with no trailing slash.
-  The rule moves into the module's `src/domain/`, and Caddy's launcher reads
-  that copy too, so the launcher stops accepting what the page refuses. The
-  page says "Local Network
-  is on, but this profile publishes `<FRONTEND_URL>`, not an address on the
-  shop's network: run `pnpm https:setup`." Two checks, and which side each
-  covers:
-  - **The server** applies the rule when it answers the page's query, so it
-    covers the web side too: the web app has no address of its own and shows
-    only what the server answers. A failing origin answers "not set up", with
-    the reason, instead of an address.
-  - **`pnpm env:check`** reports a profile whose `FRONTEND_URL` fails the
-    same whole-origin rule while either switch is on, before anything is
-    started or built, and names what is wrong (the port, a path, not HTTPS,
-    not a private address).
+  The page says "Local Network is on, but this profile publishes
+  `<FRONTEND_URL>`, not an address on the shop's network: run
+  `pnpm https:setup`."
+- **Where the rule lives: ONE copy that needs no build.** Its three readers
+  run at different times, and two of them before anything is built: the PM2
+  launcher (`ecosystem.config.cjs`; ⚠ `pnpm pm2:start` does NOT build, despite
+  that file's header, which this work corrects), `pnpm env:check`
+  (`scripts/env.mjs`), and the API. So it is not in the module's `src/domain/`,
+  which exists only as `dist/` after a build. It is a plain CommonJS file with
+  no dependencies, `deploy/https/origin.cjs` (`checkLocalOrigin(url)` →
+  `{ ok: true, host }` or `{ ok: false, problem }`), beside the `host.cjs`
+  the launcher already requires:
+  - **the launcher** requires it directly, and `httpsHost()` becomes a call to it;
+  - **`pnpm env:check`** imports it (an ES module can import CommonJS);
+  - **the API** reads it once at boot in `apps/web-server/src/config/env.ts`
+    (through `createRequire`, from the repository root, as the scripts do) and
+    passes the module the answer as an option. The module never reads
+    `FRONTEND_URL` and holds no copy of the rule (PLAN §9 rule 6: the app
+    configures). A jest test in `apps/web-server/test/` covers the rule's cases.
+- **Who checks, and what each does on a bad origin:**
+  - **The launcher, always, whichever way the switches are.** When
+    `FRONTEND_URL` is `https://` on a private IPv4 address but fails the
+    whole-origin rule (a port, a path, userinfo, a query, a fragment, or a
+    malformed URL such as `https://:443`), it stops with an error that names
+    the problem and says to run `pnpm https:setup`. ⚠ It never leaves
+    `kwtech-https` out silently, as today's "no host, no Caddy" branch does:
+    that branch stays only for profiles with nothing to serve on the shop's
+    network. Domain and `http://` profiles are outside this check, and start
+    as they do now (a remote server runs no Caddy).
+  - **The API**, while the switch is on, answers the page "not set up", with
+    the problem, instead of an address. That covers the web side too: the web
+    app has no address of its own and shows only what the API answers.
+  - **`pnpm env:check`** reports the same problem in the same words, for any
+    profile whose `FRONTEND_URL` is `https://` on a private address, switch on
+    or off, so it is caught before anything is started or built.
 
-  These two, and local HTTPS missing, are the only "not available" states
+  A bad origin and local HTTPS missing are the only "not available" states
   left, and each is a real fault worth showing.
 
 ## 5. The rules
@@ -312,7 +333,10 @@ switch.
    `MODULE_DECLARATIONS`, `WEB_MODULES`, the env vars and their validation),
    `pnpm https:setup` writing the switch and `--off` removing it, and
    `pnpm env:check` reporting a profile whose two files disagree on it, or
-   whose `FRONTEND_URL` is not a private HTTPS address while it is on.
+   whose private `https://` `FRONTEND_URL` fails the whole-origin rule (switch
+   on or off). `deploy/https/origin.cjs` with its jest test; the launcher
+   failing loudly on a bad origin instead of dropping `kwtech-https`; and
+   `ecosystem.config.cjs`'s header corrected (`pnpm pm2:start` does not build).
 6. **Docs.** The module's README, `docs/HTTPS.md` (§5 points to the page, its
    address corrected, §7 says the page is off on a remote server), the
    CLAUDE.md package list, and the PLAN §13 entry.
