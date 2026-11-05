@@ -99,7 +99,7 @@ export function otherDaysLine({
   /** The every-date count's read: its last answer, and whether it is reading or failed. */
   count: { data: { filter: OrderFilter; count: number } | null; loading: boolean; error: string | null };
 }): string | null {
-  if (!counting || list.loading || list.error || count.loading || count.error) return null;
+  if (!counting || list.loading || list.error !== null || count.loading || count.error !== null) return null;
   if (!count.data || count.data.filter !== filter) return null;
   return otherDaysNote(filter, listed, count.data.count);
 }
@@ -114,7 +114,7 @@ export function otherDaysLine({
  * since. Both Orders screens draw their Print from this.
  */
 export function reprintState(read: { loading: boolean; error: string | null }): 'ready' | 'updating' | 'stale' {
-  if (read.error) return 'stale';
+  if (read.error !== null) return 'stale';
   if (read.loading) return 'updating';
   return 'ready';
 }

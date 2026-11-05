@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { POS_OPERATIONS } from '../operations.js';
 import type { PosEventView, PosScopeView } from './pos-client.js';
 import { onPosWrite } from './pos-local-events.js';
+import { readError } from './view/read-error.js';
 
 /** How long after the last event a section reads again — a burst of events is one read. */
 const REREAD_DEBOUNCE_MS = 250;
@@ -58,7 +59,7 @@ export function usePosData<T>(
       setError(null);
     } catch (caught) {
       if (mine !== generation.current) return;
-      setError(caught instanceof Error ? caught.message : fallback);
+      setError(readError(caught, fallback));
     } finally {
       if (mine === generation.current) setLoading(false);
     }

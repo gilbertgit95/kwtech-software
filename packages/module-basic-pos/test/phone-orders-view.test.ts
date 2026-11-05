@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { orderRowDetail, ordersListEmptyText, otherDaysLine, reprintState } from '../src/react/view/manage.js';
 import { phoneOrderNextStep } from '../src/react/view/phone-orders.js';
+import { readError } from '../src/react/view/read-error.js';
 
 /** Orders on a phone (issue #72): what the screen draws, and that it only looks. */
 describe('phoneOrderNextStep', () => {
@@ -128,6 +129,24 @@ describe('reprintState', () => {
     expect(reprintState({ loading: false, error: 'Could not load this order.' })).toBe('stale');
     // A failed read stays stale while it is tried again: the copy on screen is still the old one.
     expect(reprintState({ loading: true, error: 'Could not load this order.' })).toBe('stale');
+  });
+});
+
+describe('readError', () => {
+  it('keeps the API’s message', () => {
+    expect(readError(new Error('Your session has ended. Sign in again.'), 'Could not load this order.')).toBe(
+      'Your session has ended. Sign in again.',
+    );
+  });
+
+  it('⚠ never stores an empty message: a failed read must read as failed', () => {
+    expect(readError(new Error(''), 'Could not load this order.')).toBe('Could not load this order.');
+    expect(readError(new Error('  '), 'Could not load this order.')).toBe('Could not load this order.');
+    expect(readError('boom', 'Could not load this order.')).toBe('Could not load this order.');
+  });
+
+  it('counts an empty error as stale, not ready', () => {
+    expect(reprintState({ loading: false, error: '' })).toBe('stale');
   });
 });
 
