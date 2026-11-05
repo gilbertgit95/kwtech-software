@@ -434,6 +434,15 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
 
   // ── acts ──────────────────────────────────────────────────────────────────
 
+  /**
+   * The latest resume's number (see `resume`). ⚠ ALSO RETIRED BY ANY OTHER
+   * CHANGE TO THE TILL: an act starting or the till being cleared moves it on,
+   * so a slow read started before — the cashier opened an order, then cleared
+   * the till or started another in Take orders — can never land afterwards and
+   * replace the newer order (CodeRabbit on #70).
+   */
+  const resumeRead = useRef(0);
+
   const act = useCallback(
     async (
       fn: (order: PosOrderView) => Promise<PosOrderView>,
@@ -441,6 +450,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     ): Promise<PosOrderView | null> => {
       if (inFlight.current) return null;
       inFlight.current = true;
+      resumeRead.current += 1;
       setBusy(true);
       try {
         let current = orderRef.current;
@@ -469,6 +479,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   );
 
   const clear = useCallback(() => {
+    resumeRead.current += 1;
     setOrder(null);
     setError(null);
   }, [setOrder]);
@@ -480,7 +491,6 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
    * on #70). Each resume takes a number, and an answer that is no longer the
    * latest is dropped and reported as not opened.
    */
-  const resumeRead = useRef(0);
   const resume = useCallback(
     async (orderId: string): Promise<boolean> => {
       resumeRead.current += 1;

@@ -1,6 +1,11 @@
 'use client';
 
-import type { MobileManageLevel } from '@kwtech/module-kit';
+import {
+  type MobileManageLevel,
+  type MobileSectionBadges,
+  sectionBadgeLabel,
+  withSectionBadge,
+} from '@kwtech/module-kit';
 import { MobileSectionProvider } from '@kwtech/module-kit/react';
 import { cn } from '@kwtech/web-ui/react';
 import {
@@ -83,6 +88,10 @@ interface ScreensState {
   view: MobileView;
   /** The open section of each app that has sections, by app key. */
   sections: Readonly<Record<string, string>>;
+  /** Counts the apps report for their section chips (`useMobileSectionBadge`), by app then section. */
+  badges: MobileSectionBadges;
+  /** Stable: an app's report changes one count, and the same count again changes nothing. */
+  setSectionBadge: (app: string, section: string, count: number | null) => void;
   pins: readonly string[];
   goTab: (tab: MobileTab) => void;
   openApp: (key: string) => void;
@@ -98,6 +107,8 @@ const ScreensContext = createContext<ScreensState>({
   tabs: [],
   view: { tab: 'home', app: null, section: null },
   sections: {},
+  badges: {},
+  setSectionBadge: () => {},
   pins: [],
   goTab: () => {},
   openApp: () => {},
@@ -147,6 +158,13 @@ export function MobileScreensProvider({
     initial.app && initial.section ? { [initial.app]: initial.section } : {},
   );
   const [pins, setPins] = useState<readonly string[]>(() => pinnedApps(null, screens));
+  const [badges, setBadges] = useState<MobileSectionBadges>({});
+  // `withSectionBadge` answers the same object for no change, so a repeated report is no render.
+  const setSectionBadge = useCallback(
+    (app: string, section: string, count: number | null) =>
+      setBadges((current) => withSectionBadge(current, app, section, count)),
+    [],
+  );
 
   /*
    * Pins live in THIS browser only (localStorage): which tiles sit on a
@@ -188,6 +206,8 @@ export function MobileScreensProvider({
       tabs,
       view,
       sections,
+      badges,
+      setSectionBadge,
       pins,
       goTab: (tab) => {
         // Not the workspace's own page: go there, opening the tab asked for.
@@ -214,7 +234,7 @@ export function MobileScreensProvider({
         }
       },
     }),
-    [linkBase, router, screens, tabs, view, sections, pins, show, workspaceId],
+    [linkBase, router, screens, tabs, view, sections, badges, setSectionBadge, pins, show, workspaceId],
   );
   return <ScreensContext.Provider value={value}>{children}</ScreensContext.Provider>;
 }
@@ -239,7 +259,7 @@ export function useOpenApp(): MobileScreenEntry | null {
  * section is open, the app only reads it (`useMobileSection`).
  */
 export function MobileScreenStage({ home, places }: { home: ReactNode; places: ManagePlaceNames }) {
-  const { screens, tabs, view, sections, openSection } = useMobileScreens();
+  const { screens, tabs, view, sections, openSection, setSectionBadge } = useMobileScreens();
   const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set(view.app ? [view.app] : []));
   if (view.app && !visited.has(view.app)) setVisited(new Set([...visited, view.app]));
   // A module tab is mounted on its first visit and kept, like an app: a half-written message survives a trip to Home.
@@ -286,6 +306,7 @@ export function MobileScreenStage({ home, places }: { home: ReactNode; places: M
               value={{
                 section: sections[screen.key] ?? screen.sections[0]?.key ?? null,
                 open: (section) => openSection(screen.key, section),
+                setBadge: (section, count) => setSectionBadge(screen.key, section, count),
               }}
             >
               {screen.node}
@@ -331,7 +352,7 @@ const SHOW = 'animate-in fade-in duration-200 motion-reduce:animate-none';
  */
 export function MobileSectionStrip() {
   const app = useOpenApp();
-  const { sections, openSection } = useMobileScreens();
+  const { sections, openSection, badges } = useMobileScreens();
   if (!app || app.sections.length < 2) return null;
   const current = sections[app.key] ?? app.sections[0]?.key;
 
@@ -341,24 +362,39 @@ export function MobileSectionStrip() {
       className="shrink-0 border-b border-border/60 bg-card/85 backdrop-blur-xl"
     >
       <ul className="mx-auto flex max-w-lg gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] md:max-w-none md:px-5">
-        {app.sections.map((section) => (
-          <li key={section.key} className="shrink-0">
-            <button
-              type="button"
-              onClick={() => openSection(app.key, section.key)}
-              aria-current={current === section.key ? 'page' : undefined}
-              className={cn(
-                'min-h-9 rounded-full px-4 text-sm font-medium transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                current === section.key
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-muted text-muted-foreground active:bg-accent',
-              )}
-            >
-              {section.label}
-            </button>
-          </li>
-        ))}
+        {app.sections.map((section) => {
+          // The count the app reports for this chip (`useMobileSectionBadge`): "Cashier 3".
+          const badge = sectionBadgeLabel(badges[app.key]?.[section.key]);
+          const open = current === section.key;
+          return (
+            <li key={section.key} className="shrink-0">
+              <button
+                type="button"
+                onClick={() => openSection(app.key, section.key)}
+                aria-current={open ? 'page' : undefined}
+                className={cn(
+                  'flex min-h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  open
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-muted text-muted-foreground active:bg-accent',
+                )}
+              >
+                {section.label}
+                {badge ? (
+                  <span
+                    className={cn(
+                      'min-w-5 rounded-full px-1.5 text-center text-xs font-semibold tabular-nums',
+                      open ? 'bg-primary-foreground text-primary' : 'bg-primary text-primary-foreground',
+                    )}
+                  >
+                    {badge}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

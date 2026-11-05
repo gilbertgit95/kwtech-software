@@ -254,9 +254,15 @@ full screen's Cashier board made for a thumb, not the board shrunk:
   order paid or cancelled at another till while its sheet was open says so
   ("This order was paid at another till"), never shows as this phone's receipt
   — the cashier would hand over change for a payment somebody else took.
+- **How many wait, on the Cashier chip** in the phone's section strip
+  ("Cashier 3"), reported by `PosMobileApp` with module-kit's
+  `useMobileSectionBadge` from the same live list, as well as in the screen's
+  head.
+- **Pay later is inside payment**, one step past Pay, exactly as on the full
+  screen: it needs the customer's name and contact, which the payment sheet
+  explains (the operator, 2026-11-05).
 - **Not done:** no order discounts or line notes on the phone (the full till
-  has them); the section strip has no count badge (module-kit's sections take
-  none), so the count is in the screen's head.
+  has them).
 
 ## Order types and defaults (the Items tab)
 

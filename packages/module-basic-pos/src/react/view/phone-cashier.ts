@@ -17,6 +17,11 @@ export interface PosWaitingSummary {
   oldestMinutes: number | null;
 }
 
+/**
+ * The phone list's head: how many orders wait, their totals added up, and
+ * how long the earliest has waited. The earliest is found, not assumed from
+ * the order of the list.
+ */
 export function waitingSummary(
   pending: readonly Pick<PosOrderSummaryView, 'total' | 'createdAt'>[],
   now: Date | null,
@@ -48,6 +53,7 @@ export function waitingSummary(
  */
 export type PosPhoneCashierSheet = 'order' | 'receipt' | 'settled_elsewhere' | 'none';
 
+/** Which of the order sheet's faces to show (`PosPhoneCashierSheet`), from the order on the till and the one settled here. */
 export function phoneCashierSheet(
   order: Pick<PosOrderView, 'id' | 'status'> | null,
   settledHereId: string | null,

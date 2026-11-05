@@ -324,6 +324,7 @@ export function PhoneCashier({ state }: { state: TillState }) {
   );
 }
 
+/** The sheet's heading: "Paid", "Released — pay later", "No longer waiting", or the order's own title. */
 function sheetTitle(shows: ReturnType<typeof phoneCashierSheet>, order: PosOrderView | null): string {
   if (!order) return 'Order';
   if (shows === 'receipt') return order.status === 'unpaid' ? 'Released — pay later' : 'Paid';
