@@ -20,6 +20,7 @@ import { onPosWrite } from './pos-local-events.js';
 import { POS_NOT_LIVE_AFTER_MS, tillEventKind, tillRereads } from './view/live.js';
 import { recordVersion } from './view/order-changes.js';
 import { type PosRankMap, rankMap } from './view/popularity.js';
+import { createResumeGuard, resumeLatest } from './view/resume.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
 /** How long after the last event the till reads again — a burst of events is one read. */
@@ -435,13 +436,12 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   // ── acts ──────────────────────────────────────────────────────────────────
 
   /**
-   * The latest resume's number (see `resume`). ⚠ ALSO RETIRED BY ANY OTHER
-   * CHANGE TO THE TILL: an act starting or the till being cleared moves it on,
-   * so a slow read started before — the cashier opened an order, then cleared
-   * the till or started another in Take orders — can never land afterwards and
-   * replace the newer order (CodeRabbit on #70).
+   * Numbers each resume's read (`view/resume.ts`, where the races are
+   * tested). ⚠ ALSO RETIRED BY ANY OTHER CHANGE TO THE TILL: an act starting
+   * or the till being cleared, so a slow read started before can never land
+   * afterwards and replace the newer order (CodeRabbit on #70).
    */
-  const resumeRead = useRef(0);
+  const resumeGuard = useMemo(() => createResumeGuard(), []);
 
   const act = useCallback(
     async (
@@ -450,7 +450,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     ): Promise<PosOrderView | null> => {
       if (inFlight.current) return null;
       inFlight.current = true;
-      resumeRead.current += 1;
+      resumeGuard.retire();
       setBusy(true);
       try {
         let current = orderRef.current;
@@ -475,45 +475,33 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
         void reloadPending();
       }
     },
-    [client, scope, fail, reloadOrder, reloadPending, setOrder],
+    [client, scope, fail, reloadOrder, reloadPending, setOrder, resumeGuard],
   );
 
   const clear = useCallback(() => {
-    resumeRead.current += 1;
+    resumeGuard.retire();
     setOrder(null);
     setError(null);
-  }, [setOrder]);
+  }, [setOrder, resumeGuard]);
 
   /**
-   * ⚠ ONLY THE LATEST TAP COUNTS. Two quick taps start two reads, and the
-   * first can answer last; putting it on the till then would swap the order
-   * under a sheet already open for the second, with its Pay button (CodeRabbit
-   * on #70). Each resume takes a number, and an answer that is no longer the
-   * latest is dropped and reported as not opened.
+   * ⚠ ONLY THE LATEST TAP COUNTS, and never while an act runs or after the
+   * till moved on: `resumeLatest` (`view/resume.ts`) drops any answer that was
+   * overtaken and reports it as not opened, so no sheet opens for an order
+   * that is not on the till (CodeRabbit on #70).
    */
   const resume = useCallback(
-    async (orderId: string): Promise<boolean> => {
-      // ⚠ Not while an act runs: its answer is about to be put on the till, and a read landing after it would replace it.
-      if (inFlight.current) return false;
-      resumeRead.current += 1;
-      const mine = resumeRead.current;
-      try {
-        const found = await client.order(scope, orderId);
-        if (mine !== resumeRead.current) return false;
-        if (!found) {
-          setError('That order is no longer there.');
-          return false;
-        }
-        setOrder(found);
-        setError(null);
-        return true;
-      } catch (caught) {
-        // A failure of a tap since replaced says nothing about the order now being opened.
-        if (mine === resumeRead.current) fail(caught, 'Could not open that order.');
-        return false;
-      }
-    },
-    [client, scope, fail, setOrder],
+    (orderId: string): Promise<boolean> =>
+      resumeLatest(resumeGuard, inFlight.current, {
+        read: () => client.order(scope, orderId),
+        put: (found) => {
+          setOrder(found);
+          setError(null);
+        },
+        missing: () => setError('That order is no longer there.'),
+        failed: (caught) => fail(caught, 'Could not open that order.'),
+      }),
+    [client, scope, fail, setOrder, resumeGuard],
   );
 
   return {
