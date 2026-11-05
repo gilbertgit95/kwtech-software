@@ -69,6 +69,66 @@ export function otherDaysNote(filter: OrderFilter, listed: number, everyDate: nu
   return `${more} more ${filterPhrase(filter, more)} on other days`;
 }
 
+/**
+ * The other-days line beside the Orders list, or null: `otherDaysNote`, said
+ * only when both reads behind it are current.
+ *
+ * ⚠ BOTH READS SETTLED, AND BOTH LAST ONES SUCCEEDED. Each read keeps its last
+ * answer while it reads again and after it fails. So when an order event
+ * re-reads both and the list answers first, the old count would sit beside
+ * the new list ("1 more unpaid order" for one just paid); a failed count would
+ * keep showing the one before it beside its own error; and a failed LIST
+ * would leave its last rows to be subtracted from a fresh count. The count
+ * must also be of THIS filter: a late answer for the last one is not this
+ * one's.
+ *
+ * Reads stop at `POS_ORDERS_READ_MAX`. When the every-date count reaches it the
+ * line says "At least …" — still there, so a narrowed list never reads as
+ * "nobody owes", but never a precise number it does not have. When the list
+ * itself reaches it nothing can be said, and the list's total says it is cut.
+ */
+export function otherDaysLine({
+  counting,
+  filter,
+  listed,
+  list,
+  count,
+}: {
+  /** Whether the screen counts other days at all (an outstanding status, some days, no search). */
+  counting: boolean;
+  filter: OrderFilter;
+  /** How many the list shows. */
+  listed: number;
+  /** The list's read: whether it is reading or its last read failed. */
+  list: { loading: boolean; error: string | null };
+  /** The every-date count's read: its last answer, and whether it is reading or failed. */
+  count: { data: { filter: OrderFilter; count: number } | null; loading: boolean; error: string | null };
+}): string | null {
+  if (!counting || list.loading || list.error !== null || count.loading || count.error !== null) return null;
+  if (!count.data || count.data.filter !== filter) return null;
+  // ⚠ A capped read is not a count. The list cut at the cap: what it leaves out is unknown, and the
+  // list's own total already says it stops there. The every-date read cut: there are AT LEAST that many.
+  if (listed >= POS_ORDERS_READ_MAX) return null;
+  const note = otherDaysNote(filter, listed, count.data.count);
+  if (!note || count.data.count < POS_ORDERS_READ_MAX) return note;
+  return `At least ${note}`;
+}
+
+/**
+ * Whether an order open in Orders may be printed now: `ready`; `updating`
+ * while it is read again (an order event); `stale` when that read failed.
+ *
+ * ⚠ ONLY A CURRENT COPY IS PRINTED. The order on screen is the last one read,
+ * kept while it reads again and after a failure — so a receipt printed then
+ * could show an order as it was before a refund, or reprint one cancelled
+ * since. Both Orders screens draw their Print from this.
+ */
+export function reprintState(read: { loading: boolean; error: string | null }): 'ready' | 'updating' | 'stale' {
+  if (read.error !== null) return 'stale';
+  if (read.loading) return 'updating';
+  return 'ready';
+}
+
 /** The empty list, in words: which orders there are none of, and on which days. `days` null is every date. */
 export function ordersEmptyText(filter: OrderFilter, days: { fromDay: string; toDay: string } | null): string {
   const what = `No ${filterPhrase(filter, 2)}`;
@@ -113,6 +173,45 @@ export function orderStatusChip(
 export function orderTitle(order: Pick<PosOrderSummaryView, 'number' | 'label' | 'customerName'>): string {
   if (order.number !== null) return `#${order.number}`;
   return order.label ?? order.customerName ?? 'Walk-in';
+}
+
+/**
+ * A row's second line in the Orders list: who it is for (when the title is the
+ * number, so the name is not said twice), how many items, and when — the
+ * moment that matters most for it (paid, else finalised, else started), in the
+ * WORKSPACE's zone. "Ana · 3 items · 30 Sep 2026, 3:04 PM".
+ */
+export function orderRowDetail(
+  row: Pick<
+    PosOrderSummaryView,
+    'number' | 'customerName' | 'label' | 'itemCount' | 'paidAt' | 'finalisedAt' | 'createdAt'
+  >,
+  timeZone: string,
+): string {
+  const who = row.number !== null ? (row.customerName ?? row.label) : null;
+  const items = `${row.itemCount} ${row.itemCount === 1 ? 'item' : 'items'}`;
+  const when = whenText(row.paidAt ?? row.finalisedAt ?? row.createdAt, timeZone);
+  return [who, items, when].filter((part): part is string => Boolean(part)).join(' · ');
+}
+
+/** Why the Orders list is empty, in words: a range not finished, still loading, nothing matching, or simply none. */
+export function ordersListEmptyText({
+  loading,
+  problem,
+  searching,
+  filter,
+  days,
+}: {
+  loading: boolean;
+  problem: string | null;
+  searching: boolean;
+  filter: OrderFilter;
+  days: { fromDay: string; toDay: string } | null;
+}): string {
+  if (problem) return problem;
+  if (loading) return 'Loading…';
+  if (searching) return 'No orders match that search.';
+  return ordersEmptyText(filter, days);
 }
 
 /** The Orders list added up: the line under the list. */
