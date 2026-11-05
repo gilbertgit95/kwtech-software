@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { orderRowDetail, ordersListEmptyText } from '../src/react/view/manage.js';
+import { orderRowDetail, ordersListEmptyText, otherDaysLine } from '../src/react/view/manage.js';
 import { phoneOrderNextStep } from '../src/react/view/phone-orders.js';
 
 /** Orders on a phone (issue #72): what the screen draws, and that it only looks. */
@@ -83,6 +83,37 @@ describe('orderRowDetail', () => {
     expect(finalised).toContain('3:00');
     const started = orderRowDetail({ ...row, paidAt: null, finalisedAt: null }, 'UTC');
     expect(started).toContain('2:00');
+  });
+});
+
+describe('otherDaysLine', () => {
+  const settled = {
+    counting: true,
+    filter: 'unpaid' as const,
+    listed: 0,
+    listLoading: false,
+    count: { data: { filter: 'unpaid' as const, count: 1 }, loading: false, error: null },
+  };
+
+  it('says how many more there are on other days once both reads are current', () => {
+    expect(otherDaysLine(settled)).toBe('1 more unpaid order on other days');
+  });
+
+  it('⚠ says nothing while the count reads again, though it still holds its last answer', () => {
+    expect(otherDaysLine({ ...settled, count: { ...settled.count, loading: true } })).toBe(null);
+  });
+
+  it('⚠ says nothing once the count failed, rather than the count before it', () => {
+    expect(
+      otherDaysLine({ ...settled, count: { ...settled.count, error: 'Could not count the orders on other days.' } }),
+    ).toBe(null);
+  });
+
+  it('says nothing while the list reads, for another filter’s count, or when not counting', () => {
+    expect(otherDaysLine({ ...settled, listLoading: true })).toBe(null);
+    expect(otherDaysLine({ ...settled, filter: 'pending' })).toBe(null);
+    expect(otherDaysLine({ ...settled, counting: false })).toBe(null);
+    expect(otherDaysLine({ ...settled, count: { data: null, loading: false, error: null } })).toBe(null);
   });
 });
 

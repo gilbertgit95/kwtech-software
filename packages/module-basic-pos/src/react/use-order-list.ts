@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { PosOrderSummaryView } from './pos-client.js';
 import { type PosData, usePosData } from './use-pos-data.js';
 import type { TillState } from './use-till.js';
-import { isOutstandingFilter, type OrderFilter, otherDaysNote } from './view/manage.js';
+import { isOutstandingFilter, type OrderFilter, otherDaysLine } from './view/manage.js';
 import { prepareCustomDays, presetDays, type ReportDays, type ReportPreset } from './view/reports.js';
 
 /** Which orders are listed, read and counted: what both Orders screens draw. */
@@ -110,11 +110,14 @@ export function useOrderList(state: TillState, openOrderId: string | null = null
     return { filter, count: (await client.orders(scope, filter)).length };
   }, [client, scope, filter, counting]);
   const elsewhere = usePosData(scope, loadEveryDate, ['order'], 'Could not count the orders on other days.');
-  // ⚠ Only a count OF THIS FILTER, beside a list that has loaded: a late answer for the last one must not be shown as this one's.
-  const otherDays =
-    counting && !list.loading && elsewhere.data?.filter === filter
-      ? otherDaysNote(filter, rows.length, elsewhere.data.count)
-      : null;
+  // ⚠ Only once both reads are current and the count's succeeded (`otherDaysLine` says why).
+  const otherDays = otherDaysLine({
+    counting,
+    filter,
+    listed: rows.length,
+    listLoading: list.loading,
+    count: elsewhere,
+  });
 
   const showEveryDate = () => {
     setEveryDate(true);
