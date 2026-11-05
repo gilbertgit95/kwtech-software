@@ -384,7 +384,13 @@ export function OrderDetail({
   };
 
   const toTill = async (then: 'sell' | 'pay') => {
-    await state.resume(order.id);
+    // ⚠ Not on a failure: the till still holds another order, and Pay would take payment for that one.
+    if (!(await state.resume(order.id))) {
+      setError(
+        'Could not put this order on the till. It may have been paid or changed elsewhere — reload it and try again.',
+      );
+      return;
+    }
     if (then === 'sell') onToSell();
     else setDialog({ kind: 'pay' });
   };

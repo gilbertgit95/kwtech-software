@@ -165,8 +165,8 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
       setSheet('hold');
       return;
     }
-    await state.resume(orderId);
-    setSheet('order');
+    // ⚠ Only once the tapped order is on the till: on a failure the till still holds the last one.
+    if (await state.resume(orderId)) setSheet('order');
   };
 
   if (!state.canSell) {

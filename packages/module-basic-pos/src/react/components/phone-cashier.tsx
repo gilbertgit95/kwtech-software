@@ -1,7 +1,7 @@
 'use client';
 
 import { useMobileSection } from '@kwtech/module-kit/react';
-import { BottomSheet, cn } from '@kwtech/web-ui/react';
+import { BottomSheet, cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
 import { Ban, ChevronRight, CircleCheck, Hash, Inbox, Minus, Plus, Printer, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
 import { POS_MOBILE_SECTION } from '../../mobile/sections.js';
@@ -82,8 +82,8 @@ export function PhoneCashier({ state }: { state: TillState }) {
       return;
     }
     setSettledHereId(null);
-    await state.resume(orderId);
-    setSheet('order');
+    // ⚠ Only once the tapped order is on the till: on a failure the till still holds the last one.
+    if (await state.resume(orderId)) setSheet('order');
   };
 
   /** Closes the sheet; a settled order leaves the till, so the next tap starts clean. */
@@ -127,7 +127,7 @@ export function PhoneCashier({ state }: { state: TillState }) {
               </p>
             </div>
           ) : (
-            <ul aria-label="Waiting for payment" className="flex flex-col gap-2">
+            <ul aria-label="Waiting for payment" className="flex flex-col gap-2" {...LIST_KEYS}>
               {state.pending.map((held) => {
                 const current = held.id === open?.id;
                 const minutes = now ? waitMinutes(held.createdAt, now) : null;
@@ -136,6 +136,7 @@ export function PhoneCashier({ state }: { state: TillState }) {
                   <li key={held.id}>
                     <button
                       type="button"
+                      {...LIST_ITEM}
                       aria-current={current ? 'true' : undefined}
                       disabled={state.busy}
                       onClick={() => void openOrder(held.id)}

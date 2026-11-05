@@ -115,8 +115,14 @@ export interface TillState {
   ) => Promise<PosOrderView | null>;
   /** Clears the till for the next customer. A held order stays in Pending. */
   clear: () => void;
-  /** Puts a pending (or any) order on the till. */
-  resume: (orderId: string) => Promise<void>;
+  /**
+   * Puts a pending (or any) order on the till. True once it is there; false
+   * when it could not be read (gone, or the request failed — said in `error`),
+   * and the till still holds what it held. ⚠ Callers open a sheet or a dialog
+   * ONLY on true: otherwise it would show the order already on the till, with
+   * its Pay button, as if it were the one tapped (CodeRabbit on #70).
+   */
+  resume: (orderId: string) => Promise<boolean>;
   reloadPending: () => Promise<void>;
 }
 
@@ -426,17 +432,19 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   }, [setOrder]);
 
   const resume = useCallback(
-    async (orderId: string) => {
+    async (orderId: string): Promise<boolean> => {
       try {
         const found = await client.order(scope, orderId);
         if (!found) {
           setError('That order is no longer there.');
-          return;
+          return false;
         }
         setOrder(found);
         setError(null);
+        return true;
       } catch (caught) {
         fail(caught, 'Could not open that order.');
+        return false;
       }
     },
     [client, scope, fail, setOrder],
