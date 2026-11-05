@@ -11,7 +11,7 @@ import { POS_OPTIONS, POS_PUBSUB } from '../pos.tokens.js';
 import { PosAccessService } from '../pos-access.service.js';
 import { type PosCatalogueItem, PosCatalogueService } from '../pos-catalogue.service.js';
 import { PosCustomerService } from '../pos-customer.service.js';
-import { PosSettingsService, type PosStoreSettings } from '../pos-settings.service.js';
+import { type PosMyAlertTones, PosSettingsService, type PosStoreSettings } from '../pos-settings.service.js';
 import { PosSetupService } from '../pos-setup.service.js';
 import { PosStockService } from '../pos-stock.service.js';
 import {
@@ -22,6 +22,7 @@ import {
   PosCustomerType,
   PosEventType,
   PosItemType,
+  PosMyAlertTonesType,
   PosOrderTypeOptionType,
   PosRanksType,
   PosSettingsType,
@@ -331,6 +332,45 @@ export class PosCatalogueResolver {
     );
   }
 
+  /**
+   * The store's order sounds (issue #68), both moments whole, as JSON text
+   * (`PosAlertTones`). The defaults every Cashier screen plays unless its
+   * person kept their own.
+   */
+  @Mutation(() => PosSettingsType, { name: 'savePosAlertTones' })
+  async savePosAlertTones(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('tones') tones: string,
+  ): Promise<PosSettingsType> {
+    const scope = { organizationId, workspaceId };
+    return renderSettings(await this.settings.saveAlertTones(scope, this.actor(gql.req), parseTones(tones)));
+  }
+
+  /** The viewer's own order sounds and the store's (issue #68). Always the viewer's: there is no user argument. */
+  @Query(() => PosMyAlertTonesType, { name: 'posMyAlertTones' })
+  async posMyAlertTones(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+  ): Promise<PosMyAlertTonesType> {
+    return renderMyTones(await this.settings.mySounds({ organizationId, workspaceId }, this.actor(gql.req)));
+  }
+
+  /** Saves the viewer's own order sounds as JSON text; omit `tones` (or send null) to follow the store's again. */
+  @Mutation(() => PosMyAlertTonesType, { name: 'savePosMyAlertTones' })
+  async savePosMyAlertTones(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('tones', { type: () => String, nullable: true }) tones?: string | null,
+  ): Promise<PosMyAlertTonesType> {
+    const scope = { organizationId, workspaceId };
+    const saved = await this.settings.saveMySounds(scope, this.actor(gql.req), tones ? parseTones(tones) : null);
+    return renderMyTones(saved);
+  }
+
   // ── live ──────────────────────────────────────────────────────────────────
 
   /**
@@ -469,6 +509,15 @@ function parseKeymap(text: string): PosKeymap {
   }
 }
 
+/** Order sounds as JSON text; their content is checked by `validateAlertTones` in the service. */
+function parseTones(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new PosWriteError('invalid_alert_tones', 'Those order sounds are not in a form this server reads');
+  }
+}
+
 const iso = (date: Date | null) => (date ? date.toISOString() : null);
 
 export function renderCategory(row: PosCategoryRow): PosCategoryType {
@@ -535,6 +584,11 @@ function renderSettings(settings: PosStoreSettings): PosSettingsType {
     keymap: JSON.stringify(settings.keymap),
     referenceOptions: [...settings.referenceOptions],
     defaultReference: settings.defaultReference,
+    alertTones: JSON.stringify(settings.alertTones),
     version: settings.version,
   };
+}
+
+function renderMyTones(tones: PosMyAlertTones): PosMyAlertTonesType {
+  return { store: JSON.stringify(tones.store), mine: tones.mine ? JSON.stringify(tones.mine) : null };
 }

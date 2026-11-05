@@ -44,7 +44,9 @@ describe('POS_FEATURE_REGISTRY', () => {
       'Mutation.cancelPosOrder',
       'Mutation.settlePosChangeOwed',
     ];
-    expect(bound(POS_FEATURE.takePayment).sort()).toEqual([...settling].sort());
+    // Besides settling, only the person's own order sounds (issue #68): the Cashier screen is theirs.
+    const sounds = ['Query.posMyAlertTones', 'Mutation.savePosMyAlertTones'];
+    expect(bound(POS_FEATURE.takePayment).sort()).toEqual([...settling, ...sounds].sort());
     expect(bound(POS_FEATURE.sell).filter((one) => settling.includes(one))).toEqual([]);
     expect(bound(POS_FEATURE.sell)).toContain('Mutation.holdPosOrder');
   });

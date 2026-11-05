@@ -143,6 +143,12 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
       op('Mutation.payLaterPosOrder'),
       op('Mutation.cancelPosOrder'),
       op('Mutation.settlePosChangeOwed'),
+      /*
+       * A person's own order sounds (issue #68): only the Cashier screen plays them, and only
+       * somebody who takes payment sees it. Always the viewer's own row — no user argument.
+       */
+      op('Query.posMyAlertTones'),
+      op('Mutation.savePosMyAlertTones'),
     ],
   },
   {
@@ -215,14 +221,14 @@ export const POS_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     module: 'pos',
     level: 'workspace',
     label: 'Change store settings',
-    description: 'Set the keyboard shortcuts every till in the store uses.',
+    description: 'Set the keyboard shortcuts every till in the store uses, and the store’s order sounds.',
     tags: ['pos'],
     /*
      * The order reference options moved to the Items tab, under `pos:manage_items`
      * (2026-10-29): bound there, never here as well — two keys on one operation
      * would demand both.
      */
-    bindings: [op('Mutation.savePosSettings')],
+    bindings: [op('Mutation.savePosSettings'), op('Mutation.savePosAlertTones')],
   },
 ];
 

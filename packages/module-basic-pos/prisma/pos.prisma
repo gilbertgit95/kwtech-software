@@ -443,6 +443,10 @@ model PosSettings {
   /// The reference a new order starts with: one of `referenceOptions`, re-checked against them on
   /// read, so removing the option drops it. Null for none.
   defaultReference String?
+  /// The store's order sounds (issue #68): `PosAlertTones` as JSON, checked by `validateAlertTones` on
+  /// write and re-read by `readAlertTones`; null means the defaults. A person's own choice is a
+  /// `PosUserSettings` row and wins whole.
+  alertTones       Json?
 
   version     Int      @default(1)
   updatedById String
@@ -451,6 +455,27 @@ model PosSettings {
 
   @@index([organizationId])
   @@map("pos_settings")
+}
+
+/// One person's own choices in one store (issue #68): today only their order sounds, which win over
+/// the store's whole. `userId` is a bare string, as everywhere in the module: identity is the app's.
+/// ⚠ ONE ROW PER PERSON PER STORE, by its key, so two saves never leave two answers. No row, or a null
+/// `alertTones`, means "the store's sounds".
+model PosUserSettings {
+  workspaceId    String
+  userId         String
+  organizationId String
+
+  /// `PosAlertTones` as JSON, checked by `validateAlertTones`; null for the store's.
+  alertTones Json?
+
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([workspaceId, userId])
+  @@index([organizationId])
+  @@map("pos_user_settings")
 }
 
 /// How many orders included an item in the 7 days before its store's

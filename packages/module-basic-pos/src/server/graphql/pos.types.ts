@@ -214,9 +214,27 @@ export class PosSettingsType {
   @Field(() => String, { nullable: true })
   defaultReference!: string | null;
 
+  /** The store's order sounds (issue #68), `PosAlertTones` as JSON text, defaults filled in. */
+  @Field()
+  alertTones!: string;
+
   /** 0 while the store has saved nothing. */
   @Field(() => Int)
   version!: number;
+}
+
+/**
+ * One person's order sounds in a store (issue #68): the store's, and their own
+ * when they kept one. Each is `PosAlertTones` as JSON text.
+ */
+@ObjectType('PosMyAlertTones')
+export class PosMyAlertTonesType {
+  @Field()
+  store!: string;
+
+  /** Null: this person follows the store's sounds. */
+  @Field(() => String, { nullable: true })
+  mine!: string | null;
 }
 
 /** A change in the store. `sync` first on every (re)subscribe: read everything again. */

@@ -124,6 +124,8 @@ function refusalMessage(reason: PosRefusal): string {
       return 'Those shortcuts cannot be saved';
     case 'invalid_reference_options':
       return 'Those reference options cannot be saved';
+    case 'invalid_alert_tones':
+      return 'Those order sounds cannot be saved';
     case 'invalid_setup':
       return 'This file has rows that cannot be imported. Nothing was changed.';
     case 'invalid_period':

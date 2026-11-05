@@ -904,9 +904,11 @@ type Mutation {
   saveBooksLoan(borrowerName: String!, contact: String, loanId: String!, note: String, organizationId: String!, workspaceId: String!): BooksLoan!
   saveBooksSettings(organizationId: String!, posImportFrom: String, shareMode: String!, workspaceId: String!): BooksSettings!
   saveMyAppHubLayout(layout: String!, organizationId: String!, workspaceId: String!): Boolean!
+  savePosAlertTones(organizationId: String!, tones: String!, workspaceId: String!): PosSettings!
   savePosCategory(categoryId: String, name: String!, organizationId: String!, sortOrder: Int, workspaceId: String!): PosCategory!
   savePosCustomer(input: SavePosCustomerInput!, organizationId: String!, workspaceId: String!): PosCustomer!
   savePosItem(input: SavePosItemInput!, organizationId: String!, workspaceId: String!): PosItem!
+  savePosMyAlertTones(organizationId: String!, tones: String, workspaceId: String!): PosMyAlertTones!
   savePosOrderTypeOption(name: String!, orderTypeId: String, organizationId: String!, sortOrder: Int, workspaceId: String!): PosOrderTypeOption!
   savePosReferenceOptions(defaultReference: String, options: [String!]!, organizationId: String!, workspaceId: String!): PosSettings!
   savePosSettings(keymap: String, organizationId: String!, workspaceId: String!): PosSettings!
@@ -1525,6 +1527,11 @@ type PosItem {
   variants: [PosVariant!]!
 }
 
+type PosMyAlertTones {
+  mine: String
+  store: String!
+}
+
 type PosOrder {
   cancelReason: String
   cancelledAt: String
@@ -1678,6 +1685,7 @@ type PosSeriesPoint {
 }
 
 type PosSettings {
+  alertTones: String!
   defaultReference: String
   keymap: String!
   referenceOptions: [String!]!
@@ -1979,6 +1987,7 @@ type Query {
   posCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): PosCatalogue!
   posCustomer(customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer
   posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!
+  posMyAlertTones(organizationId: String!, workspaceId: String!): PosMyAlertTones!
   posOrder(orderId: String!, organizationId: String!, workspaceId: String!): PosOrder
   posOrders(customerId: String, fromDay: String, organizationId: String!, search: String, tab: String!, toDay: String, workspaceId: String!): [PosOrderSummary!]!
   posRanks(organizationId: String!, workspaceId: String!): PosRanks!

@@ -15,7 +15,7 @@ const ORDER_TYPE_OPTION = 'id name sortOrder isDefault archivedAt';
 const VARIANT = 'id itemId name code price cost sortOrder archivedAt unavailableAt';
 const ITEM = `id kind name code description price cost categoryId archivedAt unavailableAt variants { ${VARIANT} }`;
 const CUSTOMER = 'id name phone email facebookUrl note archivedAt';
-const SETTINGS = 'timeZone keymap referenceOptions defaultReference version';
+const SETTINGS = 'timeZone keymap referenceOptions defaultReference alertTones version';
 const DISCOUNT = 'kind value reason givenById givenAt';
 const LINE = `id itemId variantId name kind variantName code categoryName unitPrice unitCost quantity note discount { ${DISCOUNT} } discountAmount gross total net refundedQuantity`;
 const ORDER = `id status version number label orderTypeId orderTypeName customerId customerName customerContact lines { ${LINE} } gross lineDiscounts subtotal discount { ${DISCOUNT} } orderDiscount total paymentMethod received change tip paymentReference changeOwed changeSettlement changeSettledAt refunds { id amount method reason refundedById refundedAt } refunded refundState createdById createdAt finalisedAt finalisedById releasedUnpaid paidAt paidById cancelledAt cancelReason voidedAt voidReason`;
@@ -121,6 +121,18 @@ export const POS_OPERATIONS = {
 
   savePosReferenceOptions: `mutation SavePosReferenceOptions(${SCOPE_VARS}, $options: [String!]!, $defaultReference: String) {
     savePosReferenceOptions(${SCOPE_ARGS}, options: $options, defaultReference: $defaultReference) { ${SETTINGS} }
+  }`,
+  /** The store's order sounds (issue #68), `PosAlertTones` as JSON text. */
+  savePosAlertTones: `mutation SavePosAlertTones(${SCOPE_VARS}, $tones: String!) {
+    savePosAlertTones(${SCOPE_ARGS}, tones: $tones) { ${SETTINGS} }
+  }`,
+  /** The viewer's own order sounds and the store's. */
+  posMyAlertTones: `query PosMyAlertTones(${SCOPE_VARS}) {
+    posMyAlertTones(${SCOPE_ARGS}) { store mine }
+  }`,
+  /** The viewer's own order sounds; `tones` null follows the store's again. */
+  savePosMyAlertTones: `mutation SavePosMyAlertTones(${SCOPE_VARS}, $tones: String) {
+    savePosMyAlertTones(${SCOPE_ARGS}, tones: $tones) { store mine }
   }`,
 
   // ── orders: reading ───────────────────────────────────────────────────────

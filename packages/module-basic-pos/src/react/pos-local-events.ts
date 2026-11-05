@@ -49,6 +49,9 @@ export const POS_WRITE_ECHOES = {
   setPosCustomerArchived: ['customers'],
   savePosSettings: ['settings'],
   savePosReferenceOptions: ['settings'],
+  // Order sounds (issue #68): a Cashier screen beside the Settings tab hears the new choice at once.
+  savePosAlertTones: ['settings'],
+  savePosMyAlertTones: ['settings'],
   createPosOrder: ['order'],
   addPosOrderLine: ['order'],
   updatePosOrderLine: ['order'],

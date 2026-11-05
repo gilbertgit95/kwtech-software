@@ -239,8 +239,20 @@ export interface PosSettingsRow {
   referenceOptions: unknown;
   /** The reference a new order starts with. Only honoured while it is still one of the options. */
   defaultReference: string | null;
+  /** The store's order sounds as JSON, or null for the defaults (issue #68). Read through `readAlertTones`. */
+  alertTones: unknown;
   version: number;
   updatedById: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** One person's own choices in one store (issue #68). */
+export interface PosUserSettingsRow extends InScope {
+  userId: string;
+  /** Their order sounds as JSON, or null for the store's. Read through `readAlertTones`. */
+  alertTones: unknown;
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -568,16 +580,35 @@ export interface PosTransaction {
         keymap?: PosJsonInput;
         referenceOptions?: PosJsonInput;
         defaultReference?: string | null;
+        alertTones?: PosJsonInput;
         updatedById: string;
       };
       update: {
         keymap?: PosJsonInput;
         referenceOptions?: PosJsonInput;
         defaultReference?: string | null;
+        alertTones?: PosJsonInput;
         updatedById: string;
         version: { increment: 1 };
       };
     }): Promise<PosSettingsRow>;
+  };
+
+  /** Keyed by the person in the store (`@@id([workspaceId, userId])`): one row each. */
+  posUserSettings: {
+    findUnique(args: {
+      where: { workspaceId_userId: { workspaceId: string; userId: string } };
+    }): Promise<PosUserSettingsRow | null>;
+    upsert(args: {
+      where: { workspaceId_userId: { workspaceId: string; userId: string } };
+      create: InScope & { userId: string; alertTones: PosJsonInput };
+      update: { alertTones: PosJsonInput; version: { increment: 1 } };
+    }): Promise<PosUserSettingsRow>;
+    /**
+     * "Use the store's sounds": the row goes. A delete, not a null written to the column — that would
+     * need Prisma's `DbNull` sentinel, which a module cannot import (see `PosJsonInput`).
+     */
+    deleteMany(args: { where: { workspaceId: string; userId: string } }): Promise<{ count: number }>;
   };
 }
 

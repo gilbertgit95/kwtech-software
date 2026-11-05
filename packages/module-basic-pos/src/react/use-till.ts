@@ -2,6 +2,7 @@
 
 import { useHoldsFeature, useRealtime, useRealtimeLive, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_POS_ALERT_TONES, type PosAlertTones, readAlertTones } from '../domain/alert-tones.js';
 import { effectiveKeymap, type PosKeymap } from '../domain/keymap.js';
 import { POS_CONFLICT_MESSAGE } from '../domain/orders.js';
 import { POS_FEATURE } from '../feature-keys.js';
@@ -17,6 +18,7 @@ import {
 } from './pos-client.js';
 import { onPosWrite } from './pos-local-events.js';
 import { POS_NOT_LIVE_AFTER_MS, tillEventKind, tillRereads } from './view/live.js';
+import { recordVersion } from './view/order-changes.js';
 import { type PosRankMap, rankMap } from './view/popularity.js';
 import { createResumeGuard, resumeLatest } from './view/resume.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
@@ -77,11 +79,34 @@ export interface TillState {
   keymap: PosKeymap;
   /** The store's order reference options (issue #30), in its order; empty for none — the plain text box. */
   referenceOptions: readonly string[];
+  /**
+   * Order sounds (issue #68): the store's, and this person's own when they
+   * kept one (`effectiveAlertTones` picks). Re-read with the settings, so a
+   * change saved on another device is heard at once. `mine` is read only for
+   * somebody who takes payment — the Cashier screen is theirs alone.
+   */
+  alertTones: { store: PosAlertTones; mine: PosAlertTones | null };
   timeZone: string;
   /** The order on the till: open, or just finished (its receipt). Null for a clear till. */
   order: PosOrderView | null;
   /** Held orders waiting (D8), oldest first: the ones Hold set aside, never a cart still being built. */
   pending: PosOrderSummaryView[];
+  /**
+   * True once the pending list has been read from the server at least once.
+   * ⚠ Until then `pending` is the empty list the till STARTS with, not an
+   * answer: a screen that compares reads (`useOrderAlerts`) must not take it
+   * for "nothing was waiting", or every order would arrive as new.
+   */
+  pendingLoaded: boolean;
+  /**
+   * The latest version of each order this till has had on it (issue #68):
+   * its own changes, which are never news. Recorded the moment the till
+   * receives an order (`setOrder`), never after a render: a hold puts the
+   * held order on the till and clears it at once, and the two can commit
+   * in one render, so the held version would never be seen (CodeRabbit on
+   * #71). A live map, read when the next pending read lands.
+   */
+  ownVersions: ReadonlyMap<string, number>;
   canSell: boolean;
   /** Pay, pay later, cancel and settle change (`pos:take_payment`, issue #23). Without it, orders are held for a cashier. */
   canTakePayment: boolean;
@@ -151,10 +176,15 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const [ranks, setRanks] = useState<PosRankMap | null>(null);
   const [keymap, setKeymap] = useState<PosKeymap>(effectiveKeymap(null));
   const [referenceOptions, setReferenceOptions] = useState<readonly string[]>([]);
+  const [alertTones, setAlertTones] = useState<TillState['alertTones']>({
+    store: DEFAULT_POS_ALERT_TONES,
+    mine: null,
+  });
   // The workspace's zone, from the app's shell: receipts and "today" follow it.
   const timeZone = useWorkspaceTimeZone();
   const [order, setTillOrder] = useState<PosOrderView | null>(null);
   const [pending, setPending] = useState<PosOrderSummaryView[]>([]);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
@@ -169,8 +199,10 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
    * the empty till a fresh page starts on, and forget the order before it was
    * read back.
    */
+  const ownVersions = useRef(new Map<string, number>());
   const setOrder = useCallback(
     (next: PosOrderView | null) => {
+      if (next) recordVersion(ownVersions.current, next);
       setTillOrder(next);
       writeTillOrderId(scope.workspaceId, next?.status === 'open' ? next.id : null);
     },
@@ -193,14 +225,22 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
 
   const loadSettings = useCallback(async () => {
     try {
-      const settings = await client.settings(scope);
+      const [settings, mine] = await Promise.all([
+        client.settings(scope),
+        // Not asked by somebody without the key: the binding would refuse, and the answer is unused.
+        canTakePayment ? client.myAlertTones(scope).catch(() => null) : Promise.resolve(null),
+      ]);
       setKeymap(effectiveKeymap(JSON.parse(settings.keymap) as Partial<PosKeymap>));
       setReferenceOptions(settings.referenceOptions);
+      setAlertTones({
+        store: readAlertTones(parseJson(settings.alertTones)),
+        mine: mine?.mine ? readAlertTones(parseJson(mine.mine)) : null,
+      });
     } catch {
-      // The defaults serve: a till without the store's keymap still sells, and without its
-      // reference options it asks for a typed reference.
+      // The defaults serve: a till without the store's keymap still sells, without its
+      // reference options it asks for a typed reference, and without its sounds it plays the defaults.
     }
-  }, [client, scope]);
+  }, [client, scope, canTakePayment]);
 
   const loadStock = useCallback(async () => {
     try {
@@ -214,6 +254,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const reloadPending = useCallback(async () => {
     try {
       setPending(await client.orders(scope, 'pending'));
+      setPendingLoaded(true);
     } catch (caught) {
       fail(caught, 'Could not load the pending orders.');
     }
@@ -472,9 +513,12 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     reloadRanks,
     keymap,
     referenceOptions,
+    alertTones,
     timeZone,
     order,
     pending,
+    pendingLoaded,
+    ownVersions: ownVersions.current,
     canSell,
     canTakePayment,
     canDiscount,
@@ -491,4 +535,13 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     resume,
     reloadPending,
   };
+}
+
+/** JSON text from the API, or null when it does not parse: `readAlertTones` then gives the defaults. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
 }

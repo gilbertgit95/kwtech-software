@@ -9,6 +9,7 @@
  * hide a button.
  */
 
+export * from './domain/alert-tones.js';
 export * from './domain/availability.js';
 export * from './domain/customers.js';
 export * from './domain/keymap.js';
