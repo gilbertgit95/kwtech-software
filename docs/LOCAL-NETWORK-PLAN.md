@@ -165,10 +165,20 @@ The rest of the Server group applies everywhere.
 - **On, but the published address is not the shop's network** (a profile
   edited by hand: `FRONTEND_URL` left at `http://localhost:8081`, or a remote
   domain): ⚠ the address and the certificate would not apply there, so
-  neither is shown. The rule is the one Caddy's launcher already uses
-  (`deploy/https/host.cjs`, `httpsHost`): an `https:` origin whose host is a
-  private IPv4 address (10.x, 172.16–31.x, 192.168.x), moved into the
-  module's `src/domain/` so both read one copy. The page says "Local Network
+  neither is shown. The rule starts from the one Caddy's launcher already
+  uses (`deploy/https/host.cjs`, `httpsHost`: an `https:` URL whose host is a
+  private IPv4 address, 10.x, 172.16–31.x or 192.168.x), but ⚠ checks the
+  WHOLE origin, not only its host. `httpsHost` keeps the hostname and drops
+  the rest, while this page publishes `FRONTEND_URL` itself as the address and
+  the QR code; a hand-edited `https://192.168.1.68:8443` would pass on its
+  host and lead every phone to a port Caddy does not listen on (it serves
+  `https://{$KWTECH_HTTPS_HOST}`, port 443). So the published address must be
+  exactly `https://<private IPv4>`: no port (443 only), no user or password,
+  no path other than none, no query, no fragment — in practice,
+  `new URL(FRONTEND_URL).origin === FRONTEND_URL` with no trailing slash.
+  The rule moves into the module's `src/domain/`, and Caddy's launcher reads
+  that copy too, so the launcher stops accepting what the page refuses. The
+  page says "Local Network
   is on, but this profile publishes `<FRONTEND_URL>`, not an address on the
   shop's network: run `pnpm https:setup`." Two checks, and which side each
   covers:
@@ -176,8 +186,10 @@ The rest of the Server group applies everywhere.
     covers the web side too: the web app has no address of its own and shows
     only what the server answers. A failing origin answers "not set up", with
     the reason, instead of an address.
-  - **`pnpm env:check`** reports a profile whose `FRONTEND_URL` fails the rule
-    while either switch is on, before anything is started or built.
+  - **`pnpm env:check`** reports a profile whose `FRONTEND_URL` fails the
+    same whole-origin rule while either switch is on, before anything is
+    started or built, and names what is wrong (the port, a path, not HTTPS,
+    not a private address).
 
   These two, and local HTTPS missing, are the only "not available" states
   left, and each is a real fault worth showing.
