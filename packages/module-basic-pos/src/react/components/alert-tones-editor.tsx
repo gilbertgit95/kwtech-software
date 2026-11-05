@@ -72,6 +72,13 @@ export function AlertTonesEditor({
   );
 }
 
+/** The speaker drawn beside a sound's slider: crossed out when it would make no sound. */
+function volumeIcon(sound: Pick<PosAlertSound, 'on' | 'volume'>) {
+  if (!sound.on || sound.volume === 0) return VolumeX;
+  if (sound.volume < 50) return Volume1;
+  return Volume2;
+}
+
 function SoundRow({
   label,
   hint,
@@ -88,7 +95,7 @@ function SoundRow({
   onPlay: () => void;
 }) {
   const id = useId();
-  const VolumeIcon = !sound.on || sound.volume === 0 ? VolumeX : sound.volume < 50 ? Volume1 : Volume2;
+  const VolumeIcon = volumeIcon(sound);
   return (
     <fieldset
       disabled={disabled}

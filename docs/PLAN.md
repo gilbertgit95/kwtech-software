@@ -622,10 +622,11 @@ Decisions 1, 2, 3 and 5 gate the next step.
     The first read is a baseline, and this till's own changes never count.
   - **Built-in tones only, made with Web Audio**: nothing to upload or store.
     Ids are stored, so they are never renamed.
-  - **Per store and per person.** The store's on `PosSettings.alertTones`
-    (`pos:manage_settings`); a person's own in a new `PosUserSettings` row
-    (`@@id([workspaceId, userId])`, `pos:take_payment`), which wins whole. A
-    row, not a JSON map on the store's settings, so two cashiers saving at
+  - **Per store and per person.** `PosSettings.alertTones` holds the store's
+    tones (`pos:manage_settings`). A person's own tones are a new
+    `PosUserSettings` row (`@@id([workspaceId, userId])`, `pos:take_payment`),
+    and when one exists it replaces the store's tones as a whole, never one
+    sound at a time. A row, not a JSON map on the store's settings, so two cashiers saving at
     once never overwrite each other. Going back to the store's deletes the
     row: writing SQL NULL would need Prisma's `DbNull`, which a module cannot
     import.
