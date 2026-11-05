@@ -611,6 +611,32 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-05** — **The Cashier screens light up orders that arrive or change, and sound for them, with built-in tones set per store and per person (issue #68).**
+
+  A cashier serving somebody at the window missed orders a seller held, and
+  edits to orders already waiting, because nothing drew the eye (the
+  operator, 2026-11-05).
+  - **What changed is computed in the browser**, between two reads of the
+    waiting list (`pendingChanges`): no new event, nothing new on the wire.
+    The first read is a baseline, and this till's own changes never count.
+  - **Built-in tones only, made with Web Audio**: nothing to upload or store.
+    Ids are stored, so they are never renamed.
+  - **Per store and per person.** The store's on `PosSettings.alertTones`
+    (`pos:manage_settings`); a person's own in a new `PosUserSettings` row
+    (`@@id([workspaceId, userId])`, `pos:take_payment`), which wins whole. A
+    row, not a JSON map on the store's settings, so two cashiers saving at
+    once never overwrite each other. Going back to the store's deletes the
+    row: writing SQL NULL would need Prisma's `DbNull`, which a module cannot
+    import.
+  - **Only on the Cashier screens, and only while one can be seen**, the
+    window visible and the screen drawn — the Apps page keeps a hidden app
+    mounted.
+  - **Browsers block sound until the page is touched**, so the screen asks
+    for one tap rather than staying silent without a word.
+  - **Not done:** uploaded sounds, a sound for an order paid elsewhere, and
+    repeating a sound for an order nobody opened. Each waits for somebody to
+    ask.
+
 - **2026-11-05** — **A cashier can take payment on a phone: the POS's phone layout has a Cashier section (issue #69).**
 
   On a phone the POS offered only Take orders, and every held order had to be

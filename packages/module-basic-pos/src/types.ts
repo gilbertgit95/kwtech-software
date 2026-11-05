@@ -79,4 +79,6 @@ export type PosRefusal =
   | 'unknown_line'
   | 'invalid_keymap'
   | 'invalid_reference_options'
+  /** Order sounds (issue #68) that cannot be stored: the message names each problem. */
+  | 'invalid_alert_tones'
   | 'invalid_period';

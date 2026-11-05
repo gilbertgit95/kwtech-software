@@ -1,3 +1,4 @@
+import { DEFAULT_POS_ALERT_TONES } from '../src/domain/alert-tones.js';
 import { POS_DEFAULT_KEYMAP } from '../src/domain/keymap.js';
 import { PosWriteError } from '../src/server/pos.errors.js';
 import { ANA, harness, OTHER_STORE, SCOPE } from './harness.js';
@@ -83,6 +84,7 @@ describe('settings', () => {
       timeZone: 'Asia/Manila',
       keymap: POS_DEFAULT_KEYMAP,
       referenceOptions: [],
+      alertTones: DEFAULT_POS_ALERT_TONES,
       defaultReference: null,
       version: 0,
     });

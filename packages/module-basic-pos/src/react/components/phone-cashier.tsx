@@ -3,10 +3,11 @@
 import { useMobileSection } from '@kwtech/module-kit/react';
 import { BottomSheet, cn } from '@kwtech/web-ui/react';
 import { Ban, ChevronRight, CircleCheck, Hash, Inbox, Minus, Plus, Printer, Trash2, User } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { POS_MOBILE_SECTION } from '../../mobile/sections.js';
 import type { PosOrderView } from '../pos-client.js';
 import { useNow } from '../use-now.js';
+import { useOrderAlerts } from '../use-order-alerts.js';
 import type { TillState } from '../use-till.js';
 import { formatPeso } from '../view/money.js';
 import { phoneCashierSheet, settledElsewhereText, waitingSummary } from '../view/phone-cashier.js';
@@ -20,9 +21,11 @@ import {
   waitUrgency,
 } from '../view/take-orders.js';
 import { lineLabel } from '../view/till.js';
+import { MySoundsDialog } from './alert-tones-editor.js';
 import { URGENCY_CARD } from './cashier.js';
 import { buttonClass, PhoneDialogs } from './controls.js';
 import { CustomerDialog, ReferenceDialog, TextDialog } from './dialogs.js';
+import { ChangeBadge, HIGHLIGHT_CARD, HIGHLIGHT_TRANSITION, SoundsBlockedNote, SoundsButton } from './order-alerts.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { printHtml } from './till.js';
@@ -47,6 +50,10 @@ type Sheet = 'none' | 'order' | 'pay' | 'cancel' | 'customer' | 'reference';
  * - **Adding items is Take orders'** — its grouped list, search and sizes —
  *   reached with "Add items": the order stays on the till (`useTill` lives
  *   above both sections), so it is waiting there, open, to add to.
+ * - **Changes draw the eye, with a sound** (issue #68), as on the desktop
+ *   board: a new order slides in lit, an updated one lights up, each with
+ *   "New" or "Updated"; the sound only while this screen is the one showing.
+ *   The order rising as a sheet is the cue that it opened.
  * - **After a sale, its receipt**, with the change in large type: the moment
  *   the cashier hands money back. Only for a sale THIS phone made
  *   (`phoneCashierSheet`).
@@ -60,6 +67,9 @@ export function PhoneCashier({ state }: { state: TillState }) {
   const [settledHereId, setSettledHereId] = useState<string | null>(null);
   /** Said when a tap could not open an order (one on the till is not held yet). */
   const [notice, setNotice] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const { highlights, soundBlocked } = useOrderAlerts(state, root);
+  const [soundsOpen, setSoundsOpen] = useState(false);
 
   const order = state.order;
   const open = order?.status === 'open' ? order : null;
@@ -102,8 +112,14 @@ export function PhoneCashier({ state }: { state: TillState }) {
 
   return (
     <PhoneDialogs>
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <WaitingHeader count={summary.count} total={summary.total} oldestMinutes={summary.oldestMinutes} />
+      <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3">
+        <WaitingHeader
+          count={summary.count}
+          total={summary.total}
+          oldestMinutes={summary.oldestMinutes}
+          sounds={<SoundsButton state={state} onOpen={() => setSoundsOpen(true)} large />}
+        />
+        {soundBlocked ? <SoundsBlockedNote large /> : null}
 
         {notice ? (
           <p
@@ -132,6 +148,7 @@ export function PhoneCashier({ state }: { state: TillState }) {
                 const current = held.id === open?.id;
                 const minutes = now ? waitMinutes(held.createdAt, now) : null;
                 const urgency = minutes === null ? 'new' : waitUrgency(minutes);
+                const change = highlights.get(held.id);
                 return (
                   <li key={held.id}>
                     <button
@@ -140,14 +157,19 @@ export function PhoneCashier({ state }: { state: TillState }) {
                       disabled={state.busy}
                       onClick={() => void openOrder(held.id)}
                       className={cn(
-                        'flex min-h-20 w-full items-center gap-3 rounded-2xl border border-l-4 bg-card px-4 py-3 text-left shadow-sm transition-transform duration-100 active:scale-[0.99] active:bg-accent disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
+                        'flex min-h-20 w-full items-center gap-3 rounded-2xl border border-l-4 bg-card px-4 py-3 text-left shadow-sm active:scale-[0.99] active:bg-accent disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        HIGHLIGHT_TRANSITION,
                         URGENCY_CARD[urgency],
                         current ? 'ring-2 ring-ring ring-offset-1 ring-offset-background' : null,
+                        change ? HIGHLIGHT_CARD[change] : null,
                       )}
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-1">
                         <span className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-base font-semibold">{heldOrderTitle(held)}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-base font-semibold">{heldOrderTitle(held)}</span>
+                            {change ? <ChangeBadge change={change} /> : null}
+                          </span>
                           <span className="shrink-0 text-base font-semibold tabular-nums">
                             {formatPeso(held.total)}
                           </span>
@@ -250,6 +272,7 @@ export function PhoneCashier({ state }: { state: TillState }) {
           ) : null}
         </BottomSheet>
 
+        <MySoundsDialog open={soundsOpen} state={state} onClose={() => setSoundsOpen(false)} />
         <PaymentDialog
           open={sheet === 'pay'}
           order={open}
@@ -312,10 +335,13 @@ function WaitingHeader({
   count,
   total,
   oldestMinutes,
+  sounds,
 }: {
   count: number;
   total: number;
   oldestMinutes: number | null;
+  /** The sound button (issue #68), at the head's right. */
+  sounds: ReactNode;
 }) {
   return (
     <section
@@ -325,15 +351,18 @@ function WaitingHeader({
       <span className="min-w-0">
         <span className="block text-sm font-medium text-muted-foreground">Waiting for payment</span>
         <span className="block text-xs text-muted-foreground">
-          {oldestMinutes === null ? 'Oldest first' : `Oldest first · the oldest has waited ${waitText(oldestMinutes)}`}
+          {oldestMinutes === null ? 'Oldest first' : `The oldest has waited ${waitText(oldestMinutes)}`}
         </span>
       </span>
-      <span className="flex shrink-0 flex-col items-end">
-        <span className="text-2xl font-semibold tabular-nums leading-tight">
-          {count}
-          <span className="sr-only"> waiting</span>
+      <span className="flex shrink-0 items-center gap-2">
+        <span className="flex flex-col items-end">
+          <span className="text-2xl font-semibold tabular-nums leading-tight">
+            {count}
+            <span className="sr-only"> waiting</span>
+          </span>
+          {count > 0 ? <span className="text-xs tabular-nums text-muted-foreground">{formatPeso(total)}</span> : null}
         </span>
-        {count > 0 ? <span className="text-xs tabular-nums text-muted-foreground">{formatPeso(total)}</span> : null}
+        {sounds}
       </span>
     </section>
   );

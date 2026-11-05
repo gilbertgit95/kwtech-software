@@ -1,8 +1,9 @@
 'use client';
 
 import { cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
-import { type CSSProperties, useId, useState } from 'react';
+import { type CSSProperties, useEffect, useId, useRef, useState } from 'react';
 import { useNow } from '../use-now.js';
+import { useOrderAlerts } from '../use-order-alerts.js';
 import type { TillState } from '../use-till.js';
 import { formatPeso } from '../view/money.js';
 import { WAITING_COLUMN_RULES, WAITING_COLUMN_STORAGE_KEY } from '../view/order-panel.js';
@@ -15,6 +16,8 @@ import {
   waitText,
   waitUrgency,
 } from '../view/take-orders.js';
+import { MySoundsDialog } from './alert-tones-editor.js';
+import { ChangeBadge, HIGHLIGHT_CARD, HIGHLIGHT_TRANSITION, SoundsBlockedNote, SoundsButton } from './order-alerts.js';
 import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { Till } from './till.js';
 import { WaitBadge } from './wait-badge.js';
@@ -34,6 +37,10 @@ import { WaitBadge } from './wait-badge.js';
  * - **The till is the keyboard till** (`Till`), not a copy of it: payment,
  *   change owed, discounts and the receipt are already right there, with
  *   their keys. Opening an order puts it on the till, as Pending always has.
+ * - **Changes draw the eye** (issue #68): a new order slides in lit, an
+ *   updated one lights up, and the order panel lights as an order opens on
+ *   it — or changes there under the cashier. With a sound, while this screen
+ *   is the one showing (`useOrderAlerts`).
  * - Only for somebody who may take payment; `PosApp` does not offer it to
  *   anybody else, and the bindings refuse them regardless.
  */
@@ -50,6 +57,22 @@ export function Cashier({ state }: { state: TillState }) {
   const [columnWidth, setColumnWidth] = useState(() =>
     readPanelWidth(WAITING_COLUMN_RULES, WAITING_COLUMN_STORAGE_KEY),
   );
+  const root = useRef<HTMLDivElement>(null);
+  const { highlights, soundBlocked } = useOrderAlerts(state, root);
+  const [soundsOpen, setSoundsOpen] = useState(false);
+  /** The order panel lit for a moment: an order just opened on it, or changed there under the cashier. */
+  const [panelLit, setPanelLit] = useState(false);
+  const lightPanel = () => setPanelLit(true);
+  useEffect(() => {
+    if (!panelLit) return;
+    const timer = setTimeout(() => setPanelLit(false), PANEL_LIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [panelLit]);
+  // The open order changed elsewhere (a seller added to it): the panel lights, as its card does.
+  const openChanged = open ? highlights.get(open.id) === 'updated' : false;
+  useEffect(() => {
+    if (openChanged) setPanelLit(true);
+  }, [openChanged]);
 
   const openOrder = (orderId: string) => {
     if (open?.id === orderId) return;
@@ -61,11 +84,11 @@ export function Cashier({ state }: { state: TillState }) {
       );
       return;
     }
-    void state.resume(orderId);
+    void state.resume(orderId).then(lightPanel);
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 @4xl:flex-row">
+    <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3 @4xl:flex-row">
       <section
         id={columnId}
         aria-label="Waiting for payment"
@@ -83,9 +106,12 @@ export function Cashier({ state }: { state: TillState }) {
           onResize={setColumnWidth}
         />
         <div>
-          <h2 className="flex items-baseline justify-between text-sm font-semibold">
-            Waiting for payment
-            <span className="text-xs font-normal text-muted-foreground tabular-nums">{state.pending.length}</span>
+          <h2 className="flex items-center justify-between gap-2 text-sm font-semibold">
+            <span className="flex items-baseline gap-2">
+              Waiting for payment
+              <span className="text-xs font-normal text-muted-foreground tabular-nums">{state.pending.length}</span>
+            </span>
+            <SoundsButton state={state} onOpen={() => setSoundsOpen(true)} />
           </h2>
           <p className="text-xs text-muted-foreground">
             {oldest && now
@@ -93,6 +119,7 @@ export function Cashier({ state }: { state: TillState }) {
               : 'Oldest first'}
           </p>
         </div>
+        {soundBlocked ? <SoundsBlockedNote /> : null}
         {state.pending.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nothing is waiting. Orders held on the phones and at the counter show here at once.
@@ -103,6 +130,7 @@ export function Cashier({ state }: { state: TillState }) {
               const current = held.id === open?.id;
               const minutes = now ? waitMinutes(held.createdAt, now) : null;
               const urgency = minutes === null ? 'new' : waitUrgency(minutes);
+              const change = highlights.get(held.id);
               return (
                 <li key={held.id}>
                   <button
@@ -111,13 +139,18 @@ export function Cashier({ state }: { state: TillState }) {
                     aria-current={current ? 'true' : undefined}
                     onClick={() => openOrder(held.id)}
                     className={cn(
-                      'flex w-full flex-col gap-1 rounded-md border border-l-4 px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      'flex w-full flex-col gap-1 rounded-md border border-l-4 px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      HIGHLIGHT_TRANSITION,
                       URGENCY_CARD[urgency],
                       current ? 'ring-2 ring-ring ring-offset-1 ring-offset-card' : null,
+                      change ? HIGHLIGHT_CARD[change] : null,
                     )}
                   >
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate font-semibold">{heldOrderTitle(held)}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-semibold">{heldOrderTitle(held)}</span>
+                        {change ? <ChangeBadge change={change} /> : null}
+                      </span>
                       <span className="shrink-0 font-semibold tabular-nums">{formatPeso(held.total)}</span>
                     </span>
                     <span className="flex items-center justify-between gap-2 text-xs">
@@ -135,10 +168,15 @@ export function Cashier({ state }: { state: TillState }) {
           </ul>
         )}
       </section>
-      <Till state={state} />
+      {/* The order panel's light (issue #68): a ring that fades, the same primary as the cards. */}
+      <Till state={state} orderLit={panelLit} />
+      <MySoundsDialog open={soundsOpen} state={state} onClose={() => setSoundsOpen(false)} />
     </div>
   );
 }
+
+/** How long the order panel stays lit after an order opens on it: a glance, not a distraction. */
+const PANEL_LIGHT_MS = 1_500;
 
 /*
  * ── urgency colours ───────────────────────────────────────────────────────

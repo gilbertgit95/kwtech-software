@@ -15,13 +15,15 @@ import { usePosData } from '../use-pos-data.js';
 import type { TillState } from '../use-till.js';
 import { keyOfPress } from '../view/keys.js';
 import { actionsByZone, itemKeyTarget, KEY_ZONE_LABELS } from '../view/manage.js';
+import { StoreSoundsSettings } from './alert-tones-editor.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert, Empty, Tabs } from './layout.js';
 
 type SettingsTab = 'store' | 'keys';
 
 /**
- * Settings (D23): the store and its hot keys. Behind `pos:manage_settings`.
+ * Settings (D23): the store, its order sounds (issue #68) and its hot keys.
+ * Behind `pos:manage_settings`.
  * The order reference options moved to the Items tab (2026-10-29), beside
  * categories and order types.
  */
@@ -46,6 +48,7 @@ export function SettingsSection({
         onChange={setTab}
       />
       {tab === 'store' ? <StoreSettings state={state} /> : null}
+      {tab === 'store' ? <StoreSoundsSettings state={state} /> : null}
       {tab === 'store' && onOpenItems ? (
         <section
           aria-label="Setup in Excel"

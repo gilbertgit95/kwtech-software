@@ -35,6 +35,7 @@ export const TABLES = [
   'posRefundLine',
   'posCounter',
   'posSettings',
+  'posUserSettings',
   'posItemRank',
   'posVariantRank',
   'posRanking',
@@ -55,6 +56,7 @@ const UNIQUES: Record<TableName, string[][]> = {
   posRefundLine: [['id']],
   posCounter: [['workspaceId']],
   posSettings: [['workspaceId']],
+  posUserSettings: [['workspaceId', 'userId']],
   posItemRank: [['workspaceId', 'itemId']],
   posVariantRank: [['workspaceId', 'variantId']],
   posRanking: [['workspaceId']],
@@ -172,10 +174,13 @@ const DEFAULTS: Record<TableName, (id: string, now: Date) => Row> = {
     keymap: null,
     referenceOptions: null,
     defaultReference: null,
+    alertTones: null,
     version: 1,
     createdAt: now,
     updatedAt: now,
   }),
+  // Keyed by `@@id([workspaceId, userId])`, which the service always writes.
+  posUserSettings: (_id, now) => ({ alertTones: null, version: 1, createdAt: now, updatedAt: now }),
   // Keyed by their composite ids, which the service always writes: no generated id.
   posItemRank: () => ({}),
   posVariantRank: () => ({}),
@@ -255,6 +260,10 @@ export function fakeClient(state: FakeState = emptyState()): FakeClient {
     if (!where) return true;
     return Object.entries(where).every(([key, condition]) => {
       if (key === 'OR') return (condition as Where[]).some((branch) => matches(table, row, branch));
+      // A compound key, as Prisma names it (`workspaceId_userId: { workspaceId, userId }`): only one the table declares.
+      if (UNIQUES[table].some((fields) => fields.length > 1 && fields.join('_') === key)) {
+        return Object.entries(condition as Row).every(([field, value]) => same(row[field], value));
+      }
       const relation = RELATIONS[table]?.[key];
       if (relation) {
         const target = state[relation.table].find((candidate) => candidate.id === row[relation.key]);

@@ -91,8 +91,15 @@ type Dialog =
 export function Till({
   state,
   phone = false,
+  orderLit = false,
 }: {
   state: TillState;
+  /**
+   * Lights the order panel for a moment (issue #68): the Cashier board sets
+   * it as an order opens here, or changes here under the cashier, so the eye
+   * goes where the order now is.
+   */
+  orderLit?: boolean;
   /**
    * The PHONE's till (issue #22). On a phone the items and the order cannot
    * share the screen: stacked, the order took all the height and left the
@@ -521,7 +528,8 @@ export function Till({
           // size the narrow, stacked layout, where the order takes the whole width.
           style={phone ? undefined : ({ '--pos-order-width': `${orderWidth}px` } as CSSProperties)}
           className={cn(
-            'flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3',
+            'flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-3 transition-shadow duration-700 motion-reduce:transition-none',
+            orderLit ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : null,
             phone
               ? 'absolute inset-0 z-10 rounded-2xl shadow-lg'
               : // max-w keeps a width chosen on a wide monitor from swallowing the items on a laptop.

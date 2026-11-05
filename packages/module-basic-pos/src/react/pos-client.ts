@@ -96,7 +96,16 @@ export interface PosSettingsView {
   referenceOptions: string[];
   /** The reference a new order starts with, one of `referenceOptions`; null for none. */
   defaultReference: string | null;
+  /** The store's order sounds (issue #68), `PosAlertTones` as JSON text. Read with `readAlertTones`. */
+  alertTones: string;
   version: number;
+}
+
+/** One person's order sounds (issue #68), each `PosAlertTones` as JSON text. */
+export interface PosMyAlertTonesView {
+  store: string;
+  /** Null: this person follows the store's. */
+  mine: string | null;
 }
 
 export interface PosDiscountView {
@@ -408,6 +417,12 @@ export interface PosClient {
     options: readonly string[],
     defaultReference?: string | null,
   ): Promise<PosSettingsView>;
+  /** The store's order sounds (issue #68), `PosAlertTones` as JSON text. */
+  saveAlertTones(scope: PosScopeView, tones: string): Promise<PosSettingsView>;
+  /** The viewer's own order sounds and the store's. */
+  myAlertTones(scope: PosScopeView): Promise<PosMyAlertTonesView>;
+  /** The viewer's own order sounds as JSON text; null follows the store's again. */
+  saveMyAlertTones(scope: PosScopeView, tones: string | null): Promise<PosMyAlertTonesView>;
 
   /** `tab` is the status; `days` the store's days it is narrowed to, or null for every date. */
   orders(
@@ -541,6 +556,9 @@ export function createPosClient(options: { graphqlPath?: string } = {}): PosClie
     importSetup: (scope, input) => call('importPosSetup', scope, { input }),
     saveReferenceOptions: (scope, options, defaultReference = null) =>
       call('savePosReferenceOptions', scope, { options, defaultReference }),
+    saveAlertTones: (scope, tones) => call('savePosAlertTones', scope, { tones }),
+    myAlertTones: (scope) => call('posMyAlertTones', scope),
+    saveMyAlertTones: (scope, tones) => call('savePosMyAlertTones', scope, { tones }),
 
     orders: (scope, tab, search = null, customerId = null, days = null) =>
       call('posOrders', scope, { tab, search, customerId, fromDay: days?.fromDay ?? null, toDay: days?.toDay ?? null }),

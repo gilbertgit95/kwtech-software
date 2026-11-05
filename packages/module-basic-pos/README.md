@@ -461,6 +461,50 @@ Not done: another BROWSER TAB of the same browser hears this page's writes
 only through the socket (a `BroadcastChannel` would carry them; nothing has
 needed it yet).
 
+## Changes that draw the eye, and order sounds (issue #68)
+
+On both Cashier screens — the full screen's board and the phone's section —
+a waiting order that changes says so, so a cashier serving somebody at the
+window still notices it.
+
+- **What changed** is `pendingChanges` (`view/order-changes.ts`): the
+  difference between two reads of `state.pending`. A new id is **new**; a
+  newer `version` of one already waiting is **updated** (every order write is
+  a compare-and-set that raises it). ⚠ The first read lights nothing, so
+  opening Cashier with ten orders waiting does not flash ten; and **this
+  till's own changes never count** — `own` holds the latest version of each
+  order this till has had on it, so a hold or an edit made here is not news.
+- **How it looks** (`order-alerts.tsx`): the card lit in the theme's
+  `primary` with **New** or **Updated** on it for `POS_HIGHLIGHT_MS` (4 s),
+  then fading; a new one also slides in from above. On the full screen the
+  till's order panel lights for 1.5 s as an order opens on it, or when the
+  order on it is updated elsewhere (`Till`'s `orderLit`). On the phone the
+  order rising as a sheet is that cue. For somebody who asked for less
+  motion, nothing moves: the light and the word stay.
+- **Sounds** (`use-order-alerts.ts`): one per read (`alertMomentFor`: a new
+  order's when anything arrived, else an update's), and ⚠ only while the
+  Cashier screen can be seen — the window visible and the screen drawn
+  (`checkVisibility`), since the Apps page keeps a hidden app mounted. Classic,
+  Take orders and every other tab never sound: the hook lives only in the two
+  Cashier screens.
+- **Built-in tones only**: Chime, Bell, Ding, Marimba and Pop, played by the
+  browser with Web Audio (`tone-player.ts`, notes in `view/tone-notes.ts`), so
+  there is no sound file. Ids are stored: ⚠ never rename one; a removed id
+  reads as the default.
+- **Set per store, and per person.** The store's are on `PosSettings.alertTones`
+  (`savePosAlertTones`, `pos:manage_settings`, on Settings → Store). Each
+  cashier may keep their own (`PosUserSettings`, one row per person per store;
+  `posMyAlertTones` / `savePosMyAlertTones`, `pos:take_payment`, from the bell
+  on the Cashier screen), which win whole (`effectiveAlertTones`). "Use the
+  store's sounds" deletes the row. Always the viewer's own row: there is no
+  user argument. Both are checked by `validateAlertTones` and read back by
+  `readAlertTones` (`domain/alert-tones.ts`), which falls back field by field.
+- ⚠ **Browsers block sound until the page is touched.** Right after a reload
+  the Cashier screen says "Tap to turn on order sounds", and the first tap
+  anywhere turns them on. Every Play button is such a tap too.
+- **Not done:** no uploaded sounds; no sound for an order that left the list
+  (paid elsewhere); a sound never repeats for an order nobody opened.
+
 ## Processes
 
 | Key | What | Default schedule | Limits |
