@@ -115,7 +115,7 @@ export function useOrderList(state: TillState, openOrderId: string | null = null
     counting,
     filter,
     listed: rows.length,
-    listLoading: list.loading,
+    list,
     count: elsewhere,
   });
 

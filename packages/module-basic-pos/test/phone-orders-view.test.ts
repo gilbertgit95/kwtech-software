@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { orderRowDetail, ordersListEmptyText, otherDaysLine } from '../src/react/view/manage.js';
+import { orderRowDetail, ordersListEmptyText, otherDaysLine, reprintState } from '../src/react/view/manage.js';
 import { phoneOrderNextStep } from '../src/react/view/phone-orders.js';
 
 /** Orders on a phone (issue #72): what the screen draws, and that it only looks. */
@@ -91,7 +91,7 @@ describe('otherDaysLine', () => {
     counting: true,
     filter: 'unpaid' as const,
     listed: 0,
-    listLoading: false,
+    list: { loading: false, error: null },
     count: { data: { filter: 'unpaid' as const, count: 1 }, loading: false, error: null },
   };
 
@@ -109,11 +109,25 @@ describe('otherDaysLine', () => {
     ).toBe(null);
   });
 
+  it('⚠ says nothing once the list failed: its last rows are not the ones counted against', () => {
+    expect(otherDaysLine({ ...settled, list: { loading: false, error: 'Could not load the orders.' } })).toBe(null);
+  });
+
   it('says nothing while the list reads, for another filter’s count, or when not counting', () => {
-    expect(otherDaysLine({ ...settled, listLoading: true })).toBe(null);
+    expect(otherDaysLine({ ...settled, list: { loading: true, error: null } })).toBe(null);
     expect(otherDaysLine({ ...settled, filter: 'pending' })).toBe(null);
     expect(otherDaysLine({ ...settled, counting: false })).toBe(null);
     expect(otherDaysLine({ ...settled, count: { data: null, loading: false, error: null } })).toBe(null);
+  });
+});
+
+describe('reprintState', () => {
+  it('prints only a current copy of the order', () => {
+    expect(reprintState({ loading: false, error: null })).toBe('ready');
+    expect(reprintState({ loading: true, error: null })).toBe('updating');
+    expect(reprintState({ loading: false, error: 'Could not load this order.' })).toBe('stale');
+    // A failed read stays stale while it is tried again: the copy on screen is still the old one.
+    expect(reprintState({ loading: true, error: 'Could not load this order.' })).toBe('stale');
   });
 });
 
@@ -152,6 +166,11 @@ describe('the phone’s Orders section', () => {
     expect(new Set(calls)).toEqual(new Set(['order']));
     const hook = read('src/react/use-order-list.ts');
     expect(new Set([...hook.matchAll(/client\.(\w+)\(/g)].map((match) => match[1]))).toEqual(new Set(['orders']));
+  });
+
+  it('⚠ both screens print only a current copy', () => {
+    expect(phone).toMatch(/disabled=\{printing !== 'ready'\}/);
+    expect(read('src/react/components/orders-section.tsx')).toMatch(/disabled=\{reprintState\(detail\) !== 'ready'\}/);
   });
 
   it('prints the full screen’s reprint, marked with the date', () => {

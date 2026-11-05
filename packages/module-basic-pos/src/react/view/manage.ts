@@ -73,18 +73,20 @@ export function otherDaysNote(filter: OrderFilter, listed: number, everyDate: nu
  * The other-days line beside the Orders list, or null: `otherDaysNote`, said
  * only when both reads behind it are current.
  *
- * ⚠ BOTH READS SETTLED, AND THE COUNT'S LAST ONE SUCCEEDED. Each read keeps its
- * last answer while it reads again and after it fails. So when an order event
- * re-reads both, and the list answers first, the old count would sit beside
- * the new list ("1 more unpaid order" for one just paid); and a failed count
- * would keep showing the one before it beside its own error. The count must
- * also be of THIS filter: a late answer for the last one is not this one's.
+ * ⚠ BOTH READS SETTLED, AND BOTH LAST ONES SUCCEEDED. Each read keeps its last
+ * answer while it reads again and after it fails. So when an order event
+ * re-reads both and the list answers first, the old count would sit beside
+ * the new list ("1 more unpaid order" for one just paid); a failed count would
+ * keep showing the one before it beside its own error; and a failed LIST
+ * would leave its last rows to be subtracted from a fresh count. The count
+ * must also be of THIS filter: a late answer for the last one is not this
+ * one's.
  */
 export function otherDaysLine({
   counting,
   filter,
   listed,
-  listLoading,
+  list,
   count,
 }: {
   /** Whether the screen counts other days at all (an outstanding status, some days, no search). */
@@ -92,13 +94,29 @@ export function otherDaysLine({
   filter: OrderFilter;
   /** How many the list shows. */
   listed: number;
-  listLoading: boolean;
+  /** The list's read: whether it is reading or its last read failed. */
+  list: { loading: boolean; error: string | null };
   /** The every-date count's read: its last answer, and whether it is reading or failed. */
   count: { data: { filter: OrderFilter; count: number } | null; loading: boolean; error: string | null };
 }): string | null {
-  if (!counting || listLoading || count.loading || count.error) return null;
+  if (!counting || list.loading || list.error || count.loading || count.error) return null;
   if (!count.data || count.data.filter !== filter) return null;
   return otherDaysNote(filter, listed, count.data.count);
+}
+
+/**
+ * Whether an order open in Orders may be printed now: `ready`; `updating`
+ * while it is read again (an order event); `stale` when that read failed.
+ *
+ * ⚠ ONLY A CURRENT COPY IS PRINTED. The order on screen is the last one read,
+ * kept while it reads again and after a failure — so a receipt printed then
+ * could show an order as it was before a refund, or reprint one cancelled
+ * since. Both Orders screens draw their Print from this.
+ */
+export function reprintState(read: { loading: boolean; error: string | null }): 'ready' | 'updating' | 'stale' {
+  if (read.error) return 'stale';
+  if (read.loading) return 'updating';
+  return 'ready';
 }
 
 /** The empty list, in words: which orders there are none of, and on which days. `days` null is every date. */

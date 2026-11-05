@@ -17,6 +17,7 @@ import {
   orderStatusChip,
   ordersListEmptyText,
   orderTitle,
+  reprintState,
   whenText,
 } from '../view/manage.js';
 import { formatPeso } from '../view/money.js';
@@ -226,6 +227,7 @@ function PhoneOrderSheet({
   const can = order
     ? orderActions(order, { sell: state.canSell, takePayment: state.canTakePayment, refund: state.canRefund })
     : null;
+  const printing = reprintState(detail);
 
   return (
     <BottomSheet
@@ -236,16 +238,24 @@ function PhoneOrderSheet({
         order && can?.reprint ? (
           <button
             type="button"
+            // ⚠ Only a current copy (`reprintState`): never the one kept while it reads again, or after that failed.
+            disabled={printing !== 'ready'}
             className={cn(buttonClass('primary'), 'h-14 w-full rounded-2xl text-base')}
             // ⚠ A reprint says so, with the date (guard rules), as on the full screen.
             onClick={() => printHtml(receiptHtml(order, { timeZone, reprintedAt: new Date() }))}
           >
             <Printer aria-hidden="true" className="size-5" />
-            Print receipt
+            {printing === 'updating' ? 'Updating…' : 'Print receipt'}
           </button>
         ) : null
       }
     >
+      {/* A failed re-read leaves the last copy on screen: say so, and Print waits for a good one. */}
+      {order && detail.error ? (
+        <div className="px-2 pb-2">
+          <Alert message={`${detail.error} This may not be the order as it is now.`} />
+        </div>
+      ) : null}
       {order ? (
         <PhoneOrderBody
           order={order}

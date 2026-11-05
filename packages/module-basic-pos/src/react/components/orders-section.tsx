@@ -19,6 +19,7 @@ import {
   orderStatusChip,
   ordersListEmptyText,
   orderTitle,
+  reprintState,
   whenText,
 } from '../view/manage.js';
 import { formatPercent, formatPeso, parsePeso } from '../view/money.js';
@@ -288,6 +289,8 @@ export function OrderDetail({
         </span>
       </header>
       <Alert message={error} onDismiss={() => setError(null)} />
+      {/* A failed re-read leaves the last copy on screen: say so, and Reprint waits for a good one. */}
+      {detail.error ? <Alert message={`${detail.error} This may not be the order as it is now.`} /> : null}
 
       <p className="text-sm">
         {order.customerName ? (
@@ -387,6 +390,8 @@ export function OrderDetail({
         {can.reprint ? (
           <button
             type="button"
+            // ⚠ Only a current copy (`reprintState`): never the one kept while it reads again, or after that failed.
+            disabled={reprintState(detail) !== 'ready'}
             className={buttonClass('ghost')}
             // ⚠ A reprint says so, with the date (guard rules).
             onClick={() => printHtml(receiptHtml(order, { timeZone, reprintedAt: new Date() }))}
