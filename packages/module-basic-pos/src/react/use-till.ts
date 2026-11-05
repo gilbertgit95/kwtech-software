@@ -118,7 +118,8 @@ export interface TillState {
   /**
    * Puts a pending (or any) order on the till. True once it is there; false
    * when it could not be read (gone, or the request failed — said in `error`),
-   * and the till still holds what it held. ⚠ Callers open a sheet or a dialog
+   * and the till still holds what it held — or a later resume has replaced
+   * this one, whose answer is dropped. ⚠ Callers open a sheet or a dialog
    * ONLY on true: otherwise it would show the order already on the till, with
    * its Pay button, as if it were the one tapped (CodeRabbit on #70).
    */
@@ -431,10 +432,21 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     setError(null);
   }, [setOrder]);
 
+  /**
+   * ⚠ ONLY THE LATEST TAP COUNTS. Two quick taps start two reads, and the
+   * first can answer last; putting it on the till then would swap the order
+   * under a sheet already open for the second, with its Pay button (CodeRabbit
+   * on #70). Each resume takes a number, and an answer that is no longer the
+   * latest is dropped and reported as not opened.
+   */
+  const resumeRead = useRef(0);
   const resume = useCallback(
     async (orderId: string): Promise<boolean> => {
+      resumeRead.current += 1;
+      const mine = resumeRead.current;
       try {
         const found = await client.order(scope, orderId);
+        if (mine !== resumeRead.current) return false;
         if (!found) {
           setError('That order is no longer there.');
           return false;
@@ -443,7 +455,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
         setError(null);
         return true;
       } catch (caught) {
-        fail(caught, 'Could not open that order.');
+        // A failure of a tap since replaced says nothing about the order now being opened.
+        if (mine === resumeRead.current) fail(caught, 'Could not open that order.');
         return false;
       }
     },
