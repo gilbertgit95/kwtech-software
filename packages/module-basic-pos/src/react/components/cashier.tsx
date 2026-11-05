@@ -150,8 +150,11 @@ export function Cashier({ state }: { state: TillState }) {
  * palette, light or dark, the person picked (the operator, 2026-10-29).
  */
 
-/** The card's edge and wash, by urgency: calm, then stronger, then solid. */
-const URGENCY_CARD: Record<PosWaitUrgency, string> = {
+/**
+ * The card's edge and wash, by urgency: calm, then stronger, then solid. Exported for the phone's Cashier
+ * (issue #69): one set of colours for both screens.
+ */
+export const URGENCY_CARD: Record<PosWaitUrgency, string> = {
   new: 'border-border border-l-primary/25',
   waiting: 'border-border border-l-primary/60',
   long: 'border-primary/50 border-l-primary bg-primary/5',

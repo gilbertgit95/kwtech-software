@@ -34,10 +34,12 @@ The web server only needs the registry, for `db:sync`:
 
 `@kwtech/module-basic-pos/mobile` offers the phone layout the **Point of sale**
 app, gated by `pos:read` as on the Apps page, with its parts as SECTIONS in the
-phone frame's strip. Today there is one, **Sell** (`pos:sell`, the screen
-"Take orders"), the operator's choice for the phone — and with one section the
-frame shows no strip at all, so Take orders has the whole height; Orders, Items, Customers, Reports and Settings stay on
-the full site and join as sections when they come to the phone, each gated by
+phone frame's strip: **Sell** (`pos:sell`, the screen "Take orders") and
+**Cashier** (`pos:take_payment`, issue #69: the held orders, paid on the phone
+— see "Cashier on a phone" below). With one section held the frame shows no
+strip at all, so that screen has the whole height. Orders, Items, Customers,
+Reports and Settings stay on the full site and join as sections when they come
+to the phone, each gated by
 its own key, without the app or its address (`?screen=pos&section=…`)
 changing. The frame offers the app only while its holder has at least one
 section, so somebody who may not sell is not shown an empty point of sale.
@@ -207,7 +209,8 @@ The same order process, split by who uses it:
   ⚠ The colours are tints of the theme's `primary`, so they follow the theme
   picker; the status colours are fixed across palettes and would not
   (`wait-badge.tsx`).
-- **Where:** on a phone, Sell is Take orders and the till is not offered.
+- **Where:** on a phone, Sell is Take orders and the keyboard till is not
+  offered; Cashier is its own section (issue #69, below).
   On the full screen (the Apps page) Take orders is NOT offered — it is
   built for a phone, and Cashier does all it does there. Sell has two tabs,
   **Cashier** (only with `pos:take_payment`) and **Classic**, the keyboard
@@ -216,6 +219,44 @@ The same order process, split by who uses it:
   Remembered per device (`kwtech:pos-sell-mode`).
 - ⚠ **An order never held is listed nowhere**, so neither screen lets it be
   left for another (`canLeaveOrder`): it asks for Hold first.
+
+### Cashier on a phone (issue #69)
+
+So a cashier or a manager never has to be at a desktop to take a payment.
+`PhoneCashier`, the phone's **Cashier** section (`pos:take_payment`), is the
+full screen's Cashier board made for a thumb, not the board shrunk:
+
+- **The same list:** `state.pending`, live, oldest first, coloured by how long
+  each has waited (`URGENCY_CARD`, shared with `cashier.tsx`, and `WaitBadge`).
+  One column of cards a thumb tall; a head with how many wait, what they come
+  to, and how long the oldest has waited (`waitingSummary`).
+- **Tap an order and it rises as a bottom sheet:** its type, customer,
+  reference and lines, the total, **Pay** and **Cancel order**. Payment, the
+  customer, the reference and the cancel reason open as sheets over it
+  (`PhoneDialogs`). An order being taken on the same phone and not held yet is
+  never left stranded: the tap says to hold it first (`canLeaveOrder`).
+- **Every control follows its key**, as Take orders does: Pay, Pay later and
+  Cancel with `pos:take_payment`, changing the order (type, customer,
+  reference, quantities, **Add items**) with `pos:sell`. Somebody with only
+  the first sees the order read-only. The section itself is checked against
+  the key in `PosMobileApp` too, so an old `?section=cashier` address opens
+  Sell for somebody who no longer holds it.
+- **Add items is Take orders'**: it switches to the Sell section with the order
+  still on the till (`useTill` lives above both sections), its grouped list,
+  search and sizes, not a second copy of them.
+- **Payment on a phone** (`PaymentDialog`'s `phone`): no key hints, thumb-sized
+  buttons, the amount box not focused on arrival (that would raise the keyboard
+  over the methods), and **quick cash** for cash: Exact and the next three
+  round amounts the total rounds up to by bill (`quickCashAmounts`: ₱645 →
+  Exact, ₱650, ₱660, ₱700).
+- **After a sale, its receipt**, with the change to hand back in large type,
+  Print and Done. ⚠ Only for a sale THIS phone made (`phoneCashierSheet`): an
+  order paid or cancelled at another till while its sheet was open says so
+  ("This order was paid at another till"), never shows as this phone's receipt
+  — the cashier would hand over change for a payment somebody else took.
+- **Not done:** no order discounts or line notes on the phone (the full till
+  has them); the section strip has no count badge (module-kit's sections take
+  none), so the count is in the screen's head.
 
 ## Order types and defaults (the Items tab)
 

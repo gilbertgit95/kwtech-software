@@ -9,6 +9,7 @@ import type { TillState } from '../use-till.js';
 import { keyOfPress, meaningOf } from '../view/keys.js';
 import { formatPeso, parsePeso, pesoInputValue } from '../view/money.js';
 import { previewPayment } from '../view/payment.js';
+import { quickCashAmounts } from '../view/phone-cashier.js';
 import { METHOD_LABELS } from '../view/receipt.js';
 import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
 
@@ -39,6 +40,7 @@ export function PaymentDialog({
   keymap,
   onPaid,
   onClose,
+  phone = false,
 }: {
   open: boolean;
   order: PosOrderView | null;
@@ -46,6 +48,13 @@ export function PaymentDialog({
   keymap: PosKeymap;
   onPaid: (order: PosOrderView) => void;
   onClose: () => void;
+  /**
+   * The phone's payment (issue #69): no key hints — a phone has no function
+   * keys, and "F1 Cash" only clutters a thumb's buttons — taller targets, and
+   * the amount box not focused on arrival, which would raise the keyboard over
+   * the method buttons before anybody chose one.
+   */
+  phone?: boolean;
 }) {
   const [method, setMethod] = useState<PosPaymentMethod>('cash');
   const [received, setReceived] = useState('');
@@ -119,7 +128,8 @@ export function PaymentDialog({
   const choose = (next: PosPaymentMethod) => {
     setMethod(next);
     if (next !== 'cash') setOwe(false);
-    receivedRef.current?.focus();
+    // On a phone, focusing the amount raises the keyboard over the screen: the cashier taps the box when they need it.
+    if (!phone) receivedRef.current?.focus();
   };
 
   return (
@@ -135,10 +145,11 @@ export function PaymentDialog({
               aria-pressed={method === option}
               // biome-ignore lint/a11y/noAutofocus: a dialog opens where the person will type or choose next (D20: focus always has a home).
               autoFocus={index === 0}
-              className={buttonClass(method === option ? 'primary' : 'secondary')}
+              className={cn(buttonClass(method === option ? 'primary' : 'secondary'), phone ? 'h-12 rounded-xl' : null)}
               onClick={() => choose(option)}
             >
-              <kbd className="text-xs opacity-70">{keymap.actions[METHOD_KEYS[option]]}</kbd> {METHOD_LABELS[option]}
+              {phone ? null : <kbd className="text-xs opacity-70">{keymap.actions[METHOD_KEYS[option]]}</kbd>}{' '}
+              {METHOD_LABELS[option]}
             </button>
           ))}
         </fieldset>
@@ -151,7 +162,7 @@ export function PaymentDialog({
               inputMode="decimal"
               aria-invalid={!preview.ok}
               aria-describedby={describedBy}
-              className={cn(INPUT_CLASS, 'text-lg tabular-nums')}
+              className={cn(INPUT_CLASS, 'text-lg tabular-nums', phone ? 'h-12 rounded-xl' : null)}
               value={received}
               onFocus={(event) => event.target.select()}
               onChange={(event) => setReceived(event.target.value)}
@@ -164,6 +175,34 @@ export function PaymentDialog({
             />
           )}
         </Field>
+
+        {/*
+         * The phone's quick cash (issue #69): the exact total and the next round bills, one tap each, so the
+         * keyboard never has to cover the screen for the usual "₱500 for a ₱645 bill". The box stays for any
+         * other amount.
+         */}
+        {phone && method === 'cash' ? (
+          <fieldset className="-mt-2 grid grid-cols-4 gap-1.5">
+            <legend className="sr-only">Amount received</legend>
+            {quickCashAmounts(total).map((amount, index) => {
+              const chosen = parsePeso(received) === amount;
+              return (
+                <button
+                  key={amount}
+                  type="button"
+                  aria-pressed={chosen}
+                  className={cn(
+                    buttonClass(chosen ? 'primary' : 'secondary', 'sm'),
+                    'h-11 rounded-xl px-1 tabular-nums',
+                  )}
+                  onClick={() => setReceived(pesoInputValue(amount))}
+                >
+                  {index === 0 ? 'Exact' : formatPeso(amount).replace(/\.00$/, '')}
+                </button>
+              );
+            })}
+          </fieldset>
+        ) : null}
 
         {method !== 'cash' ? (
           <Field label="Reference" hint="The e-wallet or card reference number, if there is one.">
@@ -181,15 +220,26 @@ export function PaymentDialog({
         ) : null}
 
         <div className="flex flex-col gap-1.5 text-sm">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={keepTip} onChange={(event) => setKeepTip(event.target.checked)} />
-            Keep what is over as a tip <kbd className="text-xs text-muted-foreground">{keymap.actions.keepTip}</kbd>
+          <label className={cn('flex items-center gap-2', phone ? 'min-h-11' : null)}>
+            <input
+              type="checkbox"
+              className={phone ? 'size-5' : undefined}
+              checked={keepTip}
+              onChange={(event) => setKeepTip(event.target.checked)}
+            />
+            Keep what is over as a tip{' '}
+            {phone ? null : <kbd className="text-xs text-muted-foreground">{keymap.actions.keepTip}</kbd>}
           </label>
           {method === 'cash' ? (
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={owe} onChange={(event) => setOwe(event.target.checked)} />
+            <label className={cn('flex items-center gap-2', phone ? 'min-h-11' : null)}>
+              <input
+                type="checkbox"
+                className={phone ? 'size-5' : undefined}
+                checked={owe}
+                onChange={(event) => setOwe(event.target.checked)}
+              />
               Change owed — hand it over later (needs the customer){' '}
-              <kbd className="text-xs text-muted-foreground">{keymap.actions.changeOwed}</kbd>
+              {phone ? null : <kbd className="text-xs text-muted-foreground">{keymap.actions.changeOwed}</kbd>}
             </label>
           ) : null}
         </div>
@@ -233,14 +283,14 @@ export function PaymentDialog({
                   onClick={() => void payLater()}
                   {...tooltip}
                 >
-                  Pay later <kbd className="text-xs opacity-70">{keymap.actions.payLater}</kbd>
+                  Pay later {phone ? null : <kbd className="text-xs opacity-70">{keymap.actions.payLater}</kbd>}
                 </button>
               )}
             </Tooltip>
           )}
           <button
             type="button"
-            className={buttonClass('primary')}
+            className={cn(buttonClass('primary'), phone ? 'h-14 flex-1 rounded-2xl text-base' : null)}
             disabled={!preview.ok || state.busy}
             onClick={() => void pay()}
           >
