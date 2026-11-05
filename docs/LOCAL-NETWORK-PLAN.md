@@ -31,8 +31,20 @@ beside Backups. It shows:
    - a **Download certificate** button for the public root certificate,
      saved as `kwtech-local-ca.crt`;
    - its **SHA-256 fingerprint**, subject and expiry date, so a person can
-     compare the fingerprint with what the phone shows before trusting it (the
-     download a phone uses is plain `http://`);
+     compare the fingerprint with what the phone shows before trusting it;
+   - ⚠ **the fingerprint is only worth comparing when it comes from a screen
+     that is already trusted.** The phone downloads the certificate over plain
+     `http://`, and anybody on the same Wi-Fi can swap that file, and the
+     fingerprint shown beside it on any `http://` page, for their own. So the
+     reference fingerprint is read on a device whose connection is already
+     authenticated: the server computer's own `https://localhost` (it trusts
+     the certificate since `pnpm https:setup`), or a device that already
+     trusts it. The steps, in this order: open Local Network on that trusted
+     screen; download the certificate on the phone (the QR code below); in the
+     phone's install screen, compare its SHA-256 fingerprint with the trusted
+     screen's, character for character; trust it only if they match. The page
+     says so beside the fingerprint, and the phone never shows a fingerprint
+     of its own over `http://` as if it proved anything;
    - an explanation in plain words: what it is for (devices on the shop's
      Wi-Fi open the app without a warning, and live updates work), and ⚠ what
      installing it means. A device that trusts it trusts **any** site this
@@ -87,8 +99,12 @@ The rest of the Server group applies everywhere.
   that composed it wanted it. This page is right for one kind of installation
   only, and on any other it would show an address and a certificate that are
   wrong there. Fail closed: `enabled !== true` means off.
-- **Off means absent**: no resolvers, no page, no drawer entry. An operation
-  reached anyway is refused with "not enabled on this server".
+- **Off means absent**: no resolvers, no page, no drawer entry, exactly as
+  chat's switch (`packages/module-chat/src/enabled.ts`). The operation is not
+  in the schema at all, so a request that sends it anyway gets GraphQL's own
+  "cannot query field" error, the same as any field that does not exist. There
+  is no separate refusal reason to define: the web app never sends the query
+  while off, because its page is not composed either.
 - ⚠ **The feature registry stays composed while off**, as chat's does (its
   comment explains why). Otherwise `db:sync` deprecates `local-network:*`, and
   turning the page back on would bring it back without its grants.
@@ -132,8 +148,9 @@ The rest of the Server group applies everywhere.
   the published origin (`https://<address>`, `http://<address>/kwtech-local-ca.crt`),
   and the switch (`localNetworkIsEnabled`).
 - **The resolver declares app scope.** Super admins hold every registered
-  key, so only they have `local-network:read` after `db:sync`, as with
-  `backup:*`.
+  key, so by default only they have `local-network:read` after `db:sync`,
+  as with `backup:*`. A super admin can grant the key to another role on the
+  Roles page.
 
 ## 6. Keys (app level)
 
@@ -143,13 +160,16 @@ The rest of the Server group applies everywhere.
 
 Granted to nobody by the module. `super-admin` holds every registered key.
 
-## 7. Later pages for the Server group
+## 7. Later additions
 
-These aren't part of Local Network. Each would be its own page, and probably
-its own module or part of the module that owns the subject, in the same
-drawer group. **All of them apply on a remote server too**, so none of them
-uses Local Network's switch, and each must report "unknown here" rather than a
-wrong answer when it can't tell.
+Two kinds, kept apart because they answer the switch differently.
+
+### 7a. More of Local Network (the shop's network only, behind its switch)
+
+These are about devices on the shop's Wi-Fi reaching this computer, so they
+are wrong on a remote server, exactly like v1. They are sections of the Local
+Network page, behind the same `localNetworkIsEnabled()`, and they disappear
+with it.
 
 - **Steps per device type**, inside Local Network: Android, iPhone and iPad
   (Install, then *Certificate Trust Settings*), Mac, Windows, Firefox, taken
@@ -165,6 +185,16 @@ wrong answer when it can't tell.
   computer should use, with a copy button.
 - **Installing the app on a phone**, inside Local Network: a pointer to
   `docs/HTTPS.md` §6 after the certificate step.
+
+### 7b. Other pages for the Server group (every server, never behind the switch)
+
+These aren't part of Local Network. Each would be its own page, and probably
+its own module or part of the module that owns the subject, in the same
+drawer group. **All of them apply on a remote server too**, so none of them
+uses Local Network's switch, and each must report "unknown here" rather than a
+wrong answer when it can't tell. Only Local Network (v1 and §7a) reads the
+switch.
+
 - **Server status**: version and commit running, uptime, the active env
   profile's name (never its values), and whether the built web app is older
   than the code (merged but not rebuilt).
@@ -192,7 +222,7 @@ wrong answer when it can't tell.
 | L6 | The private key is never read or served |
 | L7 | The address comes from the profile, not from the network interfaces |
 | L8 | The certificate is returned as text by a query, not through a ticket and a REST route |
-| L9 | The other Server pages (§7) are direction only, each its own issue |
+| L9 | Later additions (§7a for Local Network, §7b for the other Server pages) are direction only, each its own issue |
 | L10 | The page reads and changes nothing; no restart or setup buttons in v1 |
 
 ## 9. Phases, one commit each
