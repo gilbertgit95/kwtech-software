@@ -30,8 +30,10 @@ beside Backups. It shows:
 1. **The certificate**:
    - a **Download certificate** button for the public root certificate,
      saved as `kwtech-local-ca.crt`;
-   - its **SHA-256 fingerprint**, subject and expiry date, so a person can
-     compare the fingerprint with what the phone shows before trusting it;
+   - its **SHA-256 fingerprint**, and its **SHA-1** one too (Windows'
+     certificate window shows only that, as "Thumbprint"), with its subject
+     and expiry date, so a person can compare the fingerprint with what the
+     device shows before trusting it;
    - ⚠ **the fingerprint is only worth comparing when it comes from a screen
      that is already trusted.** The phone downloads the certificate over plain
      `http://`, and anybody on the same Wi-Fi can swap that file, and the
@@ -39,12 +41,25 @@ beside Backups. It shows:
      reference fingerprint is read on a device whose connection is already
      authenticated: the server computer's own `https://localhost` (it trusts
      the certificate since `pnpm https:setup`), or a device that already
-     trusts it. The steps, in this order: open Local Network on that trusted
-     screen; download the certificate on the phone (the QR code below); in the
-     phone's install screen, compare its SHA-256 fingerprint with the trusted
-     screen's, character for character; trust it only if they match. The page
-     says so beside the fingerprint, and the phone never shows a fingerprint
-     of its own over `http://` as if it proved anything;
+     trusts it. Open Local Network on that trusted screen, download the
+     certificate on the device (the QR code below), and compare the
+     fingerprint character for character. Trust it only if they match. A page
+     opened over `http://` never shows a fingerprint as if it proved anything,
+     and the page says all of this beside the fingerprint;
+   - ⚠ **where each device shows the fingerprint, and so when to compare.**
+     Not every one shows it before installing, so the steps follow the device
+     (taken into the per-device steps of §7a, and `docs/HTTPS.md` §5):
+
+     | Device | Where the fingerprint shows | Compare |
+     |---|---|---|
+     | iPhone, iPad | Settings → General → VPN & Device Management → the profile → More Details → the certificate (SHA-256) | before **Install**, and before turning on full trust in *Certificate Trust Settings* |
+     | Android | only after installing: Settings → Security → Encryption & credentials → Trusted credentials → **User** → the certificate | straight after installing; ⚠ if it differs, **remove it at once** there |
+     | Mac | Keychain Access → the certificate → Details (SHA-256) | before setting *Always Trust* |
+     | Windows | the certificate window → Details → *Thumbprint* (SHA-1) | before **Install Certificate** |
+     | Firefox | Settings → Certificates → View Certificates → Authorities → the certificate → View (SHA-256) | before ticking *Trust this CA to identify websites* |
+
+     Menu names differ between versions; the steps say what to look for
+     (the SHA-256 or SHA-1 fingerprint) as well as where;
    - an explanation in plain words: what it is for (devices on the shop's
      Wi-Fi open the app without a warning, and live updates work), and ⚠ what
      installing it means. A device that trusts it trusts **any** site this
@@ -120,6 +135,22 @@ The rest of the Server group applies everywhere.
     already says `pnpm build` is needed afterwards.
   - A remote server's profile (`pnpm env:new <name>`, `docs/HTTPS.md` §7)
     never has them, so nothing has to be remembered on a remote server.
+  - ⚠ **When the two disagree, it fails closed, and says so.** They are read
+    at different times (the server's when the API starts, the web app's when
+    it is BUILT), so a profile changed without a rebuild, or edited by hand,
+    can leave them apart:
+    - **Web on, server off:** the page is in the drawer, but its query is not
+      in the schema. The page treats GraphQL's "cannot query field" for its
+      own query as off: it shows no certificate and no address, only "Local
+      Network is off on this server's API. Run `pnpm https:setup` (or `--off`),
+      then `pnpm build`." Never an error screen, and never a stale address.
+    - **Server on, web off:** the query exists but no page sends it. Nothing
+      shows. The query is guarded by `local-network:read` and returns only
+      public things (the certificate and the published address), so nothing
+      leaks; it is simply unused until the next build.
+    - **Caught before it happens:** `pnpm env:check` reports a profile whose
+      `web-server.env` and `web-app.env` disagree on the switch, and
+      `pnpm https:setup` (and `--off`) always writes both together.
 - **On, but local HTTPS missing** (`.caddy/` deleted, or not copied to a new
   machine): the page stays and says why. "Local HTTPS is on in this profile,
   but its certificate is not on this computer: run `pnpm https:setup`
@@ -242,7 +273,8 @@ switch.
    "this computer" line, the not-set-up message.
 5. **Wiring and the switch.** Both apps (`DECLARING_MODULES`,
    `MODULE_DECLARATIONS`, `WEB_MODULES`, the env vars and their validation),
-   `pnpm https:setup` writing the switch and `--off` removing it.
+   `pnpm https:setup` writing the switch and `--off` removing it, and
+   `pnpm env:check` reporting a profile whose two files disagree on it.
 6. **Docs.** The module's README, `docs/HTTPS.md` (§5 points to the page, its
    address corrected, §7 says the page is off on a remote server), the
    CLAUDE.md package list, and the PLAN §13 entry.
