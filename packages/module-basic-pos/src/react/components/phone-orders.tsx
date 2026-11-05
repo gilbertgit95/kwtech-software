@@ -23,12 +23,11 @@ import {
 import { formatPeso } from '../view/money.js';
 import { phoneOrderNextStep } from '../view/phone-orders.js';
 import { receiptHtml } from '../view/receipt.js';
-import { periodText } from '../view/reports.js';
 import { lineLabel } from '../view/till.js';
 import { buttonClass, INPUT_CLASS } from './controls.js';
 import { Alert, StatusChip } from './layout.js';
 import { LineNotes, ListTotal, OrderRefunds, OrderTotals } from './orders-section.js';
-import { PeriodPicker } from './period-picker.js';
+import { PhonePeriodPicker } from './phone-period-picker.js';
 import { printHtml } from './till.js';
 
 /**
@@ -79,28 +78,18 @@ export function PhoneOrders({ state }: { state: TillState }) {
         />
       </label>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <PeriodPicker
+      {/* The phone's own picker (the operator, 2026-11-05): the full screen's is a desktop control. */}
+      <div className="shrink-0">
+        <PhonePeriodPicker
           days={days}
           today={orders.today}
           preset={orders.preset}
-          custom={orders.custom}
-          editing={orders.editing}
           everyDate={{ active: orders.everyDate, onSelect: orders.showEveryDate }}
           onPreset={orders.onPreset}
           onDays={orders.onDays}
           onCustom={orders.onCustom}
-          onEditing={orders.onEditing}
         />
-        {orders.filtered ? (
-          <button type="button" className={cn(buttonClass('ghost', 'sm'), 'h-9')} onClick={orders.reset}>
-            <RotateCcw aria-hidden="true" className="size-4" />
-            Reset
-          </button>
-        ) : null}
       </div>
-      {/* The picker names a period ("This week"); its days are said here, as on a narrow full screen. */}
-      {days ? <p className="shrink-0 text-xs text-muted-foreground">{periodText(days.fromDay, days.toDay)}</p> : null}
 
       {/*
        * The status, as a row of chips that scrolls sideways rather than wrapping into
@@ -128,6 +117,17 @@ export function PhoneOrders({ state }: { state: TillState }) {
             </button>
           );
         })}
+        {/* Last in the row, only when something differs from what the screen opens on (today, every status). */}
+        {orders.filtered ? (
+          <button
+            type="button"
+            onClick={orders.reset}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <RotateCcw aria-hidden="true" className="size-4" />
+            Reset
+          </button>
+        ) : null}
       </fieldset>
 
       {orders.otherDays ? (
