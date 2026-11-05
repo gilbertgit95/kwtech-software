@@ -115,6 +115,45 @@ export function orderTitle(order: Pick<PosOrderSummaryView, 'number' | 'label' |
   return order.label ?? order.customerName ?? 'Walk-in';
 }
 
+/**
+ * A row's second line in the Orders list: who it is for (when the title is the
+ * number, so the name is not said twice), how many items, and when — the
+ * moment that matters most for it (paid, else finalised, else started), in the
+ * WORKSPACE's zone. "Ana · 3 items · 30 Sep 2026, 3:04 PM".
+ */
+export function orderRowDetail(
+  row: Pick<
+    PosOrderSummaryView,
+    'number' | 'customerName' | 'label' | 'itemCount' | 'paidAt' | 'finalisedAt' | 'createdAt'
+  >,
+  timeZone: string,
+): string {
+  const who = row.number !== null ? (row.customerName ?? row.label) : null;
+  const items = `${row.itemCount} ${row.itemCount === 1 ? 'item' : 'items'}`;
+  const when = whenText(row.paidAt ?? row.finalisedAt ?? row.createdAt, timeZone);
+  return [who, items, when].filter((part): part is string => Boolean(part)).join(' · ');
+}
+
+/** Why the Orders list is empty, in words: a range not finished, still loading, nothing matching, or simply none. */
+export function ordersListEmptyText({
+  loading,
+  problem,
+  searching,
+  filter,
+  days,
+}: {
+  loading: boolean;
+  problem: string | null;
+  searching: boolean;
+  filter: OrderFilter;
+  days: { fromDay: string; toDay: string } | null;
+}): string {
+  if (problem) return problem;
+  if (loading) return 'Loading…';
+  if (searching) return 'No orders match that search.';
+  return ordersEmptyText(filter, days);
+}
+
 /** The Orders list added up: the line under the list. */
 export interface OrderListTotal {
   /** Orders in the sum. */

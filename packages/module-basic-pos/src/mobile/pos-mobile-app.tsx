@@ -4,13 +4,14 @@ import type { AppProps } from '@kwtech/module-kit';
 import { useMobileSection, useMobileSectionBadge } from '@kwtech/module-kit/react';
 import { buttonClass } from '../react/components/controls.js';
 import { PhoneCashier } from '../react/components/phone-cashier.js';
+import { PhoneOrders } from '../react/components/phone-orders.js';
 import { TakeOrders } from '../react/components/take-orders.js';
 import { useTill } from '../react/use-till.js';
 import { POS_MOBILE_SECTION } from './sections.js';
 
 /**
  * The point of sale on a phone (issue #22): the same app as the Apps page's,
- * with its sections in the phone frame's strip: Sell and Cashier. Orders,
+ * with its sections in the phone frame's strip: Sell, Cashier and Orders.
  * Items, Customers, Reports and Settings stay on the full site until each is
  * brought here as a section of its own (`POS_MOBILE_SECTION` and
  * `posMobileModule`).
@@ -23,6 +24,9 @@ import { POS_MOBILE_SECTION } from './sections.js';
  *   them, so a cashier or a manager never needs a desktop to settle one.
  *   This reverses the half of the 2026-10-29 decision that sent every payment
  *   to the full screen (PLAN §13, 2026-11-05).
+ * - **Orders** (issue #72, `PhoneOrders`): past orders, found by the full
+ *   screen's own filters, opened and printed. It only looks: changing an
+ *   order stays with Cashier and the full screen.
  *
  * `useTill` lives here, above the sections, as in `PosApp`: switching section
  * never costs the order being built, and the cashier's "Add items" opens Take
@@ -32,7 +36,7 @@ export function PosMobileApp({ organizationId, workspaceId }: AppProps) {
   const state = useTill(organizationId, workspaceId);
   // The frame owns which section is open, among those this person holds; anything else is Sell.
   const { section } = useMobileSection();
-  const shown = section === POS_MOBILE_SECTION.cashier ? POS_MOBILE_SECTION.cashier : POS_MOBILE_SECTION.sell;
+  const shown = shownSection(section);
   // How many wait, on the Cashier chip (issue #69): from the same live list both screens show.
   useMobileSectionBadge(POS_MOBILE_SECTION.cashier, state.canTakePayment ? state.pending.length : null);
 
@@ -59,11 +63,19 @@ export function PosMobileApp({ organizationId, workspaceId }: AppProps) {
        * `?section=cashier` must not open it for somebody who lost the key since. Sell then
        * says for itself what this person may do.
        */}
-      {shown === POS_MOBILE_SECTION.cashier && state.canTakePayment ? (
-        <PhoneCashier state={state} />
-      ) : (
+      {shown === POS_MOBILE_SECTION.cashier && state.canTakePayment ? <PhoneCashier state={state} /> : null}
+      {/* Orders needs only `pos:read`, the app's own key: whoever sees this app may see it. */}
+      {shown === POS_MOBILE_SECTION.orders ? <PhoneOrders state={state} /> : null}
+      {shown === POS_MOBILE_SECTION.sell || (shown === POS_MOBILE_SECTION.cashier && !state.canTakePayment) ? (
         <TakeOrders state={state} phone />
-      )}
+      ) : null}
     </div>
   );
+}
+
+/** The section to draw, from the frame's: a key this app knows, and Sell for anything else (an old bookmark). */
+function shownSection(section: string | null): (typeof POS_MOBILE_SECTION)[keyof typeof POS_MOBILE_SECTION] {
+  if (section === POS_MOBILE_SECTION.cashier) return POS_MOBILE_SECTION.cashier;
+  if (section === POS_MOBILE_SECTION.orders) return POS_MOBILE_SECTION.orders;
+  return POS_MOBILE_SECTION.sell;
 }

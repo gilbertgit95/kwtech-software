@@ -34,10 +34,12 @@ The web server only needs the registry, for `db:sync`:
 
 `@kwtech/module-basic-pos/mobile` offers the phone layout the **Point of sale**
 app, gated by `pos:read` as on the Apps page, with its parts as SECTIONS in the
-phone frame's strip: **Sell** (`pos:sell`, the screen "Take orders") and
+phone frame's strip: **Sell** (`pos:sell`, the screen "Take orders"),
 **Cashier** (`pos:take_payment`, issue #69: the held orders, paid on the phone
-— see "Cashier on a phone" below). With one section held the frame shows no
-strip at all, so that screen has the whole height. Orders, Items, Customers,
+— see "Cashier on a phone" below) and **Orders** (`pos:read`, issue #72: past
+orders, found, opened and printed — see "Orders on a phone" below). With one
+section held the frame shows no strip at all, so that screen has the whole
+height. Items, Customers,
 Reports and Settings stay on the full site and join as sections when they come
 to the phone, each gated by
 its own key, without the app or its address (`?screen=pos&section=…`)
@@ -263,6 +265,40 @@ full screen's Cashier board made for a thumb, not the board shrunk:
   explains (the operator, 2026-11-05).
 - **Not done:** no order discounts or line notes on the phone (the full till
   has them).
+
+### Orders on a phone (issue #72)
+
+So whoever may see orders finds a past sale, opens it and prints it without a
+desktop. `PhoneOrders`, the phone's **Orders** section (`pos:read`, the full
+screen's Orders tab's key, so whoever may open the app has it):
+
+- **The same list as the full screen:** `useOrderList`, shared with
+  `OrdersSection`, holds the days (the reports' picker plus **All dates**, in
+  the workspace's zone), the status, the search, and how many Pending, Unpaid
+  or Change owed orders other days hold ("1 more unpaid order on other days ·
+  Show all dates"). It opens on today, every status, and reads again on any
+  order event. The rows' second line (`orderRowDetail`), the empty text
+  (`ordersListEmptyText`), the chips and the total under the list are the full
+  screen's too.
+- **Laid out for a thumb:** a search box that does not raise the keyboard on
+  arrival, the period picker, the status as a row of chips that scrolls
+  sideways, one column of cards, the list's total pinned under it.
+- **Tap an order and it rises as a bottom sheet:** its status and when, its
+  type, customer and reference, its lines with their discounts, notes and
+  refunds, what it came to and how it was paid (`OrderTotals`, `OrderRefunds`,
+  shared with the full screen's drawer), and **Print receipt**.
+- ⚠ **View and print only:** nothing on it changes an order. An order that
+  still needs somebody says what, and where (`phoneOrderNextStep`): a held one
+  offers **Open Cashier** to somebody who may take payment; an unpaid one, and
+  change still owed, point to the full screen's Orders tab.
+- **Print** is the full screen's reprint (`receiptHtml`, marked as a reprint
+  with the date) through the phone's own print sheet: a printer the phone
+  knows, or Save as PDF. A Bluetooth or USB receipt printer wired to the phone
+  shows there only through a print-service app for it (Android); a printer at
+  the shop's computer is out of reach from a phone's print sheet — that is the
+  print agent's job (`module-print`), not offered here.
+- **Not done:** paying, voiding, refunding or settling change from the phone's
+  Orders; sending a receipt to a printer paired through the print agent.
 
 ## Order types and defaults (the Items tab)
 

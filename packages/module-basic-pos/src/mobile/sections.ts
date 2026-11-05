@@ -1,7 +1,8 @@
 /**
  * The point of sale's sections on the phone (issue #22), by key: Sell — Take
- * orders since issue #23 — and Cashier (issue #69), where a held order is paid
- * without a desktop. Items, Reports and the others join here as they come to
+ * orders since issue #23 — Cashier (issue #69), where a held order is paid
+ * without a desktop, and Orders (issue #72), where past orders are found,
+ * opened and printed. Items, Reports and the others join here as they come to
  * the phone.
  *
  * ⚠ NEVER RENAME A KEY. It is kept in the address (`?section=sell`), in
@@ -12,4 +13,4 @@
  * keys through the module's descriptor, and a value from a client module
  * cannot be read on the server.
  */
-export const POS_MOBILE_SECTION = { sell: 'sell', cashier: 'cashier' } as const;
+export const POS_MOBILE_SECTION = { sell: 'sell', cashier: 'cashier', orders: 'orders' } as const;

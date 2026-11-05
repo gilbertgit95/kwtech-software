@@ -612,6 +612,28 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-05** — **The POS's phone layout has an Orders section that finds, opens and prints past orders, and changes none (issue #72).**
+
+  Past orders were only on the full screen's Orders tab: on a phone nobody
+  could find yesterday's sale, check what a customer bought, or print a
+  receipt again (the operator, 2026-11-05).
+  - **Gated on `pos:read`**, the full screen's Orders tab's key, so whoever
+    may open the app on a phone has it.
+  - **One list for both screens:** the days, status, search and the count of
+    outstanding orders on other days moved out of `OrdersSection` into
+    `useOrderList`, which both use; the order's totals and refunds became
+    `OrderTotals` and `OrderRefunds`. The phone restates none of it.
+  - **View and print only** (the operator's choice): an order that still
+    needs somebody says what and where (`phoneOrderNextStep`) — a held one is
+    a tap from the phone's Cashier, the rest are the full screen's.
+  - **Printing is the browser's print sheet**, as on the full screen: the
+    phone's own printers or a PDF.
+  - **Not done:** changing an order from the phone's Orders, and sending a
+    receipt to a printer paired through the print agent (`module-print`,
+    which a POS would reach by a port). Bluetooth or USB receipt printers
+    wired to a phone work only through a print-service app on Android; printing
+    to them directly (Web Bluetooth, WebUSB) waits for a shop that needs it.
+
 - **2026-11-05** — **The Cashier screens light up orders that arrive or change, and sound for them, with built-in tones set per store and per person (issue #68).**
 
   A cashier serving somebody at the window missed orders a seller held, and
