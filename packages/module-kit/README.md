@@ -253,6 +253,15 @@ const { section, open } = useMobileSection(); // '@kwtech/module-kit/react'
   frame owns which is open (`?section=`, survives a reload); the screen reads
   it with **`useMobileSection()`**, which outside the phone frame answers
   `null` so a component shared with the desktop draws its own default.
+- **A count on a section's chip** ("Cashier 3", issue #69): the screen calls
+  **`useMobileSectionBadge(sectionKey, count)`** with a number it already
+  holds live; null or 0 shows none, past 99 it reads "99+", and it clears
+  when the screen goes. The APP reports it, rather than the descriptor naming
+  a badge component, because the app already has the list the number comes
+  from and a badge component would fetch and subscribe to it a second time.
+  The frame keeps the counts with `withSectionBadge` and draws them with
+  `sectionBadgeLabel` (both pure, in the root, tested). Outside the phone
+  frame the hook does nothing.
 - **`key` is kept in the address (`?screen=`), and so is each section's
   (`?section=`).** Never rename one.
 - **`/mobile` follows `/react`'s rules:** client code, never `/server`, never

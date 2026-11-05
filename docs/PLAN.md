@@ -611,6 +611,38 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-05** — **A cashier can take payment on a phone: the POS's phone layout has a Cashier section (issue #69).**
+
+  On a phone the POS offered only Take orders, and every held order had to be
+  paid at the full screen's Cashier board. A small shop with no computer at
+  the counter could not run the POS end to end, and a manager away from the
+  desk could not settle an order (the operator, 2026-11-05).
+  - **Reverses half of 2026-10-29.** That decision made the phone the seller's
+    and sent every payment to the full screen. The seller's half stands: Take
+    orders still ends at Hold, even for a cashier.
+  - **A section of its own, gated on `pos:take_payment`**, like the full
+    screen's Cashier tab, and each control inside on its own key (Pay and
+    Cancel on `pos:take_payment`, changing the order on `pos:sell`), as Take
+    orders does. The bindings authorise regardless.
+  - **Built for the phone, not the desktop board shrunk:** one column of
+    cards, the order and payment as bottom sheets, quick cash amounts
+    (`quickCashAmounts`), and the change in large type after a sale.
+  - **One set of rules for both screens:** the list, its order and its urgency
+    colours are the desktop Cashier's (`state.pending`, `waitUrgency`,
+    `URGENCY_CARD`); the phone's own rules are pure and tested
+    (`view/phone-cashier.ts`).
+  - **Add items reuses Take orders** by switching section with the order still
+    on the till, rather than a second item list.
+  - **The waiting count is on the Cashier chip** (the operator, 2026-11-05),
+    through a new module-kit hook, `useMobileSectionBadge`: the app REPORTS a
+    count it already holds live, and the frame draws it. Not a badge component
+    on the descriptor, which would fetch and subscribe to the same list a
+    second time. Any app's sections can use it.
+  - **Pay later stays inside payment**, one step past Pay, as on the full
+    screen (the operator, 2026-11-05): it needs the customer's details, which
+    the payment sheet explains.
+  - **Not done:** order discounts and line notes on the phone.
+
 - **2026-11-04** — **"Not live" is one rule in module-kit, `useRealtimeLive(notLiveAfterMs)`, and every live screen uses it (issue #64).**
 
   After issue #50 only the POS till and the notification bell read the

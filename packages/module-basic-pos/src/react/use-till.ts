@@ -18,6 +18,7 @@ import {
 import { onPosWrite } from './pos-local-events.js';
 import { POS_NOT_LIVE_AFTER_MS, tillEventKind, tillRereads } from './view/live.js';
 import { type PosRankMap, rankMap } from './view/popularity.js';
+import { createResumeGuard, resumeLatest } from './view/resume.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
 /** How long after the last event the till reads again — a burst of events is one read. */
@@ -115,8 +116,15 @@ export interface TillState {
   ) => Promise<PosOrderView | null>;
   /** Clears the till for the next customer. A held order stays in Pending. */
   clear: () => void;
-  /** Puts a pending (or any) order on the till. */
-  resume: (orderId: string) => Promise<void>;
+  /**
+   * Puts a pending (or any) order on the till. True once it is there; false
+   * when it could not be read (gone, or the request failed — said in `error`),
+   * and the till still holds what it held — or a later resume has replaced
+   * this one, whose answer is dropped. ⚠ Callers open a sheet or a dialog
+   * ONLY on true: otherwise it would show the order already on the till, with
+   * its Pay button, as if it were the one tapped (CodeRabbit on #70).
+   */
+  resume: (orderId: string) => Promise<boolean>;
   reloadPending: () => Promise<void>;
 }
 
@@ -386,6 +394,14 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
 
   // ── acts ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Numbers each resume's read (`view/resume.ts`, where the races are
+   * tested). ⚠ ALSO RETIRED BY ANY OTHER CHANGE TO THE TILL: an act starting
+   * or the till being cleared, so a slow read started before can never land
+   * afterwards and replace the newer order (CodeRabbit on #70).
+   */
+  const resumeGuard = useMemo(() => createResumeGuard(), []);
+
   const act = useCallback(
     async (
       fn: (order: PosOrderView) => Promise<PosOrderView>,
@@ -393,6 +409,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     ): Promise<PosOrderView | null> => {
       if (inFlight.current) return null;
       inFlight.current = true;
+      resumeGuard.retire();
       setBusy(true);
       try {
         let current = orderRef.current;
@@ -417,29 +434,33 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
         void reloadPending();
       }
     },
-    [client, scope, fail, reloadOrder, reloadPending, setOrder],
+    [client, scope, fail, reloadOrder, reloadPending, setOrder, resumeGuard],
   );
 
   const clear = useCallback(() => {
+    resumeGuard.retire();
     setOrder(null);
     setError(null);
-  }, [setOrder]);
+  }, [setOrder, resumeGuard]);
 
+  /**
+   * ⚠ ONLY THE LATEST TAP COUNTS, and never while an act runs or after the
+   * till moved on: `resumeLatest` (`view/resume.ts`) drops any answer that was
+   * overtaken and reports it as not opened, so no sheet opens for an order
+   * that is not on the till (CodeRabbit on #70).
+   */
   const resume = useCallback(
-    async (orderId: string) => {
-      try {
-        const found = await client.order(scope, orderId);
-        if (!found) {
-          setError('That order is no longer there.');
-          return;
-        }
-        setOrder(found);
-        setError(null);
-      } catch (caught) {
-        fail(caught, 'Could not open that order.');
-      }
-    },
-    [client, scope, fail, setOrder],
+    (orderId: string): Promise<boolean> =>
+      resumeLatest(resumeGuard, inFlight.current, {
+        read: () => client.order(scope, orderId),
+        put: (found) => {
+          setOrder(found);
+          setError(null);
+        },
+        missing: () => setError('That order is no longer there.'),
+        failed: (caught) => fail(caught, 'Could not open that order.'),
+      }),
+    [client, scope, fail, setOrder, resumeGuard],
   );
 
   return {

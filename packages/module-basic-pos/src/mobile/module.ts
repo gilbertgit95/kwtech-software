@@ -5,12 +5,14 @@ import { POS_MOBILE_SECTION } from './sections.js';
 
 /**
  * What the point of sale offers the phone layout (issue #22): the Point of
- * sale app, with its SECTIONS — today only Sell (the operator's choice: the
- * till first, the rest later). Items, Reports and the others join here as
+ * sale app, with its SECTIONS — Sell (Take orders), and Cashier (issue #69)
+ * for whoever may take payment, so a cashier or a manager never has to be at
+ * a desktop to settle a held order. Items, Reports and the others join here as
  * sections when they come to the phone, each gated by its own key, without
  * the app or its address changing.
  *
- * The app is gated by `pos:read`, as on the Apps page; Sell by `pos:sell`. The
+ * The app is gated by `pos:read`, as on the Apps page; Sell by `pos:sell`;
+ * Cashier by `pos:take_payment`, as the full screen's Cashier tab is. The
  * phone frame offers an app only while its holder has at least one of its
  * sections, so somebody who may look at the point of sale but not sell is not
  * shown a point of sale with nothing in it. The till's API authorises anyway.
@@ -25,7 +27,10 @@ export function posMobileModule(): MobileModuleDescriptor {
         icon: 'store',
         feature: POS_FEATURE.read,
         order: 10,
-        sections: [{ key: POS_MOBILE_SECTION.sell, label: 'Take orders', feature: POS_FEATURE.sell }],
+        sections: [
+          { key: POS_MOBILE_SECTION.sell, label: 'Take orders', feature: POS_FEATURE.sell },
+          { key: POS_MOBILE_SECTION.cashier, label: 'Cashier', feature: POS_FEATURE.takePayment },
+        ],
         component: PosMobileApp,
       },
     ],

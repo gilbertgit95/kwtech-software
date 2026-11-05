@@ -28,6 +28,7 @@ export * from './printers.js';
 export * from './processes.js';
 export * from './realtime.js';
 export * from './search.js';
+export * from './section-badges.js';
 export * from './spreadsheet.js';
 export * from './status.js';
 export * from './status-store.js';

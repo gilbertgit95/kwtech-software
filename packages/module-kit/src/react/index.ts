@@ -17,6 +17,7 @@ export {
   type MobileSectionProviderProps,
   type MobileSectionState,
   useMobileSection,
+  useMobileSectionBadge,
 } from './mobile-section.js';
 export {
   PrinterProvider,
