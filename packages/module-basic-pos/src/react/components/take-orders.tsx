@@ -221,9 +221,11 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
                 key={held.id}
                 type="button"
                 aria-current={current ? 'true' : undefined}
+                // Not while the order is saving: a held order opened then would replace it (CodeRabbit on #70).
+                disabled={state.busy}
                 onClick={() => void resume(held.id)}
                 className={cn(
-                  'flex min-h-14 max-w-44 shrink-0 flex-col justify-center rounded-xl border px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'flex min-h-14 max-w-44 shrink-0 flex-col justify-center rounded-xl border px-3 text-left disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   current
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border bg-card active:bg-accent',
