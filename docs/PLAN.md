@@ -628,6 +628,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
     a tap from the phone's Cashier, the rest are the full screen's.
   - **Printing is the browser's print sheet**, as on the full screen: the
     phone's own printers or a PDF.
+  - **Its own period picker** (`PhonePeriodPicker`; the operator's feedback the
+    same day): the full screen's dropdown and two date pop-overs are a desktop
+    control on a phone. A wide row with thumb-sized arrows; a bottom sheet of
+    preset tiles and All dates; a custom range as two taps on one calendar.
+    The periods and their limits stay `view/reports.ts`'s. Not moved to
+    `web-ui`: no second module needs it yet.
   - **Not done:** changing an order from the phone's Orders, and sending a
     receipt to a printer paired through the print agent (`module-print`,
     which a POS would reach by a port). Bluetooth or USB receipt printers

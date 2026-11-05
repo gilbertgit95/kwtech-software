@@ -281,8 +281,19 @@ screen's Orders tab's key, so whoever may open the app has it):
   (`ordersListEmptyText`), the chips and the total under the list are the full
   screen's too.
 - **Laid out for a thumb:** a search box that does not raise the keyboard on
-  arrival, the period picker, the status as a row of chips that scrolls
-  sideways, one column of cards, the list's total pinned under it.
+  arrival, the phone's own period picker, the status as a row of chips that
+  scrolls sideways, one column of cards, the list's total pinned under it.
+- **The phone's period picker** (`PhonePeriodPicker`; the operator,
+  2026-11-05: the full screen's `PeriodPicker` is a desktop control on a
+  phone): a full-width row with ‹ › a thumb wide and the period's name and
+  days between them. Tapping it raises a bottom sheet with the presets as
+  tiles, each with its days, and **All dates**; one tap applies. A custom range
+  is two taps on one calendar there, the first day then the last
+  (`tapRangeDay`: a tap before the start moves the start, a third tap starts
+  again), the days between lit, then **Show …**. Nothing after the store's
+  today can be picked, and the range's limits are the full screen's
+  (`prepareCustomDays`). The periods themselves are `view/reports.ts`'s, as on
+  the full screen.
 - **Tap an order and it rises as a bottom sheet:** its status and when, its
   type, customer and reference, its lines with their discounts, notes and
   refunds, what it came to and how it was paid (`OrderTotals`, `OrderRefunds`,
