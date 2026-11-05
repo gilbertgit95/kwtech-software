@@ -84,7 +84,10 @@ export function Cashier({ state }: { state: TillState }) {
       );
       return;
     }
-    void state.resume(orderId).then(lightPanel);
+    // Lit only once the order is there: on a failure the panel still shows the last one, and must not look new.
+    void state.resume(orderId).then((opened) => {
+      if (opened) lightPanel();
+    });
   };
 
   return (
