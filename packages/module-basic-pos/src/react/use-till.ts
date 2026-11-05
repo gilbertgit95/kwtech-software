@@ -493,6 +493,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
    */
   const resume = useCallback(
     async (orderId: string): Promise<boolean> => {
+      // ⚠ Not while an act runs: its answer is about to be put on the till, and a read landing after it would replace it.
+      if (inFlight.current) return false;
       resumeRead.current += 1;
       const mine = resumeRead.current;
       try {
