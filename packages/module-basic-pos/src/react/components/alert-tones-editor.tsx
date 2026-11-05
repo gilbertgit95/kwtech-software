@@ -258,8 +258,15 @@ export function StoreSoundsSettings({ state }: { state: TillState }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // A save elsewhere (another manager, another tab) arrives through the till's live re-read.
-  useEffect(() => setDraft(state.alertTones.store), [state.alertTones.store]);
+  /*
+   * A save elsewhere (another manager, another tab) arrives through the till's
+   * live re-read. ⚠ COMPARED BY VALUE: every re-read — on focus, on any
+   * settings event — builds a new object, and resetting on identity wiped a
+   * draft half chosen whenever the window came back (CodeRabbit on #71).
+   */
+  const storedText = JSON.stringify(state.alertTones.store);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the stored VALUE is the trigger; the object behind it changes on every read.
+  useEffect(() => setDraft(state.alertTones.store), [storedText]);
 
   const save = async () => {
     setSaving(true);

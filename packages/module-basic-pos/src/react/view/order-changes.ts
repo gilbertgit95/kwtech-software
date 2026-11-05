@@ -59,3 +59,14 @@ export function alertMomentFor(changes: ReadonlyMap<string, PosOrderChange>): Po
   if (kinds.includes('updated')) return 'updatedOrder';
   return null;
 }
+
+/**
+ * Notes an order's version as this till's own: kept only when newer than what
+ * is noted, so a late re-read of an older version never hides a seller's
+ * change. Mutates `own` on purpose — it is the till's live record, written the
+ * moment an order reaches the till.
+ */
+export function recordVersion(own: Map<string, number>, order: Pick<PosOrderSummaryView, 'id' | 'version'>): void {
+  const seen = own.get(order.id);
+  if (seen === undefined || order.version > seen) own.set(order.id, order.version);
+}

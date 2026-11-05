@@ -1,5 +1,5 @@
 import { POS_ALERT_TONE_IDS } from '../src/domain/alert-tones.js';
-import { alertMomentFor, pendingChanges } from '../src/react/view/order-changes.js';
+import { alertMomentFor, pendingChanges, recordVersion } from '../src/react/view/order-changes.js';
 import { noteGain, POS_TONE_PEAK, POS_TONES } from '../src/react/view/tone-notes.js';
 
 const none = new Map<string, number>();
@@ -52,6 +52,23 @@ describe('pendingChanges', () => {
   it('still counts a seller’s change to an order this till had on it before', () => {
     const own = new Map([['a', 2]]);
     expect([...pendingChanges([{ id: 'a', version: 2 }], [{ id: 'a', version: 3 }], own)]).toEqual([['a', 'updated']]);
+  });
+});
+
+describe('recordVersion', () => {
+  it('keeps the newest version this till has had, never an older re-read', () => {
+    const own = new Map<string, number>();
+    recordVersion(own, { id: 'a', version: 3 });
+    recordVersion(own, { id: 'a', version: 2 });
+    expect(own.get('a')).toBe(3);
+  });
+
+  it('⚠ makes a hold from this till no news, even when the till clears before a render (CodeRabbit on #71)', () => {
+    // The till receives the held order (version 4) and clears at once; only the record remains.
+    const own = new Map<string, number>();
+    recordVersion(own, { id: 'held-here', version: 4 });
+    const waiting = [{ id: 'other', version: 1 }];
+    expect(pendingChanges(waiting, [...waiting, { id: 'held-here', version: 4 }], own).size).toBe(0);
   });
 });
 

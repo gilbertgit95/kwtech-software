@@ -18,6 +18,7 @@ import {
 } from './pos-client.js';
 import { onPosWrite } from './pos-local-events.js';
 import { POS_NOT_LIVE_AFTER_MS, tillEventKind, tillRereads } from './view/live.js';
+import { recordVersion } from './view/order-changes.js';
 import { type PosRankMap, rankMap } from './view/popularity.js';
 import { type PosStockMap, stockMap } from './view/stock.js';
 
@@ -89,6 +90,22 @@ export interface TillState {
   order: PosOrderView | null;
   /** Held orders waiting (D8), oldest first: the ones Hold set aside, never a cart still being built. */
   pending: PosOrderSummaryView[];
+  /**
+   * True once the pending list has been read from the server at least once.
+   * ⚠ Until then `pending` is the empty list the till STARTS with, not an
+   * answer: a screen that compares reads (`useOrderAlerts`) must not take it
+   * for "nothing was waiting", or every order would arrive as new.
+   */
+  pendingLoaded: boolean;
+  /**
+   * The latest version of each order this till has had on it (issue #68):
+   * its own changes, which are never news. Recorded the moment the till
+   * receives an order (`setOrder`), never after a render: a hold puts the
+   * held order on the till and clears it at once, and the two can commit
+   * in one render, so the held version would never be seen (CodeRabbit on
+   * #71). A live map, read when the next pending read lands.
+   */
+  ownVersions: ReadonlyMap<string, number>;
   canSell: boolean;
   /** Pay, pay later, cancel and settle change (`pos:take_payment`, issue #23). Without it, orders are held for a cashier. */
   canTakePayment: boolean;
@@ -166,6 +183,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const timeZone = useWorkspaceTimeZone();
   const [order, setTillOrder] = useState<PosOrderView | null>(null);
   const [pending, setPending] = useState<PosOrderSummaryView[]>([]);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
@@ -180,8 +198,10 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
    * the empty till a fresh page starts on, and forget the order before it was
    * read back.
    */
+  const ownVersions = useRef(new Map<string, number>());
   const setOrder = useCallback(
     (next: PosOrderView | null) => {
+      if (next) recordVersion(ownVersions.current, next);
       setTillOrder(next);
       writeTillOrderId(scope.workspaceId, next?.status === 'open' ? next.id : null);
     },
@@ -233,6 +253,7 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
   const reloadPending = useCallback(async () => {
     try {
       setPending(await client.orders(scope, 'pending'));
+      setPendingLoaded(true);
     } catch (caught) {
       fail(caught, 'Could not load the pending orders.');
     }
@@ -496,6 +517,8 @@ export function useTill(organizationId: string, workspaceId: string, options: { 
     timeZone,
     order,
     pending,
+    pendingLoaded,
+    ownVersions: ownVersions.current,
     canSell,
     canTakePayment,
     canDiscount,

@@ -19,8 +19,9 @@ export interface OrderAlerts {
  * orders and every other tab never sound.
  *
  * - **What changed** is `pendingChanges` between two reads of `state.pending`;
- *   the first read is the baseline and lights nothing. This till's own
- *   changes never count (`own`, the versions it has had on it).
+ *   the first REAL read (`pendingLoaded`) is the baseline and lights
+ *   nothing. This till's own changes never count (`state.ownVersions`,
+ *   recorded as each order reaches the till).
  * - **Each card stays lit `POS_HIGHLIGHT_MS`**, then fades.
  * - **One sound per read** (`alertMomentFor`), the person's or the store's
  *   (`effectiveAlertTones`), and ⚠ ONLY WHILE THE SCREEN CAN BE SEEN: the
@@ -32,8 +33,6 @@ export interface OrderAlerts {
 export function useOrderAlerts(state: TillState, root: RefObject<HTMLElement | null>): OrderAlerts {
   const player = useRef<PosTonePlayer | null>(null);
   const previous = useRef<TillState['pending'] | null>(null);
-  /** The latest version of each order this till has had on it: its own changes, never news. */
-  const own = useRef(new Map<string, number>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [highlights, setHighlights] = useState<ReadonlyMap<string, PosOrderChange>>(new Map());
   const [blocked, setBlocked] = useState(false);
@@ -53,14 +52,6 @@ export function useOrderAlerts(state: TillState, root: RefObject<HTMLElement | n
     };
   }, []);
 
-  // Recorded on every order the till shows, so the write that answered an act is known before the list re-reads.
-  const order = state.order;
-  useEffect(() => {
-    if (!order) return;
-    const seen = own.current.get(order.id);
-    if (seen === undefined || order.version > seen) own.current.set(order.id, order.version);
-  }, [order]);
-
   const audible = useCallback((): boolean => {
     if (typeof document === 'undefined' || document.visibilityState !== 'visible') return false;
     const element = root.current;
@@ -69,9 +60,11 @@ export function useOrderAlerts(state: TillState, root: RefObject<HTMLElement | n
     return typeof element.checkVisibility === 'function' ? element.checkVisibility() : true;
   }, [root]);
 
-  const pending = state.pending;
+  const { pending, pendingLoaded, ownVersions } = state;
   useEffect(() => {
-    const changes = pendingChanges(previous.current, pending, own.current);
+    // ⚠ The till's starting empty list is not a read: the baseline is the first REAL one.
+    if (!pendingLoaded) return;
+    const changes = pendingChanges(previous.current, pending, ownVersions);
     previous.current = pending;
     if (changes.size === 0) return;
 
@@ -97,7 +90,7 @@ export function useOrderAlerts(state: TillState, root: RefObject<HTMLElement | n
     if (!sound?.on || !audible()) return;
     const played = player.current?.play(sound.tone, sound.volume) ?? false;
     if (!played) setBlocked(player.current?.blocked() ?? false);
-  }, [pending, audible]);
+  }, [pending, pendingLoaded, ownVersions, audible]);
 
   /*
    * Whether to ask for a tap: only with a sound on, and only while the browser
