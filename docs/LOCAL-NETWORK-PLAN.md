@@ -39,9 +39,16 @@ beside Backups. It shows:
      `http://`, and anybody on the same Wi-Fi can swap that file, and the
      fingerprint shown beside it on any `http://` page, for their own. So the
      reference fingerprint is read on a device whose connection is already
-     authenticated: the server computer's own `https://localhost` (it trusts
-     the certificate since `pnpm https:setup`), or a device that already
-     trusts it. Open Local Network on that trusted screen, download the
+     authenticated: the server computer's own `https://localhost`, or a
+     device that already trusts it. ⚠ **The server's browser is trusted only
+     once it is registered** (`docs/HTTPS.md` §4 step 6, then §5 for its
+     system): `pnpm https:setup` writes the profile and checks Caddy, but does
+     not register any browser. Registering it is safe without a fingerprint,
+     because that browser takes the certificate from the computer's own
+     `.caddy/` folder, never over the network. The test is that
+     `https://localhost` opens with **no** certificate warning; a page that
+     warns is not a trusted screen, and the Local Network page says so in
+     place of the fingerprint until it opens cleanly. Open Local Network on that trusted screen, download the
      certificate on the device (the QR code below), and compare the
      fingerprint character for character. Trust it only if they match. A page
      opened over `http://` never shows a fingerprint as if it proved anything,
