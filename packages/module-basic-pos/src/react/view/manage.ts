@@ -81,6 +81,11 @@ export function otherDaysNote(filter: OrderFilter, listed: number, everyDate: nu
  * would leave its last rows to be subtracted from a fresh count. The count
  * must also be of THIS filter: a late answer for the last one is not this
  * one's.
+ *
+ * Reads stop at `POS_ORDERS_READ_MAX`. When the every-date count reaches it the
+ * line says "At least …" — still there, so a narrowed list never reads as
+ * "nobody owes", but never a precise number it does not have. When the list
+ * itself reaches it nothing can be said, and the list's total says it is cut.
  */
 export function otherDaysLine({
   counting,
@@ -101,7 +106,12 @@ export function otherDaysLine({
 }): string | null {
   if (!counting || list.loading || list.error !== null || count.loading || count.error !== null) return null;
   if (!count.data || count.data.filter !== filter) return null;
-  return otherDaysNote(filter, listed, count.data.count);
+  // ⚠ A capped read is not a count. The list cut at the cap: what it leaves out is unknown, and the
+  // list's own total already says it stops there. The every-date read cut: there are AT LEAST that many.
+  if (listed >= POS_ORDERS_READ_MAX) return null;
+  const note = otherDaysNote(filter, listed, count.data.count);
+  if (!note || count.data.count < POS_ORDERS_READ_MAX) return note;
+  return `At least ${note}`;
 }
 
 /**

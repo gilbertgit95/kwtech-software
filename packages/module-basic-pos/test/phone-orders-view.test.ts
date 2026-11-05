@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { POS_ORDERS_READ_MAX } from '../src/domain/orders.js';
 import { orderRowDetail, ordersListEmptyText, otherDaysLine, reprintState } from '../src/react/view/manage.js';
 import { phoneOrderNextStep } from '../src/react/view/phone-orders.js';
 import { readError } from '../src/react/view/read-error.js';
@@ -112,6 +113,31 @@ describe('otherDaysLine', () => {
 
   it('⚠ says nothing once the list failed: its last rows are not the ones counted against', () => {
     expect(otherDaysLine({ ...settled, list: { loading: false, error: 'Could not load the orders.' } })).toBe(null);
+  });
+
+  it('⚠ says "at least" when the every-date read stopped at the cap, never a precise number', () => {
+    const capped = {
+      ...settled,
+      listed: 3,
+      count: { ...settled.count, data: { filter: 'unpaid' as const, count: POS_ORDERS_READ_MAX } },
+    };
+    expect(otherDaysLine(capped)).toBe(`At least ${POS_ORDERS_READ_MAX - 3} more unpaid orders on other days`);
+    expect(
+      otherDaysLine({
+        ...capped,
+        count: { ...capped.count, data: { filter: 'unpaid' as const, count: POS_ORDERS_READ_MAX - 1 } },
+      }),
+    ).toBe(`${POS_ORDERS_READ_MAX - 4} more unpaid orders on other days`);
+  });
+
+  it('⚠ says nothing when the list itself stopped at the cap: what it leaves out is unknown', () => {
+    expect(
+      otherDaysLine({
+        ...settled,
+        listed: POS_ORDERS_READ_MAX,
+        count: { ...settled.count, data: { filter: 'unpaid' as const, count: POS_ORDERS_READ_MAX } },
+      }),
+    ).toBe(null);
   });
 
   it('says nothing while the list reads, for another filter’s count, or when not counting', () => {
