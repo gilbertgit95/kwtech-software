@@ -54,7 +54,7 @@ beside Backups. It shows:
      opened over `http://` never shows a fingerprint as if it proved anything,
      and the page says all of this beside the fingerprint;
    - ⚠ **where each device shows the fingerprint, and so when to compare.**
-     Not every one shows it before installing, so the steps follow the device
+     Not every device shows it before installing, so the steps follow the device
      (taken into the per-device steps of §7a, and `docs/HTTPS.md` §5):
 
      | Device | Where the fingerprint shows | Compare |
@@ -161,8 +161,26 @@ The rest of the Server group applies everywhere.
 - **On, but local HTTPS missing** (`.caddy/` deleted, or not copied to a new
   machine): the page stays and says why. "Local HTTPS is on in this profile,
   but its certificate is not on this computer: run `pnpm https:setup`
-  (`docs/HTTPS.md` §4)." It shows no certificate and no address. This is the
-  only "not available" state left, and it is a real fault worth showing.
+  (`docs/HTTPS.md` §4)." It shows no certificate and no address.
+- **On, but the published address is not the shop's network** (a profile
+  edited by hand: `FRONTEND_URL` left at `http://localhost:8081`, or a remote
+  domain): ⚠ the address and the certificate would not apply there, so
+  neither is shown. The rule is the one Caddy's launcher already uses
+  (`deploy/https/host.cjs`, `httpsHost`): an `https:` origin whose host is a
+  private IPv4 address (10.x, 172.16–31.x, 192.168.x), moved into the
+  module's `src/domain/` so both read one copy. The page says "Local Network
+  is on, but this profile publishes `<FRONTEND_URL>`, not an address on the
+  shop's network: run `pnpm https:setup`." Two checks, and which side each
+  covers:
+  - **The server** applies the rule when it answers the page's query, so it
+    covers the web side too: the web app has no address of its own and shows
+    only what the server answers. A failing origin answers "not set up", with
+    the reason, instead of an address.
+  - **`pnpm env:check`** reports a profile whose `FRONTEND_URL` fails the rule
+    while either switch is on, before anything is started or built.
+
+  These two, and local HTTPS missing, are the only "not available" states
+  left, and each is a real fault worth showing.
 
 ## 5. The rules
 
@@ -281,7 +299,8 @@ switch.
 5. **Wiring and the switch.** Both apps (`DECLARING_MODULES`,
    `MODULE_DECLARATIONS`, `WEB_MODULES`, the env vars and their validation),
    `pnpm https:setup` writing the switch and `--off` removing it, and
-   `pnpm env:check` reporting a profile whose two files disagree on it.
+   `pnpm env:check` reporting a profile whose two files disagree on it, or
+   whose `FRONTEND_URL` is not a private HTTPS address while it is on.
 6. **Docs.** The module's README, `docs/HTTPS.md` (§5 points to the page, its
    address corrected, §7 says the page is off on a remote server), the
    CLAUDE.md package list, and the PLAN §13 entry.
