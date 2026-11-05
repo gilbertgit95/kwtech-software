@@ -1,7 +1,7 @@
 'use client';
 
 import type { AppProps } from '@kwtech/module-kit';
-import { useMobileSection } from '@kwtech/module-kit/react';
+import { useMobileSection, useMobileSectionBadge } from '@kwtech/module-kit/react';
 import { buttonClass } from '../react/components/controls.js';
 import { PhoneCashier } from '../react/components/phone-cashier.js';
 import { TakeOrders } from '../react/components/take-orders.js';
@@ -33,6 +33,8 @@ export function PosMobileApp({ organizationId, workspaceId }: AppProps) {
   // The frame owns which section is open, among those this person holds; anything else is Sell.
   const { section } = useMobileSection();
   const shown = section === POS_MOBILE_SECTION.cashier ? POS_MOBILE_SECTION.cashier : POS_MOBILE_SECTION.sell;
+  // How many wait, on the Cashier chip (issue #69): from the same live list both screens show.
+  useMobileSectionBadge(POS_MOBILE_SECTION.cashier, state.canTakePayment ? state.pending.length : null);
 
   return (
     <div data-section={shown} className="@container flex h-full min-h-0 w-full flex-col gap-3 p-3 text-foreground">

@@ -633,9 +633,15 @@ Decisions 1, 2, 3 and 5 gate the next step.
     (`view/phone-cashier.ts`).
   - **Add items reuses Take orders** by switching section with the order still
     on the till, rather than a second item list.
-  - **Not done:** order discounts and line notes on the phone, and a count
-    badge on the section chip (module-kit's mobile sections take none; adding
-    one is a module-kit contract change for one screen).
+  - **The waiting count is on the Cashier chip** (the operator, 2026-11-05),
+    through a new module-kit hook, `useMobileSectionBadge`: the app REPORTS a
+    count it already holds live, and the frame draws it. Not a badge component
+    on the descriptor, which would fetch and subscribe to the same list a
+    second time. Any app's sections can use it.
+  - **Pay later stays inside payment**, one step past Pay, as on the full
+    screen (the operator, 2026-11-05): it needs the customer's details, which
+    the payment sheet explains.
+  - **Not done:** order discounts and line notes on the phone.
 
 - **2026-11-04** — **"Not live" is one rule in module-kit, `useRealtimeLive(notLiveAfterMs)`, and every live screen uses it (issue #64).**
 
