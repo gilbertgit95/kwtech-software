@@ -18,8 +18,8 @@ network (`docs/HTTPS.md` §4):
 
 ```bash
 pnpm https:setup                               # writes LOCAL_NETWORK="on" and NEXT_PUBLIC_LOCAL_NETWORK="on"
+pnpm build                                     # the web app's switch is baked in at build; and db:sync needs this module's dist/
 pnpm --filter @kwtech/web-server db:sync       # once, on a database from before this module: adds local_network:read
-pnpm build                                     # the web app's switch is baked in at build
 pnpm pm2:start                                 # does not build
 ```
 

@@ -341,11 +341,11 @@ curl -s -m 3 http://<address>:8081/ || echo "refused — good: the only way in i
 
 Then register each device (section 5), **the server's own browser too**: it
 opens the app on `https://localhost`, which is what keeps its tills live. Do
-the server first: its browser takes the certificate from this computer's
-own `.caddy/` folder, never over the network, so it needs no fingerprint,
-and once it opens `https://localhost` with no warning it is the trusted
-screen the other devices compare against (section 5). On
-WSL it cannot use the network address (below).
+the server first, from its own `.caddy/` folder rather than over the
+network (section 5, "The server itself"): a file copied on this computer
+needs no fingerprint, and once its browser opens `https://localhost` with no
+warning it is the trusted screen the other devices compare against. On
+WSL it cannot use the network address at all (below).
 
 **On WSL, what reaches what** (checked on 2026-10-31, with
 `LISTEN_HOST="127.0.0.1"`):
@@ -379,6 +379,29 @@ server registered first, step 6). It shows:
 Every device starts by downloading the certificate from
 **`http://<address>/kwtech-local-ca.crt`** (the first QR code). It's plain
 `http://` because the device doesn't trust the `https://` address yet.
+
+### The server itself
+
+Its browser opens `https://localhost`, and it takes the certificate from
+this computer's own `.caddy/` folder, **never over the network**. A local
+copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
+**only** `root.crt`: the same folder holds `root.key` and
+`intermediate.key`, the authority's private keys.
+
+- **Windows with WSL** (the network download doesn't work here: Windows
+  can't reach its own network address in WSL). From the repository, in WSL:
+
+  ```bash
+  cd .caddy/pki/authorities/local && explorer.exe .
+  ```
+
+  In the Explorer window that opens, copy **`root.crt`** to Windows (e.g.
+  Downloads), then install it with the Windows steps below, from step 1's
+  "open it".
+- **Mac:** the `security add-trusted-cert` command under Mac, below.
+
+Then open `https://localhost`. With **no** warning, this browser is the
+trusted screen for every other device's fingerprint (next).
 
 ### Compare the fingerprint before trusting it
 
