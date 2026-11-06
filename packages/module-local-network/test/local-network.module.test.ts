@@ -3,11 +3,9 @@ import { LocalNetworkModule } from '../src/server/local-network.module.js';
 import { localNetworkServerModule } from '../src/server/server-module.js';
 
 describe('LocalNetworkModule', () => {
-  it('⚠ registers nothing while off, which is the default', () => {
+  it('⚠ registers the resolver while off too, so the schema is the same on every machine', () => {
     for (const options of [undefined, {}, { enabled: false }]) {
-      const module = LocalNetworkModule.forRoot(options);
-      expect(module.providers).toBeUndefined();
-      expect(module.exports).toBeUndefined();
+      expect(LocalNetworkModule.forRoot(options).providers).toHaveLength(3);
     }
   });
 

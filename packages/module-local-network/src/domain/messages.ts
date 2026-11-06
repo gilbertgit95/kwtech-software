@@ -17,6 +17,13 @@ export function localNetworkStateMessage(
   detail: { publishedOrigin: string | null; problem?: string | null | undefined },
 ): string {
   switch (state) {
+    /*
+     * Seen only when the WEB app's switch is on and the API's is off: a
+     * profile changed without a rebuild, or edited by hand. On a remote
+     * server both are off and nobody sees the page at all.
+     */
+    case 'off':
+      return 'Local Network is off on this server’s API: it was started without LOCAL_NETWORK="on". Run `pnpm https:setup` (or `--off`), then `pnpm build` and restart.';
     case 'certificate_missing':
       return 'Local HTTPS is on in this profile, but its certificate is not on this computer: run `pnpm https:setup` (docs/HTTPS.md §4).';
     case 'origin_invalid': {
@@ -27,14 +34,3 @@ export function localNetworkStateMessage(
     }
   }
 }
-
-/**
- * What the page says when ITS switch is on but the API's is off: the web app
- * was built with `NEXT_PUBLIC_LOCAL_NETWORK="on"`, and the API started without
- * `LOCAL_NETWORK="on"` (a profile changed without a rebuild, or edited by
- * hand). The API has no query to answer with, so this sentence lives here for
- * the page alone (§4, "When the two disagree"). Never an error screen, and
- * never a stale address.
- */
-export const LOCAL_NETWORK_API_OFF_MESSAGE =
-  'Local Network is off on this server’s API. Run `pnpm https:setup` (or `--off`), then `pnpm build`.';

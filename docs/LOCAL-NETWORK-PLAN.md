@@ -1,8 +1,8 @@
 # `module-local-network` — plan
 
 Status: **being built (issue #66).** Phase 1, the Server group, is #76; phase
-2, the module's core, is #78; phase 3, the server side, is #80; phase 4, the page, is #82. The rest
-is planned. L1–L10 (§8)
+2, the module's core, is #78; phase 3, the server side, is #80; phase 4, the page, is #82; phase 5,
+the wiring and the switches, is #84. Phase 6, the docs, is left. L1–L10 (§8)
 are the operator's decisions of 2026-11-04. Once it is built, the decision goes
 in PLAN §13, and §10 here records what was built and where it differs from this
 plan.
@@ -129,12 +129,15 @@ The rest of the Server group applies everywhere.
   that composed it wanted it. This page is right for one kind of installation
   only, and on any other it would show an address and a certificate that are
   wrong there. Fail closed: `enabled !== true` means off.
-- **Off means absent**: no resolvers, no page, no drawer entry, exactly as
-  chat's switch (`packages/module-chat/src/enabled.ts`). The operation is not
-  in the schema at all, so a request that sends it anyway gets GraphQL's own
-  "cannot query field" error, the same as any field that does not exist. There
-  is no separate refusal reason to define: the web app never sends the query
-  while off, because its page is not composed either.
+- **Off: no page and no drawer entry. The API's query stays, answering
+  `off`.** ⚠ Changed 2026-11-06 (operator, #84). This plan first had the
+  query absent too, as chat's switch does. But the API rewrites the committed
+  `apps/web-server/schema.graphql` at every boot, and
+  `module-operations.test.ts` validates against it, so a field present only
+  with `LOCAL_NETWORK="on"` would make the file, and the test, differ from
+  machine to machine. So the query is always in the schema, still guarded by
+  `local_network:read`, and off it answers `state: 'off'` with what to run,
+  reading no file and needing no certificate path or address.
 - ⚠ **The feature registry stays composed while off**, as chat's does (its
   comment explains why). Otherwise `db:sync` deprecates `local_network:*`, and
   turning the page back on would bring it back without its grants.
@@ -145,8 +148,10 @@ The rest of the Server group applies everywhere.
     second in at build, like `NEXT_PUBLIC_WS_URL`. Both are validated in each
     app's `src/config/env.ts` and documented in the `.env.example` files,
     off by default.
-  - `pnpm https:setup` sets both, and `pnpm https:setup --off` removes them,
-    so the page appears and disappears with local HTTPS itself. The setup
+  - `pnpm https:setup` sets both `on`, and `pnpm https:setup --off` sets both
+    `off` (not removed: both `.env.example` files declare them, and
+    `pnpm env:check` lists a profile that lacks one), so the page appears and
+    disappears with local HTTPS itself. The setup
     already says `pnpm build` is needed afterwards.
   - A remote server's profile (`pnpm env:new <name>`, `docs/HTTPS.md` §7)
     never has them, so nothing has to be remembered on a remote server.
@@ -154,11 +159,11 @@ The rest of the Server group applies everywhere.
     at different times (the server's when the API starts, the web app's when
     it is BUILT), so a profile changed without a rebuild, or edited by hand,
     can leave them apart:
-    - **Web on, server off:** the page is in the drawer, but its query is not
-      in the schema. The page treats GraphQL's "cannot query field" for its
-      own query as off: it shows no certificate and no address, only "Local
-      Network is off on this server's API. Run `pnpm https:setup` (or `--off`),
-      then `pnpm build`." Never an error screen, and never a stale address.
+    - **Web on, server off:** the page is in the drawer, and its query
+      answers `off`. It shows no certificate and no address, only "Local
+      Network is off on this server's API … Run `pnpm https:setup` (or
+      `--off`), then `pnpm build` and restart." Never an error screen, and
+      never a stale address.
     - **Server on, web off:** the query exists but no page sends it. Nothing
       shows. The query is guarded by `local_network:read` and returns only
       public things (the certificate and the published address), so nothing

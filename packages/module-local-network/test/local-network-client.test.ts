@@ -21,12 +21,25 @@ afterEach(() => {
 describe('createLocalNetworkClient', () => {
   it('returns the view', async () => {
     answer(200, { data: { localNetwork: READY } });
-    expect(await createLocalNetworkClient().view()).toEqual({ kind: 'view', view: READY });
+    expect(await createLocalNetworkClient().view()).toEqual(READY);
   });
 
-  it('⚠ reads the 400 that means the API’s switch is off, rather than "Cannot reach the server"', async () => {
-    answer(400, { errors: [{ message: 'Cannot query field "localNetwork" on type "Query".' }] });
-    expect(await createLocalNetworkClient().view()).toEqual({ kind: 'api_off' });
+  it('returns the API’s switch being off as an ordinary answer', async () => {
+    const off: LocalNetworkView = {
+      ...READY,
+      state: 'off',
+      problem: 'off',
+      appUrl: null,
+      certificateUrl: null,
+      certificate: null,
+    };
+    answer(200, { data: { localNetwork: off } });
+    expect(await createLocalNetworkClient().view()).toEqual(off);
+  });
+
+  it('shows the reason GraphQL gives on a 400, rather than "Cannot reach the server"', async () => {
+    answer(400, { errors: [{ message: 'Cannot query field "sha1" on type "LocalNetworkCertificate".' }] });
+    await expect(createLocalNetworkClient().view()).rejects.toThrow('Cannot query field "sha1"');
   });
 
   it('shows the API’s own refusal', async () => {

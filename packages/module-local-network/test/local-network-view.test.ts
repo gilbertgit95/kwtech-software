@@ -1,23 +1,4 @@
-import {
-  DEVICE_FINGERPRINT_STEPS,
-  fingerprintsShown,
-  formatExpiry,
-  isLocalNetworkMissingFromApi,
-} from '../src/react/view/local-network-view.js';
-
-describe('isLocalNetworkMissingFromApi', () => {
-  it('reads GraphQL’s own "cannot query field" for this query as the API being off', () => {
-    expect(isLocalNetworkMissingFromApi('Cannot query field "localNetwork" on type "Query".')).toBe(true);
-    expect(
-      isLocalNetworkMissingFromApi('Cannot query field "localNetwork" on type "Query". Did you mean "backups"?'),
-    ).toBe(true);
-  });
-
-  it('⚠ treats any other missing field, or any other error, as a real error', () => {
-    expect(isLocalNetworkMissingFromApi('Cannot query field "sha1" on type "LocalNetworkCertificate".')).toBe(false);
-    expect(isLocalNetworkMissingFromApi('Your plan does not include this.')).toBe(false);
-  });
-});
+import { DEVICE_FINGERPRINT_STEPS, fingerprintsShown, formatExpiry } from '../src/react/view/local-network-view.js';
 
 describe('fingerprintsShown', () => {
   it('⚠ hides them on a page opened over plain HTTP', () => {

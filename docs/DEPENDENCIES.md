@@ -51,7 +51,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-booking` | module-kit | web-ui, Nest, React | both apps |
 | `module-print-studio` | module-kit (and `pdf-lib`, `pdfjs-dist`, `heic2any`, all used in the browser only) | web-ui, Nest, React | both apps |
 | `module-backup` | module-kit | web-ui, Nest, React, lucide-react | both apps |
-| `module-local-network` | module-kit | web-ui, Nest, React, lucide-react | nothing yet (both apps once it is wired, phase 5 of #66) |
+| `module-local-network` | module-kit | web-ui, Nest, React, lucide-react | both apps |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 

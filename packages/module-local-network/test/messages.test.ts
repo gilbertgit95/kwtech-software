@@ -1,4 +1,4 @@
-import { LOCAL_NETWORK_API_OFF_MESSAGE, localNetworkStateMessage } from '../src/domain/messages.js';
+import { localNetworkStateMessage } from '../src/domain/messages.js';
 
 describe('the page’s words', () => {
   it('says what to run when the certificate is missing', () => {
@@ -20,8 +20,10 @@ describe('the page’s words', () => {
     expect(localNetworkStateMessage('origin_invalid', { publishedOrigin: null })).toContain('publishes no address');
   });
 
-  it('tells the page that the API’s switch is off, and that a build follows the fix', () => {
-    expect(LOCAL_NETWORK_API_OFF_MESSAGE).toContain('pnpm https:setup');
-    expect(LOCAL_NETWORK_API_OFF_MESSAGE).toContain('pnpm build');
+  it('says the API’s switch is off, and that a build follows the fix', () => {
+    const message = localNetworkStateMessage('off', { publishedOrigin: null });
+    expect(message).toContain('LOCAL_NETWORK="on"');
+    expect(message).toContain('pnpm https:setup');
+    expect(message).toContain('pnpm build');
   });
 });

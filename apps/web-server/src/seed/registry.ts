@@ -23,6 +23,7 @@ import {
   type ProcessDeclaration,
   type WebModuleDescriptor,
 } from '@kwtech/module-kit';
+import { LOCAL_NETWORK_FEATURE_REGISTRY } from '@kwtech/module-local-network';
 import { NOTE_FEATURE_REGISTRY, NOTE_LIMIT_REGISTRY } from '@kwtech/module-note';
 import { NOTIFICATION_FEATURE_REGISTRY } from '@kwtech/module-notification';
 import type { AppDefaultSpec, FeatureSpec, LimitSpec, RoleLevel } from '@kwtech/module-permissions';
@@ -241,6 +242,13 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * whole database; leave the process out and the 9 PM backup never runs.
    */
   { key: 'backup', features: BACKUP_FEATURE_REGISTRY, processes: BACKUP_PROCESS_REGISTRY },
+  /*
+   * ⚠ And Local Network's — APP level, `super-admin` only, and composed here
+   * WHATEVER LOCAL_NETWORK says: leaving it out on a server with the switch
+   * off would make `db:sync` deprecate `local_network:read`, and switching
+   * the page on later would bring it back without the grants given since.
+   */
+  { key: 'local_network', features: LOCAL_NETWORK_FEATURE_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

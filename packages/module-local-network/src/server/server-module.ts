@@ -7,7 +7,8 @@ import type { LocalNetworkModuleOptions } from './local-network.options.js';
  * Local Network as DATA the host composes: the resolver and the key arrive
  * with it.
  *
- * ⚠ The key rides along EVEN WHILE OFF, as chat's do, and the app's
+ * ⚠ The key rides along EVEN WHILE OFF, as chat's do (and the query stays,
+ * answering `off`: `local-network.module.ts`), and the app's
  * `seed/registry.ts` composes it either way: dropping it would make `db:sync`
  * deprecate `local_network:read`, and turning the page back on would bring it
  * back without the grants a super admin gave.

@@ -5,22 +5,6 @@
  */
 
 /**
- * Whether a GraphQL error means the API has no Local Network at all: its
- * switch is off (`LOCAL_NETWORK` unset) while the web app was built with its
- * own switch on. The query is then not in the schema, and the API's
- * validation answers with GraphQL's own sentence, `Cannot query field
- * "localNetwork" on type "Query".` (docs/LOCAL-NETWORK-PLAN.md §4, "Web on,
- * server off").
- *
- * ⚠ Matched on the FIELD's name, never on "Cannot query field" alone: any
- * other missing field means this page and the API were built from different
- * code, which is a real error to show, not "switched off".
- */
-export function isLocalNetworkMissingFromApi(message: string): boolean {
-  return /Cannot query field "localNetwork" on type "Query"/u.test(message);
-}
-
-/**
  * Whether the fingerprints are shown, from the page's own protocol.
  *
  * ⚠ A fingerprint proves something only on a screen whose connection is

@@ -37,6 +37,7 @@
     "@kwtech/module-booking": "workspace:*",
     "@kwtech/module-chat": "workspace:*",
     "@kwtech/module-jobs": "workspace:*",
+    "@kwtech/module-local-network": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
     "@kwtech/module-note": "workspace:*",
     "@kwtech/module-notification": "workspace:*",

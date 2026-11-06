@@ -24,7 +24,11 @@ Client, no codegen, no react-query and no redux. Do not add them.**
 - **Env:**
   - Server values come from `src/config/env.ts` (zod, asserted in
     `instrumentation.ts`) and reach client components as props.
-  - The only public variable is `NEXT_PUBLIC_WS_URL`. Do not add others.
+  - The public variables are `NEXT_PUBLIC_WS_URL` and `NEXT_PUBLIC_LOCAL_NETWORK`.
+    Do not add others without the same reason: the second exists because
+    `src/modules.ts` composes the descriptors at build for the browser too,
+    and Local Network's switch decides whether its route exists (#84). A
+    value that can reach a client component as a prop is not public.
 - **The browser never calls the API directly.** Client code POSTs to
   `/api/auth/graphql` with `credentials: 'same-origin'`. The route handler from
   `@kwtech/module-auth/next` proxies it, and tokens stay in httpOnly cookies.

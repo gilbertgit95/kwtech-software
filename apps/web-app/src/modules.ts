@@ -8,6 +8,7 @@ import { bookingWebModule } from '@kwtech/module-booking/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
 import { jobsWebModule } from '@kwtech/module-jobs/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
+import { localNetworkWebModule } from '@kwtech/module-local-network/react';
 import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
@@ -71,10 +72,18 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
     moduleLabels: { task: 'Tasks', booking: 'Booking', studio: 'Print Studio', backup: 'Backups' },
   }),
   /*
-   * Database → Backups (issue #2): the server's backup folder, super admins
+   * Server → Backups (issue #2): the server's backup folder, super admins
    * only. Its file downloads go through app/api/backups/download.
    */
   backupWebModule(),
+  /*
+   * Server → Local Network (#66), after Backups: the shop's local certificate
+   * and the address phones open, super admins only. ⚠ Read INLINE, as
+   * NEXT_PUBLIC_WS_URL is above: this list is composed for the browser too,
+   * where `config/env.ts` (a server-side boot assertion) is not loaded. Off
+   * unless exactly "on": no page and no drawer entry, the key kept.
+   */
+  localNetworkWebModule({ enabled: process.env.NEXT_PUBLIC_LOCAL_NETWORK === 'on' }),
 ];
 
 /*

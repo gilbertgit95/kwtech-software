@@ -12,12 +12,20 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
-const { caddyLaunch, httpsHost } = createRequire(import.meta.url)('../deploy/https/host.cjs');
+const { caddyLaunch, httpsHost, requireLocalOrigin } = createRequire(import.meta.url)('../deploy/https/host.cjs');
+
+// The launcher's own check, in its words: a local address that fails the whole-origin rule says what is wrong (#84).
+try {
+  requireLocalOrigin();
+} catch (error) {
+  console.error(`  ✗ ${error.message}`);
+  process.exit(1);
+}
 
 const host = httpsHost();
 if (!host) {
   console.error('  ✗ FRONTEND_URL in apps/web-server/.env.local is not an https:// address on this network.');
-  console.error('    Caddy is only for the shop\'s own network (a 192.168.x / 10.x / 172.16–31.x address):');
+  console.error("    Caddy is only for the shop's own network (a 192.168.x / 10.x / 172.16–31.x address):");
   console.error('    run pnpm https:setup. A server with a domain gets HTTPS from its host (docs/HTTPS.md).');
   process.exit(1);
 }

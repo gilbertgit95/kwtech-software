@@ -7,9 +7,9 @@ certificate, with its fingerprints and an explanation, and the server's
 address as text and as QR codes, so nobody has to read the docs or ask what
 the address is.
 
-⚠ **Being built.** The pure core (#78), the server half (#80) and the page
-(#82) exist. The wiring into both apps comes in phase 5 of
-`docs/LOCAL-NETWORK-PLAN.md` §9. No app composes it yet.
+Built in phases (#66): the pure core (#78), the server half (#80), the page
+(#82), and the wiring into both apps with its switches (#84). Both apps
+compose it; it shows only where `pnpm https:setup` turned it on.
 
 ## In a Next.js app
 
@@ -44,11 +44,10 @@ The page, top to bottom:
    second.
 4. **This computer**: the server opens `https://localhost`.
 
-**Not set up** (`certificate_missing`, `origin_invalid`): the API's sentence
-and nothing else. **The API's switch off** while this one is on: the client
-reads GraphQL's `Cannot query field "localNetwork"` (answered with a 400, so
-the body is read before the status) as off, and the page says what to run,
-never an error screen.
+**Not set up** (`off`, `certificate_missing`, `origin_invalid`): the API's
+sentence and nothing else. `off` is what a page sees when its own switch is on
+and the API's is off (a profile changed without a rebuild): it says what to
+run, never an error screen.
 
 ## In a NestJS app
 
@@ -66,7 +65,7 @@ localNetworkServerModule({
 
 | Option | Required | What it is |
 |---|---|---|
-| `enabled` | no | The switch. Anything but `true` is off: **nothing is registered**, not even the options, and nothing below is checked. |
+| `enabled` | no | The switch. Anything but `true` is off: the query still exists and answers `off`, nothing is read, and nothing below is checked. |
 | `certificatePath` | while on | The path of `root.crt`. A path ending in `.key` stops the boot. |
 | `origin` | while on | `{ ok: true, host } \| { ok: false, problem }`, the whole-origin rule's answer. The module holds no copy of the rule. |
 | `publishedOrigin` | no | The `FRONTEND_URL` that answer is about. |
@@ -81,10 +80,11 @@ file and answers one query.
 request**, so a new `pnpm https:setup` or a deleted `.caddy/` shows on the next
 page load without restarting the API:
 
-1. origin not on the shop's network → `origin_invalid`, and ⚠ the certificate
+1. the switch off → `off`, and nothing is read;
+2. origin not on the shop's network → `origin_invalid`, and ⚠ the certificate
    is not even read;
-2. certificate missing or unreadable → `certificate_missing`;
-3. otherwise `ready`, with the details from `node:crypto`'s
+3. certificate missing or unreadable → `certificate_missing`;
+4. otherwise `ready`, with the details from `node:crypto`'s
    `X509Certificate` (the same fingerprints `openssl x509 -fingerprint` prints).
 
 ### ⚠ The private key is never read
@@ -107,7 +107,6 @@ import {
   localNetworkIsEnabled,          // the switch: on only for `enabled: true`
   localNetworkAddresses,          // host → { appUrl, certificateUrl }
   localNetworkStateMessage,       // (state, { publishedOrigin, problem }) → what the page says when it shows nothing
-  LOCAL_NETWORK_API_OFF_MESSAGE,  // the page's words when only the API's switch is off
   LOCAL_NETWORK_OPERATIONS,       // the one query the page sends
   type LocalNetworkView,
 } from '@kwtech/module-local-network';
@@ -124,8 +123,17 @@ a remote server with a domain it would publish an address and a certificate
 that are wrong there, and a remote server's profile never sets the switch
 (`docs/LOCAL-NETWORK-PLAN.md` §4).
 
-Off means **absent**: no resolvers and no page, so the query is not in the
-schema. ⚠ A host that switches it off still composes
+What off means differs by side (operator, 2026-11-06, #84):
+
+- **The web app:** absent. No page and no drawer entry.
+- **The API:** present. `Query.localNetwork` is in the schema either way and,
+  off, answers `state: 'off'` with what to run, reading nothing. Not absent,
+  because the committed `apps/web-server/schema.graphql` is rewritten at every
+  boot, and a field that came and went with a profile setting would make that
+  file, and `module-operations.test.ts`, differ from machine to machine. It is
+  still guarded by `local_network:read`.
+
+⚠ A host that switches it off still composes
 `LOCAL_NETWORK_FEATURE_REGISTRY` in its seed, or `db:sync` deprecates
 `local_network:*` and turning it back on loses the grants.
 
@@ -151,6 +159,7 @@ one copy, in `origin.cjs`.
 | State | Shown |
 |---|---|
 | `ready` | the certificate (PEM, SHA-256, SHA-1, subject, expiry) and both addresses |
+| `off` | nothing but `problem`: the API's switch is off |
 | `certificate_missing` | nothing but `problem`: run `pnpm https:setup` |
 | `origin_invalid` | nothing but `problem`, naming the `FRONTEND_URL` the profile publishes |
 
