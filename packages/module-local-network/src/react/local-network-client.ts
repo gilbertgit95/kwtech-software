@@ -33,6 +33,12 @@ export interface LocalNetworkClient {
   view(): Promise<LocalNetworkAnswer>;
 }
 
+/**
+ * The page's client: one method per operation, errors as sentences a person
+ * can read ("Cannot reach the server."). Through the app's same-origin
+ * GraphQL handler, which attaches the session; the browser never calls the
+ * API directly.
+ */
 export function createLocalNetworkClient(options: { graphqlPath?: string } = {}): LocalNetworkClient {
   const path = options.graphqlPath ?? DEFAULT_GRAPHQL_PATH;
 

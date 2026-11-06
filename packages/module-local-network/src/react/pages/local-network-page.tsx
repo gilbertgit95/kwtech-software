@@ -75,10 +75,20 @@ export function LocalNetworkPage({ client, protocol }: LocalNetworkPageProps = {
 
       {answer?.kind === 'api_off' ? <NotSetUp message={LOCAL_NETWORK_API_OFF_MESSAGE} /> : null}
       {answer?.kind === 'view' ? (
-        <LocalNetworkSections view={answer.view} protocol={protocol ?? window.location.protocol} />
+        <LocalNetworkSections view={answer.view} protocol={protocol ?? currentProtocol()} />
       ) : null}
     </div>
   );
+}
+
+/**
+ * The page's own protocol, or '' where there is no window (a server render).
+ * '' hides the fingerprints: when the protocol is unknown, fail closed.
+ * Today the read happens only after the API answered, which is after mount,
+ * so this guards a future render path rather than fixing a live one.
+ */
+function currentProtocol(): string {
+  return typeof window === 'undefined' ? '' : window.location.protocol;
 }
 
 export interface LocalNetworkSectionsProps {
@@ -127,15 +137,24 @@ function NotSetUp({ message }: { message: string }) {
   );
 }
 
+/** The certificate: download, who it names, its expiry, what trusting it means, and the fingerprints. */
 function CertificateSection({ certificate, protocol }: { certificate: LocalNetworkCertificateView; protocol: string }) {
+  /**
+   * Saves the PEM the API re-encoded from the parsed certificate, under the
+   * name Caddy serves it as. The link is attached for the click (older
+   * Firefox ignores a detached one), and ⚠ the object URL is revoked on the
+   * NEXT tick: some browsers read the blob after `click()` returns, and an
+   * immediate revoke cancels the save.
+   */
   function download() {
-    // The PEM the API re-encoded from the parsed certificate, saved under the name Caddy serves it as.
     const url = URL.createObjectURL(new Blob([certificate.pem], { type: 'application/x-x509-ca-cert' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = LOCAL_NETWORK_CERTIFICATE_FILE;
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   return (
@@ -175,6 +194,10 @@ function CertificateSection({ certificate, protocol }: { certificate: LocalNetwo
   );
 }
 
+/**
+ * SHA-256 and SHA-1, and where each device shows them, only on a page whose
+ * protocol is `https:` (`fingerprintsShown`); over plain HTTP, only why not.
+ */
 function Fingerprints({ certificate, protocol }: { certificate: LocalNetworkCertificateView; protocol: string }) {
   if (!fingerprintsShown(protocol)) {
     return (
@@ -244,9 +267,11 @@ function Fingerprints({ certificate, protocol }: { certificate: LocalNetworkCert
   );
 }
 
+/** The app's address with Copy, and the two QR codes: the certificate first, then the app. */
 function AddressSection({ appUrl, certificateUrl }: { appUrl: string; certificateUrl: string }) {
   const [copied, setCopied] = useState<string | null>(null);
 
+  /** Copies the app's address; the clipboard needs a secure page and permission, so failing says what to do instead. */
   async function copy() {
     try {
       await navigator.clipboard.writeText(appUrl);
@@ -299,6 +324,7 @@ function AddressSection({ appUrl, certificateUrl }: { appUrl: string; certificat
   );
 }
 
+/** An address or command, in monospace and allowed to wrap anywhere, so a long URL never widens the page. */
 function Code({ children, className }: { children: string; className?: string }) {
   return (
     <code className={cn('break-all rounded bg-muted px-1.5 py-0.5 font-mono text-xs', className)}>{children}</code>
@@ -307,6 +333,7 @@ function Code({ children, className }: { children: string; className?: string })
 
 type ButtonVariant = 'primary' | 'secondary';
 
+/** The page's button classes, as module-backup's: a function over the variant, no CVA. */
 function buttonClass(variant: ButtonVariant, size: 'sm' | 'md' = 'md'): string {
   return cn(
     'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors',
