@@ -109,7 +109,9 @@ http://<address>/kwtech-local-ca.crt  →  the authority's certificate, for devi
 http://<address>/*                    →  redirected to https://
 ```
 
-- `<address>` is the server's address on the network, e.g. `192.168.1.186`.
+- `<address>` is the server's address on the network, e.g. `192.168.1.68`. A
+  super admin finds it, as text and as a QR code, on **Server → Local
+  Network** in the app (section 5).
 - The authority lives in the gitignored **`.caddy/`** folder at the
   repository's root. ⚠ It holds the authority's private key: never commit
   it, never share it, and keep it when the server moves (section 8), or every
@@ -243,11 +245,15 @@ It finds the address and asks you to confirm it; checks Caddy (and prints
 the install command if it is missing); on Linux lets Caddy use ports 80 and
 443 without root (`setcap`, asks for the sudo password once; check it with
 `getcap /usr/bin/caddy`, which prints `cap_net_bind_service=ep`); writes
-three settings into the active profile and **nothing else** —
-`FRONTEND_URL`, `CORS_ORIGINS` and `LISTEN_HOST="127.0.0.1"` in
-`envs/<name>/web-server.env`, `NEXT_PUBLIC_WS_URL` in
-`envs/<name>/web-app.env`; checks the Caddyfile for that address; and prints
-what is left.
+these settings into the active profile and **nothing else** —
+`FRONTEND_URL`, `CORS_ORIGINS`, `LISTEN_HOST="127.0.0.1"` and
+`LOCAL_NETWORK="on"` in `envs/<name>/web-server.env`, `NEXT_PUBLIC_WS_URL`
+and `NEXT_PUBLIC_LOCAL_NETWORK="on"` in `envs/<name>/web-app.env`; checks the
+Caddyfile for that address; and prints what is left.
+
+The two `LOCAL_NETWORK` switches turn on the **Server → Local Network** page
+(section 5). They are written together so they never disagree; `pnpm
+env:check` reports a profile where they do.
 
 **On WSL, give the address yourself.** WSL reports more than one address,
 Docker's `172.17.0.1` among them, and the one to use is the PC's address on
@@ -259,6 +265,14 @@ pnpm https:setup --address=192.168.1.68
 
 On that PC it wrote `FRONTEND_URL="https://192.168.1.68"` and
 `NEXT_PUBLIC_WS_URL="/api/v1/graphql"`.
+
+⚠ **`FRONTEND_URL` must be exactly `https://<address>`**: no port, no path,
+no spaces, written as the setup writes it. Phones are shown this address,
+and Caddy answers only on 443. One rule checks it
+(`deploy/https/origin.cjs`), and everything reads that rule: `pnpm
+pm2:start` and `pnpm https` refuse to start with a bad one and say what is
+wrong, `pnpm env:check` reports it, and the Local Network page shows the
+reason instead of the address.
 
 ⚠ **The socket's address is a path, not `wss://<address>`** (issue #50). The
 browser resolves it against the address the page was opened on: a phone on
@@ -273,7 +287,7 @@ browser to its own network address as well — on WSL that never answers
 `https://<address>`, and `http://<address>:8081` is refused (section 1, "One
 way in"). Restart both apps after the setup for it to take effect.
 
-Options: `--address=192.168.1.186` (no detection), `--yes` (no questions),
+Options: `--address=192.168.1.68` (no detection), `--yes` (no questions),
 `--off` (back to `http://localhost`, section 9).
 
 ### Step 5 — Start it
@@ -289,10 +303,21 @@ new authority, and every device must be registered again (section 5).
 **The built apps** (the shop's server):
 
 ```bash
-pnpm build                 # ⚠ needed: NEXT_PUBLIC_WS_URL is baked into the web app's build
-pnpm pm2:start             # three services: kwtech-web-server, kwtech-web-app, kwtech-https
+pnpm build                 # ⚠ needed: NEXT_PUBLIC_WS_URL and NEXT_PUBLIC_LOCAL_NETWORK are baked into the web app's build
+pnpm pm2:start             # three services: kwtech-web-server, kwtech-web-app, kwtech-https (it does NOT build)
 pnpm pm2:save              # all three start again after a reboot
 ```
+
+**Once, on a database from before Local Network** (2026-11-06): add its
+permission key, which `super-admin` then holds.
+
+```bash
+pnpm --filter @kwtech/web-server db:sync
+```
+
+Without it the **Server → Local Network** entry stays hidden, even with
+both switches on and a fresh build: the drawer shows only what your role
+holds. A new database gets it from `db:seed`.
 
 **Development**: the dev servers as usual (`pnpm dev:focus …` or `pnpm dev`),
 and in a second terminal:
@@ -308,15 +333,19 @@ The first start creates the authority in `.caddy/`, unless one was copied.
 On WSL, run these inside WSL:
 
 ```bash
-curl -sk -o /dev/null -w "%{http_code}\n" https://192.168.1.186/api/health          # 200
-curl -sk -o /dev/null -w "%{http_code}\n" https://192.168.1.186/api/v1/health       # 200 (the API through Caddy)
-curl -s  -o /dev/null -w "%{http_code}\n" http://192.168.1.186/kwtech-local-ca.crt  # 200
-curl -s -m 3 http://192.168.1.186:8081/ || echo "refused — good: the only way in is https"
+curl -sk -o /dev/null -w "%{http_code}\n" https://<address>/api/health          # 200
+curl -sk -o /dev/null -w "%{http_code}\n" https://<address>/api/v1/health       # 200 (the API through Caddy)
+curl -s  -o /dev/null -w "%{http_code}\n" http://<address>/kwtech-local-ca.crt  # 200
+curl -s -m 3 http://<address>:8081/ || echo "refused — good: the only way in is https"
 ```
 
 Then register each device (section 5), **the server's own browser too**: it
-opens the app on `https://localhost`, which is what keeps its tills live. On
-WSL it cannot use the network address (below).
+opens the app on `https://localhost`, which is what keeps its tills live. Do
+the server first, from its own `.caddy/` folder rather than over the
+network (section 5, "The server itself"): a file copied on this computer
+needs no fingerprint, and once its browser opens `https://localhost` with no
+warning it is the trusted screen the other devices compare against. On
+WSL it cannot use the network address at all (below).
 
 **On WSL, what reaches what** (checked on 2026-10-31, with
 `LISTEN_HOST="127.0.0.1"`):
@@ -336,16 +365,109 @@ Wi-Fi**. It makes the device trust the shop's certificate authority, so
 `https://<address>` opens without a warning. iPhones and Android phones
 deliberately ask a person to do this; no script can.
 
+**Start from the Local Network page.** A super admin opens **Server → Local
+Network** on the server's own `https://localhost` (section 4, step 5; the
+server registered first, step 6). It shows:
+
+- the address, `https://<address>`, with a **Copy** button;
+- two **QR codes**: first the certificate's download address, then the app.
+  A phone's camera opens either one;
+- the certificate's **SHA-256 and SHA-1 fingerprints**, to compare on the
+  device before trusting it (below);
+- a **Download certificate** button, for a computer.
+
 Every device starts by downloading the certificate from
-**`http://192.168.1.186/kwtech-local-ca.crt`** — plain `http://`, because
-the device does not trust the `https://` address yet.
+**`http://<address>/kwtech-local-ca.crt`** (the first QR code). It's plain
+`http://` because the device doesn't trust the `https://` address yet.
+
+### The server itself
+
+Its browser opens `https://localhost`, and it takes the certificate from
+this computer's own `.caddy/` folder, **never over the network**. A local
+copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
+**only** `root.crt`: the same folder holds `root.key` and
+`intermediate.key`, the authority's private keys.
+
+- **Windows with WSL** (the network download doesn't work here: Windows
+  can't reach its own network address in WSL). From the repository, in WSL:
+
+  ```bash
+  cd .caddy/pki/authorities/local && explorer.exe .
+  ```
+
+  In the Explorer window that opens, copy **`root.crt`** to Windows (e.g.
+  Downloads), then install it with the Windows steps below, from step 1's
+  "open it".
+- **Mac:** the `security add-trusted-cert` command under Mac, below.
+- **Linux with a desktop:** Chrome, Chromium and Edge read the user's own
+  certificate database (NSS), not the system's. ⚠ Where it is depends on
+  the browser: since Chromium 146 a **new** install keeps it in
+  `$XDG_DATA_HOME/pki/nssdb` (`~/.local/share/pki/nssdb` when that is
+  unset), and one that already had `~/.pki/nssdb` keeps using that
+  ([Chromium's cert_management.md](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/cert_management.md),
+  and the change itself, ["Use XDG_DATA_HOME for nssdb path"](https://chromium.googlesource.com/chromium/src/crypto/+/cd0cd74231854ee6c56ae566ffd4d32bf994b8cc%5E%21/)).
+  If `ls -d` below says the folder doesn't exist, the browser uses another
+  one: look for `pki/nssdb` under its home.
+  Open the browser once first, so its database exists, then from the
+  repository:
+
+  ```bash
+  sudo apt install libnss3-tools     # certutil (Fedora: nss-tools)
+
+  # The database the browser uses, in Chromium's own order: the older place if it
+  # exists, else $XDG_DATA_HOME/pki/nssdb if that is set, else ~/.local/share/pki/nssdb.
+  # Where THAT browser keeps its files: one line, the browser's, not the terminal's.
+  HOME_DIR="$HOME"; DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"                        # Chrome, Edge, Chromium from a .deb or .rpm
+  # HOME_DIR="$HOME/snap/chromium/current"; DATA_HOME="$HOME_DIR/.local/share"            # ⚠ instead, for Chromium as a snap
+  DB="$HOME_DIR/.pki/nssdb"; [ -d "$DB" ] || DB="$DATA_HOME/pki/nssdb"
+  ls -d "$DB"                                   # must exist: open the browser once first
+
+  certutil -d "sql:$DB" -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
+  ```
+
+  Then restart the browser. A snap's Chromium has its own home and its own
+  data folder, `~/snap/chromium/current/` and `.local/share` inside it, and
+  ignores the terminal's `XDG_DATA_HOME`: uncomment the snap line (it sets
+  both) and comment out the line above it. **Firefox**
+  keeps its own list either way: the Firefox steps below, importing
+  `.caddy/pki/authorities/local/root.crt`. (Not yet tried on a Linux server:
+  the shop's runs WSL.)
+
+Then open `https://localhost`. With **no** warning, this browser is the
+trusted screen for every other device's fingerprint (next).
+
+### Compare the fingerprint before trusting it
+
+⚠ That download is over plain `http://`, so anyone on the same Wi-Fi could
+swap the file. Before trusting it, compare its fingerprint with the one
+**Server → Local Network** shows on a screen that is already trusted: the
+server's own `https://localhost` once its browser opens it with **no**
+certificate warning, or a device that already trusts the certificate. The
+page hides the fingerprints when it's opened over `http://`. It can't tell
+whether a browser clicked through a warning, so check for the padlock
+yourself.
+
+Not every device shows the fingerprint before installing:
+
+| Device | Where the fingerprint shows | Compare |
+|---|---|---|
+| iPhone, iPad | Settings → General → VPN & Device Management → the profile → More Details → the certificate (SHA-256) | before **Install**, and before turning on full trust |
+| Android | only after installing: Encryption & credentials → Trusted credentials → **User** → the certificate | straight after installing; ⚠ if it differs, **remove it at once** |
+| Mac | Keychain Access → the certificate → Details (SHA-256) | before setting *Always Trust* |
+| Windows | the certificate window → Details → *Thumbprint* (**SHA-1**) | before **Install Certificate** |
+| Firefox | Settings → Certificates → View Certificates → Authorities → the certificate → View (SHA-256) | before ticking *Trust this CA to identify websites* |
+
+Trust it only if every character matches. ⚠ A device that trusts it trusts
+**any** site this authority signs (no name limits, valid until 2036), so it
+goes on the shop's own devices only, never a customer's.
 
 ### Android
 
 Chrome downloads the certificate but cannot install it; Android installs it
 from **Settings**.
 
-1. **Download.** In Chrome, open `http://192.168.1.186/kwtech-local-ca.crt`.
+1. **Download.** In Chrome, open `http://<address>/kwtech-local-ca.crt`
+   (or scan the page's first QR code).
    It saves `kwtech-local-ca.crt` to Downloads. If Chrome says a certificate
    cannot be installed from the browser, that is expected.
 2. **Install**, in Settings:
@@ -363,7 +485,8 @@ from **Settings**.
    **screen lock** (PIN, pattern or password) first; set one if the phone
    has none.
 3. **Open the app.** Close any tab still on the old address, then open
-   **`https://192.168.1.186`** in Chrome.
+   **`https://<address>`** in Chrome (the page's second QR code). First
+   compare the fingerprint (above): Android shows it only now.
 
 To remove it later: Encryption & credentials → **Trusted credentials** →
 **User** → *Caddy Local Authority* → Remove.
@@ -373,14 +496,16 @@ To remove it later: Encryption & credentials → **Trusted credentials** →
 Two steps, and **both** are needed.
 
 1. **Download.** In **Safari** (not Chrome), open
-   `http://192.168.1.186/kwtech-local-ca.crt` → **Allow**. iOS says *Profile
+   `http://<address>/kwtech-local-ca.crt` (or scan the page's first QR code)
+   → **Allow**. iOS says *Profile
    Downloaded*.
 2. **Install the profile.** Settings → **Profile Downloaded** (near the
    top; or General → **VPN & Device Management**) → **Install** → passcode →
    **Install**.
 3. **Turn on full trust.** Settings → General → About → **Certificate Trust
    Settings** → turn on **Caddy Local Authority** → **Continue**.
-4. **Open the app:** `https://192.168.1.186` in Safari.
+4. **Open the app:** `https://<address>` in Safari (the page's second QR
+   code).
 
 Skipping step 3 is the usual reason an iPhone still says *Not Private*.
 
@@ -419,7 +544,7 @@ file → tick *Trust this CA to identify websites*.
 
 ### Check a registered device
 
-Open `https://192.168.1.186` and sign in:
+Open `https://<address>` and sign in:
 
 - no *Not private* / *Not secure* warning, and a padlock in the address bar;
 - the point of sale shows **no** *"Not live — other tills' changes show when
@@ -502,6 +627,14 @@ NEXT_PUBLIC_WS_URL="wss://pos.yourshop.com/api/v1/graphql"   # baked in at build
 
 Do **not** run `pnpm https:setup` there: it is for the shop's network, and
 writes a private address.
+
+**No Local Network page here, by design.** Its switches (`LOCAL_NETWORK`,
+`NEXT_PUBLIC_LOCAL_NETWORK`) stay `off`, as `pnpm env:new` writes them.
+Devices use the domain's public certificate and install nothing, so a page
+offering a local certificate and a private address would only mislead. The
+rest of the **Server** group (Backups) applies everywhere. The API still
+answers the page's query, with `off`, so its schema is the same on every
+server.
 
 ### Start it
 
@@ -609,13 +742,19 @@ certificate, downloaded from `http://<address>/kwtech-local-ca.crt`, with
 | Caddy's log | `pnpm pm2:logs kwtech-https` (built), or the `pnpm https` terminal |
 | Stop | `pnpm pm2:stop` — all of them (e.g. before `pnpm dev`, which needs the same ports) |
 | **The address changed** (new router, another network) | `pnpm https:setup` again, then `pnpm build && pnpm pm2:start`. Devices need **nothing** new. Then reserve the address (section 4, step 2) |
-| **A new phone, tablet or computer** | section 5 only |
-| **Turn local HTTPS off** | `pnpm https:setup --off` (the profile goes back to `http://localhost`), then `pnpm build && pnpm pm2:start` |
+| **A new phone, tablet or computer** | section 5 only: Server → Local Network has the QR codes and fingerprints |
+| **The server's address, or its certificate's fingerprint** | Server → Local Network, as a super admin, on `https://localhost` |
+| **Turn local HTTPS off** | `pnpm https:setup --off` (the profile goes back to `http://localhost`, and both Local Network switches to `off`), then `pnpm build && pnpm pm2:start`. Server → Local Network goes with it; its key and grants stay |
 
 ## 10. Troubleshooting
 
 | What you see | Why, and the fix |
 |---|---|
+| **No Server → Local Network** in the drawer | All three are needed: both switches `on` (`grep LOCAL_NETWORK apps/*/.env.local`; `pnpm https:setup` writes them), a **build** after setting them (the web app's is baked in), and the key in the database (`pnpm --filter @kwtech/web-server db:sync`, once). Super admins only |
+| Local Network says *Local Network is off on this server's API* | The web app was built with its switch on, the API started with it off: `pnpm https:setup`, then `pnpm build && pnpm pm2:start` |
+| Local Network says *its certificate is not on this computer* | `.caddy/` is missing (deleted, or not copied to a new server): `pnpm https:setup`, then start Caddy (section 4, step 5). Copy `.caddy/` from the old server to keep registered devices (section 8) |
+| Local Network says *this profile publishes …, not an address on the shop's network* | `FRONTEND_URL` isn't exactly `https://<address>` (a port, a path, spaces, a domain): `pnpm https:setup` |
+| `pnpm pm2:start` or `pnpm https` stops with *FRONTEND_URL is … and it has a port* (or another reason) | The same rule, checked before anything starts: `pnpm https:setup` writes a correct address. `pnpm env:check` says the same |
 | *Your connection is not private* / *Not secure* on a device | It has not trusted the authority yet (section 5). **iPhone**: both *Install* **and** *Certificate Trust Settings*. **Android**: installed as **CA certificate**, from Settings |
 | The warning comes back on every device at once | The server's address changed: `pnpm https:setup`, rebuild (section 9), reserve the address on the router |
 | A phone shows a crash, or *"crypto.randomUUID is not a function"* | It is on plain `http://<address>:8081`: open **`https://<address>`** (section 2) |
