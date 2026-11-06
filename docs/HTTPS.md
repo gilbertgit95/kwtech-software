@@ -399,6 +399,19 @@ copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
   Downloads), then install it with the Windows steps below, from step 1's
   "open it".
 - **Mac:** the `security add-trusted-cert` command under Mac, below.
+- **Linux with a desktop:** Chrome, Chromium and Edge read the user's own
+  certificate database (NSS), not the system's. From the repository:
+
+  ```bash
+  sudo apt install libnss3-tools     # certutil (Fedora: nss-tools)
+  certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
+  ```
+
+  Then restart the browser. Chromium installed as a **snap** keeps its own
+  database: use `-d sql:$HOME/snap/chromium/current/.pki/nssdb`. **Firefox**
+  keeps its own list either way: the Firefox steps below, importing
+  `.caddy/pki/authorities/local/root.crt`. (Not yet tried on a Linux server:
+  the shop's runs WSL.)
 
 Then open `https://localhost`. With **no** warning, this browser is the
 trusted screen for every other device's fingerprint (next).
