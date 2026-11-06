@@ -402,18 +402,23 @@ copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
 - **Linux with a desktop:** Chrome, Chromium and Edge read the user's own
   certificate database (NSS), not the system's. ⚠ Where it is depends on
   the browser: since Chromium 146 a **new** install keeps it in
-  `~/.local/share/pki/nssdb`, and one that already had `~/.pki/nssdb` keeps
-  using that ([Chromium's cert_management.md](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/cert_management.md)).
+  `$XDG_DATA_HOME/pki/nssdb` (`~/.local/share/pki/nssdb` when that is
+  unset), and one that already had `~/.pki/nssdb` keeps using that
+  ([Chromium's cert_management.md](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/cert_management.md),
+  and the change itself, ["Use XDG_DATA_HOME for nssdb path"](https://chromium.googlesource.com/chromium/src/crypto/+/cd0cd74231854ee6c56ae566ffd4d32bf994b8cc%5E%21/)).
+  If `ls -d` below says the folder doesn't exist, the browser uses another
+  one: look for `pki/nssdb` under its home.
   Open the browser once first, so its database exists, then from the
   repository:
 
   ```bash
   sudo apt install libnss3-tools     # certutil (Fedora: nss-tools)
 
-  # The database the browser uses: the older place if it exists, else the new one.
+  # The database the browser uses, in Chromium's own order: the older place if it
+  # exists, else $XDG_DATA_HOME/pki/nssdb if that is set, else ~/.local/share/pki/nssdb.
   HOME_DIR="$HOME"                              # Chrome, Edge, and Chromium from a .deb or .rpm
   # HOME_DIR="$HOME/snap/chromium/current"      # ⚠ instead, for Chromium installed as a snap
-  DB="$HOME_DIR/.pki/nssdb"; [ -d "$DB" ] || DB="$HOME_DIR/.local/share/pki/nssdb"
+  DB="$HOME_DIR/.pki/nssdb"; [ -d "$DB" ] || DB="${XDG_DATA_HOME:-$HOME_DIR/.local/share}/pki/nssdb"
   ls -d "$DB"                                   # must exist: open the browser once first
 
   certutil -d "sql:$DB" -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
