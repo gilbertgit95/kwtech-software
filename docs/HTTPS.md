@@ -400,15 +400,22 @@ copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
   "open it".
 - **Mac:** the `security add-trusted-cert` command under Mac, below.
 - **Linux with a desktop:** Chrome, Chromium and Edge read the user's own
-  certificate database (NSS), not the system's. From the repository:
+  certificate database (NSS), not the system's. ⚠ Where it is depends on
+  the browser: since Chromium 146 a **new** install keeps it in
+  `~/.local/share/pki/nssdb`, and one that already had `~/.pki/nssdb` keeps
+  using that ([Chromium's cert_management.md](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/cert_management.md)).
+  Open the browser once first, so its database exists, then from the
+  repository:
 
   ```bash
   sudo apt install libnss3-tools     # certutil (Fedora: nss-tools)
-  certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
+  DB="$HOME/.pki/nssdb"; [ -d "$DB" ] || DB="$HOME/.local/share/pki/nssdb"   # the one the browser uses
+  certutil -d "sql:$DB" -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
   ```
 
   Then restart the browser. Chromium installed as a **snap** keeps its own
-  database: use `-d sql:$HOME/snap/chromium/current/.pki/nssdb`. **Firefox**
+  database under `~/snap/chromium/current/`: set `DB` to the `pki/nssdb`
+  folder there. **Firefox**
   keeps its own list either way: the Firefox steps below, importing
   `.caddy/pki/authorities/local/root.crt`. (Not yet tried on a Linux server:
   the shop's runs WSL.)
