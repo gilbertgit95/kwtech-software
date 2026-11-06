@@ -11,6 +11,24 @@ Built in phases (#66): the pure core (#78), the server half (#80), the page
 (#82), and the wiring into both apps with its switches (#84). Both apps
 compose it; it shows only where `pnpm https:setup` turned it on.
 
+## Turning it on, on the shop's server
+
+Both apps compose the module already. On the computer that serves the shop's
+network (`docs/HTTPS.md` §4):
+
+```bash
+pnpm https:setup                               # writes LOCAL_NETWORK="on" and NEXT_PUBLIC_LOCAL_NETWORK="on"
+pnpm --filter @kwtech/web-server db:sync       # once, on a database from before this module: adds local_network:read
+pnpm build                                     # the web app's switch is baked in at build
+pnpm pm2:start                                 # does not build
+```
+
+Then, as a super admin on `https://localhost`: **Server → Local Network**.
+If the entry is missing, one of the three is: the switches (`pnpm env:check`
+says when they disagree), the build, or the sync (`docs/HTTPS.md` §10).
+`pnpm https:setup --off` turns both switches off; the key and its grants
+stay.
+
 ## In a Next.js app
 
 ```ts

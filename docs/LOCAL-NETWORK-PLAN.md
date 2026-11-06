@@ -1,11 +1,9 @@
 # `module-local-network` — plan
 
-Status: **being built (issue #66).** Phase 1, the Server group, is #76; phase
-2, the module's core, is #78; phase 3, the server side, is #80; phase 4, the page, is #82; phase 5,
-the wiring and the switches, is #84. Phase 6, the docs, is left. L1–L10 (§8)
-are the operator's decisions of 2026-11-04. Once it is built, the decision goes
-in PLAN §13, and §10 here records what was built and where it differs from this
-plan.
+Status: **built (2026-11-06, issue #66).** L1–L10 (§8) are the operator's
+decisions of 2026-11-04. The decision is in PLAN §13 (2026-11-06), and §10
+below records what was built and where it differs from this plan. Where they
+disagree, §10 and the code are right.
 
 ## 1. Why
 
@@ -360,4 +358,47 @@ switch.
 
 ## 10. Built, and where it differs
 
-Not built yet.
+Built 2026-11-06, one PR per phase:
+
+| Phase | Issue | PR | What |
+|---|---|---|---|
+| 1 | #76 | #77 | The Server drawer group in place of Database |
+| 2 | #78 | #79 | The module's core: the key, the switch, the addresses, the query |
+| 3 | #80 | #81 | The server side: the certificate read safely, the answer |
+| 4 | #82 | #83 | The page: the certificate, fingerprints, QR codes |
+| 5 | #84 | #85 | Both apps, the switches, the origin rule, the launcher |
+| 6 | #86 | — | These docs, `docs/HTTPS.md`, PLAN §12.127 and §13 |
+
+Where it differs from the plan above:
+
+- **The key is `local_network:read`**, not `local-network:read` (§6). Every
+  key in the repository is snake_case, and module-permissions'
+  `FEATURE_KEY_PATTERN` refuses a hyphen (#78).
+- **Off, the API's query still exists** and answers `state: 'off'`, reading
+  nothing (§4 said "off means absent"). The API rewrites the committed
+  `schema.graphql` at every boot, and a field that came and went with a
+  profile setting would make it, and the operations test, differ from
+  machine to machine. The operator chose this on 2026-11-06 (#84). The web
+  app's switch still removes the page and the drawer entry. So the "web on,
+  server off" case is an `off` answer, not GraphQL's "cannot query field".
+- **`pnpm https:setup --off` sets both switches `off`** rather than removing
+  them (§4): both `.env.example` files declare them, and `pnpm env:check`
+  lists a profile that lacks one.
+- **"Opened with no warning" is an instruction, not a check** (§2). A page
+  cannot tell whether its browser clicked through a certificate warning (it
+  still reports `https:`). So the page hides the fingerprints over `http://`
+  and, over `https://`, shows them with the rule for the person to follow
+  (#76).
+- **The origin rule also refuses surrounding spaces**, and the launcher reads
+  `FRONTEND_URL` untrimmed, as the API does. Before, the launcher trimmed
+  them and could start Caddy for a value the API refused (#85 review).
+- **A new database needs nothing; an existing one needs `db:sync` once**,
+  or the drawer hides the entry: the key reaches `super-admin` only through
+  the sync. It hid the page on the day it was built. `docs/HTTPS.md` §4 and
+  §10 say so.
+
+Checked: the API, booted from its build, returned this server's real root
+certificate with the SHA-256 `openssl` prints. `schema.graphql` is identical
+with the switch on and off, and the operator saw **Server → Local Network**
+after `pnpm https:setup`, `pnpm build`, `pnpm pm2:start` and `db:sync`.
+Not yet checked on a phone: scanning the QR codes on the shop's Wi-Fi.

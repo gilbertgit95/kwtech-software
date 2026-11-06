@@ -606,11 +606,69 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 124 | Ports are not one setting: only the API's `PORT` is configurable, and nothing checks that the rest agree | when a machine needs other ports than 8080/8081 (another app already on them) | The web app's 8081 is written into its `dev`/`start` scripts, pm2 and the Caddyfile; 8080 and 8081 also sit in `API_URL`, `NEXT_PUBLIC_WS_URL`, `FRONTEND_URL` and the other URL settings, the dev start/stop scripts and `https:setup`. Until it is fixed, docs/SETUP.md §8 "Changing the ports" lists every place. The fix: a `WEB_PORT` beside `PORT`, read by the launcher (`scripts/next.mjs`), pm2, the Caddyfile (Caddy reads `{$…}` from its environment) and the dev scripts; and `pnpm env:check` warning when a URL names another port |
 | 125 | ~~Texts in the print studio are selected one at a time; a selection rectangle takes cells only~~ **Settled 2026-11-03 for the layout editor** (issue #57, see §13). On the Print screen texts are still painted into the canvas and not selectable | when texts need moving on the Print screen | The editor's rectangle takes cells and texts, and a group of both moves, copies and is removed together. Print keeps texts fixed once the layout is used |
 | 126 | ~~Chat, notes, queue and tasks decide "live" without the socket's status: a dead socket still looks live there~~ **Closed** | — | **Every screen reads module-kit's `useRealtimeLive` (§13, 2026-11-04, issue #64).** One rule (`isRealtimeLive`), each screen its own threshold; chat now says so in the thread, where it said nothing before |
-| 127 | Setting up a device on the shop's network is in the docs only: the server's address, the certificate's download address and the steps are typed by hand, and `docs/HTTPS.md` §5 still gives an old address | when the next phone or tablet is set up by someone without the docs; planned in `docs/LOCAL-NETWORK-PLAN.md` (issue #66) | A super-admin **Local Network** page: the certificate with its fingerprint and an explanation, the address as text and as QR codes. It sits in a new **Server** drawer group with Backups, which replaces the Database group. Off on a remote server, where it does not apply: a switch `pnpm https:setup` turns on. The private key is never read |
+| 127 | ~~Setting up a device on the shop's network is in the docs only~~ **Closed** | — | **Built 2026-11-06 (#66): Server → Local Network**, a super admin's page with the shop's certificate (download, SHA-256 and SHA-1 fingerprints, what trusting it means), the address as text and as two QR codes, and the server's own `https://localhost`. `module-local-network`, beside Backups in the new **Server** drawer group. On only where `pnpm https:setup` turned it on; off on a remote server. The private key is never read. `docs/HTTPS.md` §5 starts from it. See the decision log |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-06** — **A super admin's Local Network page shows the shop's certificate and the server's address, behind a switch that is off everywhere but the shop's own network (issue #66).**
+
+  To set up a phone, someone had to know the server's address and type the
+  certificate's download address by hand, and `docs/HTTPS.md` had gone out
+  of date (it gave `192.168.1.186`; the server is `192.168.1.68`). Built in
+  five PRs: #77, #79, #81, #83, #85. The plan and what differs from it:
+  `docs/LOCAL-NETWORK-PLAN.md`.
+  - **A module of its own, `module-local-network`** (L1, L2), administrative
+    and app level. Its one key is `local_network:read`, held by
+    `super-admin` only after `db:sync`. ⚠ Snake_case, not the plan's
+    `local-network:read`: every key here is, and module-permissions'
+    `FEATURE_KEY_PATTERN` refuses a hyphen.
+  - **A Server drawer group replaces Database** (L4, #77). Backups moved into
+    it; the modules stay separate. Each declares the string `'Server'`
+    itself, pinned by its own test, because modules never import each other.
+  - **Two switches, off by default** (L5): `LOCAL_NETWORK` for the API and
+    `NEXT_PUBLIC_LOCAL_NETWORK` for the web app, which is baked in at build
+    because the descriptors are composed for the browser too. It is the
+    second public variable, and `.claude/rules/frontend.md` says why.
+    `pnpm https:setup` sets both `on`, `--off` both `off` (set, not removed:
+    the `.env.example` files declare them). `pnpm env:check` reports a
+    profile where they disagree. A remote server never sets them.
+  - **The API's query always exists** (the operator, 2026-11-06, #84). The
+    plan had it absent while off, as chat's switch does. But the API
+    rewrites the committed `schema.graphql` at every boot and the operations
+    test validates against it, so a field that came and went with a profile
+    setting would have made both differ from machine to machine. Off, it
+    answers `state: 'off'`, reads nothing and needs no path or address. The
+    web app's switch still removes the page and its drawer entry.
+  - **One whole-origin rule, `deploy/https/origin.cjs`**: the published
+    address must be exactly `https://<private IPv4>` (no port, userinfo,
+    path, query, fragment or surrounding spaces). Plain CommonJS with no
+    dependencies, because the pm2 launcher and `pnpm env:check` read it
+    before anything is built; the API reads the same file at boot and hands
+    the module the answer. ⚠ The launcher and `pnpm https` now **stop** on a
+    bad local origin and name the problem. Before, they started the apps
+    with no Caddy and said nothing. They also read `FRONTEND_URL` as the
+    API does, untrimmed (#85 review).
+  - **The private key is never read** (L6). The module is given one file,
+    `root.crt`, and opens nothing else: a `.key` path stops the boot, a file
+    holding a private key is refused, and the PEM returned is the parsed
+    certificate re-encoded, never the file's bytes. A test reads a folder
+    laid out as Caddy's and asserts only `root.crt` is opened.
+  - **The address comes from the profile** (L7), never from the network
+    interfaces, which differ from what phones reach under WSL. **The
+    certificate is returned as text by the query** (L8): it is public and a
+    few hundred bytes, so no ticket and no REST route.
+  - **Fingerprints only where they prove something.** Over `http://` the page
+    hides them and says why. Over `https://` it shows SHA-256 and SHA-1 (the
+    one Windows shows) with "compare only if this page opened with no
+    certificate warning". ⚠ A page cannot detect a clicked-through warning,
+    so that is a rule it states, not one it enforces.
+  - **Not done** (L9, L10, each its own issue when wanted): per-device steps
+    in tabs, a connection check, an "address changed" warning, the print
+    agent's address, and the other Server pages (status, disk space,
+    services, logs, database). The page reads and changes nothing: no
+    restart or setup buttons.
 
 - **2026-11-05** — **The POS's phone layout has an Orders section that finds, opens and prints past orders, and changes none (issue #72).**
 
