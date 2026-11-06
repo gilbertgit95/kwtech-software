@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Only the pure root so far (#78): no DOM, no JSX, no decorators. The
+    // server half (phase 3 of #66) adds the decorators, the page (phase 4)
+    // DOM and JSX, as module-backup's tsconfig has them.
+    "lib": ["ES2023"],
+    "outDir": "dist",
+    // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
+    // with the build info beside the tsconfig it outlives every `rm -rf dist` —
+    // after which tsc concludes nothing changed and emits NOTHING. See
+    // module-chat's tsconfig for the incident.
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

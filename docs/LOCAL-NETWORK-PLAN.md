@@ -1,6 +1,7 @@
 # `module-local-network` — plan
 
-Status: **planned (2026-11-04, issue #66). Nothing is built yet.** L1–L10 (§8)
+Status: **being built (issue #66).** Phase 1, the Server group, is #76; phase
+2, the module's core, is #78. The rest is planned. L1–L10 (§8)
 are the operator's decisions of 2026-11-04. Once it is built, the decision goes
 in PLAN §13, and §10 here records what was built and where it differs from this
 plan.
@@ -134,7 +135,7 @@ The rest of the Server group applies everywhere.
   is no separate refusal reason to define: the web app never sends the query
   while off, because its page is not composed either.
 - ⚠ **The feature registry stays composed while off**, as chat's does (its
-  comment explains why). Otherwise `db:sync` deprecates `local-network:*`, and
+  comment explains why). Otherwise `db:sync` deprecates `local_network:*`, and
   turning the page back on would bring it back without its grants.
 - **What turns it on is the profile, written by the setup that makes it
   true.**
@@ -158,7 +159,7 @@ The rest of the Server group applies everywhere.
       Network is off on this server's API. Run `pnpm https:setup` (or `--off`),
       then `pnpm build`." Never an error screen, and never a stale address.
     - **Server on, web off:** the query exists but no page sends it. Nothing
-      shows. The query is guarded by `local-network:read` and returns only
+      shows. The query is guarded by `local_network:read` and returns only
       public things (the certificate and the published address), so nothing
       leaks; it is simply unused until the next build.
     - **Caught before it happens:** `pnpm env:check` reports a profile whose
@@ -243,15 +244,19 @@ The rest of the Server group applies everywhere.
   the published origin (`https://<address>`, `http://<address>/kwtech-local-ca.crt`),
   and the switch (`localNetworkIsEnabled`).
 - **The resolver declares app scope.** Super admins hold every registered
-  key, so by default only they have `local-network:read` after `db:sync`,
+  key, so by default only they have `local_network:read` after `db:sync`,
   as with `backup:*`. A super admin can grant the key to another role on the
   Roles page.
 
 ## 6. Keys (app level)
 
+⚠ Snake_case, `local_network:read` (corrected 2026-11-06, #78): this plan first
+wrote `local-network:read`, but every key here is snake_case (`app_hub:read`),
+and module-permissions' `FEATURE_KEY_PATTERN` refuses a hyphen.
+
 | Key | What it allows |
 |---|---|
-| `local-network:read` | the page: the certificate, its details, and the addresses |
+| `local_network:read` | the page: the certificate, its details, and the addresses |
 
 Granted to nobody by the module. `super-admin` holds every registered key.
 
