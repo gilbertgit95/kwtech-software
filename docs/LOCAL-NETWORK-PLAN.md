@@ -47,8 +47,14 @@ beside Backups. It shows:
      because that browser takes the certificate from the computer's own
      `.caddy/` folder, never over the network. The test is that
      `https://localhost` opens with **no** certificate warning; a page that
-     warns is not a trusted screen, and the Local Network page says so in
-     place of the fingerprint until it opens cleanly. Open Local Network on that trusted screen, download the
+     warns is not a trusted screen. ⚠ **The page cannot detect this itself**
+     (corrected 2026-11-06, #76): a browser that clicked through a warning
+     still reports `https:` and loads the page normally, and nothing in a
+     page's JavaScript says whether its certificate was trusted. So over
+     `http://` the page shows no fingerprint, only why; over `https://` it
+     shows the fingerprint with the instruction "compare only if this page
+     opened with no certificate warning". It is a rule the person follows,
+     not one the page enforces. Open Local Network on that trusted screen, download the
      certificate on the device (the QR code below), and compare the
      fingerprint character for character. Trust it only if they match. A page
      opened over `http://` never shows a fingerprint as if it proved anything,
