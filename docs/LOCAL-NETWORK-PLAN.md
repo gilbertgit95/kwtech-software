@@ -1,8 +1,8 @@
 # `module-local-network` — plan
 
 Status: **being built (issue #66).** Phase 1, the Server group, is #76; phase
-2, the module's core, is #78; phase 3, the server side, is #80. The rest is
-planned. L1–L10 (§8)
+2, the module's core, is #78; phase 3, the server side, is #80; phase 4, the page, is #82. The rest
+is planned. L1–L10 (§8)
 are the operator's decisions of 2026-11-04. Once it is built, the decision goes
 in PLAN §13, and §10 here records what was built and where it differs from this
 plan.

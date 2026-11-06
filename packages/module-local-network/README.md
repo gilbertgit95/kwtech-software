@@ -7,9 +7,48 @@ certificate, with its fingerprints and an explanation, and the server's
 address as text and as QR codes, so nobody has to read the docs or ask what
 the address is.
 
-⚠ **Being built.** The pure core (#78) and the server half (#80) exist. The
-page (`/react`) and the wiring into both apps come in phases 4–5 of
+⚠ **Being built.** The pure core (#78), the server half (#80) and the page
+(#82) exist. The wiring into both apps comes in phase 5 of
 `docs/LOCAL-NETWORK-PLAN.md` §9. No app composes it yet.
+
+## In a Next.js app
+
+```ts
+import { localNetworkWebModule } from '@kwtech/module-local-network/react';
+
+localNetworkWebModule({ enabled: process.env.NEXT_PUBLIC_LOCAL_NETWORK === 'on' });
+```
+
+- **Off** (the default): no page and no drawer entry. The key stays in the
+  descriptor.
+- **On**: `/admin/server/local-network`, in the **Server** drawer section
+  (order 60) after Backups (entry order 20, icon `globe`), behind
+  `local_network:read`. The group's name is the string `'Server'`, declared
+  here and in module-backup alike (`SERVER_NAV_GROUP`), each pinned by its own
+  `web-module.test.ts`.
+
+The page, top to bottom:
+
+1. **The certificate**: *Download certificate* (the PEM, saved as
+   `kwtech-local-ca.crt`), who it names, when it expires, and ⚠ that a
+   device trusting it trusts **any** site this authority signs, so it goes
+   only on the shop's own devices.
+2. **The fingerprints**, SHA-256 and SHA-1, and where each device shows
+   them. ⚠ **Over `http://` they are not shown**, only why: anyone on the
+   Wi-Fi could change that page. Over `https://` they are shown with "compare
+   only if this page opened with no certificate warning". The page cannot tell
+   whether its browser clicked through a warning (it still reports `https:`),
+   so that is a rule it states, not one it enforces.
+3. **The address**: `https://<address>` with *Copy*, and two QR codes, the
+   certificate's download address first (what a new device needs) and the app
+   second.
+4. **This computer**: the server opens `https://localhost`.
+
+**Not set up** (`certificate_missing`, `origin_invalid`): the API's sentence
+and nothing else. **The API's switch off** while this one is on: the client
+reads GraphQL's `Cannot query field "localNetwork"` (answered with a 400, so
+the body is read before the status) as off, and the page says what to run,
+never an error screen.
 
 ## In a NestJS app
 
