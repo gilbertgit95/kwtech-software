@@ -47,7 +47,7 @@ packages/module-booking/    booking sub-app: services, resources and their hours
 packages/module-print-studio/ print studio sub-app: layouts of cells on paper, photos placed at exact sizes, PDFs as whole pages; files stay in the browser
 packages/module-print/      printing side: paired computers (print agents), the printers they report, and a job's PDF relayed to one, never saved
 packages/module-backup/     database backups: a super admin's Backups page, a daily 9 PM backup, the command line; files in a folder, nothing in the database
-packages/module-local-network/ a super admin's page for connecting devices on the shop's network: the local certificate and the address (being built, #66; not wired into the apps yet)
+packages/module-local-network/ a super admin's page for connecting devices on the shop's network: the local certificate and the address (only where `pnpm https:setup` turned it on, #66)
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 

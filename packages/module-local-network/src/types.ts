@@ -1,6 +1,12 @@
 /**
  * What the page can be told, and why it may show nothing.
  *
+ * - `off`: the API's switch is off (`LOCAL_NETWORK` unset, as on every remote
+ *   server). ⚠ The query EXISTS while off and says so, rather than being left
+ *   out of the schema (operator, 2026-11-06, #84): the committed
+ *   `schema.graphql` is rewritten at every boot, and a field that came and went
+ *   with a profile setting would make that file differ from machine to
+ *   machine. Nothing is read while off.
  * - `ready`: the certificate is on this computer and the profile publishes an
  *   address on the shop's network. Everything is shown.
  * - `certificate_missing`: the switch is on, but `.caddy/` has no root
@@ -9,11 +15,8 @@
  *   not exactly `https://<private IPv4>` (a port, a path, `http://`, a
  *   domain…). ⚠ Neither the address nor the certificate is shown: on any other
  *   origin they would lead phones somewhere Caddy does not answer.
- *
- * There is no `disabled`: off means the query is not in the schema at all
- * (`enabled.ts`).
  */
-export type LocalNetworkState = 'ready' | 'certificate_missing' | 'origin_invalid';
+export type LocalNetworkState = 'ready' | 'off' | 'certificate_missing' | 'origin_invalid';
 
 /** The local authority's PUBLIC root certificate, and what to compare on a device before trusting it. */
 export interface LocalNetworkCertificateView {

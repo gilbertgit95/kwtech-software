@@ -757,6 +757,22 @@ input LendBooksMoneyInput {
   reference: String
 }
 
+type LocalNetwork {
+  appUrl: String
+  certificate: LocalNetworkCertificate
+  certificateUrl: String
+  problem: String
+  state: String!
+}
+
+type LocalNetworkCertificate {
+  expiresAt: String!
+  pem: String!
+  sha1: String!
+  sha256: String!
+  subject: String!
+}
+
 type MfaFactor {
   confirmedAt: String
   id: String!
@@ -1952,6 +1968,7 @@ type Query {
   invitationPreview(token: String!): InvitationPreview
   jobProcessHistory(cursor: String, limit: Int, processKey: String!): JobHistoryPage!
   jobProcesses: [JobProcess!]!
+  localNetwork: LocalNetwork!
   mfaFactors: [MfaFactor!]!
   myDisplay(device: String, layout: String): DisplayPreferences
   myNoteSettings(organizationId: String!, workspaceId: String!): NoteSettings!

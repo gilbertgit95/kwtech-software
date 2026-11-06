@@ -35,7 +35,10 @@ export class LocalNetworkService {
   }
 
   async view(): Promise<LocalNetworkView> {
-    const { origin } = this.options;
+    // Off: the answer says so, and nothing is read. A remote server has no certificate to look for.
+    const setup = this.options.setup;
+    if (!setup) return this.notReady('off', null);
+    const { origin } = setup;
     /*
      * ⚠ The origin first, and on a bad one the certificate is not even read:
      * neither is shown when the address is wrong, because a phone that
@@ -46,7 +49,7 @@ export class LocalNetworkService {
 
     let text: string;
     try {
-      text = await this.read(this.options.certificatePath);
+      text = await this.read(setup.certificatePath);
     } catch (error) {
       // Missing is the ordinary case (`.caddy/` deleted, or not copied to this computer); anything else is logged.
       if ((error as { code?: unknown }).code !== 'ENOENT') {

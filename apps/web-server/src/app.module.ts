@@ -69,6 +69,7 @@ import {
   serverModuleImports,
   serverRoutePrefixes,
 } from '@kwtech/module-kit';
+import { localNetworkServerModule } from '@kwtech/module-local-network/server';
 import {
   NOTE_ACCESS_CHECK,
   NOTE_AUTHOR_DIRECTORY,
@@ -140,6 +141,7 @@ import { ChatMailNotifier } from './chat/notify-mail.js';
 import { ChatPlatformAdmin } from './chat/platform-admin.js';
 import { ChatUserDirectory } from './chat/user-directory.js';
 import { env } from './config/env.js';
+import { LOCAL_NETWORK_CERTIFICATE_PATH } from './config/local-network.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
@@ -992,6 +994,22 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
       inject: [AuthAdminService],
       useFactory: (admin: AuthAdminService) => () => admin.endEverySession(),
     },
+  }),
+
+  /*
+   * Server → Local Network (#66): the shop's local certificate and the address
+   * phones open. ⚠ Composed whatever LOCAL_NETWORK says, so the schema (and
+   * the committed schema.graphql) is the same on every machine; off, its one
+   * query answers `off` and reads nothing (#84). This app knows the path and
+   * the address; the module knows neither. Only root.crt is named, never its
+   * folder, which holds the authority's private keys.
+   */
+  localNetworkServerModule({
+    enabled: env.LOCAL_NETWORK === 'on',
+    certificatePath: LOCAL_NETWORK_CERTIFICATE_PATH,
+    origin: env.LOCAL_NETWORK_ORIGIN,
+    publishedOrigin: env.FRONTEND_URL,
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
   }),
 ];
 

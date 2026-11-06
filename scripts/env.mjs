@@ -8,7 +8,8 @@
  *   pnpm env:new <name>       create envs/<name>/ from the .env.example files,
  *                             with fresh secrets
  *   pnpm env:check            .env.example files hold no secrets; every
- *                             profile has every variable the examples declare
+ *                             profile has every variable the examples declare,
+ *                             and its Local Network settings agree
  *
  * LAYOUT
  *
@@ -46,10 +47,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/** The one copy of the whole-origin rule, shared with the launcher and the API (deploy/https/origin.cjs). */
+const { checkLocalOrigin, meantForLocalNetwork } = createRequire(import.meta.url)('../deploy/https/origin.cjs');
 const ENVS = resolve(ROOT, 'envs');
 /** Written on every switch; the only record when a symlink was not possible. */
 const ACTIVE_MARKER = resolve(ENVS, '.active');
@@ -319,9 +323,55 @@ function check() {
       const missing = [...read(examplePath(app)).keys()].filter((key) => !profile.has(key));
       if (missing.length > 0) console.warn(yellow(`  ! envs/${name}/${app.key}.env has no ${missing.join(', ')}`));
     }
+    problems += checkLocalNetwork(name);
   }
-  if (problems === 0) console.log(green('  ✓ .env.example files hold no secrets'));
+  if (problems === 0) console.log(green('  ✓ .env.example files hold no secrets; Local Network settings agree'));
   process.exit(problems ? 1 : 0);
+}
+
+/**
+ * Local Network's two settings in one profile (#84), caught here before
+ * anything is started or built:
+ *
+ *   - ⚠ the two switches DISAGREE: the API reads LOCAL_NETWORK when it starts,
+ *     the web app NEXT_PUBLIC_LOCAL_NETWORK when it is BUILT, so a hand edit
+ *     to one file shows a page with nothing behind it, or the reverse.
+ *     `pnpm https:setup` (and `--off`) always writes both;
+ *   - a FRONTEND_URL meant for the shop's network (https:// on a private
+ *     address) that fails the whole-origin rule, switch on or off: the
+ *     launcher refuses to start with it, in the same words.
+ *
+ * Returns how many problems it printed.
+ */
+function checkLocalNetwork(name) {
+  const server = read(profilePath(name, APPS[0]));
+  const web = read(profilePath(name, APPS[1]));
+  let found = 0;
+  const serverSwitch = server.get('LOCAL_NETWORK') === 'on' ? 'on' : 'off';
+  const webSwitch = web.get('NEXT_PUBLIC_LOCAL_NETWORK') === 'on' ? 'on' : 'off';
+  if (serverSwitch !== webSwitch) {
+    console.error(
+      red(
+        `  ✗ envs/${name}: LOCAL_NETWORK is ${serverSwitch} in web-server.env but NEXT_PUBLIC_LOCAL_NETWORK is ` +
+          `${webSwitch} in web-app.env. Run pnpm https:setup (or --off), then pnpm build.`,
+      ),
+    );
+    found += 1;
+  }
+  const frontend = server.get('FRONTEND_URL');
+  if (meantForLocalNetwork(frontend)) {
+    const origin = checkLocalOrigin(frontend);
+    if (!origin.ok) {
+      console.error(
+        red(
+          `  ✗ envs/${name}/web-server.env: FRONTEND_URL is ${frontend}, and ${origin.problem}. ` +
+            'Phones on the shop’s network need exactly https://<address>: run pnpm https:setup.',
+        ),
+      );
+      found += 1;
+    }
+  }
+  return found;
 }
 
 /**

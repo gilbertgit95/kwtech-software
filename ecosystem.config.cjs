@@ -1,7 +1,8 @@
 /**
  * pm2 process file: the API and the web app as background services, from
- * their BUILT output (`pnpm pm2:start` builds first). Not a dev server: nothing
- * here watches or rebuilds, so an edit needs another `pnpm pm2:start`.
+ * their BUILT output. ⚠ `pnpm pm2:start` does NOT build (it is `pm2
+ * startOrReload` alone): run `pnpm build` first. Not a dev server: nothing
+ * here watches or rebuilds, so an edit needs `pnpm build && pnpm pm2:start`.
  *
  * Each app runs its node process directly rather than through `pnpm start` or
  * turbo. pm2 supervises the process it spawned; behind a pnpm or turbo wrapper
@@ -15,7 +16,21 @@
  * CommonJS (.cjs) because pm2 loads this file with require().
  */
 const { resolve } = require('node:path');
-const { caddyLaunch, httpsHost, webListenHost } = require('./deploy/https/host.cjs');
+const { caddyLaunch, httpsHost, requireLocalOrigin, webListenHost } = require('./deploy/https/host.cjs');
+
+/*
+ * ⚠ A FRONTEND_URL meant for the shop's network that fails the whole-origin
+ * rule (a port, a path, a malformed address: deploy/https/origin.cjs) STOPS
+ * the start here, naming the problem. Before #84 it fell through to "no host,
+ * no Caddy" and the apps came up with no HTTPS in front of them and nothing
+ * said why. A domain or http:// profile is not affected.
+ */
+try {
+  requireLocalOrigin();
+} catch (error) {
+  console.error(`\n  ✗ ${error.message}\n`);
+  throw error;
+}
 
 /** The address phones open over HTTPS, or null: the API's FRONTEND_URL (deploy/https/host.cjs). */
 const HTTPS_HOST = httpsHost();

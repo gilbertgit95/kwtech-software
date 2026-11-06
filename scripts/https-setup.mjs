@@ -13,9 +13,12 @@
  *   3. on Linux, lets Caddy use ports 80 and 443 without root (`setcap`, asks
  *      for the sudo password once);
  *   4. writes the settings into the ACTIVE profile (`pnpm env:show`):
- *      FRONTEND_URL, CORS_ORIGINS and LISTEN_HOST="127.0.0.1" (both apps
- *      answer only to Caddy) for the API, NEXT_PUBLIC_WS_URL for the web
- *      app — and nothing else in either file;
+ *      FRONTEND_URL, CORS_ORIGINS, LISTEN_HOST="127.0.0.1" (both apps
+ *      answer only to Caddy) and LOCAL_NETWORK="on" for the API,
+ *      NEXT_PUBLIC_WS_URL and NEXT_PUBLIC_LOCAL_NETWORK="on" for the web app —
+ *      and nothing else in either file. `--off` turns both switches "off" in
+ *      the same run, so the Local Network page comes and goes with local
+ *      HTTPS itself and the two files never disagree;
  *   5. checks the Caddyfile with that address;
  *   6. says what is left: the rebuild, the start, and each phone.
  *
@@ -236,7 +239,13 @@ async function turnOn() {
      */
     {
       file: SERVER_ENV,
-      set: { FRONTEND_URL: origin, CORS_ORIGINS: `${origin},${LOCAL_WEB}`, LISTEN_HOST: '127.0.0.1' },
+      set: {
+        FRONTEND_URL: origin,
+        CORS_ORIGINS: `${origin},${LOCAL_WEB}`,
+        LISTEN_HOST: '127.0.0.1',
+        // Server → Local Network (#66): the page that shows phones the certificate and this address.
+        LOCAL_NETWORK: 'on',
+      },
     },
     /*
      * ⚠ A PATH, NOT wss://<address> (issue #50). The browser resolves it against
@@ -246,7 +255,8 @@ async function turnOn() {
      * network address too, which on WSL never answers (docs/HTTPS.md §4): the
      * page loaded, and nothing on it was ever live.
      */
-    { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: '/api/v1/graphql' } },
+    // ⚠ Its partner, written in the SAME run so the two never disagree. Read at build: step 2's rebuild shows the page.
+    { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: '/api/v1/graphql', NEXT_PUBLIC_LOCAL_NETWORK: 'on' } },
   ]);
   validateCaddyfile(address);
 
@@ -271,7 +281,10 @@ async function turnOn() {
      https://${address}, never :8081 or :8080. ⚠ THIS computer uses
      https://localhost — its own network address may not answer it, and on
      http://localhost:8081 live updates cannot connect.)
-  3. On each phone or tablet, on this Wi-Fi, open
+  3. On each phone or tablet, on this Wi-Fi: a super admin opens
+     Server → Local Network on https://localhost here, and the phone scans
+     its QR codes (the certificate, then the app). Compare the fingerprint
+     before trusting it. Or by hand: open
        http://${address}/kwtech-local-ca.crt
      and trust it (docs/HTTPS.md: iPhone needs Install, then Certificate Trust
      Settings). Then open ${origin}.
@@ -284,10 +297,23 @@ async function turnOn() {
 async function turnOff() {
   console.log('\n  Back to plain http://localhost\n');
   writeSettings([
-    { file: SERVER_ENV, set: { FRONTEND_URL: LOCAL_WEB }, remove: ['CORS_ORIGINS', 'LISTEN_HOST'] },
-    { file: WEB_ENV, set: { NEXT_PUBLIC_WS_URL: 'ws://localhost:8080/api/v1/graphql' } },
+    {
+      file: SERVER_ENV,
+      set: { FRONTEND_URL: LOCAL_WEB, LOCAL_NETWORK: 'off' },
+      remove: ['CORS_ORIGINS', 'LISTEN_HOST'],
+    },
+    /*
+     * The switches are set "off" rather than removed: both .env.example files
+     * declare them, and `pnpm env:check` lists a profile that lacks one.
+     */
+    {
+      file: WEB_ENV,
+      set: { NEXT_PUBLIC_WS_URL: 'ws://localhost:8080/api/v1/graphql', NEXT_PUBLIC_LOCAL_NETWORK: 'off' },
+    },
   ]);
-  console.log('\n  Then: pnpm build && pnpm pm2:start (pm2 no longer starts Caddy). .caddy/ is kept.\n');
+  console.log(
+    '\n  Then: pnpm build && pnpm pm2:start (pm2 no longer starts Caddy, and Server → Local Network goes). .caddy/ is kept.\n',
+  );
 }
 
 await (flag('off') ? turnOff() : turnOn());

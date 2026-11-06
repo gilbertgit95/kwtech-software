@@ -9,6 +9,7 @@ import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
 import { BOOKING_OPERATIONS } from '@kwtech/module-booking';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
 import { JOBS_OPERATIONS } from '@kwtech/module-jobs';
+import { LOCAL_NETWORK_OPERATIONS } from '@kwtech/module-local-network';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
 import { PRINT_OPERATIONS } from '@kwtech/module-print';
@@ -79,6 +80,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   stock: STOCK_OPERATIONS,
   booking: BOOKING_OPERATIONS,
   jobs: JOBS_OPERATIONS,
+  local_network: LOCAL_NETWORK_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {

@@ -18,6 +18,7 @@
  */
 const { existsSync, readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { checkLocalOrigin, isPrivateAddress, meantForLocalNetwork } = require('./origin.cjs');
 
 const REPO = resolve(__dirname, '..', '..');
 
@@ -62,26 +63,36 @@ function webListenHost() {
   return ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(host) ? 'localhost' : host;
 }
 
+/**
+ * The host Caddy serves, or null for a profile with nothing to serve on the
+ * shop's network. The whole-origin rule decides (origin.cjs), so Caddy is
+ * never started for an address the Local Network page would refuse.
+ *
+ * ⚠ Null for a BAD local origin too. A caller that starts Caddy must call
+ * `requireLocalOrigin()` first, or a typo (`https://192.168.1.68:8443`)
+ * quietly starts the apps with no HTTPS in front of them — the silent branch
+ * this replaced (#84).
+ */
 function httpsHost() {
-  const frontend = serverSetting('FRONTEND_URL');
-  if (!frontend) return null;
-  try {
-    const url = new URL(frontend);
-    return url.protocol === 'https:' && isPrivateAddress(url.hostname) ? url.hostname : null;
-  } catch {
-    return null;
-  }
+  const check = checkLocalOrigin(serverSetting('FRONTEND_URL'));
+  return check.ok ? check.host : null;
 }
 
 /**
- * A private IPv4 address — where phones on the shop's Wi-Fi reach the server.
- * The same ranges `pnpm https:setup` detects (scripts/https-setup.mjs).
+ * Throws, naming the problem, when FRONTEND_URL was meant for the shop's
+ * network (`https://` on a private address, or unparsable) but fails the
+ * whole-origin rule. Does nothing for a domain or `http://`: those start as
+ * they always have.
  */
-function isPrivateAddress(host) {
-  const parts = host.split('.');
-  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return false;
-  const [a, b] = parts.map(Number);
-  return a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
+function requireLocalOrigin() {
+  const frontend = serverSetting('FRONTEND_URL');
+  if (!meantForLocalNetwork(frontend)) return;
+  const check = checkLocalOrigin(frontend);
+  if (check.ok) return;
+  throw new Error(
+    `FRONTEND_URL is ${frontend} in apps/web-server/.env.local, and ${check.problem}. ` +
+      'Phones on the shop’s network need exactly https://<address>: run pnpm https:setup.',
+  );
 }
 
 /** What Caddy is started with, both ways. */
@@ -93,4 +104,13 @@ function caddyLaunch(host) {
   };
 }
 
-module.exports = { httpsHost, listenHost, webListenHost, isPrivateAddress, caddyLaunch, REPO };
+module.exports = {
+  httpsHost,
+  requireLocalOrigin,
+  serverSetting,
+  listenHost,
+  webListenHost,
+  isPrivateAddress,
+  caddyLaunch,
+  REPO,
+};

@@ -77,6 +77,20 @@ const envSchema = z.object({
    * product has one, and an empty line is better than an invented one.
    */
   APP_TAGLINE: optionalText,
+
+  /**
+   * Local Network's page and drawer entry (#66): `on` only on a computer that
+   * serves the shop's own network through Caddy. Off unless said otherwise.
+   *
+   * ⚠ `NEXT_PUBLIC_` ON PURPOSE, unlike everything above: `src/modules.ts`
+   * composes the descriptors at BUILD, for the server and the browser alike,
+   * and the drawer is derived from them, so the switch must be inlined into
+   * both. It is no secret (it says whether one page exists). `pnpm
+   * https:setup` writes it beside the API's LOCAL_NETWORK, and a profile
+   * change needs `pnpm build` to show. Validated here so a typo ("yes") stops
+   * the boot instead of quietly meaning off.
+   */
+  NEXT_PUBLIC_LOCAL_NETWORK: z.enum(['on', 'off']).default('off'),
 });
 
 const validated = envSchema

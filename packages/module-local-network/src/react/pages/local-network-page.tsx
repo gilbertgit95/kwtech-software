@@ -4,7 +4,6 @@ import { cn, QrCode } from '@kwtech/web-ui/react';
 import { Copy, Download, LoaderCircle, RefreshCw, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { LOCAL_NETWORK_CERTIFICATE_FILE } from '../../domain/addresses.js';
-import { LOCAL_NETWORK_API_OFF_MESSAGE } from '../../domain/messages.js';
 import type { LocalNetworkCertificateView, LocalNetworkView } from '../../types.js';
 import type { LocalNetworkClient } from '../local-network-client.js';
 import { useLocalNetwork } from '../use-local-network.js';
@@ -28,7 +27,7 @@ export interface LocalNetworkPageProps {
  */
 export function LocalNetworkPage({ client, protocol }: LocalNetworkPageProps = {}) {
   const state = useLocalNetwork(client ? { client } : {});
-  const answer = state.answer;
+  const view = state.view;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -67,16 +66,13 @@ export function LocalNetworkPage({ client, protocol }: LocalNetworkPageProps = {
         </div>
       ) : null}
 
-      {answer === null && !state.error ? (
+      {view === null && !state.error ? (
         <p role="status" className="text-sm text-muted-foreground">
           Loading…
         </p>
       ) : null}
 
-      {answer?.kind === 'api_off' ? <NotSetUp message={LOCAL_NETWORK_API_OFF_MESSAGE} /> : null}
-      {answer?.kind === 'view' ? (
-        <LocalNetworkSections view={answer.view} protocol={protocol ?? currentProtocol()} />
-      ) : null}
+      {view ? <LocalNetworkSections view={view} protocol={protocol ?? currentProtocol()} /> : null}
     </div>
   );
 }
@@ -122,6 +118,7 @@ export function LocalNetworkSections({ view, protocol }: LocalNetworkSectionsPro
   );
 }
 
+/** Every state but `ready` — the API's switch off, the certificate missing, a bad address — shows only its reason. */
 function NotSetUp({ message }: { message: string }) {
   return (
     <section

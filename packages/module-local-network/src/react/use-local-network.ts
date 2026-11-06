@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createLocalNetworkClient, type LocalNetworkAnswer, type LocalNetworkClient } from './local-network-client.js';
+import type { LocalNetworkView } from '../types.js';
+import { createLocalNetworkClient, type LocalNetworkClient } from './local-network-client.js';
 
 export interface LocalNetworkState {
-  answer: LocalNetworkAnswer | null;
+  view: LocalNetworkView | null;
   error: string | null;
   busy: boolean;
   reload: () => Promise<void>;
@@ -18,7 +19,7 @@ export interface LocalNetworkState {
  */
 export function useLocalNetwork(options: { client?: LocalNetworkClient } = {}): LocalNetworkState {
   const client = useMemo(() => options.client ?? createLocalNetworkClient(), [options.client]);
-  const [answer, setAnswer] = useState<LocalNetworkAnswer | null>(null);
+  const [view, setView] = useState<LocalNetworkView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +27,7 @@ export function useLocalNetwork(options: { client?: LocalNetworkClient } = {}): 
     setBusy(true);
     setError(null);
     try {
-      setAnswer(await client.view());
+      setView(await client.view());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load the local network setup.');
     } finally {
@@ -39,7 +40,7 @@ export function useLocalNetwork(options: { client?: LocalNetworkClient } = {}): 
     client
       .view()
       .then((loaded) => {
-        if (!cancelled) setAnswer(loaded);
+        if (!cancelled) setView(loaded);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load the local network setup.');
@@ -50,5 +51,5 @@ export function useLocalNetwork(options: { client?: LocalNetworkClient } = {}): 
   }, [client]);
 
   const dismissError = useCallback(() => setError(null), []);
-  return { answer, error, busy, reload, dismissError };
+  return { view, error, busy, reload, dismissError };
 }

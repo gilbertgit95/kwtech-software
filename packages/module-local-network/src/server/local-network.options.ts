@@ -1,3 +1,4 @@
+import { localNetworkIsEnabled } from '../enabled.js';
 import type { LocalNetworkOriginCheck } from '../types.js';
 
 export interface LocalNetworkModuleOptions {
@@ -12,7 +13,7 @@ export interface LocalNetworkModuleOptions {
    * `.caddy/pki/authorities/local/root.crt`. Not the folder: the folder holds
    * `root.key` and `intermediate.key` beside it, and a module given a folder
    * is one `readdir` from serving them. The module knows no paths; the app
-   * does. Required while on.
+   * does. Required while on, ignored while off.
    */
   certificatePath?: string | undefined;
   /**
@@ -30,9 +31,15 @@ export interface LocalNetworkModuleOptions {
   expose?: { graphql?: boolean } | undefined;
 }
 
-export interface ResolvedLocalNetworkOptions {
+/** What the service needs while the switch is on. */
+export interface LocalNetworkSetup {
   certificatePath: string;
   origin: LocalNetworkOriginCheck;
+}
+
+export interface ResolvedLocalNetworkOptions {
+  /** Null while the switch is off: the query answers `off` and reads nothing. */
+  setup: LocalNetworkSetup | null;
   publishedOrigin: string | null;
   resolveActorId?: (request: unknown) => string | undefined;
 }
@@ -42,10 +49,16 @@ export interface ResolvedLocalNetworkOptions {
  * mistake stops the API with the fix named rather than showing a page that
  * says "not set up" for a reason that is not true.
  *
- * Only called while the switch is on: off, nothing is checked, because off
- * is a remote server, where there is no certificate to point at.
+ * Off, nothing is checked, because off is a remote server, where there is no
+ * certificate to point at.
  */
 export function resolveLocalNetworkOptions(options: LocalNetworkModuleOptions): ResolvedLocalNetworkOptions {
+  const common = {
+    publishedOrigin: options.publishedOrigin ?? null,
+    ...(options.resolveActorId ? { resolveActorId: options.resolveActorId } : {}),
+  };
+  if (!localNetworkIsEnabled(options)) return { setup: null, ...common };
+
   const certificatePath = options.certificatePath?.trim();
   if (!certificatePath) {
     throw new Error(
@@ -67,10 +80,5 @@ export function resolveLocalNetworkOptions(options: LocalNetworkModuleOptions): 
       'localNetworkServerModule: origin is required while enabled. Pass checkLocalOrigin(FRONTEND_URL) from deploy/https/origin.cjs.',
     );
   }
-  return {
-    certificatePath,
-    origin: options.origin,
-    publishedOrigin: options.publishedOrigin ?? null,
-    ...(options.resolveActorId ? { resolveActorId: options.resolveActorId } : {}),
-  };
+  return { setup: { certificatePath, origin: options.origin }, ...common };
 }

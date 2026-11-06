@@ -144,6 +144,9 @@ importers:
       '@kwtech/module-kit':
         specifier: workspace:*
         version: link:../../packages/module-kit
+      '@kwtech/module-local-network':
+        specifier: workspace:*
+        version: link:../../packages/module-local-network
       '@kwtech/module-note':
         specifier: workspace:*
         version: link:../../packages/module-note
@@ -274,6 +277,9 @@ importers:
       '@kwtech/module-kit':
         specifier: workspace:*
         version: link:../../packages/module-kit
+      '@kwtech/module-local-network':
+        specifier: workspace:*
+        version: link:../../packages/module-local-network
       '@kwtech/module-note':
         specifier: workspace:*
         version: link:../../packages/module-note

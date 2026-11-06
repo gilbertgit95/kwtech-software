@@ -110,7 +110,28 @@ describe('LocalNetworkService', () => {
   });
 });
 
+describe('LocalNetworkService, switched off', () => {
+  it('⚠ answers off, shows nothing and opens nothing', async () => {
+    const reader = recordingReader();
+    const off = new LocalNetworkService(resolveLocalNetworkOptions({}), reader.read);
+    const view = await off.view();
+    expect(reader.opened).toEqual([]);
+    expect(view).toEqual({
+      state: 'off',
+      problem: expect.stringContaining('LOCAL_NETWORK="on"'),
+      appUrl: null,
+      certificateUrl: null,
+      certificate: null,
+    });
+  });
+});
+
 describe('resolveLocalNetworkOptions', () => {
+  it('needs nothing while off: a remote server has no certificate to point at', () => {
+    expect(resolveLocalNetworkOptions({ enabled: false }).setup).toBeNull();
+    expect(resolveLocalNetworkOptions({}).setup).toBeNull();
+  });
+
   it('stops the boot without a certificate path or an origin, naming the fix', () => {
     expect(() => resolveLocalNetworkOptions({ enabled: true, origin: ON_THE_SHOP_NETWORK })).toThrow(/root\.crt/u);
     expect(() => resolveLocalNetworkOptions({ enabled: true, certificatePath: '/x/root.crt' })).toThrow(

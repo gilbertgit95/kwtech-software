@@ -3,6 +3,7 @@
 import './load-env.js';
 import { isValidTimeZone } from '@kwtech/module-kit';
 import { z } from 'zod';
+import { checkLocalOrigin } from './local-network.js';
 import { parseTrustProxy } from './trust-proxy.js';
 
 /**
@@ -96,6 +97,22 @@ const envSchema = z
 
     /** Where the Next app lives. The CORS allow-list and reset links both need it. */
     FRONTEND_URL: z.url().default('http://localhost:8081'),
+
+    /**
+     * Local Network (module-local-network, #66): a super admin's page with the
+     * shop's local certificate and the address phones open. `on` only on a
+     * computer that serves the shop's own network through Caddy; `pnpm
+     * https:setup` writes it, and `--off` removes it.
+     *
+     * ⚠ OFF unless said otherwise: a remote server with a domain never sets it,
+     * and there the page would publish an address and a certificate that are
+     * wrong. Off, the API still answers the page's query, with `off`, and
+     * reads nothing (the schema is the same either way, #84).
+     *
+     * ⚠ Its partner is the web app's NEXT_PUBLIC_LOCAL_NETWORK, read at BUILD.
+     * `pnpm env:check` reports a profile where the two disagree.
+     */
+    LOCAL_NETWORK: z.enum(['on', 'off']).default('off'),
 
     /**
      * Signs the access token. Nothing else in the system uses it: a shared secret
@@ -383,6 +400,12 @@ const envSchema = z
     AUTH_MFA_ISSUER_LABEL: env.AUTH_MFA_ISSUER_LABEL ?? env.APP_NAME,
     AUTH_GOOGLE_REDIRECT_URI:
       env.AUTH_GOOGLE_REDIRECT_URI ?? `${env.FRONTEND_URL.replace(/\/+$/, '')}/api/auth/google/callback`,
+    /*
+     * The whole-origin rule's answer for FRONTEND_URL, worked out ONCE here
+     * (deploy/https/origin.cjs, the one copy). module-local-network is handed
+     * the answer; it never reads FRONTEND_URL itself.
+     */
+    LOCAL_NETWORK_ORIGIN: checkLocalOrigin(env.FRONTEND_URL),
     /*
      * A bare address gets the product name attached; one that already carries a
      * display name is left exactly as configured.
