@@ -1,6 +1,6 @@
 # @kwtech/module-backup
 
-**Database backups** (issue #2): a super admin's **Database → Backups** page
+**Database backups** (issue #2): a super admin's **Server → Backups** page
 (back up now, download, delete, restore), a **daily backup at 9 PM**, and the
 same from the **command line**.
 
@@ -21,9 +21,13 @@ backupWebModule(),
 export const { GET } = createBackupDownloadRouteHandlers();
 ```
 
-One page, `/admin/database/backups`, in its own **Database** drawer section
-(order 60, after Administration), behind `backup:read`. It is the first page
-of that section; other database tasks join it. Keep the app's proxy off
+One page, `/admin/database/backups`, in the **Server** drawer section
+(`SERVER_NAV_GROUP`, order 60, after Administration), behind `backup:read`.
+It is the first page of that section; Local Network (#66) and the server's
+other tasks join it. The section was **Database** until #76; the page's
+address keeps `database` so existing links still open it. Every module in
+the section declares the string `'Server'` itself (modules never import each
+other), and its web-module test pins it. Keep the app's proxy off
 `/api/backups`.
 
 | Option | Default | Meaning |
