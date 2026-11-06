@@ -8,19 +8,23 @@ import type { LocalNetworkState } from '../types.js';
  * `publishedOrigin` is the profile's `FRONTEND_URL` as the app read it, named
  * in the `origin_invalid` sentence so the person sees what is wrong. It is
  * already public: it is the address the web app is served at. Null when the
- * profile has none.
+ * profile has none. `problem` is the whole-origin rule's own words for what
+ * is wrong with it (`deploy/https/origin.cjs`: "it has a port", …), the same
+ * words `pnpm env:check` and the launcher print, added when given.
  */
 export function localNetworkStateMessage(
   state: Exclude<LocalNetworkState, 'ready'>,
-  publishedOrigin: string | null,
+  detail: { publishedOrigin: string | null; problem?: string | null | undefined },
 ): string {
   switch (state) {
     case 'certificate_missing':
       return 'Local HTTPS is on in this profile, but its certificate is not on this computer: run `pnpm https:setup` (docs/HTTPS.md §4).';
-    case 'origin_invalid':
-      return publishedOrigin
-        ? `Local Network is on, but this profile publishes ${publishedOrigin}, not an address on the shop’s network: run \`pnpm https:setup\`.`
+    case 'origin_invalid': {
+      const because = detail.problem ? ` (${detail.problem})` : '';
+      return detail.publishedOrigin
+        ? `Local Network is on, but this profile publishes ${detail.publishedOrigin}${because}, not an address on the shop’s network: run \`pnpm https:setup\`.`
         : 'Local Network is on, but this profile publishes no address: run `pnpm https:setup`.';
+    }
   }
 }
 

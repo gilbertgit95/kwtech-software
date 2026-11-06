@@ -45,3 +45,14 @@ export interface LocalNetworkView {
   certificateUrl: string | null;
   certificate: LocalNetworkCertificateView | null;
 }
+
+/**
+ * The whole-origin rule's answer, as the app hands it over: `checkLocalOrigin`
+ * in `deploy/https/origin.cjs` (phase 5 of #66) returns exactly this shape.
+ * ⚠ The module holds no copy of the rule: it believes this answer and only
+ * builds addresses from `host`.
+ */
+export type LocalNetworkOriginCheck = { ok: true; host: string } | { ok: false; problem: string };
+
+/** Every reason the query is refused. Each has one sentence in `local-network.errors.ts`. */
+export type LocalNetworkRefusal = 'not_signed_in';

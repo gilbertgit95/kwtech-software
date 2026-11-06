@@ -7,9 +7,57 @@ certificate, with its fingerprints and an explanation, and the server's
 address as text and as QR codes, so nobody has to read the docs or ask what
 the address is.
 
-⚠ **Being built.** Only the pure core exists so far (#78). The server half
-(`/server`), the page (`/react`) and the wiring into both apps come in phases
-3–5 of `docs/LOCAL-NETWORK-PLAN.md` §9. No app composes it yet.
+⚠ **Being built.** The pure core (#78) and the server half (#80) exist. The
+page (`/react`) and the wiring into both apps come in phases 4–5 of
+`docs/LOCAL-NETWORK-PLAN.md` §9. No app composes it yet.
+
+## In a NestJS app
+
+```ts
+import { localNetworkServerModule } from '@kwtech/module-local-network/server';
+
+localNetworkServerModule({
+  enabled: env.LOCAL_NETWORK === 'on',                 // off unless exactly true
+  certificatePath: '<repo>/.caddy/pki/authorities/local/root.crt', // ONE file, never the folder
+  origin: checkLocalOrigin(env.FRONTEND_URL),          // deploy/https/origin.cjs (phase 5)
+  publishedOrigin: env.FRONTEND_URL,                   // named in the message when it is wrong
+  resolveActorId: (request) => …,
+});
+```
+
+| Option | Required | What it is |
+|---|---|---|
+| `enabled` | no | The switch. Anything but `true` is off: **nothing is registered**, not even the options, and nothing below is checked. |
+| `certificatePath` | while on | The path of `root.crt`. A path ending in `.key` stops the boot. |
+| `origin` | while on | `{ ok: true, host } \| { ok: false, problem }`, the whole-origin rule's answer. The module holds no copy of the rule. |
+| `publishedOrigin` | no | The `FRONTEND_URL` that answer is about. |
+| `resolveActorId` | yes, in practice | Principal → `userId`. Without it every call is refused as signed out. |
+| `expose.graphql` | no | Default `true`. |
+
+There are no ports, no Prisma client and no REST route: the module reads one
+file and answers one query.
+
+**`Query.localNetwork`** (app level, no scope declared, bound to
+`local_network:read`) returns a `LocalNetworkView`, worked out on **every
+request**, so a new `pnpm https:setup` or a deleted `.caddy/` shows on the next
+page load without restarting the API:
+
+1. origin not on the shop's network → `origin_invalid`, and ⚠ the certificate
+   is not even read;
+2. certificate missing or unreadable → `certificate_missing`;
+3. otherwise `ready`, with the details from `node:crypto`'s
+   `X509Certificate` (the same fingerprints `openssl x509 -fingerprint` prints).
+
+### ⚠ The private key is never read
+
+- Only `certificatePath` is ever opened. Nothing lists the folder, which holds
+  `root.key` and `intermediate.key`.
+- A file that holds a `PRIVATE KEY` block is refused, and the page says "not
+  set up".
+- The PEM returned is the **parsed** certificate re-encoded, never the file's
+  bytes, so nothing else in the file can reach the page.
+- `test/local-network.service.test.ts` reads a folder laid out as Caddy's
+  through a recording reader, and asserts `root.crt` is the only path opened.
 
 ## The domain entry point
 
@@ -19,7 +67,7 @@ import {
   LOCAL_NETWORK_FEATURE_REGISTRY, // for the app's seed, ALWAYS composed (below)
   localNetworkIsEnabled,          // the switch: on only for `enabled: true`
   localNetworkAddresses,          // host → { appUrl, certificateUrl }
-  localNetworkStateMessage,       // what the page says when it shows nothing
+  localNetworkStateMessage,       // (state, { publishedOrigin, problem }) → what the page says when it shows nothing
   LOCAL_NETWORK_API_OFF_MESSAGE,  // the page's words when only the API's switch is off
   LOCAL_NETWORK_OPERATIONS,       // the one query the page sends
   type LocalNetworkView,
@@ -76,5 +124,4 @@ one copy, in `origin.cjs`.
 Granted to nobody by the module; `super-admin` holds every registered key. Not
 privileged: everything it shows is public already, and the private key is
 never read. ⚠ Snake_case, not `local-network:read`: module-permissions'
-`FEATURE_KEY_PATTERN` refuses a hyphen. Its binding, `Query.localNetwork`,
-is added with the resolver in phase 3.
+`FEATURE_KEY_PATTERN` refuses a hyphen. It guards `Query.localNetwork`.

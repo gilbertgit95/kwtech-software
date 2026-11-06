@@ -27,6 +27,8 @@ export const LOCAL_NETWORK_FEATURE = {
 
 export type LocalNetworkFeatureKey = (typeof LOCAL_NETWORK_FEATURE)[keyof typeof LOCAL_NETWORK_FEATURE];
 
+const op = (identifier: string) => ({ surface: 'graphql_operation', identifier });
+
 export const LOCAL_NETWORK_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
     key: LOCAL_NETWORK_FEATURE.read,
@@ -36,11 +38,6 @@ export const LOCAL_NETWORK_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     description:
       'See the address phones and computers on the shop’s network open, and download the certificate they install to trust it.',
     tags: ['server'],
-    /*
-     * Empty until the guard exists: `Query.localNetwork` is bound in the same
-     * change that adds its resolver (phase 3 of #66). A binding that names a
-     * surface with no guard reads as coverage while guarding nothing.
-     */
-    bindings: [],
+    bindings: [op('Query.localNetwork')],
   },
 ];
