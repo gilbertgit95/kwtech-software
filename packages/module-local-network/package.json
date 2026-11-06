@@ -1,0 +1,36 @@
+{
+  "name": "@kwtech/module-local-network",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local Network: a super admin's page for connecting phones and computers to an app on the shop's own network — the local authority's certificate and the server's address, as text and QR codes",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput --tsBuildInfoFile dist/.tsbuildinfo.dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "@types/node": "catalog:",
+    "jest": "^30.4.2",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@kwtech/module-kit": "workspace:*"
+  }
+}

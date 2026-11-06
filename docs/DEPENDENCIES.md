@@ -19,7 +19,7 @@ each other still work together. The rules come from PLAN §9 and `CLAUDE.md`;
    │  module-note   module-task   module-basic-pos                 │
    │  module-basic-bookkeeping   module-basic-inventory            │
    │  module-jobs   module-booking   module-print-studio           │
-   │  module-backup                                                │
+   │  module-backup   module-local-network                         │
    │                                                               │
    │  Each depends on module-kit ONLY, with web-ui, React and      │
    │  Nest as OPTIONAL peers. None imports another module.         │
@@ -51,6 +51,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-booking` | module-kit | web-ui, Nest, React | both apps |
 | `module-print-studio` | module-kit (and `pdf-lib`, `pdfjs-dist`, `heic2any`, all used in the browser only) | web-ui, Nest, React | both apps |
 | `module-backup` | module-kit | web-ui, Nest, React, lucide-react | both apps |
+| `module-local-network` | module-kit | none yet (its core only, #78; Nest and React come with its server half and page) | nothing yet (both apps once it is wired, phase 5 of #66) |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
