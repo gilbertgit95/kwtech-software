@@ -409,13 +409,20 @@ copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
 
   ```bash
   sudo apt install libnss3-tools     # certutil (Fedora: nss-tools)
-  DB="$HOME/.pki/nssdb"; [ -d "$DB" ] || DB="$HOME/.local/share/pki/nssdb"   # the one the browser uses
+
+  # The database the browser uses: the older place if it exists, else the new one.
+  HOME_DIR="$HOME"                              # Chrome, Edge, and Chromium from a .deb or .rpm
+  # HOME_DIR="$HOME/snap/chromium/current"      # ⚠ instead, for Chromium installed as a snap
+  DB="$HOME_DIR/.pki/nssdb"; [ -d "$DB" ] || DB="$HOME_DIR/.local/share/pki/nssdb"
+  ls -d "$DB"                                   # must exist: open the browser once first
+
   certutil -d "sql:$DB" -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
   ```
 
-  Then restart the browser. Chromium installed as a **snap** keeps its own
-  database under `~/snap/chromium/current/`: set `DB` to the `pki/nssdb`
-  folder there. **Firefox**
+  Then restart the browser. A snap's Chromium has its own home,
+  `~/snap/chromium/current/`, and keeps its database there by the same
+  rule (`.pki/nssdb`, or `.local/share/pki/nssdb`): uncomment that line
+  before running the rest. **Firefox**
   keeps its own list either way: the Firefox steps below, importing
   `.caddy/pki/authorities/local/root.crt`. (Not yet tried on a Linux server:
   the shop's runs WSL.)
