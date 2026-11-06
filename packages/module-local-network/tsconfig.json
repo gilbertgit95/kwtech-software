@@ -1,10 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // No DOM and no JSX yet: the page (phase 4 of #66) adds them, as
-    // module-backup's tsconfig has them. The root exports no React and the
-    // server no DOM either way.
-    "lib": ["ES2023"],
+    // DOM and JSX for the React half (the Local Network page). The DOMAIN half
+    // imports none of it — `src/index.ts` exports no React, the server no DOM.
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
     "outDir": "dist",
     // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
     // with the build info beside the tsconfig it outlives every `rm -rf dist` —
