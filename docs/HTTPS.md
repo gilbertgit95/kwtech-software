@@ -416,18 +416,19 @@ copy can't be swapped on the way, so it needs no fingerprint. ⚠ Copy
 
   # The database the browser uses, in Chromium's own order: the older place if it
   # exists, else $XDG_DATA_HOME/pki/nssdb if that is set, else ~/.local/share/pki/nssdb.
-  HOME_DIR="$HOME"                              # Chrome, Edge, and Chromium from a .deb or .rpm
-  # HOME_DIR="$HOME/snap/chromium/current"      # ⚠ instead, for Chromium installed as a snap
-  DB="$HOME_DIR/.pki/nssdb"; [ -d "$DB" ] || DB="${XDG_DATA_HOME:-$HOME_DIR/.local/share}/pki/nssdb"
+  # Where THAT browser keeps its files: one line, the browser's, not the terminal's.
+  HOME_DIR="$HOME"; DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"                        # Chrome, Edge, Chromium from a .deb or .rpm
+  # HOME_DIR="$HOME/snap/chromium/current"; DATA_HOME="$HOME_DIR/.local/share"            # ⚠ instead, for Chromium as a snap
+  DB="$HOME_DIR/.pki/nssdb"; [ -d "$DB" ] || DB="$DATA_HOME/pki/nssdb"
   ls -d "$DB"                                   # must exist: open the browser once first
 
   certutil -d "sql:$DB" -A -t "C,," -n "Kwtech local authority" -i .caddy/pki/authorities/local/root.crt
   ```
 
-  Then restart the browser. A snap's Chromium has its own home,
-  `~/snap/chromium/current/`, and keeps its database there by the same
-  rule (`.pki/nssdb`, or `.local/share/pki/nssdb`): uncomment that line
-  before running the rest. **Firefox**
+  Then restart the browser. A snap's Chromium has its own home and its own
+  data folder, `~/snap/chromium/current/` and `.local/share` inside it, and
+  ignores the terminal's `XDG_DATA_HOME`: uncomment the snap line (it sets
+  both) and comment out the line above it. **Firefox**
   keeps its own list either way: the Firefox steps below, importing
   `.caddy/pki/authorities/local/root.crt`. (Not yet tried on a Linux server:
   the shop's runs WSL.)
