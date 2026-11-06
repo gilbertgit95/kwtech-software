@@ -37,6 +37,29 @@ function serverSetting(key) {
 }
 
 /**
+ * One setting EXACTLY as the API reads it: an exported value untrimmed, and a
+ * quoted value in the file with whatever is inside the quotes, spaces
+ * included. Null when unset.
+ *
+ * ⚠ For FRONTEND_URL, not `serverSetting`, which trims and stops at the first
+ * space: the whole-origin rule refuses spaces, and a launcher that trimmed
+ * them away would start Caddy for a value the API (and the Local Network
+ * page) refuses, or read a leading-space value as unset and say nothing at
+ * all (#85 review).
+ */
+function rawServerSetting(key) {
+  const exported = process.env[key];
+  if (exported !== undefined) return exported;
+  const file = resolve(REPO, 'apps/web-server/.env.local');
+  if (!existsSync(file)) return null;
+  const match = readFileSync(file, 'utf8').match(
+    new RegExp(`^\\s*${key}\\s*=\\s*(?:"([^"\\n]*)"|'([^'\\n]*)'|([^\\s#]*))`, 'm'),
+  );
+  if (!match) return null;
+  return match[1] ?? match[2] ?? match[3] ?? null;
+}
+
+/**
  * The address BOTH apps listen on (`LISTEN_HOST`), or null for every address.
  * One setting for the two: the API reads it itself (`config/env.ts`), the web
  * app gets it as `next -H` from `scripts/next.mjs` and pm2, because Next
@@ -74,7 +97,7 @@ function webListenHost() {
  * this replaced (#84).
  */
 function httpsHost() {
-  const check = checkLocalOrigin(serverSetting('FRONTEND_URL'));
+  const check = checkLocalOrigin(rawServerSetting('FRONTEND_URL'));
   return check.ok ? check.host : null;
 }
 
@@ -85,7 +108,7 @@ function httpsHost() {
  * they always have.
  */
 function requireLocalOrigin() {
-  const frontend = serverSetting('FRONTEND_URL');
+  const frontend = rawServerSetting('FRONTEND_URL');
   if (!meantForLocalNetwork(frontend)) return;
   const check = checkLocalOrigin(frontend);
   if (check.ok) return;

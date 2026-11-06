@@ -35,8 +35,13 @@ describe('checkLocalOrigin', () => {
     ['https://pos.example.com', 'its host is not a private IPv4 address (10.x, 172.16–31.x or 192.168.x)'],
     ['https://8.8.8.8', 'its host is not a private IPv4 address (10.x, 172.16–31.x or 192.168.x)'],
     ['https://172.32.0.1', 'its host is not a private IPv4 address (10.x, 172.16–31.x or 192.168.x)'],
+    ['https://192.168.1', 'write it exactly as https://192.168.0.1'],
+    ['https://[::1]', 'its host is not a private IPv4 address (10.x, 172.16–31.x or 192.168.x)'],
     ['https://localhost', 'its host is not a private IPv4 address (10.x, 172.16–31.x or 192.168.x)'],
     ['https://:443', 'it is not a valid address'],
+    [' https://192.168.1.68', 'it has spaces around it'],
+    ['https://192.168.1.68 ', 'it has spaces around it'],
+    ['   ', 'it is empty'],
     ['', 'it is empty'],
     [undefined, 'it is empty'],
   ])('⚠ refuses %s: %s', (url, problem) => {

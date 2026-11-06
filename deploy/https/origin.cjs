@@ -24,6 +24,8 @@
  * CommonJS, because pm2 loads the ecosystem file with require().
  */
 
+const { isIPv4 } = require('node:net');
+
 const PRIVATE_RANGES = '10.x, 172.16–31.x or 192.168.x';
 
 /**
@@ -31,9 +33,9 @@ const PRIVATE_RANGES = '10.x, 172.16–31.x or 192.168.x';
  * The same ranges `pnpm https:setup` detects (scripts/https-setup.mjs).
  */
 function isPrivateAddress(host) {
-  const parts = host.split('.');
-  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return false;
-  const [a, b] = parts.map(Number);
+  // Node's own IPv4 check rather than a hand-written one. A URL's host is already normalised by the parser.
+  if (!isIPv4(host)) return false;
+  const [a, b] = host.split('.').map(Number);
   return a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
@@ -43,8 +45,14 @@ function isPrivateAddress(host) {
  * launcher, `pnpm env:check` and the page print the same words.
  */
 function checkLocalOrigin(url) {
-  const text = typeof url === 'string' ? url.trim() : '';
-  if (!text) return { ok: false, problem: 'it is empty' };
+  const text = typeof url === 'string' ? url : '';
+  if (!text.trim()) return { ok: false, problem: 'it is empty' };
+  /*
+   * ⚠ Refused, not trimmed: "exactly https://<address>" means the profile says
+   * what phones will be shown, and a value with spaces around it (inside the
+   * quotes of an env file) is not that, however the URL parser reads it.
+   */
+  if (text.trim() !== text) return { ok: false, problem: 'it has spaces around it' };
   let parsed;
   try {
     parsed = new URL(text);
