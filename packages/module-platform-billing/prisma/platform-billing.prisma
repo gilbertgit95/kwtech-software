@@ -1,0 +1,317 @@
+// Platform billing's slice of the data model (docs/PLATFORM-BILLING-PLAN.md).
+//
+// Composed into the app's Prisma schema at generate time — this file is the
+// source. Models are prefixed `PlatformBilling` and mapped to
+// `platform_billing_*`.
+//
+//   request ──▶ payment (every version of the details, never edited)
+//      │──────▶ bill (one or more: a cancelled one is kept, a new one issued)
+//      │──────▶ receipt (on approval, or a close as credit)
+//      └──────▶ event (the timeline, each step with its reason code)
+//
+//   credit (the ledger per organization; the balance is the sum)
+//   price (per plan, from a day on)    settings (one row)    counter (per sequence)
+//
+// ⚠ KEYED BY `organizationId`, NEVER `workspaceId`: billing is about the whole
+// organization (plan §3). `organizationId`, `planKey` and every user id are
+// BARE STRINGS with no foreign key into `perm_*` or `auth_*` (PLAN §9).
+//
+// ⚠ BILLS AND RECEIPTS ARE SNAPSHOTS. `snapshot` is what the document said
+// when issued, and is never rewritten: a plan renamed, a price changed or an
+// organization deleted later leaves every issued document reading as it did.
+// Only the STAMP (`status`, `voidedAt`) changes, and each change is an event.
+//
+// ⚠ NOTHING IS DELETED. A request is withdrawn, rejected, voided or closed; a
+// bill is cancelled; a receipt is voided. Money history with holes in it is
+// the first thing an accountant asks about.
+
+/// What an organization asked for (`RequestKind` in the domain).
+enum PlatformBillingRequestKind {
+  subscribe
+  renew
+  change_plan
+  replace
+  cancel
+}
+
+/// Where a request is (`RequestState`). Only `pending` moves.
+enum PlatformBillingRequestState {
+  pending
+  approved
+  rejected
+  withdrawn
+  voided
+  closed_as_credit
+}
+
+/// How the money was sent (`PLATFORM_BILLING_PAYMENT_METHODS`).
+enum PlatformBillingPaymentMethod {
+  cash
+  e_wallet
+  bank_transfer
+}
+
+/// The stamp on a bill (plan §7).
+enum PlatformBillingBillStatus {
+  unpaid
+  /// Payment details covering it were entered; an approver has not decided.
+  submitted
+  paid
+  cancelled
+}
+
+/// One request: a subscribe, a renewal, a plan change, a replacement or a cancel.
+model PlatformBillingRequest {
+  id             String                      @id @default(cuid())
+  organizationId String
+  kind           PlatformBillingRequestKind
+  state          PlatformBillingRequestState @default(pending)
+
+  /// The plan asked for. For a renewal, the plan renewed; for a cancel, the plan ended.
+  planKey     String
+  /// The plan the organization was on when it asked: what a change moves away from.
+  fromPlanKey String?
+
+  /// ⚠ ONE PENDING REQUEST PER ORGANIZATION, without raw SQL (plan §4).
+  /// `organizationId` while pending, NULL once decided: Postgres treats NULLs
+  /// as distinct, so decided rows coexist freely and a second pending one is a
+  /// unique violation. Two owners pressing Request at once get one request.
+  /// The same stand-in for a partial index as `perm_subscription.liveOrganizationId`.
+  pendingOrganizationId String? @unique
+
+  requestedById String
+  requestedAt   DateTime @default(now())
+
+  /// The day the request was priced, in the platform's time zone. An upgrade
+  /// is priced at submission and its amount locked (D12); a downgrade's is
+  /// worked out again at approval.
+  pricedOn             DateTime @db.Date
+  /// For a plan change: the period end the price was for. Approval refuses
+  /// once the period has moved on (`quote_expired`).
+  pricedForPeriodEnd   DateTime? @db.Date
+
+  /// ⚠ OPTIMISTIC CONCURRENCY for approval. Bumped by every new version of
+  /// the payment details; approval is conditional on the version the approver
+  /// saw, so details changed under them refuse ("review again").
+  detailsVersion Int @default(0)
+
+  /// The day payment details COVERING the bill were first entered: what makes
+  /// a renewal on time (plan §4) and what earns a hold (D9). Null until then.
+  coveredOn DateTime? @db.Date
+
+  /// Days of hold this request gave (D9), with the reason it did or did not.
+  holdDays   Int     @default(0)
+  holdReason String?
+
+  /// Who decided, when, and why. `decisionReason` is the approver's or the
+  /// owner's own words for a rejection or withdrawal, or a system reason code.
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionReason String?
+
+  /// The approver also made the request (plan §4): recorded, never hidden.
+  selfApproved     Boolean @default(false)
+  /// The approver is a member of the organization (D15): flagged, not blocked.
+  approverIsMember Boolean @default(false)
+
+  /// The period an approval paid for, as days, and the access it gave.
+  periodStart DateTime? @db.Date
+  periodEnd   DateTime? @db.Date
+  billingDay  Int?
+  accessUntil DateTime?
+  /// The `perm_subscription` row the approval wrote. A bare id (PLAN §9).
+  subscriptionId String?
+
+  updatedAt DateTime @updatedAt
+
+  payments PlatformBillingPayment[]
+  bills    PlatformBillingBill[]
+  receipts PlatformBillingReceipt[]
+  events   PlatformBillingEvent[]
+
+  @@index([organizationId, requestedAt])
+  @@index([state, requestedAt])
+  @@map("platform_billing_request")
+}
+
+/// One version of a request's payment details. Every edit is a new row, so
+/// what the approver saw is always on record (plan §4).
+model PlatformBillingPayment {
+  id        String @id @default(cuid())
+  requestId String
+  /// 1, 2, 3… — equals the request's `detailsVersion` when it was written.
+  version   Int
+
+  method  PlatformBillingPaymentMethod
+  /// Centavos.
+  amount  Int
+  paidOn  DateTime @db.Date
+  /// As typed; required for e-wallet and bank transfer.
+  reference           String?
+  /// `normaliseReference(reference)`: what reuse is checked against.
+  referenceNormalised String?
+  sender String?
+  note   String?
+
+  /// `owner` for the organization's details, `approver` for what an approver
+  /// confirmed at approval (pre-filled from the owner's).
+  source      String
+  enteredById String
+  enteredAt   DateTime @default(now())
+
+  request PlatformBillingRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, version])
+  @@index([referenceNormalised])
+  @@map("platform_billing_payment")
+}
+
+/// A bill. Numbered without gaps; `snapshot` is what it said when issued.
+model PlatformBillingBill {
+  id             String @id @default(cuid())
+  requestId      String
+  organizationId String
+  /// From the `bill` counter, taken in the creating transaction.
+  number Int @unique
+  status PlatformBillingBillStatus @default(unpaid)
+  /// Centavos: what to pay, after credit.
+  total    Int
+  currency String
+  /// The lines, plans, period and issuer as printed (`BillSnapshot`).
+  snapshot Json
+  issuedAt DateTime @default(now())
+
+  cancelledAt     DateTime?
+  /// A reason code (`access_ended_before_details`, `withdrawn`, `rejected`, …).
+  cancelledReason String?
+
+  request  PlatformBillingRequest   @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  receipts PlatformBillingReceipt[]
+
+  @@index([organizationId, issuedAt])
+  @@index([requestId])
+  @@map("platform_billing_bill")
+}
+
+/// An acknowledgement receipt: issued on approval or a close as credit, VOID when reversed.
+model PlatformBillingReceipt {
+  id             String  @id @default(cuid())
+  requestId      String
+  billId         String?
+  organizationId String
+  /// From the `receipt` counter.
+  number Int @unique
+  /// Centavos received, as the approver confirmed it.
+  amount   Int
+  currency String
+  method   PlatformBillingPaymentMethod
+  /// `payment`, or `closed_as_credit` ("Payment received, held as credit").
+  kind     String @default("payment")
+  snapshot Json
+  issuedAt DateTime @default(now())
+  issuedById String
+
+  voidedAt   DateTime?
+  voidedById String?
+  voidReason String?
+
+  request PlatformBillingRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  bill    PlatformBillingBill?   @relation(fields: [billId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, issuedAt])
+  @@map("platform_billing_receipt")
+}
+
+/// The credit ledger. Positive adds credit, negative spends it; the balance is
+/// the sum and may go negative after a void (owed on the next bill, plan §4).
+/// Credit outlives an expired subscription, and is never cash.
+model PlatformBillingCredit {
+  id             String @id @default(cuid())
+  organizationId String
+  /// Centavos, signed.
+  amount Int
+  /// `overpayment`, `change_credit`, `credit_used`, `owed_cleared`,
+  /// `approval_lag`, `archive`, `void_reversal`, `adjustment`.
+  kind      String
+  requestId String?
+  billId    String?
+  receiptId String?
+  note      String?
+  createdById String?
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("platform_billing_credit")
+}
+
+/// A plan's monthly price, from a day on. The price on a day is the row with
+/// the latest `effectiveFrom` on or before it, so a change never reprices a
+/// bill already issued, and the past stays answerable.
+model PlatformBillingPrice {
+  id            String   @id @default(cuid())
+  planKey       String
+  /// Centavos per month.
+  monthly       Int
+  effectiveFrom DateTime @db.Date
+  setById       String
+  createdAt     DateTime @default(now())
+
+  @@unique([planKey, effectiveFrom])
+  @@map("platform_billing_price")
+}
+
+/// The platform's billing settings: ONE row, `id = 'platform'` (D17).
+model PlatformBillingSettings {
+  id       String @id @default("platform")
+  /// ISO 4217. ⚠ Locked once any bill exists (D16).
+  currency String @default("PHP")
+  /// IANA. A change applies to new periods only (D16).
+  timeZone String @default("Asia/Manila")
+  /// Grace after the due date. A lower value applies to periods ending after the change (D16).
+  graceDays Int   @default(7)
+  /// Printed on bills and receipts.
+  issuerName    String @default("")
+  issuerDetails String @default("")
+  /// Where organizations pay: `[{ method, label, details }]`, shown on the Billing page.
+  paymentAccounts Json @default("[]")
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("platform_billing_settings")
+}
+
+/// ⚠ NUMBERING WITHOUT GAPS: one row per sequence (`bill`, `receipt`), incremented
+/// by an UPDATE in the transaction that issues the document. The row lock holds
+/// a second issuer until the first commits, and a rollback gives the number
+/// back. A Postgres SEQUENCE skips a number on every rollback.
+model PlatformBillingCounter {
+  sequence String @id
+  /// The last number issued; the next document takes `value + 1`.
+  value    Int    @default(0)
+
+  @@map("platform_billing_counter")
+}
+
+/// One step in a request's history, with its reason code and inputs (plan §6).
+model PlatformBillingEvent {
+  id             String   @id @default(cuid())
+  requestId      String
+  organizationId String
+  at             DateTime @default(now())
+  /// Null for a step the system took (an archive, the daily check).
+  actorId String?
+  /// `submitted`, `details_entered`, `bill_issued`, `bill_cancelled`,
+  /// `hold_given`, `approved`, `receipt_issued`, `credit_added`, `rejected`,
+  /// `withdrawn`, …
+  step    String
+  /// Why, as a code the page turns into words.
+  reason  String?
+  /// The inputs: days, amounts, dates, versions.
+  data    Json     @default("{}")
+
+  request PlatformBillingRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, at])
+  @@index([organizationId, at])
+  @@map("platform_billing_event")
+}

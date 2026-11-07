@@ -20,7 +20,7 @@ each other still work together. The rules come from PLAN §9 and `CLAUDE.md`;
    │  module-basic-bookkeeping   module-basic-inventory            │
    │  module-jobs   module-booking   module-print-studio           │
    │  module-backup   module-local-network                         │
-   │                                                               │
+   │  module-platform-billing                                      │
    │  Each depends on module-kit ONLY, with web-ui, React and      │
    │  Nest as OPTIONAL peers. None imports another module.         │
    └──────────────────────────────▲────────────────────────────────┘
@@ -52,6 +52,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-print-studio` | module-kit (and `pdf-lib`, `pdfjs-dist`, `heic2any`, all used in the browser only) | web-ui, Nest, React | both apps |
 | `module-backup` | module-kit | web-ui, Nest, React, lucide-react | both apps |
 | `module-local-network` | module-kit | web-ui, Nest, React, lucide-react | both apps |
+| `module-platform-billing` | module-kit | Nest | web-server (no pages yet) |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -100,6 +101,9 @@ has a documented, fail-closed meaning — see each module's README.
 | Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today`, then `booking.upcoming_sessions`, then `studio.prune_logs`, then `stock.catch_up`, then `pos.rank_items` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
 | Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans, subscriptions in force, and the fallback plan) |
 | Every organization, for a process that reaches them all with no plan gate (#94) | `JOBS_ORGANIZATIONS` | `jobs/organizations.ts` (reads permissions' organizations) |
+| An organization's live subscription, and permissions' billed writes **inside billing's own transaction** (#93) | `PLATFORM_BILLING_SUBSCRIPTIONS` | `platform-billing/subscriptions.ts`, handing billing's transaction to `PermissionsWriteService` (`sharedTransaction`) |
+| The plans, and how much of each cap an organization uses (a downgrade, D6) | `PLATFORM_BILLING_PLANS` | `platform-billing/plans.ts` (reads permissions' plans, members and workspaces) |
+| Whether an approver belongs to the organization (flagged, D15) | `PLATFORM_BILLING_PEOPLE` | `platform-billing/people.ts` (reads permissions' memberships) |
 | Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |
 | The backup folder and pg_dump / pg_restore (a module never opens a connection) | `BACKUP_STORE` | `backup/pg-backup-store.ts`, shared with the command line (`backup/cli.ts`) |
 | Re-check the restorer's password; sign everybody out after a restore | `BACKUP_PASSWORD_CHECK`, `BACKUP_END_SESSIONS` | module-auth's `AuthService.confirmPassword` and `AuthAdminService.endEverySession`, bound in `app.module.ts` |

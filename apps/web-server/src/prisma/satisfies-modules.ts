@@ -9,6 +9,7 @@ import type { JobsSyncClient, JobsTransaction } from '@kwtech/module-jobs/server
 import type { NotePrismaClient, NoteTransaction } from '@kwtech/module-note/server';
 import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
 import type { PermissionsPrismaClient, PermissionsTransaction } from '@kwtech/module-permissions/server';
+import type { PlatformBillingPrismaClient, PlatformBillingTransaction } from '@kwtech/module-platform-billing/server';
 import type { PrintPrismaClient, PrintTransaction } from '@kwtech/module-print/server';
 import type { StudioPrismaClient, StudioTransaction } from '@kwtech/module-print-studio/server';
 import type { QueuePrismaClient, QueueTransaction } from '@kwtech/module-queuing-window/server';
@@ -61,6 +62,9 @@ export const _queueWriteDelegatesFit: QueueTransaction = client;
 
 export const _noteReadClientFits: NotePrismaClient = client;
 export const _noteWriteDelegatesFit: NoteTransaction = client;
+
+export const _platformBillingReadClientFits: PlatformBillingPrismaClient = client;
+export const _platformBillingWriteDelegatesFit: PlatformBillingTransaction = client;
 
 export const _printReadClientFits: PrintPrismaClient = client;
 export const _printWriteDelegatesFit: PrintTransaction = client;

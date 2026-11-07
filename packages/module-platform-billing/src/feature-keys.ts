@@ -9,10 +9,9 @@ import type { FeatureContribution } from '@kwtech/module-kit';
  * - **Organization level** — the organization's own billing. Split by who may
  *   do it (D8): the owner chooses, changes and cancels the plan; an admin
  *   renews and adds payment details, so a lapse never waits on the owner.
- *   ⚠ These keys are to work WITHOUT a plan (D13, phase 3): an expired or new
- *   organization must still reach the page that renews it. Until phase 3 adds
- *   that one named exemption to `module-permissions`, the plan filter applies
- *   to them like any organization key.
+ *   ⚠ These keys work WITHOUT a plan (D13): the app passes them to
+ *   `module-permissions`' `planExemptFeatures` (#92), so an expired or new
+ *   organization can always reach the page that renews it.
  * - **App level** — platform staff. Split by risk: seeing the queue and the
  *   reports, approving ("we were paid"), voiding a receipt, and editing the
  *   settings are four keys, so a role can read the reports without approving.
@@ -20,10 +19,10 @@ import type { FeatureContribution } from '@kwtech/module-kit';
  *   approval and approving their own unpaid request: the registry refuses an
  *   app key in an organization role or a plan.
  *
- * ⚠ NO BINDINGS YET. Phase 2 (#91) declares the keys and the rules; the
- * operations they guard arrive in phase 4 (#93), each bound here as it is
- * written. Until then the module is not in the app's `MODULE_DECLARATIONS`, so
- * nothing syncs or grants a key that guards nothing.
+ * ⚠ THE BINDINGS ARE THE GUARD. This module cannot use `@RequireFeature`, so
+ * an operation missing here is reachable by anybody signed in;
+ * `test/surface-coverage.test.ts` fails the build on one. `void` binds nothing
+ * until the void arrives (phase 4b).
  */
 export const PLATFORM_BILLING_FEATURE = {
   /** The organization's Billing page: status, bills, receipts, history. */
@@ -46,7 +45,7 @@ export const PLATFORM_BILLING_FEATURE = {
 
 export type PlatformBillingFeatureKey = (typeof PLATFORM_BILLING_FEATURE)[keyof typeof PLATFORM_BILLING_FEATURE];
 
-/** The organization-level keys: those phase 3 lets work without a plan (D13). */
+/** The organization-level keys: those that work without a plan (D13), passed to permissions' `planExemptFeatures`. */
 export const PLATFORM_BILLING_ORGANIZATION_KEYS: readonly PlatformBillingFeatureKey[] = [
   PLATFORM_BILLING_FEATURE.read,
   PLATFORM_BILLING_FEATURE.changePlan,
@@ -55,9 +54,9 @@ export const PLATFORM_BILLING_ORGANIZATION_KEYS: readonly PlatformBillingFeature
 ];
 
 /**
- * Contributed to the app's composed registry in phase 4. Every key below binds
- * its operations then; `test/feature-keys.test.ts` pins the levels and the
- * privileged flags now, so the split cannot drift while nothing enforces it.
+ * Contributed to the app's composed registry (`seed/registry.ts`).
+ * `test/feature-keys.test.ts` pins the levels and the privileged flags, and
+ * `test/surface-coverage.test.ts` the bindings.
  */
 export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] = [
   {
@@ -66,6 +65,12 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'organization',
     label: 'See billing',
     description: "See the organization's plan, what it owes, its bills, receipts and history.",
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingOverview' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingPreview' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingHistory' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingRequest' },
+    ],
     tags: ['platform-billing'],
   },
   {
@@ -74,6 +79,7 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'organization',
     label: 'Choose the plan',
     description: "Subscribe, change the organization's plan, replace a plan no longer offered, or cancel.",
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.requestPlatformBillingPlan' }],
     tags: ['platform-billing'],
   },
   {
@@ -82,6 +88,7 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'organization',
     label: 'Renew the plan',
     description: 'Request the current plan for another month.',
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.renewPlatformBilling' }],
     tags: ['platform-billing'],
   },
   {
@@ -90,6 +97,10 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'organization',
     label: 'Enter payment details',
     description: 'Add or correct how a pending request was paid: method, amount, date and reference.',
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.enterPlatformBillingPayment' },
+      { surface: 'graphql_operation', identifier: 'Mutation.withdrawPlatformBillingRequest' },
+    ],
     tags: ['platform-billing'],
   },
   {
@@ -98,6 +109,12 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'app',
     label: 'See billing requests and reports',
     description: "See every organization's requests, standing and credit, and the platform's billing reports.",
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingQueue' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingReview' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingSettings' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingPrices' },
+    ],
     tags: ['platform-billing'],
   },
   {
@@ -108,6 +125,10 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'app',
     label: 'Approve billing requests',
     description: 'Approve a request once its payment is confirmed, reject it with a reason, or close it as credit.',
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.approvePlatformBillingRequest' },
+      { surface: 'graphql_operation', identifier: 'Mutation.rejectPlatformBillingRequest' },
+    ],
     tags: ['platform-billing'],
   },
   {
@@ -118,6 +139,8 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'app',
     label: 'Void receipts',
     description: 'Void a receipt issued in error, with a reason, reversing what its approval did.',
+    // Bound when the void arrives (phase 4b, #93): a key guarding nothing yet.
+    bindings: [],
     tags: ['platform-billing'],
   },
   {
@@ -129,13 +152,17 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     label: 'Manage billing settings',
     description:
       'Set where organizations pay, the issuer details on bills, the currency, the time zone and the grace days.',
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.setPlatformBillingSettings' },
+      { surface: 'graphql_operation', identifier: 'Mutation.setPlatformBillingPrice' },
+    ],
     tags: ['platform-billing'],
   },
 ];
 
 /**
  * A role a host MAY create, exported as data and never seeded by this module.
- * `app-roles.ts` reads them in phase 4.
+ * The app's `seed/app-roles.ts` reads them.
  */
 export interface PlatformBillingRolePreset {
   key: string;

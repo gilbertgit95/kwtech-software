@@ -9,6 +9,7 @@ import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
+import { PLATFORM_BILLING_ROLE_PRESETS, type PlatformBillingRolePreset } from '@kwtech/module-platform-billing';
 import { PRINT_ROLE_PRESETS, type PrintRolePreset } from '@kwtech/module-print';
 import { STUDIO_ROLE_PRESETS, type StudioRolePreset } from '@kwtech/module-print-studio';
 import { QUEUE_ROLE_PRESETS, type QueueRolePreset } from '@kwtech/module-queuing-window';
@@ -122,6 +123,32 @@ const NOTIFICATION_USER = (() => {
   }
   return preset;
 })();
+
+/**
+ * Billing's presets (#93, PLATFORM-BILLING-PLAN §8), read by key like chat's,
+ * so the list lives in the module and a renamed preset fails the sync instead
+ * of seeding a role that grants less.
+ *
+ * - `platform-billing-owner` is added to `organization-owner`: every
+ *   organization billing key, choosing and changing the plan included (D8).
+ * - `platform-billing-admin` to `organization-admin`: renew, pay and read,
+ *   never choose the plan, so a lapse never waits on the owner (D8).
+ * - `platform-billing-approver` becomes an APP-level role of its own, so a
+ *   person can approve payments without being a super admin.
+ *
+ * `organization-user` and every workspace role hold none.
+ */
+function billingPreset(key: string): PlatformBillingRolePreset {
+  const preset = PLATFORM_BILLING_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) {
+    throw new Error(`module-platform-billing no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  }
+  return preset;
+}
+
+const BILLING_OWNER = billingPreset('platform-billing-owner');
+const BILLING_ADMIN = billingPreset('platform-billing-admin');
+const BILLING_APPROVER = billingPreset('platform-billing-approver');
 
 /**
  * An ordinary signed-in person: their own account, chat, and notifications.
@@ -328,6 +355,9 @@ const ORGANIZATION_ADMIN: SystemRoleDefinition = {
     APP_HUB_FEATURE.layoutManage,
 
     FEATURE.subscriptionsRead,
+
+    // Billing: renew, pay and read, never choose the plan (D8). Works without a plan (D13).
+    ...BILLING_ADMIN.features,
   ],
   limits: {},
 };
@@ -722,7 +752,32 @@ const ORGANIZATION_OWNER: SystemRoleDefinition = {
    * role could not carry the app-level one even if this file asked it to,
    * because a role may only collect features at its own level.
    */
-  features: [...ORGANIZATION_ADMIN.features, FEATURE.organizationUpdate],
+  features: [
+    ...new Set([
+      ...ORGANIZATION_ADMIN.features,
+      FEATURE.organizationUpdate,
+      // Every billing key: subscribe, change plan, replace and cancel are the owner's alone (D8).
+      ...BILLING_OWNER.features,
+    ]),
+  ],
+  limits: {},
+};
+
+/**
+ * The platform's billing staff (#93): the queue, approving and rejecting,
+ * voiding. APP level, which is what keeps an organization's owner from
+ * holding it through their own organization (plan §8). The settings and the
+ * prices stay with `super-admin`.
+ *
+ * Holds only the preset's keys: a person given it keeps their `normal-user`
+ * role for their own account, since roles add up.
+ */
+const BILLING_APPROVER_ROLE: SystemRoleDefinition = {
+  key: BILLING_APPROVER.key,
+  label: BILLING_APPROVER.label,
+  level: 'app',
+  icon: BILLING_APPROVER.icon,
+  features: [...BILLING_APPROVER.features],
   limits: {},
 };
 
@@ -735,6 +790,7 @@ export const APP_ROLES: readonly SystemRoleDefinition[] = [
   WORKSPACE_ADMIN,
   WORKSPACE_SUPERVISOR,
   WORKSPACE_USER,
+  BILLING_APPROVER_ROLE,
 ];
 
 /** Named so the demo-user seeder does not repeat the string. */

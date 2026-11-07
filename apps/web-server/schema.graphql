@@ -796,6 +796,7 @@ type Mutation {
   adminSendPasswordReset(userId: String!): AdminUserWriteResult!
   adminSetUserStatus(suspended: Boolean!, userId: String!): AdminUserWriteResult!
   adminUpdateUserProfile(displayName: String, userId: String!, username: String): AdminUser!
+  approvePlatformBillingRequest(approval: PlatformBillingApprovalInput!, requestId: String!): PlatformBillingRequest!
   archiveNotifications(ids: [String!]!): Int!
   archiveTask(organizationId: String!, taskId: String!, workspaceId: String!): Task!
   archiveTaskBoard(boardId: String!, organizationId: String!, workspaceId: String!): TaskBoard!
@@ -842,6 +843,7 @@ type Mutation {
   duplicateStudioLayout(layoutId: String!, name: String, organizationId: String!, workspaceId: String!): StudioLayout!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
   endSubscription(subscriptionId: String!): PermissionSubscription!
+  enterPlatformBillingPayment(organizationId: String!, payment: PlatformBillingPaymentInput!, requestId: String!): PlatformBillingRequest!
   forgetMyDeviceDisplay(device: String!, layout: String!): DisplayPreferences!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
   holdPosOrder(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
@@ -882,6 +884,7 @@ type Mutation {
   recordStudioPrint(input: StudioPrintInput!, organizationId: String!, workspaceId: String!): Boolean!
   refreshPosOrderLine(lineId: String!, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   refundPosOrder(input: RefundPosOrderInput!, orderId: String!, organizationId: String!, workspaceId: String!): PosOrder!
+  rejectPlatformBillingRequest(reason: String!, requestId: String!): PlatformBillingRequest!
   releaseMyQueueSeat(organizationId: String!, workspaceId: String!): Boolean!
   removeBookingException(exceptionId: String!, organizationId: String!, workspaceId: String!): Boolean!
   removeChatParticipant(conversationId: String!, userId: String!): Boolean!
@@ -892,8 +895,10 @@ type Mutation {
   removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
+  renewPlatformBilling(organizationId: String!): PlatformBillingRequest!
   reportPrintAgentJob(jobId: String!, message: String, printed: Boolean!): Boolean!
   reportPrintAgentPrinters(printers: [PrintReportedPrinterInput!]!): Boolean!
+  requestPlatformBillingPlan(kind: String!, organizationId: String!, planKey: String!): PlatformBillingRequest!
   requestPublicBooking(input: BookingPublicRequestInput!, linkId: String!): BookingPublicRequest!
   rescheduleBookingAppointment(appointmentId: String!, organizationId: String!, resourceId: String!, startsAt: String!, workspaceId: String!): BookingAppointment!
   reschedulePublicBooking(resourceId: String!, startsAt: String!, token: String!): BookingPublicBooking!
@@ -953,6 +958,8 @@ type Mutation {
   setNoteVisibility(noteId: String!, organizationId: String!, visibility: String!, workspaceId: String!): Note!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
+  setPlatformBillingPrice(effectiveFrom: String!, monthly: Int!, planKey: String!): [PlatformBillingPrice!]!
+  setPlatformBillingSettings(settings: PlatformBillingSettingsInput!): PlatformBillingSettings!
   setPosAvailability(available: Boolean!, itemIds: [String!]!, organizationId: String!, variantIds: [String!]!, workspaceId: String!): PosAvailabilityChange!
   setPosCategoryArchived(archived: Boolean!, categoryId: String!, organizationId: String!, workspaceId: String!): PosCategory!
   setPosCustomerArchived(archived: Boolean!, customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer!
@@ -1015,6 +1022,7 @@ type Mutation {
   voidBooksEntry(entryId: String!, organizationId: String!, reason: String!, workspaceId: String!): BooksEntry!
   voidBooksProfitShare(organizationId: String!, reason: String!, shareId: String!, workspaceId: String!): BooksProfitShare!
   voidPosOrder(orderId: String!, organizationId: String!, reason: String!, version: Int!, workspaceId: String!): PosOrder!
+  withdrawPlatformBillingRequest(organizationId: String!, reason: String, requestId: String!): PlatformBillingRequest!
 }
 
 type MyWorkspace {
@@ -1458,6 +1466,228 @@ input PlanDraftInput {
 input PlanLimitInput {
   limitKey: String!
   value: String!
+}
+
+input PlatformBillingApprovalInput {
+  amount: Int!
+  detailsVersion: Int!
+  method: String!
+  paidOn: String!
+  reference: String
+}
+
+type PlatformBillingBill {
+  cancelledAt: String
+  cancelledReason: String
+  currency: String!
+  fromPlanLabel: String
+  id: String!
+  issuedAt: String!
+  lines: [PlatformBillingLine!]!
+  number: String!
+  planLabel: String!
+  status: String!
+  total: Int!
+}
+
+type PlatformBillingCapOverrun {
+  allowed: Int!
+  have: Int!
+  limit: String!
+  remove: Int!
+}
+
+type PlatformBillingEvent {
+  actorId: String
+  at: String!
+  data: String!
+  reason: String
+  step: String!
+}
+
+type PlatformBillingHistoryPage {
+  items: [PlatformBillingRequest!]!
+  nextCursor: String
+}
+
+type PlatformBillingLine {
+  amount: Int!
+  days: Int
+  kind: String!
+}
+
+type PlatformBillingOverview {
+  creditBalance: Int!
+  currency: String!
+  organizationId: String!
+  paymentAccounts: [PlatformBillingPaymentAccount!]!
+  pending: PlatformBillingRequest
+  plans: [PlatformBillingPlanOffer!]!
+  standing: PlatformBillingStanding!
+}
+
+type PlatformBillingPayment {
+  amount: Int!
+  enteredAt: String!
+  enteredById: String!
+  method: String!
+  note: String
+  paidOn: String!
+  reference: String
+  sender: String
+  version: Int!
+}
+
+type PlatformBillingPaymentAccount {
+  details: String!
+  label: String!
+  method: String!
+}
+
+input PlatformBillingPaymentAccountInput {
+  details: String!
+  label: String!
+  method: String!
+}
+
+input PlatformBillingPaymentInput {
+  amount: Int!
+  method: String!
+  note: String
+  paidOn: String!
+  reference: String
+  sender: String
+}
+
+type PlatformBillingPlanOffer {
+  archived: Boolean!
+  current: Boolean!
+  isPublic: Boolean!
+  key: String!
+  label: String!
+  monthly: Int
+}
+
+type PlatformBillingPreview {
+  allowed: Boolean!
+  kind: String!
+  message: String
+  nextStep: String
+  overruns: [PlatformBillingCapOverrun!]!
+  planKey: String
+  quote: PlatformBillingQuote
+  refusal: String
+}
+
+type PlatformBillingPrice {
+  effectiveFrom: String!
+  monthly: Int!
+  planKey: String!
+}
+
+type PlatformBillingQueueFlags {
+  amount: String!
+  amountDifference: Int!
+  holdInForce: Boolean!
+  missingDetails: Boolean!
+  referenceUsedOn: [String!]!
+  selfRequest: Boolean!
+  viewerIsMember: Boolean!
+}
+
+type PlatformBillingQueueItem {
+  flags: PlatformBillingQueueFlags!
+  request: PlatformBillingRequest!
+}
+
+type PlatformBillingQueuePage {
+  items: [PlatformBillingQueueItem!]!
+  nextCursor: String
+}
+
+type PlatformBillingQuote {
+  billAtSubmission: Boolean!
+  creditAdded: Int!
+  creditUsed: Int!
+  direction: String
+  lines: [PlatformBillingLine!]!
+  periodEnd: String
+  periodStart: String
+  total: Int!
+}
+
+type PlatformBillingReceipt {
+  amount: Int!
+  currency: String!
+  id: String!
+  issuedAt: String!
+  kind: String!
+  method: String!
+  number: String!
+  reference: String
+  voidReason: String
+  voidedAt: String
+}
+
+type PlatformBillingRequest {
+  accessUntil: String
+  approverIsMember: Boolean!
+  bill: PlatformBillingBill
+  bills: [PlatformBillingBill!]!
+  coveredOn: String
+  decidedAt: String
+  decidedById: String
+  decisionReason: String
+  detailsVersion: Int!
+  events: [PlatformBillingEvent!]!
+  fromPlanKey: String
+  holdDays: Int!
+  holdReason: String
+  id: String!
+  kind: String!
+  organizationId: String!
+  payments: [PlatformBillingPayment!]!
+  periodEnd: String
+  periodStart: String
+  planKey: String!
+  receipts: [PlatformBillingReceipt!]!
+  requestedAt: String!
+  requestedById: String!
+  selfApproved: Boolean!
+  state: String!
+}
+
+type PlatformBillingSettings {
+  currency: String!
+  graceDays: Int!
+  issuerDetails: String!
+  issuerName: String!
+  locked: Boolean!
+  paymentAccounts: [PlatformBillingPaymentAccount!]!
+  timeZone: String!
+}
+
+input PlatformBillingSettingsInput {
+  currency: String
+  graceDays: Int
+  issuerDetails: String
+  issuerName: String
+  paymentAccounts: [PlatformBillingPaymentAccountInput!]
+  timeZone: String
+}
+
+type PlatformBillingStanding {
+  accessUntil: String
+  days: Int
+  graceDays: Int!
+  holdDays: Int!
+  kind: String!
+  periodEnd: String
+  periodStart: String
+  planArchived: Boolean!
+  planKey: String
+  planLabel: String
+  prepaid: Boolean!
 }
 
 type PosAvailabilityChange {
@@ -2001,6 +2231,14 @@ type Query {
   permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
   permissionUserAppRoles(userIds: [String!]!): [UserAppRole!]!
   permissionUserOrganizations(userIds: [String!]!): [UserOrganization!]!
+  platformBillingHistory(cursor: String, limit: Int, organizationId: String!): PlatformBillingHistoryPage!
+  platformBillingOverview(organizationId: String!): PlatformBillingOverview!
+  platformBillingPreview(kind: String!, organizationId: String!, planKey: String): PlatformBillingPreview!
+  platformBillingPrices: [PlatformBillingPrice!]!
+  platformBillingQueue(cursor: String, limit: Int): PlatformBillingQueuePage!
+  platformBillingRequest(organizationId: String!, requestId: String!): PlatformBillingRequest
+  platformBillingReview(requestId: String!): PlatformBillingQueueItem
+  platformBillingSettings: PlatformBillingSettings!
   posCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): PosCatalogue!
   posCustomer(customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer
   posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!

@@ -1,0 +1,172 @@
+import { declareScope, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
+import { Inject, SetMetadata } from '@nestjs/common';
+import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { billingRefusal } from '../platform-billing.errors.js';
+import type { PlatformBillingModuleOptions } from '../platform-billing.options.js';
+import { PlatformBillingService } from '../platform-billing.service.js';
+import { PLATFORM_BILLING_OPTIONS } from '../platform-billing.tokens.js';
+import { PlatformBillingWriteService } from '../platform-billing-write.service.js';
+import {
+  PlatformBillingHistoryPageType,
+  PlatformBillingOverviewType,
+  PlatformBillingPageArgs,
+  PlatformBillingPaymentInputType,
+  PlatformBillingPreviewType,
+  PlatformBillingRequestType,
+} from './platform-billing.types.js';
+import { renderOverview, renderPreview, renderRequest } from './render.js';
+
+/** The kinds the owner chooses: one mutation, bound to `change_plan` (D8). */
+const CHOSEN_KINDS = ['subscribe', 'change_plan', 'replace'] as const;
+type ChosenKind = (typeof CHOSEN_KINDS)[number];
+
+/** The kinds a preview may ask about. */
+const PREVIEW_KINDS = ['subscribe', 'change_plan', 'replace', 'renew'] as const;
+
+/**
+ * THE ORGANIZATION'S BILLING: its standing, what a request would cost, its
+ * history, and the requests it makes.
+ *
+ * ## ⚠ ORGANIZATION SCOPE, DECLARED ON THE CLASS
+ *
+ * Every key here is organization level. Without the declaration the guard
+ * resolves app level, where no organization key participates, and every key
+ * grants nothing (§12.13). `surface-coverage.test.ts` fails if it goes.
+ *
+ * ## ⚠ THESE KEYS WORK WITHOUT A PLAN (D13)
+ *
+ * The app passes `PLATFORM_BILLING_ORGANIZATION_KEYS` to permissions'
+ * `planExemptFeatures`, so an expired or new organization can always reach the
+ * page that renews it. Roles still decide who: an organization user holds none.
+ *
+ * ## Who may do what is the binding (D8)
+ *
+ * Choosing a plan is `change_plan` (the owner's); renewing is `renew`; payment
+ * details and withdrawing are `enter_payment` (owner and admin). Every lookup
+ * of a request is by id AND organization: the guard proves membership in the
+ * organization named, not that the request is in it.
+ */
+@SetMetadata(REQUIRED_SCOPE_METADATA, declareScope('organization'))
+@Resolver()
+export class PlatformBillingResolver {
+  constructor(
+    private readonly reads: PlatformBillingService,
+    private readonly writes: PlatformBillingWriteService,
+    @Inject(PLATFORM_BILLING_OPTIONS) private readonly options: PlatformBillingModuleOptions,
+  ) {}
+
+  // ── reads (platform-billing:read) ─────────────────────────────────────────
+
+  @Query(() => PlatformBillingOverviewType, { name: 'platformBillingOverview' })
+  async overview(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+  ): Promise<PlatformBillingOverviewType> {
+    this.actor(gql.req);
+    const context = await this.reads.context(organizationId, new Date());
+    const pending = context.pending ? await this.reads.organizationRequest(organizationId, context.pending.id) : null;
+    return renderOverview(context, pending);
+  }
+
+  /** What a request would cost today, or why it cannot be made: the check `submit` runs. */
+  @Query(() => PlatformBillingPreviewType, { name: 'platformBillingPreview' })
+  async preview(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('kind') kind: string,
+    @Args('planKey', { type: () => String, nullable: true }) planKey?: string | null,
+  ): Promise<PlatformBillingPreviewType> {
+    this.actor(gql.req);
+    if (!(PREVIEW_KINDS as readonly string[]).includes(kind)) throw billingRefusal('invalid', { field: 'kind' });
+    const context = await this.reads.context(organizationId, new Date());
+    const wanted = kind as (typeof PREVIEW_KINDS)[number];
+    return renderPreview(kind, planKey ?? null, await this.reads.preview(context, wanted, planKey ?? null));
+  }
+
+  @Query(() => PlatformBillingHistoryPageType, { name: 'platformBillingHistory' })
+  async history(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args() page: PlatformBillingPageArgs,
+  ): Promise<PlatformBillingHistoryPageType> {
+    this.actor(gql.req);
+    const result = await this.reads.history(organizationId, page.cursor ?? null, page.limit ?? null);
+    return { items: result.items.map(renderRequest), nextCursor: result.nextCursor };
+  }
+
+  /** Null for a request that does not exist AND for one in another organization: the same answer. */
+  @Query(() => PlatformBillingRequestType, { name: 'platformBillingRequest', nullable: true })
+  async request(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('requestId') requestId: string,
+  ): Promise<PlatformBillingRequestType | null> {
+    this.actor(gql.req);
+    const detail = await this.reads.organizationRequest(organizationId, requestId);
+    return detail ? renderRequest(detail) : null;
+  }
+
+  // ── requests ──────────────────────────────────────────────────────────────
+
+  /** Subscribe, change plan, or replace an archived plan (platform-billing:change_plan, the owner's). */
+  @Mutation(() => PlatformBillingRequestType, { name: 'requestPlatformBillingPlan' })
+  async requestPlan(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('kind') kind: string,
+    @Args('planKey') planKey: string,
+  ): Promise<PlatformBillingRequestType> {
+    if (!(CHOSEN_KINDS as readonly string[]).includes(kind)) throw billingRefusal('invalid', { field: 'kind' });
+    const row = await this.writes.submit(organizationId, this.actor(gql.req), kind as ChosenKind, planKey, new Date());
+    return this.render(organizationId, row.id);
+  }
+
+  /** Another month of the current plan (platform-billing:renew, owner and admin). */
+  @Mutation(() => PlatformBillingRequestType, { name: 'renewPlatformBilling' })
+  async renew(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+  ): Promise<PlatformBillingRequestType> {
+    const row = await this.writes.submit(organizationId, this.actor(gql.req), 'renew', null, new Date());
+    return this.render(organizationId, row.id);
+  }
+
+  @Mutation(() => PlatformBillingRequestType, { name: 'enterPlatformBillingPayment' })
+  async enterPayment(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('requestId') requestId: string,
+    @Args('payment') payment: PlatformBillingPaymentInputType,
+  ): Promise<PlatformBillingRequestType> {
+    await this.writes.enterPayment(organizationId, requestId, this.actor(gql.req), payment, new Date());
+    return this.render(organizationId, requestId);
+  }
+
+  /**
+   * Bound to `enter_payment`, not `change_plan`: withdrawing changes nothing
+   * and cancels a bill nobody paid, so whoever handles the request's payment
+   * may take it back.
+   */
+  @Mutation(() => PlatformBillingRequestType, { name: 'withdrawPlatformBillingRequest' })
+  async withdraw(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('requestId') requestId: string,
+    @Args('reason', { type: () => String, nullable: true }) reason?: string | null,
+  ): Promise<PlatformBillingRequestType> {
+    await this.writes.withdraw(organizationId, requestId, this.actor(gql.req), reason ?? null, new Date());
+    return this.render(organizationId, requestId);
+  }
+
+  private async render(organizationId: string, requestId: string): Promise<PlatformBillingRequestType> {
+    const detail = await this.reads.organizationRequest(organizationId, requestId);
+    if (!detail) throw billingRefusal('not_found');
+    return renderRequest(detail);
+  }
+
+  private actor(request: unknown): string {
+    const actorId = this.options.resolveActorId?.(request);
+    if (!actorId) throw billingRefusal('not_permitted');
+    return actorId;
+  }
+}

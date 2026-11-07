@@ -35,6 +35,7 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
+import { PLATFORM_BILLING_FEATURE_REGISTRY } from '@kwtech/module-platform-billing';
 import { PRINT_FEATURE_REGISTRY, PRINT_LIMIT_REGISTRY } from '@kwtech/module-print';
 import { STUDIO_FEATURE_REGISTRY, STUDIO_LIMIT_REGISTRY, STUDIO_PROCESS_REGISTRY } from '@kwtech/module-print-studio';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
@@ -249,6 +250,13 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * the page on later would bring it back without the grants given since.
    */
   { key: 'local_network', features: LOCAL_NETWORK_FEATURE_REGISTRY },
+  /*
+   * ⚠ And platform billing's (#93). Its bindings ARE the guard: leave them out
+   * and anybody signed in could approve any organization's payment, or set the
+   * prices. Four keys are organization level and work without a plan (D13,
+   * `planExemptFeatures` in app.module.ts); four are app level.
+   */
+  { key: 'platform-billing', features: PLATFORM_BILLING_FEATURE_REGISTRY },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

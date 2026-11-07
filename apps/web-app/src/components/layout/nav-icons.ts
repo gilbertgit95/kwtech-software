@@ -3,6 +3,7 @@ import {
   ALargeSmall,
   Archive,
   Award,
+  BadgeCheck,
   Ban,
   Banknote,
   Beaker,
@@ -187,6 +188,8 @@ export const ICONS: Record<string, LucideIcon> = {
   handshake: Handshake,
   eye: Eye,
   pen: PenLine,
+  // The platform's billing approver (#93): someone who checks payments.
+  'badge-check': BadgeCheck,
 
   // ── plan tiers ───────────────────────────────────────────────────────────
   // A ladder anyone can read at a glance without being told the order — which
