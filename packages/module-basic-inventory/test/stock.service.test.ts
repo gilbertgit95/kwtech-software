@@ -158,6 +158,8 @@ describe('the catch-up process', () => {
       maxItems: 100,
       tooLateAfterMinutes: 10_080,
       signal: new AbortController().signal,
+      // Workspace processes are handed no organizations (#94).
+      organizations: async () => ({ organizations: [], nextCursor: null }),
       workspaces: async () => ({
         workspaces: [{ ...SCOPE, timeZone: 'Asia/Manila' }],
         nextCursor: null,

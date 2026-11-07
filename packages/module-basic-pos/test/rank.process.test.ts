@@ -27,6 +27,8 @@ function contextOf(
     maxItems: 200,
     tooLateAfterMinutes: 1200,
     signal: new AbortController().signal,
+    // Workspace processes are handed no organizations (#94).
+    organizations: async () => ({ organizations: [], nextCursor: null }),
     async workspaces(cursor) {
       return cursor === null ? { workspaces, nextCursor: null } : { workspaces: [], nextCursor: null };
     },

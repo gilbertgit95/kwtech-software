@@ -30,6 +30,17 @@ function declaration(overrides: Partial<ProcessDeclaration> = {}): ProcessDeclar
 }
 
 describe('composing processes', () => {
+  it('⚠ composes a process reaching every organization only when it writes serves: null (#94)', () => {
+    const billing = declaration({ key: 'billing.daily', module: 'billing', serves: null, reach: 'organizations' });
+    expect(composeProcesses([{ key: 'billing', processes: [billing] }])).toHaveLength(1);
+    expect(() => composeProcesses([{ key: 'billing', processes: [{ ...billing, serves: 'billing:read' }] }])).toThrow(
+      /gated by no plan.*serves: null/u,
+    );
+    expect(() =>
+      composeProcesses([{ key: 'billing', processes: [{ ...billing, reach: 'everyone' as 'organizations' }] }]),
+    ).toThrow(/'reach' must be/u);
+  });
+
   it('collects every module’s, and keeps whatever else each entry carries', () => {
     const handler = { run: async () => ({ handled: 0, skippedLate: 0, leftForNext: 0 }) };
     const composed = composeProcesses([{ key: 'task', processes: [{ ...declaration(), handler }] }, { key: 'note' }]);

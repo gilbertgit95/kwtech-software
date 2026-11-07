@@ -24,6 +24,9 @@ export interface JobsModuleOptions {
   /** A `JobsEntitledWorkspaces` provider. ⚠ Unbound: a process serving a feature reaches no workspace. */
   entitledWorkspacesProvider?: unknown;
 
+  /** A `JobsOrganizations` provider (#94). ⚠ Unbound: a process reaching every organization reaches none. */
+  organizationsProvider?: unknown;
+
   /** A `JobsActorDirectory` provider. Unbound: the admin page shows no names. */
   actorDirectoryProvider?: unknown;
 

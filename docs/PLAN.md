@@ -616,6 +616,28 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-07** — **A background process may reach every organization, gated by no plan; and the workspaces a process reaches follow #92's rule (#94, billing P5a).**
+
+  A process reached only the workspaces of organizations whose plan included
+  its feature (JOBS-PLAN D12). Billing's daily check must reach an
+  organization whose plan EXPIRED, the very one that gate hides.
+  - **`reach: 'organizations'`** on a declaration, with `serves: null`
+    (composition refuses anything else): the run gets `organizations(cursor,
+    limit)`, every organization, from a new `JOBS_ORGANIZATIONS` port the app
+    answers. Unbound or unreadable, it reaches none and the run is skipped,
+    saying so. JOBS-PLAN D13.
+  - **Found and fixed:** `JobsEntitledWorkspacesAdapter` still read the rule
+    from before #92. It reached workspaces of EXPIRED organizations (task and
+    booking reminders to people refused the app) and missed those on the
+    Free fallback. It now applies `accessUntil` and
+    `organization.fallback_plan` as `loadContext` does. Checked on a copy of
+    the dev data: an expired organization's workspaces stop getting the point
+    of sale's process and get task reminders through Free.
+  - ⚠ **The local database's Free is the old one** (no sub-apps):
+    `createPlanIfAbsent` never rewrites a plan, so #89's Free reaches existing
+    databases only when an operator edits it on `/admin/plans`. Until then an
+    expired organization there falls back to nothing usable.
+
 - **2026-11-07** — **One live subscription per organization, by a unique key; workspace subscriptions folded in; billing's write methods (#105, billing P3b).**
 
   Entitlements are the union of every subscription in force, so two live

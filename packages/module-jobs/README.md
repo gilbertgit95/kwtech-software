@@ -52,6 +52,7 @@ const SERVER_MODULES = [
     prismaWriteProvider: jobsWritePrismaProvider,
     processes: composeProcesses(DECLARING_MODULES),
     entitledWorkspacesProvider: { provide: JOBS_ENTITLED_WORKSPACES, useFactory: … },
+    organizationsProvider: { provide: JOBS_ORGANIZATIONS, useFactory: … },
     actorDirectoryProvider: { provide: JOBS_ACTOR_DIRECTORY, useFactory: … },
     resolveActorId: (request) => resolvePrincipal(request)?.userId,
     runner: env.JOBS_RUNNER === 'on',
@@ -84,6 +85,7 @@ Pause and Run now are reachable by anybody signed in.
 | `JOBS_PRISMA_WRITE` | the client (`JobsTransaction`, checked by `satisfies-modules.ts`) | the module cannot start |
 | `JOBS_ACTOR_DIRECTORY` | names for user ids the module already holds: who paused, forced or set a schedule | no names: the page says "an administrator". A look-up that throws is treated the same, and never fails the page |
 | `JOBS_ENTITLED_WORKSPACES` | which workspaces belong to an organization whose plan includes a feature, a page at a time, with each one's time zone | a process serving a feature reaches NO workspace; its run is recorded as `skipped`, saying so |
+| `JOBS_ORGANIZATIONS` | every organization, a page at a time, with no plan filter, for a process declaring `reach: 'organizations'` (#94) | such a process reaches NO organization; its run is recorded as `skipped`, saying so |
 
 A handler is resolved from the whole container by its class, so a process's
 module must list the handler in its Nest module's providers. One that cannot be

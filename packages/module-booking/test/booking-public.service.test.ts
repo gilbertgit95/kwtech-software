@@ -402,6 +402,8 @@ describe('booking.lapse_requests', () => {
       maxItems: options.maxItems ?? 500,
       tooLateAfterMinutes: 1440,
       signal: options.signal ?? new AbortController().signal,
+      // Workspace processes are handed no organizations (#94).
+      organizations: async () => ({ organizations: [], nextCursor: null }),
       async workspaces() {
         return { workspaces: options.workspaces ?? [HERE], nextCursor: null };
       },

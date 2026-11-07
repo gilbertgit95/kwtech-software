@@ -1,4 +1,4 @@
-import type { ProcessWorkspacePage } from '@kwtech/module-kit';
+import type { ProcessOrganizationPage, ProcessWorkspacePage } from '@kwtech/module-kit';
 
 /**
  * The one question the runner needs answered and cannot answer itself.
@@ -20,6 +20,20 @@ import type { ProcessWorkspacePage } from '@kwtech/module-kit';
  */
 export interface JobsEntitledWorkspaces {
   page(featureKey: string, cursor: string | null, limit: number): Promise<ProcessWorkspacePage>;
+}
+
+/**
+ * Every organization, for a process that declared `reach: 'organizations'`
+ * (#94) — billing's daily check, which must reach an organization whose plan
+ * has EXPIRED, the one a plan gate would hide.
+ *
+ * ⚠ NO PLAN FILTER, by design, and no grants: the platform acting on its
+ * customers. A page at a time, in a stable order (by id). Nothing cached.
+ *
+ * UNBOUND, OR THROWING, MEANS NO ORGANIZATION — the run is recorded as skipped.
+ */
+export interface JobsOrganizations {
+  page(cursor: string | null, limit: number): Promise<ProcessOrganizationPage>;
 }
 
 /**

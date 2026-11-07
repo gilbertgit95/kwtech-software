@@ -98,7 +98,8 @@ has a documented, fail-closed meaning — see each module's README.
 
 | Print a PDF on one of the workspace's printers (browser) | module-kit's ONE `PrinterPort`, read with `usePrinters(scope)` and shown with web-ui's `PrinterMenu` — the print studio, the POS's price list | `PrinterProvider` in `apps/web-app/src/app/providers.tsx`, bound to `module-print`'s `createPrintTarget()` |
 | Run something on a schedule | `processes` on the module's server descriptor (`ProcessContribution`, module-kit) — the first is `task.due_today`, then `booking.upcoming_sessions`, then `studio.prune_logs`, then `stock.catch_up`, then `pos.rank_items` | `composeProcesses(…)` handed to `jobsServerModule` in `app.module.ts`; the declarations again in `seed/registry.ts` for `db:sync` |
-| Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans and subscriptions) |
+| Which workspaces a background process may reach (the organization's plan) | `JOBS_ENTITLED_WORKSPACES` | `jobs/entitled-workspaces.ts` (reads permissions' plans, subscriptions in force, and the fallback plan) |
+| Every organization, for a process that reaches them all with no plan gate (#94) | `JOBS_ORGANIZATIONS` | `jobs/organizations.ts` (reads permissions' organizations) |
 | Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |
 | The backup folder and pg_dump / pg_restore (a module never opens a connection) | `BACKUP_STORE` | `backup/pg-backup-store.ts`, shared with the command line (`backup/cli.ts`) |
 | Re-check the restorer's password; sign everybody out after a restore | `BACKUP_PASSWORD_CHECK`, `BACKUP_END_SESSIONS` | module-auth's `AuthService.confirmPassword` and `AuthAdminService.endEverySession`, bound in `app.module.ts` |

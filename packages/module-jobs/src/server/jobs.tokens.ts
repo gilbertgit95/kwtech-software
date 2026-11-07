@@ -26,6 +26,13 @@ export const JOBS_OPTIONS = 'kwtech:jobs-options';
 export const JOBS_ENTITLED_WORKSPACES = 'kwtech:jobs-entitled-workspaces';
 
 /**
+ * A `JobsOrganizations`: every organization, for a process that reaches them
+ * all (#94). ⚠ Unbound means such a process REACHES NO ORGANIZATION: its run is
+ * recorded as skipped, saying so. Fail closed.
+ */
+export const JOBS_ORGANIZATIONS = 'kwtech:jobs-organizations';
+
+/**
  * A `JobsActorDirectory`: the names of the people who paused, forced or
  * rescheduled a process. ⚠ Unbound, or failing, means NO NAMES: the page says
  * "an administrator". Who did it is still on the row, by id.
