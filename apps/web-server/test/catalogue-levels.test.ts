@@ -17,7 +17,7 @@ import { ALL_FEATURES } from '../src/seed/registry.js';
  * for the forms, `assertPlanFeatureLevels` for the seed, `assertRoleDefinable`
  * for role writes — and each is unit-tested against a synthetic registry. What
  * none of them covers is THIS PRODUCT'S ACTUAL CATALOGUE: the four plans and
- * seven roles in `src/seed/`, which are edited by hand, are the things a
+ * eight roles in `src/seed/`, which are edited by hand, are the things a
  * customer is really sold, and are exactly what nobody re-checks after a hurried
  * change.
  *
