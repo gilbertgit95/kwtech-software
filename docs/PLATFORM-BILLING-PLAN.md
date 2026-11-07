@@ -222,8 +222,9 @@ Rules around it:
 - **`accessUntil` = period end + grace + hold**, written by billing on the
   subscription row. **The entitlement check compares only `accessUntil` with
   now**, so access never depends on the daily job (D14).
-- **Expiry** sets `status: canceled` and `endedAt`; what the organization
-  falls back to is open (§11, PLAN §12.131). Sub-app data is kept, never
+- **Expiry** sets `status: canceled` and `endedAt`; the organization falls
+  back to **Free** (the `organization.fallback_plan` default, read at
+  entitlement time, PLAN §12.131). Sub-app data is kept, never
   deleted. Role-sourced and app-level access behave as `module-permissions`
   documents.
 - **The billing keys work without a plan** (D13): an expired or new
@@ -368,7 +369,8 @@ decisions #90 lists each have a PLAN §13 entry.
 | P1 | #90 | — | This document and the PLAN §13 / §12 entries. Docs only |
 | — | #89 | — | Plans by size. **Done** 2026-11-07 |
 | P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests. **Done** 2026-11-07 |
-| P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; one active subscription; the expired reason; billing keys exempt; the release migration |
+| P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; the expired reason; the fallback to Free; billing keys exempt; the release migration. **Done** 2026-11-07 |
+| P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (the index), billing's write methods |
 | P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes. Alongside P2 to P4 |
 | P5b | #95 | P4, P5a | The daily check and every notification |
@@ -386,8 +388,12 @@ decisions #90 lists each have a PLAN §13 entry.
   permissions one transaction, stop and decide before building on it.
 - **Notifications to platform staff** outside any organization must be
   checked against `module-notification` before P5b.
-- **Open, blocking P3: what an expired organization falls back to** — Free,
-  or nothing (PLAN §12.131).
+- **Decided: an expired organization falls back to Free** (the operator,
+  2026-11-07, PLAN §12.131), read from `organization.fallback_plan`.
+- **The expired reason reads the latest organization-wide row whose
+  `accessUntil` has passed** while it is still `active`. When phase 5b's sweep
+  writes `canceled` on those rows, the read must keep finding them, or the
+  screens fall back to saying "not in your plan".
 - **Open: official tax receipts** (PLAN §12.128) and **proof uploads** once
   file storage exists (PLAN §12.129).
 - **Open: a trial repeated with a new sign-up** (PLAN §12.130).

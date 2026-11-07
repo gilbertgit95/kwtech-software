@@ -1,6 +1,7 @@
 import { APP_DEFAULT } from '../src/defaults.js';
 import { composeContext } from '../src/domain/grants.js';
 import { LIMIT } from '../src/domain/limits.js';
+import { subscriptionPeriodEnd } from '../src/domain/subscription-draft.js';
 import {
   assertNotAppLevel,
   assertRoleAssignable,
@@ -502,6 +503,7 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
           planKey: string;
           status: string;
           currentPeriodEnd: Date | null;
+          accessUntil: Date | null;
         };
       }) => {
         writes.subscriptions.push(args.data);
@@ -1270,6 +1272,20 @@ describe('subscriptions', () => {
     });
 
     expect(state.subscriptions[0]).toMatchObject({ organizationId: 'org1', workspaceId: null, status: 'active' });
+  });
+
+  it('⚠ writes accessUntil 7 grace days after the period end, or none for no end (#92)', async () => {
+    const { svc, writes } = await seeded();
+    await svc.startSubscription(biller(), {
+      organizationId: 'org1',
+      workspaceId: null,
+      planKey: 'team',
+      status: 'active',
+      currentPeriodEnd: '2026-03-01',
+    });
+    expect(writes.subscriptions[0]).toMatchObject({
+      accessUntil: new Date((subscriptionPeriodEnd('2026-03-01')?.getTime() ?? 0) + 7 * 86_400_000),
+    });
   });
 
   /**

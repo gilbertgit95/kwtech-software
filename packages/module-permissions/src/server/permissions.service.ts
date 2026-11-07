@@ -1,6 +1,7 @@
 import type { DefaultMomentContribution } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
+  APP_DEFAULT,
   APP_DEFAULT_MOMENT_REGISTRY,
   APP_DEFAULT_REGISTRY,
   type AppDefaultSpec,
@@ -18,6 +19,7 @@ import {
   type LimitSpec,
   resolveLimits,
 } from '../domain/limits.js';
+import { partitionSubscriptions } from '../domain/subscription-access.js';
 import { type PermissionContext, toRoleLevel } from '../types.js';
 import type { PermissionsModuleOptions } from './permissions.module.js';
 import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.repository.js';
@@ -916,6 +918,35 @@ export class PermissionsService {
    * one. An UNDECLARED key returns null rather than throwing — the same reading
    * an unset default gets, because to a caller they are the same situation.
    */
+  /**
+   * The plan an organization falls back to when no organization-wide
+   * subscription entitles it (`organization.fallback_plan`, #92), as an
+   * entitlement, or null when unset, missing or archived — nothing, fail closed.
+   *
+   * Two small reads, made only for organizations with no paid plan in force.
+   * `permPlan.findMany` is the existing every-plan read (a handful of rows),
+   * so no new query shape reaches the structural client.
+   */
+  private async fallbackPlan(): Promise<PlanEntitlement | null> {
+    const planKey = await this.readDefault(APP_DEFAULT.organizationFallbackPlan);
+    if (!planKey) return null;
+    const plans = await this.prisma.permPlan.findMany({
+      include: {
+        features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
+      orderBy: { key: 'asc' },
+    });
+    const plan = plans.find((one) => one.key === planKey);
+    if (!plan || plan.archivedAt) return null;
+    return {
+      planKey: plan.key,
+      workspaceId: null,
+      features: plan.features.map((pf) => pf.featureKey),
+      limits: Object.fromEntries(plan.limits.map((limit) => [limit.limitKey, limit.value])),
+    };
+  }
+
   async readDefault(key: string): Promise<string | null> {
     const row = await this.prisma.permDefault.findFirst({ where: { key } });
     return row?.value ?? null;
@@ -1185,14 +1216,36 @@ export class PermissionsService {
       include: { plan: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
     });
 
+    /*
+     * ⚠ `accessUntil` decides, not the daily job (#92, D14). The live rows are
+     * split at now: those still ahead entitle, and the latest expired
+     * organization-wide one is kept to say WHEN the plan ended. See
+     * domain/subscription-access.ts for why one read is partitioned rather
+     * than two queries.
+     */
+    const access = partitionSubscriptions(subscriptions, new Date());
+
     // An empty list, not undefined: no active subscription entitles nothing.
     // Undefined is reserved for apps with no subscription model at all.
-    const plans: PlanEntitlement[] = subscriptions.map((sub) => ({
+    const plans: PlanEntitlement[] = access.entitling.map((sub) => ({
       planKey: sub.planKey,
       workspaceId: sub.workspaceId,
       features: sub.plan.features.map((pf) => pf.featureKey),
       limits: Object.fromEntries(sub.plan.limits.map((limit) => [limit.limitKey, limit.value])),
     }));
+
+    /*
+     * No organization-wide row entitles — never subscribed, or expired: the
+     * platform's FALLBACK plan applies (Free, the operator's decision,
+     * 2026-11-07, PLAN §12.131). Read here rather than written as a row on
+     * expiry, so it too never waits on a job. Unset, or archived, falls back to
+     * nothing: fail closed. Its caps apply with its features, so an expired
+     * shop over Free's caps keeps what it has and is refused growth.
+     */
+    if (access.needsFallback) {
+      const fallback = await this.fallbackPlan();
+      if (fallback) plans.push(fallback);
+    }
 
     return composeContext({
       subjectId: userId,
@@ -1202,6 +1255,8 @@ export class PermissionsService {
       roles,
       plans,
       limitRegistry: this.limitRegistry(),
+      planExemptFeatures: this.options?.planExemptFeatures ?? [],
+      subscriptionEndedAt: access.endedAt,
     });
   }
 

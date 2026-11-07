@@ -22,6 +22,7 @@ import {
 import { assertPlanLimits, LIMIT, LIMIT_REGISTRY, type LimitKey, type LimitSpec } from '../domain/limits.js';
 import { clonePlanFeatures, type PlanDraft, planLimitValues, validatePlanDraft } from '../domain/plan-draft.js';
 import { cloneFeatures, type RoleDraft, roleLimitValues, validateRoleDraft } from '../domain/role-draft.js';
+import { unbilledAccessUntil } from '../domain/subscription-access.js';
 import {
   type SubscriptionDraft,
   subscriptionPeriodEnd,
@@ -337,6 +338,7 @@ export class PermissionsWriteService {
          */
         status: toSubscriptionStatus(status ?? 'active'),
         currentPeriodEnd: defaultPeriodEnd(periodDays, this.now()),
+        accessUntil: unbilledAccessUntil(defaultPeriodEnd(periodDays, this.now())),
       },
       select: { id: true },
     });
@@ -1099,6 +1101,8 @@ export class PermissionsWriteService {
           // here and then entitle nothing, with no error to explain it.
           status: toSubscriptionStatus(draft.status),
           currentPeriodEnd: subscriptionPeriodEnd(draft.currentPeriodEnd),
+          // ⚠ Written with the period end: the entitlement read compares it with now (#92).
+          accessUntil: unbilledAccessUntil(subscriptionPeriodEnd(draft.currentPeriodEnd)),
         },
         select: { id: true },
       });
@@ -1138,6 +1142,8 @@ export class PermissionsWriteService {
         data: {
           status: toSubscriptionStatus(input.status),
           currentPeriodEnd: subscriptionPeriodEnd(input.currentPeriodEnd),
+          // Moved with the period end, so an admin extending a date extends access (#92).
+          accessUntil: unbilledAccessUntil(subscriptionPeriodEnd(input.currentPeriodEnd)),
         },
         select: { id: true },
       });

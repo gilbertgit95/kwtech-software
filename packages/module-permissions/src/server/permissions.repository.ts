@@ -110,6 +110,11 @@ export interface SubscriptionRow {
   /** The enum, as a string. Validated with `toSubscriptionStatus`, never cast. */
   status: string;
   currentPeriodEnd: Date | null;
+  /**
+   * The first instant without access (period end + grace + hold), or null for
+   * no end. The entitlement read compares it with now (#92).
+   */
+  accessUntil: Date | null;
   /** Set when the subscription was ended. Rows are kept, never deleted. */
   endedAt: Date | null;
   plan: {
@@ -964,6 +969,8 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         planKey: string;
         status: 'active' | 'past_due' | 'canceled';
         currentPeriodEnd: Date | null;
+        /** Written with the period end, or the row would entitle for ever (#92). */
+        accessUntil: Date | null;
       };
       select: { id: true };
     }): Promise<{ id: string }>;
@@ -975,6 +982,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
       data: {
         status?: 'active' | 'past_due' | 'canceled';
         currentPeriodEnd?: Date | null;
+        accessUntil?: Date | null;
         endedAt?: Date | null;
       };
       select: { id: true };

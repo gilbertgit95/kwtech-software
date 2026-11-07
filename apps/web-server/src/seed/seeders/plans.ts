@@ -2,6 +2,7 @@ import { createPlanIfAbsent } from '@kwtech/module-permissions/server';
 import { PLANS } from '../plans.js';
 import { ALL_FEATURES } from '../registry.js';
 import type { Seeder } from '../types.js';
+import { seedPlanDefaults } from './defaults.js';
 
 /**
  * Creates this product's starting plan catalogue.
@@ -47,5 +48,8 @@ export const plansSeeder: Seeder = {
           : `${plan.key}: already exists, left unchanged`,
       );
     }
+    // The plan defaults the sync phase could not set on a fresh database,
+    // because no plan existed yet. Leaves any existing row alone (#92).
+    await seedPlanDefaults({ prisma, log });
   },
 };

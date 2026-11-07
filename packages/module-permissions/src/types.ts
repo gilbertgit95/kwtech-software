@@ -269,6 +269,16 @@ export interface PermissionContext {
    * Empty for everyone who holds none, which is the normal case.
    */
   appRoles: readonly AppRole[];
+  /**
+   * When the organization's paid subscription ended, as an ISO instant, or
+   * absent when it did not (#92). Set only when no organization-wide
+   * subscription entitles the organization any more and its latest one's
+   * `accessUntil` has passed — what turns a `not_entitled` into
+   * `subscription_expired`, so the screen says "your plan ended on <date>,
+   * renew" rather than "upgrade". Optional so a context assembled by hand
+   * (a test, a fixture) need not invent one.
+   */
+  subscriptionEndedAt?: string | null;
 }
 
 /** Why a check failed. The distinction is the point — see check.ts. */
@@ -283,6 +293,12 @@ export type DenialReason =
   | 'no_workspace_access'
   /** The organization's plan does not include it. Upgrade, not a role change. */
   | 'not_entitled'
+  /**
+   * Its plan included it, and the plan ended: the paid subscription's
+   * `accessUntil` passed with no renewal (#92). Renew, not upgrade — and not
+   * "ask an admin", since nobody's roles changed.
+   */
+  | 'subscription_expired'
   /** The plan includes it; this caller's roles do not grant it. Ask an admin. */
   | 'not_granted';
 

@@ -139,6 +139,44 @@ async function startingPlanKey(prisma: SeedPrisma): Promise<string | null> {
 
 type SeedPrisma = Parameters<Seeder['run']>[0]['prisma'];
 
+/**
+ * The two defaults that point at a PLAN, set only where no row exists — a row
+ * cleared on purpose (value null) is a decision and is left alone. Returns how
+ * many it wrote.
+ *
+ * ⚠ Run TWICE in a fresh `db:seed`: here in the sync phase, and again by the
+ * plans seeder once the catalogue exists. On a fresh database the plans are
+ * created in the seed phase, after this seeder, so the first pass finds no plan
+ * and skips both; without the second pass a new organization would start on no
+ * plan and an expired one fall back to nothing, until somebody noticed (#92).
+ *
+ * - `organization.plan`: the smallest public live plan.
+ * - `organization.fallback_plan`: Free, by key — the operator's decision
+ *   (2026-11-07, PLAN §12.131) names the plan, so "smallest" would be a guess.
+ */
+export async function seedPlanDefaults({ prisma, log }: Parameters<Seeder['run']>[0]): Promise<number> {
+  const existing = new Set((await prisma.permDefault.findMany({ select: { key: true } })).map((row) => row.key));
+  let written = 0;
+  const write = async (key: string, value: string, why: string) => {
+    await prisma.permDefault.create({ data: { key, value, updatedAt: new Date(), updatedByUserId: null } });
+    log(`${key} → ${value} (${why})`);
+    written += 1;
+  };
+
+  if (!existing.has(APP_DEFAULT.organizationPlan)) {
+    const planKey = await startingPlanKey(prisma);
+    if (planKey) await write(APP_DEFAULT.organizationPlan, planKey, 'smallest public live plan');
+    else log(`${APP_DEFAULT.organizationPlan} — skipped, no public live plan here yet`);
+  }
+
+  if (!existing.has(APP_DEFAULT.organizationFallbackPlan)) {
+    const free = await prisma.permPlan.findFirst({ where: { key: 'free', archivedAt: null }, select: { key: true } });
+    if (free) await write(APP_DEFAULT.organizationFallbackPlan, free.key, 'Free, when no subscription is in force');
+    else log(`${APP_DEFAULT.organizationFallbackPlan} — skipped, no live free plan here yet`);
+  }
+  return written;
+}
+
 export const defaultsSeeder: Seeder = {
   name: 'permissions:defaults',
   phase: 'sync',
@@ -180,11 +218,7 @@ export const defaultsSeeder: Seeder = {
       await write(entry.key, entry.value, entry.why);
     }
 
-    if (!existing.has(APP_DEFAULT.organizationPlan)) {
-      const planKey = await startingPlanKey(prisma);
-      if (planKey) await write(APP_DEFAULT.organizationPlan, planKey, 'smallest public live plan');
-      else log(`${APP_DEFAULT.organizationPlan} — skipped, no public live plan here`);
-    }
+    written += await seedPlanDefaults({ prisma, log });
 
     log(written === 0 ? 'every default already decided — nothing written' : `${written} default(s) set`);
   },

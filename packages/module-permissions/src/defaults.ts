@@ -167,6 +167,11 @@ export const APP_DEFAULT = {
   organizationMemberRole: 'organization.member_role',
   /** The plan a new organization is subscribed to. */
   organizationPlan: 'organization.plan',
+  /**
+   * The plan an organization is entitled to while no organization-wide
+   * subscription is in force: never subscribed, or expired (#92).
+   */
+  organizationFallbackPlan: 'organization.fallback_plan',
   /** The status that subscription starts in. */
   organizationPlanStatus: 'organization.plan_status',
   /** How many days that subscription's first period runs for. */
@@ -237,6 +242,17 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
     label: 'Plan for a new organization',
     whenUnset:
       'The organization starts on no plan and is therefore entitled to nothing: every organization-level key is filtered out of every member’s context until somebody starts a subscription by hand.',
+  },
+  {
+    key: APP_DEFAULT.organizationFallbackPlan,
+    module: 'permissions',
+    kind: 'plan',
+    moment: 'organization_created',
+    label: 'Plan when no subscription is in force',
+    description:
+      'What an organization is entitled to while it has no paid plan in force — it never subscribed, or its subscription expired. Read on every request, so an expiry takes effect without waiting for any job. Archived plans cannot be chosen. Its caps apply too: an organization over them keeps what it has and cannot add more.',
+    whenUnset:
+      'An organization with no subscription in force is entitled to nothing except its billing keys, so that it can still renew.',
   },
   {
     key: APP_DEFAULT.organizationPlanStatus,

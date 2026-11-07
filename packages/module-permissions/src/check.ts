@@ -31,6 +31,9 @@ export function checkFeature(ctx: PermissionContext | undefined, feature: Featur
   // administrator rather than to buy a plan they are not the one to buy — and
   // it avoids disclosing the organization's billing state to every member.
   if (!ctx.granted.includes(feature)) return { allowed: false, reason: 'not_granted' };
+  // Granted and filtered by the plan. When the paid plan ENDED, say so: "renew"
+  // is the errand, and "upgrade" would send the owner to buy what they had.
+  if (ctx.subscriptionEndedAt) return { allowed: false, reason: 'subscription_expired' };
   return { allowed: false, reason: 'not_entitled' };
 }
 
@@ -59,6 +62,7 @@ export function denialReason(ctx: PermissionContext | undefined, required: reado
   return (
     reasons.find((r) => r === 'no_context') ??
     reasons.find((r) => r === 'not_granted') ??
+    reasons.find((r) => r === 'subscription_expired') ??
     reasons.find((r) => r === 'not_entitled')
   );
 }
