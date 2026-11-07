@@ -1,9 +1,12 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 and 2 done (2026-11-07).** Phase 1 is this document and
-its decisions (#90). Phase 2 (#91) is `packages/module-platform-billing`'s
-pure core: the keys, the refusals and every rule here as tested functions,
-with no schema, no Nest and nothing composed into the apps yet. The work is tracked by
+Status: **phases 1 to 3b and 5a done, phase 4a done (2026-11-08).** Phase 1
+is this document and its decisions (#90); phase 2 (#91) the pure core;
+phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
+5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
+and the API for requests, payment details, approvals and rejections, settings
+and prices, composed into the API; 4b (voids, closing as credit, cancel,
+archives, the audited adjustments, the trial) follows. The work is tracked by
 issue #88 and its sub-issues #89 to #98; the plans it bills for were settled
 in #89 (PLAN §13, 2026-11-07). Every decision below is the operator's, or
 proposed in #88 and marked as such (§9); the questions still open are in §11 and
@@ -371,7 +374,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests. **Done** 2026-11-07 |
 | P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; the expired reason; the fallback to Free; billing keys exempt; the release migration. **Done** 2026-11-07 |
 | P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (`liveOrganizationId`), billing's write methods. **Done** 2026-11-07 |
-| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike |
+| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); 4b: voids, close as credit, cancel, archives, adjustments, the trial |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
 | P5b | #95 | P4, P5a | The daily check and every notification |
 | P6 | #96 | P4 (P5b) | The organization's Billing page |
@@ -384,8 +387,18 @@ decisions #90 lists each have a PLAN §13 entry.
   lock organizations out, so P3 is run against a copy of the dev data before
   it merges, and the release migration gives every live subscription a period
   end first.
-- **The shared transaction** (P4's spike). If the app cannot give billing and
-  permissions one transaction, stop and decide before building on it.
+- **Settled: the shared transaction** (P4's spike, 2026-11-08). Billing's
+  write client is bound with `withTransaction`, whose callback receives
+  Prisma's interactive transaction client with every delegate; the app's
+  subscriptions adapter hands that transaction to `PermissionsWriteService`.
+  Proved against Postgres: a permissions write inside billing's transaction is
+  seen inside it, not outside, and a failure rolls both back; three approvals
+  at once gave one receipt and one subscription row.
+- **D16 deferred in part: the time zone is locked once billed**, like the
+  currency, rather than applying to new periods only. Stored periods are
+  instants at the start of platform days, so a zone change would move days
+  already billed; "forward only" needs the periods kept as days first (PLAN
+  §12.133).
 - **Notifications to platform staff** outside any organization must be
   checked against `module-notification` before P5b.
 - **Decided: an expired organization falls back to Free** (the operator,

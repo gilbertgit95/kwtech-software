@@ -611,10 +611,49 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 129 | Payment proof is typed, not uploaded | when the app has file storage | An owner enters the method, amount, date and reference of a payment (#88); a screenshot or bank slip cannot be attached, because the app stores no files (print studio keeps its files in the browser). The approver checks the reference against the e-wallet or bank account instead. Uploads come with file storage, as a field on the payment details |
 | 130 | A Basic trial can be had again with a new sign-up | if trials are seen repeated, or before trials are advertised | The trial is once per owner ACCOUNT (§13, 2026-11-07), and an account costs an email address. Tying it to a verified phone, a payment method or a device was not done: there is no SMS provider, no card, and device checks are easily reset. The screen says when an account already used its trial ("A free trial was already used by this account on <date>, for <organization>"), and the platform reports list trials per account, so a pattern is visible |
 | 131 | ~~What an organization falls back to when its subscription expires~~ **Closed** | — | **Decided 2026-11-07 by the operator: Free** (§13, 2026-11-07, #92). Read at entitlement time from the `organization.fallback_plan` default, seeded to `free`: an organization with no organization-wide subscription in force — never subscribed, or expired — is entitled to Free's keys and caps, and what is over Free's caps is kept and refused growth. Unset or archived falls back to nothing |
+| 132 | A downgrade is checked only against the caps permissions counts | before a plan sets a sub-app cap lower than a higher plan does | D6 refuses a downgrade while the organization is over the new plan's caps (#93). The app counts what `perm_*` holds — members, workspaces, the largest workspace's members — and passes those; a sub-app's caps (queue windows, notes per person, POS items) live in that module's tables and are not counted, so a downgrade is not refused on them. Expiry and plan edits already behave the same way (what is over stays, additions are refused, with the reason), so nothing is lost, but the refusal the owner would have seen is not shown. What would settle it: a count port per module (`X_USAGE`), or a cap-usage query composed from every module's `LimitContribution` |
+| 133 | The billing time zone is locked once billed, not applied forward | if the platform ever needs to change its billing time zone | D16 said a time-zone change applies to new periods only. Periods are written to `perm_subscription` as instants at the start of platform days, so changing the zone would read every stored day differently. #93 locks it once any bill exists, as the currency is (`time_zone_locked`). What would settle it: store each period's days (and the zone it was written in) beside the instants, then let a change reach only periods written after it |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-08** — **Billing and permissions share one transaction; platform billing's requests, payments and approvals are built and composed (#93, billing P4a).**
+
+  #93 began with a spike, as the plan required: could the app give billing
+  and permissions one transaction, so an approval's subscription and its
+  receipt commit together? It can.
+  - **The shared transaction.** Billing's write client is bound with
+    `withTransaction`, whose callback receives Prisma's own interactive
+    transaction client, carrying every delegate. The app's subscriptions
+    adapter hands that same object to `PermissionsWriteService`'s billed
+    writes (#105), and `sharedTransaction` refuses one that lacks
+    permissions' delegates rather than let permissions open its own.
+    Proved on Postgres: a permissions write is seen inside billing's
+    transaction and not outside it, and a failure rolls both back.
+  - **The module's server half:** ten `platform_billing_*` tables (requests,
+    every version of the payment details, bills and receipts as snapshots, the
+    credit ledger, prices from a day on, one settings row, gapless counters,
+    the timeline); submit, payment details, withdraw, approve, reject,
+    settings and prices; an organization-scoped resolver and an app-level one,
+    every operation bound.
+  - **Race-safe by construction:** one pending request per organization is a
+    unique slot (`pendingOrganizationId`, like `liveOrganizationId`), and
+    approval is a compare-and-set while pending on the details version the
+    approver saw, before anything else is written. On Postgres, three
+    approvals at once gave one receipt and one subscription row, and two
+    submissions at once one request; bill and receipt numbers had no gap.
+  - **Roles:** `organization-owner` gains every organization billing key,
+    `organization-admin` all but choosing the plan (D8), and a new app-level
+    `platform-billing-approver` role holds the queue, approve and void. The
+    organization keys are passed to `planExemptFeatures` (D13).
+  - **Not done here, in 4b:** voids, closing as credit, cancel, plan
+    archives, the audited `/admin/subscriptions` adjustments (D5) and the
+    trial (D2). Not done at all yet: the daily check (#95) and the pages
+    (#96, #97).
+  - **Two gaps named:** a downgrade is checked only against the caps
+    permissions counts (§12.132); the time zone is locked once billed rather
+    than applied forward (§12.133, D16 in part).
 
 - **2026-11-07** — **A background process may reach every organization, gated by no plan; and the workspaces a process reaches follow #92's rule (#94, billing P5a).**
 

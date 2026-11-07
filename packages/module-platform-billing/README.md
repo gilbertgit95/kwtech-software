@@ -10,9 +10,11 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phase 2 of 8 (#91), the pure core only.** No schema, no Nest module,
-no pages yet, and the module is not composed into either app: nothing syncs or
-grants its keys until phase 4 (#93) binds them to operations.
+**Status: phase 4a (#93).** The pure core (#91), the schema, the services and
+the GraphQL API for requests, payment details, approvals and rejections, the
+settings and the prices; composed into the API. Still to come: voids, closing
+as credit, cancel, plan archives, the audited admin adjustments and the trial
+(4b), the daily check (#95), and the pages (#96, #97).
 
 ## In a Next.js app
 
@@ -20,9 +22,93 @@ Nothing yet: the pages come in phases 6 (#96) and 7 (#97).
 
 ## In a NestJS app
 
-Nothing yet: the schema, services and resolvers come in phase 4 (#93), the
-entitlement change in `module-permissions` in phase 3 (#92), and the daily
-check in phase 5b (#95).
+```ts
+platformBillingServerModule({
+  prismaProvider,            // PLATFORM_BILLING_PRISMA: the read client
+  prismaWriteProvider,       // PLATFORM_BILLING_PRISMA_WRITE: with $transaction
+  subscriptionsProvider,     // ⚠ REQUIRED: PLATFORM_BILLING_SUBSCRIPTIONS
+  plansProvider,             // ⚠ REQUIRED: PLATFORM_BILLING_PLANS
+  peopleProvider,            // PLATFORM_BILLING_PEOPLE
+  resolveActorId,            // principal → userId
+});
+```
+
+| Port | What it answers | Unbound |
+|---|---|---|
+| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription, and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
+| `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps) and an organization's usage of the caps (D6) | the module refuses to boot |
+| `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15) | every approver is flagged as a member: the flag never blocks |
+
+⚠ **The shared transaction.** An approval writes the decision, the
+subscription, the bill's stamp, the receipt, its number and every credit
+entry in ONE transaction. The app binds the write client with
+`withTransaction`, whose callback receives Prisma's interactive transaction
+client with every delegate on it, and its subscriptions adapter hands that
+same transaction to `PermissionsWriteService` (`apps/web-server/src/platform-billing/subscriptions.ts`,
+`sharedTransaction`, which refuses a transaction that could not be shared).
+
+⚠ **Its organization keys skip the plan filter (D13).** Pass
+`PLATFORM_BILLING_ORGANIZATION_KEYS` to permissions' `planExemptFeatures`, or
+an expired organization cannot reach the page that renews it.
+
+### The GraphQL surface
+
+Organization scope (`PlatformBillingResolver`, declared on the class):
+
+| Operation | Key |
+|---|---|
+| `platformBillingOverview`, `platformBillingPreview`, `platformBillingHistory`, `platformBillingRequest` | `read` |
+| `requestPlatformBillingPlan` (subscribe, change plan, replace) | `change_plan` (the owner's, D8) |
+| `renewPlatformBilling` | `renew` |
+| `enterPlatformBillingPayment`, `withdrawPlatformBillingRequest` | `enter_payment` |
+
+App level (`PlatformBillingAdminResolver`, no scope):
+
+| Operation | Key |
+|---|---|
+| `platformBillingQueue`, `platformBillingReview`, `platformBillingSettings`, `platformBillingPrices` | `queue_read` |
+| `approvePlatformBillingRequest`, `rejectPlatformBillingRequest` | `approve` |
+| `setPlatformBillingSettings`, `setPlatformBillingPrice` | `manage_settings` |
+
+Every document is in `src/operations.ts`. A refusal is a
+`PlatformBillingWriteError` whose message is the reason's sentence and next
+step; counts (short by, caps over) are in its `detail`. `platformBillingPreview`
+returns the same refusal as a value, so a page explains a button before anyone
+presses it.
+
+### What the services do
+
+- **Submit** checks the request as the preview does (`checkNewRequest`),
+  prices it (`priceRequest`), and issues its bill, numbered in the same
+  transaction. A downgrade's bill waits for approval (D12). **One pending
+  request per organization**: `pendingOrganizationId` is unique.
+- **Payment details** are a new version each time (`platform_billing_payment`,
+  never edited), bumping `detailsVersion`. The first covering details of a
+  renewal entered before grace ends **hold** access (D9); a renewal whose
+  covering details arrive only after access ended is **not on time**: its bill
+  is cancelled and a new one issued with the access used (D10).
+- **Approval** is a compare-and-set while `pending` on the details version the
+  approver saw, BEFORE anything is written: of two approvals at once, one
+  applies and the other is refused `not_pending`. Short payments are refused;
+  overpayments become credit (D7); an upgrade approved later than priced gets
+  the lag back as credit; a change priced for a period that has ended is
+  `quote_expired`. A self-approval and an approver who is a member are
+  recorded, never blocked.
+- **Withdraw and reject** cancel the bill (it keeps its number) and give back
+  any hold.
+- **Numbering has no gaps**: `platform_billing_counter`, one row per sequence,
+  incremented in the issuing transaction. A rollback gives the number back.
+- **Settings** (D16): the currency and the time zone are locked once any bill
+  exists; grace may change (0 to 31), and reaches only periods written after.
+
+## Tables
+
+`platform_billing_request`, `_payment` (every version of the details),
+`_bill` and `_receipt` (snapshots, never rewritten; only the stamp changes),
+`_credit` (the ledger; the balance is its sum and may go negative), `_price`
+(per plan, from a day on), `_settings` (one row, `id = 'platform'`),
+`_counter`, `_event` (the timeline, each step with its reason code). Keyed by
+`organizationId`; no foreign key leaves the module. Nothing is deleted.
 
 ## Vocabulary
 
@@ -59,6 +145,9 @@ check in phase 5b (#95).
 | `domain/requests.ts` | the state machine (`allowedActions`, `nextState`), `checkNewRequest` (owner only D8, renew first, over caps D6, archived and withdrawn plans), `checkApproval`, `checkVoid` (newest first) |
 | `domain/plans.ts` | `planCovers`, `pickCoveringPlan` (the fold, D3), `capsBlockingDowngrade` |
 | `domain/refusals.ts` | `PlatformBillingRefusal` and `PLATFORM_BILLING_REFUSALS`: a sentence and a next step for every reason |
+| `domain/standing.ts` | `billingStanding` (the row's period, the current one, a month paid ahead, the access window), `requestStanding`, `priceOn` |
+| `domain/pricing.ts` | `priceRequest`: one request priced on a day, for the preview, the bill at submission and a downgrade's bill at approval |
+| `domain/documents.ts` | `BillSnapshot`, `ReceiptSnapshot`: what a document said when issued |
 
 Every refusal is a reason code with words (`refusalText(reason)`), shared by the
 server, the pages and the tests. Counts and dates (short by 100, remove 2
@@ -68,13 +157,15 @@ members) travel beside the code, never inside the sentence.
 
 - **Organization keys:** `platform-billing:read`, `:change_plan` (the owner's),
   `:renew`, `:enter_payment`. `PLATFORM_BILLING_ORGANIZATION_KEYS` lists them:
-  phase 3 lets them work without a plan (D13), so an expired organization can
-  still renew.
+  they work without a plan (D13), so an expired organization can still renew.
 - **App keys, split by risk:** `platform-billing:queue_read`, `:approve`,
   `:void`, `:manage_settings` (the last three privileged).
-- **No bindings yet.** Each key binds its operations in phase 4.
-- **Role presets** (`PLATFORM_BILLING_ROLE_PRESETS`), data only:
-  `platform-billing-owner` (every organization key), `platform-billing-admin`
-  (read, renew, enter payment; never choose the plan), and the app-level
-  `platform-billing-approver` (queue, approve, void; never the settings).
+- **Bindings** for every operation above; `void` binds nothing until the void
+  arrives (4b). `test/surface-coverage.test.ts` fails on an unbound operation.
+- **Role presets** (`PLATFORM_BILLING_ROLE_PRESETS`), data only, read by the
+  app's `seed/app-roles.ts`: `platform-billing-owner` (every organization key,
+  added to `organization-owner`), `platform-billing-admin` (read, renew, enter
+  payment; never choose the plan; added to `organization-admin`), and the
+  app-level `platform-billing-approver` (queue, approve, void; never the
+  settings), seeded as a role of its own.
 - No limits, no processes yet (the daily check is phase 5b).

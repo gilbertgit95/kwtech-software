@@ -93,8 +93,16 @@ import {
   PERMISSIONS_PUBSUB,
   PermissionsLimitChecker,
   PermissionsService,
+  PermissionsWriteService,
   permissionsServerModule,
 } from '@kwtech/module-permissions/server';
+import { PLATFORM_BILLING_ORGANIZATION_KEYS } from '@kwtech/module-platform-billing';
+import {
+  PLATFORM_BILLING_PEOPLE,
+  PLATFORM_BILLING_PLANS,
+  PLATFORM_BILLING_SUBSCRIPTIONS,
+  platformBillingServerModule,
+} from '@kwtech/module-platform-billing/server';
 import {
   isPrintAgentHandshake,
   PRINT_LIMIT_CHECKER,
@@ -158,6 +166,9 @@ import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
 import { NOTIFICATION_SOURCES } from './notifications/sources.js';
 import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
+import { PlatformBillingPeopleAdapter } from './platform-billing/people.js';
+import { PlatformBillingPlansAdapter } from './platform-billing/plans.js';
+import { PlatformBillingSubscriptionsAdapter } from './platform-billing/subscriptions.js';
 import { PosKeyAccess } from './pos/access-check.js';
 import { PosMemberDirectoryAdapter } from './pos/member-directory.js';
 import { PosWorkspaceTimeZoneAdapter } from './pos/workspace-time-zone.js';
@@ -178,6 +189,8 @@ import {
   notificationWritePrismaProvider,
   permissionsPrismaProvider,
   permissionsWritePrismaProvider,
+  platformBillingPrismaProvider,
+  platformBillingWritePrismaProvider,
   posPrismaProvider,
   posWritePrismaProvider,
   printPrismaProvider,
@@ -660,6 +673,14 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
     limitRegistry: ALL_LIMITS,
 
     /*
+     * ⚠ BILLING'S ORGANIZATION KEYS SKIP THE PLAN FILTER (D13, #92): an
+     * expired or brand-new organization must still reach the page that renews
+     * it. Roles still decide who holds them. Checked at boot: an exemption
+     * naming a key that is not organization level fails it.
+     */
+    planExemptFeatures: PLATFORM_BILLING_ORGANIZATION_KEYS,
+
+    /*
      * ⚠ THE THIRD COMPOSED REGISTRY, and the quietest one to get wrong.
      *
      * The defaults SCREEN lists this, so a default nobody composed has no row
@@ -1015,6 +1036,43 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
     certificatePath: LOCAL_NETWORK_CERTIFICATE_PATH,
     origin: env.LOCAL_NETWORK_ORIGIN,
     publishedOrigin: env.FRONTEND_URL,
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+  }),
+
+  /*
+   * Platform billing (#88, #93): an organization requests a plan, pays
+   * outside the app, and platform staff approve it. Every port reads
+   * permissions' tables, so the app answers; the adapters are in
+   * ./platform-billing/.
+   */
+  platformBillingServerModule({
+    prismaProvider: platformBillingPrismaProvider,
+    prismaWriteProvider: platformBillingWritePrismaProvider,
+
+    /*
+     * ⚠ REQUIRED, and the shared transaction: the adapter hands billing's own
+     * transaction to PermissionsWriteService, so an approval's subscription
+     * and its receipt commit together (subscriptions.ts, `sharedTransaction`).
+     */
+    subscriptionsProvider: {
+      provide: PLATFORM_BILLING_SUBSCRIPTIONS,
+      inject: [PrismaService, PermissionsWriteService],
+      useFactory: (prisma: PrismaService, permissions: PermissionsWriteService) =>
+        new PlatformBillingSubscriptionsAdapter(prisma, permissions),
+    },
+    // ⚠ REQUIRED: the plans, and the caps a downgrade is checked against (D6).
+    plansProvider: {
+      provide: PLATFORM_BILLING_PLANS,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new PlatformBillingPlansAdapter(prisma),
+    },
+    // Unbound, every approver would be flagged as a member (D15).
+    peopleProvider: {
+      provide: PLATFORM_BILLING_PEOPLE,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new PlatformBillingPeopleAdapter(prisma),
+    },
+
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
   }),
 ];
