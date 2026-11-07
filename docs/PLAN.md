@@ -630,8 +630,8 @@ Decisions 1, 2, 3 and 5 gate the next step.
     on `PermPlan`, and `perm_subscription` written only through the
     permissions write service.
   - **Not done here:** any code. The design is `docs/PLATFORM-BILLING-PLAN.md`,
-    built in phases #91 to #98. Its other decisions (D4, D9, D12 to D17) are
-    in that file's §9 and need no entry of their own.
+    built in phases #91 to #98. Its other decisions (D4, D12 to D17) have
+    the entry below.
 
 - **2026-11-07** — **New organizations start on Free with one 14-day trial of Basic, once per owner account (#90, #89).**
 
@@ -648,10 +648,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
   A subscription with a `workspaceId` entitles one workspace, so "why can't
   this workspace use X" has two places to look.
-  - **Fold:** an organization with no organization-wide subscription gets its
-    live workspace row as its own.
-  - **End:** every other workspace row gets `endedAt` and is kept as
-    history. Owners are notified. No new workspace row is written.
+  - **Fold:** an organization with no organization-wide subscription gets a
+    NEW organization-wide row with its live workspace row's plan and period
+    end. The workspace row is not retargeted: the write service keeps a
+    subscription's target immutable, so what it entitled in the past still
+    reads true.
+  - **End:** every workspace row then gets `endedAt` and is kept as history.
+    Owners are notified. No new workspace row is written.
   - The data step runs in billing phase 3 (#92), before the one-active index.
 
 - **2026-11-07** — **`/admin/subscriptions` writes stay, as audited manual adjustments that require a reason (#90).**
@@ -704,6 +707,38 @@ Decisions 1, 2, 3 and 5 gate the next step.
     month then gains nothing.
   - **Rejected:** keeping the old period end for N days after expiry, as #90
     proposed. It charges for days the organization had no access.
+
+- **2026-11-07** — **Billing's remaining rules: one active subscription, `accessUntil`, the billing keys without a plan, fixed amounts, settings that never rewrite the past (#90, D4 and D12 to D17).**
+
+  The review of #88 found each of these as a way to get service unpaid, or to
+  lose it unfairly.
+  - **One active organization subscription (D4),** made impossible by a
+    partial unique index on `perm_subscription (organizationId) WHERE
+    "endedAt" IS NULL AND "workspaceId" IS NULL`, which Prisma cannot declare,
+    and a check in the write service that names the conflict. Entitlements
+    used to add up across every live row.
+  - **When an amount is fixed (D12):** an upgrade at submission, because the
+    owner pays it before approval, with the days between submission and
+    approval returned as credit; a downgrade at approval, its bill issued
+    then. A downgrade locked at submission earned credit for days the old
+    plan was still used.
+  - **The billing keys work without a plan (D13):** one named exemption in
+    `grants.ts`, or an expired organization could never reach the page that
+    renews it.
+  - **`accessUntil` decides expiry (D14):** period end + grace + hold,
+    written by billing on the subscription row and compared with now by the
+    entitlement check, so a missed daily run never leaves anyone entitled for
+    free. ⚠ This changes §12.40's "only `status` decides entitlement".
+  - **An approver who is a member of the organization is flagged, not
+    blocked (D15):** a small platform may have one approver; the queue and
+    the audit say so.
+  - **Settings never rewrite the past (D16):** currency is locked once a bill
+    exists; a time zone change and a lower grace apply forward only.
+  - **One platform time zone and one currency (D17):** reports cannot add up
+    mixed currencies, and billing is about organizations, not a workspace's
+    clock.
+  - **Only the latest approved request of a period can be voided:** voiding
+    an earlier plan change would put back a plan over a later paid one.
 
 - **2026-11-07** — **A month paid ahead becomes credit when the plan changes before it starts (#90, review loophole 3).**
 

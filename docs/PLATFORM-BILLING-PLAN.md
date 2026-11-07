@@ -96,7 +96,10 @@ Rules around it:
   number stamped VOID, the bill returns to unpaid, its credit is reversed
   (the balance may go negative, owed on the next bill), and the period it paid
   for is ended or shortened. A voided plan change puts the previous plan back
-  for the rest of the period. Nothing is deleted.
+  for the rest of the period. **Only the latest approved request of a period
+  can be voided:** with A → B → C in one period, voiding A → B would restore
+  A over the paid C, so it is refused ("Void the later change to C first")
+  until the later ones are voided, newest first. Nothing is deleted.
 - **No cash refunds.** Unused value is credit, never money.
 - **Checks the approver sees, never deciding alone:** a reference already used
   (normalised: spaces removed, case ignored), an amount different from the
@@ -140,8 +143,12 @@ Rules around it:
 - Basic 1,000 and Pro 1,500, 30-day period, changed on day 15: Basic → Pro
   pays **250**; Pro → Basic pays **0** and leaves **250** credit, which lowers
   the next renewal to 750.
-- **An upgrade's amount is locked at submission**; **a downgrade's credit is
-  worked out at approval** (D12).
+- **An upgrade's amount is locked at submission**, because the owner pays
+  that amount before approval. If approval comes on a later day, the
+  difference for the days between (new price − old price, per day) is added
+  as credit at approval, so the owner never pays for days on the new plan
+  they did not have. **A downgrade's credit is worked out at approval**, and
+  its bill is issued then (§7), since nothing is paid before (D12).
 - A zero-amount change still needs approval and issues a bill and receipt for
   0. It counts as ready in the queue.
 - Money is integers in centavos; each line rounded once, half up. Days are
@@ -206,7 +213,8 @@ Each lock or effective date is shown beside the setting.
 - **On release**, every live organization subscription is given a period end
   (30 days after release) and its owners are notified, so the new check
   expires nobody at once (phase 3).
-- **Workspace-level subscriptions** are folded or ended (D3).
+- **Workspace-level subscriptions** are folded into a new organization row,
+  then ended (D3).
 
 ## 6. Every outcome explains itself
 
@@ -229,7 +237,11 @@ Each lock or effective date is shown beside the setting.
 
 - **Bill**, issued at submission, stamped UNPAID, PAYMENT SUBMITTED PENDING
   VERIFICATION, PAID (with its receipt number) or CANCELLED, with the line
-  items of the calculation.
+  items of the calculation. **A downgrade's bill is issued at approval**, with
+  the final credit: until then the request shows an estimate ("Credit is
+  worked out on the day the change is approved. Today's estimate: 250"), and
+  no number is taken, so the issued bill never disagrees with its credit and
+  numbering keeps no gap.
 - **Payment receipt**, issued only on approval, with the payment as the
   approver confirmed it; VOID when reversed. Titled "Acknowledgement receipt"
   and marked "This is not an official receipt" until PLAN §12.128 is settled.
@@ -272,16 +284,17 @@ decisions #90 lists each have a PLAN §13 entry.
 |---|---|---|
 | D1 | Build before a payment provider? | **Yes, manual payment first.** Reverses §12.40: payment outside the app is how these customers pay today, and a provider later only replaces who confirms a payment |
 | D2 | New organizations | **Free, plus one trial of Basic for 14 days, once per owner account.** The trial expires like any subscription, back to Free. Repeating it with a new sign-up is a known risk (PLAN §12.130) |
-| D3 | Existing workspace-level subscriptions | **Fold, then end.** If the organization has no organization-wide subscription, its live workspace row becomes the organization's; every other workspace row is ended and kept as history. Owners are notified |
+| D3 | Existing workspace-level subscriptions | **Fold, then end.** If the organization has no organization-wide subscription, a NEW organization-wide row is written with the live workspace row's plan and period end; every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). Owners are notified |
 | D4 | Two active subscriptions | **Impossible**, by the partial unique index and a check in the write service that names the conflict |
 | D5 | `/admin/subscriptions` write screens | **Kept, as audited manual adjustments that require a reason** |
 | D6 | Over the caps after a downgrade | **The downgrade is refused** until the organization is within the new plan's caps ("Basic allows 3 members and you have 5. Remove 2 before downgrading"). An operator editing a live plan, and expiry, remove nothing: what is over a cap stays and only additions are refused, with the reason |
 | D7 | Short and over payments | **Short cannot be approved; over becomes credit** |
 | D8 | Who may change plan | **The owner only** (subscribe, change plan, cancel). Admins may renew and add payment details, so a lapse never waits on the owner |
 | D9 | The hold | **Once per period, none after a rejection, at most the grace days** |
+| D9a | Voiding inside a period with later changes | **Only the latest approved request of a period can be voided**; earlier ones wait until the later are voided, newest first |
 | D10 | Renewing after expiry | **A new period from approval, with a bill line for the access used past the period end.** Proposed in #90 as "keep the old period end within N days", which would charge for days the organization had no access; charging the days actually used closes loophole 9 exactly |
 | D11 | A paid-ahead month when the plan changes | **Becomes credit**, shown as a line in the change-plan preview |
-| D12 | When a change's amount is fixed | **Upgrade at submission, downgrade at approval** (loophole 11) |
+| D12 | When a change's amount is fixed | **Upgrade at submission, with the approval lag returned as credit; downgrade at approval, its bill issued then** (loophole 11) |
 | D13 | Billing keys and the plan filter | **Exempt**, one narrow named exemption in `grants.ts` with a test |
 | D14 | What decides expiry | **`accessUntil` on the subscription row**, compared with now in the entitlement check |
 | D15 | An approver who belongs to the organization | **Flagged, not blocked**, in the queue and the audit: a small platform may have one approver |
