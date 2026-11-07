@@ -513,7 +513,7 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 37 | ~~An app-level role can be GRANTED to nobody: `perm_user_role` has no write path~~ **Closed** | — | **2026-09-08.** `assignAppRole` behind a new `roles:grant_app` key, plus `inviteUser`, which carries the chosen role on the invitation and applies it at acceptance. Both refuse a role carrying features the granter does not hold, so neither can be used to mint somebody more powerful than yourself. Original entry: | `assignRole` writes `perm_membership_role` and takes an `organizationId`; nothing writes `perm_user_role` at all, so the two app-level grants in the live database were inserted by hand. `roles:manage_app` guards WRITING an app-level role, not granting one — a different act, and currently an unguarded impossibility rather than a hole. The user detail screen is the first surface that wants it, and the key is permissions-side (`roles:*`), not `users:*`: it grants a role, it does not change an account |
 | 38 | Deleting an account orphans its permission rows | if an erasure path is ever built | `perm_membership.userId` has no FK to `auth_user` by design (§12.12), so `DELETE FROM auth_user` leaves memberships and role grants pointing at nobody — verified by hand three times on 2026-09-08 removing test accounts, each needing an explicit membership and `perm_user_role` delete first. `findUsersByIds` and `listAppRolesForUsers` both tolerate the orphan by returning fewer rows than asked for. **No longer urgent: `users:delete` was removed the same day and the product has no delete at all** — an account is suspended, which keeps every row and is reversible. This stays open because the hazard returns the moment somebody builds an erasure path for a legal request, and because deleting by hand in a console hits it today. The composed delete belongs in the APP, the only layer allowed to touch both modules' tables |
 | 39 | ~~Nothing in `apps/web-app` opens the realtime socket~~ **CLOSED 2026-09-11** | — | The API half is complete and running — `graphql-ws` subscriptions on the same URL as HTTP, a ticket verified at `onConnect`, `planChanged` published, `NEXT_PUBLIC_WS_URL` set in both env files — and the app never calls `createRealtimeConnection`, so `PlansPage` receives no `realtime` prop and nothing listens. **Decided 2026-09-08: leave it.** `module-auth` and `module-permissions` stay on HTTP; realtime arrives as its OWN module, which is what the seam was built for — `onConnect` shapes the socket into the same `{ req }` an HTTP request produces, so `FeatureGuard` and `resolvePrincipal` are transport-blind and a new module's subscriptions are guarded like its queries. When it lands: the APP owns the one connection and passes it in (a `createRealtimeConnection` per module means a socket per module per tab), the `graphql-ws` import sits behind a subpath, the ticket path is an option rather than a hardcoded reference to module-auth's URL, and the subscription gets its own `graphql_subscription` binding. §12.28 and §12.29 become live the day it does. **⚠ That day is scheduled: `module-chat` (2026-09-10) is the own-module realtime was waiting for.** It also adds a requirement the plan half of this entry did not state — events must be filtered PER PUBLISH, re-checking participation, because a subscription is authorised once at subscribe and `planChanged` fans out to every subscriber unfiltered | **✅ CLOSED 2026-09-11.** The app opens exactly one connection, in `providers.tsx`, and hands it to every module through `RealtimeProvider` / `useRealtime()` in `@kwtech/module-kit/react`. The contract and `createRealtimeConnection` moved OUT of `module-permissions` into `module-kit` — a socket is a resource of the application, and with two subscribing modules the old arrangement would have given a tab one socket per module, each with its own ticket and reconnect, failing in no visible way and costing N times what it should. `PlansPage` now receives live `planChanged` events through that connection, so the half of this entry that was built and unused is running. What is NOT done is the rest of the list: a `graphql_subscription` binding exists for both modules now, and the ticket path was already an option.
-| 40 | Billing is unbuilt: nothing charges, and `currentPeriodEnd` is informational | when a payment provider is chosen | **Not to be built before the provider is.** Stripe, Paddle and manual invoicing imply genuinely different tables — Paddle is a merchant of record and handles tax, Stripe is not and does not — and guessing that shape is how a schema ends up fighting the integration. What IS decidable now, and was, on 2026-09-08: billing gets its OWN module, referencing `organizationId` and `planKey` as bare values with no foreign key, exactly as `perm_membership.userId` references an account. Roughly `BillingCustomer` (organization ↔ provider customer), `BillingPrice` (planKey → amount, currency, interval), `BillingInvoice`/`BillingPayment`. **Price does NOT go on `PermPlan`:** a plan is a bundle of entitlements and its price is commercial — currency, regional pricing, per-seat vs flat, promotions — so merging them makes every price change a permissions migration, puts "what Pro entitles" and "what Pro costs" in one row two teams edit, and makes a grandfathered customer paying last year's price for today's entitlements inexpressible. **No FK into `perm_subscription` either:** §12.24 already settled that a provider RECONCILES against those rows rather than owning them, so the seam is a webhook landing in the APP, which reads its billing rows and calls `PermissionsWriteService.updateSubscription` — the composition `resolve-principal` and the invitation resolvers already use. ⚠ Until it exists, a lapsed subscription KEEPS ENTITLING: `currentPeriodEnd` is written and rendered and never compared to `now`, because `status` decides entitlement so a clock cannot revoke a tenant with no row saying why. Nothing writes that status on a lapse — there is no scheduler in `web-server` — so the renewal date on the organization screens promises an enforcement that does not exist, and saying so on those screens is a cheap fix available before the module is |
+| 40 | Billing is unbuilt: nothing charges, and `currentPeriodEnd` is informational | billing phases 2 to 8 (#91 to #98) | **Reversed 2026-11-07 (#90): built now, with payment made outside the app and confirmed by platform staff; a provider fits in later as who confirms a payment** (§13, 2026-11-07, `docs/PLATFORM-BILLING-PLAN.md`). This row closes when phase 8 ships. As first written: **Not to be built before the provider is.** Stripe, Paddle and manual invoicing imply genuinely different tables — Paddle is a merchant of record and handles tax, Stripe is not and does not — and guessing that shape is how a schema ends up fighting the integration. What IS decidable now, and was, on 2026-09-08: billing gets its OWN module, referencing `organizationId` and `planKey` as bare values with no foreign key, exactly as `perm_membership.userId` references an account. Roughly `BillingCustomer` (organization ↔ provider customer), `BillingPrice` (planKey → amount, currency, interval), `BillingInvoice`/`BillingPayment`. **Price does NOT go on `PermPlan`:** a plan is a bundle of entitlements and its price is commercial — currency, regional pricing, per-seat vs flat, promotions — so merging them makes every price change a permissions migration, puts "what Pro entitles" and "what Pro costs" in one row two teams edit, and makes a grandfathered customer paying last year's price for today's entitlements inexpressible. **No FK into `perm_subscription` either:** §12.24 already settled that a provider RECONCILES against those rows rather than owning them, so the seam is a webhook landing in the APP, which reads its billing rows and calls `PermissionsWriteService.updateSubscription` — the composition `resolve-principal` and the invitation resolvers already use. ⚠ Until it exists, a lapsed subscription KEEPS ENTITLING: `currentPeriodEnd` is written and rendered and never compared to `now`, because `status` decides entitlement so a clock cannot revoke a tenant with no row saying why. Nothing writes that status on a lapse — there is no scheduler in `web-server` — so the renewal date on the organization screens promises an enforcement that does not exist, and saying so on those screens is a cheap fix available before the module is |
 | 18 | WebAuthn as a second factor type | Phase 7+ | `AuthMfaFactorType.webauthn` exists and every query pins the type to `VERIFIABLE_MFA_TYPES` (`totp`, `email` since 2026-09-25), so adding it is a code change and not a migration. It stores a public key, so it needs none of `secret-box.ts` |
 
 | 41 | Can chat ever be sold in a plan? | before chat is priced | `module-chat` is APP level (§12.13 gives it that free: `/chat/*` is not `/organizations/*`), and a plan may only sell organization- and workspace-level features — an app key in a plan entitles nobody. So "group chat is a Pro feature" is unexpressible today, and the ROLE-sourced cap is the only commercial lever. Accepted on 2026-09-10 as the price of chat being person-to-person rather than tenant-scoped: two users with no organization in common must be able to reach each other, which is the whole point. Reversing it later re-levels every `chat:*` key and every role holding one |
@@ -607,10 +607,111 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 125 | ~~Texts in the print studio are selected one at a time; a selection rectangle takes cells only~~ **Settled 2026-11-03 for the layout editor** (issue #57, see §13). On the Print screen texts are still painted into the canvas and not selectable | when texts need moving on the Print screen | The editor's rectangle takes cells and texts, and a group of both moves, copies and is removed together. Print keeps texts fixed once the layout is used |
 | 126 | ~~Chat, notes, queue and tasks decide "live" without the socket's status: a dead socket still looks live there~~ **Closed** | — | **Every screen reads module-kit's `useRealtimeLive` (§13, 2026-11-04, issue #64).** One rule (`isRealtimeLive`), each screen its own threshold; chat now says so in the thread, where it said nothing before |
 | 127 | ~~Setting up a device on the shop's network is in the docs only~~ **Closed** | — | **Built 2026-11-06 (#66): Server → Local Network**, a super admin's page with the shop's certificate (download, SHA-256 and SHA-1 fingerprints, what trusting it means), the address as text and as two QR codes, and the server's own `https://localhost`. `module-local-network`, beside Backups in the new **Server** drawer group. On only where `pnpm https:setup` turned it on; off on a remote server. The private key is never read. `docs/HTTPS.md` §5 starts from it. See the decision log |
+| 128 | Bills and receipts may not be official tax documents | before the first paid subscription is billed | Platform billing (#88, `docs/PLATFORM-BILLING-PLAN.md`) issues a bill at request and a payment receipt at approval. If the tax authority requires registered official receipts or invoices, these do not qualify. Until it is confirmed, the receipt is titled "Acknowledgement receipt" and says "This is not an official receipt". What would settle it: the rule for the platform's registration, and whether an official-receipt series or an accredited system is required |
+| 129 | Payment proof is typed, not uploaded | when the app has file storage | An owner enters the method, amount, date and reference of a payment (#88); a screenshot or bank slip cannot be attached, because the app stores no files (print studio keeps its files in the browser). The approver checks the reference against the e-wallet or bank account instead. Uploads come with file storage, as a field on the payment details |
+| 130 | A Basic trial can be had again with a new sign-up | if trials are seen repeated, or before trials are advertised | The trial is once per owner ACCOUNT (§13, 2026-11-07), and an account costs an email address. Tying it to a verified phone, a payment method or a device was not done: there is no SMS provider, no card, and device checks are easily reset. The screen says when an account already used its trial ("A free trial was already used by this account on <date>, for <organization>"), and the platform reports list trials per account, so a pattern is visible |
+| 131 | What an organization falls back to when its subscription expires | billing phase 3 (#92) | Expiry ends the subscription (`status: canceled`, `endedAt`). With nothing active an organization is entitled to nothing, as today; only the billing keys stay open (§13, 2026-11-07). The alternative is a fall back to Free, which a trial already does: an expired shop keeps its notes and tasks and its people can still sign in to something. Recommended: **Free**, with what is over Free's caps kept and refused growth, as on a downgrade by an operator. To be decided before #92 writes the entitlement check |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-07** — **Platform billing is built now, before any payment provider: payment outside the app, confirmed by platform staff (issue #90, reversing §12.40).**
+
+  §12.40 said billing was "not to be built before the provider is", because
+  Stripe, Paddle and manual invoicing imply different tables. The customers
+  here pay by cash, e-wallet and bank transfer today, and a lapsed
+  subscription still entitles for ever.
+  - **Manual first.** An organization requests a plan, pays outside the app,
+    enters the payment details, and an approver confirms them. A provider
+    later replaces only who confirms a payment, and makes renewals automatic.
+  - **What §12.40 settled still holds:** its own module
+    (`module-platform-billing`), bare `organizationId` and `planKey`, no price
+    on `PermPlan`, and `perm_subscription` written only through the
+    permissions write service.
+  - **Not done here:** any code. The design is `docs/PLATFORM-BILLING-PLAN.md`,
+    built in phases #91 to #98. Its other decisions (D4, D9, D12 to D17) are
+    in that file's §9 and need no entry of their own.
+
+- **2026-11-07** — **New organizations start on Free with one 14-day trial of Basic, once per owner account (#90, #89).**
+
+  Every new organization used to get a free subscription from the platform
+  defaults, so another organization meant another free start.
+  - **Free is a real plan now** (#89), so a new organization can work without
+    paying; the trial lets it try the business sub-apps.
+  - **Once per owner account, not per organization.** The trial ends like any
+    subscription, back to Free.
+  - **Not done:** tying the trial to a phone or a card; there is no SMS
+    provider and no card. The risk of a new sign-up is §12.130.
+
+- **2026-11-07** — **Workspace-level subscriptions are folded into the organization, then ended (#90).**
+
+  A subscription with a `workspaceId` entitles one workspace, so "why can't
+  this workspace use X" has two places to look.
+  - **Fold:** an organization with no organization-wide subscription gets its
+    live workspace row as its own.
+  - **End:** every other workspace row gets `endedAt` and is kept as
+    history. Owners are notified. No new workspace row is written.
+  - The data step runs in billing phase 3 (#92), before the one-active index.
+
+- **2026-11-07** — **`/admin/subscriptions` writes stay, as audited manual adjustments that require a reason (#90).**
+
+  They set any plan and any period end with no payment and no record.
+  - **Kept** because a platform needs a way to correct a mistake or honour a
+    deal outside billing.
+  - **A reason is required**, and the organization's history shows "adjusted
+    by X, no payment". Nothing writes a subscription without a billing
+    record.
+  - **Removing them was rejected:** every correction would need a database
+    edit.
+
+- **2026-11-07** — **A downgrade is refused while the organization is over the smaller plan's caps (#90, review loophole 12).**
+
+  Upgrade for a month, add 50 members, downgrade, and keep them all at the
+  Basic price.
+  - **Refused, with the count:** "Basic allows 3 members and you have 5.
+    Remove 2 before downgrading."
+  - **Not refused elsewhere.** An operator editing a live plan (the #89
+    change) and an expiry remove nothing: what is over a cap stays, and only
+    additions are refused, saying which cap and plan (#101).
+  - **Rejected: read-only excess.** It needs a read-only state in every
+    sub-app, for a case the refusal already prevents.
+
+- **2026-11-07** — **A short payment cannot be approved; an overpayment becomes credit (#90).**
+
+  - **Short:** approval is disabled ("Received 900 of 1,000, short by 100").
+    The owner adds the rest or the request is rejected.
+  - **Over:** the money was received, so the rest is credit ("We received
+    1,200; 200 was added to your credit"). Credit is never paid out as cash.
+
+- **2026-11-07** — **Only the owner subscribes, changes plan or cancels; admins renew and add payment details (#90).**
+
+  - Choosing what the organization pays for is the owner's decision, so an
+    admin cannot change it against the owner's wishes.
+  - **Admins can renew the same plan** and enter payment details, so a lapse
+    never waits for an owner who is away.
+  - The refusal reads "Only the organization's owner can change plan."
+
+- **2026-11-07** — **The hold is once per period and never after a rejection; a renewal after expiry is charged for the access used past the period end (#90, review loopholes 9 and 10).**
+
+  - **The hold:** a renewal with payment details, entered before grace ends,
+    keeps access until an approver decides, for at most the grace days. Only
+    once per period, and not for a request after a rejection, so fake details
+    buy no extra days.
+  - **After expiry:** the new period starts at approval (the billing day
+    resets), and its bill adds a line for the grace and hold days the
+    organization had, at the old plan's daily rate. Letting it lapse every
+    month then gains nothing.
+  - **Rejected:** keeping the old period end for N days after expiry, as #90
+    proposed. It charges for days the organization had no access.
+
+- **2026-11-07** — **A month paid ahead becomes credit when the plan changes before it starts (#90, review loophole 3).**
+
+  An owner may renew 7 days early, then change plan.
+  - The paid-ahead month on the old plan is a credit line in the change-plan
+    preview and applies to the new plan.
+  - **Rejected:** refusing the change until the paid month starts, which
+    leaves an owner who wants to upgrade waiting a week.
 
 - **2026-11-07** — **Plans are tiers by size: Free, Basic, Pro, and a private Custom. Every paid tier sells every sub-app; only the numbers differ (issue #89).**
 

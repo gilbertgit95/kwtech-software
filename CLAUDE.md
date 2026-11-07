@@ -18,6 +18,7 @@ link to the longer documents rather than copying them.
 | [docs/STANDARDS.md](docs/STANDARDS.md) | the coding standards: what is in `.claude/rules/`, and the known inconsistencies |
 | [docs/HTTPS.md](docs/HTTPS.md) | other devices reaching the app: the shop's network (Caddy, registering phones), a remote server (no Caddy), moving to another computer |
 | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | what may import what, and the ports modules use instead. Enforced by `pnpm check:boundaries` |
+| [docs/PLATFORM-BILLING-PLAN.md](docs/PLATFORM-BILLING-PLAN.md) | platform billing (#88): requests we approve, prorated plan changes, grace and expiry, bills and receipts; its decisions and phases |
 
 `docs/PLAN.md` is over 9,000 lines. Search it (`grep -n "§12.40" docs/PLAN.md`)
 rather than reading it whole.
