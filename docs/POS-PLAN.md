@@ -158,9 +158,10 @@ Simple rules, not features: each closes a way the numbers could go wrong.
 | `pos:manage_settings` | store settings: the hot keys and item keys (D18). The order reference options moved to `pos:manage_items` (2026-10-29) |
 
 Presets, read by `seed/app-roles.ts`: `pos-order-taker` (read, sell; issue
-#23), `pos-cashier` (read, sell, take_payment) and `pos-manager` (read, sell,
-take_payment, discount, refund, manage_items, reports, manage_settings). The
-manager holds every cashier key and the cashier every order taker's, so a
+#23), `pos-cashier` (read, sell, take_payment), `pos-supervisor` (the
+manager's keys without manage_settings; issue #25) and `pos-manager` (read,
+sell, take_payment, discount, refund, manage_items, reports, manage_settings).
+The manager holds every cashier key and the cashier every order taker's, so a
 store with no cashier runs the till with the manager role alone.
 
 **Who gets them (operator, 2026-09-29):** the stores using this have no
@@ -170,7 +171,8 @@ with no new roles (a member holds one workspace role, PLAN §12.85):
 | Workspace role | Gets | Can |
 |---|---|---|
 | Workspace admin | `pos-manager`'s keys | sell, give discounts, refund, manage items, see reports, and change settings |
-| Workspace user | `pos-cashier`'s keys | sell and take payment |
+| Supervisor (issue #25, 2026-11-07) | `pos-supervisor`'s keys | everything the admin can, except change settings |
+| Workspace user (labelled "Staff") | `pos-cashier`'s keys | sell and take payment |
 
 A store that later needs members who may **not** sell gets a combined role
 then (`.claude/rules/database.md`, "Combined workspace roles").

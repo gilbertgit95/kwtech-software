@@ -301,6 +301,33 @@ export const POS_ROLE_PRESETS: readonly PosRolePreset[] = [
      */
     features: [POS_FEATURE.read, POS_FEATURE.sell, POS_FEATURE.takePayment, POS_FEATURE.setAvailability],
   },
+  /*
+   * The person in charge of a shift (issue #25): discounts, refunds, the items
+   * and the reports, so a refund does not wait for the owner. NOT the store's
+   * settings (the shortcuts and sounds every till shares): that is a choice for
+   * the whole store, made once, and a shift lead changing it changes every
+   * other shift's tills without them knowing.
+   *
+   * ⚠ Declared here, not trimmed from `pos-manager` in the app's seed: the seed
+   * only reads presets, so the day this module adds a key a supervisor needs,
+   * the role gets it from this one list.
+   */
+  {
+    key: 'pos-supervisor',
+    label: 'POS supervisor',
+    icon: 'store',
+    level: 'workspace',
+    features: [
+      POS_FEATURE.read,
+      POS_FEATURE.sell,
+      POS_FEATURE.takePayment,
+      POS_FEATURE.discount,
+      POS_FEATURE.refund,
+      POS_FEATURE.manageItems,
+      POS_FEATURE.setAvailability,
+      POS_FEATURE.reports,
+    ],
+  },
   {
     key: 'pos-manager',
     label: 'POS manager',
