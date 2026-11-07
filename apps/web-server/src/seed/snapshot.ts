@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -44,6 +44,37 @@ import { env } from '../config/env.js';
  */
 
 const SNAPSHOT_PATH = fileURLToPath(new URL('../../seed-data/snapshot.json', import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL('../../prisma/migrations/', import.meta.url));
+
+/** The line a migration carries when its DATA steps must also run on an older snapshot. */
+const REPLAY_MARKER = '-- restore: replay';
+
+/**
+ * ⚠ DATA MIGRATIONS NEWER THAN THE SNAPSHOT, replayed after its rows load.
+ *
+ * A restore needs the database migrated at least as far as the snapshot, and
+ * usually further: the schema then has the newer columns, and the snapshot's
+ * rows arrive without them. For a column that is merely new that is fine. For
+ * one a migration FILLED from the data, it is not: #105's `liveOrganizationId`
+ * marks each organization's one live subscription, and restored as NULL a
+ * renewal finds nothing to renew and a new subscription can start beside the
+ * old one (#105, review). Such a migration carries `REPLAY_MARKER` and is
+ * written to run twice safely; restore runs each one newer than the snapshot,
+ * in order, inside its own transaction (their BEGIN/COMMIT removed), so a
+ * refusal in one rolls the whole restore back.
+ */
+function replayableMigrationsAfter(migration: string): { name: string; sql: string }[] {
+  if (!existsSync(MIGRATIONS_DIR)) return [];
+  return readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name > migration)
+    .map((entry) => entry.name)
+    .sort()
+    .map((name) => ({ name, path: `${MIGRATIONS_DIR}${name}/migration.sql` }))
+    .filter((one) => existsSync(one.path))
+    .map((one) => ({ name: one.name, sql: readFileSync(one.path, 'utf8') }))
+    .filter((one) => one.sql.includes(REPLAY_MARKER))
+    .map((one) => ({ name: one.name, sql: one.sql.replace(/^(BEGIN|COMMIT);$/gmu, '') }));
+}
 
 /** Snapshot format version, bumped if the file's shape changes. */
 const FORMAT = 1;
@@ -301,6 +332,10 @@ async function restoreSnapshot(client: pg.ClientBase, force: boolean) {
       );
       total += rows.length;
       console.log(`  ${table.padEnd(28)} ${rows.length}`);
+    }
+    for (const replay of replayableMigrationsAfter(snapshot.migration)) {
+      await client.query(replay.sql);
+      console.log(`  replayed the data steps of ${replay.name}`);
     }
     await client.query('COMMIT');
     console.log(`\n${total} row(s) restored from ${snapshot.migration}.`);

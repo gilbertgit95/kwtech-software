@@ -8,16 +8,24 @@
 --   3. refuse to go on if any organization still has two live organization-wide rows;
 --   4. add `liveOrganizationId`, unique, set on the one live organization-wide row.
 
+-- restore: replay
+-- ⚠ `pnpm db:restore` replays this file (without BEGIN/COMMIT) on a snapshot
+-- taken before it, so every statement is safe to run on a database that
+-- already has the column and the index (IF NOT EXISTS), and the data steps
+-- only ever act on rows still lacking their slot.
+--
 -- ONE TRANSACTION: step 3 refuses on purpose, and a refusal must leave the
 -- database exactly as it was, not with the column added and half the fold done.
 BEGIN;
 
-ALTER TABLE "perm_subscription" ADD COLUMN "liveOrganizationId" TEXT;
+ALTER TABLE "perm_subscription" ADD COLUMN IF NOT EXISTS "liveOrganizationId" TEXT;
 
 -- ── 1. the fold ─────────────────────────────────────────────────────────────
 -- Candidates: live rows that entitle now (active, not ended, plan not archived,
 -- access ahead or open-ended), for organizations with a live workspace row or
 -- with more than one live organization-wide row. Nothing else is touched.
+DROP TABLE IF EXISTS fold_candidate;
+DROP TABLE IF EXISTS fold_winner;
 CREATE TEMP TABLE fold_candidate AS
 SELECT s.*
 FROM "perm_subscription" s
@@ -127,6 +135,29 @@ WHERE p."key" = s."planKey"
   AND s."endedAt" IS NULL
   AND (s."status" <> 'active' OR p."archivedAt" IS NOT NULL);
 
+-- An organization whose live organization-wide rows have ALL expired needs no
+-- covering plan: none of them entitles anything. The latest keeps the slot (it
+-- is what lets a refusal say when the plan ended; ties by id) and the older
+-- ones end, so a churned organization that once held two plans does not stop
+-- the migration below.
+UPDATE "perm_subscription" s
+SET "endedAt" = (now() AT TIME ZONE 'UTC'), "status" = 'canceled'
+WHERE s."endedAt" IS NULL
+  AND s."workspaceId" IS NULL
+  AND s."accessUntil" IS NOT NULL
+  AND s."accessUntil" <= (now() AT TIME ZONE 'UTC')
+  AND NOT EXISTS (
+    SELECT 1 FROM "perm_subscription" o
+    WHERE o."organizationId" = s."organizationId" AND o."endedAt" IS NULL AND o."workspaceId" IS NULL
+      AND (o."accessUntil" IS NULL OR o."accessUntil" > (now() AT TIME ZONE 'UTC'))
+  )
+  AND EXISTS (
+    SELECT 1 FROM "perm_subscription" n
+    WHERE n."organizationId" = s."organizationId" AND n."endedAt" IS NULL AND n."workspaceId" IS NULL
+      AND n."id" <> s."id"
+      AND (n."accessUntil" > s."accessUntil" OR (n."accessUntil" = s."accessUntil" AND n."id" > s."id"))
+  );
+
 -- ── 3. refuse rather than guess ─────────────────────────────────────────────
 DO $$
 DECLARE crowded TEXT;
@@ -144,9 +175,9 @@ END $$;
 -- ── 4. the constraint ───────────────────────────────────────────────────────
 UPDATE "perm_subscription"
 SET "liveOrganizationId" = "organizationId"
-WHERE "endedAt" IS NULL AND "workspaceId" IS NULL;
+WHERE "endedAt" IS NULL AND "workspaceId" IS NULL AND "liveOrganizationId" IS NULL;
 
-CREATE UNIQUE INDEX "perm_subscription_liveOrganizationId_key" ON "perm_subscription"("liveOrganizationId");
+CREATE UNIQUE INDEX IF NOT EXISTS "perm_subscription_liveOrganizationId_key" ON "perm_subscription"("liveOrganizationId");
 
 DROP TABLE fold_candidate;
 DROP TABLE fold_winner;

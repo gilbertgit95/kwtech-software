@@ -640,6 +640,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
     transaction and check no actor: billing authorises with its own keys.
   - **An expired row keeps the slot** until billing restarts the
     organization, because it is what lets a refusal say when the plan ended.
+    Where every live organization-wide row has expired, the migration keeps
+    the latest and ends the older ones: they entitle nothing, so no covering
+    plan is needed and they must not stop the migration.
+  - **`pnpm db:restore` replays it** on a snapshot taken before it (a
+    `-- restore: replay` marker; the file is safe to run twice), or restored
+    live rows would hold no slot: a renewal would find nothing to renew and a
+    new subscription could start beside the old one.
   - **Not done:** the admin screens still offer a workspace picker that is now
     refused with its reason; phase 4 turns those screens into audited
     adjustments (D5).
