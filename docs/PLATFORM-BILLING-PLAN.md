@@ -127,12 +127,15 @@ Rules around it:
   resets, **and the bill charges the access used past the period end** (grace
   and any hold) at the old plan's daily rate (D10). That line is known when
   the request is submitted, because access has already ended.
-- **A renewal submitted before expiry is priced as on time, and its bill
-  never changes.** If approval comes after access has ended (past the hold),
-  the delay was ours: the month starts at approval instead of at the old
-  period end, the billing day resets, and no access line is added. The bill
-  stays as issued, so no revised bill is needed and payment is checked
-  against the amount the owner saw.
+- **A renewal is on time when its payment details were entered before
+  access ended**, not merely when it was submitted. An on-time renewal's
+  bill never changes: if approval comes after access ended, the delay was
+  ours, so the month starts at approval, the billing day resets and no
+  access line is added. **A renewal whose payment details come only after
+  access ended is not on time:** entering them cancels its bill (CANCELLED,
+  "access ended before payment details were entered") and issues a new bill
+  with the access line (D10), against which the payment is checked. The
+  cancelled bill keeps its number, so numbering keeps no gap.
 - **Change plan:** the old row ends and the new one starts at approval,
   running to the end of the current period, prorated. Offered only while the
   subscription is active and not overdue ("Renew first, then you can change
@@ -141,8 +144,18 @@ Rules around it:
   period it was priced for has ended, the change cannot be approved
   (`quote_expired`, "This change was priced for the period ending <date>.
   Request it again"). Payment already received for it is not lost: the
-  approver records it, a receipt is issued for it, and it becomes credit,
-  which the owner's next request uses.
+  approver **closes the request as credit**, a terminal state of its own
+  (`closed_as_credit`, beside approved, rejected, withdrawn and voided). The
+  payment is recorded, a receipt is issued for it ("Payment received, held as
+  credit"), the credit is added once, the plan does not change, and the bill
+  reads PAID with that receipt. The request is no longer pending, so the
+  owner can request again and the credit pays for it.
+- **An organization on an archived plan replaces it.** Archiving cuts a
+  plan's access at once, so "Renew first" cannot apply: the owner requests a
+  **replacement plan** whether the subscription is active, overdue or
+  expired. It is priced and applied like a subscribe (from approval, the
+  billing day reset), and the archived plan's paid days left become credit,
+  since the organization lost them to our archiving.
 - **Cancel:** ends at the period's end, with no credit.
 - **What can be requested.** Anyone may request a public plan
   (`isPublic`). A plan withdrawn from sale (`isPublic: false`, such as
@@ -268,7 +281,8 @@ Each lock or effective date is shown beside the setting.
   worked out on the day the change is approved. Today's estimate: 250"), and
   no number is taken, so the issued bill never disagrees with its credit and
   numbering keeps no gap.
-- **Payment receipt**, issued only on approval, with the payment as the
+- **Payment receipt**, issued only on approval or when a request is closed
+  as credit, with the payment as the
   approver confirmed it; VOID when reversed. Titled "Acknowledgement receipt"
   and marked "This is not an official receipt" until PLAN §12.128 is settled.
 - **Both are snapshots**, never changed after issue, never deleted with an
@@ -310,7 +324,7 @@ decisions #90 lists each have a PLAN §13 entry.
 |---|---|---|
 | D1 | Build before a payment provider? | **Yes, manual payment first.** Reverses §12.40: payment outside the app is how these customers pay today, and a provider later only replaces who confirms a payment |
 | D2 | New organizations | **Free, plus one trial of Basic for 14 days, once per owner account.** The trial expires like any subscription, back to Free. Repeating it with a new sign-up is a known risk (PLAN §12.130) |
-| D3 | Existing workspace-level subscriptions | **Fold, then end, and no workspace loses access.** For each organization with live workspace rows, the strongest plan among them and the organization's own row is chosen (more features, then larger caps). If that is a workspace row's plan, a NEW organization-wide row is written with that plan and the latest period end, and the organization's old row, if any, is ended; otherwise the organization's row stays as it is. Every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). The organization's other workspaces may gain access by this; none loses any. Owners are told what changed and until when |
+| D3 | Existing workspace-level subscriptions | **Fold, then end, and no workspace loses access.** For each organization with live workspace rows, the migration looks for one plan among its live rows (its own and its workspaces') that **covers all the others**: every feature of each, and every cap at least as large. If it is a workspace row's plan, a NEW organization-wide row is written with that plan and the latest period end, and the organization's old row, if any, is ended; if it is the organization's own, that row stays. **If no plan covers the others** (plans are not always nested), the migration does not guess: it skips that organization, leaves its rows as they are, and lists it for an operator, who makes a private plan holding the union on `/admin/plans` (as a Custom deal is) and runs the step again. Every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). The organization's other workspaces may gain access by this; none loses any. Owners are told what changed and until when |
 | D4 | Two active subscriptions | **Impossible**, by the partial unique index and a check in the write service that names the conflict |
 | D5 | `/admin/subscriptions` write screens | **Kept, as audited manual adjustments that require a reason** |
 | D6 | Over the caps after a downgrade | **The downgrade is refused** until the organization is within the new plan's caps ("Basic allows 3 members and you have 5. Remove 2 before downgrading"). An operator editing a live plan, and expiry, remove nothing: what is over a cap stays and only additions are refused, with the reason |
@@ -320,6 +334,8 @@ decisions #90 lists each have a PLAN §13 entry.
 | D9a | Voiding inside a period with later changes | **Only the latest approved request of a period can be voided**; earlier ones wait until the later are voided, newest first |
 | D10 | Renewing after expiry | **A new period from approval, with a bill line for the access used past the period end.** Proposed in #90 as "keep the old period end within N days", which would charge for days the organization had no access; charging the days actually used closes loophole 9 exactly |
 | D11 | A paid-ahead month when the plan changes | **Becomes credit**, shown as a line in the change-plan preview |
+| D12a | A plan change that can no longer be approved, but was paid | **Closed as credit**: a terminal state with a receipt and the credit added once; the owner requests again |
+| D12b | An organization on an archived plan | **Requests a replacement plan** at any status; priced as a subscribe, its paid days left as credit |
 | D12 | When a change's amount is fixed | **Upgrade at submission, with the approval lag returned as credit; downgrade at approval, its bill issued then** (loophole 11) |
 | D13 | Billing keys and the plan filter | **Exempt**, one narrow named exemption in `grants.ts` with a test |
 | D14 | What decides expiry | **`accessUntil` on the subscription row**, compared with now in the entitlement check |

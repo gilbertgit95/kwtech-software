@@ -648,10 +648,14 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
   A subscription with a `workspaceId` entitles one workspace, so "why can't
   this workspace use X" has two places to look.
-  - **Fold, and no workspace loses access:** the strongest plan among an
-    organization's live rows (its own and its workspaces') wins. If a
-    workspace row's plan is stronger, a NEW organization-wide row is written
-    with it and the latest period end, and the organization's old row ends.
+  - **Fold, and no workspace loses access:** among an organization's live
+    rows (its own and its workspaces'), the plan that covers all the others
+    (every feature, every cap at least as large) wins. If it is a workspace
+    row's, a NEW organization-wide row is written with it and the latest
+    period end, and the organization's old row ends. If none covers the
+    others, that organization is skipped and listed: an operator makes a
+    private plan holding the union on `/admin/plans`, and the step runs
+    again. Nothing is guessed.
     The workspace row is not retargeted: the write service keeps a
     subscription's target immutable, so what it entitled in the past still
     reads true. Other workspaces may gain access; none loses any.
@@ -743,13 +747,18 @@ Decisions 1, 2, 3 and 5 gate the next step.
     an earlier plan change would put back a plan over a later paid one.
   - **Approval re-checks:** self-approval needs the payment entered and
     covering the bill (D7); a plan change priced for a period that has ended
-    cannot be approved, and any payment for it becomes credit with its
-    receipt; a renewal submitted before expiry keeps its bill, and if we
-    approve it after access ended, its month starts at approval.
+    cannot be approved and is closed as credit (a terminal state, its
+    receipt, the credit added once), so the owner can request again; a
+    renewal whose payment details came before access ended keeps its bill,
+    and if we approve it late its month starts at approval; one whose details
+    came after access ended has its bill cancelled and reissued with the
+    access used.
   - **Archived plans are not renewed.** Archiving makes a plan entitle
     nothing (`module-permissions`), so renewing one would take payment for no
     access. Withdrawing a plan from sale is `isPublic: false`, which existing
-    organizations can still renew.
+    organizations can still renew. An organization on an archived plan
+    requests a replacement plan at any status, priced as a subscribe, with
+    its paid days left as credit.
   - **Notices are retried until sent:** a row per notice with a separate
     `sentAt`, so a failed send is retried rather than silenced.
 
