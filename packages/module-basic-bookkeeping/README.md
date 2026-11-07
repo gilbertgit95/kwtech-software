@@ -162,4 +162,5 @@ read the overview again.
 | Events | `books.changed` |
 
 The web server grants `books-owner` to `workspace-admin`, nothing to
-`workspace-user`, and sells the keys in Starter, Pro and Enterprise.
+`workspace-user`, and sells the keys in every paid plan
+(Basic, Pro and Custom).

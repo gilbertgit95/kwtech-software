@@ -612,6 +612,43 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-07** — **Plans are tiers by size: Free, Basic, Pro, and a private Custom. Every paid tier sells every sub-app; only the numbers differ (issue #89).**
+
+  Free sold no sub-app at all, and Starter, Pro and Enterprise differed only
+  in members and workspaces: a Pro shop had the same 10 queue windows, 1,000
+  POS items and 2 printing computers as a Starter one.
+  - **By size, not by sub-app.** Bundles by kind of business (retail,
+    services, print shop) were rejected: each mix of businesses needs another
+    plan, moving between bundles is sideways so a prorated change (#88) has no
+    direction, and the Apps page already hides what a shop doesn't use. The
+    same reasoning as the workspace roles (next entry).
+  - **Free: notes and tasks, one workspace, three people.** ⚠ It also gains
+    the teamwork keys it used to withhold on purpose. A new organization has
+    no workspace, and without `workspaces:create` a free founder could not
+    make the one its cap allowed, so a free organization could use nothing.
+    The caps keep it small now. Everything touching sales, cash or customers
+    is paid; a trial of Basic is billing's to give (#88), not a plan.
+  - **Basic** (one shop): every sub-app, 1 workspace, 10 members.
+    **Pro** (a small chain): 5 workspaces, 50 members, and about ten times
+    the room in each sub-app. **Custom**: not public (`isPublic: false`,
+    which no entitlement reads), large caps, copied per deal on
+    `/admin/plans`.
+  - **Keys stay** `free`, `starter`, `pro`, `enterprise`: subscriptions point
+    at them, and renaming one is a data migration. Only labels and contents
+    change.
+  - **Each tier has its own cap set** (`appLimits` in `seed/plans.ts`, every
+    sub-app's cap required), replacing one set shared by every tier.
+    `apps/web-server/test/plans.test.ts` pins that every paid tier sells
+    every sub-app, sets every plan cap, and that the tiers only grow.
+  - ⚠ **No existing environment changes.** `createPlanIfAbsent` never
+    rewrites a plan (§12.26), so this reaches fresh databases only. An
+    operator applies it on `/admin/plans`, after #90 decides what happens to
+    an organization already over a lowered cap (Basic allows 1 workspace
+    where Starter allowed 3).
+  - **Not done here:** cap refusals that give the number and the plan that
+    raises it, and a page comparing the plans. Every module words its own
+    refusal today, so that needs one shared shape: #101.
+
 - **2026-11-07** — **Workspace roles are three tiers of trust, Workspace admin, Supervisor and Staff, each covering every sub-app; not roles per sub-app (issue #25).**
 
   A shop had two workspace roles: an admin who could do everything and a

@@ -59,8 +59,7 @@ import { ALL_FEATURES } from './registry.js';
  *
  * Held by every tier: seeing which roles exist and what a feature means is how
  * an administrator understands their own organization, and withholding it makes
- * the free tier confusing rather than limited. What free actually lacks is the
- * ability to CHANGE anything — those keys are app-level or absent below.
+ * the free tier confusing rather than limited.
  */
 const READ_ONLY_ADMIN = [FEATURE.rolesRead];
 
@@ -101,12 +100,8 @@ const OWN_BILLING = [FEATURE.subscriptionsRead];
 const OWN_ORGANIZATION = [FEATURE.organizationRead, FEATURE.organizationUpdate];
 
 /**
- * Working together: people, workspaces, and what happens inside one.
- *
- * The jump the paid tiers sell, and it is why the free tier withholds exactly
- * these rather than something cosmetic. Named as a group now that the atomic
- * split turned three keys into eleven — listing them per tier would be three
- * copies of one product decision.
+ * Seeing who is here and which workspaces exist. In every tier: a tenant with
+ * three seats can still see its own member list.
  */
 const SEEING_AROUND = [FEATURE.membersRead, FEATURE.workspacesRead, FEATURE.workspaceRead];
 
@@ -114,16 +109,17 @@ const SEEING_AROUND = [FEATURE.membersRead, FEATURE.workspacesRead, FEATURE.work
  * Working together: adding people, organising workspaces, and granting roles
  * inside one.
  *
- * The jump the paid tiers sell. Named as a group now that the atomic split
- * turned three keys into twelve — listing them per tier would be three copies
- * of one product decision.
+ * IN EVERY TIER since issue #89, Free included. It used to be the jump the paid
+ * tiers sold, which left Free unable to create the one workspace its cap
+ * allowed: a new organization has none, so a free founder could use nothing.
+ * The caps (members, workspaces) are what keep Free small now, not withholding
+ * these.
  *
  * ⚠ The READS are deliberately NOT here, they are in `SEEING_AROUND` and every
  * tier has them. Before the split, `members:manage` bundled reading the roster
  * with changing it, so withholding the bundle from `free` also hid the member
  * list from a tenant with three seats — invisible while it was one key, and
- * plainly wrong once they were separate. The free tier's own principle is that
- * it can SEE how the system works and cannot grow inside it.
+ * plainly wrong once they were separate.
  */
 const TEAMWORK = [
   FEATURE.membersInvite,
@@ -138,8 +134,8 @@ const TEAMWORK = [
 ];
 
 /**
- * The walk-in queue, sold in every tier except free (PLAN §12.61, the
- * operator's answer).
+ * The walk-in queue, sold in every paid tier (PLAN §12.61, the operator's
+ * answer).
  *
  * One named group, so the tiers cannot drift apart key by key. All six keys are
  * workspace level, so they pass the entitlement filter like the rest of a plan.
@@ -164,8 +160,9 @@ const QUEUE = Object.values(QUEUE_FEATURE);
 const APPS_PAGE = Object.values(APP_HUB_FEATURE);
 
 /**
- * Notes, sold where the queue is: every tier except free — the tiers the
- * placeholder `note:read` was already in. All three keys are workspace level.
+ * Notes, sold in EVERY tier, Free included since issue #89: a team can try the
+ * app on notes and tasks, which handle no money. All three keys are workspace
+ * level.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment
  * seeded while notes were a placeholder has `note:read` only: an operator adds
@@ -175,12 +172,9 @@ const APPS_PAGE = Object.values(APP_HUB_FEATURE);
  */
 const NOTES = Object.values(NOTE_FEATURE);
 
-/** Notes kept per person per workspace, trash included. The same in every tier for now. */
-const NOTE_CAPS = { [NOTE_LIMIT.notes]: 500 };
-
 /**
- * Task boards, sold where notes are: every tier except free — the tiers the
- * placeholder `task:read` was already in. All five keys are workspace level.
+ * Task boards, sold where notes are: every tier, Free included (issue #89).
+ * All five keys are workspace level.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS. An environment
  * seeded while tasks were a placeholder has `task:read` only: an operator adds
@@ -189,9 +183,6 @@ const NOTE_CAPS = { [NOTE_LIMIT.notes]: 500 };
  * nothing in it, and the app says so (not_entitled).
  */
 const TASKS = Object.values(TASK_FEATURE);
-
-/** Boards owned and tasks created per person per workspace, archived included. The same in every tier for now. */
-const TASK_CAPS = { [TASK_LIMIT.boards]: 20, [TASK_LIMIT.tasks]: 2000 };
 
 /**
  * The point of sale, sold where it was as a placeholder: every tier except
@@ -213,7 +204,7 @@ const TASK_CAPS = { [TASK_LIMIT.boards]: 20, [TASK_LIMIT.tasks]: 2000 };
 const POS = Object.values(POS_FEATURE);
 
 /**
- * The books, sold where the point of sale is: every tier except free. All three
+ * The books, sold where the point of sale is: every paid tier. All three
  * keys are workspace level, and there is no cap.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
@@ -223,7 +214,7 @@ const POS = Object.values(POS_FEATURE);
 const BOOKS = Object.values(BOOKS_FEATURE);
 
 /**
- * Stock, sold where the point of sale is: every tier except free. All three
+ * Stock, sold where the point of sale is: every paid tier. All three
  * keys are workspace level.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
@@ -234,7 +225,7 @@ const BOOKS = Object.values(BOOKS_FEATURE);
 const STOCK = Object.values(STOCK_FEATURE);
 
 /**
- * Booking, sold where the point of sale is: every tier except free. All five
+ * Booking, sold where the point of sale is: every paid tier. All five
  * keys are workspace level.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
@@ -244,11 +235,8 @@ const STOCK = Object.values(STOCK_FEATURE);
  */
 const BOOKING = Object.values(BOOKING_FEATURE);
 
-/** Live staff, places and equipment a workspace takes bookings for. The same in every tier for now. */
-const BOOKING_CAPS = { [BOOKING_LIMIT.resources]: 10 };
-
 /**
- * The print studio, sold where booking is: every tier except free. All three
+ * The print studio, sold where booking is: every paid tier. All three
  * keys are workspace level.
  *
  * ⚠ `createPlanIfAbsent` NEVER REWRITES A PLAN THAT EXISTS: an environment
@@ -257,9 +245,6 @@ const BOOKING_CAPS = { [BOOKING_LIMIT.resources]: 10 };
  * the Apps page (not_entitled), and its history is pruned in no workspace.
  */
 const STUDIO = Object.values(STUDIO_FEATURE);
-
-/** Layouts kept per person per workspace. The same in every tier for now. */
-const STUDIO_CAPS = { [STUDIO_LIMIT.layouts]: 100 };
 
 /**
  * Printing through a paired computer, sold where the print studio is: it is
@@ -273,180 +258,213 @@ const STUDIO_CAPS = { [STUDIO_LIMIT.layouts]: 100 };
  */
 const PRINT = Object.values(PRINT_FEATURE);
 
-/** Computers paired per workspace. The same in every tier for now. */
-const PRINT_CAPS = { [PRINT_LIMIT.agents]: 2 };
+/*
+ * ── the tiers: by SIZE, not by sub-app (issue #89, PLAN §13 2026-11-07) ──────
+ *
+ * Every paid tier sells EVERY sub-app; the tiers differ by how big the business
+ * is: branches (workspaces), people, and how much each sub-app holds. So the
+ * upgrade question is always "have I outgrown my plan?".
+ *
+ * Bundles by kind of business (retail, services, print shop) were rejected:
+ * every mix of businesses would need another plan, the same combination problem
+ * as roles per sub-app (#25); moving between bundles is sideways, so a prorated
+ * plan change (#88) has no natural direction; and the Apps page already hides
+ * what a shop does not use.
+ *
+ * ⚠ THE NUMBERS ARE STARTING POINTS, and like everything here they reach only a
+ * database that has no such plan yet (`createPlanIfAbsent`). An existing
+ * environment changes its plans on `/admin/plans`, and what happens to an
+ * organization already over a lowered cap is decided in #90 first.
+ *
+ * Units, from each module's limit registry: notes, task boards, tasks and
+ * layouts count PER PERSON per workspace; everything else per workspace, except
+ * the two `organization:*` caps.
+ */
 
-/** Active items and variants per store. The same in every tier for now. */
-const POS_CAPS = { [POS_LIMIT.items]: 1000 };
-
-/** Active stock items per store, goods and materials together. The same in every tier for now. */
-const STOCK_CAPS = { [STOCK_LIMIT.items]: 1000 };
-
-/** The same in every tier for now. Tiering them later is a product decision with no schema cost. */
-const QUEUE_CAPS = {
-  [QUEUE_LIMIT.windows]: 10,
-  [QUEUE_LIMIT.displays]: 5,
-};
+/** A sub-app cap set, one per tier, so no tier can quietly share another's numbers. */
+interface AppCaps {
+  queueWindows: number;
+  queueDisplays: number;
+  notes: number;
+  taskBoards: number;
+  tasks: number;
+  posItems: number;
+  stockItems: number;
+  bookingResources: number;
+  studioLayouts: number;
+  printAgents: number;
+}
 
 /**
- * Free — one workspace, a couple of people, nothing to administer.
+ * Turns a tier's numbers into plan limits.
  *
- * The caps are the product, not the features: a free organization can see how
- * the system works and cannot grow inside it. `members:manage` is withheld, so
- * the founder is the only member — which makes three seats generous rather than
- * restrictive, and is why the cap sits above one.
+ * ⚠ Every field is required by `AppCaps`, so a tier cannot forget a sub-app's
+ * cap: one left out would fall to the registry floor of 1, a shop allowed ONE
+ * item for sale with nothing explaining why.
+ */
+function appLimits(caps: AppCaps): Record<string, number> {
+  return {
+    [QUEUE_LIMIT.windows]: caps.queueWindows,
+    [QUEUE_LIMIT.displays]: caps.queueDisplays,
+    [NOTE_LIMIT.notes]: caps.notes,
+    [TASK_LIMIT.boards]: caps.taskBoards,
+    [TASK_LIMIT.tasks]: caps.tasks,
+    [POS_LIMIT.items]: caps.posItems,
+    [STOCK_LIMIT.items]: caps.stockItems,
+    [BOOKING_LIMIT.resources]: caps.bookingResources,
+    [STUDIO_LIMIT.layouts]: caps.studioLayouts,
+    [PRINT_LIMIT.agents]: caps.printAgents,
+  };
+}
+
+/** What every tier holds, Free included: the floor described above each group. */
+const EVERY_TIER = [
+  ...OWN_ORGANIZATION,
+  ...SEEING_AROUND,
+  ...READ_ONLY_ADMIN,
+  ...OWN_BILLING,
+  ...TEAMWORK,
+  ...APPS_PAGE,
+];
+
+/** Every sub-app. Each paid tier sells all of them; only the numbers differ. */
+const EVERY_SUB_APP = [...QUEUE, ...NOTES, ...TASKS, ...POS, ...BOOKS, ...STOCK, ...BOOKING, ...STUDIO, ...PRINT];
+
+/**
+ * Free — trying the app with a small team: notes and tasks in one workspace.
+ *
+ * ⚠ IT USED TO WITHHOLD `TEAMWORK`, AND THAT MEANT IT COULD DO NOTHING. A new
+ * organization has no workspace, and without `workspaces:create` its founder
+ * could not make one, so a free organization opened onto an empty Apps page in
+ * no workspace at all. It now holds the teamwork keys and the caps keep it
+ * small: one workspace, three people.
+ *
+ * Notes and tasks, because they let a team try the app and its live updates and
+ * handle no money. Everything that touches sales, cash or customers is paid.
+ * The trial of Basic that new organizations get is billing's (#88), not a plan.
  */
 const FREE: PlanDefinition = {
   key: 'free',
   label: 'Free',
   isPublic: true,
   icon: 'sprout',
-  features: [...OWN_ORGANIZATION, ...SEEING_AROUND, ...READ_ONLY_ADMIN, ...OWN_BILLING, ...APPS_PAGE],
+  features: [...EVERY_TIER, ...NOTES, ...TASKS],
   limits: {
     [LIMIT.organizationMembers]: 3,
     [LIMIT.organizationWorkspaces]: 1,
     [LIMIT.workspaceMembers]: 3,
+    [NOTE_LIMIT.notes]: 100,
+    [TASK_LIMIT.boards]: 3,
+    [TASK_LIMIT.tasks]: 300,
   },
 };
 
 /**
- * Starter — a small team that actually works together.
+ * Basic — one shop or branch: every sub-app, one workspace.
  *
- * The first tier that can INVITE and ORGANISE: members, workspaces, and sharing
- * a workspace with a colleague. That is the jump people pay for, and it is why
- * the free tier withholds exactly these three rather than something cosmetic.
+ * The key stays `starter`: every subscription on it points at the key, and
+ * renaming one is a data migration for a change only people read.
  */
 const STARTER: PlanDefinition = {
   key: 'starter',
-  label: 'Starter',
+  label: 'Basic',
   isPublic: true,
   icon: 'rocket',
-  features: [
-    ...OWN_ORGANIZATION,
-    ...SEEING_AROUND,
-    ...READ_ONLY_ADMIN,
-    ...OWN_BILLING,
-    ...TEAMWORK,
-    ...QUEUE,
-    ...NOTES,
-    ...TASKS,
-    ...POS,
-    ...BOOKS,
-    ...STOCK,
-    ...BOOKING,
-    ...STUDIO,
-    ...PRINT,
-    ...APPS_PAGE,
-  ],
+  features: [...EVERY_TIER, ...EVERY_SUB_APP],
   limits: {
     [LIMIT.organizationMembers]: 10,
-    [LIMIT.organizationWorkspaces]: 3,
+    [LIMIT.organizationWorkspaces]: 1,
     [LIMIT.workspaceMembers]: 10,
-    ...QUEUE_CAPS,
-    ...NOTE_CAPS,
-    ...TASK_CAPS,
-    ...POS_CAPS,
-    ...STOCK_CAPS,
-    ...BOOKING_CAPS,
-    ...STUDIO_CAPS,
-    ...PRINT_CAPS,
+    ...appLimits({
+      queueWindows: 3,
+      queueDisplays: 1,
+      notes: 500,
+      taskBoards: 20,
+      tasks: 2_000,
+      posItems: 500,
+      stockItems: 500,
+      bookingResources: 5,
+      studioLayouts: 50,
+      printAgents: 1,
+    }),
   },
 };
 
 /**
- * Pro — a company with more workspaces than any one person joins.
+ * Pro — a small chain: every sub-app, up to five branches, and more room in each.
  *
- * Sells the same features as Starter and differs on CAPS: fifty seats,
- * twenty-five workspaces. That is honest rather than thin — the registry has
- * nine sellable keys today and they are all administrative, so there is nothing
- * product-shaped left to withhold from Starter that Pro could add.
- *
- * It used to add `workspaces:access_all`. That key was removed when workspace
- * membership became required (docs/PLAN.md §13, 2026-09-07): there is no longer
- * a right that lets somebody into a workspace they were not added to, so there
- * is nothing there to sell.
+ * Priced (in #88's price table, never here) at less than five Basics, so a
+ * five-branch shop has a reason to choose it.
  */
 const PRO: PlanDefinition = {
   key: 'pro',
   label: 'Pro',
   isPublic: true,
   icon: 'zap',
-  features: [
-    ...OWN_ORGANIZATION,
-    ...SEEING_AROUND,
-    ...READ_ONLY_ADMIN,
-    ...OWN_BILLING,
-    ...TEAMWORK,
-    ...QUEUE,
-    ...NOTES,
-    ...TASKS,
-    ...POS,
-    ...BOOKS,
-    ...STOCK,
-    ...BOOKING,
-    ...STUDIO,
-    ...PRINT,
-    ...APPS_PAGE,
-  ],
+  features: [...EVERY_TIER, ...EVERY_SUB_APP],
   limits: {
     [LIMIT.organizationMembers]: 50,
-    [LIMIT.organizationWorkspaces]: 25,
+    [LIMIT.organizationWorkspaces]: 5,
     [LIMIT.workspaceMembers]: 50,
-    ...QUEUE_CAPS,
-    ...NOTE_CAPS,
-    ...TASK_CAPS,
-    ...POS_CAPS,
-    ...STOCK_CAPS,
-    ...BOOKING_CAPS,
-    ...STUDIO_CAPS,
-    ...PRINT_CAPS,
+    ...appLimits({
+      queueWindows: 10,
+      queueDisplays: 5,
+      notes: 5_000,
+      taskBoards: 100,
+      tasks: 20_000,
+      posItems: 5_000,
+      stockItems: 5_000,
+      bookingResources: 25,
+      studioLayouts: 500,
+      printAgents: 5,
+    }),
   },
 };
 
 /**
- * Enterprise — everything a plan is capable of selling.
+ * Custom — large or special deals, NOT on the public list. A chain with thirty
+ * branches negotiates; it gets a plan made for its deal (copied from this one on
+ * `/admin/plans`), not a fourth tier on the price list. The key stays
+ * `enterprise` for the same reason Basic's stays `starter`.
  *
- * DERIVED from the composed registry rather than listed, the same call
- * `super-admin` makes and for the same reason: a frozen list would leave the
- * tier named "Enterprise" while quietly ceasing to include everything, found
- * out as a denied request months later. A key added by ANY module — not just
- * this one — is sold by this tier on the next fresh seed.
- *
- * `canPlanEntitle` does the filtering, so app-level keys are excluded by the
- * same rule the plan editor and the write path use. There is no risk of selling
- * something inert — module-auth's three `account:*` keys are app level, so no
- * tier sells them and none may withhold them either: looking after your own
- * profile is not a billable feature.
+ * Its features are DERIVED from the composed registry rather than listed, the
+ * same call `super-admin` makes: a frozen list would leave the tier quietly
+ * ceasing to include everything. `canPlanEntitle` drops app-level keys, by the
+ * same rule the plan editor and the write path use.
  *
  * The caps are deliberately finite. "Unlimited" is not expressible —
- * `resolveLimits` takes a number or falls back to the registry floor — and a
- * large number is the honest way to say "more than anyone will reach", the same
- * device `super-admin`'s `user:organizations: 9999` uses.
+ * `resolveLimits` takes a number or falls back to the registry floor — so a
+ * large number says "more than this deal will reach", as `super-admin`'s
+ * `user:organizations: 9999` does.
  */
 const ENTERPRISE: PlanDefinition = {
   key: 'enterprise',
-  label: 'Enterprise',
-  isPublic: true,
+  label: 'Custom',
+  isPublic: false,
   icon: 'gem',
   features: ALL_FEATURES.filter((spec) => canPlanEntitle(spec.level)).map((spec) => spec.key),
   limits: {
     [LIMIT.organizationMembers]: 10_000,
     [LIMIT.organizationWorkspaces]: 1_000,
     [LIMIT.workspaceMembers]: 10_000,
-    // The queue's and notes' keys arrive through the derived feature list; their caps do not.
-    ...QUEUE_CAPS,
-    ...NOTE_CAPS,
-    ...TASK_CAPS,
-    ...POS_CAPS,
-    ...STOCK_CAPS,
-    ...BOOKING_CAPS,
-    ...STUDIO_CAPS,
-    ...PRINT_CAPS,
+    // The sub-apps' keys arrive through the derived feature list; their caps do not.
+    ...appLimits({
+      queueWindows: 50,
+      queueDisplays: 20,
+      notes: 50_000,
+      taskBoards: 1_000,
+      tasks: 200_000,
+      posItems: 50_000,
+      stockItems: 50_000,
+      bookingResources: 100,
+      studioLayouts: 5_000,
+      printAgents: 20,
+    }),
   },
 };
 
 /**
- * Ordered cheapest first, which is the order the seeder logs them in and the
+ * Ordered smallest first, which is the order the seeder logs them in and the
  * order a catalogue reads in. Nothing depends on it — plans have no ranking of
  * their own, because a plan is exactly the list of features it carries.
  */

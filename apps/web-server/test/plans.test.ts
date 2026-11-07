@@ -1,0 +1,194 @@
+import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
+import { STOCK_FEATURE, STOCK_LIMIT } from '@kwtech/module-basic-inventory';
+import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
+import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
+import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
+import { assertPlanFeatureLevels, assertPlanLimits, FEATURE, LIMIT } from '@kwtech/module-permissions';
+import { PRINT_FEATURE, PRINT_LIMIT } from '@kwtech/module-print';
+import { STUDIO_FEATURE, STUDIO_LIMIT } from '@kwtech/module-print-studio';
+import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
+import { TASK_FEATURE, TASK_LIMIT } from '@kwtech/module-task';
+import { PLANS } from '../src/seed/plans.js';
+import { ALL_FEATURES, ALL_LIMITS } from '../src/seed/registry.js';
+
+/**
+ * ⚠ THE PLANS ARE TIERS BY SIZE (issue #89, PLAN §13 2026-11-07).
+ *
+ * Every paid tier sells every sub-app and the tiers differ only in numbers.
+ * These tests pin that shape, so a sub-app added to one tier and forgotten in
+ * another, or a cap missing from a tier (which falls to the registry floor of
+ * 1 — one item for sale, with nothing saying why), fails here by name.
+ */
+
+/** A seeded plan by key. Throws, so a renamed plan names itself instead of passing every check vacuously. */
+function plan(key: string): (typeof PLANS)[number] {
+  const found = PLANS.find((one) => one.key === key);
+  if (!found) throw new Error(`plans.ts no longer seeds '${key}'.`);
+  return found;
+}
+
+/** Every sub-app's keys, read from the modules, so a key a module adds is expected in every paid tier. */
+const SUB_APP_KEYS: readonly string[] = [
+  ...Object.values(QUEUE_FEATURE),
+  ...Object.values(NOTE_FEATURE),
+  ...Object.values(TASK_FEATURE),
+  ...Object.values(POS_FEATURE),
+  ...Object.values(BOOKS_FEATURE),
+  ...Object.values(STOCK_FEATURE),
+  ...Object.values(BOOKING_FEATURE),
+  ...Object.values(STUDIO_FEATURE),
+  ...Object.values(PRINT_FEATURE),
+];
+
+/** Every cap a plan sets: the plan-sourced limits of every composed module. */
+const PLAN_LIMIT_KEYS: readonly string[] = ALL_LIMITS.filter((limit) => limit.source === 'plan').map(
+  (limit) => limit.key,
+);
+
+const PAID = ['starter', 'pro', 'enterprise'] as const;
+
+describe('the seeded plans', () => {
+  it('are Free, Basic, Pro and a private Custom, keeping their keys', () => {
+    expect(PLANS.map((one) => [one.key, one.label, one.isPublic])).toEqual([
+      ['free', 'Free', true],
+      ['starter', 'Basic', true],
+      ['pro', 'Pro', true],
+      ['enterprise', 'Custom', false],
+    ]);
+  });
+
+  /*
+   * The two checks `createPlanIfAbsent` runs before writing a plan. Run here so
+   * a tier that would fail on a FRESH database fails the build instead — no
+   * existing database ever runs them, because it already has the plans.
+   */
+  it.each(PLANS.map((one) => [one.key, one] as const))('%s passes the checks plan creation runs', (_key, one) => {
+    expect(() => assertPlanFeatureLevels(one, ALL_FEATURES)).not.toThrow();
+    expect(() => assertPlanLimits(one.key, one.limits, ALL_LIMITS)).not.toThrow();
+  });
+
+  it('⚠ every tier can create its workspace and invite its people, or a new organization can use nothing', () => {
+    for (const one of PLANS) {
+      expect(one.features).toEqual(
+        expect.arrayContaining([
+          FEATURE.organizationRead,
+          FEATURE.workspacesCreate,
+          FEATURE.membersInvite,
+          FEATURE.subscriptionsRead,
+        ]),
+      );
+    }
+  });
+
+  it('Free sells notes and tasks and no sub-app that handles money or customers', () => {
+    const free = plan('free').features;
+    const notesAndTasks = [...Object.values(NOTE_FEATURE), ...Object.values(TASK_FEATURE)];
+    expect(free).toEqual(expect.arrayContaining(notesAndTasks));
+    expect(free.filter((key) => SUB_APP_KEYS.includes(key) && !notesAndTasks.includes(key))).toEqual([]);
+  });
+
+  it.each(PAID)('%s sells every sub-app', (key) => {
+    expect(SUB_APP_KEYS.filter((feature) => !plan(key).features.includes(feature))).toEqual([]);
+  });
+
+  it.each(PAID)('%s sets every plan cap, so none falls to the floor of 1', (key) => {
+    expect(PLAN_LIMIT_KEYS.filter((limit) => plan(key).limits[limit] === undefined)).toEqual([]);
+  });
+
+  /*
+   * A bigger plan never allows less of anything: an upgrade that lowered one cap
+   * would refuse a shop something it could do the day before.
+   */
+  it('⚠ grows: Free ≤ Basic ≤ Pro ≤ Custom, cap by cap', () => {
+    const order = ['free', 'starter', 'pro', 'enterprise'];
+    const shrinks: string[] = [];
+    for (let i = 1; i < order.length; i += 1) {
+      const smaller = plan(order[i - 1] ?? '');
+      const bigger = plan(order[i] ?? '');
+      for (const [limit, value] of Object.entries(smaller.limits)) {
+        const next = bigger.limits[limit];
+        if (next === undefined || next < value)
+          shrinks.push(`${limit}: ${smaller.key} ${value} → ${bigger.key} ${next}`);
+      }
+      for (const feature of smaller.features) {
+        if (!bigger.features.includes(feature)) shrinks.push(`${feature}: in ${smaller.key}, not ${bigger.key}`);
+      }
+    }
+    expect(shrinks).toEqual([]);
+  });
+
+  /*
+   * Every number in issue #89's table, per plan, matched against the plan's
+   * WHOLE cap set: a cap changed, added or dropped fails here naming the plan,
+   * so a lowered cap (Basic from 10 members to 9) cannot pass unnoticed.
+   */
+  it.each([
+    [
+      'free',
+      {
+        [LIMIT.organizationMembers]: 3,
+        [LIMIT.organizationWorkspaces]: 1,
+        [LIMIT.workspaceMembers]: 3,
+        [NOTE_LIMIT.notes]: 100,
+        [TASK_LIMIT.boards]: 3,
+        [TASK_LIMIT.tasks]: 300,
+      },
+    ],
+    [
+      'starter',
+      {
+        [LIMIT.organizationMembers]: 10,
+        [LIMIT.organizationWorkspaces]: 1,
+        [LIMIT.workspaceMembers]: 10,
+        [QUEUE_LIMIT.windows]: 3,
+        [QUEUE_LIMIT.displays]: 1,
+        [NOTE_LIMIT.notes]: 500,
+        [TASK_LIMIT.boards]: 20,
+        [TASK_LIMIT.tasks]: 2_000,
+        [POS_LIMIT.items]: 500,
+        [STOCK_LIMIT.items]: 500,
+        [BOOKING_LIMIT.resources]: 5,
+        [STUDIO_LIMIT.layouts]: 50,
+        [PRINT_LIMIT.agents]: 1,
+      },
+    ],
+    [
+      'pro',
+      {
+        [LIMIT.organizationMembers]: 50,
+        [LIMIT.organizationWorkspaces]: 5,
+        [LIMIT.workspaceMembers]: 50,
+        [QUEUE_LIMIT.windows]: 10,
+        [QUEUE_LIMIT.displays]: 5,
+        [NOTE_LIMIT.notes]: 5_000,
+        [TASK_LIMIT.boards]: 100,
+        [TASK_LIMIT.tasks]: 20_000,
+        [POS_LIMIT.items]: 5_000,
+        [STOCK_LIMIT.items]: 5_000,
+        [BOOKING_LIMIT.resources]: 25,
+        [STUDIO_LIMIT.layouts]: 500,
+        [PRINT_LIMIT.agents]: 5,
+      },
+    ],
+    [
+      'enterprise',
+      {
+        [LIMIT.organizationMembers]: 10_000,
+        [LIMIT.organizationWorkspaces]: 1_000,
+        [LIMIT.workspaceMembers]: 10_000,
+        [QUEUE_LIMIT.windows]: 50,
+        [QUEUE_LIMIT.displays]: 20,
+        [NOTE_LIMIT.notes]: 50_000,
+        [TASK_LIMIT.boards]: 1_000,
+        [TASK_LIMIT.tasks]: 200_000,
+        [POS_LIMIT.items]: 50_000,
+        [STOCK_LIMIT.items]: 50_000,
+        [BOOKING_LIMIT.resources]: 100,
+        [STUDIO_LIMIT.layouts]: 5_000,
+        [PRINT_LIMIT.agents]: 20,
+      },
+    ],
+  ] as const)('%s sets exactly the caps in the #89 table', (key, caps) => {
+    expect(plan(key).limits).toEqual(caps);
+  });
+});
