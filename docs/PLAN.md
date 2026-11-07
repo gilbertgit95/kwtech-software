@@ -654,8 +654,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
     row's, a NEW organization-wide row is written with it and the latest
     period end, and the organization's old row ends. If none covers the
     others, that organization is skipped and listed: an operator makes a
-    private plan holding the union on `/admin/plans`, and the step runs
-    again. Nothing is guessed.
+    private plan holding the union on `/admin/plans`, assigns it as the
+    organization's subscription by a manual adjustment with its reason, and
+    runs the step again, which then finds a row covering the others.
+    Nothing is guessed.
     The workspace row is not retargeted: the write service keeps a
     subscription's target immutable, so what it entitled in the past still
     reads true. Other workspaces may gain access; none loses any.
@@ -747,9 +749,11 @@ Decisions 1, 2, 3 and 5 gate the next step.
     an earlier plan change would put back a plan over a later paid one.
   - **Approval re-checks:** self-approval needs the payment entered and
     covering the bill (D7); a plan change priced for a period that has ended
-    cannot be approved and is closed as credit (a terminal state, its
-    receipt, the credit added once), so the owner can request again; a
-    renewal whose payment details came before access ended keeps its bill,
+    cannot be approved and is closed as credit (a terminal state, a receipt
+    for exactly what was received, the credit added once, the bill
+    cancelled, never marked paid), so the owner can request again; a
+    renewal whose payment details covering the bill came before access
+    ended keeps its bill,
     and if we approve it late its month starts at approval; one whose details
     came after access ended has its bill cancelled and reissued with the
     access used.
@@ -757,8 +761,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
     nothing (`module-permissions`), so renewing one would take payment for no
     access. Withdrawing a plan from sale is `isPublic: false`, which existing
     organizations can still renew. An organization on an archived plan
-    requests a replacement plan at any status, priced as a subscribe, with
-    its paid days left as credit.
+    requests a replacement plan at any status, priced as a subscribe; the
+    paid days it lost are credited at the moment of archiving, from the
+    archive date.
   - **Notices are retried until sent:** a row per notice with a separate
     `sentAt`, so a failed send is retried rather than silenced.
 

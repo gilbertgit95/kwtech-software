@@ -127,12 +127,14 @@ Rules around it:
   resets, **and the bill charges the access used past the period end** (grace
   and any hold) at the old plan's daily rate (D10). That line is known when
   the request is submitted, because access has already ended.
-- **A renewal is on time when its payment details were entered before
-  access ended**, not merely when it was submitted. An on-time renewal's
+- **A renewal is on time when payment details covering its bill were
+  entered before access ended**, not merely when it was submitted. A short
+  amount entered in time and topped up after access ended is not on time. An on-time renewal's
   bill never changes: if approval comes after access ended, the delay was
   ours, so the month starts at approval, the billing day resets and no
   access line is added. **A renewal whose payment details come only after
-  access ended is not on time:** entering them cancels its bill (CANCELLED,
+  access ended (or whose amount reaches the bill only then) is not on
+  time:** entering them cancels its bill (CANCELLED,
   "access ended before payment details were entered") and issues a new bill
   with the access line (D10), against which the payment is checked. The
   cancelled bill keeps its number, so numbering keeps no gap.
@@ -146,16 +148,23 @@ Rules around it:
   Request it again"). Payment already received for it is not lost: the
   approver **closes the request as credit**, a terminal state of its own
   (`closed_as_credit`, beside approved, rejected, withdrawn and voided). The
-  payment is recorded, a receipt is issued for it ("Payment received, held as
-  credit"), the credit is added once, the plan does not change, and the bill
-  reads PAID with that receipt. The request is no longer pending, so the
+  payment actually received is recorded, whatever its amount (D7 governs
+  approval, not this), a receipt is issued for exactly that amount
+  ("Payment received, held as credit"), the credit is added once, and the
+  plan does not change. The bill is **not** marked paid: it reads CANCELLED,
+  "closed as credit: 200 received, receipt #0009", so a bill of 500 never
+  reads paid on 200. The request is no longer pending, so the
   owner can request again and the credit pays for it.
 - **An organization on an archived plan replaces it.** Archiving cuts a
   plan's access at once, so "Renew first" cannot apply: the owner requests a
   **replacement plan** whether the subscription is active, overdue or
   expired. It is priced and applied like a subscribe (from approval, the
-  billing day reset), and the archived plan's paid days left become credit,
-  since the organization lost them to our archiving.
+  billing day reset). **The paid days it lost are credited when the plan is
+  archived, not at replacement:** the app tells billing of the archive, and
+  billing credits every organization on that plan for its paid days from the
+  archive date to its period end, once, with "Basic (2025) was withdrawn on
+  <date>; 18 paid days added as credit". A replacement approved weeks later
+  still finds that credit.
 - **Cancel:** ends at the period's end, with no credit.
 - **What can be requested.** Anyone may request a public plan
   (`isPublic`). A plan withdrawn from sale (`isPublic: false`, such as
@@ -324,7 +333,7 @@ decisions #90 lists each have a PLAN §13 entry.
 |---|---|---|
 | D1 | Build before a payment provider? | **Yes, manual payment first.** Reverses §12.40: payment outside the app is how these customers pay today, and a provider later only replaces who confirms a payment |
 | D2 | New organizations | **Free, plus one trial of Basic for 14 days, once per owner account.** The trial expires like any subscription, back to Free. Repeating it with a new sign-up is a known risk (PLAN §12.130) |
-| D3 | Existing workspace-level subscriptions | **Fold, then end, and no workspace loses access.** For each organization with live workspace rows, the migration looks for one plan among its live rows (its own and its workspaces') that **covers all the others**: every feature of each, and every cap at least as large. If it is a workspace row's plan, a NEW organization-wide row is written with that plan and the latest period end, and the organization's old row, if any, is ended; if it is the organization's own, that row stays. **If no plan covers the others** (plans are not always nested), the migration does not guess: it skips that organization, leaves its rows as they are, and lists it for an operator, who makes a private plan holding the union on `/admin/plans` (as a Custom deal is) and runs the step again. Every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). The organization's other workspaces may gain access by this; none loses any. Owners are told what changed and until when |
+| D3 | Existing workspace-level subscriptions | **Fold, then end, and no workspace loses access.** For each organization with live workspace rows, the migration looks for one plan among its live rows (its own and its workspaces') that **covers all the others**: every feature of each, and every cap at least as large. If it is a workspace row's plan, a NEW organization-wide row is written with that plan and the latest period end, and the organization's old row, if any, is ended; if it is the organization's own, that row stays. **If no plan covers the others** (plans are not always nested), the migration does not guess: it skips that organization, leaves its rows as they are, and lists it for an operator. The operator makes a private plan holding the union on `/admin/plans` (as a Custom deal is), **assigns it to the organization as its organization-wide subscription by a manual adjustment (D5)**, with the reason "fold of workspace subscriptions" and the latest period end, and runs the step again. That row now covers the others, so the step ends the workspace rows. Every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). The organization's other workspaces may gain access by this; none loses any. Owners are told what changed and until when |
 | D4 | Two active subscriptions | **Impossible**, by the partial unique index and a check in the write service that names the conflict |
 | D5 | `/admin/subscriptions` write screens | **Kept, as audited manual adjustments that require a reason** |
 | D6 | Over the caps after a downgrade | **The downgrade is refused** until the organization is within the new plan's caps ("Basic allows 3 members and you have 5. Remove 2 before downgrading"). An operator editing a live plan, and expiry, remove nothing: what is over a cap stays and only additions are refused, with the reason |
