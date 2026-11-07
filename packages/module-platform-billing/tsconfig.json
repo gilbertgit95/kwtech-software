@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM and no JSX yet: phase 2 (#91) is the pure core only. The server
+    // half (phase 4) and the pages (phases 6 and 7) add what they need.
+    "lib": ["ES2023"],
+    "outDir": "dist",
+    // Inside dist/, deliberately. tsconfig.base.json turns on `incremental`, and
+    // with the build info beside the tsconfig it outlives every `rm -rf dist` —
+    // after which tsc concludes nothing changed and emits NOTHING. See
+    // module-chat's tsconfig for the incident.
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,7 +1,9 @@
 # `module-platform-billing` — plan
 
-Status: **planned, nothing built (2026-11-07).** Phase 1 (this document and
-its decisions, issue #90) is the only phase done. The work is tracked by
+Status: **phases 1 and 2 done (2026-11-07).** Phase 1 is this document and
+its decisions (#90). Phase 2 (#91) is `packages/module-platform-billing`'s
+pure core: the keys, the refusals and every rule here as tested functions,
+with no schema, no Nest and nothing composed into the apps yet. The work is tracked by
 issue #88 and its sub-issues #89 to #98; the plans it bills for were settled
 in #89 (PLAN §13, 2026-11-07). Every decision below is the operator's, or
 proposed in #88 and marked as such (§9); the questions still open are in §11 and
@@ -365,7 +367,7 @@ decisions #90 lists each have a PLAN §13 entry.
 |---|---|---|---|
 | P1 | #90 | — | This document and the PLAN §13 / §12 entries. Docs only |
 | — | #89 | — | Plans by size. **Done** 2026-11-07 |
-| P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests |
+| P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests. **Done** 2026-11-07 |
 | P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; one active subscription; the expired reason; billing keys exempt; the release migration |
 | P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes. Alongside P2 to P4 |
