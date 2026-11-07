@@ -76,9 +76,10 @@ describe('a period with a fixed billing day', () => {
     expect(addMonthsAnchored('2027-02-28', 1, 29)).toBe('2027-03-29');
   });
 
-  it('refuses a billing day outside 1 to 31', () => {
+  it('refuses a billing day outside 1 to 31, or a fraction of a month', () => {
     expect(() => addMonthsAnchored('2026-01-01', 1, 0)).toThrow(RangeError);
     expect(() => addMonthsAnchored('2026-01-01', 1, 32)).toThrow(RangeError);
+    expect(() => addMonthsAnchored('2026-01-01', 1.5, 1)).toThrow(RangeError);
   });
 
   it('counts the day of a change as the new plan’s, and nothing after the end', () => {

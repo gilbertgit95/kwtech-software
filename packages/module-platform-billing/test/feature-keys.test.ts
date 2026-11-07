@@ -101,6 +101,12 @@ describe('PLATFORM_BILLING_REFUSALS', () => {
     }
   });
 
+  it('puts no numbers in the words: counts and dates travel in the detail, and a constant could drift', () => {
+    for (const [reason, text] of Object.entries(PLATFORM_BILLING_REFUSALS)) {
+      expect([reason, /\d/u.test(text.message + text.nextStep)]).toEqual([reason, false]);
+    }
+  });
+
   it('never says only "not permitted"', () => {
     for (const text of Object.values(PLATFORM_BILLING_REFUSALS)) {
       expect(text.message.toLowerCase()).not.toMatch(/^not permitted\.?$/u);

@@ -33,6 +33,11 @@ describe('payment details', () => {
     expect(checkAmount(90_000, 100_000)).toEqual({ kind: 'short', by: 10_000 });
     expect(checkAmount(120_000, 100_000)).toEqual({ kind: 'over', by: 20_000 });
   });
+
+  it('refuses an amount that is not whole centavos, so NaN never reaches credit', () => {
+    expect(() => checkAmount(Number.NaN, 100_000)).toThrow(RangeError);
+    expect(() => checkAmount(100.5, 100_000)).toThrow(RangeError);
+  });
 });
 
 describe('plans compared', () => {

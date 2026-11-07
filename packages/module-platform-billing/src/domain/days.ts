@@ -91,6 +91,7 @@ export function addMonthsAnchored(dayKey: DayKey, months: number, anchorDay: num
   if (!Number.isInteger(anchorDay) || anchorDay < 1 || anchorDay > 31) {
     throw new RangeError(`A billing day is 1 to 31, not ${anchorDay}.`);
   }
+  if (!Number.isInteger(months)) throw new RangeError(`Months must be a whole number, not ${months}.`);
   const { year, month } = parts(dayKey);
   const index = year * 12 + (month - 1) + months;
   const targetYear = Math.floor(index / 12);

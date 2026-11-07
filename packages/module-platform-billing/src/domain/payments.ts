@@ -1,4 +1,4 @@
-import type { Centavos } from './money.js';
+import { assertCentavos, type Centavos } from './money.js';
 
 /**
  * WHAT AN OWNER SAYS THEY PAID, AND THE CHECKS THAT HELP AN APPROVER READ IT
@@ -55,6 +55,9 @@ export type AmountCheck = { kind: 'exact' } | { kind: 'short'; by: Centavos } | 
 
 /** `sent` against `total`. */
 export function checkAmount(sent: Centavos, total: Centavos): AmountCheck {
+  // `sent` is what an owner typed: NaN or a float here would reach the credit path as "over".
+  assertCentavos(sent, 'An amount sent');
+  assertCentavos(total, 'A bill total');
   if (sent === total) return { kind: 'exact' };
   if (sent < total) return { kind: 'short', by: total - sent };
   return { kind: 'over', by: sent - total };

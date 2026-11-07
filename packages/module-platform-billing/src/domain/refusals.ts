@@ -70,8 +70,8 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
     nextStep: 'Renew it, or change plan.',
   },
   renewal_not_open: {
-    message: 'Renewing opens 7 days before the due date.',
-    nextStep: 'Come back then; you will be reminded.',
+    message: 'Renewing is not open yet for this subscription.',
+    nextStep: 'Come back on the day it opens; you will be reminded.',
   },
   renew_first: {
     message: 'Your subscription is overdue, so the plan cannot be changed yet.',
@@ -122,8 +122,9 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
     nextStep: 'Request a plan to keep using the business apps.',
   },
   currency_locked: {
-    message: 'The currency cannot change once a bill has been issued in it.',
-    nextStep: 'Bills and reports would otherwise add up different currencies.',
+    message:
+      'The currency cannot change once a bill has been issued in it, or bills and reports would add up different currencies.',
+    nextStep: 'Keep the current currency. A different one needs a new billing setup.',
   },
   subscription_expired: {
     message: "Your organization's plan has ended.",
