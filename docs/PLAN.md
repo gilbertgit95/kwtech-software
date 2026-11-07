@@ -648,8 +648,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
   A subscription with a `workspaceId` entitles one workspace, so "why can't
   this workspace use X" has two places to look.
-  - **Fold, and no workspace loses access:** among an organization's live
-    rows (its own and its workspaces'), the plan that covers all the others
+  - **Fold, and no workspace loses access:** among an organization's rows
+    that entitle now (its own and its workspaces': `active`, plan not
+    archived, period not over), the plan that covers all the others
     (every feature, every cap at least as large) wins. If it is a workspace
     row's, a NEW organization-wide row is written with it and the latest
     period end, and the organization's old row ends. If none covers the
@@ -763,7 +764,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
     organizations can still renew. An organization on an archived plan
     requests a replacement plan at any status, priced as a subscribe; the
     paid days it lost are credited at the moment of archiving, from the
-    archive date.
+    archive date, after archiving has closed every pending request naming
+    the plan (paid ones as credit, unpaid ones withdrawn as
+    `plan_archived`).
   - **Notices are retried until sent:** a row per notice with a separate
     `sentAt`, so a failed send is retried rather than silenced.
 
