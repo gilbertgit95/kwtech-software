@@ -306,6 +306,7 @@ export class PlatformBillingService {
     };
   }
 
+  /** One keyset page of requests, with their documents. */
   private async page(
     where: { organizationId?: string; state?: 'pending' },
     cursor: string | null,
@@ -323,6 +324,7 @@ export class PlatformBillingService {
     return { items, nextCursor: rows.length > take ? (rows[take - 1]?.id ?? null) : null };
   }
 
+  /** The documents and timeline of each request, read in four queries for the page. */
   private async details(requests: readonly RequestRow[]): Promise<RequestDetail[]> {
     if (requests.length === 0) return [];
     const ids = requests.map((request) => request.id);

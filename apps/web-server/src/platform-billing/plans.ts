@@ -18,6 +18,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class PlatformBillingPlansAdapter implements PlatformBillingPlans {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Every plan, archived ones included, with its features and caps. */
   async plans(): Promise<readonly BillingPlan[]> {
     const rows = await this.prisma.permPlan.findMany({
       select: {
@@ -40,6 +41,7 @@ export class PlatformBillingPlansAdapter implements PlatformBillingPlans {
     }));
   }
 
+  /** The organization's counts for the caps permissions' own tables hold. */
   async usage(organizationId: string): Promise<Readonly<Record<string, number>>> {
     const [members, workspaces, perWorkspace] = await Promise.all([
       this.prisma.permMembership.count({ where: { organizationId, status: 'active' } }),

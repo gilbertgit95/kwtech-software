@@ -19,10 +19,12 @@ import type {
  * and the platform read the same request the same way.
  */
 
+/** Bill lines as GraphQL returns them: a missing day count is null. */
 function lines(rows: readonly QuoteLine[]): PlatformBillingLineType[] {
   return rows.map((line) => ({ kind: line.kind, amount: line.amount, days: line.days ?? null }));
 }
 
+/** A bill: its stamp from the row, its words from the snapshot it was issued with. */
 export function renderBill(row: BillRow): PlatformBillingBillType {
   const snapshot = readBillSnapshot(row.snapshot);
   return {
@@ -40,6 +42,7 @@ export function renderBill(row: BillRow): PlatformBillingBillType {
   };
 }
 
+/** A request with its bill in force, every bill, receipt, payment version and step. */
 export function renderRequest(detail: RequestDetail): PlatformBillingRequestType {
   const { request } = detail;
   const bill = openBill(detail.bills);
@@ -99,6 +102,7 @@ export function renderRequest(detail: RequestDetail): PlatformBillingRequestType
   };
 }
 
+/** A preview: the price, or the refusal with its sentence and next step (plan §6). */
 export function renderPreview(
   kind: string,
   planKey: string | null,
@@ -129,6 +133,7 @@ export function renderPreview(
   };
 }
 
+/** Where the organization stands, with the parts of its access end (plan §6). */
 export function renderStanding(context: BillingContext): PlatformBillingStandingType {
   const { standing, live, liveDays, settings } = context;
   const plan = live ? context.plans.get(live.planKey) : undefined;
@@ -165,6 +170,7 @@ export function renderStanding(context: BillingContext): PlatformBillingStanding
   };
 }
 
+/** The Billing page's overview: standing, credit, the pending request, plans on offer, where to pay. */
 export function renderOverview(context: BillingContext, pending: RequestDetail | null): PlatformBillingOverviewType {
   const current = context.live?.planKey ?? null;
   const offered = [...context.plans.values()].filter(
@@ -188,6 +194,7 @@ export function renderOverview(context: BillingContext, pending: RequestDetail |
   };
 }
 
+/** The payment reference a receipt printed, if any. */
 function readReference(snapshot: unknown): string | null {
   if (typeof snapshot !== 'object' || snapshot === null) return null;
   const reference = (snapshot as { reference?: unknown }).reference;

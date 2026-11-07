@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class PlatformBillingPeopleAdapter implements PlatformBillingPeople {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** An active membership of `userId` in `organizationId`: the D15 flag. */
   async isMember(userId: string, organizationId: string): Promise<boolean> {
     const found = await this.prisma.permMembership.findFirst({
       where: { userId, organizationId, status: 'active' },

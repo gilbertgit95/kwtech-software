@@ -147,6 +147,7 @@ export class PlatformBillingAdminResolver {
     return this.prices(gql);
   }
 
+  /** The request re-read as the client renders it: what the database now holds. */
   private async render(requestId: string): Promise<PlatformBillingRequestType> {
     const detail = await this.reads.anyRequest(requestId);
     if (!detail) throw billingRefusal('not_found');
@@ -158,6 +159,7 @@ export class PlatformBillingAdminResolver {
     return this.people ? this.people.isMember(userId, organizationId) : true;
   }
 
+  /** The caller, proven by the app's guard; refused when the request carries none. */
   private actor(request: unknown): string {
     const actorId = this.options.resolveActorId?.(request);
     if (!actorId) throw billingRefusal('not_permitted');

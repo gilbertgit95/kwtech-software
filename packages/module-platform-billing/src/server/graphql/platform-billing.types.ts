@@ -14,6 +14,7 @@ export class PlatformBillingLineType {
   @Field(() => Int, { nullable: true }) days!: number | null;
 }
 
+/** A request's price: its lines, the total, and the credit it uses or adds. */
 @ObjectType('PlatformBillingQuote')
 export class PlatformBillingQuoteType {
   @Field(() => [PlatformBillingLineType]) lines!: PlatformBillingLineType[];
@@ -28,6 +29,7 @@ export class PlatformBillingQuoteType {
   @Field(() => String, { nullable: true }) periodEnd!: string | null;
 }
 
+/** A cap the organization is over on a smaller plan, and how many to remove (D6). */
 @ObjectType('PlatformBillingCapOverrun')
 export class PlatformBillingCapOverrunType {
   @Field() limit!: string;
@@ -70,6 +72,7 @@ export class PlatformBillingStandingType {
   @Field() prepaid!: boolean;
 }
 
+/** A plan the organization may choose, with today's price. */
 @ObjectType('PlatformBillingPlanOffer')
 export class PlatformBillingPlanOfferType {
   @Field() key!: string;
@@ -81,6 +84,7 @@ export class PlatformBillingPlanOfferType {
   @Field() current!: boolean;
 }
 
+/** Where organizations pay: a method, a label and the details. */
 @ObjectType('PlatformBillingPaymentAccount')
 export class PlatformBillingPaymentAccountType {
   @Field() method!: string;
@@ -88,6 +92,7 @@ export class PlatformBillingPaymentAccountType {
   @Field() details!: string;
 }
 
+/** A bill: its number, stamp, total and the lines it was issued with. */
 @ObjectType('PlatformBillingBill')
 export class PlatformBillingBillType {
   @Field() id!: string;
@@ -104,6 +109,7 @@ export class PlatformBillingBillType {
   @Field(() => String, { nullable: true }) cancelledReason!: string | null;
 }
 
+/** An acknowledgement receipt, and whether it was voided. */
 @ObjectType('PlatformBillingReceipt')
 export class PlatformBillingReceiptType {
   @Field() id!: string;
@@ -119,6 +125,7 @@ export class PlatformBillingReceiptType {
   @Field(() => String, { nullable: true }) voidReason!: string | null;
 }
 
+/** One version of the payment details a request was given. */
 @ObjectType('PlatformBillingPayment')
 export class PlatformBillingPaymentType {
   @Field(() => Int) version!: number;
@@ -132,6 +139,7 @@ export class PlatformBillingPaymentType {
   @Field() enteredAt!: string;
 }
 
+/** One step of a request's timeline, with its reason code. */
 @ObjectType('PlatformBillingEvent')
 export class PlatformBillingEventType {
   @Field() at!: string;
@@ -142,6 +150,7 @@ export class PlatformBillingEventType {
   @Field() data!: string;
 }
 
+/** A request with its bills, receipts, payment versions and timeline. */
 @ObjectType('PlatformBillingRequest')
 export class PlatformBillingRequestType {
   @Field() id!: string;
@@ -173,6 +182,7 @@ export class PlatformBillingRequestType {
   @Field(() => [PlatformBillingEventType]) events!: PlatformBillingEventType[];
 }
 
+/** The organization's Billing page in one read. */
 @ObjectType('PlatformBillingOverview')
 export class PlatformBillingOverviewType {
   @Field() organizationId!: string;
@@ -185,12 +195,14 @@ export class PlatformBillingOverviewType {
   @Field(() => [PlatformBillingPaymentAccountType]) paymentAccounts!: PlatformBillingPaymentAccountType[];
 }
 
+/** A page of the organization's requests, newest first. */
 @ObjectType('PlatformBillingHistoryPage')
 export class PlatformBillingHistoryPageType {
   @Field(() => [PlatformBillingRequestType]) items!: PlatformBillingRequestType[];
   @Field(() => String, { nullable: true }) nextCursor!: string | null;
 }
 
+/** The checks an approver sees; they flag, never decide (plan §4). */
 @ObjectType('PlatformBillingQueueFlags')
 export class PlatformBillingQueueFlagsType {
   @Field(() => [String]) referenceUsedOn!: string[];
@@ -203,18 +215,21 @@ export class PlatformBillingQueueFlagsType {
   @Field() viewerIsMember!: boolean;
 }
 
+/** A pending request and its checks. */
 @ObjectType('PlatformBillingQueueItem')
 export class PlatformBillingQueueItemType {
   @Field(() => PlatformBillingRequestType) request!: PlatformBillingRequestType;
   @Field(() => PlatformBillingQueueFlagsType) flags!: PlatformBillingQueueFlagsType;
 }
 
+/** A page of pending requests, oldest first. */
 @ObjectType('PlatformBillingQueuePage')
 export class PlatformBillingQueuePageType {
   @Field(() => [PlatformBillingQueueItemType]) items!: PlatformBillingQueueItemType[];
   @Field(() => String, { nullable: true }) nextCursor!: string | null;
 }
 
+/** The platform's billing settings, and whether the currency and time zone are locked. */
 @ObjectType('PlatformBillingSettings')
 export class PlatformBillingSettingsType {
   @Field() currency!: string;
@@ -227,6 +242,7 @@ export class PlatformBillingSettingsType {
   @Field() locked!: boolean;
 }
 
+/** A plan's monthly price from a day on. */
 @ObjectType('PlatformBillingPrice')
 export class PlatformBillingPriceType {
   @Field() planKey!: string;
@@ -234,6 +250,7 @@ export class PlatformBillingPriceType {
   @Field() effectiveFrom!: string;
 }
 
+/** Payment details as an organization enters them. */
 @InputType('PlatformBillingPaymentInput')
 export class PlatformBillingPaymentInputType {
   /** `cash`, `e_wallet`, `bank_transfer`. */
@@ -245,6 +262,7 @@ export class PlatformBillingPaymentInputType {
   @Field(() => String, { nullable: true }) note?: string | null;
 }
 
+/** The payment as the approver confirms it, with the details version reviewed. */
 @InputType('PlatformBillingApprovalInput')
 export class PlatformBillingApprovalInputType {
   /** The details version reviewed. */
@@ -255,6 +273,7 @@ export class PlatformBillingApprovalInputType {
   @Field(() => String, { nullable: true }) reference?: string | null;
 }
 
+/** A payment account as a super admin sets it. */
 @InputType('PlatformBillingPaymentAccountInput')
 export class PlatformBillingPaymentAccountInputType {
   @Field() method!: string;
@@ -262,6 +281,7 @@ export class PlatformBillingPaymentAccountInputType {
   @Field() details!: string;
 }
 
+/** A settings change; an absent field is left as it is. */
 @InputType('PlatformBillingSettingsInput')
 export class PlatformBillingSettingsInputType {
   @Field(() => String, { nullable: true }) currency?: string | null;
@@ -273,6 +293,7 @@ export class PlatformBillingSettingsInputType {
   paymentAccounts?: PlatformBillingPaymentAccountInputType[] | null;
 }
 
+/** A page of results: an opaque cursor and a limit. */
 @ArgsType()
 export class PlatformBillingPageArgs {
   @Field(() => String, { nullable: true }) cursor?: string | null;

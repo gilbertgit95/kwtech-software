@@ -158,12 +158,14 @@ export class PlatformBillingResolver {
     return this.render(organizationId, requestId);
   }
 
+  /** The request re-read as the client renders it: what the database now holds. */
   private async render(organizationId: string, requestId: string): Promise<PlatformBillingRequestType> {
     const detail = await this.reads.organizationRequest(organizationId, requestId);
     if (!detail) throw billingRefusal('not_found');
     return renderRequest(detail);
   }
 
+  /** The caller, proven by the app's guard; refused when the request carries none. */
   private actor(request: unknown): string {
     const actorId = this.options.resolveActorId?.(request);
     if (!actorId) throw billingRefusal('not_permitted');

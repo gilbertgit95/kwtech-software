@@ -56,6 +56,7 @@ export class PlatformBillingSubscriptionsAdapter implements PlatformBillingSubsc
     private readonly permissions: PermissionsWriteService,
   ) {}
 
+  /** The organization's live organization-wide row, read inside billing's transaction when one is passed. */
   async live(organizationId: string, tx?: PlatformBillingTransaction): Promise<BillingSubscriptionRow | null> {
     const db = tx ? sharedTransaction(tx) : this.prisma;
     const row = await db.permSubscription.findFirst({
@@ -82,18 +83,22 @@ export class PlatformBillingSubscriptionsAdapter implements PlatformBillingSubsc
     };
   }
 
+  /** A renewal before access ended: the same row moves on (`renewSubscription`). */
   renew(input: BillingPeriodWrite, tx: PlatformBillingTransaction) {
     return this.permissions.renewSubscription(input, permissionsTransaction(tx));
   }
 
+  /** A plan change: the old row ends, a new one starts (`changeSubscriptionPlan`). */
   changePlan(input: BillingPeriodWrite & { planKey: string }, tx: PlatformBillingTransaction) {
     return this.permissions.changeSubscriptionPlan(input, permissionsTransaction(tx));
   }
 
+  /** A subscribe, replacement or renewal after expiry: a new row (`startBilledSubscription`). */
   start(input: BillingPeriodWrite & { planKey: string }, tx: PlatformBillingTransaction) {
     return this.permissions.startBilledSubscription(input, permissionsTransaction(tx));
   }
 
+  /** Only the access end moves: a hold given or given back (`setSubscriptionAccessUntil`). */
   setAccessUntil(input: { organizationId: string; accessUntil: Date }, tx: PlatformBillingTransaction) {
     return this.permissions.setSubscriptionAccessUntil(input, permissionsTransaction(tx));
   }

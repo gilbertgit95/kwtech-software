@@ -47,6 +47,7 @@ interface Store {
   subscriptionWrites: Array<{ how: string; organizationId: string; planKey?: string; accessUntil: Date }>;
 }
 
+/** A database with nothing in it. */
 function emptyStore(): Store {
   return {
     requests: [],
@@ -63,6 +64,7 @@ function emptyStore(): Store {
   };
 }
 
+/** A deep copy of the store: what a transaction works on until it commits. */
 function clone(store: Store): Store {
   return {
     ...structuredClone({ ...store, subscriptions: [...store.subscriptions.entries()] }),
@@ -71,19 +73,23 @@ function clone(store: Store): Store {
 }
 
 let ids = 0;
+/** A unique id for a fake row. */
 function id(prefix: string): string {
   ids += 1;
   return `${prefix}${ids}`;
 }
 
+/** The error Prisma throws on a `@@unique` violation (P2002). */
 function uniqueViolation(): Error {
   return Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
 }
 
+/** Whether `value` is a Date, across realms. */
 function isDate(value: unknown): value is Date {
   return Object.prototype.toString.call(value) === '[object Date]';
 }
 
+/** Whether `row` matches a `where` of equalities, `in` and `not`; nothing else is supported. */
 function matches<T extends object>(row: T, where: Record<string, unknown>): boolean {
   return Object.entries(where).every(([key, wanted]) => {
     const value = (row as Record<string, unknown>)[key];
@@ -353,6 +359,7 @@ export const PLANS: BillingPlan[] = [
   },
 ];
 
+/** A fresh fake: the client, the ports and both services wired over one store. */
 export function fakeBilling(): FakeBilling {
   let store = emptyStore();
   let inFlight: Store | null = null;
