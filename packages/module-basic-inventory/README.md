@@ -160,8 +160,8 @@ waits.
 | Events | `stock.changed` |
 
 The web server grants `stock-manager` to `workspace-admin` and `stock-keeper`
-to `workspace-user`, and sells the keys and the cap in Starter, Pro and
-Enterprise. ⚠ `createPlanIfAbsent` never rewrites a plan that exists: an
+to `workspace-user`, and sells the keys and the cap in every paid plan
+(Basic, Pro and Custom). ⚠ `createPlanIfAbsent` never rewrites a plan that exists: an
 environment seeded before stock has none of its keys, and an operator adds
 them and the cap on `/admin/plans`. Until then the app is not on the Apps page
 (`not_entitled`) and the till shows no counts.
