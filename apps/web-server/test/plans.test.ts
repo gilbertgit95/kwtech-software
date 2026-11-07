@@ -1,12 +1,12 @@
 import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
-import { STOCK_FEATURE } from '@kwtech/module-basic-inventory';
-import { POS_FEATURE } from '@kwtech/module-basic-pos';
-import { BOOKING_FEATURE } from '@kwtech/module-booking';
+import { STOCK_FEATURE, STOCK_LIMIT } from '@kwtech/module-basic-inventory';
+import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
+import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { assertPlanFeatureLevels, assertPlanLimits, FEATURE, LIMIT } from '@kwtech/module-permissions';
-import { PRINT_FEATURE } from '@kwtech/module-print';
-import { STUDIO_FEATURE } from '@kwtech/module-print-studio';
-import { QUEUE_FEATURE } from '@kwtech/module-queuing-window';
+import { PRINT_FEATURE, PRINT_LIMIT } from '@kwtech/module-print';
+import { STUDIO_FEATURE, STUDIO_LIMIT } from '@kwtech/module-print-studio';
+import { QUEUE_FEATURE, QUEUE_LIMIT } from '@kwtech/module-queuing-window';
 import { TASK_FEATURE, TASK_LIMIT } from '@kwtech/module-task';
 import { PLANS } from '../src/seed/plans.js';
 import { ALL_FEATURES, ALL_LIMITS } from '../src/seed/registry.js';
@@ -117,11 +117,78 @@ describe('the seeded plans', () => {
     expect(shrinks).toEqual([]);
   });
 
-  it('Basic is one shop and Pro a small chain', () => {
-    expect(plan('free').limits[LIMIT.organizationWorkspaces]).toBe(1);
-    expect(plan('starter').limits[LIMIT.organizationWorkspaces]).toBe(1);
-    expect(plan('pro').limits[LIMIT.organizationWorkspaces]).toBe(5);
-    expect(plan('free').limits[NOTE_LIMIT.notes]).toBe(100);
-    expect(plan('free').limits[TASK_LIMIT.boards]).toBe(3);
+  /*
+   * Every number in issue #89's table, per plan, matched against the plan's
+   * WHOLE cap set: a cap changed, added or dropped fails here naming the plan,
+   * so a lowered cap (Basic from 10 members to 9) cannot pass unnoticed.
+   */
+  it.each([
+    [
+      'free',
+      {
+        [LIMIT.organizationMembers]: 3,
+        [LIMIT.organizationWorkspaces]: 1,
+        [LIMIT.workspaceMembers]: 3,
+        [NOTE_LIMIT.notes]: 100,
+        [TASK_LIMIT.boards]: 3,
+        [TASK_LIMIT.tasks]: 300,
+      },
+    ],
+    [
+      'starter',
+      {
+        [LIMIT.organizationMembers]: 10,
+        [LIMIT.organizationWorkspaces]: 1,
+        [LIMIT.workspaceMembers]: 10,
+        [QUEUE_LIMIT.windows]: 3,
+        [QUEUE_LIMIT.displays]: 1,
+        [NOTE_LIMIT.notes]: 500,
+        [TASK_LIMIT.boards]: 20,
+        [TASK_LIMIT.tasks]: 2_000,
+        [POS_LIMIT.items]: 500,
+        [STOCK_LIMIT.items]: 500,
+        [BOOKING_LIMIT.resources]: 5,
+        [STUDIO_LIMIT.layouts]: 50,
+        [PRINT_LIMIT.agents]: 1,
+      },
+    ],
+    [
+      'pro',
+      {
+        [LIMIT.organizationMembers]: 50,
+        [LIMIT.organizationWorkspaces]: 5,
+        [LIMIT.workspaceMembers]: 50,
+        [QUEUE_LIMIT.windows]: 10,
+        [QUEUE_LIMIT.displays]: 5,
+        [NOTE_LIMIT.notes]: 5_000,
+        [TASK_LIMIT.boards]: 100,
+        [TASK_LIMIT.tasks]: 20_000,
+        [POS_LIMIT.items]: 5_000,
+        [STOCK_LIMIT.items]: 5_000,
+        [BOOKING_LIMIT.resources]: 25,
+        [STUDIO_LIMIT.layouts]: 500,
+        [PRINT_LIMIT.agents]: 5,
+      },
+    ],
+    [
+      'enterprise',
+      {
+        [LIMIT.organizationMembers]: 10_000,
+        [LIMIT.organizationWorkspaces]: 1_000,
+        [LIMIT.workspaceMembers]: 10_000,
+        [QUEUE_LIMIT.windows]: 50,
+        [QUEUE_LIMIT.displays]: 20,
+        [NOTE_LIMIT.notes]: 50_000,
+        [TASK_LIMIT.boards]: 1_000,
+        [TASK_LIMIT.tasks]: 200_000,
+        [POS_LIMIT.items]: 50_000,
+        [STOCK_LIMIT.items]: 50_000,
+        [BOOKING_LIMIT.resources]: 100,
+        [STUDIO_LIMIT.layouts]: 5_000,
+        [PRINT_LIMIT.agents]: 20,
+      },
+    ],
+  ] as const)('%s sets exactly the caps in the #89 table', (key, caps) => {
+    expect(plan(key).limits).toEqual(caps);
   });
 });
