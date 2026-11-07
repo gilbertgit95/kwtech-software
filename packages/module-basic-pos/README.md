@@ -15,7 +15,7 @@ A point of sale per workspace, run as a **sub-app** on the workspace's Apps page
 | Feature key | `pos:read` (workspace level): offers the app on the Apps page |
 | Sub-app | `pos`, label "Point of sale", icon `store`, order 40, component `PosApp` |
 | Routes, nav | none. A sub-app has no drawer entry |
-| Role presets | `pos-order-taker`, `pos-cashier`, `pos-manager` (`POS_ROLE_PRESETS`), exported as data, never seeded by the module |
+| Role presets | `pos-order-taker`, `pos-cashier`, `pos-supervisor` (the manager without the store settings), `pos-manager` (`POS_ROLE_PRESETS`), exported as data, never seeded by the module |
 
 ```ts
 // apps/web-app/src/modules.ts
@@ -158,7 +158,7 @@ and a **cashier**, who takes the payment. Each is a key of its own:
 | Key | Covers | Preset |
 |---|---|---|
 | `pos:sell` | create orders, add, edit and remove lines, customer, reference, hold, resume; customers | `pos-order-taker` (read, sell) |
-| `pos:take_payment` | `payPosOrder`, `payLaterPosOrder`, `cancelPosOrder`, `settlePosChangeOwed` | `pos-cashier` and `pos-manager` add it |
+| `pos:take_payment` | `payPosOrder`, `payLaterPosOrder`, `cancelPosOrder`, `settlePosChangeOwed` | `pos-cashier`, `pos-supervisor` and `pos-manager` add it |
 
 - ⚠ **No operation is bound to both.** The guard requires every key bound to
   an operation, so a shared binding would lock out whoever holds one; a

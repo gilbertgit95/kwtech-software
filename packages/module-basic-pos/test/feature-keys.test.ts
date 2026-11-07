@@ -116,6 +116,16 @@ describe('POS_ROLE_PRESETS', () => {
     ]);
   });
 
+  it('⚠ a supervisor holds every cashier key and every manager key but the store settings (issue #25)', () => {
+    const cashier = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-cashier');
+    const supervisor = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-supervisor');
+    const manager = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-manager');
+    expect(cashier?.features.every((key) => supervisor?.features.includes(key))).toBe(true);
+    expect([...(supervisor?.features ?? [])].sort()).toEqual(
+      (manager?.features ?? []).filter((key) => key !== POS_FEATURE.manageSettings).sort(),
+    );
+  });
+
   it('⚠ an order taker builds and holds, and never settles an order (issue #23)', () => {
     const taker = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-order-taker');
     const cashier = POS_ROLE_PRESETS.find((preset) => preset.key === 'pos-cashier');

@@ -612,6 +612,39 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-07** — **Workspace roles are three tiers of trust, Workspace admin, Supervisor and Staff, each covering every sub-app; not roles per sub-app (issue #25).**
+
+  A shop had two workspace roles: an admin who could do everything and a
+  workspace user who could only serve. A refund, a discount or a stock take
+  meant making the shift lead an admin, who could then also add members and
+  pay profit out, or calling the owner.
+  - **Tiers, not jobs.** A member holds one workspace role (§12.32), so a
+    role per sub-app needs a combined role for every mix of jobs a person
+    does, and with ten sub-apps the mixes grow very fast. Each tier instead
+    holds one preset from every sub-app, and the organization's plan decides
+    which sub-apps a workspace has. Assigning a role asks one question: how
+    far is this person trusted.
+  - **`workspace-supervisor` is new**: the day's money-sensitive acts
+    (discounts, refunds, reports, recording cash, stock takes, starting and
+    stopping the queue, booking services and hours, anybody's tasks). Not
+    members, store settings, investors and payouts, or pairing a printing
+    computer. It reads `queue-supervisor` and `books-bookkeeper`, which no
+    role used before.
+  - **`pos-supervisor` is a new preset in `module-basic-pos`**: the
+    manager's keys without `pos:manage_settings` (the shortcuts and sounds
+    every till shares). Declared in the module rather than trimmed in the
+    seed, so the seed only ever reads presets.
+  - **`workspace-user` is labelled "Staff"**; its key stays, because
+    memberships and the `workspace.member_role` default point at it.
+  - **The tiers nest** (staff ⊆ supervisor ⊆ admin), so a promotion never
+    takes a right away. `apps/web-server/test/workspace-roles.test.ts` pins
+    which preset each tier reads.
+  - **Not done:** a fourth seeded role for jobs that fit no tier (an order
+    taker who never handles money). An admin builds that one. Not done here
+    either: a description on each role for the Roles screen, and refusals
+    that name the role that would allow them. Both need a `perm_role` column
+    and UI work, and have their own issue (#99).
+
 - **2026-11-06** — **A super admin's Local Network page shows the shop's certificate and the server's address, behind a switch that is off everywhere but the shop's own network (issue #66).**
 
   To set up a phone, someone had to know the server's address and type the

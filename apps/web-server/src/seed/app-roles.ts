@@ -418,11 +418,12 @@ function posPreset(key: string): PosRolePreset {
 }
 
 /**
- * A bookkeeping preset, read by key. The owners keep the books themselves for
- * now, so the owner preset folds into the workspace admin role; a workspace
- * user gets NONE of it — the books say who is owed what, which a cashier has no
- * reason to see. A bookkeeper who is not an owner is a combined role, built
- * when one is needed (`.claude/rules/database.md`). THROWS if a preset is gone.
+ * A bookkeeping preset, read by key. The owner preset folds into the workspace
+ * admin role: it alone adds investors, shares profit and pays it out, the
+ * privileged acts. The supervisor is `books-bookkeeper` (issue #25): reads the
+ * books, investors included, and records the day's money, but cannot change
+ * who is owed what or pay anybody out. A workspace user gets NONE of it — a
+ * cashier has no reason to see the books. THROWS if a preset is gone.
  */
 function booksPreset(key: string): BooksRolePreset {
   const preset = BOOKS_ROLE_PRESETS.find((one) => one.key === key);
@@ -568,10 +569,79 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
   limits: {},
 };
 
-/** A member of one workspace, holding nothing of their own. */
+/**
+ * Runs the day in one workspace: the shift lead, the person in charge when the
+ * owner is not there (issue #25, PLAN §13 2026-11-07).
+ *
+ * ## ⚠ WORKSPACE ROLES ARE TIERS OF TRUST, NOT JOBS PER SUB-APP
+ *
+ * A member holds ONE workspace role (PLAN §12.32), so a role per sub-app would
+ * need a combined role for every mix of jobs a person does. Each of the three
+ * workspace roles instead covers EVERY sub-app at one level of trust, and the
+ * organization's plan decides which sub-apps the workspace has. So the only
+ * question when assigning one is how far the person is trusted:
+ *
+ *   Workspace admin  everything, including members, settings and investors
+ *   Supervisor       the money-sensitive acts of a day: discounts, refunds,
+ *                    reports, stock takes, recording cash, starting and
+ *                    stopping the queue. No members, no settings, no paying investors
+ *   Staff            serves customers and records their own work
+ *
+ * It exists because with only the other two, a refund meant making the shift
+ * lead an admin (who can then add members and pay profit out) or
+ * calling the owner. A job that fits none of the three (an order taker who
+ * never handles money) is a role an admin builds, not a fourth seeded one.
+ *
+ * ⚠ EVERY KEY COMES FROM A PRESET, one per module, read by key — never trimmed
+ * here. `pos-supervisor` exists for that reason. `catalogue-levels.test.ts`
+ * pins which preset each tier reads, so a preset change shows as a failing
+ * test rather than a silent change of rights.
+ */
+const WORKSPACE_SUPERVISOR: SystemRoleDefinition = {
+  key: 'workspace-supervisor',
+  label: 'Supervisor',
+  level: 'workspace',
+  /*
+   * A person with a tick: someone who signs off. Distinct from the admin's cog
+   * (who configures) and the staff's plain person, and used by no other role,
+   * so the three badges in the workspace selector read as three different
+   * things.
+   */
+  icon: 'user-check',
+  features: [
+    FEATURE.workspaceRead,
+    // Serves, assigns windows, starts and stops the queue. Does not manage lines or windows.
+    ...queuePreset('queue-supervisor').features,
+    APP_HUB_FEATURE.read,
+    // Their own and shared notes; binning other people's is the admin's.
+    ...notePreset('note-user').features,
+    // Task boards, and deleting anybody's tasks or taking over an orphaned board.
+    ...taskPreset('task-admin').features,
+    // Discounts, refunds, items and reports. Not the store settings every till shares.
+    ...posPreset('pos-supervisor').features,
+    // Sees the books and records money in and out. Cannot add investors, share profit or pay it out.
+    ...booksPreset('books-bookkeeper').features,
+    // Items, materials lists and stock takes, as well as deliveries and waste.
+    ...stockPreset('stock-manager').features,
+    // The bookings, services and hours.
+    ...bookingPreset('booking-manager').features,
+    // Their own layouts and print history.
+    ...studioPreset('studio-user').features,
+    // Sees the printers. Pairing a computer (which then receives print jobs) stays the admin's.
+    ...printPreset('print-user').features,
+  ],
+  limits: {},
+};
+
+/**
+ * A member of one workspace, serving customers: labelled "Staff" since issue
+ * #25. The key stays `workspace-user`, because renaming a role key is a data
+ * migration (every membership and the `workspace.member_role` default point at
+ * it) for a change only people read.
+ */
 const WORKSPACE_USER: SystemRoleDefinition = {
   key: 'workspace-user',
-  label: 'Workspace user',
+  label: 'Staff',
   level: 'workspace',
   icon: 'user',
   /*
@@ -663,6 +733,7 @@ export const APP_ROLES: readonly SystemRoleDefinition[] = [
   ORGANIZATION_ADMIN,
   ORGANIZATION_USER,
   WORKSPACE_ADMIN,
+  WORKSPACE_SUPERVISOR,
   WORKSPACE_USER,
 ];
 
