@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -79,14 +79,17 @@ async function replayableMigrationsAfter(
       WHERE migration_name > $1 AND finished_at IS NOT NULL AND rolled_back_at IS NULL`,
     [migration],
   );
-  const applied = new Set(rows.map((row) => row.migration_name));
-  return readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && applied.has(entry.name))
-    .map((entry) => entry.name)
-    .sort()
-    .map((name) => ({ name, path: `${MIGRATIONS_DIR}${name}/migration.sql` }))
-    .filter((one) => existsSync(one.path))
-    .map((one) => ({ name: one.name, sql: readFileSync(one.path, 'utf8') }))
+  const applied = rows.map((row) => row.migration_name).sort();
+  // Every applied migration's file must be here: a missing one may be the very
+  // one that fills a column, and skipping it would restore without it.
+  const missing = applied.filter((name) => !existsSync(`${MIGRATIONS_DIR}${name}/migration.sql`));
+  if (missing.length > 0) {
+    throw new Error(
+      `Applied migrations missing from ${MIGRATIONS_DIR}: ${missing.join(', ')}. Check out the code they came with.`,
+    );
+  }
+  return applied
+    .map((name) => ({ name, sql: readFileSync(`${MIGRATIONS_DIR}${name}/migration.sql`, 'utf8') }))
     .filter((one) => one.sql.includes(REPLAY_MARKER))
     .map((one) => ({ name: one.name, sql: one.sql.replace(/^(BEGIN|COMMIT);$/gmu, '') }));
 }
