@@ -32,6 +32,8 @@ export type PlatformBillingRefusal =
   | 'void_not_latest'
   | 'trial_used'
   | 'currency_locked'
+  | 'time_zone_locked'
+  | 'price_not_set'
   | 'subscription_expired';
 
 /** What a person reads when refused: why, and what to do about it. */
@@ -125,6 +127,15 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
     message:
       'The currency cannot change once a bill has been issued in it, or bills and reports would add up different currencies.',
     nextStep: 'Keep the current currency. A different one needs a new billing setup.',
+  },
+  time_zone_locked: {
+    message:
+      'The time zone cannot change once a bill has been issued, or the days already billed would move under the organizations that paid for them.',
+    nextStep: 'Keep the current time zone. Changing it for new periods only is not built yet.',
+  },
+  price_not_set: {
+    message: 'That plan has no price yet, so it cannot be billed.',
+    nextStep: 'Choose another plan, or ask us to set its price.',
   },
   subscription_expired: {
     message: "Your organization's plan has ended.",

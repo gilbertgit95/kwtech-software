@@ -47,6 +47,12 @@ import {
   type PermissionsWriteClient,
 } from '@kwtech/module-permissions/server';
 import {
+  PLATFORM_BILLING_PRISMA,
+  PLATFORM_BILLING_PRISMA_WRITE,
+  type PlatformBillingTransaction,
+  type PlatformBillingWriteClient,
+} from '@kwtech/module-platform-billing/server';
+import {
   PRINT_PRISMA,
   PRINT_PRISMA_WRITE,
   type PrintTransaction,
@@ -518,5 +524,38 @@ export const jobsWritePrismaProvider: Provider = {
       jobRun: prisma.jobRun,
       jobControl: prisma.jobControl,
       jobQueueLock: prisma.jobQueueLock,
+    }),
+};
+
+/** Reads need no adapter — PrismaService satisfies this interface outright. */
+export const platformBillingPrismaProvider: Provider = {
+  provide: PLATFORM_BILLING_PRISMA,
+  useExisting: PrismaService,
+};
+
+/**
+ * ⚠ BILLING'S TRANSACTION IS PERMISSIONS' TOO (#93, the phase-4 spike).
+ *
+ * `withTransaction` hands billing's callback Prisma's interactive transaction
+ * client, which carries EVERY delegate — `permSubscription` included — not
+ * only the billing ones listed here. So the app's subscription adapter
+ * (`platform-billing/subscriptions.ts`) can pass the very same transaction to
+ * `PermissionsWriteService`, and an approval's subscription, receipt, number
+ * and credit commit together or not at all. See `sharedTransaction` there.
+ */
+export const platformBillingWritePrismaProvider: Provider = {
+  provide: PLATFORM_BILLING_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): PlatformBillingWriteClient =>
+    withTransaction<PlatformBillingTransaction, PlatformBillingWriteClient>(prisma, {
+      platformBillingRequest: prisma.platformBillingRequest,
+      platformBillingPayment: prisma.platformBillingPayment,
+      platformBillingBill: prisma.platformBillingBill,
+      platformBillingReceipt: prisma.platformBillingReceipt,
+      platformBillingCredit: prisma.platformBillingCredit,
+      platformBillingPrice: prisma.platformBillingPrice,
+      platformBillingSettings: prisma.platformBillingSettings,
+      platformBillingCounter: prisma.platformBillingCounter,
+      platformBillingEvent: prisma.platformBillingEvent,
     }),
 };
