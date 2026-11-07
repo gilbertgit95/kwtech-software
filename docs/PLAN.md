@@ -616,6 +616,34 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-07** — **One live subscription per organization, by a unique key; workspace subscriptions folded in; billing's write methods (#105, billing P3b).**
+
+  Entitlements are the union of every subscription in force, so two live
+  rows quietly added up, and a workspace row entitled that workspace on top
+  of the organization's plan.
+  - **`liveOrganizationId String? @unique`**, the organization's id while the
+    row is live and organization-wide, null otherwise: the stand-in for a
+    partial index that `QueueSession.openWorkspaceId` already is. A
+    hand-written partial index was the alternative; Prisma cannot declare
+    one, and every later `migrate dev` would try to drop it.
+  - **The migration folds** each organization's rows that entitle now: the
+    plan covering every other wins (every feature, every cap at least as
+    large); a winning workspace row becomes a NEW organization-wide row and
+    every other row ends. Rows that entitle nothing without an end are ended.
+    It runs in one transaction and **refuses** if an organization would keep
+    two live organization-wide rows (incomparable plans), naming it, rather
+    than guess. Tried on a copy of the dev data with constructed cases, then
+    applied: every organization kept its access.
+  - **No new workspace subscriptions**: `startSubscription` refuses one.
+  - **Billing's writes** (`renewSubscription`, `changeSubscriptionPlan`,
+    `startBilledSubscription`, `setSubscriptionAccessUntil`) take billing's
+    transaction and check no actor: billing authorises with its own keys.
+  - **An expired row keeps the slot** until billing restarts the
+    organization, because it is what lets a refusal say when the plan ended.
+  - **Not done:** the admin screens still offer a workspace picker that is now
+    refused with its reason; phase 4 turns those screens into audited
+    adjustments (D5).
+
 - **2026-11-07** — **A subscription entitles until its `accessUntil`, an expired organization falls back to Free, and the billing keys work without a plan (#92, billing P3).**
 
   Until now nothing compared a period end with the clock, so a lapsed

@@ -339,6 +339,8 @@ export class PermissionsWriteService {
         status: toSubscriptionStatus(status ?? 'active'),
         currentPeriodEnd: defaultPeriodEnd(periodDays, this.now()),
         accessUntil: unbilledAccessUntil(defaultPeriodEnd(periodDays, this.now())),
+        // A brand-new organization has no live row, so the slot is free.
+        liveOrganizationId: organizationId,
       },
       select: { id: true },
     });
@@ -1055,9 +1057,25 @@ export class PermissionsWriteService {
 
       // The workspace must belong to THIS organization and not be archived —
       // the same pairing check `loadContext` makes before honouring a scope.
+      // Checked before the refusal below, so a foreign workspace still reads as
+      // not found rather than revealing it exists elsewhere.
       if (draft.workspaceId) {
         await this.requireWorkspace(tx, draft.organizationId, draft.workspaceId);
+        /*
+         * ⚠ NO NEW WORKSPACE-LEVEL SUBSCRIPTIONS (#105, D3). A subscription
+         * belongs to the organization and its workspaces inherit it; a row per
+         * workspace was a second place to look for "why can't this workspace
+         * use X", and billing has one bill per organization. Existing ones were
+         * folded into the organization by the #105 migration.
+         */
+        throw new PermissionWriteError(
+          'draft_invalid',
+          "A subscription belongs to the whole organization; its workspaces use the organization's plan.",
+          { workspaceId: draft.workspaceId },
+        );
       }
+
+      await this.refuseSecondLiveSubscription(tx, draft.organizationId);
 
       const plan = await this.requirePlan(tx, draft.planKey);
       if (plan.archivedAt) {
@@ -1103,6 +1121,7 @@ export class PermissionsWriteService {
           currentPeriodEnd: subscriptionPeriodEnd(draft.currentPeriodEnd),
           // ⚠ Written with the period end: the entitlement read compares it with now (#92).
           accessUntil: unbilledAccessUntil(subscriptionPeriodEnd(draft.currentPeriodEnd)),
+          liveOrganizationId: draft.organizationId,
         },
         select: { id: true },
       });
@@ -1174,11 +1193,166 @@ export class PermissionsWriteService {
 
       await tx.permSubscription.update({
         where: { id: existing.id },
-        data: { endedAt: this.now(), status: 'canceled' },
+        // Frees the organization's live slot (#105): a row that has ended holds none.
+        data: { endedAt: this.now(), status: 'canceled', liveOrganizationId: null },
         select: { id: true },
       });
 
       return { subscriptionId: existing.id, ended: true };
+    });
+  }
+
+  // ── billing's writes (#105) ───────────────────────────────────────────────
+  //
+  // What `module-platform-billing` asks of a subscription once a request is
+  // approved: renew it, change its plan, start one, or move its access (a hold,
+  // a void). It reaches them through the app, never by importing this module.
+  //
+  // ⚠ NO ACTOR AND NO KEY CHECK, unlike every method above. Billing has already
+  // authorised the act with its own app-level keys (`platform-billing:approve`)
+  // and its own rules (paid in full, still pending, the details the approver
+  // saw); asking for `billing:manage` here would make every approver a holder of
+  // the admin screens' key too. Never bind these to a GraphQL operation.
+  //
+  // Each takes the transaction billing runs in, so the subscription, the
+  // receipt, its number and any credit are written together or not at all
+  // (PLATFORM-BILLING-PLAN §3). Without one, each opens its own.
+
+  /** Runs `work` in `tx` when billing passed one, or in a transaction of its own. */
+  private inTransaction<T>(tx: PermissionsTransaction | undefined, work: (tx: PermissionsTransaction) => Promise<T>) {
+    return tx ? work(tx) : this.client().$transaction(work);
+  }
+
+  /** The organization's live organization-wide row, or a refusal naming why there is none. */
+  private async requireLiveOrganizationSubscription(tx: PermissionsTransaction, organizationId: string) {
+    const live = await tx.permSubscription.findFirst({
+      where: { liveOrganizationId: organizationId },
+      select: { id: true, organizationId: true, workspaceId: true, planKey: true, status: true, endedAt: true },
+    });
+    if (!live) {
+      throw new PermissionWriteError('not_found', 'This organization has no live subscription to renew or change', {
+        organizationId,
+      });
+    }
+    return live;
+  }
+
+  /** A plan billing may put an organization on: it exists and is not archived. */
+  private async requireLivePlan(tx: PermissionsTransaction, planKey: string) {
+    const plan = await this.requirePlan(tx, planKey);
+    if (plan.archivedAt) {
+      throw new PermissionWriteError('not_found', 'That plan is archived and cannot be subscribed to', { planKey });
+    }
+    return plan;
+  }
+
+  /** Creates the live organization-wide row, turning a lost race for the slot into the named refusal. */
+  private async createLiveSubscription(tx: PermissionsTransaction, input: BilledSubscription, planKey: string) {
+    try {
+      return await tx.permSubscription.create({
+        data: {
+          organizationId: input.organizationId,
+          workspaceId: null,
+          planKey,
+          status: 'active',
+          periodStart: input.periodStart,
+          currentPeriodEnd: input.periodEnd,
+          billingDay: input.billingDay,
+          accessUntil: input.accessUntil,
+          liveOrganizationId: input.organizationId,
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new PermissionWriteError('already_exists', 'This organization already has a live subscription', {
+          organizationId: input.organizationId,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * A renewal: the same row, its period and access moved forward (D10). A new
+   * row would leave two live ones; the row's plan and target never change.
+   */
+  async renewSubscription(input: BilledPeriod & { organizationId: string }, tx?: PermissionsTransaction) {
+    return this.inTransaction(tx, async (db) => {
+      const live = await this.requireLiveOrganizationSubscription(db, input.organizationId);
+      await db.permSubscription.update({
+        where: { id: live.id },
+        data: {
+          status: 'active',
+          periodStart: input.periodStart,
+          currentPeriodEnd: input.periodEnd,
+          billingDay: input.billingDay,
+          accessUntil: input.accessUntil,
+        },
+        select: { id: true },
+      });
+      return { subscriptionId: live.id };
+    });
+  }
+
+  /**
+   * A plan change: the old row ends and a new one starts, in one transaction,
+   * so "what was this organization on in March" stays answerable (the plan is
+   * never edited on a row). Also how an organization on an archived plan is
+   * moved to its replacement.
+   */
+  async changeSubscriptionPlan(input: BilledSubscription & { planKey: string }, tx?: PermissionsTransaction) {
+    return this.inTransaction(tx, async (db) => {
+      const live = await this.requireLiveOrganizationSubscription(db, input.organizationId);
+      await this.requireLivePlan(db, input.planKey);
+      await db.permSubscription.update({
+        where: { id: live.id },
+        data: { endedAt: this.now(), status: 'canceled', liveOrganizationId: null },
+        select: { id: true },
+      });
+      const created = await this.createLiveSubscription(db, input, input.planKey);
+      return { subscriptionId: created.id, endedSubscriptionId: live.id };
+    });
+  }
+
+  /**
+   * A subscribe, or a renewal after expiry that restarts the period: ends the
+   * organization's live row if one is left (an expired one still holds the
+   * slot, so the refusal can say when it ended) and starts a new one.
+   */
+  async startBilledSubscription(input: BilledSubscription & { planKey: string }, tx?: PermissionsTransaction) {
+    return this.inTransaction(tx, async (db) => {
+      await this.requireOrganization(db, input.organizationId);
+      await this.requireLivePlan(db, input.planKey);
+      const live = await db.permSubscription.findFirst({
+        where: { liveOrganizationId: input.organizationId },
+        select: { id: true, organizationId: true, workspaceId: true, planKey: true, status: true, endedAt: true },
+      });
+      if (live) {
+        await db.permSubscription.update({
+          where: { id: live.id },
+          data: { endedAt: this.now(), status: 'canceled', liveOrganizationId: null },
+          select: { id: true },
+        });
+      }
+      const created = await this.createLiveSubscription(db, input, input.planKey);
+      return { subscriptionId: created.id, endedSubscriptionId: live?.id ?? null };
+    });
+  }
+
+  /** Moves only the access end: a hold given or ended, a void shortening a period. */
+  async setSubscriptionAccessUntil(
+    input: { organizationId: string; accessUntil: Date | null },
+    tx?: PermissionsTransaction,
+  ) {
+    return this.inTransaction(tx, async (db) => {
+      const live = await this.requireLiveOrganizationSubscription(db, input.organizationId);
+      await db.permSubscription.update({
+        where: { id: live.id },
+        data: { accessUntil: input.accessUntil },
+        select: { id: true },
+      });
+      return { subscriptionId: live.id };
     });
   }
 
@@ -2374,6 +2548,26 @@ export class PermissionsWriteService {
   }
 
   /** A subscription that exists and has not been ended. See `updateSubscription`. */
+  /**
+   * Refuses a second live organization-wide subscription, naming the one in the
+   * way (#105, D4). The unique `liveOrganizationId` is what actually prevents
+   * it; this check is the reason the person reads, and `createLiveSubscription`
+   * maps the race that slips past it to the same refusal.
+   */
+  private async refuseSecondLiveSubscription(tx: PermissionsTransaction, organizationId: string): Promise<void> {
+    const live = await tx.permSubscription.findFirst({
+      where: { liveOrganizationId: organizationId },
+      select: { id: true, organizationId: true, workspaceId: true, planKey: true, status: true, endedAt: true },
+    });
+    if (live) {
+      throw new PermissionWriteError(
+        'already_exists',
+        `This organization already has a live subscription (${live.planKey}). End or change it instead of starting another.`,
+        { subscriptionId: live.id, planKey: live.planKey },
+      );
+    }
+  }
+
   private async requireLiveSubscription(tx: PermissionsTransaction, subscriptionId: string) {
     const subscription = await tx.permSubscription.findFirst({
       where: { id: subscriptionId, endedAt: null },
@@ -2904,4 +3098,24 @@ function assertNoDraftErrors(
   if (problems.length > 0) {
     throw new PermissionWriteError(reason, problems.join('; '), {});
   }
+}
+
+/** A period billing writes: worked out by `module-platform-billing`'s rules, stored as instants. */
+export interface BilledPeriod {
+  periodStart: Date;
+  periodEnd: Date;
+  /** 1–31, kept apart from the dates because a short month clamps it. */
+  billingDay: number;
+  /** Period end + grace + any hold: the first instant without access. */
+  accessUntil: Date;
+}
+
+/** A new live organization-wide subscription billing starts. */
+export interface BilledSubscription extends BilledPeriod {
+  organizationId: string;
+}
+
+/** Prisma's unique-constraint violation, recognised structurally (no `@prisma/client` here). */
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
 }

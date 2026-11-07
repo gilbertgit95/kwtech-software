@@ -612,6 +612,18 @@ model PermSubscription {
   /// Set when superseded. Rows are kept so past entitlement can be reconstructed.
   endedAt        DateTime?
 
+  /// ⚠ ONE LIVE ORGANIZATION-WIDE SUBSCRIPTION PER ORGANIZATION, without raw SQL
+  /// (#105, PLATFORM-BILLING-PLAN D4).
+  ///
+  /// Holds `organizationId` while the row is organization-wide and not ended,
+  /// and NULL otherwise (ended, or a workspace row). Postgres treats NULLs as
+  /// distinct, so any number of ended rows coexist while a second live one is a
+  /// unique violation: two approvals at once write one subscription, not two
+  /// that quietly add up (entitlements are the union of every row in force).
+  /// The same stand-in for a partial index `QueueSession.openWorkspaceId` is.
+  /// Every write that creates or ends a row keeps it in step.
+  liveOrganizationId String? @unique
+
   organization PermOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    PermWorkspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   plan         PermPlan         @relation(fields: [planKey], references: [key])

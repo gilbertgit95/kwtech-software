@@ -73,6 +73,10 @@ interface State {
     planKey: string;
     status: string;
     endedAt: Date | null;
+    /** The organization's id while the row is its live organization-wide one (#105). */
+    liveOrganizationId?: string | null;
+    accessUntil?: Date | null;
+    currentPeriodEnd?: Date | null;
   }[];
   /**
    * The platform's defaults, as stored.
@@ -486,10 +490,18 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
     permSubscription: {
       findMany: async () => [],
       findFirst: async (args: {
-        where: { id?: string; organizationId?: string; workspaceId?: string | null; planKey?: string; endedAt?: null };
+        where: {
+          id?: string;
+          organizationId?: string;
+          workspaceId?: string | null;
+          planKey?: string;
+          endedAt?: null;
+          liveOrganizationId?: string;
+        };
       }) =>
         state.subscriptions.find(
           (sub) =>
+            (args.where.liveOrganizationId === undefined || sub.liveOrganizationId === args.where.liveOrganizationId) &&
             (args.where.id === undefined || sub.id === args.where.id) &&
             (args.where.organizationId === undefined || sub.organizationId === args.where.organizationId) &&
             (args.where.workspaceId === undefined || sub.workspaceId === args.where.workspaceId) &&
@@ -504,8 +516,14 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
           status: string;
           currentPeriodEnd: Date | null;
           accessUntil: Date | null;
+          liveOrganizationId: string | null;
         };
       }) => {
+        // The unique `liveOrganizationId`, enforced as the database does (#105).
+        const taken =
+          args.data.liveOrganizationId !== null &&
+          state.subscriptions.some((sub) => sub.liveOrganizationId === args.data.liveOrganizationId);
+        if (taken) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
         writes.subscriptions.push(args.data);
         const row = { id: id('sub'), ...args.data, endedAt: null };
         state.subscriptions.push(row);
@@ -2502,5 +2520,126 @@ describe('a workspace’s time zone', () => {
     expect(
       await reason(svc.updateWorkspace(actor([FEATURE.workspacesUpdate]), { ...input, timeZone: 'Mars/Olympus' })),
     ).toBe('draft_invalid');
+  });
+});
+
+/*
+ * ONE LIVE ORGANIZATION-WIDE SUBSCRIPTION, and the writes billing makes once a
+ * request is approved (#105, D3, D4, D10). The fake enforces the unique
+ * `liveOrganizationId` as the database does.
+ */
+describe('one live subscription per organization, and billing’s writes', () => {
+  const biller = () => actor([FEATURE.billingManage, FEATURE.plansCreate]);
+  const DAY = 86_400_000;
+  const period = (startIso: string) => {
+    const periodStart = new Date(startIso);
+    const periodEnd = new Date(periodStart.getTime() + 30 * DAY);
+    return {
+      periodStart,
+      periodEnd,
+      billingDay: periodStart.getUTCDate(),
+      accessUntil: new Date(periodEnd.getTime() + 7 * DAY),
+    };
+  };
+  const draft = { organizationId: 'org1', workspaceId: null, planKey: 'team', status: 'active', currentPeriodEnd: '' };
+
+  const seeded = async () => {
+    const context = fake(
+      emptyState({
+        organizations: [{ id: 'org1', key: 'acme', name: 'Acme' }],
+        workspaces: [{ id: 'ws1', organizationId: 'org1', archivedAt: null }],
+      }),
+    );
+    await context.svc.createPlan(biller(), planDraft({ features: [SELLABLE] }));
+    await context.svc.createPlan(biller(), planDraft({ key: 'bigger', label: 'Bigger', features: [SELLABLE] }));
+    return context;
+  };
+  const live = (state: State) => state.subscriptions.filter((sub) => sub.liveOrganizationId === 'org1');
+
+  it('⚠ refuses a second live organization-wide subscription, on any plan, naming the first', async () => {
+    const { svc } = await seeded();
+    await svc.startSubscription(biller(), draft);
+    expect(await reason(svc.startSubscription(biller(), { ...draft, planKey: 'bigger' }))).toBe('already_exists');
+  });
+
+  it('refuses a new workspace-level subscription: workspaces use the organization’s plan (D3)', async () => {
+    const { svc, writes } = await seeded();
+    expect(await reason(svc.startSubscription(biller(), { ...draft, workspaceId: 'ws1' }))).toBe('draft_invalid');
+    expect(writes.subscriptions).toEqual([]);
+  });
+
+  it('frees the live slot when a subscription ends', async () => {
+    const { svc, state } = await seeded();
+    const { subscriptionId } = await svc.startSubscription(biller(), draft);
+    expect(live(state)).toHaveLength(1);
+    await svc.endSubscription(biller(), subscriptionId);
+    expect(live(state)).toEqual([]);
+  });
+
+  it('⚠ renews on the SAME row, moving its period and access forward (D10)', async () => {
+    const { svc, state } = await seeded();
+    await svc.startBilledSubscription({ organizationId: 'org1', planKey: 'team', ...period('2026-11-01T00:00:00Z') });
+    const next = period('2026-12-01T00:00:00Z');
+    await svc.renewSubscription({ organizationId: 'org1', ...next });
+    expect(state.subscriptions).toHaveLength(1);
+    expect(state.subscriptions[0]).toMatchObject({
+      planKey: 'team',
+      accessUntil: next.accessUntil,
+      liveOrganizationId: 'org1',
+    });
+  });
+
+  it('changes plan by ending the old row and starting a new one, the live slot moving with it', async () => {
+    const { svc, state } = await seeded();
+    const first = await svc.startBilledSubscription({
+      organizationId: 'org1',
+      planKey: 'team',
+      ...period('2026-11-01T00:00:00Z'),
+    });
+    const changed = await svc.changeSubscriptionPlan({
+      organizationId: 'org1',
+      planKey: 'bigger',
+      ...period('2026-11-01T00:00:00Z'),
+    });
+    expect(changed.endedSubscriptionId).toBe(first.subscriptionId);
+    expect(state.subscriptions.find((sub) => sub.id === first.subscriptionId)).toMatchObject({
+      status: 'canceled',
+      liveOrganizationId: null,
+    });
+    expect(live(state).map((sub) => sub.planKey)).toEqual(['bigger']);
+  });
+
+  it('starts a billed subscription after expiry by ending the expired row that still held the slot', async () => {
+    const { svc, state } = await seeded();
+    await svc.startBilledSubscription({ organizationId: 'org1', planKey: 'team', ...period('2026-09-01T00:00:00Z') });
+    const again = await svc.startBilledSubscription({
+      organizationId: 'org1',
+      planKey: 'team',
+      ...period('2026-12-10T00:00:00Z'),
+    });
+    expect(again.endedSubscriptionId).not.toBeNull();
+    expect(live(state)).toHaveLength(1);
+    expect(state.subscriptions).toHaveLength(2);
+  });
+
+  it('moves only the access end for a hold', async () => {
+    const { svc, state } = await seeded();
+    const p = period('2026-11-01T00:00:00Z');
+    await svc.startBilledSubscription({ organizationId: 'org1', planKey: 'team', ...p });
+    const held = new Date(p.accessUntil.getTime() + 7 * DAY);
+    await svc.setSubscriptionAccessUntil({ organizationId: 'org1', accessUntil: held });
+    expect(state.subscriptions[0]).toMatchObject({ accessUntil: held, currentPeriodEnd: p.periodEnd });
+  });
+
+  it('refuses renewing an organization with no live subscription, and a plan that does not exist', async () => {
+    const { svc } = await seeded();
+    expect(await reason(svc.renewSubscription({ organizationId: 'org1', ...period('2026-11-01T00:00:00Z') }))).toBe(
+      'not_found',
+    );
+    expect(
+      await reason(
+        svc.startBilledSubscription({ organizationId: 'org1', planKey: 'missing', ...period('2026-11-01T00:00:00Z') }),
+      ),
+    ).toBe('not_found');
   });
 });
