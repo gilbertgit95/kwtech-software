@@ -9,5 +9,6 @@ export * from './plan-draft.js';
 export * from './plans.js';
 export * from './roles.js';
 export * from './spreadsheet.js';
+export * from './subscription-access.js';
 export * from './subscription-draft.js';
 export * from './writes.js';

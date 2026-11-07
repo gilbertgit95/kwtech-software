@@ -610,11 +610,35 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 128 | Bills and receipts may not be official tax documents | before the first paid subscription is billed | Platform billing (#88, `docs/PLATFORM-BILLING-PLAN.md`) issues a bill at request and a payment receipt at approval. If the tax authority requires registered official receipts or invoices, these do not qualify. Until it is confirmed, the receipt is titled "Acknowledgement receipt" and says "This is not an official receipt". What would settle it: the rule for the platform's registration, and whether an official-receipt series or an accredited system is required |
 | 129 | Payment proof is typed, not uploaded | when the app has file storage | An owner enters the method, amount, date and reference of a payment (#88); a screenshot or bank slip cannot be attached, because the app stores no files (print studio keeps its files in the browser). The approver checks the reference against the e-wallet or bank account instead. Uploads come with file storage, as a field on the payment details |
 | 130 | A Basic trial can be had again with a new sign-up | if trials are seen repeated, or before trials are advertised | The trial is once per owner ACCOUNT (§13, 2026-11-07), and an account costs an email address. Tying it to a verified phone, a payment method or a device was not done: there is no SMS provider, no card, and device checks are easily reset. The screen says when an account already used its trial ("A free trial was already used by this account on <date>, for <organization>"), and the platform reports list trials per account, so a pattern is visible |
-| 131 | What an organization falls back to when its subscription expires | billing phase 3 (#92) | Expiry ends the subscription (`status: canceled`, `endedAt`). With nothing active an organization is entitled to nothing, as today; only the billing keys stay open (§13, 2026-11-07). The alternative is a fall back to Free, which a trial already does: an expired shop keeps its notes and tasks and its people can still sign in to something. Recommended: **Free**, with what is over Free's caps kept and refused growth, as on a downgrade by an operator. To be decided before #92 writes the entitlement check |
+| 131 | ~~What an organization falls back to when its subscription expires~~ **Closed** | — | **Decided 2026-11-07 by the operator: Free** (§13, 2026-11-07, #92). Read at entitlement time from the `organization.fallback_plan` default, seeded to `free`: an organization with no organization-wide subscription in force — never subscribed, or expired — is entitled to Free's keys and caps, and what is over Free's caps is kept and refused growth. Unset or archived falls back to nothing |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-07** — **A subscription entitles until its `accessUntil`, an expired organization falls back to Free, and the billing keys work without a plan (#92, billing P3).**
+
+  Until now nothing compared a period end with the clock, so a lapsed
+  subscription entitled for ever (§12.40).
+  - **`accessUntil` on `perm_subscription`** (with `periodStart` and
+    `billingDay`), compared with now on every context, so access never
+    depends on a daily job (D14). This changes §12.40's "only `status`
+    decides": `status` still must be `active`, and `accessUntil` must be ahead.
+  - **The release step** gives every live row a period end at least 30 days
+    after release and access 7 days after that, keeping a later end it already
+    had. The local database had a live row whose period end was already past.
+  - **Expired falls back to Free** (the operator, §12.131), at read time from
+    the `organization.fallback_plan` default, never by writing a row on
+    expiry, so it too never waits on a job.
+  - **`subscription_expired`** is its own denial reason, so a gated page says
+    "your plan ended, renew" rather than "upgrade".
+  - **`planExemptFeatures`**, one named exemption from the plan filter, checked
+    at boot to be organization keys. The app passes billing's keys in phase 4.
+  - **Admin and default writes set `accessUntil` = period end + 7 days**
+    (`UNBILLED_GRACE_DAYS`) until phase 4 turns them into billing adjustments.
+  - **Not done here, moved to #105:** the fold of workspace subscriptions, the
+    one-active-subscription index, and billing's write methods. Split so the
+    entitlement change, the riskiest step, lands and is checked on its own.
 
 - **2026-11-07** — **`module-platform-billing` exists as a pure core: four organization keys, four app keys, and every billing rule as a tested function (#91).**
 

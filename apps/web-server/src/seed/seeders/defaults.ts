@@ -186,6 +186,18 @@ export const defaultsSeeder: Seeder = {
       else log(`${APP_DEFAULT.organizationPlan} — skipped, no public live plan here`);
     }
 
+    /*
+     * The plan an organization falls back to with no subscription in force:
+     * Free, the operator's decision (2026-11-07, PLAN §12.131). By key, not
+     * "smallest", because the decision names the plan; skipped where no live
+     * Free exists, which leaves such organizations with nothing but billing.
+     */
+    if (!existing.has(APP_DEFAULT.organizationFallbackPlan)) {
+      const free = await prisma.permPlan.findFirst({ where: { key: 'free', archivedAt: null }, select: { key: true } });
+      if (free) await write(APP_DEFAULT.organizationFallbackPlan, free.key, 'Free, when no subscription is in force');
+      else log(`${APP_DEFAULT.organizationFallbackPlan} — skipped, no live free plan here`);
+    }
+
     log(written === 0 ? 'every default already decided — nothing written' : `${written} default(s) set`);
   },
 };

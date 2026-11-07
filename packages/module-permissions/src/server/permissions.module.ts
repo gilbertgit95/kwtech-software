@@ -2,7 +2,9 @@ import type { DefaultMomentContribution } from '@kwtech/module-kit';
 import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AppDefaultSpec } from '../defaults.js';
+import { assertPlanExemptFeatures } from '../domain/grants.js';
 import type { LimitSpec } from '../domain/limits.js';
+import { FEATURE_REGISTRY } from '../feature-keys.js';
 import type { RequestScope } from '../scope.js';
 import type { FeatureSpec, PermissionContext } from '../types.js';
 import { FeatureGuard } from './feature.guard.js';
@@ -155,6 +157,16 @@ export interface PermissionsModuleOptions {
   limitRegistry?: readonly LimitSpec[];
 
   /**
+   * ⚠ Organization keys that work WITHOUT a plan: the billing module's, so an
+   * expired or new organization can still reach the page that renews it
+   * (PLATFORM-BILLING-PLAN D13, #92). Checked at boot against
+   * `featureRegistry`: every key must exist and be organization level, or the
+   * boot fails naming it. Unset exempts nothing, which is right for an app
+   * with no billing.
+   */
+  planExemptFeatures?: readonly string[];
+
+  /**
    * Every DEFAULT the app offers, composed across its modules.
    *
    * Defaults to this module's own nine. ⚠ Leaving it there while another module
@@ -295,6 +307,9 @@ export interface PermissionsModuleOptions {
 @Module({})
 export class PermissionsModule {
   static forRoot(options: PermissionsModuleOptions): DynamicModule {
+    if (options.planExemptFeatures?.length) {
+      assertPlanExemptFeatures(options.planExemptFeatures, options.featureRegistry ?? FEATURE_REGISTRY);
+    }
     const exposeRest = options.expose?.rest ?? true;
     const exposeGraphql = options.expose?.graphql ?? true;
 

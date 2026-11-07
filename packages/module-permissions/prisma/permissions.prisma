@@ -595,6 +595,20 @@ model PermSubscription {
   planKey        String
   status         PermSubscriptionStatus
   currentPeriodEnd DateTime?
+  /// Where the current period began. Proration divides by the period's days,
+  /// so billing needs both ends (PLATFORM-BILLING-PLAN §4). Null on rows
+  /// written before billing (#92) and by the admin screens.
+  periodStart    DateTime?
+  /// The day of the month (1–31) the period renews on, kept apart from the
+  /// dates because a short month clamps it: the 31st → the 28th → the 31st.
+  billingDay     Int?
+  /// ⚠ THE FIRST INSTANT WITHOUT ACCESS: period end + grace + any hold, written
+  /// by whoever writes the period (billing, the admin screens, the defaults).
+  /// The entitlement read compares it with now (D14), so access never depends
+  /// on a daily job having run. Null entitles with no end, which is what a row
+  /// with no period end has always meant; the #92 migration gave every live
+  /// row one, so null now means somebody chose "no end" on purpose.
+  accessUntil    DateTime?
   /// Set when superseded. Rows are kept so past entitlement can be reconstructed.
   endedAt        DateTime?
 

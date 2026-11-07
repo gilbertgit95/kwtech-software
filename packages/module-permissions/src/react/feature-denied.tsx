@@ -22,6 +22,8 @@ import type { DenialReason } from '../types.js';
  */
 const EXPLANATION: Record<DenialReason, string> = {
   not_entitled: 'Your plan does not include this. Upgrading adds it.',
+  subscription_expired:
+    "Your organization's plan has ended, so this is paused. Its data is kept; renewing on the Billing page brings it back.",
   not_granted: 'Your roles do not include this. An administrator can grant it.',
   no_workspace_access: 'You do not have access to this workspace.',
   no_context: 'We could not determine your permissions. Try signing in again.',

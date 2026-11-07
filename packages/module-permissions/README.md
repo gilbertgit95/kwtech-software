@@ -284,6 +284,27 @@ levels participate at all**:
               effective: every feature accessible at this scope
 ```
 
+### Which subscriptions entitle, and what an organization falls back to (#92)
+
+- **A subscription entitles until its `accessUntil`**: period end + grace + any
+  hold, written with the period by whoever writes it (billing; the admin screens
+  and the new-organization default write the period end + 7 days,
+  `UNBILLED_GRACE_DAYS`). The read compares it with now on every context, so
+  access never waits on a daily job (`partitionSubscriptions`). Null means no
+  end; the #92 migration gave every live row one.
+- **With no organization-wide subscription in force** (never subscribed, or
+  expired), the organization is entitled to the **fallback plan**, the
+  `organization.fallback_plan` default (Free, seeded). Unset or archived falls
+  back to nothing. Its caps apply with its keys.
+- **`subscription_expired`** is a fourth denial reason: a granted key filtered
+  out because the paid plan ENDED (`ctx.subscriptionEndedAt`), "renew" rather
+  than "upgrade". `not_granted` still comes first.
+- **`planExemptFeatures`** (module option): organization keys that skip the
+  plan filter, the billing module's only, so an expired organization can reach
+  its Billing page. A role must still grant them. Checked at boot: every key
+  exists and is organization level (`assertPlanExemptFeatures`), or the boot
+  fails naming it.
+
 An organization role is not "also true" at app level — it is *unasked*, because
 the request named no organization for it to be true about. At app level step 1 is
 empty by construction, so the same three lines yield "app features only" with no

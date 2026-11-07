@@ -214,9 +214,9 @@ function fakePrisma(db: Db = {}): { client: PermissionsPrismaClient; calls: Call
   return { client, calls };
 }
 
-const service = (db?: Db) => {
+const service = (db?: Db, options?: ConstructorParameters<typeof PermissionsService>[1]) => {
   const { client, calls } = fakePrisma(db);
-  return { svc: new PermissionsService(client), calls };
+  return { svc: new PermissionsService(client, options), calls };
 };
 
 /** A scoped (organization/workspace) role, as the membership queries return it. */
@@ -261,6 +261,7 @@ const plan = (
   workspaceId: null,
   status: 'active',
   currentPeriodEnd: null,
+  accessUntil: null,
   endedAt: null,
   ...over,
   plan: {
@@ -1360,5 +1361,117 @@ describe('readDefault', () => {
     const { svc } = service({ defaults: [{ key: 'chat.creator_role', value: 'retired' }] });
 
     expect(await svc.readDefault('chat.creator_role')).toBe('retired');
+  });
+});
+
+/*
+ * ⚠ `accessUntil` decides (#92, D14), and an organization with no paid plan in
+ * force falls back to Free (§12.131). Each case below is a way an organization
+ * could keep a plan it stopped paying for, or lose one it still had.
+ */
+describe('loadContext — accessUntil, the fallback plan and the billing exemption', () => {
+  const HOUR = 3_600_000;
+  const admin = () =>
+    membership({
+      roles: [
+        {
+          role: role({
+            key: 'owner',
+            level: 'organization',
+            features: [{ featureKey: FEATURE.membersRead }, { featureKey: FEATURE.workspacesRead }],
+          }),
+        },
+      ],
+    });
+  const free: PlanDefinitionRow = {
+    key: 'free',
+    label: 'Free',
+    isPublic: true,
+    icon: null,
+    archivedAt: null,
+    features: [{ featureKey: FEATURE.workspacesRead }],
+    limits: [{ limitKey: LIMIT.organizationMembers, value: 3 }],
+  };
+  const fallback = [{ key: APP_DEFAULT.organizationFallbackPlan, value: 'free' }];
+
+  it('entitles a paid plan whose accessUntil is still ahead', async () => {
+    const { svc } = service({
+      membership: admin(),
+      subscriptions: [plan([FEATURE.membersRead], [], { accessUntil: new Date(Date.now() + HOUR) })],
+    });
+    const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+    expect(ctx?.effective).toContain(FEATURE.membersRead);
+    expect(ctx?.subscriptionEndedAt).toBeUndefined();
+  });
+
+  it('⚠ stops entitling once accessUntil passes, with no job having run, and says when it ended', async () => {
+    const ended = new Date(Date.now() - HOUR);
+    const { svc } = service({
+      membership: admin(),
+      subscriptions: [plan([FEATURE.membersRead], [], { accessUntil: ended })],
+    });
+    const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+    expect(ctx?.effective).not.toContain(FEATURE.membersRead);
+    expect(ctx?.subscriptionEndedAt).toBe(ended.toISOString());
+  });
+
+  it('⚠ falls back to Free when the paid plan expired: Free’s keys and caps, nothing more', async () => {
+    const { svc } = service({
+      membership: admin(),
+      subscriptions: [
+        plan([FEATURE.membersRead, FEATURE.workspacesRead], [], { accessUntil: new Date(Date.now() - HOUR) }),
+      ],
+      defaults: fallback,
+      plans: [free],
+    });
+    const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+    expect(ctx?.effective).toEqual([FEATURE.workspacesRead]);
+    expect(ctx?.limits[LIMIT.organizationMembers]).toBe(3);
+  });
+
+  it('falls back to Free for an organization that never subscribed, without calling it expired', async () => {
+    const { svc } = service({ membership: admin(), subscriptions: [], defaults: fallback, plans: [free] });
+    const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+    expect(ctx?.effective).toEqual([FEATURE.workspacesRead]);
+    expect(ctx?.subscriptionEndedAt).toBeUndefined();
+  });
+
+  it('does not add Free beside a paid plan in force', async () => {
+    const { svc } = service({
+      membership: admin(),
+      subscriptions: [plan([FEATURE.membersRead])],
+      defaults: fallback,
+      plans: [free],
+    });
+    const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+    expect(ctx?.entitled).toEqual([FEATURE.membersRead]);
+  });
+
+  it('falls back to nothing when the fallback is unset or archived: fail closed', async () => {
+    for (const db of [{ defaults: [] }, { defaults: fallback, plans: [{ ...free, archivedAt: new Date() }] }]) {
+      const { svc } = service({ membership: admin(), subscriptions: [], ...db });
+      const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+      expect(ctx?.effective).toEqual([]);
+    }
+  });
+
+  it('⚠ lets a billing key through with no plan at all, and only when a role grants it (D13)', async () => {
+    const billing = 'platform-billing:read';
+    const withKey = membership({
+      roles: [
+        {
+          role: role({
+            key: 'owner',
+            level: 'organization',
+            features: [{ featureKey: billing }, { featureKey: FEATURE.membersRead }],
+          }),
+        },
+      ],
+    });
+    const { svc } = service({ membership: withKey, subscriptions: [] }, { planExemptFeatures: [billing] });
+    const ctx = await svc.loadContext('u1', { organizationId: 'org1' });
+    expect(ctx?.effective).toEqual([billing]);
+    const { svc: without } = service({ membership: admin(), subscriptions: [] }, { planExemptFeatures: [billing] });
+    expect((await without.loadContext('u1', { organizationId: 'org1' }))?.effective).toEqual([]);
   });
 });

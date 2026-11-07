@@ -84,6 +84,25 @@ export interface ComposeInput {
    * cap.
    */
   limitRegistry?: readonly LimitSpec[];
+  /**
+   * ⚠ ORGANIZATION KEYS THAT WORK WITHOUT A PLAN — one narrow, named
+   * exemption (PLATFORM-BILLING-PLAN D13, #92).
+   *
+   * An expired or brand-new organization is entitled to nothing, so without
+   * this its owner could not reach the Billing page that renews it: the one
+   * way back would be filtered out with everything else. The app passes the
+   * billing module's organization keys here and nothing else; the permissions
+   * module validates at boot that every key is organization level
+   * (`assertPlanExemptFeatures`), so a workspace sub-app can never be made
+   * free by listing it.
+   *
+   * The code once had another plan bypass — `workspaces:access_all`, removed
+   * (see below) — so this one is an input with a test, never a quiet branch.
+   * A role must still GRANT the key: this skips the plan filter, not the grant.
+   */
+  planExemptFeatures?: readonly FeatureKey[];
+  /** When the paid subscription ended, if it did. Carried onto the context; see `PermissionContext`. */
+  subscriptionEndedAt?: string | null;
 }
 
 /**
@@ -162,7 +181,8 @@ export function composeContext(input: ComposeInput): PermissionContext {
   const scoped = [...granted].filter((feature) => !appLevel.has(feature));
   const entitledSet = entitled === null ? null : new Set(entitled);
 
-  const effective = new Set(entitledSet === null ? scoped : scoped.filter((f) => entitledSet.has(f)));
+  const exempt = new Set(input.planExemptFeatures ?? []);
+  const effective = new Set(entitledSet === null ? scoped : scoped.filter((f) => entitledSet.has(f) || exempt.has(f)));
   for (const feature of appLevel) effective.add(feature);
 
   /*
@@ -246,5 +266,28 @@ export function composeContext(input: ComposeInput): PermissionContext {
     grantedAtAppLevel: [...appLevel].sort(),
     entitled,
     appRoles,
+    ...(input.subscriptionEndedAt ? { subscriptionEndedAt: input.subscriptionEndedAt } : {}),
   };
+}
+
+/**
+ * Refuses a plan exemption that is not organization level (D13). Run once at
+ * boot with the composed registry: a workspace key listed here would make a
+ * sub-app free for every organization, and an app key is already exempt.
+ * An unknown key is refused too — a typo would otherwise exempt nothing and
+ * look like it worked.
+ */
+export function assertPlanExemptFeatures(
+  keys: readonly FeatureKey[],
+  registry: readonly { key: string; level?: string | undefined }[],
+): void {
+  for (const key of keys) {
+    const spec = registry.find((entry) => entry.key === key);
+    if (!spec) throw new Error(`planExemptFeatures names '${key}', which no module declares.`);
+    if (spec.level !== 'organization') {
+      throw new Error(
+        `planExemptFeatures names '${key}', which is ${spec.level ?? 'unlevelled'}: only organization keys may work without a plan (D13).`,
+      );
+    }
+  }
 }
