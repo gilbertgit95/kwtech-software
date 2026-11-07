@@ -945,7 +945,15 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
    */
   permSubscription: PermissionsPrismaClient['permSubscription'] & {
     findFirst(args: {
-      where: { id?: string; organizationId?: string; workspaceId?: string | null; planKey?: string; endedAt?: null };
+      where: {
+        id?: string;
+        organizationId?: string;
+        workspaceId?: string | null;
+        planKey?: string;
+        endedAt?: null;
+        /** The organization's ONE live organization-wide row (#105). */
+        liveOrganizationId?: string;
+      };
       select: {
         id: true;
         organizationId: true;
@@ -971,6 +979,14 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         currentPeriodEnd: Date | null;
         /** Written with the period end, or the row would entitle for ever (#92). */
         accessUntil: Date | null;
+        periodStart?: Date | null;
+        billingDay?: number | null;
+        /**
+         * ⚠ REQUIRED, so no create can forget it: the organization's id for a live
+         * organization-wide row, null for anything else. Unique, so a second live
+         * row is a P2002, not a second plan quietly adding up (#105).
+         */
+        liveOrganizationId: string | null;
       };
       select: { id: true };
     }): Promise<{ id: string }>;
@@ -983,7 +999,11 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         status?: 'active' | 'past_due' | 'canceled';
         currentPeriodEnd?: Date | null;
         accessUntil?: Date | null;
+        periodStart?: Date | null;
+        billingDay?: number | null;
         endedAt?: Date | null;
+        /** Only ever cleared on an update: ending a row frees the organization's live slot. */
+        liveOrganizationId?: null;
       };
       select: { id: true };
     }): Promise<{ id: string }>;

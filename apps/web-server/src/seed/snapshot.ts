@@ -44,6 +44,55 @@ import { env } from '../config/env.js';
  */
 
 const SNAPSHOT_PATH = fileURLToPath(new URL('../../seed-data/snapshot.json', import.meta.url));
+const MIGRATIONS_DIR = fileURLToPath(new URL('../../prisma/migrations/', import.meta.url));
+
+/** The line a migration carries when its DATA steps must also run on an older snapshot. */
+const REPLAY_MARKER = '-- restore: replay';
+
+/**
+ * ⚠ DATA MIGRATIONS NEWER THAN THE SNAPSHOT, replayed after its rows load.
+ *
+ * A restore needs the database migrated at least as far as the snapshot, and
+ * usually further: the schema then has the newer columns, and the snapshot's
+ * rows arrive without them. For a column that is merely new that is fine. For
+ * one a migration FILLED from the data, it is not: #105's `liveOrganizationId`
+ * marks each organization's one live subscription, and restored as NULL a
+ * renewal finds nothing to renew and a new subscription can start beside the
+ * old one (#105, review). Such a migration carries `REPLAY_MARKER` and is
+ * written to run twice safely; restore runs each one newer than the snapshot,
+ * in order, inside its own transaction (their BEGIN/COMMIT removed), so a
+ * refusal in one rolls the whole restore back. Only migrations this database
+ * has applied are replayed, and a missing migrations folder stops the restore.
+ */
+async function replayableMigrationsAfter(
+  client: pg.ClientBase,
+  migration: string,
+): Promise<{ name: string; sql: string }[]> {
+  // Fail rather than skip: restoring without the replay is the silent failure this exists to stop.
+  if (!existsSync(MIGRATIONS_DIR)) {
+    throw new Error(`No migrations at ${MIGRATIONS_DIR}; restore needs them to replay data steps.`);
+  }
+  // Only what THIS database has applied: replaying a migration it has not would
+  // change its schema behind `_prisma_migrations`' back.
+  const { rows } = await client.query<{ migration_name: string }>(
+    `SELECT migration_name FROM _prisma_migrations
+      WHERE migration_name > $1 AND finished_at IS NOT NULL AND rolled_back_at IS NULL`,
+    [migration],
+  );
+  const applied = rows.map((row) => row.migration_name).sort();
+  // Every applied migration's file must be here: a missing one may be the very
+  // one that fills a column, and skipping it would restore without it.
+  const missing = applied.filter((name) => !existsSync(`${MIGRATIONS_DIR}${name}/migration.sql`));
+  if (missing.length > 0) {
+    throw new Error(
+      `Applied migrations missing from ${MIGRATIONS_DIR}: ${missing.join(', ')}. Check out the code they came with.`,
+    );
+  }
+  return applied
+    .map((name) => ({ name, sql: readFileSync(`${MIGRATIONS_DIR}${name}/migration.sql`, 'utf8') }))
+    .filter((one) => one.sql.includes(REPLAY_MARKER))
+    .map((one) => ({ name: one.name, sql: one.sql.replace(/^(BEGIN|COMMIT);$/gmu, '') }));
+}
 
 /** Snapshot format version, bumped if the file's shape changes. */
 const FORMAT = 1;
@@ -301,6 +350,10 @@ async function restoreSnapshot(client: pg.ClientBase, force: boolean) {
       );
       total += rows.length;
       console.log(`  ${table.padEnd(28)} ${rows.length}`);
+    }
+    for (const replay of await replayableMigrationsAfter(client, snapshot.migration)) {
+      await client.query(replay.sql);
+      console.log(`  replayed the data steps of ${replay.name}`);
     }
     await client.query('COMMIT');
     console.log(`\n${total} row(s) restored from ${snapshot.migration}.`);

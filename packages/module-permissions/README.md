@@ -305,6 +305,23 @@ levels participate at all**:
   exists and is organization level (`assertPlanExemptFeatures`), or the boot
   fails naming it.
 
+### One live subscription per organization, and billing's writes (#105)
+
+- **At most one live organization-wide subscription per organization**, by a
+  unique `liveOrganizationId` (the organization's id while the row is live,
+  null once ended): two approvals at once write one subscription. A second
+  `startSubscription` is refused naming the first, and no new
+  workspace-level subscription is written (workspaces use the organization's
+  plan). The #105 migration folded existing workspace rows into the
+  organization, keeping the plan that covers all the others.
+- **Billing's writes** on `PermissionsWriteService`: `renewSubscription` (the
+  same row, moved forward), `changeSubscriptionPlan` (end the old row, start a
+  new one), `startBilledSubscription` (subscribe, or restart after expiry,
+  ending the expired row that held the slot) and `setSubscriptionAccessUntil`
+  (a hold, a void). ⚠ They check no actor or key: billing authorised the act
+  with its own app-level keys. Each takes billing's transaction. Never bind
+  one to a GraphQL operation.
+
 An organization role is not "also true" at app level — it is *unasked*, because
 the request named no organization for it to be true about. At app level step 1 is
 empty by construction, so the same three lines yield "app features only" with no
