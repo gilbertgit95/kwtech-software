@@ -8,13 +8,22 @@ import { isPaymentMethod, needsReference, normaliseReference, type PaymentMethod
 import { type Period, periodFrom } from '../domain/periods.js';
 import { chargesAccessUsed, isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import { approvalLagCredit } from '../domain/quotes.js';
-import { checkApproval, nextState, type RequestKind } from '../domain/requests.js';
-import { documentNumber } from '../domain/standing.js';
+import { checkApproval, checkNewRequest, checkVoid, nextState, type RequestKind } from '../domain/requests.js';
+import { documentNumber, requestStanding } from '../domain/standing.js';
+import {
+  type AppliedHow,
+  planVoid,
+  readAppliedHow,
+  readSubscriptionBefore,
+  type SubscriptionBefore,
+  type VoidPlan,
+} from '../domain/voids.js';
 import { billingRefusal } from './platform-billing.errors.js';
 import {
   type BillRow,
   dateColumnToDay,
   dayToDateColumn,
+  type JsonInput,
   type JsonValue,
   type PlatformBillingTransaction,
   type PlatformBillingWriteClient,
@@ -32,7 +41,7 @@ import {
 } from './platform-billing.tokens.js';
 import type { PlatformBillingPeople, PlatformBillingSubscriptions } from './ports.js';
 
-/** The kinds a person may request through this service. Cancel arrives with phase 4b. */
+/** The kinds `submit` takes. A cancel is `cancel`: it is priced at nothing and needs no approval. */
 export type SubmittableKind = Exclude<RequestKind, 'cancel'>;
 
 /** What an owner (or admin) says they paid. */
@@ -374,6 +383,9 @@ export class PlatformBillingWriteService {
           periodEnd: dayToDateColumn(applied.period.end),
           billingDay: applied.period.billingDay,
           accessUntil: platformDayStart(applied.accessUntil, context.settings.timeZone),
+          // What a void reverses, kept as it was today (D9a).
+          applied: applied.how satisfies AppliedHow,
+          ...asJson(beforeOf(context, request)),
         },
       });
       if (decided.count === 0) {
@@ -481,6 +493,312 @@ export class PlatformBillingWriteService {
     });
   }
 
+  /**
+   * "We were paid, but this can no longer be applied" (D12a): a plan change
+   * whose quote expired, or any pending request an approver decides to keep
+   * as credit. The payment actually received is recorded WHATEVER its amount
+   * (D7 governs approval, not this), a receipt issued for exactly that
+   * ("Payment received, held as credit"), the credit added once, and the plan
+   * left as it is.
+   *
+   * ⚠ The bill is CANCELLED, never paid: a bill of 500 must not read PAID on
+   * 200. Its cancellation names the receipt, so the history reads "closed as
+   * credit: 200 received, receipt R-000009". The request is no longer
+   * pending, so the owner can request again and the credit pays for it.
+   */
+  async closeAsCredit(
+    requestId: string,
+    actorId: string,
+    input: ApprovalInput,
+    reason: string | null,
+    now: Date,
+  ): Promise<RequestRow> {
+    const received = preparePayment({ ...input, sender: null, note: null });
+    if (received.amount <= 0) throw billingRefusal('nothing_received');
+    const text = prepareText(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
+      if (!request) throw billingRefusal('not_found');
+      const step = nextState(request.state, 'close_as_credit');
+      if ('refused' in step) throw billingRefusal(step.refused);
+      if (input.detailsVersion !== request.detailsVersion) throw billingRefusal('details_changed');
+      const context = await this.reads.context(request.organizationId, now, tx);
+      const selfApproved = request.requestedById === actorId;
+      const approverIsMember = this.people ? await this.people.isMember(actorId, request.organizationId) : true;
+
+      // ⚠ THE COMPARE-AND-SET, as an approval's: of an approval and a close at once, one stands.
+      const decided = await tx.platformBillingRequest.updateMany({
+        where: { id: requestId, state: 'pending', detailsVersion: input.detailsVersion },
+        data: {
+          state: step.state,
+          pendingOrganizationId: null,
+          decidedById: actorId,
+          decidedAt: now,
+          decisionReason: text,
+          selfApproved,
+          approverIsMember,
+        },
+      });
+      if (decided.count === 0) {
+        const again = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
+        throw billingRefusal(again && again.state === 'pending' ? 'details_changed' : 'not_pending');
+      }
+
+      const bill = await tx.platformBillingBill.findFirst({
+        where: { requestId, status: { not: 'cancelled' } },
+        orderBy: { number: 'desc' },
+      });
+      const plan = context.plans.get(request.planKey);
+      const receiptNumber = await this.nextNumber(tx, 'receipt');
+      const receiptSnapshot: ReceiptSnapshot = {
+        number: documentNumber('receipt', receiptNumber),
+        title: 'Acknowledgement receipt',
+        notice: 'This is not an official receipt.',
+        billNumber: bill ? documentNumber('bill', bill.number) : null,
+        kind: 'closed_as_credit',
+        organizationId: request.organizationId,
+        planLabel: plan?.label ?? request.planKey,
+        amount: received.amount,
+        currency: context.settings.currency,
+        method: received.method,
+        reference: received.reference,
+        paidOn: dateColumnToDay(received.paidOn),
+        // It bought no period: the plan did not change.
+        period: null,
+        selfApproved,
+        issuer: context.settings.issuer,
+        issuedOn: context.today,
+      };
+      const receipt = await tx.platformBillingReceipt.create({
+        data: {
+          requestId,
+          billId: bill?.id ?? null,
+          organizationId: request.organizationId,
+          number: receiptNumber,
+          amount: received.amount,
+          currency: context.settings.currency,
+          method: received.method,
+          kind: 'closed_as_credit',
+          snapshot: receiptSnapshot,
+          issuedAt: now,
+          issuedById: actorId,
+        },
+      });
+      if (bill) {
+        await this.cancelBill(tx, request, bill, 'closed_as_credit', now, actorId, {
+          received: received.amount,
+          receiptNumber,
+        });
+      }
+      // Added ONCE, here, for the whole amount received: nothing was spent from the balance, since nothing applied.
+      await tx.platformBillingCredit.create({
+        data: {
+          organizationId: request.organizationId,
+          amount: received.amount,
+          kind: 'closed_as_credit',
+          requestId,
+          billId: bill?.id ?? null,
+          receiptId: receipt.id,
+          note: null,
+          createdById: actorId,
+          createdAt: now,
+        },
+      });
+      await this.releaseHold(tx, request, now, actorId, 'closed_as_credit');
+      await this.event(tx, request, now, actorId, 'closed_as_credit', selfApproved ? 'self_approved' : null, {
+        received: received.amount,
+        reason: text,
+        approverIsMember,
+      });
+      await this.event(tx, request, now, actorId, 'receipt_issued', 'closed_as_credit', {
+        number: receiptNumber,
+        amount: received.amount,
+      });
+      await this.event(tx, request, now, actorId, 'credit', 'closed_as_credit', { amount: received.amount });
+      return this.reread(tx, requestId);
+    });
+  }
+
+  /**
+   * A mistaken approval reversed, with a reason (plan §4, D9a). Nothing is
+   * deleted: the receipt keeps its number and is stamped VOID, the bill goes
+   * back to unpaid, every credit entry the receipt made is reversed (the
+   * balance may go negative: owed on the next bill), and the subscription is
+   * put back to what the approval replaced (`planVoid`).
+   *
+   * ⚠ NEWEST FIRST. Only the organization's latest approval can be voided:
+   * with A → B → C, voiding A → B would put A back over the paid C. And the
+   * live subscription must still be the row this approval wrote; one changed
+   * since (an admin's edit, a later approval) is refused, never overwritten.
+   */
+  async void(requestId: string, actorId: string, reason: string, now: Date): Promise<RequestRow> {
+    const text = prepareText(reason);
+    if (!text) throw billingRefusal('invalid', { field: 'reason' });
+    return this.prisma.$transaction(async (tx) => {
+      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
+      if (!request) throw billingRefusal('not_found');
+      const step = nextState(request.state, 'void');
+      if ('refused' in step) throw billingRefusal(step.refused);
+
+      const latest = await tx.platformBillingRequest.findFirst({
+        where: { organizationId: request.organizationId, state: 'approved' },
+        orderBy: { decidedAt: 'desc' },
+      });
+      const approvals = [request, ...(latest && latest.id !== request.id ? [latest] : [])].map((one) => ({
+        requestId: one.id,
+        approvedAt: one.decidedAt?.toISOString() ?? '',
+      }));
+      const notLatest = checkVoid(request.id, approvals);
+      if (notLatest) throw billingRefusal(notLatest, latest ? { latestRequestId: latest.id } : {});
+
+      const context = await this.reads.context(request.organizationId, now, tx);
+      if (!context.live || context.live.subscriptionId !== request.subscriptionId) {
+        throw billingRefusal('subscription_changed');
+      }
+      const before = readSubscriptionBefore(request.subscriptionBefore);
+      const previous = before ? context.plans.get(before.planKey) : undefined;
+      const plan = planVoid(readAppliedHow(request.applied), before, previous !== undefined && !previous.archived);
+      if ('refused' in plan) throw billingRefusal(plan.refused);
+
+      const voided = await tx.platformBillingRequest.updateMany({
+        where: { id: requestId, state: 'approved' },
+        data: { state: step.state, voidedById: actorId, voidedAt: now, voidReason: text },
+      });
+      if (voided.count === 0) throw billingRefusal('not_approved');
+
+      await this.reverseSubscription(tx, request.organizationId, plan, context.settings.timeZone);
+
+      const receipt = await tx.platformBillingReceipt.findFirst({
+        where: { requestId, kind: 'payment', voidedAt: null },
+        orderBy: { number: 'desc' },
+      });
+      if (receipt) {
+        await tx.platformBillingReceipt.update({
+          where: { id: receipt.id },
+          data: { voidedAt: now, voidedById: actorId, voidReason: text },
+        });
+        await this.event(tx, request, now, actorId, 'receipt_voided', null, { number: receipt.number });
+        // Sequential: one transaction, and the ledger reads in the order it was written.
+        const entries = await tx.platformBillingCredit.findMany({
+          where: { receiptId: receipt.id },
+          orderBy: { createdAt: 'asc' },
+        });
+        for (const entry of entries) {
+          await tx.platformBillingCredit.create({
+            data: {
+              organizationId: request.organizationId,
+              amount: -entry.amount,
+              kind: 'void_reversal',
+              requestId,
+              billId: entry.billId,
+              receiptId: receipt.id,
+              // The entry it reverses, so the statement reads "reversed: overpayment".
+              note: entry.kind,
+              createdById: actorId,
+              createdAt: now,
+            },
+          });
+          await this.event(tx, request, now, actorId, 'credit', 'void_reversal', {
+            amount: -entry.amount,
+            reverses: entry.kind,
+          });
+        }
+      }
+      const bill = await tx.platformBillingBill.findFirst({
+        where: { requestId, status: { not: 'cancelled' } },
+        orderBy: { number: 'desc' },
+      });
+      if (bill && bill.status === 'paid') {
+        await tx.platformBillingBill.update({ where: { id: bill.id }, data: { status: 'unpaid' } });
+        await this.event(tx, request, now, actorId, 'bill_unpaid', 'voided', { number: bill.number });
+      }
+      await this.event(tx, request, now, actorId, 'voided', null, { reason: text, subscription: plan.kind });
+      return this.reread(tx, requestId);
+    });
+  }
+
+  /**
+   * The owner ends the plan at the close of its period, with no credit (plan
+   * §4). Nothing is paid and nobody needs to check anything, so it applies
+   * at once, recorded as a request decided by the owner
+   * (`cancel_needs_no_approval`): access ends on the period's last day,
+   * without grace. Renewing undoes it, and a plan change starts a new row
+   * that the cancel no longer covers.
+   *
+   * ⚠ It still takes the one-pending slot for the instant it is written, so a
+   * cancel and a renewal pressed together cannot both land.
+   */
+  async cancel(organizationId: string, actorId: string, now: Date): Promise<RequestRow> {
+    return this.prisma.$transaction(async (tx) => {
+      const context = await this.reads.context(organizationId, now, tx);
+      const refused = checkNewRequest({
+        kind: 'cancel',
+        // The guard proved it: cancel is bound to `platform-billing:change_plan`, the owner's (D8).
+        actorIsOwner: true,
+        standing: requestStanding(
+          context.standing,
+          context.liveDays,
+          context.today,
+          context.pending !== null,
+          context.cancelled,
+        ),
+        currentPlanKey: context.live?.planKey ?? null,
+        plan: null,
+        overCaps: 0,
+      });
+      if (refused) throw billingRefusal(refused);
+      const live = context.live;
+      const period = context.standing.rowPeriod;
+      if (!live || !period) throw billingRefusal('no_subscription');
+
+      let request: RequestRow;
+      try {
+        request = await tx.platformBillingRequest.create({
+          data: {
+            organizationId,
+            kind: 'cancel',
+            planKey: live.planKey,
+            fromPlanKey: live.planKey,
+            pendingOrganizationId: organizationId,
+            requestedById: actorId,
+            requestedAt: now,
+            pricedOn: dayToDateColumn(context.today),
+            pricedForPeriodEnd: null,
+          },
+        });
+      } catch (error) {
+        if (isUniqueViolation(error)) throw billingRefusal('pending_request_exists');
+        throw error;
+      }
+      const accessUntil = platformDayStart(period.end, context.settings.timeZone);
+      const before = beforeOf(context, null);
+      await tx.platformBillingRequest.updateMany({
+        where: { id: request.id, state: 'pending' },
+        data: {
+          state: 'approved',
+          pendingOrganizationId: null,
+          decidedById: actorId,
+          decidedAt: now,
+          decisionReason: 'cancel_needs_no_approval',
+          periodStart: dayToDateColumn(period.start),
+          periodEnd: dayToDateColumn(period.end),
+          billingDay: period.billingDay,
+          accessUntil,
+          applied: 'cancel' satisfies AppliedHow,
+          ...asJson(before),
+        },
+      });
+      const { subscriptionId } = await this.subscriptions.setAccessUntil({ organizationId, accessUntil }, tx);
+      await tx.platformBillingRequest.update({ where: { id: request.id }, data: { subscriptionId } });
+      await this.event(tx, request, now, actorId, 'submitted', null, { kind: 'cancel', planKey: live.planKey });
+      await this.event(tx, request, now, actorId, 'approved', 'cancel_needs_no_approval', {
+        accessUntil: period.end,
+        accessUntilBefore: before?.accessUntil ?? null,
+      });
+      return this.reread(tx, request.id);
+    });
+  }
+
   /** The platform's settings. ⚠ Currency and time zone are locked once a bill exists (D16). */
   async setSettings(actorId: string, input: SettingsInput): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -578,20 +896,62 @@ export class PlatformBillingWriteService {
       if (bill)
         await this.cancelBill(tx, request, bill, action === 'withdraw' ? 'withdrawn' : 'rejected', now, actorId);
 
-      // A hold lasts "until an approver decides" (D9): a request no longer waiting holds
-      // nothing, and the access end goes back to exactly what it was before the hold.
-      if (request.holdDays > 0 && request.accessUntilBeforeHold) {
-        await this.subscriptions.setAccessUntil(
-          { organizationId: request.organizationId, accessUntil: request.accessUntilBeforeHold },
-          tx,
-        );
-        await this.event(tx, request, now, actorId, 'hold_ended', action === 'withdraw' ? 'withdrawn' : 'rejected', {
-          accessUntil: request.accessUntilBeforeHold.toISOString(),
-        });
-      }
+      await this.releaseHold(tx, request, now, actorId, action === 'withdraw' ? 'withdrawn' : 'rejected');
       await this.event(tx, request, now, actorId, action === 'withdraw' ? 'withdrawn' : 'rejected', null, { reason });
       return this.reread(tx, requestId);
     });
+  }
+
+  /**
+   * A hold lasts "until an approver decides" (D9): a request no longer waiting
+   * holds nothing, and the access end goes back to exactly what it was before
+   * the hold.
+   */
+  private async releaseHold(
+    tx: PlatformBillingTransaction,
+    request: RequestRow,
+    now: Date,
+    actorId: string,
+    reason: string,
+  ): Promise<void> {
+    if (request.holdDays <= 0 || !request.accessUntilBeforeHold) return;
+    await this.subscriptions.setAccessUntil(
+      { organizationId: request.organizationId, accessUntil: request.accessUntilBeforeHold },
+      tx,
+    );
+    await this.event(tx, request, now, actorId, 'hold_ended', reason, {
+      accessUntil: request.accessUntilBeforeHold.toISOString(),
+    });
+  }
+
+  /** The subscription write a void makes (`planVoid`), in billing's transaction. */
+  private async reverseSubscription(
+    tx: PlatformBillingTransaction,
+    organizationId: string,
+    plan: VoidPlan,
+    timeZone: string,
+  ): Promise<void> {
+    switch (plan.kind) {
+      case 'restore_period':
+      case 'restore_plan': {
+        const write = {
+          organizationId,
+          periodStart: platformDayStart(plan.period.start, timeZone),
+          periodEnd: platformDayStart(plan.period.end, timeZone),
+          billingDay: plan.period.billingDay,
+          accessUntil: new Date(plan.accessUntil),
+        };
+        if (plan.kind === 'restore_period') await this.subscriptions.renew(write, tx);
+        else await this.subscriptions.start({ ...write, planKey: plan.planKey }, tx);
+        return;
+      }
+      case 'end':
+        await this.subscriptions.end({ organizationId }, tx);
+        return;
+      case 'restore_access':
+        await this.subscriptions.setAccessUntil({ organizationId, accessUntil: new Date(plan.accessUntil) }, tx);
+        return;
+    }
   }
 
   /** The hold a renewal's first covering details earn (D9). */
@@ -623,12 +983,14 @@ export class PlatformBillingWriteService {
     const withGrace = (period: Period) => accessWindow(period.end, grace).accessUntil;
     switch (request.kind) {
       case 'subscribe':
-      case 'replace':
-      case 'cancel': {
+      case 'replace': {
         // From approval: that day becomes the billing day.
         const period = periodFrom(context.today);
         return { how: 'start', period, accessUntil: withGrace(period) };
       }
+      case 'cancel':
+        // ⚠ Never pending, so never approved here: `cancel` applies it in the transaction that records it.
+        throw billingRefusal('invalid');
       case 'change_plan': {
         // The billing day never moves: the new plan runs to the end of the current period.
         const period = context.standing.currentPeriod;
@@ -714,12 +1076,13 @@ export class PlatformBillingWriteService {
     reason: string,
     now: Date,
     actorId: string,
+    data: Record<string, JsonValue> = {},
   ): Promise<void> {
     await tx.platformBillingBill.update({
       where: { id: bill.id },
       data: { status: 'cancelled', cancelledAt: now, cancelledReason: reason },
     });
-    await this.event(tx, request, now, actorId, 'bill_cancelled', reason, { number: bill.number });
+    await this.event(tx, request, now, actorId, 'bill_cancelled', reason, { number: bill.number, ...data });
   }
 
   /** The request as the transaction now holds it: what the caller renders. */
@@ -752,6 +1115,44 @@ export class PlatformBillingWriteService {
       data: { requestId: request.id, organizationId: request.organizationId, at, actorId, step, reason, data },
     });
   }
+}
+
+/**
+ * The live row as it was before an approval or a cancel: what a void puts
+ * back. The period is the one billing reads off the row (derived for a row
+ * written before billing), and the access end is the row's own instant, so a
+ * void restores it exactly.
+ *
+ * ⚠ EXCEPT THE REQUEST'S OWN HOLD. A hold lasts until an approver decides
+ * (D9), and the approval is that decision: the access end to put back is the
+ * one before the hold, as a rejection gives back. Restoring the held instant
+ * would hand a voided renewal the days it only had while waiting.
+ */
+function beforeOf(context: BillingContext, request: RequestRow | null): SubscriptionBefore | null {
+  const live = context.live;
+  if (!live) return null;
+  const period = context.standing.rowPeriod;
+  const window = context.standing.window;
+  const held = request && request.holdDays > 0 ? request.accessUntilBeforeHold : null;
+  const accessUntil =
+    held ?? live.accessUntil ?? (window ? platformDayStart(window.accessUntil, context.settings.timeZone) : null);
+  return {
+    subscriptionId: live.subscriptionId,
+    planKey: live.planKey,
+    periodStart: period?.start ?? null,
+    periodEnd: period?.end ?? null,
+    billingDay: period?.billingDay ?? null,
+    accessUntil: accessUntil?.toISOString() ?? null,
+  };
+}
+
+/**
+ * `subscriptionBefore` as the update takes it: absent when nothing was live
+ * (the column stays NULL), and a spread copy otherwise, since an interface
+ * carries no index signature and a JSON column wants one.
+ */
+function asJson(before: SubscriptionBefore | null): { subscriptionBefore?: JsonInput } {
+  return before ? { subscriptionBefore: { ...before } } : {};
 }
 
 /** Details as stored: validated, the reference normalised for the reuse check. */

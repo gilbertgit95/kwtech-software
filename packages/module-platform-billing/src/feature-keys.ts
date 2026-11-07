@@ -21,8 +21,7 @@ import type { FeatureContribution } from '@kwtech/module-kit';
  *
  * ⚠ THE BINDINGS ARE THE GUARD. This module cannot use `@RequireFeature`, so
  * an operation missing here is reachable by anybody signed in;
- * `test/surface-coverage.test.ts` fails the build on one. `void` binds nothing
- * until the void arrives (phase 4b).
+ * `test/surface-coverage.test.ts` fails the build on one.
  */
 export const PLATFORM_BILLING_FEATURE = {
   /** The organization's Billing page: status, bills, receipts, history. */
@@ -79,7 +78,10 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'organization',
     label: 'Choose the plan',
     description: "Subscribe, change the organization's plan, replace a plan no longer offered, or cancel.",
-    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.requestPlatformBillingPlan' }],
+    bindings: [
+      { surface: 'graphql_operation', identifier: 'Mutation.requestPlatformBillingPlan' },
+      { surface: 'graphql_operation', identifier: 'Mutation.cancelPlatformBilling' },
+    ],
     tags: ['platform-billing'],
   },
   {
@@ -128,6 +130,7 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     bindings: [
       { surface: 'graphql_operation', identifier: 'Mutation.approvePlatformBillingRequest' },
       { surface: 'graphql_operation', identifier: 'Mutation.rejectPlatformBillingRequest' },
+      { surface: 'graphql_operation', identifier: 'Mutation.closePlatformBillingRequestAsCredit' },
     ],
     tags: ['platform-billing'],
   },
@@ -139,8 +142,7 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     level: 'app',
     label: 'Void receipts',
     description: 'Void a receipt issued in error, with a reason, reversing what its approval did.',
-    // Bound when the void arrives (phase 4b, #93): a key guarding nothing yet.
-    bindings: [],
+    bindings: [{ surface: 'graphql_operation', identifier: 'Mutation.voidPlatformBillingRequest' }],
     tags: ['platform-billing'],
   },
   {

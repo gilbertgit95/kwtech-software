@@ -20,6 +20,7 @@ import {
 import {
   type BillRow,
   dateColumnToDay,
+  dayToDateColumn,
   type EventRow,
   type PaymentRow,
   type PlatformBillingPrismaClient,
@@ -74,6 +75,12 @@ export interface BillingContext {
   standing: BillingStanding;
   creditBalance: Centavos;
   pending: RequestRow | null;
+  /**
+   * The owner cancelled the live row's period: an approved cancel of THIS row
+   * and THIS period end. A renewal moves the period on and a plan change
+   * starts a new row, so either leaves the cancel behind without a write.
+   */
+  cancelled: boolean;
 }
 
 /** A request with what hangs off it: one row of the history (plan §7). */
@@ -201,7 +208,31 @@ export class PlatformBillingService {
       settings.graceDays,
       live ? hasAnyPrice(prices, live.planKey) : false,
     );
-    return { organizationId, settings, today, prices, plans, live, liveDays, standing, creditBalance, pending };
+    const cancel =
+      live && standing.rowPeriod
+        ? await db.platformBillingRequest.findFirst({
+            where: {
+              organizationId,
+              state: 'approved',
+              kind: 'cancel',
+              subscriptionId: live.subscriptionId,
+              periodEnd: dayToDateColumn(standing.rowPeriod.end),
+            },
+          })
+        : null;
+    return {
+      organizationId,
+      settings,
+      today,
+      prices,
+      plans,
+      live,
+      liveDays,
+      standing,
+      creditBalance,
+      pending,
+      cancelled: cancel !== null,
+    };
   }
 
   /**
@@ -224,7 +255,13 @@ export class PlatformBillingService {
       // ⚠ The guard already proved it: subscribe, change and replace are bound
       // to `platform-billing:change_plan`, which only the owner's role holds (D8).
       actorIsOwner: true,
-      standing: requestStanding(context.standing, context.liveDays, context.today, context.pending !== null),
+      standing: requestStanding(
+        context.standing,
+        context.liveDays,
+        context.today,
+        context.pending !== null,
+        context.cancelled,
+      ),
       currentPlanKey,
       plan: plan ? { key: plan.key, isPublic: plan.isPublic, archived: plan.archived } : null,
       overCaps: overruns.length,

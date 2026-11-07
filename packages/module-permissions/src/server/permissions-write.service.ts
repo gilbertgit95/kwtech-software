@@ -1340,6 +1340,25 @@ export class PermissionsWriteService {
     });
   }
 
+  /**
+   * Ends the organization's live row and starts none: billing voiding the
+   * approval that started it (a subscribe, a replacement, a renewal after
+   * expiry). The row stays as history, `canceled` with its `endedAt`, and the
+   * organization falls back to the platform's fallback plan, as an expired
+   * one does (#92).
+   */
+  async endBilledSubscription(input: { organizationId: string }, tx?: PermissionsTransaction) {
+    return this.inTransaction(tx, async (db) => {
+      const live = await this.requireLiveOrganizationSubscription(db, input.organizationId);
+      await db.permSubscription.update({
+        where: { id: live.id },
+        data: { endedAt: this.now(), status: 'canceled', liveOrganizationId: null },
+        select: { id: true },
+      });
+      return { subscriptionId: live.id };
+    });
+  }
+
   /** Moves only the access end: a hold given or ended, a void shortening a period. */
   async setSubscriptionAccessUntil(
     input: { organizationId: string; accessUntil: Date | null },

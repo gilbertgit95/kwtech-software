@@ -618,6 +618,38 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-08** — **Billing voids reverse exactly what the approval recorded, newest first across the organization; a cancel applies at once (#110, part of #93, billing P4b-1).**
+
+  The first half of P4b: the decisions billing makes on its own.
+  - **A void reverses a record, not a guess.** An approval now stores how it
+    wrote the subscription (`applied`: renew, change, start, cancel) and the
+    live row just before it (`subscriptionBefore`). A void puts that back:
+    the same row on its old period, the old plan for the rest of a changed
+    period, or the started row ended (the organization falls back to Free).
+    The receipt is stamped VOID, the bill goes back to unpaid, and every
+    credit entry of the receipt gets a `void_reversal`. Working it out at void
+    time from today's grace, prices and plans was not done: all three may
+    have moved. Approvals made before this have no record and are refused
+    (`subscription_changed`); they are correctable by an adjustment.
+  - **Newest first across the organization, not only within a period**
+    (stricter than D9a's wording). A renewal into the next period rests on
+    the approval before it as much as a later plan change does. A void is
+    also refused when the live row is no longer the one the approval wrote.
+  - **A hold ends with the approval.** The access a void restores is the one
+    before the request's own hold, as a rejection gives back.
+  - **Close as credit** (D12a) records whatever was received, issues a
+    receipt for it, adds the credit once, cancels the bill (never paid) and
+    gives back any hold. Nothing received is refused (`nothing_received`).
+  - **A cancel applies at once,** recorded as a request the owner decided
+    (`cancel_needs_no_approval`): no money moves, so nobody needs to check.
+    Access ends on the period's end, without grace. Renewing opens at once
+    after a cancel and undoes it; a plan change starts a new row the cancel
+    no longer covers. A cancel kept pending until the period's end was not
+    done: withdrawing it after the end would hand back grace days, and it
+    would block a renewal behind it.
+  - **Not done here, in P4b-2:** plan archives, the audited
+    `/admin/subscriptions` adjustments, and the Free + Basic trial.
+
 - **2026-11-08** — **Billing and permissions share one transaction; platform billing's requests, payments and approvals are built and composed (#93, billing P4a).**
 
   #93 began with a spike, as the plan required: could the app give billing

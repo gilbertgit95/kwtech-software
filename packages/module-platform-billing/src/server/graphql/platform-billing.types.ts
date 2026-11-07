@@ -174,6 +174,10 @@ export class PlatformBillingRequestType {
   @Field(() => String, { nullable: true }) periodStart!: string | null;
   @Field(() => String, { nullable: true }) periodEnd!: string | null;
   @Field(() => String, { nullable: true }) accessUntil!: string | null;
+  /** Who voided the approval, when and why (D9a). The `decided*` fields still name the approval. */
+  @Field(() => String, { nullable: true }) voidedById!: string | null;
+  @Field(() => String, { nullable: true }) voidedAt!: string | null;
+  @Field(() => String, { nullable: true }) voidReason!: string | null;
   /** The bill in force: the newest not cancelled. Null for a downgrade until approval. */
   @Field(() => PlatformBillingBillType, { nullable: true }) bill!: PlatformBillingBillType | null;
   @Field(() => [PlatformBillingBillType]) bills!: PlatformBillingBillType[];

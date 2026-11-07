@@ -2631,6 +2631,16 @@ describe('one live subscription per organization, and billing’s writes', () =>
     expect(state.subscriptions[0]).toMatchObject({ accessUntil: held, currentPeriodEnd: p.periodEnd });
   });
 
+  it('ends the live row for a void, keeping it as history and freeing the slot', async () => {
+    const { svc, state } = await seeded();
+    await svc.startBilledSubscription({ organizationId: 'org1', planKey: 'team', ...period('2026-11-01T00:00:00Z') });
+    await svc.endBilledSubscription({ organizationId: 'org1' });
+    expect(live(state)).toHaveLength(0);
+    expect(state.subscriptions[0]).toMatchObject({ status: 'canceled', liveOrganizationId: null });
+    expect(state.subscriptions[0]?.endedAt).not.toBeNull();
+    expect(await reason(svc.endBilledSubscription({ organizationId: 'org1' }))).toBe('not_found');
+  });
+
   it('refuses renewing an organization with no live subscription, and a plan that does not exist', async () => {
     const { svc } = await seeded();
     expect(await reason(svc.renewSubscription({ organizationId: 'org1', ...period('2026-11-01T00:00:00Z') }))).toBe(

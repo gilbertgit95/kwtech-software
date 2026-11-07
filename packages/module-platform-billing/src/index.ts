@@ -22,5 +22,6 @@ export * from './domain/quotes.js';
 export * from './domain/refusals.js';
 export * from './domain/requests.js';
 export * from './domain/standing.js';
+export * from './domain/voids.js';
 export * from './feature-keys.js';
 export * from './operations.js';

@@ -808,10 +808,12 @@ type Mutation {
   callNextQueueTicket(clientRequestId: String, lineId: String!, organizationId: String!, workspaceId: String!): QueueTicket!
   callQueueNumber(lineId: String!, number: Int!, organizationId: String!, workspaceId: String!): QueueTicket!
   cancelBookingAppointment(appointmentId: String!, organizationId: String!, reason: String!, workspaceId: String!): BookingAppointment!
+  cancelPlatformBilling(organizationId: String!): PlatformBillingRequest!
   cancelPosOrder(orderId: String!, organizationId: String!, reason: String, version: Int!, workspaceId: String!): PosOrder!
   cancelPublicBooking(reason: String, token: String!): BookingPublicBooking!
   clearMyQueueNickname(organizationId: String!, workspaceId: String!): Boolean!
   clearQueueNickname(organizationId: String!, userId: String!, workspaceId: String!): Boolean!
+  closePlatformBillingRequestAsCredit(payment: PlatformBillingApprovalInput!, reason: String, requestId: String!): PlatformBillingRequest!
   completeQueueTicket(organizationId: String!, ticketId: String!, workspaceId: String!): QueueTicket!
   confirmBookingAppointment(appointmentId: String!, organizationId: String!, workspaceId: String!): BookingAppointment!
   confirmStockTake(organizationId: String!, takeId: String!, workspaceId: String!): StockTake!
@@ -1021,6 +1023,7 @@ type Mutation {
   updateWorkspace(description: String, key: String!, name: String!, organizationId: String!, timeZone: String, workspaceId: String!): PermissionWriteResult!
   voidBooksEntry(entryId: String!, organizationId: String!, reason: String!, workspaceId: String!): BooksEntry!
   voidBooksProfitShare(organizationId: String!, reason: String!, shareId: String!, workspaceId: String!): BooksProfitShare!
+  voidPlatformBillingRequest(reason: String!, requestId: String!): PlatformBillingRequest!
   voidPosOrder(orderId: String!, organizationId: String!, reason: String!, version: Int!, workspaceId: String!): PosOrder!
   withdrawPlatformBillingRequest(organizationId: String!, reason: String, requestId: String!): PlatformBillingRequest!
 }
@@ -1655,6 +1658,9 @@ type PlatformBillingRequest {
   requestedById: String!
   selfApproved: Boolean!
   state: String!
+  voidReason: String
+  voidedAt: String
+  voidedById: String
 }
 
 type PlatformBillingSettings {

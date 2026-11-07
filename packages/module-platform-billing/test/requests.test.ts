@@ -23,7 +23,8 @@ describe('the request state machine', () => {
     expect(nextState('pending', 'close_as_credit')).toEqual({ state: 'closed_as_credit' });
     expect(nextState('approved', 'void')).toEqual({ state: 'voided' });
     expect(nextState('approved', 'approve')).toEqual({ refused: 'not_pending' });
-    expect(nextState('pending', 'void')).toEqual({ refused: 'invalid' });
+    expect(nextState('pending', 'void')).toEqual({ refused: 'not_approved' });
+    expect(nextState('rejected', 'void')).toEqual({ refused: 'not_approved' });
   });
 });
 
@@ -33,6 +34,7 @@ const ACTIVE: RequestStanding = {
   currentPlanArchived: false,
   renewalOpen: false,
   hasPendingRequest: false,
+  cancelled: false,
 };
 const PRO = { key: 'pro', isPublic: true, archived: false };
 
@@ -72,6 +74,18 @@ describe('a new request', () => {
     expect(checkNewRequest(request({ kind: 'renew' }))).toBe('renewal_not_open');
     expect(checkNewRequest(request({ kind: 'renew', standing: { ...ACTIVE, renewalOpen: true } }))).toBeNull();
     expect(checkNewRequest(request({ kind: 'renew', standing: { ...ACTIVE, overdueOrExpired: true } }))).toBeNull();
+  });
+
+  it('cancels once, and only a paid plan; a cancelled plan can be renewed at once, which undoes it', () => {
+    expect(checkNewRequest(request({ kind: 'cancel' }))).toBeNull();
+    expect(checkNewRequest(request({ kind: 'cancel', standing: { ...ACTIVE, cancelled: true } }))).toBe(
+      'already_cancelled',
+    );
+    expect(checkNewRequest(request({ kind: 'cancel', standing: { ...ACTIVE, hasPaidSubscription: false } }))).toBe(
+      'no_subscription',
+    );
+    expect(checkNewRequest(request({ kind: 'cancel', actorIsOwner: false }))).toBe('owner_only');
+    expect(checkNewRequest(request({ kind: 'renew', standing: { ...ACTIVE, cancelled: true } }))).toBeNull();
   });
 
   it('refuses a plan change while overdue: renew first (loophole 4)', () => {

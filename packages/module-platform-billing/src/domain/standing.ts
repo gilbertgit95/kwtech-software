@@ -100,6 +100,7 @@ export function requestStanding(
   row: Pick<SubscriptionDays, 'planArchived'> | null,
   today: DayKey,
   hasPendingRequest: boolean,
+  cancelled: boolean,
 ): RequestStanding {
   const kind = billing.standing?.kind;
   return {
@@ -108,6 +109,7 @@ export function requestStanding(
     currentPlanArchived: row?.planArchived ?? false,
     renewalOpen: billing.window ? canRequestRenewal(billing.window, today) : false,
     hasPendingRequest,
+    cancelled,
   };
 }
 

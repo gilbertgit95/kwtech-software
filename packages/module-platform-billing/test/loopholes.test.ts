@@ -47,6 +47,7 @@ describe('the #88 review’s loopholes', () => {
       currentPlanArchived: false,
       renewalOpen: true,
       hasPendingRequest: false,
+      cancelled: false,
     };
     const plan = { key: 'pro', isPublic: true, archived: false };
     expect(
@@ -126,6 +127,7 @@ describe('the #88 review’s loopholes', () => {
       currentPlanArchived: false,
       renewalOpen: false,
       hasPendingRequest: false,
+      cancelled: false,
     };
     const plan = { key: 'starter', isPublic: true, archived: false };
     expect(

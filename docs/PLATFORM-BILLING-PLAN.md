@@ -1,12 +1,12 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 to 3b and 5a done, phase 4a done (2026-11-08).** Phase 1
+Status: **phases 1 to 3b and 5a done, phases 4a and 4b-1 done (2026-11-08).** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
 and the API for requests, payment details, approvals and rejections, settings
-and prices, composed into the API; 4b (voids, closing as credit, cancel,
-archives, the audited adjustments, the trial) follows. The work is tracked by
+and prices, composed into the API; 4b-1 (#110) the voids, closing as credit
+and cancel; 4b-2 (archives, the audited adjustments, the trial) follows. The work is tracked by
 issue #88 and its sub-issues #89 to #98; the plans it bills for were settled
 in #89 (PLAN §13, 2026-11-07). Every decision below is the operator's, or
 proposed in #88 and marked as such (§9); the questions still open are in §11 and
@@ -177,7 +177,10 @@ Rules around it:
   `plan_archived`. So no payment is lost, no pending request blocks the
   replacement, and no quote applies the old plan's unused value a second
   time after the archive credit has.
-- **Cancel:** ends at the period's end, with no credit.
+- **Cancel:** ends at the period's end, with no credit. It applies at once
+  (no money moves, so nobody approves it): access ends on the period's end,
+  without grace. Renewing opens at once after a cancel and undoes it.
+  A void of a cancel gives the access end back.
 - **What can be requested.** Anyone may request a public plan
   (`isPublic`). A plan withdrawn from sale (`isPublic: false`, such as
   Custom or an old tier) can be renewed by organizations already on it, and
@@ -353,7 +356,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | D7 | Short and over payments | **Short cannot be approved; over becomes credit** |
 | D8 | Who may change plan | **The owner only** (subscribe, change plan, cancel). Admins may renew and add payment details, so a lapse never waits on the owner |
 | D9 | The hold | **Once per period, none after a rejection, at most the grace days** |
-| D9a | Voiding inside a period with later changes | **Only the latest approved request of a period can be voided**; earlier ones wait until the later are voided, newest first |
+| D9a | Voiding inside a period with later changes | **Only the latest approved request of a period can be voided**; earlier ones wait until the later are voided, newest first. Built (#110) across the whole organization, which is stricter: a renewal rests on the approval before it. A void reverses what the approval recorded (`applied`, `subscriptionBefore`) |
 | D10 | Renewing after expiry | **A new period from approval, with a bill line for the access used past the period end.** Proposed in #90 as "keep the old period end within N days", which would charge for days the organization had no access; charging the days actually used closes loophole 9 exactly |
 | D11 | A paid-ahead month when the plan changes | **Becomes credit**, shown as a line in the change-plan preview |
 | D12a | A plan change that can no longer be approved, but was paid | **Closed as credit**: a terminal state with a receipt and the credit added once; the owner requests again |
@@ -374,7 +377,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests. **Done** 2026-11-07 |
 | P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; the expired reason; the fallback to Free; billing keys exempt; the release migration. **Done** 2026-11-07 |
 | P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (`liveOrganizationId`), billing's write methods. **Done** 2026-11-07 |
-| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); 4b: voids, close as credit, cancel, archives, adjustments, the trial |
+| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); 4b-2: archives, adjustments, the trial |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
 | P5b | #95 | P4, P5a | The daily check and every notification |
 | P6 | #96 | P4 (P5b) | The organization's Billing page |

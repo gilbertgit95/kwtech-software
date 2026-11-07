@@ -41,6 +41,12 @@ export interface RequestRow {
   billingDay: number | null;
   accessUntil: Date | null;
   subscriptionId: string | null;
+  /** How the approval wrote the subscription (`AppliedHow`), and the live row before it: what a void reverses. */
+  applied: string | null;
+  subscriptionBefore: unknown;
+  voidedById: string | null;
+  voidedAt: Date | null;
+  voidReason: string | null;
   updatedAt: Date;
 }
 
@@ -167,6 +173,16 @@ export interface RequestUpdate {
   billingDay?: number;
   accessUntil?: Date;
   subscriptionId?: string;
+  applied?: string;
+  /**
+   * `SubscriptionBefore`. Left out when nothing was live, so the column stays
+   * SQL NULL: Prisma refuses a plain `null` for a JSON column (it would have
+   * to choose between `DbNull` and `JsonNull`, which this module cannot import).
+   */
+  subscriptionBefore?: JsonInput;
+  voidedById?: string;
+  voidedAt?: Date;
+  voidReason?: string;
 }
 
 export interface PlatformBillingTransaction {
@@ -178,8 +194,10 @@ export interface PlatformBillingTransaction {
         state?: RequestState;
         kind?: RequestKind;
         pricedForPeriodEnd?: Date;
+        periodEnd?: Date;
+        subscriptionId?: string;
       };
-      orderBy?: { requestedAt: SortOrder };
+      orderBy?: { requestedAt: SortOrder } | { decidedAt: SortOrder };
     }): Promise<RequestRow | null>;
     findMany(args: {
       where: { organizationId?: string; state?: RequestState };
@@ -207,7 +225,8 @@ export interface PlatformBillingTransaction {
      * decided first, or the details changed; the caller reads again to say which.
      */
     updateMany(args: {
-      where: { id: string; state: 'pending'; detailsVersion?: number };
+      /** ⚠ Always conditional on the state: the compare-and-set every decision makes. */
+      where: { id: string; state: 'pending' | 'approved'; detailsVersion?: number };
       data: RequestUpdate;
     }): Promise<{ count: number }>;
     /** Only after the compare-and-set above has decided the request: a link written in the same transaction. */
@@ -261,12 +280,20 @@ export interface PlatformBillingTransaction {
     }): Promise<BillRow>;
     update(args: {
       where: { id: string };
-      data: { status: BillStatus; cancelledAt?: Date; cancelledReason?: string };
+      data: { status: BillStatus; cancelledAt?: Date | null; cancelledReason?: string | null };
     }): Promise<BillRow>;
   };
 
   platformBillingReceipt: {
     findMany(args: { where: { requestId: { in: string[] } }; orderBy: { number: SortOrder } }): Promise<ReceiptRow[]>;
+    findFirst(args: {
+      where: { requestId: string; kind?: string; voidedAt?: null };
+      orderBy: { number: SortOrder };
+    }): Promise<ReceiptRow | null>;
+    update(args: {
+      where: { id: string };
+      data: { voidedAt: Date; voidedById: string; voidReason: string };
+    }): Promise<ReceiptRow>;
     create(args: {
       data: {
         requestId: string;
@@ -290,6 +317,7 @@ export interface PlatformBillingTransaction {
     aggregate(args: { where: { organizationId: string }; _sum: { amount: true } }): Promise<{
       _sum: { amount: number | null };
     }>;
+    findMany(args: { where: { receiptId: string }; orderBy: { createdAt: SortOrder } }): Promise<CreditRow[]>;
     create(args: {
       data: {
         organizationId: string;

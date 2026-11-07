@@ -131,6 +131,19 @@ export class PlatformBillingResolver {
     return this.render(organizationId, row.id);
   }
 
+  /**
+   * End the plan at the close of its period (platform-billing:change_plan, the
+   * owner's, D8). Applies at once: nothing is paid, so nobody approves it.
+   */
+  @Mutation(() => PlatformBillingRequestType, { name: 'cancelPlatformBilling' })
+  async cancel(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+  ): Promise<PlatformBillingRequestType> {
+    const row = await this.writes.cancel(organizationId, this.actor(gql.req), new Date());
+    return this.render(organizationId, row.id);
+  }
+
   @Mutation(() => PlatformBillingRequestType, { name: 'enterPlatformBillingPayment' })
   async enterPayment(
     @Context() gql: { req?: unknown },

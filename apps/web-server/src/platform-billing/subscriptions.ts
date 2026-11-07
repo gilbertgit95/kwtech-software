@@ -98,7 +98,12 @@ export class PlatformBillingSubscriptionsAdapter implements PlatformBillingSubsc
     return this.permissions.startBilledSubscription(input, permissionsTransaction(tx));
   }
 
-  /** Only the access end moves: a hold given or given back (`setSubscriptionAccessUntil`). */
+  /** A void of an approval that started the row: it ends, none starts (`endBilledSubscription`). */
+  end(input: { organizationId: string }, tx: PlatformBillingTransaction) {
+    return this.permissions.endBilledSubscription(input, permissionsTransaction(tx));
+  }
+
+  /** Only the access end moves: a hold given or given back, a cancel (`setSubscriptionAccessUntil`). */
   setAccessUntil(input: { organizationId: string; accessUntil: Date }, tx: PlatformBillingTransaction) {
     return this.permissions.setSubscriptionAccessUntil(input, permissionsTransaction(tx));
   }
