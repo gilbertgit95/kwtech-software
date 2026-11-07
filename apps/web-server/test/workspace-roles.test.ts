@@ -84,12 +84,22 @@ const TIERS: Readonly<Record<string, { presets: readonly string[]; extra: readon
   },
 };
 
+/**
+ * A seeded role by key. Throws rather than returning undefined, so a renamed or
+ * removed role fails the suite naming it instead of passing every `toContain`
+ * check against an empty list.
+ */
 function role(key: string): { features: readonly string[] } {
   const found = APP_ROLES.find((one) => one.key === key);
   if (!found) throw new Error(`app-roles.ts no longer seeds '${key}'.`);
   return found;
 }
 
+/**
+ * The keys a module preset holds, read from the module itself. Throws when no
+ * module ships the preset, the same failure `app-roles.ts` raises at sync, so a
+ * renamed preset is caught here first.
+ */
 function presetFeatures(key: string): readonly string[] {
   const found = PRESETS.find((one) => one.key === key);
   if (!found) throw new Error(`No module ships a '${key}' preset any more.`);
