@@ -257,7 +257,9 @@ export class PlatformBillingWriteService {
           update.holdReason = hold.kind === 'held' ? 'held' : hold.reason;
           if (hold.kind === 'held') {
             const held = addDays(addDays(window.periodEnd, context.settings.graceDays), hold.days);
-            if (held > window.accessUntil) {
+            if (held > window.accessUntil && context.live?.accessUntil) {
+              // Kept so the hold is undone exactly, whatever the grace setting is by then.
+              update.accessUntilBeforeHold = context.live.accessUntil;
               await this.subscriptions.setAccessUntil(
                 { organizationId, accessUntil: platformDayStart(held, context.settings.timeZone) },
                 tx,
@@ -576,20 +578,16 @@ export class PlatformBillingWriteService {
       if (bill)
         await this.cancelBill(tx, request, bill, action === 'withdraw' ? 'withdrawn' : 'rejected', now, actorId);
 
-      // A hold lasts "until an approver decides" (D9): a request no longer waiting holds nothing.
-      if (request.holdDays > 0) {
-        const context = await this.reads.context(request.organizationId, now, tx);
-        const window = context.standing.window;
-        if (window) {
-          const back = addDays(window.periodEnd, context.settings.graceDays);
-          await this.subscriptions.setAccessUntil(
-            { organizationId: request.organizationId, accessUntil: platformDayStart(back, context.settings.timeZone) },
-            tx,
-          );
-          await this.event(tx, request, now, actorId, 'hold_ended', action === 'withdraw' ? 'withdrawn' : 'rejected', {
-            accessUntil: back,
-          });
-        }
+      // A hold lasts "until an approver decides" (D9): a request no longer waiting holds
+      // nothing, and the access end goes back to exactly what it was before the hold.
+      if (request.holdDays > 0 && request.accessUntilBeforeHold) {
+        await this.subscriptions.setAccessUntil(
+          { organizationId: request.organizationId, accessUntil: request.accessUntilBeforeHold },
+          tx,
+        );
+        await this.event(tx, request, now, actorId, 'hold_ended', action === 'withdraw' ? 'withdrawn' : 'rejected', {
+          accessUntil: request.accessUntilBeforeHold.toISOString(),
+        });
       }
       await this.event(tx, request, now, actorId, action === 'withdraw' ? 'withdrawn' : 'rejected', null, { reason });
       return this.reread(tx, requestId);

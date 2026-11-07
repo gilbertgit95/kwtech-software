@@ -382,6 +382,21 @@ describe('renewals, grace and the hold (D9, D10)', () => {
     expect(day(billing.store().subscriptions.get(ORG)?.accessUntil)).toBe('2026-11-08');
   });
 
+  it('⚠ gives back exactly the access before the hold, even after grace was lowered', async () => {
+    const billing = fakeBilling();
+    giveSubscription(billing, ORG, 'basic', '2026-10-01', '2026-11-01', '2026-11-08');
+    await setPrices(billing);
+    const now = noonOn('2026-11-03');
+    const request = await billing.writes.submit(ORG, OWNER, 'renew', null, now);
+    await billing.writes.enterPayment(ORG, request.id, OWNER, cash(100_000, '2026-11-03'), now);
+    expect(day(billing.store().subscriptions.get(ORG)?.accessUntil)).toBe('2026-11-15');
+
+    await billing.writes.setSettings('admin', { graceDays: 2 });
+    await billing.writes.withdraw(ORG, request.id, OWNER, null, noonOn('2026-11-04'));
+    // The 7 days of grace it had, not the 2 the setting now gives new periods (D16).
+    expect(day(billing.store().subscriptions.get(ORG)?.accessUntil)).toBe('2026-11-08');
+  });
+
   it('keeps an on-time renewal’s bill when approval comes after access ended: the delay was ours', async () => {
     const billing = fakeBilling();
     giveSubscription(billing, ORG, 'basic', '2026-10-01', '2026-11-01', '2026-11-08');

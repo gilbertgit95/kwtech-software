@@ -27,6 +27,7 @@ CREATE TABLE "platform_billing_request" (
     "coveredOn" DATE,
     "holdDays" INTEGER NOT NULL DEFAULT 0,
     "holdReason" TEXT,
+    "accessUntilBeforeHold" TIMESTAMP(3),
     "decidedById" TEXT,
     "decidedAt" TIMESTAMP(3),
     "decisionReason" TEXT,

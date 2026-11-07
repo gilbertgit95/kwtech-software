@@ -126,6 +126,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           coveredOn: null,
           holdDays: 0,
           holdReason: null,
+          accessUntilBeforeHold: null,
           decidedById: null,
           decidedAt: null,
           decisionReason: null,

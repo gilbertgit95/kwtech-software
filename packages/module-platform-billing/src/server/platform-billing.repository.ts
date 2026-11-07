@@ -30,6 +30,7 @@ export interface RequestRow {
   coveredOn: Date | null;
   holdDays: number;
   holdReason: string | null;
+  accessUntilBeforeHold: Date | null;
   decidedById: string | null;
   decidedAt: Date | null;
   decisionReason: string | null;
@@ -155,6 +156,7 @@ export interface RequestUpdate {
   coveredOn?: Date | null;
   holdDays?: number;
   holdReason?: string | null;
+  accessUntilBeforeHold?: Date;
   decidedById?: string;
   decidedAt?: Date;
   decisionReason?: string | null;

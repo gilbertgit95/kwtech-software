@@ -102,6 +102,10 @@ model PlatformBillingRequest {
   /// Days of hold this request gave (D9), with the reason it did or did not.
   holdDays   Int     @default(0)
   holdReason String?
+  /// The subscription's access end just before this request's hold, put back
+  /// exactly when the request stops waiting (withdrawn, rejected). Recomputing
+  /// it from the grace setting would cut days if grace was lowered meanwhile.
+  accessUntilBeforeHold DateTime?
 
   /// Who decided, when, and why. `decisionReason` is the approver's or the
   /// owner's own words for a rejection or withdrawal, or a system reason code.
