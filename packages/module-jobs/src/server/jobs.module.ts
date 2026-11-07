@@ -2,7 +2,13 @@ import { type DynamicModule, Module, type Provider } from '@nestjs/common';
 import { JobsResolver } from './graphql/jobs.resolver.js';
 import { type JobsModuleOptions, resolveJobsOptions } from './jobs.options.js';
 import { JobsService } from './jobs.service.js';
-import { JOBS_ACTOR_DIRECTORY, JOBS_ENTITLED_WORKSPACES, JOBS_OPTIONS, JOBS_PRISMA } from './jobs.tokens.js';
+import {
+  JOBS_ACTOR_DIRECTORY,
+  JOBS_ENTITLED_WORKSPACES,
+  JOBS_OPTIONS,
+  JOBS_ORGANIZATIONS,
+  JOBS_PRISMA,
+} from './jobs.tokens.js';
 import { JobsQueueService } from './jobs-queue.service.js';
 import { JobsRunnerService } from './jobs-runner.service.js';
 import { JobsWriteService } from './jobs-write.service.js';
@@ -36,6 +42,7 @@ export class JobsModule {
      */
     const optional: Array<[unknown, string]> = [
       [options.entitledWorkspacesProvider, JOBS_ENTITLED_WORKSPACES],
+      [options.organizationsProvider, JOBS_ORGANIZATIONS],
       [options.actorDirectoryProvider, JOBS_ACTOR_DIRECTORY],
       // Not optional to the page, but bound either way so `JobsService` can name the fix instead of Nest.
       [options.prismaProvider, JOBS_PRISMA],

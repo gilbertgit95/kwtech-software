@@ -61,7 +61,12 @@ import {
   ChatPresenceService,
   chatServerModule,
 } from '@kwtech/module-chat/server';
-import { JOBS_ACTOR_DIRECTORY, JOBS_ENTITLED_WORKSPACES, jobsServerModule } from '@kwtech/module-jobs/server';
+import {
+  JOBS_ACTOR_DIRECTORY,
+  JOBS_ENTITLED_WORKSPACES,
+  JOBS_ORGANIZATIONS,
+  jobsServerModule,
+} from '@kwtech/module-jobs/server';
 import {
   composeProcesses,
   DEFAULT_TIME_ZONE,
@@ -147,6 +152,7 @@ import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
 import { JobsActorDirectoryAdapter } from './jobs/actor-directory.js';
 import { JobsEntitledWorkspacesAdapter } from './jobs/entitled-workspaces.js';
+import { JobsOrganizationsAdapter } from './jobs/organizations.js';
 import { NoteManageAllAccess } from './note/access-check.js';
 import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
 import { NOTIFICATION_SOURCES } from './notifications/sources.js';
@@ -1050,6 +1056,12 @@ const SERVER_MODULES: readonly ServerModuleDescriptor[] = [
       provide: JOBS_ENTITLED_WORKSPACES,
       inject: [PrismaService],
       useFactory: (prisma: PrismaService) => new JobsEntitledWorkspacesAdapter(prisma),
+    },
+    // Every organization, for a process that reaches them all, gated by no plan (#94).
+    organizationsProvider: {
+      provide: JOBS_ORGANIZATIONS,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new JobsOrganizationsAdapter(prisma),
     },
 
     /*

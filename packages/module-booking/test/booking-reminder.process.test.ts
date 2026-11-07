@@ -19,6 +19,8 @@ function contextAt(
     maxItems: options.maxItems ?? DECLARATION?.maxItemsPerRun ?? 500,
     tooLateAfterMinutes: DECLARATION?.tooLateAfterMinutes ?? 60,
     signal: options.signal ?? new AbortController().signal,
+    // Workspace processes are handed no organizations (#94).
+    organizations: async () => ({ organizations: [], nextCursor: null }),
     async workspaces() {
       return { workspaces, nextCursor: null };
     },

@@ -197,6 +197,123 @@ describe('the workspaces a run may reach', () => {
   });
 });
 
+/*
+ * A process that reaches EVERY organization (#94): billing's daily check must
+ * reach one whose plan expired, which the workspace gate would hide. The port
+ * answers every organization; the plan is not asked.
+ */
+describe('the organizations a run may reach', () => {
+  const ORGS = ['org-1', 'org-2', 'org-expired', 'org-no-plan', 'org-5'].map((organizationId) => ({ organizationId }));
+  const everyOrganization = {
+    async page(cursor: string | null, limit: number) {
+      const start = cursor === null ? 0 : ORGS.findIndex((one) => one.organizationId === cursor) + 1;
+      const organizations = ORGS.slice(start, start + limit);
+      const last = organizations.at(-1);
+      return { organizations, nextCursor: start + limit < ORGS.length && last ? last.organizationId : null };
+    },
+  };
+
+  /*
+   * A test process shaped like billing's: sweeps by pages, records what it did
+   * in a set (its own "row under @@unique"), skips what it already did, and
+   * stops at maxItems with the rest left for the next run.
+   */
+  function sweeper(done: Set<string>) {
+    return processOf(
+      'billing.daily',
+      async (context) => {
+        let handled = 0;
+        let leftForNext = 0;
+        let cursor: string | null = null;
+        do {
+          const page = await context.organizations(cursor, 2);
+          for (const one of page.organizations) {
+            if (done.has(one.organizationId)) continue;
+            if (handled >= context.maxItems) {
+              leftForNext += 1;
+              continue;
+            }
+            done.add(one.organizationId);
+            handled += 1;
+          }
+          cursor = page.nextCursor;
+        } while (cursor !== null && !context.signal.aborted);
+        return { handled, skippedLate: 0, leftForNext };
+      },
+      { module: 'billing', serves: null, reach: 'organizations', maxItemsPerRun: 3 },
+    );
+  }
+
+  it('⚠ sweeps every organization, the one with no plan and the expired one included, page by page', async () => {
+    const done = new Set<string>();
+    const h = await harness([sweeper(done)], { organizations: everyOrganization });
+
+    await h.runner.tick(NOW);
+    await h.runner.idle();
+    expect(h.runs()[0]).toMatchObject({ state: 'succeeded', handled: 3, leftForNext: 2 });
+
+    // Stopped at its item limit; the next run finishes, and a third finds nothing left.
+    await h.runner.tick(minutesAfter(15));
+    await h.runner.idle();
+    await h.runner.tick(minutesAfter(30));
+    await h.runner.idle();
+    expect(h.runs().map((run) => run.handled)).toEqual([3, 2, 0]);
+    expect([...done].sort()).toEqual(ORGS.map((one) => one.organizationId).sort());
+  });
+
+  it('⚠ reaches none when nothing answers, and the run says so without running', async () => {
+    const process = sweeper(new Set());
+    const h = await harness([process]);
+
+    await h.runner.tick(NOW);
+    await h.runner.idle();
+
+    expect(process.runs).toHaveLength(0);
+    expect(h.runs()[0]).toMatchObject({ state: 'skipped' });
+    expect(h.runs()[0]?.note).toMatch(/JOBS_ORGANIZATIONS/u);
+  });
+
+  it('is skipped, not failed, when the organizations cannot be read', async () => {
+    const h = await harness([sweeper(new Set())], {
+      organizations: {
+        async page() {
+          throw new Error('connection refused');
+        },
+      },
+    });
+
+    await h.runner.tick(NOW);
+    await h.runner.idle();
+
+    expect(h.runs()[0]?.note).toBe('The organizations could not be read, so it reached none: connection refused');
+  });
+
+  it('a workspace process never sees every organization, nor this one any workspace', async () => {
+    const workspaceProcess = processOf(
+      'task.due_today',
+      async (context) => ({
+        handled: (await context.organizations(null, 50)).organizations.length,
+        skippedLate: 0,
+        leftForNext: 0,
+      }),
+      { serves: 'task:read' },
+    );
+    const h = await harness([workspaceProcess], {
+      organizations: everyOrganization,
+      entitled: {
+        async page() {
+          return { workspaces: [MANILA], nextCursor: null };
+        },
+      },
+    });
+
+    await h.runner.tick(NOW);
+    await h.runner.idle();
+
+    expect(h.runs()[0]).toMatchObject({ state: 'succeeded', handled: 0 });
+  });
+});
+
 describe('at boot', () => {
   it('⚠ refuses a process that declares a longer run than the runner allows', () => {
     expect(() =>

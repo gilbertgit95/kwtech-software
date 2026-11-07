@@ -6,7 +6,7 @@ import { syncJobProcesses } from '../src/server/jobs.sync.js';
 import { JobsQueueService } from '../src/server/jobs-queue.service.js';
 import { JobsRunnerService } from '../src/server/jobs-runner.service.js';
 import { JobsWriteService } from '../src/server/jobs-write.service.js';
-import type { JobsActorDirectory, JobsEntitledWorkspaces } from '../src/server/ports.js';
+import type { JobsActorDirectory, JobsEntitledWorkspaces, JobsOrganizations } from '../src/server/ports.js';
 import { type FakeClient, fakeClient } from './fake-client.js';
 
 /** Shared set-up for the queue, runner and sync suites. */
@@ -67,6 +67,8 @@ export function held(): { run: () => Promise<ProcessRunResult>; release: () => v
 export interface HarnessOptions extends Pick<JobsModuleOptions, 'maxConcurrentRuns' | 'maxRunSecondsCeiling'> {
   /** Omitted: the entitled-workspaces port is UNBOUND. */
   entitled?: JobsEntitledWorkspaces;
+  /** Omitted: the organizations port is UNBOUND (#94). */
+  organizations?: JobsOrganizations;
   /** Omitted: the actor directory is UNBOUND, and the admin page has no names. */
   directory?: JobsActorDirectory;
   /** False leaves `job_process` and the queue lock unwritten, as before the first `db:sync`. */
@@ -79,11 +81,17 @@ export async function harness(processes: readonly ProcessContribution[], options
   if (options.synced ?? true) await syncJobProcesses(prisma, processes, NOW);
 
   const queue = new JobsQueueService(prisma, resolved);
-  const runner = new JobsRunnerService(queue, resolved, undefined, options.entitled);
+  const runner = new JobsRunnerService(queue, resolved, undefined, options.entitled, options.organizations);
   // Resolves the handlers. The runner's own timer is never left running in a test.
   runner.onApplicationBootstrap();
   runner.onModuleDestroy();
-  const driven = new JobsRunnerService(queue, { ...resolved, runner: false }, undefined, options.entitled);
+  const driven = new JobsRunnerService(
+    queue,
+    { ...resolved, runner: false },
+    undefined,
+    options.entitled,
+    options.organizations,
+  );
   driven.onApplicationBootstrap();
 
   // The admin page's two services, on the same client: what a control writes, the page reads back.

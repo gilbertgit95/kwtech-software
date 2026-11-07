@@ -2,6 +2,7 @@ import {
   effectiveProcessSchedule,
   type ProcessContribution,
   type ProcessHandler,
+  type ProcessOrganizationPage,
   type ProcessRunContext,
   type ProcessRunResult,
   type ProcessWorkspacePage,
@@ -19,17 +20,21 @@ import { runCount, runErrorText } from '../domain/queue.js';
 import { adminSchedule } from '../domain/schedule.js';
 import type { ResolvedJobsOptions } from './jobs.options.js';
 import type { JobProcessRow, JobRunRow } from './jobs.repository.js';
-import { JOBS_ENTITLED_WORKSPACES, JOBS_OPTIONS } from './jobs.tokens.js';
+import { JOBS_ENTITLED_WORKSPACES, JOBS_OPTIONS, JOBS_ORGANIZATIONS } from './jobs.tokens.js';
 import { type JobClaim, type JobRunSettlement, JobsQueueService } from './jobs-queue.service.js';
-import type { JobsEntitledWorkspaces } from './ports.js';
+import type { JobsEntitledWorkspaces, JobsOrganizations } from './ports.js';
 
 type Claimed = Extract<JobClaim, { kind: 'claimed' }>;
 
 const EMPTY_PAGE: ProcessWorkspacePage = { workspaces: [], nextCursor: null };
+const NO_ORGANIZATIONS: ProcessOrganizationPage = { organizations: [], nextCursor: null };
+const NO_ORGANIZATION_SOURCE =
+  'Nothing answers which organizations there are, so it reached none. Bind JOBS_ORGANIZATIONS.';
 
 const NO_ENTITLEMENT_SOURCE =
   'Nothing answers which workspaces are entitled to it, so it reached none. Bind JOBS_ENTITLED_WORKSPACES.';
 const ENTITLEMENT_UNREADABLE = 'The entitled workspaces could not be read, so it reached none';
+const ORGANIZATIONS_UNREADABLE = 'The organizations could not be read, so it reached none';
 
 /**
  * THE RUNNER: wakes, queues what is due, and runs what is queued — a few at a
@@ -73,6 +78,8 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
     @Optional() private readonly moduleRef?: ModuleRef,
     /** Unbound: a process serving a feature reaches no workspace. */
     @Optional() @Inject(JOBS_ENTITLED_WORKSPACES) private readonly entitled?: JobsEntitledWorkspaces,
+    /** Unbound: a process reaching every organization reaches none (#94). */
+    @Optional() @Inject(JOBS_ORGANIZATIONS) private readonly organizations?: JobsOrganizations,
   ) {}
 
   /**
@@ -207,8 +214,11 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
     const handler = this.handlers.get(declaration.key);
     if (!handler) return { state: 'skipped', note: 'Its handler was never resolved on this server.' };
     if (declaration.serves !== null && !this.entitled) return { state: 'skipped', note: NO_ENTITLEMENT_SOURCE };
+    if (declaration.reach === 'organizations' && !this.organizations) {
+      return { state: 'skipped', note: NO_ORGANIZATION_SOURCE };
+    }
 
-    const unreadable: { reason: string | null } = { reason: null };
+    const unreadable: { reason: string | null; organizations?: boolean } = { reason: null };
     const context = this.contextFor(declaration, process, run, controller.signal, unreadable);
 
     let limit: NodeJS.Timeout | undefined;
@@ -226,7 +236,8 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
         case 'threw':
           // ⚠ D12: unreadable entitlements are "reached no workspace", not a failure of the process.
           if (unreadable.reason !== null) {
-            return { state: 'skipped', note: `${ENTITLEMENT_UNREADABLE}: ${unreadable.reason}` };
+            const what = unreadable.organizations ? ORGANIZATIONS_UNREADABLE : ENTITLEMENT_UNREADABLE;
+            return { state: 'skipped', note: `${what}: ${unreadable.reason}` };
           }
           return { state: 'failed', error: runErrorText(outcome.error) };
         case 'done':
@@ -249,10 +260,12 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
     process: JobProcessRow,
     run: JobRunRow,
     signal: AbortSignal,
-    unreadable: { reason: string | null },
+    unreadable: { reason: string | null; organizations?: boolean },
   ): ProcessRunContext {
     const { serves } = declaration;
     const entitled = this.entitled;
+    const organizations = this.organizations;
+    const reachesOrganizations = declaration.reach === 'organizations';
     return {
       // When the run STARTED: one clock for the whole run, as the contract says.
       now: run.startedAt ?? new Date(),
@@ -267,6 +280,17 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
           return await entitled.page(serves, cursor, limit);
         } catch (error) {
           unreadable.reason = runErrorText(error);
+          throw error;
+        }
+      },
+      async organizations(cursor, limit) {
+        // Only for a process that declared it: a workspace process never sees every tenant.
+        if (!reachesOrganizations || !organizations) return NO_ORGANIZATIONS;
+        try {
+          return await organizations.page(cursor, limit);
+        } catch (error) {
+          unreadable.reason = runErrorText(error);
+          unreadable.organizations = true;
           throw error;
         }
       },

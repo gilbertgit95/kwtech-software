@@ -372,7 +372,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; the expired reason; the fallback to Free; billing keys exempt; the release migration. **Done** 2026-11-07 |
 | P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (`liveOrganizationId`), billing's write methods. **Done** 2026-11-07 |
 | P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike |
-| P5a | #94 | P1 | `module-jobs` runs app-level processes. Alongside P2 to P4 |
+| P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
 | P5b | #95 | P4, P5a | The daily check and every notification |
 | P6 | #96 | P4 (P5b) | The organization's Billing page |
 | P7 | #97 | P4 | The platform queue, settings and reports |

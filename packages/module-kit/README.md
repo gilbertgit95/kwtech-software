@@ -369,7 +369,7 @@ processes: [{ ...declaration, handler: TaskDueTodayProcess }],
 | `ProcessDeclaration` | the data: key, what it serves, default schedule, and its limits. **Every limit is required** |
 | `ProcessContribution` | a declaration plus `handler`, the module's `@Injectable()` class implementing `ProcessHandler` |
 | `composeProcesses` | every module's, for the runner and the seed task. Throws on a duplicate key or an incomplete declaration |
-| `ProcessRunContext` | what a run is handed: `now`, the schedule in force, `maxItems`, `tooLateAfterMinutes`, `signal`, and `workspaces(cursor, limit)` |
+| `ProcessRunContext` | what a run is handed: `now`, the schedule in force, `maxItems`, `tooLateAfterMinutes`, `signal`, `workspaces(cursor, limit)`, and `organizations(cursor, limit)` |
 | `processOccurrence` | whether a process's time has come in ONE workspace, and for which day: `none`, `due`, `too_late` |
 | `effectiveProcessSchedule` | the admin's schedule if it still fits the declared limits, otherwise the default |
 
@@ -384,6 +384,13 @@ works in batches inside `maxItems`, stops when `signal` aborts, and assumes
 nothing about when it runs. It reaches only the workspaces `context.workspaces`
 hands it, which are those whose organization's plan includes the feature it
 `serves`.
+
+**A process that reaches every organization** (#94) declares `reach:
+'organizations'` and `serves: null` (composition refuses anything else): its
+run gets `organizations(cursor, limit)`, every organization with no plan
+filter, expired ones included, and no workspaces. It is the platform acting on
+its customers — billing's daily check — so its days follow the platform's
+zone, not a workspace's. A workspace process gets no organizations.
 
 ### Defaults also need their MOMENT declared
 

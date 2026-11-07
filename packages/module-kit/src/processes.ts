@@ -81,6 +81,19 @@ export interface ProcessDeclaration {
    * workspace at all (the runner's own history clean-up) and is handed none.
    */
   serves: string | null;
+  /**
+   * WHAT A RUN SWEEPS (#94). Absent or `'workspaces'`: the workspaces of
+   * organizations whose plan includes `serves`, each with its time zone — every
+   * process before billing.
+   *
+   * `'organizations'`: EVERY organization, with no plan gate — the platform
+   * acting on its customers, as billing's daily check does: it must reach an
+   * organization whose plan has expired, which is exactly the one a plan gate
+   * would hide. ⚠ Such a process writes `serves: null` (composition refuses
+   * anything else), because no plan decides whether it reaches anybody, and
+   * its limits are declared like any process's.
+   */
+  reach?: 'workspaces' | 'organizations';
   /** What runs until an admin changes it, and what "Reset to default" returns to. */
   defaultSchedule: ProcessSchedule;
   scheduleLimits: ProcessScheduleLimits;
@@ -115,6 +128,17 @@ export interface ProcessWorkspace {
   timeZone: string;
 }
 
+/** An organization an organization-level run may work on (#94). Billing's days follow the platform's zone, not a workspace's. */
+export interface ProcessOrganization {
+  organizationId: string;
+}
+
+export interface ProcessOrganizationPage {
+  organizations: readonly ProcessOrganization[];
+  /** Pass back for the next page. Null: that was the last. */
+  nextCursor: string | null;
+}
+
 export interface ProcessWorkspacePage {
   workspaces: readonly ProcessWorkspace[];
   /** Pass back for the next page. Null: that was the last. */
@@ -141,6 +165,13 @@ export interface ProcessRunContext {
    * a process that serves nothing.
    */
   workspaces(cursor: string | null, limit: number): Promise<ProcessWorkspacePage>;
+  /**
+   * EVERY organization, a page at a time, in a stable order — for a process
+   * that declared `reach: 'organizations'` (#94). No plan filters it: an
+   * expired organization is included. Empty for a workspace process, as
+   * `workspaces` is empty for this one.
+   */
+  organizations(cursor: string | null, limit: number): Promise<ProcessOrganizationPage>;
 }
 
 /**
@@ -317,6 +348,13 @@ export function checkProcessDeclaration(declaration: ProcessDeclaration): string
   if (!declaration.label?.trim() || !declaration.description?.trim()) return 'it needs a label and a description';
   if (declaration.serves === undefined) {
     return "it must declare the feature it serves ('serves'), or write null for a process that serves no workspace";
+  }
+  const reach = declaration.reach ?? 'workspaces';
+  if (reach !== 'workspaces' && reach !== 'organizations') {
+    return "its 'reach' must be 'workspaces' or 'organizations'";
+  }
+  if (reach === 'organizations' && declaration.serves !== null) {
+    return "a process that reaches every organization is gated by no plan, so it must write 'serves: null'";
   }
   if (declaration.serves !== null && !declaration.serves.startsWith(`${module}:`)) {
     return `it may only serve a feature of its own module ('${module}:…')`;

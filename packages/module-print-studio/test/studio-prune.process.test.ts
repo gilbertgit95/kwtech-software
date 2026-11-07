@@ -17,6 +17,8 @@ function context(overrides: Partial<ProcessRunContext> = {}, workspaces: readonl
     tooLateAfterMinutes: 1440,
     signal: new AbortController().signal,
     // One workspace a page, so paging is exercised.
+    // Workspace processes are handed no organizations (#94).
+    organizations: async () => ({ organizations: [], nextCursor: null }),
     async workspaces(cursor: string | null) {
       const at = cursor === null ? 0 : Number(cursor);
       const next = at + 1 < workspaces.length ? String(at + 1) : null;
