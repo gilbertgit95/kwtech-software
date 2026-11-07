@@ -61,12 +61,27 @@ const REPLAY_MARKER = '-- restore: replay';
  * old one (#105, review). Such a migration carries `REPLAY_MARKER` and is
  * written to run twice safely; restore runs each one newer than the snapshot,
  * in order, inside its own transaction (their BEGIN/COMMIT removed), so a
- * refusal in one rolls the whole restore back.
+ * refusal in one rolls the whole restore back. Only migrations this database
+ * has applied are replayed, and a missing migrations folder stops the restore.
  */
-function replayableMigrationsAfter(migration: string): { name: string; sql: string }[] {
-  if (!existsSync(MIGRATIONS_DIR)) return [];
+async function replayableMigrationsAfter(
+  client: pg.ClientBase,
+  migration: string,
+): Promise<{ name: string; sql: string }[]> {
+  // Fail rather than skip: restoring without the replay is the silent failure this exists to stop.
+  if (!existsSync(MIGRATIONS_DIR)) {
+    throw new Error(`No migrations at ${MIGRATIONS_DIR}; restore needs them to replay data steps.`);
+  }
+  // Only what THIS database has applied: replaying a migration it has not would
+  // change its schema behind `_prisma_migrations`' back.
+  const { rows } = await client.query<{ migration_name: string }>(
+    `SELECT migration_name FROM _prisma_migrations
+      WHERE migration_name > $1 AND finished_at IS NOT NULL AND rolled_back_at IS NULL`,
+    [migration],
+  );
+  const applied = new Set(rows.map((row) => row.migration_name));
   return readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name > migration)
+    .filter((entry) => entry.isDirectory() && applied.has(entry.name))
     .map((entry) => entry.name)
     .sort()
     .map((name) => ({ name, path: `${MIGRATIONS_DIR}${name}/migration.sql` }))
@@ -333,7 +348,7 @@ async function restoreSnapshot(client: pg.ClientBase, force: boolean) {
       total += rows.length;
       console.log(`  ${table.padEnd(28)} ${rows.length}`);
     }
-    for (const replay of replayableMigrationsAfter(snapshot.migration)) {
+    for (const replay of await replayableMigrationsAfter(client, snapshot.migration)) {
       await client.query(replay.sql);
       console.log(`  replayed the data steps of ${replay.name}`);
     }
