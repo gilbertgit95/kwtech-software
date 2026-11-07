@@ -648,11 +648,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
   A subscription with a `workspaceId` entitles one workspace, so "why can't
   this workspace use X" has two places to look.
-  - **Fold:** an organization with no organization-wide subscription gets a
-    NEW organization-wide row with its live workspace row's plan and period
-    end. The workspace row is not retargeted: the write service keeps a
+  - **Fold, and no workspace loses access:** the strongest plan among an
+    organization's live rows (its own and its workspaces') wins. If a
+    workspace row's plan is stronger, a NEW organization-wide row is written
+    with it and the latest period end, and the organization's old row ends.
+    The workspace row is not retargeted: the write service keeps a
     subscription's target immutable, so what it entitled in the past still
-    reads true.
+    reads true. Other workspaces may gain access; none loses any.
   - **End:** every workspace row then gets `endedAt` and is kept as history.
     Owners are notified. No new workspace row is written.
   - The data step runs in billing phase 3 (#92), before the one-active index.
@@ -739,6 +741,17 @@ Decisions 1, 2, 3 and 5 gate the next step.
     clock.
   - **Only the latest approved request of a period can be voided:** voiding
     an earlier plan change would put back a plan over a later paid one.
+  - **Approval re-checks:** self-approval needs the payment entered and
+    covering the bill (D7); a plan change priced for a period that has ended
+    cannot be approved, and any payment for it becomes credit with its
+    receipt; a renewal submitted before expiry keeps its bill, and if we
+    approve it after access ended, its month starts at approval.
+  - **Archived plans are not renewed.** Archiving makes a plan entitle
+    nothing (`module-permissions`), so renewing one would take payment for no
+    access. Withdrawing a plan from sale is `isPublic: false`, which existing
+    organizations can still renew.
+  - **Notices are retried until sent:** a row per notice with a separate
+    `sentAt`, so a failed send is retried rather than silenced.
 
 - **2026-11-07** — **A month paid ahead becomes credit when the plan changes before it starts (#90, review loophole 3).**
 

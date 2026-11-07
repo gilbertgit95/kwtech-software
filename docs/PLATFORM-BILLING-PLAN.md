@@ -87,8 +87,10 @@ Rules around it:
 - **Approval is race-safe:** a conditional update while still `pending`,
   carrying the version of the payment details the approver saw ("details
   changed, review again").
-- **A requester who holds the approve key is applied at once**, recorded as
-  self-approved.
+- **A requester who holds the approve key approves their own request**,
+  recorded as self-approved, but only on the same terms as any approval: the
+  payment received is entered and covers the bill (D7). Until it does, the
+  request waits like any other ("Enter the payment received to apply it").
 - **The approve, void, queue and settings keys are app level**, so the
   registry refuses them in an organization role or a plan.
 - **Short payments cannot be approved; overpayments become credit** (D7).
@@ -123,14 +125,34 @@ Rules around it:
   the current period's end, so the one-active index never sees two rows.
 - **Renew after expiry:** a new period starts at approval and the billing day
   resets, **and the bill charges the access used past the period end** (grace
-  and any hold) at the old plan's daily rate (D10).
+  and any hold) at the old plan's daily rate (D10). That line is known when
+  the request is submitted, because access has already ended.
+- **A renewal submitted before expiry is priced as on time, and its bill
+  never changes.** If approval comes after access has ended (past the hold),
+  the delay was ours: the month starts at approval instead of at the old
+  period end, the billing day resets, and no access line is added. The bill
+  stays as issued, so no revised bill is needed and payment is checked
+  against the amount the owner saw.
 - **Change plan:** the old row ends and the new one starts at approval,
   running to the end of the current period, prorated. Offered only while the
   subscription is active and not overdue ("Renew first, then you can change
   plan"). A paid-ahead month on the old plan becomes credit (D11).
+  **Approval checks the quote is still for the current period.** If the
+  period it was priced for has ended, the change cannot be approved
+  (`quote_expired`, "This change was priced for the period ending <date>.
+  Request it again"). Payment already received for it is not lost: the
+  approver records it, a receipt is issued for it, and it becomes credit,
+  which the owner's next request uses.
 - **Cancel:** ends at the period's end, with no credit.
-- **Archived plans** can be renewed by organizations already on them, never
-  chosen by anyone new.
+- **What can be requested.** Anyone may request a public plan
+  (`isPublic`). A plan withdrawn from sale (`isPublic: false`, such as
+  Custom or an old tier) can be renewed by organizations already on it, and
+  given to others only by an approver or an adjustment. **An archived plan
+  cannot be renewed**: `module-permissions` makes it entitle nothing and
+  refuses new subscriptions to it, so a renewal would take payment for no
+  access. Its organizations are told to change plan ("Basic (2025) is no
+  longer offered; choose a plan to renew"). Stop selling a plan with
+  `isPublic`; archive it only to cut it off.
 - **A downgrade is refused while the organization is over the new plan's
   caps** (D6).
 
@@ -188,9 +210,13 @@ notifies:
 - **still while a pending request has no payment details** (loophole 14);
 - approvers, about requests pending for more than a day.
 
-Each notice is a row under `@@unique`, written before it is sent, and the
-process works from dates, so a missed run catches up once and a second run
-sends nothing. Every notice goes through `PLATFORM_BILLING_NOTIFIER`, bound to
+Each notice is a row under `@@unique`, written before it is sent, with a
+separate `sentAt` set only after the send succeeds. Each run first retries
+rows without `sentAt`, so a failure between writing and sending never
+silences a warning; a crash after sending but before `sentAt` may send one
+twice, which is better than a missed expiry warning. The process works from
+dates, so a missed run catches up once and a second run creates nothing
+new. Every notice goes through `PLATFORM_BILLING_NOTIFIER`, bound to
 `module-notification`; its app adapter resolves the user ids holding a key.
 
 ### Settings that would rewrite the past (D16)
@@ -284,7 +310,7 @@ decisions #90 lists each have a PLAN §13 entry.
 |---|---|---|
 | D1 | Build before a payment provider? | **Yes, manual payment first.** Reverses §12.40: payment outside the app is how these customers pay today, and a provider later only replaces who confirms a payment |
 | D2 | New organizations | **Free, plus one trial of Basic for 14 days, once per owner account.** The trial expires like any subscription, back to Free. Repeating it with a new sign-up is a known risk (PLAN §12.130) |
-| D3 | Existing workspace-level subscriptions | **Fold, then end.** If the organization has no organization-wide subscription, a NEW organization-wide row is written with the live workspace row's plan and period end; every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). Owners are notified |
+| D3 | Existing workspace-level subscriptions | **Fold, then end, and no workspace loses access.** For each organization with live workspace rows, the strongest plan among them and the organization's own row is chosen (more features, then larger caps). If that is a workspace row's plan, a NEW organization-wide row is written with that plan and the latest period end, and the organization's old row, if any, is ended; otherwise the organization's row stays as it is. Every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). The organization's other workspaces may gain access by this; none loses any. Owners are told what changed and until when |
 | D4 | Two active subscriptions | **Impossible**, by the partial unique index and a check in the write service that names the conflict |
 | D5 | `/admin/subscriptions` write screens | **Kept, as audited manual adjustments that require a reason** |
 | D6 | Over the caps after a downgrade | **The downgrade is refused** until the organization is within the new plan's caps ("Basic allows 3 members and you have 5. Remove 2 before downgrading"). An operator editing a live plan, and expiry, remove nothing: what is over a cap stays and only additions are refused, with the reason |
