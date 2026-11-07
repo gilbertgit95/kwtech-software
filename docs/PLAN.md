@@ -616,6 +616,23 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-07** — **`module-platform-billing` exists as a pure core: four organization keys, four app keys, and every billing rule as a tested function (#91).**
+
+  Billing phase 2. Built before any schema so phases 3 to 7 import one copy of
+  the arithmetic instead of restating it (principle 5).
+  - **The organization keys follow who may do what (D8):** `read`,
+    `change_plan` (the owner's: subscribe, change, replace, cancel), `renew`
+    and `enter_payment` (an admin's too). One "request" key was the
+    alternative; it could not let an admin renew without letting them change
+    the plan.
+  - **The app keys follow risk:** `queue_read`, `approve`, `void`,
+    `manage_settings`; the approver preset holds the first three.
+  - **No bindings and not composed.** The module is not in
+    `MODULE_DECLARATIONS` until phase 4 binds each key to its operations, so
+    nothing syncs or grants a key that guards nothing.
+  - **Every review loophole that is a rule** has a case under its number in
+    `test/loopholes.test.ts`; the rest name the phase that closes them.
+
 - **2026-11-07** — **Platform billing is built now, before any payment provider: payment outside the app, confirmed by platform staff (issue #90, reversing §12.40).**
 
   §12.40 said billing was "not to be built before the provider is", because
