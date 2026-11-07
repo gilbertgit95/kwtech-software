@@ -241,6 +241,15 @@ export class JobsRunnerService implements OnApplicationBootstrap, OnModuleDestro
           }
           return { state: 'failed', error: runErrorText(outcome.error) };
         case 'done':
+          /*
+           * A handler that caught the failed read and returned anyway swept only
+           * part of what it reaches: recorded as skipped with the reason, never as
+           * a success that hides the gap from the history.
+           */
+          if (unreadable.reason !== null) {
+            const what = unreadable.organizations ? ORGANIZATIONS_UNREADABLE : ENTITLEMENT_UNREADABLE;
+            return { state: 'skipped', note: `${what}: ${unreadable.reason}` };
+          }
           return {
             state: 'succeeded',
             handled: runCount(outcome.result?.handled),

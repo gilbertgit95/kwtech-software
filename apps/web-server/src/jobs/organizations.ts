@@ -18,6 +18,10 @@ export class JobsOrganizationsAdapter implements JobsOrganizations {
   constructor(private readonly prisma: PrismaService) {}
 
   async page(cursor: string | null, limit: number): Promise<ProcessOrganizationPage> {
+    // 0 would read as "the last page" while organizations remain, and a negative
+    // `take` reads backwards. A throw is recorded as a skipped run, saying so.
+    if (!Number.isInteger(limit) || limit < 1)
+      throw new Error(`A page of organizations needs a positive limit, not ${limit}.`);
     const rows = await this.prisma.permOrganization.findMany({
       where: cursor === null ? {} : { id: { gt: cursor } },
       select: { id: true },

@@ -1,3 +1,4 @@
+import { zonedDayKey } from '@kwtech/module-kit';
 import { resolveJobsOptions } from '../src/server/jobs.options.js';
 import { JobsQueueService } from '../src/server/jobs-queue.service.js';
 import { JobsRunnerService } from '../src/server/jobs-runner.service.js';
@@ -259,6 +260,76 @@ describe('the organizations a run may reach', () => {
     await h.runner.idle();
     expect(h.runs().map((run) => run.handled)).toEqual([3, 2, 0]);
     expect([...done].sort()).toEqual(ORGS.map((one) => one.organizationId).sort());
+  });
+
+  it('⚠ catches up a missed day once: the next run handles what was due, and the one after adds nothing', async () => {
+    // Dated work per organization: a reminder due on each day, recorded once by (organization, day).
+    const sent = new Set<string>();
+    const dueDays = ['2026-10-05', '2026-10-06'];
+    const daily = processOf(
+      'billing.daily',
+      async (context) => {
+        // The platform's day, as billing will count it.
+        const today = zonedDayKey(context.now, 'Asia/Manila');
+        let handled = 0;
+        const page = await context.organizations(null, 50);
+        for (const one of page.organizations) {
+          for (const day of dueDays.filter((due) => due <= today)) {
+            const key = `${one.organizationId}|${day}`;
+            if (sent.has(key)) continue;
+            sent.add(key);
+            handled += 1;
+          }
+        }
+        return { handled, skippedLate: 0, leftForNext: 0 };
+      },
+      {
+        module: 'billing',
+        serves: null,
+        reach: 'organizations',
+        defaultSchedule: { kind: 'interval', everyMinutes: 1440 },
+        scheduleLimits: { kinds: ['interval'], minEveryMinutes: 15 },
+      },
+    );
+    const h = await harness([daily], { organizations: everyOrganization });
+
+    // The run on Oct 6 never happens; the next is on Oct 7 and finds both days due.
+    const OCT_7 = new Date('2026-10-07T00:00:00Z');
+    await h.runner.tick(OCT_7);
+    await h.runner.idle();
+    await h.runner.tick(new Date(OCT_7.getTime() + 1441 * 60_000));
+    await h.runner.idle();
+
+    expect(h.runs().map((run) => run.handled)).toEqual([ORGS.length * 2, 0]);
+    expect(sent.size).toBe(ORGS.length * 2);
+  });
+
+  it('is skipped, not succeeded, when the handler swallows a failed read', async () => {
+    const swallowing = processOf(
+      'billing.daily',
+      async (context) => {
+        try {
+          await context.organizations(null, 50);
+        } catch {
+          // A careless handler: carries on as if nothing happened.
+        }
+        return { handled: 0, skippedLate: 0, leftForNext: 0 };
+      },
+      { module: 'billing', serves: null, reach: 'organizations' },
+    );
+    const h = await harness([swallowing], {
+      organizations: {
+        async page() {
+          throw new Error('connection refused');
+        },
+      },
+    });
+
+    await h.runner.tick(NOW);
+    await h.runner.idle();
+
+    expect(h.runs()[0]).toMatchObject({ state: 'skipped' });
+    expect(h.runs()[0]?.note).toMatch(/organizations could not be read/u);
   });
 
   it('⚠ reaches none when nothing answers, and the run says so without running', async () => {
