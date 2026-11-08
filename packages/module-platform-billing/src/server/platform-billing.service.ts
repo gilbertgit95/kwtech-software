@@ -261,11 +261,6 @@ export class PlatformBillingService {
   }
 
   /**
-   * Whether `kind` on `planKey` may be requested now, and what it would cost:
-   * the check `submit` runs, as a preview the page shows before anyone presses
-   * Request.
-   */
-  /**
    * The plans side by side for the organization (#101): every public plan on
    * offer and its own, today's prices, and what each includes. Built from the
    * same rows the caps and features are enforced from.
@@ -280,6 +275,11 @@ export class PlatformBillingService {
     });
   }
 
+  /**
+   * Whether `kind` on `planKey` may be requested now, and what it would cost:
+   * the check `submit` runs, as a preview the page shows before anyone presses
+   * Request.
+   */
   async preview(context: BillingContext, kind: PricedKind, planKey: string | null): Promise<RequestPreview> {
     const currentPlanKey = context.live?.planKey ?? null;
     const wanted = kind === 'renew' ? currentPlanKey : planKey;

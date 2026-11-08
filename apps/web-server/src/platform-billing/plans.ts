@@ -43,7 +43,6 @@ export class PlatformBillingPlansAdapter implements PlatformBillingPlans {
     }));
   }
 
-  /** The organization's counts for the caps permissions' own tables hold. */
   /**
    * The composed registries' names for the plan comparison (#101): the code
    * is the source of truth for what a key is called (principle 4), so a plan
@@ -61,6 +60,7 @@ export class PlatformBillingPlansAdapter implements PlatformBillingPlans {
     };
   }
 
+  /** The organization's counts for the caps permissions' own tables hold. */
   async usage(organizationId: string): Promise<Readonly<Record<string, number>>> {
     const [members, workspaces, perWorkspace] = await Promise.all([
       this.prisma.permMembership.count({ where: { organizationId, status: 'active' } }),
