@@ -1,4 +1,4 @@
-import { buildStatement } from '../src/domain/statement.js';
+import { buildStatement, checkStatementRange, STATEMENT_MAX_DAYS } from '../src/domain/statement.js';
 import type { BillingStatementView } from '../src/react/billing-client.js';
 import { documentStamp } from '../src/react/view/billing-view.js';
 import { monthOf, statementCsv, statementLineLabel } from '../src/react/view/statement-view.js';
@@ -209,5 +209,27 @@ describe('what a printed document and the CSV say', () => {
   it('defaults the statement to the month today is in', () => {
     expect(monthOf('2026-11-08')).toEqual({ from: '2026-11-01', to: '2026-11-30' });
     expect(monthOf('2028-02-10')).toEqual({ from: '2028-02-01', to: '2028-02-29' });
+  });
+});
+
+describe('the statement range', () => {
+  it('takes two real days in order, at most two years apart', () => {
+    expect(STATEMENT_MAX_DAYS).toBe(731);
+    expect(checkStatementRange('2026-11-01', '2026-11-30')).toBeNull();
+    expect(checkStatementRange('2026-11-01', '2026-11-01')).toBeNull();
+    // 731 days apart is the most; 732 is refused.
+    expect(checkStatementRange('2025-01-01', '2027-01-02')).toBeNull();
+    expect(checkStatementRange('2025-01-01', '2027-01-03')).toBe('invalid');
+  });
+
+  it('refuses a reversed range and a day that does not exist', () => {
+    expect(checkStatementRange('2026-11-30', '2026-11-01')).toBe('invalid');
+    expect(checkStatementRange('2026-02-30', '2026-03-01')).toBe('invalid');
+    expect(checkStatementRange('yesterday', '2026-03-01')).toBe('invalid');
+  });
+
+  it('is checked by the service, before anything is read', async () => {
+    const billing = fakeBilling();
+    await expect(billing.reads.statement(ORG, '2026-11-30', '2026-11-01')).rejects.toMatchObject({ reason: 'invalid' });
   });
 });

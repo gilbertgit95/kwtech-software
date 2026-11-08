@@ -1,6 +1,7 @@
 import { composeRoutes, matchRouteWithParams, routeRedirect } from '@kwtech/module-kit';
 import { denialReason } from '@kwtech/module-permissions';
 import { FeatureDenied } from '@kwtech/module-permissions/react';
+import { PLATFORM_BILLING_FEATURE } from '@kwtech/module-platform-billing';
 import { billingPageHref } from '@kwtech/module-platform-billing/react';
 import { notFound, redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
@@ -116,6 +117,17 @@ export default async function ModuleRoutePage({
    */
   const denied = await routeDenial(route.feature, scope);
   if (denied) {
+    /*
+     * An expired plan is renewed on the Billing page, but only by those whose
+     * role opens it (the owner and admins, D8): the rest are told who to ask,
+     * rather than linked to a page that refuses them too (#119).
+     */
+    const expiredStep =
+      denied === 'subscription_expired' && scope.organizationId
+        ? (await routeDenial(PLATFORM_BILLING_FEATURE.read, scope)) === undefined
+          ? { href: billingPageHref(scope.organizationId), label: 'Open billing to renew' }
+          : { label: "Ask the organization's owner or an admin to renew it on the Billing page." }
+        : undefined;
     return (
       <AppShell title={route.title} scope={scope}>
         {/*
@@ -123,16 +135,7 @@ export default async function ModuleRoutePage({
           the same person for the same reason, and a wording change to one used
           to be a silent inconsistency in the other.
         */}
-        <FeatureDenied
-          title={route.title}
-          reason={denied}
-          // An expired plan is fixed on the Billing page: the reason links straight to it (#119).
-          nextStep={
-            denied === 'subscription_expired' && scope.organizationId
-              ? { href: billingPageHref(scope.organizationId), label: 'Open billing to renew' }
-              : undefined
-          }
-        />
+        <FeatureDenied title={route.title} reason={denied} nextStep={expiredStep} />
       </AppShell>
     );
   }

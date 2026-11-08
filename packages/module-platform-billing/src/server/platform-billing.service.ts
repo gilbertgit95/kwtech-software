@@ -19,12 +19,15 @@ import {
 } from '../domain/standing.js';
 import {
   buildStatement,
+  checkStatementRange,
   HISTORY_STATES,
   type HistoryFilter,
   type HistoryTotals,
   isHistoryYear,
+  STATEMENT_MAX_DAYS,
   type Statement,
 } from '../domain/statement.js';
+import { billingRefusal } from './platform-billing.errors.js';
 import {
   type BillRow,
   dateColumnToDay,
@@ -328,7 +331,9 @@ export class PlatformBillingService {
    * was billed and paid. A cancelled bill and a voided receipt are listed
    * and say so, but count for nothing in the totals.
    */
-  async statement(organizationId: string, from: DayKey, to: DayKey): Promise<Statement> {
+  async statement(organizationId: string, from: string, to: string): Promise<Statement> {
+    const refused = checkStatementRange(from, to);
+    if (refused) throw billingRefusal(refused, { field: 'range', maxDays: STATEMENT_MAX_DAYS });
     const settings = await this.settings();
     const range = {
       gte: platformDayStart(from, settings.timeZone),

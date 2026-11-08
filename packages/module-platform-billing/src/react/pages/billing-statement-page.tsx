@@ -98,6 +98,8 @@ export function BillingStatementPage({ organizationId, from, to, client }: Billi
                   id={id}
                   value={draft.from}
                   today={overview.today}
+                  // Both days are needed: no Clear that would do nothing.
+                  clearable={false}
                   aria-describedby={note}
                   onChange={(day) => setDraft({ ...draft, from: day ?? draft.from })}
                 />
@@ -109,6 +111,7 @@ export function BillingStatementPage({ organizationId, from, to, client }: Billi
                   id={id}
                   value={draft.to}
                   today={overview.today}
+                  clearable={false}
                   aria-describedby={note}
                   onChange={(day) => setDraft({ ...draft, to: day ?? draft.to })}
                 />

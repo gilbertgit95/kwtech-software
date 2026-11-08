@@ -126,6 +126,18 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     [client, reload],
   );
 
+  /**
+   * A new filter starts the history from nothing: the old list (and its
+   * totals) never sits under the new controls, a failed read shows its error,
+   * and a page of older requests still loading for the old filter is dropped.
+   */
+  const changeFilter = useCallback((next: BillingHistoryFilter) => {
+    generation.current += 1;
+    setHistory(null);
+    setHistoryError(null);
+    setFilter(next);
+  }, []);
+
   const loadingMore = useRef(false);
   const loadMore = useCallback(async () => {
     // One page at a time: two quick presses would read the same cursor and append the page twice.
@@ -158,7 +170,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     history,
     historyError,
     filter,
-    setFilter,
+    setFilter: changeFilter,
     error,
     notice,
     busy,

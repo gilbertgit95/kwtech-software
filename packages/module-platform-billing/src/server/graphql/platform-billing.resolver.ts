@@ -1,7 +1,6 @@
 import { declareScope, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
 import { Inject, Optional, SetMetadata } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { daysBetween, isDayKey } from '../../domain/days.js';
 import { billingRefusal } from '../platform-billing.errors.js';
 import type { PlatformBillingModuleOptions } from '../platform-billing.options.js';
 import { PlatformBillingService } from '../platform-billing.service.js';
@@ -21,9 +20,6 @@ import { renderOverview, renderPreview, renderRequest } from './render.js';
 
 /** The kinds the owner chooses: one mutation, bound to `change_plan` (D8). */
 const CHOSEN_KINDS = ['subscribe', 'change_plan', 'replace'] as const;
-
-/** The longest statement one read returns: two years of days. */
-const STATEMENT_MAX_DAYS = 731;
 type ChosenKind = (typeof CHOSEN_KINDS)[number];
 
 /** The kinds a preview may ask about. */
@@ -119,10 +115,6 @@ export class PlatformBillingResolver {
     @Args('to') to: string,
   ): Promise<PlatformBillingStatementType> {
     this.actor(gql.req);
-    // A range of days, at most two years: a statement is read in one go, never paged.
-    if (!isDayKey(from) || !isDayKey(to) || from > to || daysBetween(from, to) > STATEMENT_MAX_DAYS) {
-      throw billingRefusal('invalid', { field: 'range', maxDays: STATEMENT_MAX_DAYS });
-    }
     return this.reads.statement(organizationId, from, to);
   }
 

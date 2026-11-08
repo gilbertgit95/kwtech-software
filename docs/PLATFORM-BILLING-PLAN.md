@@ -1,6 +1,6 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 to 6 done (2026-11-08); 7 and 8 to come.** Phase 1
+Status: **phases 1 to 5b done; phase 6 built (6a, 6b) and waiting on its in-app check (#96: subscribe, pay, approved, print, an expired organization's view), which needs phase 7's prices and approvals; 7 and 8 to come (2026-11-08).** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services

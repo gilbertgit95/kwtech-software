@@ -10,13 +10,13 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phases 4, 5b and 6 done (#93, #95, #117, #119).** The pure core (#91), the schema, the
+**Status: phases 4 and 5b done (#93, #95); phase 6 built (#117, #119), its in-app check (#96) waiting on phase 7.** The pure core (#91), the schema, the
 services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
 the audited admin adjustments, the settings and the prices; composed into the
 API; the daily check with every notification (#95); and the organization's
-Billing page (#117). Still to come: printing and CSV (6b), and the platform's
-pages (#97).
+Billing page with printing, the statement of account and its CSV (#117,
+#119). Still to come: the platform's pages (#97).
 
 ## In a Next.js app
 

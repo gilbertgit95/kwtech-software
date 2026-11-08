@@ -1,4 +1,5 @@
-import { type DayKey, platformDay } from './days.js';
+import { type DayKey, daysBetween, isDayKey, platformDay } from './days.js';
+import type { PlatformBillingRefusal } from './refusals.js';
 import { documentNumber } from './standing.js';
 
 /**
@@ -158,4 +159,13 @@ export const HISTORY_STATES = ['pending', 'approved', 'rejected', 'withdrawn', '
 /** A year a filter may name: four digits, from the first year the app could have billed. */
 export function isHistoryYear(year: number): boolean {
   return Number.isInteger(year) && year >= 2000 && year <= 9999;
+}
+
+/** The longest statement one read returns, in days: two years. A statement is read in one go, never paged. */
+export const STATEMENT_MAX_DAYS = 731;
+
+/** Whether `from` to `to` is a range a statement can cover: two real days, in order, at most two years apart. */
+export function checkStatementRange(from: string, to: string): PlatformBillingRefusal | null {
+  if (!isDayKey(from) || !isDayKey(to) || from > to) return 'invalid';
+  return daysBetween(from, to) > STATEMENT_MAX_DAYS ? 'invalid' : null;
 }
