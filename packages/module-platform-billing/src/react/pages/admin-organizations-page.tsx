@@ -9,8 +9,7 @@ import {
 } from '../billing-admin-client.js';
 import { buttonClass, ErrorLine, Reason, Section } from '../components/ui.js';
 import { BILLING_ADMIN_REPORTS_ROUTE, billingAdminOrganizationsHref, billingAdminRequestHref } from '../routes.js';
-import { formatMoney } from '../view/billing-view.js';
-import { STANDING_FILTER_OPTIONS, standingLine } from '../view/report-view.js';
+import { creditLabel, STANDING_FILTER_OPTIONS, standingLine, standingToneClass } from '../view/report-view.js';
 
 export interface AdminOrganizationsPageProps {
   /** The filter from the address (`?filter=`), or none. */
@@ -151,28 +150,12 @@ export function AdminOrganizationsPage({ filter, client }: AdminOrganizationsPag
                       <td className="py-2">{one.name}</td>
                       <td className="py-2">{one.standing.planLabel ?? '—'}</td>
                       <td className="py-2">
-                        <span
-                          className={
-                            line.tone === 'warning'
-                              ? 'font-medium'
-                              : line.tone === 'muted'
-                                ? 'text-muted-foreground'
-                                : ''
-                          }
-                        >
-                          {line.word}
-                        </span>
+                        <span className={standingToneClass(line.tone)}>{line.word}</span>
                         {line.detail ? (
                           <span className="block text-xs text-muted-foreground">{line.detail}</span>
                         ) : null}
                       </td>
-                      <td className="py-2 text-right tabular-nums">
-                        {one.creditBalance === 0
-                          ? '—'
-                          : one.creditBalance > 0
-                            ? formatMoney(one.creditBalance, currency)
-                            : `owes ${formatMoney(-one.creditBalance, currency)}`}
-                      </td>
+                      <td className="py-2 text-right tabular-nums">{creditLabel(one.creditBalance, currency)}</td>
                       <td className="py-2 text-right">
                         {one.pendingRequestId ? (
                           <a href={billingAdminRequestHref(one.pendingRequestId)} className="underline">

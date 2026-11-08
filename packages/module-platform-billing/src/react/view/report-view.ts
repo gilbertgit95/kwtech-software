@@ -3,7 +3,7 @@ import type {
   BillingOrganizationStandingView,
   BillingReportView,
 } from '../billing-admin-client.js';
-import { formatDay, paymentMethodLabel, standingWord } from './billing-view.js';
+import { formatDay, formatMoney, paymentMethodLabel, standingWord } from './billing-view.js';
 import { csvDecimal, csvField } from './statement-view.js';
 
 /**
@@ -130,4 +130,22 @@ export function standingKindWords(kind: string): string {
     default:
       return 'without a paid plan';
   }
+}
+
+/** The class a standing's word takes: a warning stands out, "no paid plan" recedes. */
+export function standingToneClass(tone: 'warning' | 'muted' | 'normal'): string {
+  switch (tone) {
+    case 'warning':
+      return 'font-medium';
+    case 'muted':
+      return 'text-muted-foreground';
+    case 'normal':
+      return '';
+  }
+}
+
+/** An organization's credit in words: the credit held, what it owes, or a dash for neither. */
+export function creditLabel(balance: number, currency: string): string {
+  if (balance === 0) return '—';
+  return balance > 0 ? formatMoney(balance, currency) : `owes ${formatMoney(-balance, currency)}`;
 }

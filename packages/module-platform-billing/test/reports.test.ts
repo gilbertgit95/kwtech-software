@@ -7,14 +7,16 @@ import {
   summariseStandings,
 } from '../src/domain/reports.js';
 import type { BillingReportView } from '../src/react/billing-admin-client.js';
-import { formatDay } from '../src/react/view/billing-view.js';
+import { formatDay, formatMoney } from '../src/react/view/billing-view.js';
 import {
   collectedTable,
   collectionsCsv,
   collectionsFileName,
+  creditLabel,
   periodLabel,
   standingKindWords,
   standingLine,
+  standingToneClass,
 } from '../src/react/view/report-view.js';
 import { fakeBilling, giveSubscription, noonOn, setPrices } from './fake-client.js';
 
@@ -308,5 +310,13 @@ describe('what the report pages show', () => {
       'muted',
     );
     expect(standingKindWords('held')).toBe('overdue, access held');
+    expect(standingToneClass('warning')).toBe('font-medium');
+    expect(standingToneClass('normal')).toBe('');
+  });
+
+  it('words credit held, owed, or neither', () => {
+    expect(creditLabel(0, 'PHP')).toBe('—');
+    expect(creditLabel(20_000, 'PHP')).toBe(formatMoney(20_000, 'PHP'));
+    expect(creditLabel(-5_000, 'PHP')).toBe(`owes ${formatMoney(5_000, 'PHP')}`);
   });
 });
