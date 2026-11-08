@@ -1160,6 +1160,8 @@ export class PermissionsWriteService {
         );
       }
 
+      // ⚠ Billing's lock for this organization first, so no billing decision writes beside this one.
+      await this.subscriptionAudit?.lock(draft.organizationId, tx);
       await this.refuseSecondLiveSubscription(tx, draft.organizationId);
 
       const plan = await this.requirePlan(tx, draft.planKey);
@@ -1259,7 +1261,7 @@ export class PermissionsWriteService {
     const db = this.client();
 
     return db.$transaction(async (tx) => {
-      const existing = await this.requireLiveSubscription(tx, subscriptionId);
+      const existing = await this.lockedLiveSubscription(tx, subscriptionId);
       const before = await this.adjustedRow(tx, existing);
 
       const status = toSubscriptionStatus(input.status);
@@ -1314,7 +1316,7 @@ export class PermissionsWriteService {
     const db = this.client();
 
     return db.$transaction(async (tx) => {
-      const existing = await this.requireLiveSubscription(tx, subscriptionId);
+      const existing = await this.lockedLiveSubscription(tx, subscriptionId);
       const before = await this.adjustedRow(tx, existing);
 
       await tx.permSubscription.update({
@@ -2706,6 +2708,19 @@ export class PermissionsWriteService {
     });
     if (!plan) throw new PermissionWriteError('not_found', 'No such plan', { planKey });
     return plan;
+  }
+
+  /**
+   * The live row an adjustment changes, read AFTER billing's lock for its
+   * organization is taken: the first read only finds the organization, and
+   * the row (still live? its dates?) must be what the last billing decision
+   * committed, not what it was before this waited.
+   */
+  private async lockedLiveSubscription(tx: PermissionsTransaction, subscriptionId: string) {
+    const found = await this.requireLiveSubscription(tx, subscriptionId);
+    if (!this.subscriptionAudit) return found;
+    await this.subscriptionAudit.lock(found.organizationId, tx);
+    return this.requireLiveSubscription(tx, subscriptionId);
   }
 
   /**

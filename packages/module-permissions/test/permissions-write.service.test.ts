@@ -1327,7 +1327,11 @@ describe('subscriptions', () => {
     it('tells the audit of each write, in its transaction, with the trimmed reason and the row after', async () => {
       const { client } = await seeded();
       const heard: Array<{ action: string; reason: string; subscriptionId: string; after: unknown }> = [];
+      const locks: string[] = [];
       const audit = {
+        async lock(organizationId: string) {
+          locks.push(organizationId);
+        },
         async subscriptionAdjusted(input: { action: string; reason: string; subscriptionId: string; after: unknown }) {
           heard.push({
             action: input.action,
@@ -1358,6 +1362,8 @@ describe('subscriptions', () => {
         status: 'active',
         currentPeriodEnd: new Date('2026-03-01T00:00:00.000Z'),
       });
+      // Billing's lock for the organization, taken by each write before it read the row.
+      expect(locks).toEqual(['org1', 'org1', 'org1']);
       // An end keeps its row, now canceled.
       expect(heard[2]?.after).toMatchObject({ status: 'canceled' });
     });

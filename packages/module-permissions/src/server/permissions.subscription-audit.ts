@@ -47,6 +47,14 @@ export interface AdjustedRow {
  * nobody stores it. That is right for an app without billing.
  */
 export interface PermissionsSubscriptionAudit {
+  /**
+   * ⚠ Takes the organization's billing decision lock in `tx`, BEFORE the
+   * write reads the row: an approval, a void or a cancel for the same
+   * organization then waits for the adjustment to commit (or the adjustment
+   * for it), so neither writes over a row the other read stale. The write
+   * reads its row again once this returns.
+   */
+  lock(organizationId: string, tx: PermissionsTransaction): Promise<void>;
   subscriptionAdjusted(input: SubscriptionAdjustment, tx: PermissionsTransaction): Promise<void>;
 }
 

@@ -935,6 +935,16 @@ export class PlatformBillingWriteService {
   }
 
   /**
+   * Billing's decision lock for `organizationId`, taken in another module's
+   * transaction (the admin screens' subscription writes, D5) BEFORE it reads
+   * the subscription, so an approval, a void or a cancel for the same
+   * organization never writes beside it.
+   */
+  async lockForAdjustment(organizationId: string, tx: PlatformBillingTransaction): Promise<void> {
+    await this.lockOrganization(tx, organizationId);
+  }
+
+  /**
    * A subscription written by hand on the admin screens (D5), recorded in the
    * organization's history: an approved request of kind `adjustment`,
    * decided by the admin, with the reason as its decision and no bill, no
