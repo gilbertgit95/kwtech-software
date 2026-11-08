@@ -226,7 +226,7 @@ apart from "unknown".
 ### What happens when nobody says — defaults
 
 This module owns the *storage* and the *screen* for platform defaults, and no
-longer owns the list of them. `APP_DEFAULT_REGISTRY` is this module's own nine;
+longer owns the list of them. `APP_DEFAULT_REGISTRY` is this module's own twelve;
 `defaultRegistry` on the module options is the catalogue actually in force,
 composed by the app across every module through `module-kit`'s
 `DefaultContribution`. `module-chat` contributes two — the role a group's
@@ -234,9 +234,17 @@ creator gets and the role somebody added gets.
 
 **⚠ Both halves read the composed registry, and they have to.** `listDefaults`
 resolves it to build the screen and `setDefault` looks a key up in it to
-validate a write. A service left on its own nine while the app composed eleven
+validate a write. A service left on its own twelve while the app composed fourteen
 would show a control for a default and then refuse to save it, with the message
 "that is not a default this build has".
+
+**The trial (#112, PLATFORM-BILLING-PLAN D2).** `organization.trial_plan`
+and `organization.trial_days` (unset: `DEFAULT_TRIAL_DAYS`, 14) start a new
+organization on the trial plan instead of `organization.plan`, **once per
+founder account**: `perm_subscription.trialUserId` is unique over every row,
+ended ones included. A trial has no grace (access ends with it), and once it
+ends the fallback plan applies. An unset, missing or archived trial plan gives
+no trial, never a refused organization. Billing reads a trial row as unpaid.
 
 Three things follow from a default that another module declared:
 
@@ -314,6 +322,12 @@ levels participate at all**:
   workspace-level subscription is written (workspaces use the organization's
   plan). The #105 migration folded existing workspace rows into the
   organization, keeping the plan that covers all the others.
+- **An archive tells billing** (#112, D12b): `planArchiveHookProvider` binds
+  `PERMISSIONS_PLAN_ARCHIVE_HOOK`, called inside `setPlanArchived`'s
+  transaction when the archived flag actually changes. Billing closes the
+  pending requests that name the plan and credits the paid days lost; a
+  throw (a payment still waiting on an approver) refuses the archive and
+  rolls it back. Unbound, nobody is told.
 - **Billing's writes** on `PermissionsWriteService`: `renewSubscription` (the
   same row, moved forward), `changeSubscriptionPlan` (end the old row, start a
   new one), `startBilledSubscription` (subscribe, or restart after expiry,

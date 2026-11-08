@@ -953,6 +953,8 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         endedAt?: null;
         /** The organization's ONE live organization-wide row (#105). */
         liveOrganizationId?: string;
+        /** A trial already given to this account, on any row (D2). */
+        trialUserId?: string;
       };
       select: {
         id: true;
@@ -987,6 +989,8 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
          * row is a P2002, not a second plan quietly adding up (#105).
          */
         liveOrganizationId: string | null;
+        /** The founder account a trial row was given for (unique: once per account, D2). */
+        trialUserId?: string | null;
       };
       select: { id: true };
     }): Promise<{ id: string }>;

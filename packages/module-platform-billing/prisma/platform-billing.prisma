@@ -257,11 +257,16 @@ model PlatformBillingCredit {
   /// Centavos, signed.
   amount Int
   /// `overpayment`, `change_credit`, `credit_used`, `owed_cleared`,
-  /// `approval_lag`, `closed_as_credit`, `archive`, `void_reversal`, `adjustment`.
+  /// `approval_lag`, `closed_as_credit`, `archive`, `archive_reversal`,
+  /// `void_reversal`, `adjustment`.
   kind      String
   requestId String?
   billId    String?
   receiptId String?
+  /// The `perm_subscription` row an archive credit is for (a bare id, PLAN
+  /// §9): what makes the archive credit ONCE per row, and what bringing the
+  /// plan back reverses.
+  subscriptionId String?
   note      String?
   createdById String?
   createdAt DateTime @default(now())
@@ -269,6 +274,7 @@ model PlatformBillingCredit {
   @@index([organizationId, createdAt])
   /// A void reverses every entry its receipt made.
   @@index([receiptId])
+  @@index([subscriptionId])
   @@map("platform_billing_credit")
 }
 

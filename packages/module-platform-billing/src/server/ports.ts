@@ -15,6 +15,12 @@ export interface BillingSubscriptionRow {
   currentPeriodEnd: Date | null;
   billingDay: number | null;
   accessUntil: Date | null;
+  /**
+   * A trial (D2): the days were free. Billing reads it as UNPAID, so the owner
+   * subscribes (the trial row ends) rather than renewing a month nobody paid,
+   * and a plan change never credits trial days back.
+   */
+  trial: boolean;
 }
 
 /** A period as billing writes it: instants at the start of platform days. */
@@ -37,6 +43,15 @@ export interface BillingPeriodWrite {
  * plan that never applied.
  */
 export interface PlatformBillingSubscriptions {
+  /**
+   * Every live organization-wide row on `planKey`, with its organization:
+   * whom an archive of the plan owes credit (D12b). Read inside `tx`, the
+   * archive's own transaction.
+   */
+  liveOnPlan(
+    planKey: string,
+    tx: PlatformBillingTransaction,
+  ): Promise<ReadonlyArray<BillingSubscriptionRow & { organizationId: string }>>;
   /** The live organization-wide row, or null (no row holds the organization's slot). */
   live(organizationId: string, tx?: PlatformBillingTransaction): Promise<BillingSubscriptionRow | null>;
   /** The same row, its period and access moved forward (a renewal before access ended). */

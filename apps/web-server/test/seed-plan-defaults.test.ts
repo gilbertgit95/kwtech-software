@@ -31,15 +31,17 @@ function fakeSeedPrisma(db: { defaults: { key: string; value: string | null }[];
 describe('seedPlanDefaults', () => {
   const log = () => {};
 
-  it('skips both on a database with no plans yet, and sets them once the plans exist', async () => {
+  it('skips them on a database with no plans yet, and sets them once the plans exist', async () => {
     const db = { defaults: [] as { key: string; value: string | null }[], plans: [] as string[] };
     expect(await seedPlanDefaults({ prisma: fakeSeedPrisma(db), log })).toBe(0);
     db.plans.push('free', 'starter');
-    expect(await seedPlanDefaults({ prisma: fakeSeedPrisma(db), log })).toBe(2);
+    expect(await seedPlanDefaults({ prisma: fakeSeedPrisma(db), log })).toBe(3);
     expect(db.defaults).toEqual(
       expect.arrayContaining([
         { key: APP_DEFAULT.organizationPlan, value: 'free' },
         { key: APP_DEFAULT.organizationFallbackPlan, value: 'free' },
+        // One trial per founder account, of the tier above Free (D2).
+        { key: APP_DEFAULT.organizationTrialPlan, value: 'starter' },
       ]),
     );
   });

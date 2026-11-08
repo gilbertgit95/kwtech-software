@@ -1,12 +1,13 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 to 3b and 5a done, phases 4a and 4b-1 done (2026-11-08).** Phase 1
+Status: **phases 1 to 3b and 5a done, phases 4a, 4b-1 and 4b-2 done (2026-11-08).** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
 and the API for requests, payment details, approvals and rejections, settings
 and prices, composed into the API; 4b-1 (#110) the voids, closing as credit
-and cancel; 4b-2 (archives, the audited adjustments, the trial) follows. The work is tracked by
+and cancel; 4b-2 (#112) plan archives and the trial; 4b-3 (the audited
+adjustments) follows. The work is tracked by
 issue #88 and its sub-issues #89 to #98; the plans it bills for were settled
 in #89 (PLAN §13, 2026-11-07). Every decision below is the operator's, or
 proposed in #88 and marked as such (§9); the questions still open are in §11 and
@@ -172,9 +173,11 @@ Rules around it:
   still finds that credit.
   **Archiving first closes every pending request that names the plan**
   (a renewal of it, or a change to or from it), in the same step and before
-  the archive credit is worked out: one with payment received is closed as
-  credit (above), one without is withdrawn by the system with the reason
-  `plan_archived`. So no payment is lost, no pending request blocks the
+  the archive credit is worked out: one without payment is withdrawn by the
+  system with the reason `plan_archived`. **As built (#112), one with payment
+  details refuses the archive** until an approver rejects it or closes it as
+  credit: the system never saw the money, and closing it as credit unseen
+  would turn typed-in details into credit. So no payment is lost, no pending request blocks the
   replacement, and no quote applies the old plan's unused value a second
   time after the archive credit has.
 - **Cancel:** ends at the period's end, with no credit. It applies at once
@@ -348,7 +351,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | # | Question | Decision |
 |---|---|---|
 | D1 | Build before a payment provider? | **Yes, manual payment first.** Reverses §12.40: payment outside the app is how these customers pay today, and a provider later only replaces who confirms a payment |
-| D2 | New organizations | **Free, plus one trial of Basic for 14 days, once per owner account.** The trial expires like any subscription, back to Free. Repeating it with a new sign-up is a known risk (PLAN §12.130) |
+| D2 | New organizations | **Free, plus one trial of Basic for 14 days, once per owner account.** The trial expires like any subscription, back to Free. Repeating it with a new sign-up is a known risk (PLAN §12.130). Built (#112) as the `organization.trial_plan` and `organization.trial_days` defaults, seeded to Starter (the tier above Free, #89), once per founder account by a unique `perm_subscription.trialUserId`, with no grace |
 | D3 | Existing workspace-level subscriptions | **Fold, then end, and no workspace loses access.** For each organization with live workspace rows, the migration looks, among the rows that **entitle now** (`active`, plan not archived, period not over; the rest are ended as history and never chosen), for one plan that **covers all the others**: every feature of each, and every cap at least as large. If it is a workspace row's plan, a NEW organization-wide row is written with that plan and the latest period end, and the organization's old row, if any, is ended; if it is the organization's own, that row stays. **If no plan covers the others** (plans are not always nested), the migration does not guess: it skips that organization, leaves its rows as they are, and lists it for an operator. The operator makes a private plan holding the union on `/admin/plans` (as a Custom deal is), **assigns it to the organization as its organization-wide subscription by a manual adjustment (D5)**, with the reason "fold of workspace subscriptions" and the latest period end, and runs the step again. That row now covers the others, so the step ends the workspace rows. Every workspace row is then ended and kept as history, its target unchanged (the write service keeps a subscription's target immutable, so past entitlement still reads true). The organization's other workspaces may gain access by this; none loses any. Owners are told what changed and until when |
 | D4 | Two active subscriptions | **Impossible**, by the partial unique index and a check in the write service that names the conflict |
 | D5 | `/admin/subscriptions` write screens | **Kept, as audited manual adjustments that require a reason** |
@@ -377,7 +380,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests. **Done** 2026-11-07 |
 | P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; the expired reason; the fallback to Free; billing keys exempt; the release migration. **Done** 2026-11-07 |
 | P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (`liveOrganizationId`), billing's write methods. **Done** 2026-11-07 |
-| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); 4b-2: archives, adjustments, the trial |
+| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); **4b-2 done** 2026-11-08 (#112: archives, the trial); 4b-3: the audited adjustments |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
 | P5b | #95 | P4, P5a | The daily check and every notification |
 | P6 | #96 | P4 (P5b) | The organization's Billing page |

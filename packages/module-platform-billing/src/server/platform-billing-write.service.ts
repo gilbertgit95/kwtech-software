@@ -1,6 +1,7 @@
 import { isValidTimeZone } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { accessWindow, isOnTime, planHold, planRenewal } from '../domain/access.js';
+import { archiveCreditNote, archiveReversalNote, planArchiveCredit } from '../domain/archives.js';
 import { addDays, type DayKey, isDayKey, platformDay, platformDayStart } from '../domain/days.js';
 import { type BillSnapshot, billSnapshot, type ReceiptSnapshot, readBillSnapshot } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
@@ -9,7 +10,7 @@ import { type Period, periodFrom } from '../domain/periods.js';
 import { chargesAccessUsed, isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import { approvalLagCredit } from '../domain/quotes.js';
 import { checkApproval, checkNewRequest, checkVoid, nextState, type RequestKind } from '../domain/requests.js';
-import { documentNumber, requestStanding } from '../domain/standing.js';
+import { billingStanding, documentNumber, hasAnyPrice, requestStanding } from '../domain/standing.js';
 import {
   type AppliedHow,
   planVoid,
@@ -33,6 +34,7 @@ import {
   type BillingContext,
   PLATFORM_BILLING_SETTINGS_ID,
   PlatformBillingService,
+  subscriptionDays,
 } from './platform-billing.service.js';
 import {
   PLATFORM_BILLING_PEOPLE,
@@ -73,6 +75,14 @@ export interface SettingsInput {
   issuerDetails?: string | null | undefined;
   paymentAccounts?: ReadonlyArray<{ method: string; label: string; details: string }> | null | undefined;
 }
+
+/**
+ * The most pending requests one archive closes. A plan is archived by hand,
+ * rarely, and an organization has at most one pending request; past this the
+ * archive would be one transaction holding thousands of rows, and is better
+ * split by stopping sales first (`isPublic`).
+ */
+const ARCHIVE_SWEEP_MAX = 5000;
 
 /** The longest free text a person types into billing (a note, a reason, a reference). */
 export const PLATFORM_BILLING_TEXT_MAX = 500;
@@ -806,6 +816,84 @@ export class PlatformBillingWriteService {
     });
   }
 
+  /**
+   * A plan was archived, or brought back (D12b). Told by `module-permissions`
+   * INSIDE the archive's own transaction (`tx`, through the app's hook), so
+   * the archive and everything billing does about it commit together, and a
+   * refusal here leaves the plan as it was.
+   *
+   * Archiving, in this order (plan §4):
+   * 1. **Every pending request naming the plan is closed first** (a renewal
+   *    of it, any request for it, a change away from it), so none blocks the
+   *    replacement and no quote applies the plan's unused value again after
+   *    the archive credit has. One without payment is withdrawn by the system
+   *    (`plan_archived`). ⚠ One WITH payment details refuses the archive
+   *    (`archive_pending_payments`): only an approver confirms a payment was
+   *    received, and closing it as credit unseen would turn typed-in details
+   *    into money. The plan said "closed as credit"; this is stricter.
+   * 2. **Every organization on the plan is credited its paid days lost**,
+   *    from the archive day to its period end, and a month paid ahead, once
+   *    per subscription row (`planArchiveCredit`), with the sentence on the
+   *    ledger.
+   *
+   * Bringing a plan back gives its access back, so the credit is taken back
+   * from every row still on the plan. An organization that already moved to
+   * another plan keeps its credit: it lost the days.
+   */
+  async planArchiveChanged(
+    planKey: string,
+    archived: boolean,
+    now: Date,
+    tx: PlatformBillingTransaction,
+  ): Promise<void> {
+    const settings = await this.reads.settings(tx);
+    const today = platformDay(now, settings.timeZone);
+    const label = (await this.reads.plans()).get(planKey)?.label ?? planKey;
+    const named = archived ? await this.pendingNaming(tx, planKey) : [];
+    const rows = await this.subscriptions.liveOnPlan(planKey, tx);
+
+    // ⚠ Every organization's lock, in ONE order, before anything is read or
+    // written: two archives at once then queue instead of deadlocking.
+    const organizations = [...new Set([...named, ...rows].map((one) => one.organizationId))].sort();
+    for (const organizationId of organizations) await this.lockOrganization(tx, organizationId);
+
+    if (named.length > 0) {
+      const paid: string[] = [];
+      for (const request of named) {
+        const latest = await tx.platformBillingPayment.findFirst({
+          where: { requestId: request.id },
+          orderBy: { version: 'desc' },
+        });
+        if (latest && latest.amount > 0) paid.push(request.id);
+      }
+      // Refused before anything is written: the whole archive rolls back with it.
+      if (paid.length > 0) throw billingRefusal('archive_pending_payments', { requestIds: paid });
+      for (const request of named) await this.withdrawForArchive(tx, request, now);
+    }
+
+    const prices = await this.reads.prices(tx);
+    const priced = hasAnyPrice(prices, planKey);
+    // Sequential: one transaction, and the ledger reads in the order it was written.
+    for (const row of rows) {
+      const entries = await tx.platformBillingCredit.findMany({
+        where: { subscriptionId: row.subscriptionId, kind: { in: ['archive', 'archive_reversal'] } },
+        orderBy: { createdAt: 'asc' },
+      });
+      const standingCredit = entries.reduce((sum, entry) => sum + entry.amount, 0);
+      if (!archived) {
+        if (standingCredit <= 0) continue;
+        await this.archiveEntry(tx, row, -standingCredit, 'archive_reversal', archiveReversalNote(label, today), now);
+        continue;
+      }
+      // Once per row: an archive repeated after a restore credits again only what the restore took back.
+      if (standingCredit > 0) continue;
+      const standing = billingStanding(subscriptionDays(row, settings.timeZone), today, settings.graceDays, priced);
+      const credit = planArchiveCredit(standing, prices, planKey, today);
+      if (!credit) continue;
+      await this.archiveEntry(tx, row, credit.amount, 'archive', archiveCreditNote(label, today, credit), now);
+    }
+  }
+
   /** The platform's settings. ⚠ Currency and time zone are locked once a bill exists (D16). */
   async setSettings(actorId: string, input: SettingsInput): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -917,7 +1005,7 @@ export class PlatformBillingWriteService {
     tx: PlatformBillingTransaction,
     request: RequestRow,
     now: Date,
-    actorId: string,
+    actorId: string | null,
     reason: string,
   ): Promise<void> {
     if (request.holdDays <= 0 || !request.accessUntilBeforeHold) return;
@@ -927,6 +1015,66 @@ export class PlatformBillingWriteService {
     );
     await this.event(tx, request, now, actorId, 'hold_ended', reason, {
       accessUntil: request.accessUntilBeforeHold.toISOString(),
+    });
+  }
+
+  /**
+   * The pending requests an archive of `planKey` closes: any request for the
+   * plan, and a change away from it (its quote credits the plan's unused days,
+   * which the archive credit now pays). A subscribe or replacement FROM the
+   * plan is left alone: it prices nothing of the old plan.
+   */
+  private async pendingNaming(tx: PlatformBillingTransaction, planKey: string): Promise<RequestRow[]> {
+    const page = { orderBy: [{ requestedAt: 'asc' as const }, { id: 'asc' as const }], take: ARCHIVE_SWEEP_MAX };
+    const [forPlan, awayFrom] = await Promise.all([
+      tx.platformBillingRequest.findMany({ where: { state: 'pending', planKey }, ...page }),
+      tx.platformBillingRequest.findMany({
+        where: { state: 'pending', kind: 'change_plan', fromPlanKey: planKey },
+        ...page,
+      }),
+    ]);
+    const byId = new Map([...forPlan, ...awayFrom].map((request) => [request.id, request]));
+    return [...byId.values()];
+  }
+
+  /** A request the archive made pointless, withdrawn by the system: its bill cancelled, any hold given back. */
+  private async withdrawForArchive(tx: PlatformBillingTransaction, request: RequestRow, now: Date): Promise<void> {
+    const changed = await tx.platformBillingRequest.updateMany({
+      where: { id: request.id, state: 'pending' },
+      data: { state: 'withdrawn', pendingOrganizationId: null, decidedAt: now, decisionReason: 'plan_archived' },
+    });
+    if (changed.count === 0) return;
+    const bill = await tx.platformBillingBill.findFirst({
+      where: { requestId: request.id, status: { not: 'cancelled' } },
+      orderBy: { number: 'desc' },
+    });
+    if (bill) await this.cancelBill(tx, request, bill, 'plan_archived', now, null);
+    await this.releaseHold(tx, request, now, null, 'plan_archived');
+    await this.event(tx, request, now, null, 'withdrawn', 'plan_archived', { planKey: request.planKey });
+  }
+
+  /** One archive ledger line for a subscription row: the credit, or its reversal. Written by the system. */
+  private async archiveEntry(
+    tx: PlatformBillingTransaction,
+    row: { organizationId: string; subscriptionId: string },
+    amount: Centavos,
+    kind: 'archive' | 'archive_reversal',
+    note: string,
+    now: Date,
+  ): Promise<void> {
+    await tx.platformBillingCredit.create({
+      data: {
+        organizationId: row.organizationId,
+        amount,
+        kind,
+        requestId: null,
+        billId: null,
+        receiptId: null,
+        subscriptionId: row.subscriptionId,
+        note,
+        createdById: null,
+        createdAt: now,
+      },
     });
   }
 
@@ -1126,7 +1274,7 @@ export class PlatformBillingWriteService {
     bill: BillRow,
     reason: string,
     now: Date,
-    actorId: string,
+    actorId: string | null,
     data: Record<string, JsonValue> = {},
   ): Promise<void> {
     await tx.platformBillingBill.update({

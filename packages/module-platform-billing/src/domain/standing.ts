@@ -24,11 +24,13 @@ export interface SubscriptionDays {
   billingDay: number | null;
   /** Null: no end. */
   accessUntil: DayKey | null;
+  /** A trial (D2): free days, so nothing to renew, change or credit. */
+  trial?: boolean;
 }
 
 /** What billing knows about the organization's subscription today. */
 export interface BillingStanding {
-  /** A live row with a period end on a plan that has a price: there is something to renew or change. */
+  /** A live row with a period end on a plan that has a price, not a trial: there is something to renew or change. */
   hasPaidSubscription: boolean;
   /** The period the row stores: the CURRENT one, or one paid ahead. */
   rowPeriod: Period | null;
@@ -71,7 +73,8 @@ export function billingStanding(
   isPaidPlan: boolean,
 ): BillingStanding {
   const rowPeriod = row ? rowPeriodOf(row) : null;
-  if (!row || !rowPeriod || !isPaidPlan) {
+  // ⚠ A trial is on a priced plan but was never paid: it reads as no paid subscription (D2).
+  if (!row || !rowPeriod || !isPaidPlan || row.trial === true) {
     return { hasPaidSubscription: false, rowPeriod, currentPeriod: null, prepaid: false, window: null, standing: null };
   }
   const accessUntil = row.accessUntil ?? addDays(rowPeriod.end, graceDays);

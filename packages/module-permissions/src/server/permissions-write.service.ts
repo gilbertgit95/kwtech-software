@@ -9,6 +9,7 @@ import {
   type AppDefaultSpec,
   appDefaultRoleLevel,
   appDefaultSpec,
+  DEFAULT_TRIAL_DAYS,
   isValidDefaultFor,
 } from '../defaults.js';
 import type { CloneMode } from '../domain/feature-merge.js';
@@ -44,6 +45,7 @@ import {
   toSubscriptionStatus,
 } from '../types.js';
 import type { PermissionsModuleOptions } from './permissions.module.js';
+import { PERMISSIONS_PLAN_ARCHIVE_HOOK, type PermissionsPlanArchiveHook } from './permissions.plan-archive.js';
 import { NULL_PUBSUB, PERMISSIONS_EVENT, PERMISSIONS_PUBSUB, type PermissionsPubSub } from './permissions.pubsub.js';
 import {
   PERMISSIONS_PRISMA_WRITE,
@@ -161,6 +163,10 @@ export class PermissionsWriteService {
      * See NULL_PUBSUB.
      */
     @Optional() @Inject(PERMISSIONS_PUBSUB) private readonly pubsub?: PermissionsPubSub,
+    /** Who else is told of an archive, in its transaction. Unbound: nobody (see the port). */
+    @Optional()
+    @Inject(PERMISSIONS_PLAN_ARCHIVE_HOOK)
+    private readonly planArchiveHook?: PermissionsPlanArchiveHook,
   ) {}
 
   /**
@@ -287,7 +293,7 @@ export class PermissionsWriteService {
         await tx.permMembershipRole.create({ data: { membershipId: membership.id, roleId: founderRoleId } });
       }
 
-      await this.startDefaultSubscription(tx, organization.id);
+      await this.startDefaultSubscription(tx, organization.id, actor.subjectId);
 
       return { organizationId: organization.id, membershipId: membership.id };
     });
@@ -309,7 +315,12 @@ export class PermissionsWriteService {
    * No row is the clearer answer, and the Defaults screen shows the default as
    * unusable so somebody can fix it.
    */
-  private async startDefaultSubscription(tx: PermissionsTransaction, organizationId: string): Promise<void> {
+  private async startDefaultSubscription(
+    tx: PermissionsTransaction,
+    organizationId: string,
+    founderId: string,
+  ): Promise<void> {
+    if (await this.startTrial(tx, organizationId, founderId)) return;
     const planKey = await this.storedDefault(tx, APP_DEFAULT.organizationPlan);
     if (!planKey) return;
 
@@ -344,6 +355,61 @@ export class PermissionsWriteService {
       },
       select: { id: true },
     });
+  }
+
+  /**
+   * The new organization's trial (PLATFORM-BILLING-PLAN D2), when the
+   * platform offers one and the founder never had one. Returns whether it
+   * started, so the caller falls back to the usual default otherwise.
+   *
+   * - **Once per founder ACCOUNT**, by `trialUserId @unique` over every row,
+   *   ended ones included: founding a second organization does not buy a
+   *   second trial. A new sign-up does (PLAN §12.130).
+   * - **No grace:** access ends on the trial's last day. Grace is for a paid
+   *   period that lapses while its owner pays; a trial was never paid.
+   * - **Fails silent, as every default here does:** an unset, missing or
+   *   archived trial plan gives no trial, never a refused organization.
+   *
+   * ⚠ The pre-check is what keeps this silent. The unique index is the
+   * backstop for two organizations founded by one account at the same
+   * instant: the second then fails and can be retried (it gets no trial).
+   * Catching the violation instead is not possible here, since Postgres aborts
+   * the transaction it happened in.
+   */
+  private async startTrial(tx: PermissionsTransaction, organizationId: string, founderId: string): Promise<boolean> {
+    const planKey = await this.storedDefault(tx, APP_DEFAULT.organizationTrialPlan);
+    if (!planKey) return false;
+    const plan = await tx.permPlan.findFirst({
+      where: { key: planKey },
+      select: { key: true, label: true, isPublic: true, icon: true, archivedAt: true },
+    });
+    if (!plan || plan.archivedAt) return false;
+    const used = await tx.permSubscription.findFirst({
+      where: { trialUserId: founderId },
+      select: { id: true, organizationId: true, workspaceId: true, planKey: true, status: true, endedAt: true },
+    });
+    if (used) return false;
+
+    const days = Number((await this.storedDefault(tx, APP_DEFAULT.organizationTrialDays)) ?? DEFAULT_TRIAL_DAYS);
+    const length = Number.isInteger(days) && days >= 1 ? days : DEFAULT_TRIAL_DAYS;
+    const start = this.now();
+    const end = new Date(start.getTime() + length * 86_400_000);
+    await tx.permSubscription.create({
+      data: {
+        organizationId,
+        workspaceId: null,
+        planKey: plan.key,
+        status: 'active',
+        periodStart: start,
+        currentPeriodEnd: end,
+        // ⚠ The period end itself: a trial has no grace.
+        accessUntil: end,
+        liveOrganizationId: organizationId,
+        trialUserId: founderId,
+      },
+      select: { id: true },
+    });
+    return true;
   }
 
   /**
@@ -964,11 +1030,23 @@ export class PermissionsWriteService {
 
     const result = await db.$transaction(async (tx) => {
       const existing = await this.requirePlan(tx, planKey);
+      // Read before the write: what the archive CHANGES is what the hook hears about.
+      const wasArchived = Boolean(existing.archivedAt);
+      const at = this.now();
       await tx.permPlan.update({
         where: { key: existing.key },
-        data: { archivedAt: archived ? this.now() : null },
+        data: { archivedAt: archived ? at : null },
         select: { key: true },
       });
+      /*
+       * ⚠ In THIS transaction, and only when the state actually changes:
+       * billing credits the paid days the archive takes away, once (D12b), and
+       * may refuse the archive while a payment still waits on an approver. A
+       * repeated archive of an archived plan tells nobody twice.
+       */
+      if (wasArchived !== archived) {
+        await this.planArchiveHook?.planArchiveChanged({ planKey: existing.key, archived, at }, tx);
+      }
       return { planKey: existing.key, archived };
     });
 
