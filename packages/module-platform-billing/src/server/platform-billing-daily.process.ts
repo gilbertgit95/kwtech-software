@@ -103,8 +103,9 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     let budget = context.maxItems;
     try {
       const retried = await this.retryUnsent(notifier, context, budget);
-      result.handled += retried;
-      budget -= retried;
+      result.handled += retried.sent;
+      // Every ATTEMPT spends the budget, delivered or not: the limit is on work, not on luck.
+      budget -= retried.attempted;
     } catch (error) {
       // Reading the unsent rows failed: today's notices are still worth sending.
       this.logger.warn(`The billing notice retry failed: ${errorText(error)}`);
@@ -129,9 +130,9 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
          * first ones forever. Sequential: a few reads and at most two notices each.
          */
         try {
-          const handled = await this.checkOrganization(notifier, organization.organizationId, now, today, budget);
-          result.handled += handled;
-          budget -= handled;
+          const checked = await this.checkOrganization(notifier, organization.organizationId, now, today, budget);
+          result.handled += checked.sent;
+          budget -= checked.claimed;
         } catch (error) {
           // ⚠ One organization's failure must not silence the ones after it: the order is stable, so it would every run.
           this.logger.warn(`The billing check of one organization failed: ${errorText(error)}`);
@@ -157,7 +158,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     now: Date,
     today: DayKey,
     allowance: number,
-  ): Promise<number> {
+  ): Promise<{ claimed: number; sent: number }> {
     const billing = await this.reads.context(organizationId, now);
     const window = billing.standing.hasPaidSubscription ? billing.standing.window : null;
     const pending = billing.pending
@@ -182,9 +183,14 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       const row = await this.claim(organizationId, reminder, window?.periodEnd ?? null, { ...notice }, now);
       if (!row) continue;
       claimed += 1;
-      if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
+      try {
+        if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
+      } catch (error) {
+        // Its row stays unsent for the retry; the organization's other reminder still goes.
+        this.logger.warn(`A billing reminder (${reminder.kind}) could not be marked sent: ${errorText(error)}`);
+      }
     }
-    return sent;
+    return { claimed, sent };
   }
 
   /** One notice a day to billing approvers, when requests have waited more than a day. Counts, never names. */
@@ -259,8 +265,8 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     notifier: PlatformBillingNotifier,
     context: ProcessRunContext,
     allowance: number,
-  ): Promise<number> {
-    if (allowance <= 0) return 0;
+  ): Promise<{ attempted: number; sent: number }> {
+    if (allowance <= 0) return { attempted: 0, sent: 0 };
     const cutoff = new Date(context.now.getTime() - RETRY_WINDOW_MS);
     const stale = await this.prisma.platformBillingNotice.count({
       where: { sentAt: null, createdAt: { lte: cutoff } },
@@ -272,8 +278,10 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       take: Math.min(RETRY_BATCH, allowance),
     });
     let sent = 0;
+    let attempted = 0;
     for (const row of rows) {
       if (context.signal.aborted) break;
+      attempted += 1;
       const data = (typeof row.data === 'object' && row.data !== null ? row.data : {}) as Record<string, unknown>;
       const send =
         row.organizationId === PLATFORM_NOTICE_ORGANIZATION
@@ -291,7 +299,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
         this.logger.warn(`A billing notice (${row.kind}) could not be retried: ${errorText(error)}`);
       }
     }
-    return sent;
+    return { attempted, sent };
   }
 }
 

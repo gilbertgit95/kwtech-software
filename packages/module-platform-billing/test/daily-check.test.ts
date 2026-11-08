@@ -216,6 +216,18 @@ describe('the daily check (platform_billing.daily_check)', () => {
     expect(told(billing).sort()).toEqual(['no_payment_details', 'overdue']);
   });
 
+  it('counts a failed attempt against the budget too: the limit is on work, not on luck', async () => {
+    const billing = await onBasic();
+    giveSubscription(billing, 'org2', 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    billing.notifier.failing = true;
+    await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG], 1));
+    expect(billing.store().notices).toHaveLength(1);
+    // Still failing: the one retry spends the run's single item, so org2 is not claimed.
+    const result = await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG, 'org2'], 1));
+    expect(result.handled).toBe(0);
+    expect(billing.store().notices).toHaveLength(1);
+  });
+
   it('says nothing about paying to an organization that cancelled, and nothing to one on a trial', async () => {
     const billing = await onBasic();
     await billing.writes.cancel(ORG, OWNER, noonOn('2026-11-20'));
