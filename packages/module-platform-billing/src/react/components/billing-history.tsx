@@ -21,18 +21,30 @@ export function BillingHistory({
   history,
   currency,
   timeZone,
+  error,
+  onRetry,
   onLoadMore,
 }: {
   history: BillingHistoryPageView | null;
   currency: string;
   /** The billing time zone: every instant shows as its day there. */
   timeZone: string;
+  /** Why the history could not be read, with `onRetry` to read it again. */
+  error: string | null;
+  onRetry: () => void;
   onLoadMore: () => void;
 }) {
   const money = (amount: number) => formatMoney(amount, currency);
   return (
     <Section title="History">
-      {history === null ? (
+      {history === null && error ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-destructive">
+          <span>{error}</span>
+          <button type="button" className={buttonClass()} onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+      ) : history === null ? (
         <div className="h-24 animate-pulse rounded-md bg-muted" />
       ) : history.items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No requests yet.</p>

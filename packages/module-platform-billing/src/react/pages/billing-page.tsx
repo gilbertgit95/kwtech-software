@@ -237,6 +237,8 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
             history={state.history}
             currency={overview.currency}
             timeZone={overview.timeZone}
+            error={state.historyError}
+            onRetry={() => void state.reload()}
             onLoadMore={() => void state.loadMore()}
           />
 

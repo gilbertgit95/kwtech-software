@@ -11,6 +11,8 @@ import {
 export interface BillingState {
   overview: BillingOverviewView | null;
   history: BillingHistoryPageView | null;
+  /** Why the history could not be read; the rest of the page still works. */
+  historyError: string | null;
   error: string | null;
   /** Something the person did worked: said in a `role="status"` line. */
   notice: string | null;
@@ -34,6 +36,8 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
   const client = useMemo(() => options.client ?? createBillingClient(), [options.client]);
   const [overview, setOverview] = useState<BillingOverviewView | null>(null);
   const [history, setHistory] = useState<BillingHistoryPageView | null>(null);
+  /** The history's own failure: said in its section with a retry, never hiding the status and its buttons. */
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,39 +49,45 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    */
   const generation = useRef(0);
 
-  /** Reads the page again. Answers whether it worked, so an act that succeeded is never reported as failed. */
-  const reload = useCallback(async (): Promise<boolean> => {
-    try {
-      const [nextOverview, nextHistory] = await Promise.all([
+  /**
+   * Reads the overview and the first page of the history, EACH ON ITS OWN:
+   * a history that cannot be read never hides the status and the buttons
+   * that renew. Answers whether the overview was read, so an act that
+   * succeeded is never reported as failed.
+   */
+  const readAll = useCallback(
+    async (isCancelled: () => boolean = () => false): Promise<boolean> => {
+      const [nextOverview, nextHistory] = await Promise.allSettled([
         client.overview(organizationId),
         client.history(organizationId, null),
       ]);
-      generation.current += 1;
-      setOverview(nextOverview);
-      setHistory(nextHistory);
-      return true;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load billing.');
+      if (isCancelled()) return false;
+      if (nextHistory.status === 'fulfilled') {
+        generation.current += 1;
+        setHistory(nextHistory.value);
+        setHistoryError(null);
+      } else {
+        setHistoryError(sentence(nextHistory.reason, 'Could not load the history.'));
+      }
+      if (nextOverview.status === 'fulfilled') {
+        setOverview(nextOverview.value);
+        return true;
+      }
+      setError(sentence(nextOverview.reason, 'Could not load billing.'));
       return false;
-    }
-  }, [client, organizationId]);
+    },
+    [client, organizationId],
+  );
+
+  const reload = useCallback(() => readAll(), [readAll]);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([client.overview(organizationId), client.history(organizationId, null)])
-      .then(([nextOverview, nextHistory]) => {
-        if (cancelled) return;
-        generation.current += 1;
-        setOverview(nextOverview);
-        setHistory(nextHistory);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load billing.');
-      });
+    void readAll(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [client, organizationId]);
+  }, [readAll]);
 
   const run = useCallback(
     async (action: (client: BillingClient) => Promise<unknown>, done?: string) => {
@@ -139,6 +149,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
   return {
     overview,
     history,
+    historyError,
     error,
     notice,
     busy,
@@ -148,4 +159,9 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     dismissError: () => setError(null),
     client,
   };
+}
+
+/** A failure as the sentence to show. */
+function sentence(cause: unknown, fallback: string): string {
+  return cause instanceof Error ? cause.message : fallback;
 }

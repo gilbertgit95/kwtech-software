@@ -40,7 +40,9 @@ export function PlanRequest({
   const groupId = useId();
   const choices = planChoices(overview.plans, mode);
   const [planKey, setPlanKey] = useState<string | null>(mode === 'renew' ? null : (choices[0]?.key ?? null));
-  const [preview, setPreview] = useState<BillingPreviewView | null>(null);
+  const [latestPreview, setPreview] = useState<BillingPreviewView | null>(null);
+  // ⚠ Shown, and pressable, only for the selection it priced: a quote from the plan clicked before never stands for this one.
+  const preview = latestPreview?.kind === mode && latestPreview.planKey === planKey ? latestPreview : null;
   const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
