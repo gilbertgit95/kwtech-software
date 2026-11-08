@@ -1497,6 +1497,7 @@ describe('checkLimitForActor — a refused plan cap names the plan that raises i
       limits: [{ limitKey: LIMIT.organizationMembers, value: 10 }],
     },
   ];
+  /** A service whose organization is on Basic (3 members), with Pro (10) in the catalogue. */
   const onBasic = () =>
     service({
       membership: membership(),

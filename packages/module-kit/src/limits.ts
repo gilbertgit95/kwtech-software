@@ -119,6 +119,7 @@ export interface LimitNoun {
   many: string;
 }
 
+/** A count with its noun, singular for one: "1 branch", "5,000 items for sale". */
 function counted(value: number, noun: LimitNoun): string {
   return `${value.toLocaleString('en-US')} ${value === 1 ? noun.one : noun.many}`;
 }
@@ -147,6 +148,7 @@ export function limitReachedText(decision: Pick<LimitDecision, 'limit' | 'raise'
     : `${base} This is the most any plan allows. Contact us for a Custom plan.`;
 }
 
+/** The plan that raises the cap, as its own sentence: "Pro allows 5." or "Pro has no limit." */
 function nextSentence(next: NonNullable<LimitRaise['next']>): string {
   return next.limit === null
     ? `${next.label} has no limit.`

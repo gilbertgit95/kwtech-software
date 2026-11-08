@@ -13,6 +13,7 @@ const spec: LimitSpec = {
   required: true,
   defaultValue: 1,
 };
+/** A plan of the catalogue: public and on sale unless `over` says otherwise; `cap` undefined sets no number. */
 const offer = (
   key: string,
   label: string,
