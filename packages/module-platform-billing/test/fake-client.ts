@@ -41,6 +41,8 @@ interface Store {
   settings: SettingsRow | null;
   counters: CounterRow[];
   events: EventRow[];
+  /** How many times each organization's decision lock was taken. */
+  locks: Record<string, number>;
   /** The organization's live subscription, as permissions would hold it. */
   subscriptions: Map<string, BillingSubscriptionRow>;
   /** Every subscription write, in order: what an approval applied. */
@@ -59,6 +61,7 @@ function emptyStore(): Store {
     settings: null,
     counters: [],
     events: [],
+    locks: {},
     subscriptions: new Map(),
     subscriptionWrites: [],
   };
@@ -110,7 +113,11 @@ function delegates(get: () => Store): PlatformBillingTransaction {
     platformBillingRequest: {
       async findFirst({ where, orderBy }) {
         const rows = get().requests.filter((row) => matches(row, where));
-        if (orderBy?.requestedAt === 'desc') rows.reverse();
+        if (orderBy && 'requestedAt' in orderBy && orderBy.requestedAt === 'desc') rows.reverse();
+        if (orderBy && 'decidedAt' in orderBy) {
+          const at = (row: RequestRow) => row.decidedAt?.getTime() ?? 0;
+          rows.sort((a, b) => (orderBy.decidedAt === 'desc' ? at(b) - at(a) : at(a) - at(b)));
+        }
         return rows[0] ? { ...rows[0] } : null;
       },
       async findMany({ where, orderBy, take, cursor }) {
@@ -143,6 +150,12 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           billingDay: null,
           accessUntil: null,
           subscriptionId: null,
+          applied: null,
+          subscriptionBefore: null,
+          restoredSubscriptionId: null,
+          voidedById: null,
+          voidedAt: null,
+          voidReason: null,
           updatedAt: data.requestedAt,
           ...data,
         };
@@ -225,6 +238,18 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           .receipts.filter((row) => matches(row, where))
           .map((row) => structuredClone(row));
       },
+      async findFirst({ where, orderBy }) {
+        const rows = get()
+          .receipts.filter((row) => matches(row, where))
+          .sort((a, b) => (orderBy.number === 'desc' ? b.number - a.number : a.number - b.number));
+        return rows[0] ? structuredClone(rows[0]) : null;
+      },
+      async update({ where, data }) {
+        const row = get().receipts.find((one) => one.id === where.id);
+        if (!row) throw new Error('No such receipt');
+        Object.assign(row, data);
+        return structuredClone(row);
+      },
       async create({ data }) {
         const store = get();
         if (store.receipts.some((row) => row.number === data.number)) throw uniqueViolation();
@@ -244,6 +269,11 @@ function delegates(get: () => Store): PlatformBillingTransaction {
       async aggregate({ where }) {
         const rows = get().credits.filter((row) => row.organizationId === where.organizationId);
         return { _sum: { amount: rows.length ? rows.reduce((sum, row) => sum + row.amount, 0) : null } };
+      },
+      async findMany({ where }) {
+        return get()
+          .credits.filter((row) => row.receiptId === where.receiptId)
+          .map((row) => ({ ...row }));
       },
       async create({ data }) {
         const row: CreditRow = { id: id('cr'), ...data };
@@ -290,6 +320,14 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         };
         store.settings = { ...base, ...(store.settings ? update : create) } as SettingsRow;
         return { ...store.settings };
+      },
+    },
+    platformBillingLock: {
+      // The fake runs one transaction at a time already; the lock is recorded so a test can see it taken.
+      async upsert({ where }) {
+        const store = get();
+        store.locks[where.organizationId] = (store.locks[where.organizationId] ?? 0) + 1;
+        return { organizationId: where.organizationId, version: store.locks[where.organizationId] ?? 0 };
       },
     },
     platformBillingCounter: {
@@ -465,6 +503,15 @@ export function fakeBilling(): FakeBilling {
     },
     async setAccessUntil(input) {
       return write(input.organizationId, { accessUntil: input.accessUntil }, 'access', false);
+    },
+    async end(input) {
+      const target = current();
+      const live = target.subscriptions.get(input.organizationId);
+      if (!live) throw new Error('This organization has no live subscription to end');
+      // Ended: the organization holds no live row, and permissions falls back to Free.
+      target.subscriptions.delete(input.organizationId);
+      target.subscriptionWrites.push({ how: 'end', organizationId: input.organizationId, accessUntil: new Date(0) });
+      return { subscriptionId: live.subscriptionId };
     },
   };
 

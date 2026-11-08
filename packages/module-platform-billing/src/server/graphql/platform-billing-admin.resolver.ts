@@ -31,8 +31,8 @@ import { renderRequest } from './render.js';
  *
  * ## Split by risk, one key each
  *
- * Reading the queue (`queue_read`), deciding (`approve`), and the settings and
- * prices (`manage_settings`) are separate keys, so a role can read without
+ * Reading the queue (`queue_read`), deciding (`approve`), voiding (`void`),
+ * and the settings and prices (`manage_settings`) are separate keys, so a role can read without
  * approving. Every operation is bound in `PLATFORM_BILLING_FEATURE_REGISTRY`.
  */
 @Resolver()
@@ -122,6 +122,35 @@ export class PlatformBillingAdminResolver {
     @Args('reason') reason: string,
   ): Promise<PlatformBillingRequestType> {
     await this.writes.reject(requestId, this.actor(gql.req), reason, new Date());
+    return this.render(requestId);
+  }
+
+  /**
+   * Keep a pending request's payment as credit, the plan unchanged (D12a):
+   * an expired plan-change quote, or a payment that cannot be applied.
+   * Bound to `approve`: it is the same judgement, "we were paid".
+   */
+  @Mutation(() => PlatformBillingRequestType, { name: 'closePlatformBillingRequestAsCredit' })
+  async closeAsCredit(
+    @Context() gql: { req?: unknown },
+    @Args('requestId') requestId: string,
+    @Args('payment') payment: PlatformBillingApprovalInputType,
+    @Args('reason', { type: () => String, nullable: true }) reason?: string | null,
+  ): Promise<PlatformBillingRequestType> {
+    await this.writes.closeAsCredit(requestId, this.actor(gql.req), payment, reason ?? null, new Date());
+    return this.render(requestId);
+  }
+
+  // ── voids (platform-billing:void) ─────────────────────────────────────────
+
+  /** Reverse a mistaken approval, newest first, with the reason (D9a). */
+  @Mutation(() => PlatformBillingRequestType, { name: 'voidPlatformBillingRequest' })
+  async void(
+    @Context() gql: { req?: unknown },
+    @Args('requestId') requestId: string,
+    @Args('reason') reason: string,
+  ): Promise<PlatformBillingRequestType> {
+    await this.writes.void(requestId, this.actor(gql.req), reason, new Date());
     return this.render(requestId);
   }
 

@@ -13,7 +13,7 @@ const REQUEST = `
   id organizationId kind state planKey fromPlanKey requestedById requestedAt
   detailsVersion coveredOn holdDays holdReason
   decidedById decidedAt decisionReason selfApproved approverIsMember
-  periodStart periodEnd accessUntil
+  periodStart periodEnd accessUntil voidedById voidedAt voidReason
   bill { ${BILL} }
   bills { ${BILL} }
   receipts { id number amount currency method kind reference issuedAt voidedAt voidReason }
@@ -70,6 +70,11 @@ export const PLATFORM_BILLING_OPERATIONS = {
       renewPlatformBilling(organizationId: $organizationId) { ${REQUEST} }
     }
   `,
+  cancel: /* GraphQL */ `
+    mutation CancelPlatformBilling($organizationId: String!) {
+      cancelPlatformBilling(organizationId: $organizationId) { ${REQUEST} }
+    }
+  `,
   enterPayment: /* GraphQL */ `
     mutation EnterPlatformBillingPayment($organizationId: String!, $requestId: String!, $payment: PlatformBillingPaymentInput!) {
       enterPlatformBillingPayment(organizationId: $organizationId, requestId: $requestId, payment: $payment) { ${REQUEST} }
@@ -113,6 +118,16 @@ export const PLATFORM_BILLING_OPERATIONS = {
   reject: /* GraphQL */ `
     mutation RejectPlatformBillingRequest($requestId: String!, $reason: String!) {
       rejectPlatformBillingRequest(requestId: $requestId, reason: $reason) { ${REQUEST} }
+    }
+  `,
+  closeAsCredit: /* GraphQL */ `
+    mutation ClosePlatformBillingRequestAsCredit($requestId: String!, $payment: PlatformBillingApprovalInput!, $reason: String) {
+      closePlatformBillingRequestAsCredit(requestId: $requestId, payment: $payment, reason: $reason) { ${REQUEST} }
+    }
+  `,
+  void: /* GraphQL */ `
+    mutation VoidPlatformBillingRequest($requestId: String!, $reason: String!) {
+      voidPlatformBillingRequest(requestId: $requestId, reason: $reason) { ${REQUEST} }
     }
   `,
   setSettings: /* GraphQL */ `

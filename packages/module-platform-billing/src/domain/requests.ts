@@ -46,6 +46,8 @@ export function nextState(
   action: RequestAction,
 ): { state: RequestState } | { refused: PlatformBillingRefusal } {
   if (!allowedActions(state).includes(action)) {
+    // A void asks for an approval; everything else for a request still waiting.
+    if (action === 'void') return { refused: 'not_approved' };
     return { refused: state === 'pending' ? 'invalid' : 'not_pending' };
   }
   switch (action) {
@@ -75,6 +77,12 @@ export interface RequestStanding {
   currentPlanArchived: boolean;
   renewalOpen: boolean;
   hasPendingRequest: boolean;
+  /**
+   * The owner cancelled: access ends at the period's end. Renewing is open at
+   * once (not only from 7 days before), because renewing is how a cancel is
+   * undone.
+   */
+  cancelled: boolean;
 }
 
 /** The plan a request names. */
@@ -105,12 +113,15 @@ export function checkNewRequest(input: NewRequestInput): PlatformBillingRefusal 
   if (input.standing.hasPendingRequest) return 'pending_request_exists';
   const plan = input.plan;
   switch (input.kind) {
-    case 'cancel':
-      return input.standing.hasPaidSubscription ? null : 'no_subscription';
+    case 'cancel': {
+      if (!input.standing.hasPaidSubscription) return 'no_subscription';
+      return input.standing.cancelled ? 'already_cancelled' : null;
+    }
     case 'renew': {
       if (!input.standing.hasPaidSubscription) return 'no_subscription';
       if (input.standing.currentPlanArchived) return 'plan_archived';
-      return input.standing.renewalOpen || input.standing.overdueOrExpired ? null : 'renewal_not_open';
+      const open = input.standing.renewalOpen || input.standing.overdueOrExpired || input.standing.cancelled;
+      return open ? null : 'renewal_not_open';
     }
     case 'replace': {
       if (!input.standing.currentPlanArchived) return 'invalid';
@@ -182,9 +193,14 @@ export interface ApprovedInPeriod {
 }
 
 /**
- * Whether `requestId` may be voided: only the latest approved request of its
- * period, so voiding an earlier plan change never puts a plan back over a
- * later paid one (plan §4). The rest wait, newest first.
+ * Whether `requestId` may be voided: only the latest approved request, so
+ * voiding an earlier plan change never puts a plan back over a later paid one
+ * (plan §4, D9a). The rest wait, newest first.
+ *
+ * The service passes the ORGANIZATION's approvals, not only the period's: a
+ * renewal into the next period rests on the approval before it just as a
+ * later plan change does, and undoing the earlier one under it would leave
+ * the later one extending a period that no longer exists.
  */
 export function checkVoid(
   requestId: string,

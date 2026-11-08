@@ -10,11 +10,12 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phase 4a (#93).** The pure core (#91), the schema, the services and
-the GraphQL API for requests, payment details, approvals and rejections, the
-settings and the prices; composed into the API. Still to come: voids, closing
-as credit, cancel, plan archives, the audited admin adjustments and the trial
-(4b), the daily check (#95), and the pages (#96, #97).
+**Status: phase 4b-1 (#110, part of #93).** The pure core (#91), the schema,
+the services and the GraphQL API for requests, payment details, approvals and
+rejections, voids, closing as credit, cancelling, the settings and the
+prices; composed into the API. Still to come: plan archives, the audited
+admin adjustments and the trial (4b-2), the daily check (#95), and the pages
+(#96, #97).
 
 ## In a Next.js app
 
@@ -35,7 +36,7 @@ platformBillingServerModule({
 
 | Port | What it answers | Unbound |
 |---|---|---|
-| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription, and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
+| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription, and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
 | `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps) and an organization's usage of the caps (D6) | the module refuses to boot |
 | `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15) | every approver is flagged as a member: the flag never blocks |
 
@@ -58,7 +59,7 @@ Organization scope (`PlatformBillingResolver`, declared on the class):
 | Operation | Key |
 |---|---|
 | `platformBillingOverview`, `platformBillingPreview`, `platformBillingHistory`, `platformBillingRequest` | `read` |
-| `requestPlatformBillingPlan` (subscribe, change plan, replace) | `change_plan` (the owner's, D8) |
+| `requestPlatformBillingPlan` (subscribe, change plan, replace), `cancelPlatformBilling` | `change_plan` (the owner's, D8) |
 | `renewPlatformBilling` | `renew` |
 | `enterPlatformBillingPayment`, `withdrawPlatformBillingRequest` | `enter_payment` |
 
@@ -67,7 +68,8 @@ App level (`PlatformBillingAdminResolver`, no scope):
 | Operation | Key |
 |---|---|
 | `platformBillingQueue`, `platformBillingReview`, `platformBillingSettings`, `platformBillingPrices` | `queue_read` |
-| `approvePlatformBillingRequest`, `rejectPlatformBillingRequest` | `approve` |
+| `approvePlatformBillingRequest`, `rejectPlatformBillingRequest`, `closePlatformBillingRequestAsCredit` | `approve` |
+| `voidPlatformBillingRequest` | `void` |
 | `setPlatformBillingSettings`, `setPlatformBillingPrice` | `manage_settings` |
 
 Every document is in `src/operations.ts`. A refusal is a
@@ -96,6 +98,33 @@ presses it.
   recorded, never blocked.
 - **Withdraw and reject** cancel the bill (it keeps its number) and give back
   any hold.
+- **Close as credit** (D12a) keeps a pending request's payment, whatever its
+  amount: a receipt for exactly that ("Payment received, held as credit"),
+  the credit added once, the bill CANCELLED (never paid on less than its
+  total), the plan unchanged, any hold given back. The owner can then request
+  again. Nothing received is `nothing_received`.
+- **A void** reverses a mistaken approval, with a reason. The approval stored
+  how it wrote the subscription (`applied`) and the live row just before
+  (`subscriptionBefore`), and the void puts exactly that back (`planVoid`):
+  a renewal's row on its old period, the old plan after a change, the started
+  row ended (the organization falls back to Free), a cancel's access end
+  restored. The receipt is stamped VOID, the bill goes back to unpaid and each
+  of the receipt's credit entries gets a `void_reversal` (the balance may go
+  negative). ⚠ **Newest first across the organization**
+  (`void_not_latest`), and never over a subscription changed since
+  (`subscription_changed`): the live row must be the approval's own (or the
+  row a void of the next approval restored in its place,
+  `restoredSubscriptionId`) and still carry the plan, period end and access
+  end the approval wrote. That also refuses approvals made before #110,
+  since they recorded nothing to reverse.
+- **Cancel** applies at once, decided by the owner (`cancel_needs_no_approval`):
+  no bill, no credit, access to the period's end without grace. Renewing
+  opens at once after a cancel and undoes it.
+- **One decision at a time per organization**: every write takes the
+  organization's row in `platform_billing_lock` first, so a void and a cancel
+  (or two approvals of different requests) never read the subscription at
+  the same moment. Proved on Postgres: the second transaction waits for the
+  first to commit.
 - **Numbering has no gaps**: `platform_billing_counter`, one row per sequence,
   incremented in the issuing transaction. A rollback gives the number back.
 - **Settings** (D16): the currency and the time zone are locked once any bill
@@ -148,6 +177,7 @@ presses it.
 | `domain/standing.ts` | `billingStanding` (the row's period, the current one, a month paid ahead, the access window), `requestStanding`, `priceOn` |
 | `domain/pricing.ts` | `priceRequest`: one request priced on a day, for the preview, the bill at submission and a downgrade's bill at approval |
 | `domain/documents.ts` | `BillSnapshot`, `ReceiptSnapshot`: what a document said when issued |
+| `domain/voids.ts` | `planVoid`: what reversing an approval writes to the subscription, from what it recorded (D9a) |
 
 Every refusal is a reason code with words (`refusalText(reason)`), shared by the
 server, the pages and the tests. Counts and dates (short by 100, remove 2
@@ -160,8 +190,8 @@ members) travel beside the code, never inside the sentence.
   they work without a plan (D13), so an expired organization can still renew.
 - **App keys, split by risk:** `platform-billing:queue_read`, `:approve`,
   `:void`, `:manage_settings` (the last three privileged).
-- **Bindings** for every operation above; `void` binds nothing until the void
-  arrives (4b). `test/surface-coverage.test.ts` fails on an unbound operation.
+- **Bindings** for every operation above. `test/surface-coverage.test.ts`
+  fails on an unbound operation.
 - **Role presets** (`PLATFORM_BILLING_ROLE_PRESETS`), data only, read by the
   app's `seed/app-roles.ts`: `platform-billing-owner` (every organization key,
   added to `organization-owner`), `platform-billing-admin` (read, renew, enter

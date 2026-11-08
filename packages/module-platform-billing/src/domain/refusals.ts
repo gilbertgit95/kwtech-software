@@ -30,6 +30,10 @@ export type PlatformBillingRefusal =
   | 'payment_short'
   | 'quote_expired'
   | 'void_not_latest'
+  | 'not_approved'
+  | 'subscription_changed'
+  | 'nothing_received'
+  | 'already_cancelled'
   | 'trial_used'
   | 'currency_locked'
   | 'time_zone_locked'
@@ -116,8 +120,25 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
     nextStep: 'Close it as credit if it was paid, so the organization can request it again.',
   },
   void_not_latest: {
-    message: 'A later request in the same period was approved after this one.',
+    message: 'A later request of this organization was approved after this one.',
     nextStep: 'Void the later request first.',
+  },
+  not_approved: {
+    message: 'Only an approved request can be voided.',
+    nextStep: 'If the request is still waiting, reject it with the reason instead.',
+  },
+  subscription_changed: {
+    message:
+      'The subscription is no longer the one this approval wrote, or the approval did not record what it replaced, so it cannot be reversed by itself.',
+    nextStep: 'Correct the subscription with an adjustment on the subscriptions page, giving the reason.',
+  },
+  nothing_received: {
+    message: 'Nothing was received for this request, so there is no payment to keep as credit.',
+    nextStep: 'Reject the request with the reason instead.',
+  },
+  already_cancelled: {
+    message: 'This subscription is already set to end at the close of its period.',
+    nextStep: 'Nothing more to do. To keep the plan after all, renew it.',
   },
   trial_used: {
     message: 'A free trial was already used by this account.',

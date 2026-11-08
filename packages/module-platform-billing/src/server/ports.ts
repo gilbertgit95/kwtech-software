@@ -51,7 +51,13 @@ export interface PlatformBillingSubscriptions {
     input: BillingPeriodWrite & { planKey: string },
     tx: PlatformBillingTransaction,
   ): Promise<{ subscriptionId: string }>;
-  /** Only the access end moved: a hold given or taken back. */
+  /**
+   * The live row ended, no new one started: a void of a subscribe, a
+   * replacement or a renewal after expiry. The organization falls back to
+   * Free (`organization.fallback_plan`), as an expired one does.
+   */
+  end(input: { organizationId: string }, tx: PlatformBillingTransaction): Promise<{ subscriptionId: string }>;
+  /** Only the access end moved: a hold given or taken back, a cancel, a cancel voided. */
   setAccessUntil(
     input: { organizationId: string; accessUntil: Date },
     tx: PlatformBillingTransaction,

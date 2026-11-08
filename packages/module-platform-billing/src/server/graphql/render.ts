@@ -67,6 +67,9 @@ export function renderRequest(detail: RequestDetail): PlatformBillingRequestType
     periodStart: request.periodStart ? dateColumnToDay(request.periodStart) : null,
     periodEnd: request.periodEnd ? dateColumnToDay(request.periodEnd) : null,
     accessUntil: request.accessUntil?.toISOString() ?? null,
+    voidedById: request.voidedById,
+    voidedAt: request.voidedAt?.toISOString() ?? null,
+    voidReason: request.voidReason,
     bill: bill ? renderBill(bill) : null,
     bills: detail.bills.map(renderBill),
     receipts: detail.receipts.map((row) => ({

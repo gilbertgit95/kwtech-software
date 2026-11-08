@@ -317,8 +317,9 @@ levels participate at all**:
 - **Billing's writes** on `PermissionsWriteService`: `renewSubscription` (the
   same row, moved forward), `changeSubscriptionPlan` (end the old row, start a
   new one), `startBilledSubscription` (subscribe, or restart after expiry,
-  ending the expired row that held the slot) and `setSubscriptionAccessUntil`
-  (a hold, a void). ⚠ They check no actor or key: billing authorised the act
+  ending the expired row that held the slot), `endBilledSubscription` (a void
+  of a row billing started: it ends, none starts, and the fallback plan
+  applies) and `setSubscriptionAccessUntil` (a hold, a cancel, a void). ⚠ They check no actor or key: billing authorised the act
   with its own app-level keys. Each takes billing's transaction. Never bind
   one to a GraphQL operation.
 

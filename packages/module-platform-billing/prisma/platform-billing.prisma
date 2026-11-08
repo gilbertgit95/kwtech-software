@@ -126,6 +126,26 @@ model PlatformBillingRequest {
   /// The `perm_subscription` row the approval wrote. A bare id (PLAN §9).
   subscriptionId String?
 
+  /// ⚠ WHAT A VOID REVERSES (D9a). How the approval wrote the subscription
+  /// (`renew` moved the same row on, `change` ended it and started another
+  /// plan, `start` began a new row, `cancel` cut access to the period end),
+  /// and the live row as it was just before (`SubscriptionBefore`: its id,
+  /// plan, period as days and access end), or null when there was none. Kept
+  /// rather than worked out at void time: by then the grace setting, the
+  /// prices and the plan may all have moved.
+  applied            String?
+  subscriptionBefore Json?
+  /// The row a void of this request STARTED, putting the previous plan back
+  /// (`restore_plan`). The earlier approval that wrote that plan recognises
+  /// it by this, so A → B → C can be voided newest first all the way down.
+  restoredSubscriptionId String?
+
+  /// Who voided an approval, when, and why: the approval's own `decided*`
+  /// fields stay as they were, so the history shows both acts.
+  voidedById String?
+  voidedAt   DateTime?
+  voidReason String?
+
   updatedAt DateTime @updatedAt
 
   payments PlatformBillingPayment[]
@@ -135,6 +155,8 @@ model PlatformBillingRequest {
 
   @@index([organizationId, requestedAt])
   @@index([state, requestedAt])
+  /// The organization's latest approval: what a void checks first (D9a).
+  @@index([organizationId, state, decidedAt])
   @@map("platform_billing_request")
 }
 
@@ -235,7 +257,7 @@ model PlatformBillingCredit {
   /// Centavos, signed.
   amount Int
   /// `overpayment`, `change_credit`, `credit_used`, `owed_cleared`,
-  /// `approval_lag`, `archive`, `void_reversal`, `adjustment`.
+  /// `approval_lag`, `closed_as_credit`, `archive`, `void_reversal`, `adjustment`.
   kind      String
   requestId String?
   billId    String?
@@ -245,6 +267,8 @@ model PlatformBillingCredit {
   createdAt DateTime @default(now())
 
   @@index([organizationId, createdAt])
+  /// A void reverses every entry its receipt made.
+  @@index([receiptId])
   @@map("platform_billing_credit")
 }
 
@@ -282,6 +306,21 @@ model PlatformBillingSettings {
   updatedAt   DateTime @updatedAt
 
   @@map("platform_billing_settings")
+}
+
+/// ⚠ ONE DECISION AT A TIME PER ORGANIZATION. Every billing write (a
+/// submission, payment details, an approval, a rejection, a close, a void, a
+/// cancel) upserts this row first, so its row lock holds the next decision
+/// for the same organization until the first commits. Without it, a void and
+/// a cancel could each read the subscription before the other wrote it, and
+/// the void restore an access end over the cancel. A request's own
+/// compare-and-set covers one request; this covers the organization.
+model PlatformBillingLock {
+  organizationId String @id
+  /// Bumped by every decision: the write that takes the lock.
+  version        Int    @default(0)
+
+  @@map("platform_billing_lock")
 }
 
 /// ⚠ NUMBERING WITHOUT GAPS: one row per sequence (`bill`, `receipt`), incremented

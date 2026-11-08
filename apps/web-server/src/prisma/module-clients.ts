@@ -555,6 +555,7 @@ export const platformBillingWritePrismaProvider: Provider = {
       platformBillingCredit: prisma.platformBillingCredit,
       platformBillingPrice: prisma.platformBillingPrice,
       platformBillingSettings: prisma.platformBillingSettings,
+      platformBillingLock: prisma.platformBillingLock,
       platformBillingCounter: prisma.platformBillingCounter,
       platformBillingEvent: prisma.platformBillingEvent,
     }),
