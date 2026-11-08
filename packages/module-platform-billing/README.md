@@ -182,8 +182,8 @@ members) travel beside the code, never inside the sentence.
   they work without a plan (D13), so an expired organization can still renew.
 - **App keys, split by risk:** `platform-billing:queue_read`, `:approve`,
   `:void`, `:manage_settings` (the last three privileged).
-- **Bindings** for every operation above; `void` binds nothing until the void
-  arrives (4b). `test/surface-coverage.test.ts` fails on an unbound operation.
+- **Bindings** for every operation above. `test/surface-coverage.test.ts`
+  fails on an unbound operation.
 - **Role presets** (`PLATFORM_BILLING_ROLE_PRESETS`), data only, read by the
   app's `seed/app-roles.ts`: `platform-billing-owner` (every organization key,
   added to `organization-owner`), `platform-billing-admin` (read, renew, enter

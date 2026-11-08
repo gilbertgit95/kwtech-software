@@ -120,12 +120,12 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
     nextStep: 'Close it as credit if it was paid, so the organization can request it again.',
   },
   void_not_latest: {
-    message: 'A later request in the same period was approved after this one.',
+    message: 'A later request of this organization was approved after this one.',
     nextStep: 'Void the later request first.',
   },
   not_approved: {
     message: 'Only an approved request can be voided.',
-    nextStep: 'A request still waiting is rejected or withdrawn instead.',
+    nextStep: 'If the request is still waiting, reject it with the reason instead.',
   },
   subscription_changed: {
     message:
