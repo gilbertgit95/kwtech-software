@@ -829,7 +829,7 @@ type Mutation {
   createRole(input: RoleDraftInput!): PermissionRoleDetail!
   createStockFromSource(organizationId: String!, picks: [StockSourcePickInput!]!, workspaceId: String!): StockOverview!
   createStudioLayout(input: CreateStudioLayoutInput!, organizationId: String!, workspaceId: String!): StudioLayout!
-  createSubscription(input: SubscriptionDraftInput!): PermissionSubscription!
+  createSubscription(input: SubscriptionDraftInput!, reason: String!): PermissionSubscription!
   createTask(boardId: String!, input: CreateTaskInput!, organizationId: String!, workspaceId: String!): Task!
   createTaskBoard(input: CreateTaskBoardInput!, organizationId: String!, workspaceId: String!): TaskBoard!
   createWorkspace(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
@@ -844,7 +844,7 @@ type Mutation {
   deleteTaskForever(organizationId: String!, taskId: String!, workspaceId: String!): Boolean!
   duplicateStudioLayout(layoutId: String!, name: String, organizationId: String!, workspaceId: String!): StudioLayout!
   editChatMessage(body: String!, messageId: String!): ChatMessage!
-  endSubscription(subscriptionId: String!): PermissionSubscription!
+  endSubscription(reason: String!, subscriptionId: String!): PermissionSubscription!
   enterPlatformBillingPayment(organizationId: String!, payment: PlatformBillingPaymentInput!, requestId: String!): PlatformBillingRequest!
   forgetMyDeviceDisplay(device: String!, layout: String!): DisplayPreferences!
   freeQueueWindow(organizationId: String!, windowId: String!, workspaceId: String!): Boolean!
@@ -1014,7 +1014,7 @@ type Mutation {
   updateQueueWindow(name: String, organizationId: String!, sortOrder: Int, windowId: String!, workspaceId: String!): QueueWindow!
   updateRole(input: RoleDraftInput!, roleId: String!): PermissionRoleDetail!
   updateStudioLayout(expectedVersion: Int!, input: UpdateStudioLayoutInput!, layoutId: String!, organizationId: String!, workspaceId: String!): StudioLayout!
-  updateSubscription(currentPeriodEnd: String!, status: String!, subscriptionId: String!): PermissionSubscription!
+  updateSubscription(currentPeriodEnd: String!, reason: String!, status: String!, subscriptionId: String!): PermissionSubscription!
   updateTask(expectedVersion: Int!, input: UpdateTaskInput!, organizationId: String!, taskId: String!, workspaceId: String!): Task!
   updateTaskBoard(boardId: String!, name: String!, organizationId: String!, workspaceId: String!): TaskBoard!
   updateTaskChecklistItem(done: Boolean, itemId: String!, organizationId: String!, taskId: String!, text: String, workspaceId: String!): Task!

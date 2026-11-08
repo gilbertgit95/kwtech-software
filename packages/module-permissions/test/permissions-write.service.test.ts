@@ -620,6 +620,9 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
   return { svc: new PermissionsWriteService(client, { ...options, ...moduleOptions }), client, writes, state };
 }
 
+/** Every hand-written subscription carries a reason (D5). */
+const WHY = 'test adjustment';
+
 const actor = (features: string[], limits: Record<string, number | null> = {}): PermissionContext => ({
   ...composeContext({
     subjectId: 'actor',
@@ -1298,6 +1301,76 @@ describe('subscriptions', () => {
     return context;
   };
 
+  describe('an adjustment needs its reason (D5)', () => {
+    const draft = {
+      organizationId: 'org1',
+      workspaceId: null,
+      planKey: 'team',
+      status: 'active',
+      currentPeriodEnd: '',
+    };
+
+    it('refuses a blank or overlong reason on every write, before writing', async () => {
+      const { svc, writes } = await seeded();
+      expect(await reason(svc.startSubscription(biller(), draft, '   '))).toBe('draft_invalid');
+      expect(await reason(svc.startSubscription(biller(), draft, 'x'.repeat(501)))).toBe('draft_invalid');
+      expect(writes.subscriptions).toEqual([]);
+      const { subscriptionId } = await svc.startSubscription(biller(), draft, WHY);
+      expect(
+        await reason(
+          svc.updateSubscription(biller(), subscriptionId, { status: 'active', currentPeriodEnd: '', reason: '' }),
+        ),
+      ).toBe('draft_invalid');
+      expect(await reason(svc.endSubscription(biller(), subscriptionId, ''))).toBe('draft_invalid');
+    });
+
+    it('tells the audit of each write, in its transaction, with the trimmed reason and the row after', async () => {
+      const { client } = await seeded();
+      const heard: Array<{ action: string; reason: string; subscriptionId: string; after: unknown }> = [];
+      const locks: string[] = [];
+      const audit = {
+        /** Records which organization's billing lock each write took. */
+        async lock(organizationId: string) {
+          locks.push(organizationId);
+        },
+        /** Records what each write told the audit. */
+        async subscriptionAdjusted(input: { action: string; reason: string; subscriptionId: string; after: unknown }) {
+          heard.push({
+            action: input.action,
+            reason: input.reason,
+            subscriptionId: input.subscriptionId,
+            after: input.after,
+          });
+        },
+      };
+      const svc = new PermissionsWriteService(client, {}, undefined, undefined, audit);
+      const { subscriptionId } = await svc.startSubscription(
+        biller(),
+        { ...draft, currentPeriodEnd: '2026-03-01' },
+        '  pilot discount  ',
+      );
+      await svc.updateSubscription(biller(), subscriptionId, {
+        status: 'active',
+        currentPeriodEnd: '2026-04-01',
+        reason: 'extended',
+      });
+      await svc.endSubscription(biller(), subscriptionId, 'left');
+      expect(heard.map((one) => [one.action, one.reason, one.subscriptionId])).toEqual([
+        ['start', 'pilot discount', subscriptionId],
+        ['update', 'extended', subscriptionId],
+        ['end', 'left', subscriptionId],
+      ]);
+      expect(heard[0]?.after).toMatchObject({
+        status: 'active',
+        currentPeriodEnd: new Date('2026-03-01T00:00:00.000Z'),
+      });
+      // Billing's lock for the organization, taken by each write before it read the row.
+      expect(locks).toEqual(['org1', 'org1', 'org1']);
+      // An end keeps its row, now canceled.
+      expect(heard[2]?.after).toMatchObject({ status: 'canceled' });
+    });
+  });
+
   it('refuses an actor holding nothing, before any write', async () => {
     const { svc, writes } = await seeded();
     const draft = {
@@ -1307,32 +1380,40 @@ describe('subscriptions', () => {
       status: 'active',
       currentPeriodEnd: '',
     };
-    expect(await reason(svc.startSubscription(actor([]), draft))).toBe('not_permitted');
+    expect(await reason(svc.startSubscription(actor([]), draft, WHY))).toBe('not_permitted');
     expect(writes.subscriptions).toEqual([]);
   });
 
   it('attaches a plan to an organization', async () => {
     const { svc, state } = await seeded();
-    await svc.startSubscription(biller(), {
-      organizationId: 'org1',
-      workspaceId: null,
-      planKey: 'team',
-      status: 'active',
-      currentPeriodEnd: '2026-03-01',
-    });
+    await svc.startSubscription(
+      biller(),
+      {
+        organizationId: 'org1',
+        workspaceId: null,
+        planKey: 'team',
+        status: 'active',
+        currentPeriodEnd: '2026-03-01',
+      },
+      WHY,
+    );
 
     expect(state.subscriptions[0]).toMatchObject({ organizationId: 'org1', workspaceId: null, status: 'active' });
   });
 
   it('⚠ writes accessUntil 7 grace days after the period end, or none for no end (#92)', async () => {
     const { svc, writes } = await seeded();
-    await svc.startSubscription(biller(), {
-      organizationId: 'org1',
-      workspaceId: null,
-      planKey: 'team',
-      status: 'active',
-      currentPeriodEnd: '2026-03-01',
-    });
+    await svc.startSubscription(
+      biller(),
+      {
+        organizationId: 'org1',
+        workspaceId: null,
+        planKey: 'team',
+        status: 'active',
+        currentPeriodEnd: '2026-03-01',
+      },
+      WHY,
+    );
     expect(writes.subscriptions[0]).toMatchObject({
       accessUntil: new Date((subscriptionPeriodEnd('2026-03-01')?.getTime() ?? 0) + 7 * 86_400_000),
     });
@@ -1348,13 +1429,17 @@ describe('subscriptions', () => {
     const { svc, writes } = await seeded();
     expect(
       await reason(
-        svc.startSubscription(biller(), {
-          organizationId: 'org1',
-          workspaceId: 'wsOther',
-          planKey: 'team',
-          status: 'active',
-          currentPeriodEnd: '',
-        }),
+        svc.startSubscription(
+          biller(),
+          {
+            organizationId: 'org1',
+            workspaceId: 'wsOther',
+            planKey: 'team',
+            status: 'active',
+            currentPeriodEnd: '',
+          },
+          WHY,
+        ),
       ),
     ).toBe('not_found');
     expect(writes.subscriptions).toEqual([]);
@@ -1366,13 +1451,17 @@ describe('subscriptions', () => {
 
     expect(
       await reason(
-        svc.startSubscription(biller(), {
-          organizationId: 'org1',
-          workspaceId: null,
-          planKey: 'team',
-          status: 'active',
-          currentPeriodEnd: '',
-        }),
+        svc.startSubscription(
+          biller(),
+          {
+            organizationId: 'org1',
+            workspaceId: null,
+            planKey: 'team',
+            status: 'active',
+            currentPeriodEnd: '',
+          },
+          WHY,
+        ),
       ),
     ).toBe('not_found');
   });
@@ -1395,9 +1484,9 @@ describe('subscriptions', () => {
       status: 'active',
       currentPeriodEnd: '',
     };
-    await svc.startSubscription(biller(), draft);
+    await svc.startSubscription(biller(), draft, WHY);
 
-    expect(await reason(svc.startSubscription(biller(), draft))).toBe('already_exists');
+    expect(await reason(svc.startSubscription(biller(), draft, WHY))).toBe('already_exists');
     expect(state.subscriptions).toHaveLength(1);
   });
 
@@ -1410,10 +1499,10 @@ describe('subscriptions', () => {
       status: 'active',
       currentPeriodEnd: '',
     };
-    const { subscriptionId } = await svc.startSubscription(biller(), draft);
+    const { subscriptionId } = await svc.startSubscription(biller(), draft, WHY);
 
-    await svc.endSubscription(biller(), subscriptionId);
-    await svc.startSubscription(biller(), draft);
+    await svc.endSubscription(biller(), subscriptionId, WHY);
+    await svc.startSubscription(biller(), draft, WHY);
 
     // TWO rows, not one reopened: the gap stays visible, which is what makes
     // past entitlement reconstructable.
@@ -1422,15 +1511,19 @@ describe('subscriptions', () => {
 
   it('ends by setting both endedAt and the status, never by deleting', async () => {
     const { svc, state } = await seeded();
-    const { subscriptionId } = await svc.startSubscription(biller(), {
-      organizationId: 'org1',
-      workspaceId: null,
-      planKey: 'team',
-      status: 'active',
-      currentPeriodEnd: '',
-    });
+    const { subscriptionId } = await svc.startSubscription(
+      biller(),
+      {
+        organizationId: 'org1',
+        workspaceId: null,
+        planKey: 'team',
+        status: 'active',
+        currentPeriodEnd: '',
+      },
+      WHY,
+    );
 
-    await svc.endSubscription(biller(), subscriptionId);
+    await svc.endSubscription(biller(), subscriptionId, WHY);
 
     // Both, because they answer different questions: WHEN it stopped being the
     // current answer, and WHY. A row saying `active` forever would show in
@@ -1441,33 +1534,47 @@ describe('subscriptions', () => {
 
   it('refuses to edit a subscription that has already ended', async () => {
     const { svc } = await seeded();
-    const { subscriptionId } = await svc.startSubscription(biller(), {
-      organizationId: 'org1',
-      workspaceId: null,
-      planKey: 'team',
-      status: 'active',
-      currentPeriodEnd: '',
-    });
-    await svc.endSubscription(biller(), subscriptionId);
+    const { subscriptionId } = await svc.startSubscription(
+      biller(),
+      {
+        organizationId: 'org1',
+        workspaceId: null,
+        planKey: 'team',
+        status: 'active',
+        currentPeriodEnd: '',
+      },
+      WHY,
+    );
+    await svc.endSubscription(biller(), subscriptionId, WHY);
 
     // A row with an endedAt that reads `active` in a list and entitles nothing
     // is the worst of both, and unexplainable afterwards.
     expect(
-      await reason(svc.updateSubscription(biller(), subscriptionId, { status: 'active', currentPeriodEnd: '' })),
+      await reason(
+        svc.updateSubscription(biller(), subscriptionId, { status: 'active', currentPeriodEnd: '', reason: WHY }),
+      ),
     ).toBe('not_found');
   });
 
   it('changes status and renewal date, and nothing else', async () => {
     const { svc, state } = await seeded();
-    const { subscriptionId } = await svc.startSubscription(biller(), {
-      organizationId: 'org1',
-      workspaceId: null,
-      planKey: 'team',
-      status: 'past_due',
-      currentPeriodEnd: '',
-    });
+    const { subscriptionId } = await svc.startSubscription(
+      biller(),
+      {
+        organizationId: 'org1',
+        workspaceId: null,
+        planKey: 'team',
+        status: 'past_due',
+        currentPeriodEnd: '',
+      },
+      WHY,
+    );
 
-    await svc.updateSubscription(biller(), subscriptionId, { status: 'active', currentPeriodEnd: '2026-03-01' });
+    await svc.updateSubscription(biller(), subscriptionId, {
+      status: 'active',
+      currentPeriodEnd: '2026-03-01',
+      reason: WHY,
+    });
 
     expect(state.subscriptions[0]).toMatchObject({ status: 'active', planKey: 'team', organizationId: 'org1' });
   });
@@ -2669,21 +2776,21 @@ describe('one live subscription per organization, and billing’s writes', () =>
 
   it('⚠ refuses a second live organization-wide subscription, on any plan, naming the first', async () => {
     const { svc } = await seeded();
-    await svc.startSubscription(biller(), draft);
-    expect(await reason(svc.startSubscription(biller(), { ...draft, planKey: 'bigger' }))).toBe('already_exists');
+    await svc.startSubscription(biller(), draft, WHY);
+    expect(await reason(svc.startSubscription(biller(), { ...draft, planKey: 'bigger' }, WHY))).toBe('already_exists');
   });
 
   it('refuses a new workspace-level subscription: workspaces use the organization’s plan (D3)', async () => {
     const { svc, writes } = await seeded();
-    expect(await reason(svc.startSubscription(biller(), { ...draft, workspaceId: 'ws1' }))).toBe('draft_invalid');
+    expect(await reason(svc.startSubscription(biller(), { ...draft, workspaceId: 'ws1' }, WHY))).toBe('draft_invalid');
     expect(writes.subscriptions).toEqual([]);
   });
 
   it('frees the live slot when a subscription ends', async () => {
     const { svc, state } = await seeded();
-    const { subscriptionId } = await svc.startSubscription(biller(), draft);
+    const { subscriptionId } = await svc.startSubscription(biller(), draft, WHY);
     expect(live(state)).toHaveLength(1);
-    await svc.endSubscription(biller(), subscriptionId);
+    await svc.endSubscription(biller(), subscriptionId, WHY);
     expect(live(state)).toEqual([]);
   });
 

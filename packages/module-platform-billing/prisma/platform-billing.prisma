@@ -32,6 +32,9 @@ enum PlatformBillingRequestKind {
   change_plan
   replace
   cancel
+  /// A subscription written by hand on the admin screens, with no payment (D5).
+  /// Recorded already decided, with the admin's reason; never voided.
+  adjustment
 }
 
 /// Where a request is (`RequestState`). Only `pending` moves.

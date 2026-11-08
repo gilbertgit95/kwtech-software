@@ -1,7 +1,8 @@
 'use client';
 
 import { ConfirmDialog } from '@kwtech/web-ui/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { ADJUSTMENT_REASON_MAX, checkAdjustmentReason } from '../../domain/subscription-draft.js';
 import { FEATURE } from '../../feature-keys.js';
 import {
   createPermissionsClient,
@@ -44,6 +45,10 @@ export function SubscriptionEditPage({
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Why it ends, required (D5): kept in the organization's billing history as an adjustment. */
+  const [endReason, setEndReason] = useState('');
+  const [endReasonError, setEndReasonError] = useState<string | null>(null);
+  const endReasonId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -86,17 +91,22 @@ export function SubscriptionEditPage({
 
   const end = useCallback(async () => {
     if (!subscription) return;
+    // The same rule the server applies, so the dialog says why before anything is sent.
+    const problem = checkAdjustmentReason(endReason);
+    setEndReasonError(problem);
+    if (problem) return;
     setBusy(true);
     try {
-      const updated = await api.endSubscription(subscription.id);
+      const updated = await api.endSubscription(subscription.id, endReason);
       onSaved(updated);
       setConfirming(false);
+      setEndReason('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not end the subscription.');
     } finally {
       setBusy(false);
     }
-  }, [api, subscription, onSaved]);
+  }, [api, subscription, onSaved, endReason]);
 
   return (
     <AdminPage
@@ -192,10 +202,36 @@ export function SubscriptionEditPage({
                 {subscription.workspaceName ? ` (${subscription.workspaceName})` : ''} stops being entitled to{' '}
                 <strong>{subscription.planLabel}</strong> on their next request. Nothing is deleted, and this cannot be
                 undone — putting them back on a plan is a new subscription.
+                <label htmlFor={endReasonId} className="mt-3 block text-sm font-medium text-foreground">
+                  Reason
+                </label>
+                <textarea
+                  id={endReasonId}
+                  value={endReason}
+                  rows={2}
+                  maxLength={ADJUSTMENT_REASON_MAX}
+                  onChange={(event) => setEndReason(event.target.value)}
+                  aria-invalid={endReasonError ? true : undefined}
+                  aria-describedby={`${endReasonId}-note`}
+                  className={`mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm ${
+                    endReasonError ? 'border-destructive' : 'border-border'
+                  }`}
+                />
+                <span
+                  id={`${endReasonId}-note`}
+                  role={endReasonError ? 'alert' : undefined}
+                  className={`mt-1 block text-xs ${endReasonError ? 'text-destructive' : ''}`}
+                >
+                  {endReasonError ??
+                    'Required. Kept in the organization’s billing history as an adjustment with no payment.'}
+                </span>
               </>
             }
             onConfirm={() => void end()}
-            onCancel={() => setConfirming(false)}
+            onCancel={() => {
+              setConfirming(false);
+              setEndReasonError(null);
+            }}
           />
         </>
       )}

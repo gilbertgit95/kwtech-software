@@ -17,6 +17,7 @@ export * from './permissions.plan-archive.js';
 export * from './permissions.pubsub.js';
 export * from './permissions.repository.js';
 export * from './permissions.service.js';
+export * from './permissions.subscription-audit.js';
 export * from './permissions-write.service.js';
 export * from './registry-sync.js';
 export * from './require-feature.decorator.js';

@@ -618,6 +618,26 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-08** — **A subscription written by hand needs a reason and is recorded as a billing adjustment in the same transaction; billing phase 4 is done (#114, closes #93, billing P4b-3).**
+
+  - **The reason is required on all three writes** (`checkAdjustmentReason`,
+    one rule for the form and the server), and the admin screens ask for it:
+    a field on the subscription form, and one in the End dialog.
+  - **`PERMISSIONS_SUBSCRIPTION_AUDIT`**, an optional port called inside the
+    write's transaction, which the app binds to billing's `recordAdjustment`
+    (the same `ModuleRef` lookup as the archive hook). Billing records an
+    approved request of a new kind, `adjustment`, with no bill, receipt or
+    credit. A record that fails rolls the write back.
+  - **An adjustment never waits and is never voided.** It takes no pending
+    slot (an admin is never refused because a customer has a request
+    waiting), and the void's "latest approval" skips it: voiding an approval
+    under a later adjustment is refused as `subscription_changed`, whose
+    next step is to adjust again, rather than "void the later first", which
+    could never be done.
+  - **`billing:manage` is relabelled, not renamed** ("Adjust subscriptions
+    (no payment)"): renaming a key is a data migration, and the label is what
+    makes the two billings distinguishable.
+
 - **2026-11-08** — **An archive credits its organizations inside its own transaction and waits on payments only an approver can confirm; a new organization gets one trial per founder account (#112, part of #93, billing P4b-2).**
 
   - **The archive tells billing in its transaction.** `module-permissions`

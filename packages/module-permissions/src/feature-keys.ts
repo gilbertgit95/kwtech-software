@@ -1100,8 +1100,16 @@ export const FEATURE_REGISTRY: readonly FeatureSpec[] = [
      * themselves" described an intent the code did not have.
      */
     level: 'app',
-    label: 'Manage billing',
-    description: 'Start, change or end an organization or workspace subscription.',
+    /*
+     * Named for what it is since billing exists (#114, D5): writing a
+     * subscription BY HAND, with no payment, is an adjustment, kept in the
+     * organization's billing history with a required reason. Paid plans go
+     * through `platform-billing:*`, so there are not two "billings". The key
+     * itself is unchanged: renaming a key is a data migration.
+     */
+    label: 'Adjust subscriptions (no payment)',
+    description:
+      'Start, change or end a subscription by hand, without a payment, giving the reason. Recorded in the organization’s billing history as an adjustment.',
     isPrivileged: true,
     bindings: [
       { surface: 'ui_route', identifier: '/admin/subscriptions/new' },

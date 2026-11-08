@@ -322,6 +322,13 @@ levels participate at all**:
   workspace-level subscription is written (workspaces use the organization's
   plan). The #105 migration folded existing workspace rows into the
   organization, keeping the plan that covers all the others.
+- **A hand-written subscription is an adjustment** (#114, D5):
+  `startSubscription`, `updateSubscription` and `endSubscription` require a
+  reason (`checkAdjustmentReason`, at most 500 characters, the same words on
+  the form and the server), and `subscriptionAuditProvider` binds
+  `PERMISSIONS_SUBSCRIPTION_AUDIT`, called inside the write's transaction
+  with the actor, the action, the reason and the row after. The app records
+  it in billing; unbound, only the row is kept.
 - **An archive tells billing** (#112, D12b): `planArchiveHookProvider` binds
   `PERMISSIONS_PLAN_ARCHIVE_HOOK`, called inside `setPlanArchived`'s
   transaction when the archived flag actually changes. Billing closes the
@@ -651,7 +658,7 @@ confused in a role, because a role may only collect features at its own level â€
 | `/admin/organizations` | `organizations:read` | the tenants on the platform, and the plan each is on |
 | `/admin/organizations/:organizationId` | `members:manage` | one tenant's plan, people, invitations and workspaces |
 | `/admin/plans` | `plans:read` | the catalogue |
-| `/admin/subscriptions` | `subscriptions:read` | who is on what |
+| `/admin/subscriptions` | `subscriptions:read` | who is on what; starting, changing or ending one (`billing:manage`, "Adjust subscriptions") **requires a reason** and is recorded as a billing adjustment with no payment (#114, D5) |
 | `/admin/invitations/new` | `roles:grant_app` | invite somebody to the PLATFORM |
 
 The five `features:*` keys are split by RISK, not by convenience:

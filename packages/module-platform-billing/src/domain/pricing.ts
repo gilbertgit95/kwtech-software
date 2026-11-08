@@ -3,7 +3,7 @@ import type { Centavos } from './money.js';
 import type { Period } from './periods.js';
 import { isUpgrade, type Quote, quoteMonth, quotePlanChange, quoteRenewal } from './quotes.js';
 import type { PlatformBillingRefusal } from './refusals.js';
-import type { RequestKind } from './requests.js';
+import type { PricedKind } from './requests.js';
 import { type BillingStanding, type PriceRow, priceOn } from './standing.js';
 
 /**
@@ -36,7 +36,7 @@ export interface PricedRequest {
 
 /** The inputs of `priceRequest`. */
 export interface PriceRequestInput {
-  kind: Exclude<RequestKind, 'cancel'>;
+  kind: PricedKind;
   /** The plan asked for (the current one, for a renewal). */
   planKey: string;
   currentPlanKey: string | null;

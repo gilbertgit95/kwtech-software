@@ -35,6 +35,7 @@ export type PlatformBillingRefusal =
   | 'nothing_received'
   | 'already_cancelled'
   | 'archive_pending_payments'
+  | 'adjustment_not_voidable'
   | 'trial_used'
   | 'currency_locked'
   | 'time_zone_locked'
@@ -145,6 +146,10 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
     message:
       'Requests waiting on this plan already have payment details. Archiving would leave those payments undecided, and only an approver can confirm a payment was received.',
     nextStep: 'Decide them in the billing queue first (reject them, or close them as credit), then archive the plan.',
+  },
+  adjustment_not_voidable: {
+    message: 'An adjustment was not a payment, so there is no receipt or credit to void.',
+    nextStep: 'Correct it with another adjustment on the subscriptions page, giving the reason.',
   },
   trial_used: {
     message: 'A free trial was already used by this account.',

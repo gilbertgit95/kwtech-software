@@ -79,6 +79,24 @@ export interface PlatformBillingSubscriptions {
   ): Promise<{ subscriptionId: string }>;
 }
 
+/**
+ * A subscription written by hand on the admin screens, as permissions reports
+ * it (D5). Copied structurally from `module-permissions`'
+ * `SubscriptionAdjustment`, since modules never import each other (PLAN §9).
+ */
+export interface BillingAdjustment {
+  actorId: string;
+  organizationId: string;
+  subscriptionId: string;
+  action: 'start' | 'update' | 'end';
+  planKey: string;
+  reason: string;
+  at: Date;
+  /** The row just before the write (null for a start), and after it (an end keeps its row, canceled). */
+  before: { status: string; currentPeriodEnd: Date | null; accessUntil: Date | null } | null;
+  after: { status: string; currentPeriodEnd: Date | null; accessUntil: Date | null };
+}
+
 /** A plan as billing needs it: its listing, and its features and caps for D6. */
 export interface BillingPlan {
   key: string;

@@ -25,6 +25,7 @@ import { clonePlanFeatures, type PlanDraft, planLimitValues, validatePlanDraft }
 import { cloneFeatures, type RoleDraft, roleLimitValues, validateRoleDraft } from '../domain/role-draft.js';
 import { unbilledAccessUntil } from '../domain/subscription-access.js';
 import {
+  checkAdjustmentReason,
   type SubscriptionDraft,
   subscriptionPeriodEnd,
   validateSubscriptionDraft,
@@ -52,6 +53,7 @@ import {
   type PermissionsTransaction,
   type PermissionsWriteClient,
 } from './permissions.repository.js';
+import { PERMISSIONS_SUBSCRIPTION_AUDIT, type PermissionsSubscriptionAudit } from './permissions.subscription-audit.js';
 import { PERMISSIONS_OPTIONS } from './permissions.tokens.js';
 
 /**
@@ -167,6 +169,10 @@ export class PermissionsWriteService {
     @Optional()
     @Inject(PERMISSIONS_PLAN_ARCHIVE_HOOK)
     private readonly planArchiveHook?: PermissionsPlanArchiveHook,
+    /** Who records a hand-written subscription as an adjustment, in its transaction. Unbound: nobody (see the port). */
+    @Optional()
+    @Inject(PERMISSIONS_SUBSCRIPTION_AUDIT)
+    private readonly subscriptionAudit?: PermissionsSubscriptionAudit,
   ) {}
 
   /**
@@ -1123,8 +1129,9 @@ export class PermissionsWriteService {
    * exactly what one does, so the second is silent noise in the one table an
    * auditor reads to answer what a customer was sold.
    */
-  async startSubscription(actor: PermissionContext, draft: SubscriptionDraft) {
+  async startSubscription(actor: PermissionContext, draft: SubscriptionDraft, reason: string) {
     this.assertPermitted(actor, FEATURE.billingManage);
+    const why = requireAdjustmentReason(reason);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
@@ -1153,6 +1160,8 @@ export class PermissionsWriteService {
         );
       }
 
+      // ⚠ Billing's lock for this organization first, so no billing decision writes beside this one.
+      await this.subscriptionAudit?.lock(draft.organizationId, tx);
       await this.refuseSecondLiveSubscription(tx, draft.organizationId);
 
       const plan = await this.requirePlan(tx, draft.planKey);
@@ -1188,6 +1197,9 @@ export class PermissionsWriteService {
         });
       }
 
+      const status = toSubscriptionStatus(draft.status);
+      const currentPeriodEnd = subscriptionPeriodEnd(draft.currentPeriodEnd);
+      const accessUntil = unbilledAccessUntil(currentPeriodEnd);
       const subscription = await tx.permSubscription.create({
         data: {
           organizationId: draft.organizationId,
@@ -1195,14 +1207,30 @@ export class PermissionsWriteService {
           planKey: plan.key,
           // Validated, not cast: a row holding 'Active' would pass every check
           // here and then entitle nothing, with no error to explain it.
-          status: toSubscriptionStatus(draft.status),
-          currentPeriodEnd: subscriptionPeriodEnd(draft.currentPeriodEnd),
+          status,
+          currentPeriodEnd,
           // ⚠ Written with the period end: the entitlement read compares it with now (#92).
-          accessUntil: unbilledAccessUntil(subscriptionPeriodEnd(draft.currentPeriodEnd)),
+          accessUntil,
           liveOrganizationId: draft.organizationId,
         },
         select: { id: true },
       });
+
+      // ⚠ In this transaction: an adjustment that cannot be recorded is not written (D5).
+      await this.subscriptionAudit?.subscriptionAdjusted(
+        {
+          actorId: actor.subjectId,
+          organizationId: draft.organizationId,
+          subscriptionId: subscription.id,
+          action: 'start',
+          planKey: plan.key,
+          reason: why,
+          at: this.now(),
+          before: null,
+          after: { status, currentPeriodEnd, accessUntil },
+        },
+        tx,
+      );
 
       return { subscriptionId: subscription.id };
     });
@@ -1226,24 +1254,44 @@ export class PermissionsWriteService {
   async updateSubscription(
     actor: PermissionContext,
     subscriptionId: string,
-    input: { status: string; currentPeriodEnd: string },
+    input: { status: string; currentPeriodEnd: string; reason: string },
   ) {
     this.assertPermitted(actor, FEATURE.billingManage);
+    const why = requireAdjustmentReason(input.reason);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
-      const existing = await this.requireLiveSubscription(tx, subscriptionId);
+      const existing = await this.lockedLiveSubscription(tx, subscriptionId);
+      const before = await this.adjustedRow(tx, existing);
 
+      const status = toSubscriptionStatus(input.status);
+      const currentPeriodEnd = subscriptionPeriodEnd(input.currentPeriodEnd);
+      const accessUntil = unbilledAccessUntil(currentPeriodEnd);
       await tx.permSubscription.update({
         where: { id: existing.id },
         data: {
-          status: toSubscriptionStatus(input.status),
-          currentPeriodEnd: subscriptionPeriodEnd(input.currentPeriodEnd),
+          status,
+          currentPeriodEnd,
           // Moved with the period end, so an admin extending a date extends access (#92).
-          accessUntil: unbilledAccessUntil(subscriptionPeriodEnd(input.currentPeriodEnd)),
+          accessUntil,
         },
         select: { id: true },
       });
+
+      await this.subscriptionAudit?.subscriptionAdjusted(
+        {
+          actorId: actor.subjectId,
+          organizationId: existing.organizationId,
+          subscriptionId: existing.id,
+          action: 'update',
+          planKey: existing.planKey,
+          reason: why,
+          at: this.now(),
+          before,
+          after: { status, currentPeriodEnd, accessUntil },
+        },
+        tx,
+      );
 
       return { subscriptionId: existing.id };
     });
@@ -1262,12 +1310,14 @@ export class PermissionsWriteService {
    * row, with its own start — which is what makes a gap in entitlement visible
    * rather than erased.
    */
-  async endSubscription(actor: PermissionContext, subscriptionId: string) {
+  async endSubscription(actor: PermissionContext, subscriptionId: string, reason: string) {
     this.assertPermitted(actor, FEATURE.billingManage);
+    const why = requireAdjustmentReason(reason);
     const db = this.client();
 
     return db.$transaction(async (tx) => {
-      const existing = await this.requireLiveSubscription(tx, subscriptionId);
+      const existing = await this.lockedLiveSubscription(tx, subscriptionId);
+      const before = await this.adjustedRow(tx, existing);
 
       await tx.permSubscription.update({
         where: { id: existing.id },
@@ -1275,6 +1325,22 @@ export class PermissionsWriteService {
         data: { endedAt: this.now(), status: 'canceled', liveOrganizationId: null },
         select: { id: true },
       });
+
+      await this.subscriptionAudit?.subscriptionAdjusted(
+        {
+          actorId: actor.subjectId,
+          organizationId: existing.organizationId,
+          subscriptionId: existing.id,
+          action: 'end',
+          planKey: existing.planKey,
+          reason: why,
+          at: this.now(),
+          before,
+          // The row stays, canceled, with the dates it had.
+          after: { ...before, status: 'canceled' },
+        },
+        tx,
+      );
 
       return { subscriptionId: existing.id, ended: true };
     });
@@ -2644,6 +2710,41 @@ export class PermissionsWriteService {
     return plan;
   }
 
+  /**
+   * The live row an adjustment changes, read AFTER billing's lock for its
+   * organization is taken: the first read only finds the organization, and
+   * the row (still live? its dates?) must be what the last billing decision
+   * committed, not what it was before this waited.
+   */
+  private async lockedLiveSubscription(tx: PermissionsTransaction, subscriptionId: string) {
+    const found = await this.requireLiveSubscription(tx, subscriptionId);
+    if (!this.subscriptionAudit) return found;
+    await this.subscriptionAudit.lock(found.organizationId, tx);
+    return this.requireLiveSubscription(tx, subscriptionId);
+  }
+
+  /**
+   * The fields an adjustment changes, as the row holds them now, read in the
+   * write's transaction: what the audit records as `before`. Through the
+   * entitlement read (the one shape that carries the dates), filtered to the
+   * row by id; an admin write is rare, so its plan include is no cost.
+   */
+  private async adjustedRow(
+    tx: PermissionsTransaction,
+    existing: { id: string; organizationId: string; status: string },
+  ): Promise<{ status: string; currentPeriodEnd: Date | null; accessUntil: Date | null }> {
+    const rows = await tx.permSubscription.findMany({
+      where: { organizationId: existing.organizationId, endedAt: null },
+      include: { plan: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
+    });
+    const row = rows.find((one) => one.id === existing.id);
+    return {
+      status: row?.status ?? existing.status,
+      currentPeriodEnd: row?.currentPeriodEnd ?? null,
+      accessUntil: row?.accessUntil ?? null,
+    };
+  }
+
   /** A subscription that exists and has not been ended. See `updateSubscription`. */
   /**
    * Refuses a second live organization-wide subscription, naming the one in the
@@ -3210,6 +3311,16 @@ export interface BilledPeriod {
 /** A new live organization-wide subscription billing starts. */
 export interface BilledSubscription extends BilledPeriod {
   organizationId: string;
+}
+
+/**
+ * The reason a hand-written subscription carries (D5), trimmed, or the
+ * refusal in the same words the form shows (`checkAdjustmentReason`).
+ */
+function requireAdjustmentReason(reason: string | null | undefined): string {
+  const problem = checkAdjustmentReason(reason);
+  if (problem) throw new PermissionWriteError('draft_invalid', problem, { field: 'reason' });
+  return (reason ?? '').trim();
 }
 
 /** Prisma's unique-constraint violation, recognised structurally (no `@prisma/client` here). */

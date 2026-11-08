@@ -140,6 +140,25 @@ export function validateSubscriptionDraft(
   return errors;
 }
 
+/** The longest reason an adjustment takes (D5). */
+export const ADJUSTMENT_REASON_MAX = 500;
+
+/**
+ * Whether `reason` will do for a subscription written by hand on the admin
+ * screens (PLATFORM-BILLING-PLAN D5): the words to show when it will not, or
+ * null. Starting, changing and ending a subscription without a payment is an
+ * ADJUSTMENT, kept in the organization's billing history with this reason, so
+ * a blank one is refused here and on the server alike.
+ */
+export function checkAdjustmentReason(reason: string | null | undefined): string | null {
+  const text = reason?.trim() ?? '';
+  if (!text) {
+    return 'Say why. The reason is kept in the organization’s billing history, as an adjustment with no payment.';
+  }
+  if (text.length > ADJUSTMENT_REASON_MAX) return `Keep the reason to ${ADJUSTMENT_REASON_MAX} characters.`;
+  return null;
+}
+
 /** `YYYY-MM-DD`, which is what `<input type="date">` produces. */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 

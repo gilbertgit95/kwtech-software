@@ -9,7 +9,7 @@ import { isPaymentMethod, needsReference, normaliseReference, type PaymentMethod
 import { type Period, periodFrom } from '../domain/periods.js';
 import { chargesAccessUsed, isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import { approvalLagCredit } from '../domain/quotes.js';
-import { checkApproval, checkNewRequest, checkVoid, nextState, type RequestKind } from '../domain/requests.js';
+import { checkApproval, checkNewRequest, checkVoid, nextState, type PricedKind } from '../domain/requests.js';
 import { billingStanding, documentNumber, hasAnyPrice, requestStanding } from '../domain/standing.js';
 import {
   type AppliedHow,
@@ -41,10 +41,15 @@ import {
   PLATFORM_BILLING_PRISMA_WRITE,
   PLATFORM_BILLING_SUBSCRIPTIONS,
 } from './platform-billing.tokens.js';
-import type { BillingSubscriptionRow, PlatformBillingPeople, PlatformBillingSubscriptions } from './ports.js';
+import type {
+  BillingAdjustment,
+  BillingSubscriptionRow,
+  PlatformBillingPeople,
+  PlatformBillingSubscriptions,
+} from './ports.js';
 
 /** The kinds `submit` takes. A cancel is `cancel`: it is priced at nothing and needs no approval. */
-export type SubmittableKind = Exclude<RequestKind, 'cancel'>;
+export type SubmittableKind = PricedKind;
 
 /** What an owner (or admin) says they paid. */
 export interface PaymentDetailsInput {
@@ -644,11 +649,14 @@ export class PlatformBillingWriteService {
     if (!text) throw billingRefusal('invalid', { field: 'reason' });
     return this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId });
+      if (request.kind === 'adjustment') throw billingRefusal('adjustment_not_voidable');
       const step = nextState(request.state, 'void');
       if ('refused' in step) throw billingRefusal(step.refused);
 
+      // Adjustments are not approvals of a payment: never "the later one to void first". An adjustment
+      // since this approval changed the row, so the check below refuses as `subscription_changed`.
       const latest = await tx.platformBillingRequest.findFirst({
-        where: { organizationId: request.organizationId, state: 'approved' },
+        where: { organizationId: request.organizationId, state: 'approved', kind: { not: 'adjustment' } },
         orderBy: { decidedAt: 'desc' },
       });
       const approvals = [request, ...(latest && latest.id !== request.id ? [latest] : [])].map((one) => ({
@@ -657,6 +665,21 @@ export class PlatformBillingWriteService {
       }));
       const notLatest = checkVoid(request.id, approvals);
       if (notLatest) throw billingRefusal(notLatest, latest ? { latestRequestId: latest.id } : {});
+
+      // ⚠ An adjustment since this approval changed what it wrote, even one that left the dates as they were:
+      // the void would undo the admin's act as well. Checked apart from the state comparison below.
+      const adjustedSince =
+        request.decidedAt === null
+          ? null
+          : await tx.platformBillingRequest.findFirst({
+              where: {
+                organizationId: request.organizationId,
+                state: 'approved',
+                kind: 'adjustment',
+                decidedAt: { gt: request.decidedAt },
+              },
+            });
+      if (adjustedSince) throw billingRefusal('subscription_changed', { adjustmentId: adjustedSince.id });
 
       const context = await this.reads.context(request.organizationId, now, tx);
       // ⚠ The live row must still be the one this approval left: the same row (or the one a newer
@@ -909,6 +932,81 @@ export class PlatformBillingWriteService {
       if (!credit) continue;
       await this.archiveEntry(tx, row, credit.amount, 'archive', archiveCreditNote(label, today, credit), now);
     }
+  }
+
+  /**
+   * Billing's decision lock for `organizationId`, taken in another module's
+   * transaction (the admin screens' subscription writes, D5) BEFORE it reads
+   * the subscription, so an approval, a void or a cancel for the same
+   * organization never writes beside it.
+   */
+  async lockForAdjustment(organizationId: string, tx: PlatformBillingTransaction): Promise<void> {
+    await this.lockOrganization(tx, organizationId);
+  }
+
+  /**
+   * A subscription written by hand on the admin screens (D5), recorded in the
+   * organization's history: an approved request of kind `adjustment`,
+   * decided by the admin, with the reason as its decision and no bill, no
+   * receipt and no credit ("adjusted by X, no payment"). Told by
+   * `module-permissions` INSIDE the write's own transaction (`tx`, through
+   * the app's audit adapter), so the row and its record commit together.
+   *
+   * ⚠ It does not take the pending slot: an adjustment never waits, and it
+   * must not be refused because the organization has a request pending. The
+   * pending request is then priced on a subscription that changed; approving
+   * it re-reads the subscription, and a stale plan-change quote is refused
+   * (`quote_expired`) as it is after any change.
+   */
+  async recordAdjustment(input: BillingAdjustment, tx: PlatformBillingTransaction): Promise<RequestRow> {
+    await this.lockOrganization(tx, input.organizationId);
+    const settings = await this.reads.settings(tx);
+    const request = await tx.platformBillingRequest.create({
+      data: {
+        organizationId: input.organizationId,
+        kind: 'adjustment',
+        planKey: input.planKey,
+        fromPlanKey: null,
+        pendingOrganizationId: null,
+        requestedById: input.actorId,
+        requestedAt: input.at,
+        pricedOn: dayToDateColumn(platformDay(input.at, settings.timeZone)),
+        pricedForPeriodEnd: null,
+      },
+    });
+    const { after, before } = input;
+    await tx.platformBillingRequest.updateMany({
+      where: { id: request.id, state: 'pending' },
+      data: {
+        state: 'approved',
+        decidedById: input.actorId,
+        decidedAt: input.at,
+        decisionReason: input.reason,
+        subscriptionId: input.subscriptionId,
+        applied: 'adjustment',
+        ...(after.currentPeriodEnd
+          ? { periodEnd: dayToDateColumn(platformDay(after.currentPeriodEnd, settings.timeZone)) }
+          : {}),
+        ...(after.accessUntil ? { accessUntil: after.accessUntil } : {}),
+      },
+    });
+    // Both sides of the change, so the history says what it was as well as what it became.
+    const asData = (row: BillingAdjustment['after'] | null): JsonValue =>
+      row
+        ? {
+            status: row.status,
+            currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
+            accessUntil: row.accessUntil?.toISOString() ?? null,
+          }
+        : null;
+    await this.event(tx, request, input.at, input.actorId, 'adjusted', input.action, {
+      reason: input.reason,
+      planKey: input.planKey,
+      payment: 'none',
+      before: asData(before),
+      after: asData(after),
+    });
+    return this.reread(tx, request.id);
   }
 
   /** The platform's settings. ⚠ Currency and time zone are locked once a bill exists (D16). */
@@ -1205,7 +1303,8 @@ export class PlatformBillingWriteService {
         return { how: 'start', period, accessUntil: withGrace(period) };
       }
       case 'cancel':
-        // ⚠ Never pending, so never approved here: `cancel` applies it in the transaction that records it.
+      case 'adjustment':
+        // ⚠ Never pending, so never approved here: each is recorded already decided.
         throw billingRefusal('invalid');
       case 'change_plan': {
         // The billing day never moves: the new plan runs to the end of the current period.

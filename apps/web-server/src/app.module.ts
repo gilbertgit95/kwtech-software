@@ -92,6 +92,7 @@ import {
   FeatureGuard,
   PERMISSIONS_PLAN_ARCHIVE_HOOK,
   PERMISSIONS_PUBSUB,
+  PERMISSIONS_SUBSCRIPTION_AUDIT,
   PermissionsLimitChecker,
   PermissionsService,
   PermissionsWriteService,
@@ -170,6 +171,7 @@ import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import { PlatformBillingPeopleAdapter } from './platform-billing/people.js';
 import { PlanArchiveToBilling } from './platform-billing/plan-archive.js';
 import { PlatformBillingPlansAdapter } from './platform-billing/plans.js';
+import { SubscriptionAuditToBilling } from './platform-billing/subscription-audit.js';
 import { PlatformBillingSubscriptionsAdapter } from './platform-billing/subscriptions.js';
 import { PosKeyAccess } from './pos/access-check.js';
 import { PosMemberDirectoryAdapter } from './pos/member-directory.js';
@@ -659,6 +661,14 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
      * time; see ./platform-billing/plan-archive.ts for the cycle it avoids.
      */
     planArchiveHookProvider: { provide: PERMISSIONS_PLAN_ARCHIVE_HOOK, useClass: PlanArchiveToBilling },
+
+    /*
+     * The admin screens' subscription writes, each with its required reason,
+     * recorded by billing as an adjustment with no payment, inside the write's
+     * transaction (#114, D5): nothing writes a subscription without a billing
+     * record. Unbound, the reason would be asked for and kept nowhere.
+     */
+    subscriptionAuditProvider: { provide: PERMISSIONS_SUBSCRIPTION_AUDIT, useClass: SubscriptionAuditToBilling },
 
     /*
      * EVERY module's features, not just this module's own.
