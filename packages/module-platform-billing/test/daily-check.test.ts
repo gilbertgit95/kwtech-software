@@ -164,6 +164,25 @@ describe('the daily check (platform_billing.daily_check)', () => {
     ]);
   });
 
+  it('⚠ goes on retrying past a row whose sent mark cannot be written', async () => {
+    const billing = await onBasic();
+    giveSubscription(billing, 'org2', 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    billing.notifier.failing = true;
+    await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG, 'org2']));
+    billing.notifier.failing = false;
+    const update = billing.client.platformBillingNotice.update.bind(billing.client.platformBillingNotice);
+    let calls = 0;
+    billing.client.platformBillingNotice.update = async (args) => {
+      calls += 1;
+      if (calls === 1) throw new Error('database went away');
+      return update(args);
+    };
+    await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG, 'org2']));
+    // Both were sent; the first could not be marked, so only the second reads as sent.
+    expect(billing.notifier.told).toHaveLength(2);
+    expect(billing.store().notices.map((row) => row.sentAt !== null)).toEqual([false, true]);
+  });
+
   it('does not retry a notice too old to be true any more: the next one says the current thing', async () => {
     const billing = await onBasic();
     billing.notifier.failing = true;

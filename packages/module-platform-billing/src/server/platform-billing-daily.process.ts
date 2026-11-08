@@ -95,7 +95,12 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     if (occurrence.kind === 'too_late') return { ...result, skippedLate: 1 };
     const today: DayKey = occurrence.dayKey;
 
-    result.handled += await this.retryUnsent(notifier, context);
+    try {
+      result.handled += await this.retryUnsent(notifier, context);
+    } catch (error) {
+      // Reading the unsent rows failed: today's notices are still worth sending.
+      this.logger.warn(`The billing notice retry failed: ${errorText(error)}`);
+    }
     const now = context.now;
 
     let cursor: string | null = null;
@@ -262,7 +267,12 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
                 oldestRequestedOn: String(data.oldestRequestedOn ?? noticeDay(row)),
               })
           : () => notifier.reminder(reminderFrom(row, data));
-      if (await this.deliver(row, send, context.now)) sent += 1;
+      try {
+        if (await this.deliver(row, send, context.now)) sent += 1;
+      } catch (error) {
+        // A row whose `sentAt` cannot be written stays unsent and is retried; the rest still go.
+        this.logger.warn(`A billing notice (${row.kind}) could not be retried: ${errorText(error)}`);
+      }
     }
     return sent;
   }
