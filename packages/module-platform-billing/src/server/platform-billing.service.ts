@@ -377,6 +377,14 @@ export class PlatformBillingService {
     return this.page({ state: 'pending' }, cursor, limit, 'asc');
   }
 
+  /** Every decided request, newest first, for the platform: where an approval to void is found. */
+  async decidedRequests(
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<{ items: readonly RequestDetail[]; nextCursor: string | null }> {
+    return this.page({ state: { notIn: ['pending'] } }, cursor, limit, 'desc');
+  }
+
   /** The checks an approver sees on a pending request (plan §4). */
   async flags(detail: RequestDetail, viewerId: string, viewerIsMember: boolean): Promise<QueueFlags> {
     const latest = latestPayment(detail.payments);
@@ -411,7 +419,9 @@ export class PlatformBillingService {
 
   /** One keyset page of requests, with their documents. */
   private async page(
-    where: { organizationId?: string; state?: 'pending' } | ({ organizationId: string } & HistoryFilterWhere),
+    where:
+      | { organizationId?: string; state?: 'pending' | { notIn: RequestState[] } }
+      | ({ organizationId: string } & HistoryFilterWhere),
     cursor: string | null,
     limit: number | null,
     order: 'asc' | 'desc' = 'desc',

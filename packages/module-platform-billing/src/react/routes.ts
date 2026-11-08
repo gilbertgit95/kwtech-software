@@ -36,3 +36,26 @@ export function billingStatementHref(organizationId: string, from: string, to: s
   const query = new URLSearchParams({ from, to });
   return `${billingPageHref(organizationId)}/statement?${query.toString()}`;
 }
+
+/** The platform's billing queue (phase 7): waiting and decided requests. */
+export const BILLING_ADMIN_ROUTE = '/admin/billing';
+
+/** One request, any organization's: its checks, the decisions, the void. */
+export const BILLING_ADMIN_REQUEST_ROUTE = '/admin/billing/requests/:requestId';
+
+/** A printable bill or receipt of any organization's request, for platform staff. */
+export const BILLING_ADMIN_DOCUMENT_ROUTE = '/admin/billing/requests/:requestId/document';
+
+/** The platform's billing settings and the plans' prices. */
+export const BILLING_ADMIN_SETTINGS_ROUTE = '/admin/billing/settings';
+
+/** One request on the platform's side. */
+export function billingAdminRequestHref(requestId: string): string {
+  return `${BILLING_ADMIN_ROUTE}/requests/${encodeURIComponent(requestId)}`;
+}
+
+/** One printable document of a request, on the platform's side. */
+export function billingAdminDocumentHref(requestId: string, kind: 'bill' | 'receipt', number: string): string {
+  const query = new URLSearchParams({ kind, number });
+  return `${billingAdminRequestHref(requestId)}/document?${query.toString()}`;
+}

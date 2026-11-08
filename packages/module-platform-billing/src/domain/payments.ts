@@ -69,3 +69,13 @@ export function checkAmount(sent: Centavos, total: Centavos): AmountCheck {
  * the payment form and the server (`PLATFORM_BILLING_TEXT_MAX`).
  */
 export const BILLING_TEXT_MAX = 500;
+
+/**
+ * The most grace a super admin may set, in days: a month. More is not grace,
+ * it is a free plan. One number for the settings form and the server
+ * (`PLATFORM_BILLING_GRACE_MAX`).
+ */
+export const BILLING_GRACE_MAX = 31;
+
+/** The longest issuer details (address, tax number) a printed document carries, in characters. */
+export const BILLING_ISSUER_DETAILS_MAX = 2000;

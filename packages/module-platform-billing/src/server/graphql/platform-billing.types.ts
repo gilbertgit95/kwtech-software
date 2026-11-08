@@ -88,6 +88,17 @@ export class PlatformBillingPlanOfferType {
   @Field() current!: boolean;
 }
 
+/** A plan as the platform's price list shows it: every plan, archived ones included, with today's price. */
+@ObjectType('PlatformBillingPlanEntry')
+export class PlatformBillingPlanEntryType {
+  @Field() key!: string;
+  @Field() label!: string;
+  @Field() isPublic!: boolean;
+  @Field() archived!: boolean;
+  /** Today's monthly price in centavos, or null when none is set (Free). */
+  @Field(() => Int, { nullable: true }) monthly!: number | null;
+}
+
 /** Where organizations pay: a method, a label and the details. */
 @ObjectType('PlatformBillingPaymentAccount')
 export class PlatformBillingPaymentAccountType {
@@ -298,6 +309,8 @@ export class PlatformBillingQueueFlagsType {
 @ObjectType('PlatformBillingQueueItem')
 export class PlatformBillingQueueItemType {
   @Field(() => PlatformBillingRequestType) request!: PlatformBillingRequestType;
+  /** The organization's name, for the approver; null when it cannot be read. */
+  @Field(() => String, { nullable: true }) organizationName!: string | null;
   @Field(() => PlatformBillingQueueFlagsType) flags!: PlatformBillingQueueFlagsType;
 }
 

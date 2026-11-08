@@ -102,7 +102,12 @@ export function BillingDocumentPage({ organizationId, requestId, kind, number, c
   );
 }
 
-/** The document itself: everything from its own snapshot, the stamp from today's status. */
+/**
+ * The document itself: everything from its own snapshot, the stamp from
+ * today's status. Shared with the platform's print page, so `overview` is
+ * only the two fields it reads (the organization's name and the currency a
+ * document without one falls back to).
+ */
 export function PrintedDocument({
   overview,
   request,
@@ -110,7 +115,7 @@ export function PrintedDocument({
   receipt,
   organizationId,
 }: {
-  overview: BillingOverviewView;
+  overview: Pick<BillingOverviewView, 'organizationName' | 'currency'>;
   request: BillingRequestView;
   bill: BillingRequestView['bills'][number] | null;
   receipt: BillingRequestView['receipts'][number] | null;
