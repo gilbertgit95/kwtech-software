@@ -1,5 +1,5 @@
 import type { DefaultMomentContribution, LimitRaise } from '@kwtech/module-kit';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   APP_DEFAULT,
   APP_DEFAULT_MOMENT_REGISTRY,
@@ -113,6 +113,9 @@ export interface ResolvedDefault {
    */
   targetUnavailable: boolean;
 }
+
+/** For the one advisory read a refusal may do (#101): its failure is logged, never thrown. */
+const LIMITS_LOGGER = new Logger('PermissionsLimits');
 
 @Injectable()
 export class PermissionsService {
@@ -1359,8 +1362,19 @@ export class PermissionsService {
     const limits = ctx ? ctx.limits : resolveLimits({ roles: [] }, this.limitRegistry());
     const decision = this.decideDeclaredLimit(limits, input.key, input.current);
     if (decision.allowed || decision.limit === null || !ctx?.planKeys) return decision;
-    const raise = await this.limitRaiseFor(input.key, decision.limit, ctx.planKeys);
-    return raise ? { ...decision, raise } : decision;
+    /*
+     * ⚠ THE REFUSAL STANDS EVEN IF THE PLANS CANNOT BE READ. Naming the plan
+     * is advice on top of the decision: a failed catalogue read must not turn
+     * "you are at your cap" into an error, which would read as an outage. It
+     * is logged and the refusal goes out with the number alone.
+     */
+    try {
+      const raise = await this.limitRaiseFor(input.key, decision.limit, ctx.planKeys);
+      return raise ? { ...decision, raise } : decision;
+    } catch (error) {
+      LIMITS_LOGGER.warn(`Could not read the plans to name the one raising '${input.key}': ${String(error)}`);
+      return decision;
+    }
   }
 
   /**

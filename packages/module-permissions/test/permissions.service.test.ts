@@ -1523,6 +1523,31 @@ describe('checkLimitForActor — a refused plan cap names the plan that raises i
     });
   });
 
+  it('still refuses, with the number alone, when the plans cannot be read', async () => {
+    const { client } = fakePrisma({
+      membership: membership(),
+      plans: catalogue,
+      subscriptions: [
+        plan([], [{ limitKey: LIMIT.organizationMembers, value: 3 }], {
+          planKey: 'starter',
+          plan: { key: 'starter', label: 'Basic' },
+        }),
+      ],
+    });
+    client.permPlan.findMany = async () => {
+      throw new Error('database went away');
+    };
+    const svc = new PermissionsService(client);
+    const decision = await svc.checkLimitForActor({
+      actorId: 'u1',
+      key: LIMIT.organizationMembers,
+      current: 3,
+      organizationId: 'org1',
+    });
+    expect(decision).toMatchObject({ allowed: false, limit: 3 });
+    expect(decision.raise).toBeUndefined();
+  });
+
   it('adds nothing to a cap that fits', async () => {
     const decision = await onBasic().checkLimitForActor({
       actorId: 'u1',
