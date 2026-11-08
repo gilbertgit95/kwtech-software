@@ -37,6 +37,12 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  /**
+   * Bumped whenever the history is replaced by a fresh first page: a page of
+   * older requests that comes back after it belongs to the list before, and
+   * appending it would skip what lies between.
+   */
+  const generation = useRef(0);
 
   const reload = useCallback(async () => {
     try {
@@ -44,6 +50,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
         client.overview(organizationId),
         client.history(organizationId, null),
       ]);
+      generation.current += 1;
       setOverview(nextOverview);
       setHistory(nextHistory);
     } catch (cause) {
@@ -56,6 +63,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     Promise.all([client.overview(organizationId), client.history(organizationId, null)])
       .then(([nextOverview, nextHistory]) => {
         if (cancelled) return;
+        generation.current += 1;
         setOverview(nextOverview);
         setHistory(nextHistory);
       })
@@ -97,8 +105,11 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     // One page at a time: two quick presses would read the same cursor and append the page twice.
     if (!history?.nextCursor || loadingMore.current) return;
     loadingMore.current = true;
+    const startedIn = generation.current;
     try {
       const next = await client.history(organizationId, history.nextCursor);
+      // The history was replaced while this page was loading: it belongs to the old list, so it is dropped.
+      if (generation.current !== startedIn) return;
       // Appended to what is shown NOW (a reload may have replaced it meanwhile), without repeating a request.
       setHistory((current) => {
         const shown = current ?? { items: [], nextCursor: null };
