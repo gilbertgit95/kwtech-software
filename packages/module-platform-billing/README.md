@@ -10,15 +10,16 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phases 4 and 5b done (#93, #95); phase 6 built (#117, #119), its in-app check (#96) waiting on phase 7; phase 7 built (#121, #123).** The pure core (#91), the schema, the
-services and the GraphQL API for requests, payment details, approvals and
-rejections, voids, closing as credit, cancelling, plan archives, the trial,
-the audited admin adjustments, the settings and the prices; composed into the
-API; the daily check with every notification (#95); and the organization's
-Billing page with printing, the statement of account and its CSV (#117,
-#119); the platform's queue, request page, reprints and settings with the
-plans' prices (#121); every organization's standing and the reports (#123).
-Still to come: the release pass (#98).
+**Status: released (#98, 2026-11-08); every phase of #88 built.** The pure
+core (#91); the schema, the services and the GraphQL API for requests,
+payment details, approvals and rejections, voids, closing as credit,
+cancelling, plan archives, the trial, the audited admin adjustments, the
+settings and the prices (#93); the daily check with every notification
+(#95); the organization's Billing page with printing, the statement of
+account and its CSV (#117, #119); the platform's queue, request page,
+reprints, settings and prices (#121), and every organization's standing and
+the reports (#123). The end-to-end pass is in PLAN §13, 2026-11-08. The
+operator's check in the running app (#96, #97) may still bring changes.
 
 ## In a Next.js app
 
@@ -249,14 +250,11 @@ presses it.
 - **Settings** (D16): the currency and the time zone are locked once any bill
   exists; grace may change (0 to 31), and reaches only periods written after.
 
-## Tables
+## Realtime
 
-`platform_billing_request`, `_payment` (every version of the details),
-`_bill` and `_receipt` (snapshots, never rewritten; only the stamp changes),
-`_credit` (the ledger; the balance is its sum and may go negative), `_price`
-(per plan, from a day on), `_settings` (one row, `id = 'platform'`),
-`_counter`, `_event` (the timeline, each step with its reason code). Keyed by
-`organizationId`; no foreign key leaves the module. Nothing is deleted.
+None. Billing changes slowly and every decision is seen on the next read;
+people hear about it through `PLATFORM_BILLING_NOTIFIER` (the bell), not a
+live subscription.
 
 ## Vocabulary
 
@@ -299,10 +297,22 @@ presses it.
 | `domain/documents.ts` | `BillSnapshot`, `ReceiptSnapshot`: what a document said when issued |
 | `domain/archives.ts` | `planArchiveCredit`: the paid days an archive takes away, and the ledger's sentence (D12b) |
 | `domain/voids.ts` | `planVoid`: what reversing an approval writes to the subscription, from what it recorded (D9a) |
+| `domain/notices.ts` | `planReminders`: which reminders a day owes an organization, and the approvers' digest (the daily check) |
+| `domain/statement.ts` | `buildStatement`: the statement of account for a date range, its running credit (`statementCsv` is the page's, in `react/view`) |
+| `domain/reports.ts` | `buildCollectionsReport`, `summariseStandings`, `matchesStanding`: the platform's reports and standings (`collectionsCsv` is the page's, in `react/view`) |
 
 Every refusal is a reason code with words (`refusalText(reason)`), shared by the
 server, the pages and the tests. Counts and dates (short by 100, remove 2
 members) travel beside the code, never inside the sentence.
+
+## Tables
+
+`platform_billing_request`, `_payment` (every version of the details),
+`_bill` and `_receipt` (snapshots, never rewritten; only the stamp changes),
+`_credit` (the ledger; the balance is its sum and may go negative), `_price`
+(per plan, from a day on), `_settings` (one row, `id = 'platform'`),
+`_counter`, `_event` (the timeline, each step with its reason code). Keyed by
+`organizationId`; no foreign key leaves the module. Nothing is deleted.
 
 ## Processes
 
@@ -353,4 +363,4 @@ organization, an expired one included, with no plan gate (#94).
   payment; never choose the plan; added to `organization-admin`), and the
   app-level `platform-billing-approver` (queue, approve, void; never the
   settings), seeded as a role of its own.
-- No limits, no processes yet (the daily check is phase 5b).
+- No limits. One process, `platform_billing.daily_check` (above).

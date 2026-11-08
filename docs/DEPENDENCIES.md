@@ -52,7 +52,7 @@ Peers are listed as each `package.json` has them; "Nest" is `@nestjs/common`,
 | `module-print-studio` | module-kit (and `pdf-lib`, `pdfjs-dist`, `heic2any`, all used in the browser only) | web-ui, Nest, React | both apps |
 | `module-backup` | module-kit | web-ui, Nest, React, lucide-react | both apps |
 | `module-local-network` | module-kit | web-ui, Nest, React, lucide-react | both apps |
-| `module-platform-billing` | module-kit | Nest | web-server (no pages yet) |
+| `module-platform-billing` | module-kit | web-ui, Nest, React, lucide-react | both apps |
 | `web-server` | every module, module-kit | — | nothing |
 | `web-app` | every module, module-kit, web-ui | — | nothing |
 
@@ -106,7 +106,7 @@ has a documented, fail-closed meaning — see each module's README.
 | A subscription written by hand (start, change, end, each with its reason), recorded by billing as an adjustment **inside the write's own transaction** (#114, D5) | `PERMISSIONS_SUBSCRIPTION_AUDIT` | `platform-billing/subscription-audit.ts`, handing the transaction to `PlatformBillingWriteService.recordAdjustment` (`billingTransaction`), looked up with `ModuleRef` at call time |
 | A plan archived or brought back, told to billing **inside the archive's own transaction** (#112, D12b) | `PERMISSIONS_PLAN_ARCHIVE_HOOK` | `platform-billing/plan-archive.ts`, handing permissions' transaction to `PlatformBillingWriteService.planArchiveChanged` (`billingTransaction`); billing's service is looked up with `ModuleRef` at call time, since injecting it would be a cycle |
 | The plans, and how much of each cap an organization uses (a downgrade, D6) | `PLATFORM_BILLING_PLANS` | `platform-billing/plans.ts` (reads permissions' plans, members and workspaces) |
-| Whether an approver belongs to the organization (flagged, D15) | `PLATFORM_BILLING_PEOPLE` | `platform-billing/people.ts` (reads permissions' memberships) |
+| Whether an approver belongs to the organization (flagged, D15), the organization's name for what billing prints, and a page of every organization (the platform's standings and reports, #123) | `PLATFORM_BILLING_PEOPLE` | `platform-billing/people.ts` (reads permissions' memberships and organizations) |
 | Who paused, forced or rescheduled a background process, by name | `JOBS_ACTOR_DIRECTORY` | `jobs/actor-directory.ts` (reads `auth_user`) |
 | The backup folder and pg_dump / pg_restore (a module never opens a connection) | `BACKUP_STORE` | `backup/pg-backup-store.ts`, shared with the command line (`backup/cli.ts`) |
 | Re-check the restorer's password; sign everybody out after a restore | `BACKUP_PASSWORD_CHECK`, `BACKUP_END_SESSIONS` | module-auth's `AuthService.confirmPassword` and `AuthAdminService.endEverySession`, bound in `app.module.ts` |
