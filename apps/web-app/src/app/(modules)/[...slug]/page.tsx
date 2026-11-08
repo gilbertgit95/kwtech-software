@@ -1,12 +1,12 @@
 import { composeRoutes, matchRouteWithParams, routeRedirect } from '@kwtech/module-kit';
 import { denialReason } from '@kwtech/module-permissions';
 import { FeatureDenied } from '@kwtech/module-permissions/react';
-import { PLATFORM_BILLING_FEATURE } from '@kwtech/module-platform-billing';
-import { billingPageHref } from '@kwtech/module-platform-billing/react';
+import { notEntitledText, PLATFORM_BILLING_FEATURE } from '@kwtech/module-platform-billing';
+import { billingPageHref, billingPlansHref } from '@kwtech/module-platform-billing/react';
 import { notFound, redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { BareShell } from '@/components/layout/bare-shell';
-import { getSessionSnapshot, type SessionScope } from '@/lib/session-query';
+import { getPlanComparison, getSessionSnapshot, type SessionScope } from '@/lib/session-query';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -122,7 +122,10 @@ export default async function ModuleRoutePage({
      * role opens it (the owner and admins, D8): the rest are told who to ask,
      * rather than linked to a page that refuses them too (#119).
      */
-    const expiredStep = await expiredNextStep(denied, scope);
+    const [expiredStep, planStep] = await Promise.all([
+      expiredNextStep(denied, scope),
+      notEntitledStep(denied, route.feature, scope),
+    ]);
     return (
       <AppShell title={route.title} scope={scope}>
         {/*
@@ -130,7 +133,12 @@ export default async function ModuleRoutePage({
           the same person for the same reason, and a wording change to one used
           to be a silent inconsistency in the other.
         */}
-        <FeatureDenied title={route.title} reason={denied} nextStep={expiredStep} />
+        <FeatureDenied
+          title={route.title}
+          reason={denied}
+          nextStep={expiredStep ?? planStep?.nextStep}
+          detail={planStep?.detail}
+        />
       </AppShell>
     );
   }
@@ -212,6 +220,27 @@ async function expiredNextStep(
   const canOpenBilling = (await routeDenial(PLATFORM_BILLING_FEATURE.read, scope)) === undefined;
   if (!canOpenBilling) return { label: "Ask the organization's owner or an admin to renew it on the Billing page." };
   return { href: billingPageHref(scope.organizationId), label: 'Open billing to renew' };
+}
+
+/**
+ * What a plan without this feature can do about it (#101): which plans
+ * include it and a link to compare them, for those whose role opens billing
+ * (the plans and prices are its page); who to ask for everyone else. Nothing
+ * for any other reason, or when the plans cannot be read (the reason alone
+ * still says to upgrade).
+ */
+async function notEntitledStep(
+  denied: string,
+  feature: string | undefined,
+  scope: SessionScope,
+): Promise<{ detail?: string; nextStep: { label: string; href?: string } } | undefined> {
+  if (denied !== 'not_entitled' || !feature || !scope.organizationId) return undefined;
+  const canOpenBilling = (await routeDenial(PLATFORM_BILLING_FEATURE.read, scope)) === undefined;
+  if (!canOpenBilling)
+    return { nextStep: { label: "Ask the organization's owner or an admin about a plan that includes it." } };
+  const comparison = await getPlanComparison(scope.organizationId);
+  const nextStep = { href: billingPlansHref(scope.organizationId), label: 'Compare plans' };
+  return comparison ? { detail: notEntitledText(comparison, feature), nextStep } : { nextStep };
 }
 
 /** `?a=1&b=2` from Next's parsed search params, or '' when there are none. */

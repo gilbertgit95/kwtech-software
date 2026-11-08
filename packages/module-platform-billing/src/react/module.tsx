@@ -8,6 +8,7 @@ import { AdminRequestPage } from './pages/admin-request-page.js';
 import { AdminSettingsPage } from './pages/admin-settings-page.js';
 import { BillingDocumentPage } from './pages/billing-document-page.js';
 import { BillingPage } from './pages/billing-page.js';
+import { BillingPlansPage } from './pages/billing-plans-page.js';
 import { BillingStatementPage } from './pages/billing-statement-page.js';
 import {
   BILLING_ADMIN_DOCUMENT_ROUTE,
@@ -18,6 +19,7 @@ import {
   BILLING_ADMIN_SETTINGS_ROUTE,
   BILLING_DOCUMENT_ROUTE,
   BILLING_PAGE_ROUTE,
+  BILLING_PLANS_ROUTE,
   BILLING_STATEMENT_ROUTE,
 } from './routes.js';
 
@@ -63,6 +65,11 @@ function BillingStatementRoute({ params, searchParams }: ModuleRouteProps) {
       to={one(searchParams?.to)}
     />
   );
+}
+
+/** The plans side by side: the organization from the path. */
+function BillingPlansRoute({ params }: ModuleRouteProps) {
+  return <BillingPlansPage organizationId={params?.organizationId} />;
 }
 
 /** The platform's queue: no params. */
@@ -122,6 +129,13 @@ export const platformBillingWebModule: WebModuleDescriptor = {
       // ⚠ Exempt from the plan filter (D13): an expired organization still reaches the page that renews it.
       feature: PLATFORM_BILLING_FEATURE.read,
       nav: { group: ORGANIZATION_NAV_GROUP, order: 50, icon: 'billing' },
+    },
+    // The plans side by side (#101): in the frame, out of the drawer, opened from the Billing page.
+    {
+      path: BILLING_PLANS_ROUTE,
+      component: BillingPlansRoute,
+      title: 'Compare plans',
+      feature: PLATFORM_BILLING_FEATURE.read,
     },
     /*
      * The printable pages (phase 6b): out of the drawer and out of the app's

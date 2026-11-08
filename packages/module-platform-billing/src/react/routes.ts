@@ -14,6 +14,14 @@ export function billingPageHref(organizationId: string): string {
   return `/organizations/${encodeURIComponent(organizationId)}/billing`;
 }
 
+/** The plans side by side (#101): what each includes and costs, from the rows the app enforces. */
+export const BILLING_PLANS_ROUTE = '/organizations/:organizationId/billing/plans';
+
+/** The plan comparison of `organizationId`. */
+export function billingPlansHref(organizationId: string): string {
+  return `${billingPageHref(organizationId)}/plans`;
+}
+
 /** A printable bill or receipt of a request (phase 6b): its own page, without the app's frame. */
 export const BILLING_DOCUMENT_ROUTE = '/organizations/:organizationId/billing/documents/:requestId';
 

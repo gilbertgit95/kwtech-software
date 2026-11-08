@@ -619,6 +619,28 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-08** — **A refusal names the plan that would allow it: caps say the number and the next plan, a missing feature says which plans include it, and a page compares the plans (#101).**
+
+  - **Worked out once, by the enforcer.** Modules cannot know plans, so
+    `checkLimitForActor` adds `raise` to a refused plan-sourced cap (the
+    organization's plan whose number is the cap, the smallest public,
+    unarchived plan above it), and module-kit's `limitReachedText` is the one
+    sentence every module uses: "Basic allows 1 workspace. Pro allows 5."; on
+    the highest public plan, "This is the most any plan allows. Contact us for
+    a Custom plan." A role's cap gets no plan: none sells it.
+  - **The comparison lives in billing**, at
+    `/organizations/:organizationId/billing/plans`, read with
+    `platform-billing:read`: it needs the prices, and it is built from the
+    plan rows through billing's PLANS port, with names from the app's
+    composed registries (`labels()`), so the page and the enforcement read
+    the same rows.
+  - **`not_entitled` names the plans** that include the feature, under the
+    route denial, for those who can open billing; everyone else is told to
+    ask the owner or an admin, as for an expired plan (#119).
+  - **Not done:** the same for a control hidden inside a page
+    (`useHoldsFeature` hides, it does not explain), and for the API's own
+    `not_entitled` refusals, whose message stays the generic sentence.
+
 - **2026-11-08** — **Platform billing is released: every phase built, the end-to-end pass run, §12.40 closed (#98, billing P8); #88 stays open for the operator's check in the running app.**
 
   - **The end-to-end pass ran on a throwaway database**, the built API booted

@@ -1,6 +1,7 @@
 import { DEFAULT_TIME_ZONE } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
 import { DEFAULT_GRACE_DAYS } from '../domain/access.js';
+import { buildPlanComparison, type PlanComparison } from '../domain/comparison.js';
 import { addDays, type DayKey, platformDay, platformDayStart } from '../domain/days.js';
 import type { Issuer } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
@@ -264,6 +265,21 @@ export class PlatformBillingService {
    * the check `submit` runs, as a preview the page shows before anyone presses
    * Request.
    */
+  /**
+   * The plans side by side for the organization (#101): every public plan on
+   * offer and its own, today's prices, and what each includes. Built from the
+   * same rows the caps and features are enforced from.
+   */
+  comparison(context: BillingContext): PlanComparison {
+    return buildPlanComparison({
+      plans: [...context.plans.values()],
+      prices: context.prices,
+      today: context.today,
+      currentPlanKey: context.live?.planKey ?? null,
+      labels: this.plansPort.labels?.() ?? { features: [], limits: [] },
+    });
+  }
+
   async preview(context: BillingContext, kind: PricedKind, planKey: string | null): Promise<RequestPreview> {
     const currentPlanKey = context.live?.planKey ?? null;
     const wanted = kind === 'renew' ? currentPlanKey : planKey;

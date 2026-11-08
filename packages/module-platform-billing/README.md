@@ -70,6 +70,16 @@ and points the organization overview's card here (`apps/web-app/src/modules.ts`)
   a credit entry, and netting them would count it twice.
 - **An expired organization's denials link here**: the app passes the Billing
   page as `FeatureDenied`'s `nextStep` for `subscription_expired`.
+- **Compare plans**, `/organizations/:organizationId/billing/plans` (#101,
+  `platform-billing:read`, linked from the Billing page): every public,
+  unarchived plan and the organization's own, cheapest first at today's price,
+  each plan cap ("How many", a missing number read as the declared default)
+  and each feature some listed plan includes (`platformBillingPlanComparison`,
+  `buildPlanComparison`). Built from the plan rows the app enforces, so the page
+  cannot promise what the app refuses. Choosing stays on the Billing page.
+- **A feature the plan lacks says which plan has it**: the app's denial for
+  `not_entitled` carries `notEntitledText` ("Point of sale is in Basic and Pro.
+  You are on Free.") and a link here, for those who can open billing.
 
 **The platform's pages** (phase 7a, #121), app level, in the Administration
 group. All are read with `queue_read`; inside them the decisions hide without
@@ -132,7 +142,7 @@ platformBillingServerModule({
 | Port | What it answers | Unbound |
 |---|---|---|
 | `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription (and every live row on a plan, for an archive), and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
-| `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps) and an organization's usage of the caps (D6) | the module refuses to boot |
+| `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps), an organization's usage of the caps (D6), and, optionally, what each feature and cap is called (`labels()`, the plan comparison, #101) | the module refuses to boot; without `labels()` the comparison lists plans and prices with no rows |
 | `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15), the organization's name for documents, and a page of every organization by id (the platform's standings and reports) | every approver is flagged as a member: the flag never blocks; documents print the id; the standings and the counts say they are unavailable |
 | `PLATFORM_BILLING_NOTIFIER` | the reminders, the approvers' digest and each request's steps, as notifications; each answers whether it was delivered | nobody is told, and the daily check writes nothing, so binding it later still delivers that day's reminders |
 
@@ -154,7 +164,7 @@ Organization scope (`PlatformBillingResolver`, declared on the class):
 
 | Operation | Key |
 |---|---|
-| `platformBillingOverview`, `platformBillingPreview`, `platformBillingHistory`, `platformBillingRequest` | `read` |
+| `platformBillingOverview`, `platformBillingPreview`, `platformBillingHistory`, `platformBillingRequest`, `platformBillingStatement`, `platformBillingPlanComparison` | `read` |
 | `requestPlatformBillingPlan` (subscribe, change plan, replace), `cancelPlatformBilling` | `change_plan` (the owner's, D8) |
 | `renewPlatformBilling` | `renew` |
 | `enterPlatformBillingPayment`, `withdrawPlatformBillingRequest` | `enter_payment` |
@@ -296,6 +306,7 @@ live subscription.
 | `domain/pricing.ts` | `priceRequest`: one request priced on a day, for the preview, the bill at submission and a downgrade's bill at approval |
 | `domain/documents.ts` | `BillSnapshot`, `ReceiptSnapshot`: what a document said when issued |
 | `domain/archives.ts` | `planArchiveCredit`: the paid days an archive takes away, and the ledger's sentence (D12b) |
+| `domain/comparison.ts` | `buildPlanComparison`, `notEntitledText`: the plans side by side, and which plans include a feature (#101) |
 | `domain/voids.ts` | `planVoid`: what reversing an approval writes to the subscription, from what it recorded (D9a) |
 | `domain/notices.ts` | `planReminders`: which reminders a day owes an organization, and the approvers' digest (the daily check) |
 | `domain/statement.ts` | `buildStatement`: the statement of account for a date range, its running credit (`statementCsv` is the page's, in `react/view`) |

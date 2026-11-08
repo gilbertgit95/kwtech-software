@@ -1,6 +1,7 @@
 'use client';
 
 import { PLATFORM_BILLING_OPERATIONS } from '../operations.js';
+import type { PlanComparisonView } from './view/comparison-view.js';
 
 /**
  * The Billing page's client: the GraphQL documents of `src/operations.ts`,
@@ -263,6 +264,8 @@ export interface BillingClient {
     limit?: number,
   ): Promise<BillingHistoryPageView>;
   statement(organizationId: string, from: string, to: string): Promise<BillingStatementView>;
+  /** The plans side by side (#101), with today's prices. */
+  planComparison(organizationId: string): Promise<PlanComparisonView>;
   /** One request with its bills and receipts, or null when it is not this organization's. */
   request(organizationId: string, requestId: string): Promise<BillingRequestView | null>;
   requestPlan(organizationId: string, kind: ChosenPlanKind, planKey: string): Promise<BillingRequestView>;
@@ -330,6 +333,12 @@ export function createBillingClient(path = DEFAULT_GRAPHQL_PATH): BillingClient 
       return (
         await graphql<{ platformBillingRequest: BillingRequestView | null }>(ops.request, { organizationId, requestId })
       ).platformBillingRequest;
+    },
+    /** The plans side by side (#101). */
+    async planComparison(organizationId) {
+      return (
+        await graphql<{ platformBillingPlanComparison: PlanComparisonView }>(ops.planComparison, { organizationId })
+      ).platformBillingPlanComparison;
     },
     /** The statement of account for a range of days, both included. */
     async statement(organizationId, from, to) {
