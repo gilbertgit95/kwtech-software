@@ -80,6 +80,16 @@ describe('startDirect', () => {
 });
 
 describe('startGroup and the cap', () => {
+  it('says the cap and both ways to free a slot: archive one you own, or leave one (#101)', async () => {
+    const { svc } = harness(1);
+    await svc.startGroup('ann', { title: 'One', userIds: [] });
+    await expect(svc.startGroup('ann', { title: 'Two', userIds: [] })).rejects.toMatchObject({
+      reason: 'cap_reached',
+      message:
+        'You can have 1 group chat here. Groups you started and are still in count: archive one you own, or leave one, to start another.',
+    });
+  });
+
   it('counts only live groups the actor created and is still in', async () => {
     const { svc, state } = harness(2);
     await svc.startGroup('ann', { title: 'One', userIds: ['bob'] });

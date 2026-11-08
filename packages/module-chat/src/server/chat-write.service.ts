@@ -209,7 +209,7 @@ export class ChatWriteService {
       if (!decision.allowed) {
         throw new ChatWriteError(
           'cap_reached',
-          `${limitReachedText(decision, { one: 'group chat', many: 'group chats' })} Archive one to start another.`,
+          `${limitReachedText(decision, { one: 'group chat', many: 'group chats' })} Groups you started and are still in count: archive one you own, or leave one, to start another.`,
           { limit: decision.limit, current: decision.current },
         );
       }

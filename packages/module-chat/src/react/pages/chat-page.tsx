@@ -134,8 +134,9 @@ export function ChatPage({
         {chat.error ? (
           /*
             ⚠ The SERVER's own sentence, not a generic one. Its refusals are
-            written for a reader — "You can have 20 group chats here. Archive
-            one to start another." says exactly what is wrong, and replacing it
+            written for a reader — "You can have 20 group chats here. Groups
+            you started and are still in count: archive one you own, or leave
+            one, to start another." says exactly what is wrong, and replacing it
             with "Something went wrong" throws away the only useful thing in the
             response.
 
