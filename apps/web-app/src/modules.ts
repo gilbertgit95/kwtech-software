@@ -12,6 +12,7 @@ import { localNetworkWebModule } from '@kwtech/module-local-network/react';
 import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
 import { permissionsWebModule } from '@kwtech/module-permissions/react';
+import { platformBillingWebModule } from '@kwtech/module-platform-billing/react';
 import { printWebModule } from '@kwtech/module-print/react';
 import { studioWebModule } from '@kwtech/module-print-studio/react';
 import { queueWebModule } from '@kwtech/module-queuing-window/react';
@@ -38,9 +39,24 @@ import { taskWebModule } from '@kwtech/module-task/react';
  * contributes no route, no nav entry and no icon, while keeping its feature
  * registry so a disable does not strip `chat:*` from every role that holds it.
  */
+/**
+ * ⚠ The Billing page REPLACES permissions' read-only subscription page (#96):
+ * one place an organization sees its plan. Dropped here, by its path, because
+ * the two modules may not know each other (PLAN §9); the app is the one party
+ * composing both. The page still exists in the package for an app without
+ * billing.
+ */
+const PERMISSIONS_SUBSCRIPTION_PAGE = '/organizations/:organizationId/subscription';
+const permissionsWithoutSubscriptionPage: WebModuleDescriptor = {
+  ...permissionsWebModule,
+  routes: (permissionsWebModule.routes ?? []).filter((route) => route.path !== PERMISSIONS_SUBSCRIPTION_PAGE),
+};
+
 const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   authWebModule,
-  permissionsWebModule,
+  permissionsWithoutSubscriptionPage,
+  // The organization's Billing page (#96): plan, what is due, requests, payment details and history.
+  platformBillingWebModule,
   chatWebModule(),
   // The public display opens its own socket, so it needs to know where the API is.
   queueWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
@@ -69,7 +85,13 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
    * declares its first process; without one it is headed by its key.
    */
   jobsWebModule({
-    moduleLabels: { task: 'Tasks', booking: 'Booking', studio: 'Print Studio', backup: 'Backups' },
+    moduleLabels: {
+      task: 'Tasks',
+      booking: 'Booking',
+      studio: 'Print Studio',
+      backup: 'Backups',
+      platform_billing: 'Billing',
+    },
   }),
   /*
    * Server → Backups (issue #2): the server's backup folder, super admins

@@ -156,6 +156,9 @@ importers:
       '@kwtech/module-permissions':
         specifier: workspace:*
         version: link:../../packages/module-permissions
+      '@kwtech/module-platform-billing':
+        specifier: workspace:*
+        version: link:../../packages/module-platform-billing
       '@kwtech/module-print':
         specifier: workspace:*
         version: link:../../packages/module-print
@@ -1193,6 +1196,9 @@ importers:
         specifier: workspace:*
         version: link:../module-kit
     devDependencies:
+      '@kwtech/web-ui':
+        specifier: workspace:*
+        version: link:../web-ui
       '@nestjs/common':
         specifier: 'catalog:'
         version: 11.1.29(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1)
@@ -1214,12 +1220,21 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.1
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
       graphql:
         specifier: 'catalog:'
         version: 17.0.2
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@24.10.1)(supports-color@8.1.1)
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@19.2.8)
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
       reflect-metadata:
         specifier: 'catalog:'
         version: 0.2.2

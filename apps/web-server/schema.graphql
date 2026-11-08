@@ -1504,6 +1504,7 @@ type PlatformBillingEvent {
   actorId: String
   at: String!
   data: String!
+  id: String!
   reason: String
   step: String!
 }
@@ -1527,6 +1528,8 @@ type PlatformBillingOverview {
   pending: PlatformBillingRequest
   plans: [PlatformBillingPlanOffer!]!
   standing: PlatformBillingStanding!
+  timeZone: String!
+  today: String!
 }
 
 type PlatformBillingPayment {
@@ -1684,6 +1687,7 @@ input PlatformBillingSettingsInput {
 
 type PlatformBillingStanding {
   accessUntil: String
+  cancelled: Boolean!
   days: Int
   graceDays: Int!
   holdDays: Int!
@@ -1694,6 +1698,7 @@ type PlatformBillingStanding {
   planKey: String
   planLabel: String
   prepaid: Boolean!
+  trial: Boolean!
 }
 
 type PosAvailabilityChange {

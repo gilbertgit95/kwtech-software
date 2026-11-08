@@ -62,6 +62,10 @@ export class PlatformBillingStandingType {
   @Field(() => String, { nullable: true }) planKey!: string | null;
   @Field(() => String, { nullable: true }) planLabel!: string | null;
   @Field() planArchived!: boolean;
+  /** The owner cancelled: access ends on the period's end, without grace. Renewing undoes it. */
+  @Field() cancelled!: boolean;
+  /** The live row is a trial (D2): free days, nothing to renew; the owner subscribes. */
+  @Field() trial!: boolean;
   @Field(() => String, { nullable: true }) periodStart!: string | null;
   @Field(() => String, { nullable: true }) periodEnd!: string | null;
   /** The first day without access. */
@@ -142,6 +146,8 @@ export class PlatformBillingPaymentType {
 /** One step of a request's timeline, with its reason code. */
 @ObjectType('PlatformBillingEvent')
 export class PlatformBillingEventType {
+  /** The timeline row's id: a stable key for a list. */
+  @Field() id!: string;
   @Field() at!: string;
   @Field() step!: string;
   @Field(() => String, { nullable: true }) reason!: string | null;
@@ -190,6 +196,10 @@ export class PlatformBillingRequestType {
 @ObjectType('PlatformBillingOverview')
 export class PlatformBillingOverviewType {
   @Field() organizationId!: string;
+  /** Today in the billing time zone (`YYYY-MM-DD`): the page's day for a payment's date. */
+  @Field() today!: string;
+  /** The billing time zone (IANA): the page shows every instant's day in it, never the browser's. */
+  @Field() timeZone!: string;
   @Field() currency!: string;
   @Field(() => PlatformBillingStandingType) standing!: PlatformBillingStandingType;
   /** Negative is owed after a void (plan §4). */

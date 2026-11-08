@@ -62,3 +62,10 @@ export function checkAmount(sent: Centavos, total: Centavos): AmountCheck {
   if (sent < total) return { kind: 'short', by: total - sent };
   return { kind: 'over', by: sent - total };
 }
+
+/**
+ * The longest free text a person types into billing (a reference, a sender, a
+ * note, a reason), in characters. Refused past it, never cut. One number for
+ * the payment form and the server (`PLATFORM_BILLING_TEXT_MAX`).
+ */
+export const BILLING_TEXT_MAX = 500;

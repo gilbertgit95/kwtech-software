@@ -10,16 +10,46 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phase 4 done (#93).** The pure core (#91), the schema, the
+**Status: phases 4, 5b and 6a done (#93, #95, #117).** The pure core (#91), the schema, the
 services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
 the audited admin adjustments, the settings and the prices; composed into the
-API; and the daily check with every notification (#95). Still to come: the
-pages (#96, #97).
+API; the daily check with every notification (#95); and the organization's
+Billing page (#117). Still to come: printing and CSV (6b), and the platform's
+pages (#97).
 
 ## In a Next.js app
 
-Nothing yet: the pages come in phases 6 (#96) and 7 (#97).
+```ts
+import { platformBillingWebModule } from '@kwtech/module-platform-billing/react';
+// WEB_MODULES: [...permissions without its /subscription page, platformBillingWebModule, ...]
+```
+
+**The Billing page**, `/organizations/:organizationId/billing`
+(`platform-billing:read`, in the Organization group). Not a sub-app: a
+drawer page, never on a workspace's Apps page. ⚠ It replaces
+`module-permissions`' read-only `/organizations/:organizationId/subscription`;
+the app drops that route when it composes both (`apps/web-app/src/modules.ts`).
+
+- **The status** (`billingStatus`): the plan, the due date, the credit, and
+  the rule behind every date (grace, a hold, a trial, a cancel, an archived
+  plan, an expiry), in words.
+- **One main button that follows the status** (`mainAction`): choose a plan,
+  renew, replace an archived plan, or, with a request waiting, the request
+  itself. Change plan and Cancel beside it, off with the reason when the
+  status or the role does not allow them (`changePlanControl`,
+  `cancelControl`; D8: choosing the plan is the owner's).
+- **A request before it is made**: the server's price for today
+  (`platformBillingPreview`), its lines and credit, or its refusal with the
+  next step and the caps a downgrade would break.
+- **The pending request**: its bill, where to pay (the settings' payment
+  accounts), the payment details form (`checkPaymentDraft`: the server's
+  rules, said before sending), and Withdraw.
+- **The history**: one row per request, its bills, receipts and every step in
+  words (`eventSentence`), each instant shown as its day in the billing time
+  zone.
+- Printing, CSV, history filters and totals, and the gated pages' three
+  reasons come in phase 6b. The platform's pages are phase 7 (#97).
 
 ## In a NestJS app
 

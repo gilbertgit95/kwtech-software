@@ -5,7 +5,13 @@ import { archiveCreditNote, archiveReversalNote, planArchiveCredit } from '../do
 import { addDays, type DayKey, isDayKey, platformDay, platformDayStart } from '../domain/days.js';
 import { type BillSnapshot, billSnapshot, type ReceiptSnapshot, readBillSnapshot } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
-import { isPaymentMethod, needsReference, normaliseReference, type PaymentMethod } from '../domain/payments.js';
+import {
+  BILLING_TEXT_MAX,
+  isPaymentMethod,
+  needsReference,
+  normaliseReference,
+  type PaymentMethod,
+} from '../domain/payments.js';
 import { type Period, periodFrom } from '../domain/periods.js';
 import { chargesAccessUsed, isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import { approvalLagCredit } from '../domain/quotes.js';
@@ -92,8 +98,8 @@ export interface SettingsInput {
  */
 const ARCHIVE_SWEEP_MAX = 5000;
 
-/** The longest free text a person types into billing (a note, a reason, a reference). */
-export const PLATFORM_BILLING_TEXT_MAX = 500;
+/** The longest free text a person types into billing (a note, a reason, a reference): `BILLING_TEXT_MAX`. */
+export const PLATFORM_BILLING_TEXT_MAX = BILLING_TEXT_MAX;
 
 /** The most grace a super admin may set: a month. More is not grace, it is a free plan. */
 export const PLATFORM_BILLING_GRACE_MAX = 31;
