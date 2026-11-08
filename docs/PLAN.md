@@ -619,7 +619,7 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
-- **2026-11-08** — **Platform billing is released: every phase built, the end-to-end pass run, §12.40 closed (#98, closes #88, billing P8).**
+- **2026-11-08** — **Platform billing is released: every phase built, the end-to-end pass run, §12.40 closed (#98, billing P8); #88 stays open for the operator's check in the running app.**
 
   - **The end-to-end pass ran on a throwaway database**, the built API booted
     in a script and each person's step called on the services (MFA blocks a

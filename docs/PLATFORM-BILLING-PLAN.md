@@ -391,7 +391,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P5b | #95 | P4, P5a | The daily check and every notification. **Done** 2026-11-08 |
 | P6 | #96 | P4 (P5b) | The organization's Billing page. **6a done** 2026-11-08 (#117: the page, its status and main button, the priced request, the payment form, the history); **6b done** 2026-11-08 (#119: printing, the statement of account and its CSV, history filters and totals, the expired denial's link to Billing) |
 | P7 | #97 | P4 | The platform queue, settings and reports. **7a done** 2026-11-08 (#121: the queue, a request's checks and decisions, reprints, settings and prices); **7b done** 2026-11-08 (#123: every organization's standing and credit, the collections and standings reports, CSV) |
-| P8 | #98 | all | README, end-to-end pass, release; close #88. **Done** 2026-11-08 (the pass: PLAN §13, 2026-11-08) |
+| P8 | #98 | all | README, end-to-end pass, release. **Done** 2026-11-08 (the pass: PLAN §13, 2026-11-08); #88 stays open until the operator's check in the running app (#96, #97) |
 
 ## 11. Risks and open questions
 
