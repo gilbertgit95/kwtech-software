@@ -53,6 +53,12 @@ export function AdminSettingsPage({ client }: AdminSettingsPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * The last read failed, so the forms may show settings older than the
+   * server's: saving them would diff against the old values and could undo
+   * a change. Saving waits for a read that succeeds (Reload).
+   */
+  const [stale, setStale] = useState(false);
 
   /** Reads the settings, the plans and the prices again, and resets the forms to them. */
   const load = useCallback(async () => {
@@ -67,7 +73,9 @@ export function AdminSettingsPage({ client }: AdminSettingsPageProps) {
         amount: current.amount,
         effectiveFrom: current.effectiveFrom || billingDayOf(new Date(), nextSettings.timeZone),
       }));
+      setStale(false);
     } catch (cause) {
+      setStale(true);
       setError(cause instanceof Error ? cause.message : 'Could not load the billing settings.');
     }
   }, [api]);
@@ -124,7 +132,7 @@ export function AdminSettingsPage({ client }: AdminSettingsPageProps) {
 
   const edit = (patch: Partial<SettingsDraft>) => setDraft((current) => (current ? { ...current, ...patch } : current));
   const currency = settings?.currency ?? 'PHP';
-  const disabled = !canManage || busy;
+  const disabled = !canManage || busy || stale;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -143,6 +151,9 @@ export function AdminSettingsPage({ client }: AdminSettingsPageProps) {
         <p role="status" className="text-sm text-muted-foreground">
           {notice}
         </p>
+      ) : null}
+      {stale && settings ? (
+        <Reason>These may not be the latest settings: reload before saving, so a change is not undone.</Reason>
       ) : null}
       {canManage ? null : <Reason>Changing these needs the billing settings key; you can read them.</Reason>}
 
@@ -435,7 +446,7 @@ export function AdminSettingsPage({ client }: AdminSettingsPageProps) {
                     />
                   )}
                 </Field>
-                <button type="submit" className={buttonClass('primary')} disabled={busy}>
+                <button type="submit" className={buttonClass('primary')} disabled={busy || stale}>
                   {busy ? 'Saving…' : 'Set price'}
                 </button>
               </form>

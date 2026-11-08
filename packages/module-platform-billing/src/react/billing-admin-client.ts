@@ -94,26 +94,42 @@ export interface BillingAdminClient {
   setPrice(planKey: string, monthly: number, effectiveFrom: string): Promise<BillingPriceRowView[]>;
 }
 
+/**
+ * How long one call may take, request and body together, in milliseconds.
+ * A page stays busy until its re-read lands, so a call that never answers
+ * would leave its forms disabled for good; past this it fails with a
+ * sentence the page shows beside Reload.
+ */
+export const BILLING_ADMIN_TIMEOUT_MS = 20_000;
+
 /** The platform's client over `fetch`, at `path` (the app's GraphQL route handler). */
 export function createBillingAdminClient(path = DEFAULT_GRAPHQL_PATH): BillingAdminClient {
   /** One document POSTed: its data, or its first error as the sentence to show. */
   async function graphql<T>(document: string, variables: Record<string, unknown>): Promise<T> {
-    let response: Response;
+    // One deadline for the request and its body: a stalled body would hang as surely as a stalled request.
+    const signal = AbortSignal.timeout(BILLING_ADMIN_TIMEOUT_MS);
+    let body: { data?: T; errors?: { message: string }[] };
     try {
-      response = await fetch(path, {
+      const response = await fetch(path, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ query: document, variables }),
         cache: 'no-store',
+        signal,
       });
-    } catch {
-      throw new Error('Cannot reach the server.');
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401 ? 'Your session has ended. Sign in again.' : 'Cannot reach the server.',
+        );
+      }
+      body = (await response.json()) as typeof body;
+    } catch (cause) {
+      if (signal.aborted) throw new Error('The server took too long to answer. Try again.');
+      // fetch rejects with a TypeError when the network fails; our own refusals above pass through as they are.
+      if (cause instanceof TypeError) throw new Error('Cannot reach the server.');
+      throw cause;
     }
-    if (!response.ok) {
-      throw new Error(response.status === 401 ? 'Your session has ended. Sign in again.' : 'Cannot reach the server.');
-    }
-    const body = (await response.json()) as { data?: T; errors?: { message: string }[] };
     if (body.errors?.length) throw new Error(body.errors[0]?.message ?? 'The request was refused.');
     if (!body.data) throw new Error('The server returned no data.');
     return body.data;

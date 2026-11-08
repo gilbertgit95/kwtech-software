@@ -208,8 +208,9 @@ export class PlatformBillingAdminResolver {
 
   /**
    * Each request as an approver reads it: rendered, its checks, and its
-   * organization's name. Sequential: a page is at most
-   * PLATFORM_BILLING_PAGE_MAX, and each check is one indexed read.
+   * organization's name. Read in parallel with `Promise.all`, bounded by
+   * the page: at most PLATFORM_BILLING_PAGE_MAX items, each a few indexed
+   * reads.
    */
   private async items(details: readonly RequestDetail[], viewerId: string): Promise<PlatformBillingQueueItemType[]> {
     // Each item is independent, so they are read in parallel. One organization often has several requests on a
