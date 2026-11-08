@@ -1,4 +1,4 @@
-import { ArgsType, Field, InputType, Int, ObjectType } from '@nestjs/graphql';
+import { ArgsType, Field, Float, InputType, Int, ObjectType } from '@nestjs/graphql';
 
 /**
  * Billing's GraphQL shapes. Money crosses as `Int` centavos, days as
@@ -422,12 +422,20 @@ export class PlatformBillingOrganizationArgs {
   @Field(() => String, { nullable: true }) filter?: string | null;
 }
 
+/**
+ * ⚠ The report's sums cross as `Float`, not `Int`: GraphQL's Int stops at
+ * 2,147,483,647 centavos (about 21 million pesos), which two years of
+ * collections can pass, and the query would then fail to serialise. A
+ * double holds every whole centavo exactly up to 2^53, and these are always
+ * whole numbers summed from Int receipts. One receipt, one bill and one
+ * balance stay `Int` everywhere else.
+ */
 /** Money collected in one period (a day `YYYY-MM-DD` or a month `YYYY-MM`) by one method. */
 @ObjectType('PlatformBillingCollected')
 export class PlatformBillingCollectedType {
   @Field() period!: string;
   @Field() method!: string;
-  @Field(() => Int) amount!: number;
+  @Field(() => Float) amount!: number;
   @Field(() => Int) receipts!: number;
 }
 
@@ -436,7 +444,7 @@ export class PlatformBillingCollectedType {
 export class PlatformBillingPlanRevenueType {
   @Field(() => String, { nullable: true }) planKey!: string | null;
   @Field() planLabel!: string;
-  @Field(() => Int) amount!: number;
+  @Field(() => Float) amount!: number;
   @Field(() => Int) receipts!: number;
 }
 
@@ -455,8 +463,8 @@ export class PlatformBillingStandingsSummaryType {
   @Field(() => Int) overdue!: number;
   @Field(() => Int) expired!: number;
   @Field(() => Int) pending!: number;
-  @Field(() => Int) creditHeld!: number;
-  @Field(() => Int) creditOwed!: number;
+  @Field(() => Float) creditHeld!: number;
+  @Field(() => Float) creditOwed!: number;
   @Field(() => Int) organizationsWithCredit!: number;
   /** False past STANDINGS_SUMMARY_MAX organizations: the counts cover only those read. */
   @Field() complete!: boolean;
@@ -470,7 +478,7 @@ export class PlatformBillingReportType {
   @Field() from!: string;
   @Field() to!: string;
   @Field() currency!: string;
-  @Field(() => Int) total!: number;
+  @Field(() => Float) total!: number;
   @Field(() => Int) receipts!: number;
   @Field(() => [PlatformBillingCollectedType]) byDay!: PlatformBillingCollectedType[];
   @Field(() => [PlatformBillingCollectedType]) byMonth!: PlatformBillingCollectedType[];

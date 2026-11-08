@@ -1506,7 +1506,7 @@ type PlatformBillingCapOverrun {
 }
 
 type PlatformBillingCollected {
-  amount: Int!
+  amount: Float!
   method: String!
   period: String!
   receipts: Int!
@@ -1616,7 +1616,7 @@ type PlatformBillingPlanOffer {
 }
 
 type PlatformBillingPlanRevenue {
-  amount: Int!
+  amount: Float!
   planKey: String
   planLabel: String!
   receipts: Int!
@@ -1704,7 +1704,7 @@ type PlatformBillingReport {
   receipts: Int!
   standings: PlatformBillingStandingsSummary!
   to: String!
-  total: Int!
+  total: Float!
 }
 
 type PlatformBillingRequest {
@@ -1782,8 +1782,8 @@ type PlatformBillingStandingsSummary {
   available: Boolean!
   byKind: [PlatformBillingStandingCount!]!
   complete: Boolean!
-  creditHeld: Int!
-  creditOwed: Int!
+  creditHeld: Float!
+  creditOwed: Float!
   expired: Int!
   organizations: Int!
   organizationsWithCredit: Int!

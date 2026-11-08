@@ -91,6 +91,20 @@ describe('buildCollectionsReport: what was collected', () => {
     ]);
   });
 
+  it('sums past GraphQL Int (2,147,483,647 centavos) exactly: the report crosses its sums as Float', () => {
+    const large = buildCollectionsReport({
+      from: '2026-11-01',
+      to: '2026-11-30',
+      currency: 'PHP',
+      timeZone: 'Asia/Manila',
+      planLabels: new Map(),
+      receipts: [receipt({ amount: 2_000_000_000 }), receipt({ amount: 2_000_000_001 })],
+    });
+    expect(large.total).toBe(4_000_000_001);
+    expect(large.total).toBeGreaterThan(2 ** 31 - 1);
+    expect(Number.isSafeInteger(large.total)).toBe(true);
+  });
+
   it('dates a receipt by its day in the billing zone, and counts nothing outside the range', () => {
     // 20:00Z on 31 October is 1 November in Manila, and still October in London.
     const evening = [receipt({ issuedAt: at('2026-10-31T20:00:00.000Z') })];
