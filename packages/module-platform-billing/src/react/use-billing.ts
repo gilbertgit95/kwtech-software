@@ -61,6 +61,13 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    * puts the old filter's rows and totals back.
    */
   const historyTicket = useRef(0);
+  /** Each whole read takes one too: only the latest read may set the overview, so a slow one never undoes a newer standing. */
+  const readTicket = useRef(0);
+  /**
+   * The filter in force NOW, for reads that start later than the render that
+   * made them (the re-read after an act): never the filter of when the act began.
+   */
+  const filterRef = useRef<BillingHistoryFilter>({});
 
   /**
    * Reads the overview and the first page of the history, EACH ON ITS OWN:
@@ -70,13 +77,17 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    */
   const readAll = useCallback(
     async (isCancelled: () => boolean = () => false): Promise<boolean> => {
+      readTicket.current += 1;
+      const read = readTicket.current;
       historyTicket.current += 1;
       const ticket = historyTicket.current;
       const [nextOverview, nextHistory] = await Promise.allSettled([
         client.overview(organizationId),
-        client.history(organizationId, null, filter),
+        client.history(organizationId, null, filterRef.current),
       ]);
       if (isCancelled()) return false;
+      // Superseded by a later read: that one answers for the page; this one only says whether it could read.
+      if (read !== readTicket.current) return nextOverview.status === 'fulfilled';
       if (ticket !== historyTicket.current) {
         // A later read (or a filter change) superseded this one's history: only its overview is kept.
       } else if (nextHistory.status === 'fulfilled') {
@@ -93,18 +104,20 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
       setError(sentence(nextOverview.reason, 'Could not load billing.'));
       return false;
     },
-    [client, organizationId, filter],
+    [client, organizationId],
   );
 
   const reload = useCallback(() => readAll(), [readAll]);
 
+  // The first load, and again whenever the filter changes (`readAll` reads it from `filterRef`).
   useEffect(() => {
     let cancelled = false;
+    void filter;
     void readAll(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [readAll]);
+  }, [readAll, filter]);
 
   const run = useCallback(
     async (action: (client: BillingClient) => Promise<unknown>, done?: string) => {
@@ -143,6 +156,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    * and a page of older requests still loading for the old filter is dropped.
    */
   const changeFilter = useCallback((next: BillingHistoryFilter) => {
+    filterRef.current = next;
     generation.current += 1;
     historyTicket.current += 1;
     setHistory(null);
@@ -157,7 +171,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     loadingMore.current = true;
     const startedIn = generation.current;
     try {
-      const next = await client.history(organizationId, history.nextCursor, filter);
+      const next = await client.history(organizationId, history.nextCursor, filterRef.current);
       // The history was replaced while this page was loading: it belongs to the old list, so it is dropped.
       if (generation.current !== startedIn) return;
       // Appended to what is shown NOW (a reload may have replaced it meanwhile), without repeating a request.
@@ -175,7 +189,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     } finally {
       loadingMore.current = false;
     }
-  }, [client, organizationId, history, filter]);
+  }, [client, organizationId, history]);
 
   return {
     overview,
