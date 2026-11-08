@@ -62,6 +62,12 @@ describe('limitRaise', () => {
       limit: 3,
     });
     const unlimited = { ...spec, defaultValue: null };
+    // Team (3), Pro (5) and Max (no limit) are all above 1: the smallest number wins, "no limit" comes last.
+    expect(limitRaise({ spec: unlimited, cap: 1, planKeys: ['starter'], catalogue })?.next).toEqual({
+      key: 'team',
+      label: 'Team',
+      limit: 3,
+    });
     expect(limitRaise({ spec: unlimited, cap: 5, planKeys: ['pro'], catalogue })?.next).toEqual({
       key: 'max',
       label: 'Max',
