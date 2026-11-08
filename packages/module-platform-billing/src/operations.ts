@@ -18,7 +18,7 @@ const REQUEST = `
   bills { ${BILL} }
   receipts { id number amount currency method kind reference issuedAt voidedAt voidReason }
   payments { version method amount paidOn reference sender note enteredById enteredAt }
-  events { at step reason actorId data }
+  events { id at step reason actorId data }
 `;
 
 const FLAGS = 'referenceUsedOn amount amountDifference missingDetails holdInForce selfRequest viewerIsMember';
@@ -30,8 +30,8 @@ export const PLATFORM_BILLING_OPERATIONS = {
   overview: /* GraphQL */ `
     query PlatformBillingOverview($organizationId: String!) {
       platformBillingOverview(organizationId: $organizationId) {
-        organizationId currency creditBalance
-        standing { kind days planKey planLabel planArchived periodStart periodEnd accessUntil graceDays holdDays prepaid }
+        organizationId today timeZone currency creditBalance
+        standing { kind days planKey planLabel planArchived cancelled trial periodStart periodEnd accessUntil graceDays holdDays prepaid }
         pending { ${REQUEST} }
         plans { key label monthly isPublic archived current }
         paymentAccounts { method label details }

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { matchRouteWithParams } from '@kwtech/module-kit';
 import { FEATURE_REGISTRY } from '../src/feature-keys.js';
-import { permissionsWebModule } from '../src/react/module.js';
+import { permissionsWebModule, permissionsWebModuleWith } from '../src/react/module.js';
 import {
   ORGANIZATION_NAV_GROUP,
   ORGANIZATION_NEW_HREF,
@@ -386,5 +386,34 @@ describe('the tenant nav vocabulary stays readable from a server component', () 
 
   it('and it imports no React, so a Nest app or a test can read the convention', () => {
     expect(NAV_SOURCE).not.toMatch(/from ['"]react['"]/);
+  });
+});
+
+describe('another module owning the plan page (billing, #96)', () => {
+  const planPage = {
+    section: 'billing',
+    feature: 'platform-billing:read',
+    title: 'Billing',
+    description: 'Your plan.',
+  };
+  const configured = permissionsWebModuleWith({ planPage }).routes ?? [];
+
+  it('turns the read-only subscription page into a redirect to the plan page, out of the drawer', () => {
+    const old = configured.find((route) => route.path === '/organizations/:organizationId/subscription');
+    expect(old?.redirectTo).toBe('/organizations/:organizationId/billing');
+    expect(old?.nav).toBeUndefined();
+    expect(old?.feature).toBe('platform-billing:read');
+    expect(configured).toHaveLength(routes.length);
+  });
+
+  it('keeps the overview at its paths, rendered with the plan page', () => {
+    const overview = configured.find((route) => route.path === '/organizations/:organizationId/overview');
+    const before = routes.find((route) => route.path === '/organizations/:organizationId/overview');
+    expect(overview?.feature).toBe(before?.feature);
+    expect(overview?.component).not.toBe(before?.component);
+  });
+
+  it('is the module itself when no plan page is given', () => {
+    expect(permissionsWebModuleWith()).toBe(permissionsWebModule);
   });
 });

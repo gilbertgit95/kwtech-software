@@ -1,6 +1,6 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 to 5b done (2026-11-08).** Phase 1
+Status: **phases 1 to 5b and 6a done (2026-11-08).** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
@@ -389,7 +389,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); **4b-2 done** 2026-11-08 (#112: archives, the trial); **4b-3 done** 2026-11-08 (#114: the audited adjustments) |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
 | P5b | #95 | P4, P5a | The daily check and every notification. **Done** 2026-11-08 |
-| P6 | #96 | P4 (P5b) | The organization's Billing page |
+| P6 | #96 | P4 (P5b) | The organization's Billing page. **6a done** 2026-11-08 (#117: the page, its status and main button, the priced request, the payment form, the history); 6b: printing, CSV, filters and totals, the gated pages' three reasons |
 | P7 | #97 | P4 | The platform queue, settings and reports |
 | P8 | #98 | all | README, end-to-end pass, release; close #88 |
 

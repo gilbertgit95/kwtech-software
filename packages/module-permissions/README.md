@@ -62,6 +62,14 @@ the composed schema — code-first, no SDL, no stitching.
 
 ## Consuming it — web
 
+**`permissionsWebModuleWith({ planPage })`** (#117): an app whose plan page
+belongs to another module (the billing module's Billing page) passes its
+section, key, title and description. The read-only
+`/organizations/:organizationId/subscription` then becomes a redirect to that
+page (out of the drawer, so older links still land there), and the
+organization overview's card opens it for the holders of its key.
+Without the option it is `permissionsWebModule`, unchanged.
+
 ```tsx
 <PermissionsProvider value={grants}>…</PermissionsProvider>
 

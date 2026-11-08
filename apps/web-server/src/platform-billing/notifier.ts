@@ -26,8 +26,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
  * to tell: the daily check marks its row sent only then. `sendSafely` answers
  * null on a failure, which is `false` here.
  *
- * The button opens the organization's subscription page: the Billing page
- * replaces it in phase 6 (#96), and its link goes with it.
+ * The button opens the organization's Billing page (#96).
  */
 export class PlatformBillingNotifierAdapter implements PlatformBillingNotifier {
   constructor(
@@ -248,7 +247,7 @@ function shortDay(day: string): string {
   return new Date(`${day}T00:00:00.000Z`).toLocaleDateString('en-PH', { timeZone: 'UTC', dateStyle: 'medium' });
 }
 
-/** The organization's subscription page, until the Billing page (#96) replaces it. */
+/** The organization's Billing page (#96): `billingPageHref`, restated because the app's server may not import a module's React entry point. */
 function billingHref(organizationId: string): string {
-  return `/organizations/${encodeURIComponent(organizationId)}/subscription`;
+  return `/organizations/${encodeURIComponent(organizationId)}/billing`;
 }

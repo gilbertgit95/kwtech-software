@@ -96,6 +96,7 @@ export function renderRequest(detail: RequestDetail): PlatformBillingRequestType
       enteredAt: row.enteredAt.toISOString(),
     })),
     events: detail.events.map((row) => ({
+      id: row.id,
       at: row.at.toISOString(),
       step: row.step,
       reason: row.reason,
@@ -164,6 +165,8 @@ export function renderStanding(context: BillingContext): PlatformBillingStanding
     planKey: live?.planKey ?? null,
     planLabel: plan?.label ?? live?.planKey ?? null,
     planArchived: live?.planArchived ?? false,
+    cancelled: context.cancelled,
+    trial: live?.trial ?? false,
     periodStart: standing.currentPeriod?.start ?? null,
     periodEnd: standing.rowPeriod?.end ?? liveDays?.periodEnd ?? null,
     accessUntil: standing.window?.accessUntil ?? liveDays?.accessUntil ?? null,
@@ -181,6 +184,8 @@ export function renderOverview(context: BillingContext, pending: RequestDetail |
   );
   return {
     organizationId: context.organizationId,
+    today: context.today,
+    timeZone: context.settings.timeZone,
     currency: context.settings.currency,
     standing: renderStanding(context),
     creditBalance: context.creditBalance,

@@ -20,7 +20,7 @@
 
 export { denialMessage, FeatureDenied, type FeatureDeniedProps } from './feature-denied.js';
 export { FeatureGate, type FeatureGateProps } from './feature-gate.js';
-export { permissionsWebModule } from './module.js';
+export { type PermissionsWebModuleOptions, permissionsWebModule, permissionsWebModuleWith } from './module.js';
 export { AdminPage, AdminPlaceholder } from './pages/admin-page.js';
 export { DefaultsPage } from './pages/defaults-page.js';
 export { FeatureEditPage } from './pages/feature-edit-page.js';
@@ -31,7 +31,7 @@ export { FeaturesPage } from './pages/features-page.js';
 export { InviteUserPage } from './pages/invite-user-page.js';
 export { MyOrganizationsPage } from './pages/my-organizations-page.js';
 export { OrganizationDetailPage } from './pages/organization-detail-page.js';
-export { OrganizationHomePage } from './pages/organization-home-page.js';
+export { OrganizationHomePage, type OrganizationPlanPage } from './pages/organization-home-page.js';
 export { OrganizationMembersPage } from './pages/organization-members-page.js';
 export { OrganizationNewPage } from './pages/organization-new-page.js';
 export { OrganizationNotices } from './pages/organization-notices.js';
