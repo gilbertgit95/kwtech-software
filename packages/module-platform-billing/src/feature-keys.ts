@@ -68,6 +68,7 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
       { surface: 'graphql_operation', identifier: 'Query.platformBillingOverview' },
       { surface: 'graphql_operation', identifier: 'Query.platformBillingPreview' },
       { surface: 'graphql_operation', identifier: 'Query.platformBillingHistory' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingStatement' },
       { surface: 'graphql_operation', identifier: 'Query.platformBillingRequest' },
     ],
     tags: ['platform-billing'],

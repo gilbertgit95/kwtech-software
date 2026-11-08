@@ -124,6 +124,12 @@ export interface PlatformBillingPlans {
 export interface PlatformBillingPeople {
   /** Whether `userId` is a member of `organizationId` (D15: flagged, never blocking). */
   isMember(userId: string, organizationId: string): Promise<boolean>;
+  /**
+   * The organization's name, as printed on a bill or a statement ("Billed
+   * to"), or null when it cannot be read. Today's name: an organization that
+   * renames prints its new name on a reprint, as a statement would.
+   */
+  organizationName(organizationId: string): Promise<string | null>;
 }
 
 /**

@@ -39,6 +39,11 @@ export function renderBill(row: BillRow): PlatformBillingBillType {
     lines: lines(snapshot.lines),
     cancelledAt: row.cancelledAt?.toISOString() ?? null,
     cancelledReason: row.cancelledReason,
+    issuerName: snapshot.issuer?.name ?? '',
+    issuerDetails: snapshot.issuer?.details ?? '',
+    issuedOn: snapshot.issuedOn,
+    periodStart: snapshot.pricedForPeriod?.start ?? null,
+    periodEnd: snapshot.pricedForPeriod?.end ?? null,
   };
 }
 
@@ -72,18 +77,31 @@ export function renderRequest(detail: RequestDetail): PlatformBillingRequestType
     voidReason: request.voidReason,
     bill: bill ? renderBill(bill) : null,
     bills: detail.bills.map(renderBill),
-    receipts: detail.receipts.map((row) => ({
-      id: row.id,
-      number: documentNumber('receipt', row.number),
-      amount: row.amount,
-      currency: row.currency,
-      method: row.method,
-      kind: row.kind,
-      reference: readReference(row.snapshot),
-      issuedAt: row.issuedAt.toISOString(),
-      voidedAt: row.voidedAt?.toISOString() ?? null,
-      voidReason: row.voidReason,
-    })),
+    receipts: detail.receipts.map((row) => {
+      const printed = readReceiptPrint(row.snapshot);
+      return {
+        id: row.id,
+        number: documentNumber('receipt', row.number),
+        amount: row.amount,
+        currency: row.currency,
+        method: row.method,
+        kind: row.kind,
+        reference: printed.reference,
+        issuedAt: row.issuedAt.toISOString(),
+        voidedAt: row.voidedAt?.toISOString() ?? null,
+        voidReason: row.voidReason,
+        title: printed.title,
+        notice: printed.notice,
+        billNumber: printed.billNumber,
+        planLabel: printed.planLabel,
+        paidOn: printed.paidOn,
+        periodStart: printed.periodStart,
+        periodEnd: printed.periodEnd,
+        issuerName: printed.issuerName,
+        issuerDetails: printed.issuerDetails,
+        issuedOn: printed.issuedOn,
+      };
+    }),
     payments: detail.payments.map((row) => ({
       version: row.version,
       method: row.method,
@@ -177,7 +195,11 @@ export function renderStanding(context: BillingContext): PlatformBillingStanding
 }
 
 /** The Billing page's overview: standing, credit, the pending request, plans on offer, where to pay. */
-export function renderOverview(context: BillingContext, pending: RequestDetail | null): PlatformBillingOverviewType {
+export function renderOverview(
+  context: BillingContext,
+  pending: RequestDetail | null,
+  organizationName: string | null = null,
+): PlatformBillingOverviewType {
   const current = context.live?.planKey ?? null;
   const offered = [...context.plans.values()].filter(
     (plan) => plan.key === current || (plan.isPublic && !plan.archived),
@@ -186,6 +208,7 @@ export function renderOverview(context: BillingContext, pending: RequestDetail |
     organizationId: context.organizationId,
     today: context.today,
     timeZone: context.settings.timeZone,
+    organizationName,
     currency: context.settings.currency,
     standing: renderStanding(context),
     creditBalance: context.creditBalance,
@@ -202,9 +225,39 @@ export function renderOverview(context: BillingContext, pending: RequestDetail |
   };
 }
 
-/** The payment reference a receipt printed, if any. */
-function readReference(snapshot: unknown): string | null {
-  if (typeof snapshot !== 'object' || snapshot === null) return null;
-  const reference = (snapshot as { reference?: unknown }).reference;
-  return typeof reference === 'string' ? reference : null;
+/**
+ * What a receipt printed, read leniently from its snapshot (`ReceiptSnapshot`):
+ * a field a hand-edited or older row lacks reads as empty, never as today's
+ * settings, so a reprint never says something the receipt did not.
+ */
+function readReceiptPrint(snapshot: unknown): {
+  reference: string | null;
+  title: string;
+  notice: string;
+  billNumber: string | null;
+  planLabel: string;
+  paidOn: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  issuerName: string;
+  issuerDetails: string;
+  issuedOn: string;
+} {
+  const row = (typeof snapshot === 'object' && snapshot !== null ? snapshot : {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === 'string' ? value : null);
+  const period = (typeof row.period === 'object' && row.period !== null ? row.period : {}) as Record<string, unknown>;
+  const issuer = (typeof row.issuer === 'object' && row.issuer !== null ? row.issuer : {}) as Record<string, unknown>;
+  return {
+    reference: text(row.reference),
+    title: text(row.title) ?? 'Acknowledgement receipt',
+    notice: text(row.notice) ?? 'This is not an official receipt.',
+    billNumber: text(row.billNumber),
+    planLabel: text(row.planLabel) ?? '',
+    paidOn: text(row.paidOn) ?? '',
+    periodStart: text(period.start),
+    periodEnd: text(period.end),
+    issuerName: text(issuer.name) ?? '',
+    issuerDetails: text(issuer.details) ?? '',
+    issuedOn: text(row.issuedOn) ?? '',
+  };
 }

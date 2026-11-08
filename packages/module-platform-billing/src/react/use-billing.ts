@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type BillingClient,
+  type BillingHistoryFilter,
   type BillingHistoryPageView,
   type BillingOverviewView,
   createBillingClient,
@@ -13,6 +14,9 @@ export interface BillingState {
   history: BillingHistoryPageView | null;
   /** Why the history could not be read; the rest of the page still works. */
   historyError: string | null;
+  /** The history's filters, and changing them (the first page is read again). */
+  filter: BillingHistoryFilter;
+  setFilter: (filter: BillingHistoryFilter) => void;
   error: string | null;
   /** Something the person did worked: said in a `role="status"` line. */
   notice: string | null;
@@ -38,6 +42,8 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
   const [history, setHistory] = useState<BillingHistoryPageView | null>(null);
   /** The history's own failure: said in its section with a retry, never hiding the status and its buttons. */
   const [historyError, setHistoryError] = useState<string | null>(null);
+  /** The history's filters (year, state, hide what changed nothing): the first page is read again when they change. */
+  const [filter, setFilter] = useState<BillingHistoryFilter>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,6 +54,20 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    * appending it would skip what lies between.
    */
   const generation = useRef(0);
+  /**
+   * Each read of the history's first page takes a ticket; only the latest
+   * ticket's answer is shown. A filter change takes one too, so a slower read
+   * started before it (a reload, a retry, the re-read after an act) never
+   * puts the old filter's rows and totals back.
+   */
+  const historyTicket = useRef(0);
+  /** Each whole read takes one too: only the latest read may set the overview, so a slow one never undoes a newer standing. */
+  const readTicket = useRef(0);
+  /**
+   * The filter in force NOW, for reads that start later than the render that
+   * made them (the re-read after an act): never the filter of when the act began.
+   */
+  const filterRef = useRef<BillingHistoryFilter>({});
 
   /**
    * Reads the overview and the first page of the history, EACH ON ITS OWN:
@@ -57,12 +77,20 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    */
   const readAll = useCallback(
     async (isCancelled: () => boolean = () => false): Promise<boolean> => {
+      readTicket.current += 1;
+      const read = readTicket.current;
+      historyTicket.current += 1;
+      const ticket = historyTicket.current;
       const [nextOverview, nextHistory] = await Promise.allSettled([
         client.overview(organizationId),
-        client.history(organizationId, null),
+        client.history(organizationId, null, filterRef.current),
       ]);
       if (isCancelled()) return false;
-      if (nextHistory.status === 'fulfilled') {
+      // Superseded by a later read: that one answers for the page; this one only says whether it could read.
+      if (read !== readTicket.current) return nextOverview.status === 'fulfilled';
+      if (ticket !== historyTicket.current) {
+        // A later read (or a filter change) superseded this one's history: only its overview is kept.
+      } else if (nextHistory.status === 'fulfilled') {
         generation.current += 1;
         setHistory(nextHistory.value);
         setHistoryError(null);
@@ -81,13 +109,15 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
 
   const reload = useCallback(() => readAll(), [readAll]);
 
+  // The first load, and again whenever the filter changes (`readAll` reads it from `filterRef`).
   useEffect(() => {
     let cancelled = false;
+    void filter;
     void readAll(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [readAll]);
+  }, [readAll, filter]);
 
   const run = useCallback(
     async (action: (client: BillingClient) => Promise<unknown>, done?: string) => {
@@ -120,6 +150,20 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     [client, reload],
   );
 
+  /**
+   * A new filter starts the history from nothing: the old list (and its
+   * totals) never sits under the new controls, a failed read shows its error,
+   * and a page of older requests still loading for the old filter is dropped.
+   */
+  const changeFilter = useCallback((next: BillingHistoryFilter) => {
+    filterRef.current = next;
+    generation.current += 1;
+    historyTicket.current += 1;
+    setHistory(null);
+    setHistoryError(null);
+    setFilter(next);
+  }, []);
+
   const loadingMore = useRef(false);
   const loadMore = useCallback(async () => {
     // One page at a time: two quick presses would read the same cursor and append the page twice.
@@ -127,16 +171,17 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     loadingMore.current = true;
     const startedIn = generation.current;
     try {
-      const next = await client.history(organizationId, history.nextCursor);
+      const next = await client.history(organizationId, history.nextCursor, filterRef.current);
       // The history was replaced while this page was loading: it belongs to the old list, so it is dropped.
       if (generation.current !== startedIn) return;
       // Appended to what is shown NOW (a reload may have replaced it meanwhile), without repeating a request.
       setHistory((current) => {
-        const shown = current ?? { items: [], nextCursor: null };
+        const shown = current ?? { items: [], nextCursor: null, totals: next.totals };
         const seen = new Set(shown.items.map((item) => item.id));
         return {
           items: [...shown.items, ...next.items.filter((item) => !seen.has(item.id))],
           nextCursor: next.nextCursor,
+          totals: next.totals,
         };
       });
     } catch (cause) {
@@ -150,6 +195,8 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     overview,
     history,
     historyError,
+    filter,
+    setFilter: changeFilter,
     error,
     notice,
     busy,

@@ -1,14 +1,14 @@
 import { DEFAULT_TIME_ZONE } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
 import { DEFAULT_GRACE_DAYS } from '../domain/access.js';
-import { type DayKey, platformDay } from '../domain/days.js';
+import { addDays, type DayKey, platformDay, platformDayStart } from '../domain/days.js';
 import type { Issuer } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
 import { checkAmount, findReferenceReuse } from '../domain/payments.js';
 import { type CapOverrun, capsBlockingDowngrade } from '../domain/plans.js';
 import { isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import type { PlatformBillingRefusal } from '../domain/refusals.js';
-import { checkNewRequest, type PricedKind } from '../domain/requests.js';
+import { checkNewRequest, type PricedKind, type RequestState } from '../domain/requests.js';
 import {
   type BillingStanding,
   billingStanding,
@@ -18,10 +18,22 @@ import {
   type SubscriptionDays,
 } from '../domain/standing.js';
 import {
+  buildStatement,
+  checkStatementRange,
+  HISTORY_STATES,
+  type HistoryFilter,
+  type HistoryTotals,
+  isHistoryYear,
+  STATEMENT_MAX_DAYS,
+  type Statement,
+} from '../domain/statement.js';
+import { billingRefusal } from './platform-billing.errors.js';
+import {
   type BillRow,
   dateColumnToDay,
   dayToDateColumn,
   type EventRow,
+  type HistoryFilterWhere,
   type PaymentRow,
   type PlatformBillingPrismaClient,
   type PlatformBillingTransaction,
@@ -295,8 +307,66 @@ export class PlatformBillingService {
     organizationId: string,
     cursor: string | null,
     limit: number | null,
-  ): Promise<{ items: readonly RequestDetail[]; nextCursor: string | null }> {
-    return this.page({ organizationId }, cursor, limit);
+    filter: HistoryFilter = {},
+  ): Promise<{ items: readonly RequestDetail[]; nextCursor: string | null; totals: HistoryTotals }> {
+    const settings = await this.settings();
+    const where = historyWhere(filter, settings.timeZone);
+    const [page, count, paid] = await Promise.all([
+      this.page({ organizationId, ...where }, cursor, limit),
+      this.prisma.platformBillingRequest.count({ where: { organizationId, ...where } }),
+      where.requestedAt
+        ? this.prisma.platformBillingReceipt.aggregate({
+            where: { organizationId, issuedAt: where.requestedAt, voidedAt: null },
+            _sum: { amount: true },
+          })
+        : null,
+    ]);
+    return { ...page, totals: { requests: count, paidInYear: paid ? (paid._sum.amount ?? 0) : null } };
+  }
+
+  /**
+   * The statement of account for the days `from` to `to` (both included, in
+   * the billing time zone; plan §7): every bill, receipt and credit entry in
+   * the range, oldest first, the credit balance before and after, and what
+   * was billed and paid. A cancelled bill and a voided receipt are listed
+   * and say so, but count for nothing in the totals.
+   */
+  async statement(organizationId: string, from: string, to: string): Promise<Statement> {
+    const refused = checkStatementRange(from, to);
+    if (refused) throw billingRefusal(refused, { field: 'range', maxDays: STATEMENT_MAX_DAYS });
+    const settings = await this.settings();
+    const range = {
+      gte: platformDayStart(from, settings.timeZone),
+      lt: platformDayStart(addDays(to, 1), settings.timeZone),
+    };
+    const [bills, receipts, credits, before] = await Promise.all([
+      this.prisma.platformBillingBill.findMany({
+        where: { organizationId, issuedAt: range },
+        orderBy: { number: 'asc' },
+      }),
+      this.prisma.platformBillingReceipt.findMany({
+        where: { organizationId, issuedAt: range },
+        orderBy: { number: 'asc' },
+      }),
+      this.prisma.platformBillingCredit.findMany({
+        where: { organizationId, createdAt: range },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.platformBillingCredit.aggregate({
+        where: { organizationId, createdAt: { lt: range.gte } },
+        _sum: { amount: true },
+      }),
+    ]);
+    return buildStatement({
+      from,
+      to,
+      currency: settings.currency,
+      timeZone: settings.timeZone,
+      openingCredit: before._sum.amount ?? 0,
+      bills,
+      receipts,
+      credits,
+    });
   }
 
   /** Every pending request, oldest first, for the platform queue. */
@@ -341,7 +411,7 @@ export class PlatformBillingService {
 
   /** One keyset page of requests, with their documents. */
   private async page(
-    where: { organizationId?: string; state?: 'pending' },
+    where: { organizationId?: string; state?: 'pending' } | ({ organizationId: string } & HistoryFilterWhere),
     cursor: string | null,
     limit: number | null,
     order: 'asc' | 'desc' = 'desc',
@@ -420,4 +490,23 @@ function readPaymentAccounts(value: unknown): PaymentAccount[] {
     }
   }
   return accounts;
+}
+
+/**
+ * The history's filters as a query: a year as its range in the billing time
+ * zone, one state, or the requests that changed nothing hidden. A state or a
+ * year the filter cannot name is ignored, never passed on.
+ */
+export function historyWhere(filter: HistoryFilter, timeZone: string): HistoryFilterWhere {
+  const where: HistoryFilterWhere = {};
+  if (typeof filter.year === 'number' && isHistoryYear(filter.year)) {
+    where.requestedAt = {
+      gte: platformDayStart(`${filter.year}-01-01`, timeZone),
+      lt: platformDayStart(`${filter.year + 1}-01-01`, timeZone),
+    };
+  }
+  const state = filter.state && (HISTORY_STATES as readonly string[]).includes(filter.state) ? filter.state : null;
+  if (state) where.state = state as RequestState;
+  else if (filter.hideClosed) where.state = { notIn: ['withdrawn', 'rejected'] };
+  return where;
 }

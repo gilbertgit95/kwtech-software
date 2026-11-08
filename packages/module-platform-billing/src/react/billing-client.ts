@@ -33,6 +33,12 @@ export interface BillingBillView {
   lines: BillingLineView[];
   cancelledAt: string | null;
   cancelledReason: string | null;
+  /** As printed, from the bill's own snapshot. */
+  issuerName: string;
+  issuerDetails: string;
+  issuedOn: string;
+  periodStart: string | null;
+  periodEnd: string | null;
 }
 
 export interface BillingReceiptView {
@@ -47,6 +53,17 @@ export interface BillingReceiptView {
   issuedAt: string;
   voidedAt: string | null;
   voidReason: string | null;
+  /** As printed, from the receipt's own snapshot: "Acknowledgement receipt" and its notice. */
+  title: string;
+  notice: string;
+  billNumber: string | null;
+  planLabel: string;
+  paidOn: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  issuerName: string;
+  issuerDetails: string;
+  issuedOn: string;
 }
 
 export interface BillingPaymentView {
@@ -144,6 +161,8 @@ export interface BillingOverviewView {
   today: string;
   /** The billing time zone (IANA): every instant on the page is shown as its day there. */
   timeZone: string;
+  /** The organization's name, as a bill or statement prints it; null when unknown. */
+  organizationName: string | null;
   currency: string;
   /** Centavos; negative is owed on the next bill. */
   creditBalance: number;
@@ -184,6 +203,41 @@ export interface BillingPreviewView {
 export interface BillingHistoryPageView {
   items: BillingRequestView[];
   nextCursor: string | null;
+  /** What the filter covers, over every page. */
+  totals: { requests: number; paidInYear: number | null };
+}
+
+/** The history's filters: a year, one state, or the requests that changed nothing hidden. */
+export interface BillingHistoryFilter {
+  year?: number | null;
+  state?: string | null;
+  hideClosed?: boolean | null;
+}
+
+/** One line of the statement of account. */
+export interface BillingStatementEntryView {
+  id: string;
+  at: string;
+  day: string;
+  kind: string;
+  number: string | null;
+  detail: string;
+  note: string | null;
+  billed: number;
+  paid: number;
+  credit: number;
+  creditBalance: number;
+}
+
+export interface BillingStatementView {
+  from: string;
+  to: string;
+  currency: string;
+  openingCredit: number;
+  closingCredit: number;
+  billed: number;
+  paid: number;
+  entries: BillingStatementEntryView[];
 }
 
 /** What an owner (or admin) says they paid. Amounts in centavos; `paidOn` a `YYYY-MM-DD` day. */
@@ -202,7 +256,15 @@ export type ChosenPlanKind = 'subscribe' | 'change_plan' | 'replace';
 export interface BillingClient {
   overview(organizationId: string): Promise<BillingOverviewView>;
   preview(organizationId: string, kind: string, planKey: string | null): Promise<BillingPreviewView>;
-  history(organizationId: string, cursor: string | null, limit?: number): Promise<BillingHistoryPageView>;
+  history(
+    organizationId: string,
+    cursor: string | null,
+    filter?: BillingHistoryFilter,
+    limit?: number,
+  ): Promise<BillingHistoryPageView>;
+  statement(organizationId: string, from: string, to: string): Promise<BillingStatementView>;
+  /** One request with its bills and receipts, or null when it is not this organization's. */
+  request(organizationId: string, requestId: string): Promise<BillingRequestView | null>;
   requestPlan(organizationId: string, kind: ChosenPlanKind, planKey: string): Promise<BillingRequestView>;
   renew(organizationId: string): Promise<BillingRequestView>;
   cancel(organizationId: string): Promise<BillingRequestView>;
@@ -251,14 +313,29 @@ export function createBillingClient(path = DEFAULT_GRAPHQL_PATH): BillingClient 
       ).platformBillingPreview;
     },
     /** One page of the history, newest first. */
-    async history(organizationId, cursor, limit = 20) {
+    async history(organizationId, cursor, filter = {}, limit = 20) {
       return (
         await graphql<{ platformBillingHistory: BillingHistoryPageView }>(ops.history, {
           organizationId,
           cursor,
           limit,
+          year: filter.year ?? null,
+          state: filter.state ?? null,
+          hideClosed: filter.hideClosed ?? null,
         })
       ).platformBillingHistory;
+    },
+    /** One request, with what it printed. */
+    async request(organizationId, requestId) {
+      return (
+        await graphql<{ platformBillingRequest: BillingRequestView | null }>(ops.request, { organizationId, requestId })
+      ).platformBillingRequest;
+    },
+    /** The statement of account for a range of days, both included. */
+    async statement(organizationId, from, to) {
+      return (
+        await graphql<{ platformBillingStatement: BillingStatementView }>(ops.statement, { organizationId, from, to })
+      ).platformBillingStatement;
     },
     /** Subscribe, change plan or replace an archived plan (the owner's). */
     async requestPlan(organizationId, kind, planKey) {

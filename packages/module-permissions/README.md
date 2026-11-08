@@ -806,6 +806,12 @@ import { FeatureDenied, denialMessage } from '@kwtech/module-permissions/react';
 One wording in one place. "Upgrade your plan" and "ask an administrator" are
 different errands, and sending someone on the wrong one wastes a support ticket.
 
+`FeatureDenied` takes an optional `nextStep` (`{ label, href? }`): a link under
+the sentence for where the reader can act on it, or a plain line when the next
+step is somebody else's. For `subscription_expired` the app passes the
+organization's Billing page to those whose role opens it, and "ask the owner or
+an admin" to the rest (#119): this module does not know that page, the app does.
+
 ## Tags, filtering and paging
 
 ### Tags

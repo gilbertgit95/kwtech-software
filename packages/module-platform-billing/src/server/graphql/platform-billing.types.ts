@@ -111,6 +111,14 @@ export class PlatformBillingBillType {
   @Field(() => [PlatformBillingLineType]) lines!: PlatformBillingLineType[];
   @Field(() => String, { nullable: true }) cancelledAt!: string | null;
   @Field(() => String, { nullable: true }) cancelledReason!: string | null;
+  /** As printed, from the snapshot (plan §7): never today's settings. */
+  @Field() issuerName!: string;
+  @Field() issuerDetails!: string;
+  /** The billing day it was issued. */
+  @Field() issuedOn!: string;
+  /** The period it was priced against (a renewal, a plan change), or null. */
+  @Field(() => String, { nullable: true }) periodStart!: string | null;
+  @Field(() => String, { nullable: true }) periodEnd!: string | null;
 }
 
 /** An acknowledgement receipt, and whether it was voided. */
@@ -127,6 +135,19 @@ export class PlatformBillingReceiptType {
   @Field() issuedAt!: string;
   @Field(() => String, { nullable: true }) voidedAt!: string | null;
   @Field(() => String, { nullable: true }) voidReason!: string | null;
+  /** As printed, from the snapshot: "Acknowledgement receipt", and its notice (PLAN §12.128). */
+  @Field() title!: string;
+  @Field() notice!: string;
+  @Field(() => String, { nullable: true }) billNumber!: string | null;
+  @Field() planLabel!: string;
+  /** The day the payment was made, as the approver confirmed it. */
+  @Field() paidOn!: string;
+  /** The period the payment bought, or null (a payment kept as credit bought none). */
+  @Field(() => String, { nullable: true }) periodStart!: string | null;
+  @Field(() => String, { nullable: true }) periodEnd!: string | null;
+  @Field() issuerName!: string;
+  @Field() issuerDetails!: string;
+  @Field() issuedOn!: string;
 }
 
 /** One version of the payment details a request was given. */
@@ -200,6 +221,8 @@ export class PlatformBillingOverviewType {
   @Field() today!: string;
   /** The billing time zone (IANA): the page shows every instant's day in it, never the browser's. */
   @Field() timeZone!: string;
+  /** The organization's name, as a bill or statement prints it; null when it cannot be read. */
+  @Field(() => String, { nullable: true }) organizationName!: string | null;
   @Field() currency!: string;
   @Field(() => PlatformBillingStandingType) standing!: PlatformBillingStandingType;
   /** Negative is owed after a void (plan §4). */
@@ -209,11 +232,53 @@ export class PlatformBillingOverviewType {
   @Field(() => [PlatformBillingPaymentAccountType]) paymentAccounts!: PlatformBillingPaymentAccountType[];
 }
 
+/** What the history's filter covers. */
+@ObjectType('PlatformBillingHistoryTotals')
+export class PlatformBillingHistoryTotalsType {
+  /** Requests matching the filter, over every page. */
+  @Field(() => Int) requests!: number;
+  /** Centavos received in the chosen year (receipts not voided); null when no year is chosen. */
+  @Field(() => Int, { nullable: true }) paidInYear!: number | null;
+}
+
 /** A page of the organization's requests, newest first. */
 @ObjectType('PlatformBillingHistoryPage')
 export class PlatformBillingHistoryPageType {
   @Field(() => [PlatformBillingRequestType]) items!: PlatformBillingRequestType[];
   @Field(() => String, { nullable: true }) nextCursor!: string | null;
+  @Field(() => PlatformBillingHistoryTotalsType) totals!: PlatformBillingHistoryTotalsType;
+}
+
+/** One line of the statement of account (`StatementEntry`). */
+@ObjectType('PlatformBillingStatementEntry')
+export class PlatformBillingStatementEntryType {
+  /** The bill's, receipt's or credit entry's id: a stable key for a list. */
+  @Field() id!: string;
+  @Field() at!: string;
+  @Field() day!: string;
+  /** `bill`, `receipt` or `credit`. */
+  @Field() kind!: string;
+  @Field(() => String, { nullable: true }) number!: string | null;
+  /** A bill's status, a receipt's kind or `void`, a credit entry's kind. */
+  @Field() detail!: string;
+  @Field(() => String, { nullable: true }) note!: string | null;
+  @Field(() => Int) billed!: number;
+  @Field(() => Int) paid!: number;
+  @Field(() => Int) credit!: number;
+  @Field(() => Int) creditBalance!: number;
+}
+
+/** The statement of account for a range of days (plan §7). */
+@ObjectType('PlatformBillingStatement')
+export class PlatformBillingStatementType {
+  @Field() from!: string;
+  @Field() to!: string;
+  @Field() currency!: string;
+  @Field(() => Int) openingCredit!: number;
+  @Field(() => Int) closingCredit!: number;
+  @Field(() => Int) billed!: number;
+  @Field(() => Int) paid!: number;
+  @Field(() => [PlatformBillingStatementEntryType]) entries!: PlatformBillingStatementEntryType[];
 }
 
 /** The checks an approver sees; they flag, never decide (plan §4). */

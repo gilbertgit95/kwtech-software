@@ -98,27 +98,26 @@ function isDate(value: unknown): value is Date {
 }
 
 /** Whether `row` matches a `where` of equalities, `in` and `not`; nothing else is supported. */
-function matches<T extends object>(row: T, where: Record<string, unknown>): boolean {
+function matches<T extends object>(row: T, where: object): boolean {
   return Object.entries(where).every(([key, wanted]) => {
     const value = (row as Record<string, unknown>)[key];
     if (wanted === undefined) return true;
     // By time, not `instanceof`: `structuredClone` under jest makes Dates of another realm.
     if (isDate(wanted)) return isDate(value) && value.getTime() === wanted.getTime();
     if (typeof wanted === 'object' && wanted !== null) {
-      if ('in' in wanted) return (wanted as { in: unknown[] }).in.includes(value);
-      if ('lte' in wanted) {
-        const ceiling = (wanted as { lte: unknown }).lte;
-        return isDate(value) && isDate(ceiling) && value.getTime() <= ceiling.getTime();
-      }
-      if ('lt' in wanted) {
-        const ceiling = (wanted as { lt: unknown }).lt;
-        return isDate(value) && isDate(ceiling) && value.getTime() < ceiling.getTime();
-      }
-      if ('gt' in wanted) {
-        const floor = (wanted as { gt: unknown }).gt;
-        return isDate(value) && isDate(floor) && value.getTime() > floor.getTime();
-      }
-      if ('not' in wanted) return value !== (wanted as { not: unknown }).not;
+      // Every operator present must hold, as Prisma ANDs them: `{ gte, lt }` is a range.
+      const ops = wanted as Record<string, unknown>;
+      const time = (operand: unknown) => (isDate(operand) ? operand.getTime() : Number.NaN);
+      const at = isDate(value) ? value.getTime() : Number.NaN;
+      const checks: boolean[] = [];
+      if ('in' in ops) checks.push((ops.in as unknown[]).includes(value));
+      if ('notIn' in ops) checks.push(!(ops.notIn as unknown[]).includes(value));
+      if ('gte' in ops) checks.push(at >= time(ops.gte));
+      if ('gt' in ops) checks.push(at > time(ops.gt));
+      if ('lte' in ops) checks.push(at <= time(ops.lte));
+      if ('lt' in ops) checks.push(at < time(ops.lt));
+      if ('not' in ops) checks.push(value !== ops.not);
+      if (checks.length > 0) return checks.every(Boolean);
     }
     return value === wanted;
   });
@@ -255,6 +254,11 @@ function delegates(get: () => Store): PlatformBillingTransaction {
       },
     },
     platformBillingReceipt: {
+      /** The sum of the receipts that match: money received in a range. */
+      async aggregate({ where }) {
+        const rows = get().receipts.filter((row) => matches(row, where));
+        return { _sum: { amount: rows.length ? rows.reduce((sum, row) => sum + row.amount, 0) : null } };
+      },
       async findMany({ where }) {
         return get()
           .receipts.filter((row) => matches(row, where))
@@ -289,7 +293,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
     },
     platformBillingCredit: {
       async aggregate({ where }) {
-        const rows = get().credits.filter((row) => row.organizationId === where.organizationId);
+        const rows = get().credits.filter((row) => matches(row, where));
         return { _sum: { amount: rows.length ? rows.reduce((sum, row) => sum + row.amount, 0) : null } };
       },
       async findMany({ where }) {
@@ -597,6 +601,10 @@ export function fakeBilling(): FakeBilling {
     members: new Set<string>(),
     async isMember(userId: string, organizationId: string) {
       return people.members.has(`${userId}@${organizationId}`);
+    },
+    /** Every organization is "Acme" here. */
+    async organizationName() {
+      return 'Acme';
     },
   };
 

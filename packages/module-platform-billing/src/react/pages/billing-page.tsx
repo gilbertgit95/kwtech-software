@@ -234,6 +234,10 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
           ) : null}
 
           <BillingHistory
+            organizationId={organizationId}
+            today={overview.today}
+            filter={state.filter}
+            onFilter={state.setFilter}
             history={state.history}
             currency={overview.currency}
             timeZone={overview.timeZone}

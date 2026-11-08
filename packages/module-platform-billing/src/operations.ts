@@ -7,7 +7,8 @@
 
 const LINE = 'kind amount days';
 
-const BILL = `id number status total currency issuedAt planLabel fromPlanLabel lines { ${LINE} } cancelledAt cancelledReason`;
+const BILL = `id number status total currency issuedAt planLabel fromPlanLabel lines { ${LINE} } cancelledAt cancelledReason
+  issuerName issuerDetails issuedOn periodStart periodEnd`;
 
 const REQUEST = `
   id organizationId kind state planKey fromPlanKey requestedById requestedAt
@@ -16,7 +17,10 @@ const REQUEST = `
   periodStart periodEnd accessUntil voidedById voidedAt voidReason
   bill { ${BILL} }
   bills { ${BILL} }
-  receipts { id number amount currency method kind reference issuedAt voidedAt voidReason }
+  receipts {
+    id number amount currency method kind reference issuedAt voidedAt voidReason
+    title notice billNumber planLabel paidOn periodStart periodEnd issuerName issuerDetails issuedOn
+  }
   payments { version method amount paidOn reference sender note enteredById enteredAt }
   events { id at step reason actorId data }
 `;
@@ -30,7 +34,7 @@ export const PLATFORM_BILLING_OPERATIONS = {
   overview: /* GraphQL */ `
     query PlatformBillingOverview($organizationId: String!) {
       platformBillingOverview(organizationId: $organizationId) {
-        organizationId today timeZone currency creditBalance
+        organizationId organizationName today timeZone currency creditBalance
         standing { kind days planKey planLabel planArchived cancelled trial periodStart periodEnd accessUntil graceDays holdDays prepaid }
         pending { ${REQUEST} }
         plans { key label monthly isPublic archived current }
@@ -48,10 +52,23 @@ export const PLATFORM_BILLING_OPERATIONS = {
     }
   `,
   history: /* GraphQL */ `
-    query PlatformBillingHistory($organizationId: String!, $cursor: String, $limit: Int) {
-      platformBillingHistory(organizationId: $organizationId, cursor: $cursor, limit: $limit) {
+    query PlatformBillingHistory(
+      $organizationId: String!, $cursor: String, $limit: Int, $year: Int, $state: String, $hideClosed: Boolean
+    ) {
+      platformBillingHistory(
+        organizationId: $organizationId, cursor: $cursor, limit: $limit, year: $year, state: $state, hideClosed: $hideClosed
+      ) {
         items { ${REQUEST} }
         nextCursor
+        totals { requests paidInYear }
+      }
+    }
+  `,
+  statement: /* GraphQL */ `
+    query PlatformBillingStatement($organizationId: String!, $from: String!, $to: String!) {
+      platformBillingStatement(organizationId: $organizationId, from: $from, to: $to) {
+        from to currency openingCredit closingCredit billed paid
+        entries { id at day kind number detail note billed paid credit creditBalance }
       }
     }
   `,

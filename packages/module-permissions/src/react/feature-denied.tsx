@@ -47,14 +47,33 @@ export interface FeatureDeniedProps {
   reason: DenialReason | undefined;
   /** Rendered above the title — a back link, usually. */
   header?: ReactNode;
+  /**
+   * What the reader can do about it, under the sentence: a link when there is
+   * somewhere to go (for `subscription_expired`, the organization's Billing
+   * page, which the app knows and this module does not), or a plain line when
+   * the next step is somebody else's ("Ask the organization's owner…").
+   * Absent: the sentence alone.
+   */
+  nextStep?: { label: string; href?: string | undefined } | undefined;
 }
 
-export function FeatureDenied({ title, reason, header }: FeatureDeniedProps) {
+/** A refused page: its title, the reason in words, and where to act on it when the caller knows. */
+export function FeatureDenied({ title, reason, header, nextStep }: FeatureDeniedProps) {
   return (
     <div className="mx-auto w-full max-w-4xl">
       {header}
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{denialMessage(reason)}</p>
+      {nextStep?.href ? (
+        <a
+          href={nextStep.href}
+          className="mt-3 inline-block text-sm font-medium text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {nextStep.label}
+        </a>
+      ) : nextStep ? (
+        <p className="mt-3 text-sm text-foreground">{nextStep.label}</p>
+      ) : null}
     </div>
   );
 }
