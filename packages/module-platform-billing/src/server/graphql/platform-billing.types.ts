@@ -429,8 +429,10 @@ export class PlatformBillingOrganizationArgs {
  * double holds every whole centavo exactly up to 2^53, and these are always
  * whole numbers summed from Int receipts. One receipt, one bill and one
  * balance stay `Int` everywhere else.
+ *
+ * Money collected in one period (a day `YYYY-MM-DD` or a month `YYYY-MM`) by
+ * one method. `test/report-schema.test.ts` checks every summed field is Float.
  */
-/** Money collected in one period (a day `YYYY-MM-DD` or a month `YYYY-MM`) by one method. */
 @ObjectType('PlatformBillingCollected')
 export class PlatformBillingCollectedType {
   @Field() period!: string;
