@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { isValidTimeZone, type LimitRaise, limitReachedText } from '@kwtech/module-kit';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { hasFeature } from '../check.js';
 import {
   APP_DEFAULT,
@@ -154,6 +154,9 @@ function defaultPeriodEnd(days: string | null, now: Date): Date | null {
   end.setUTCDate(end.getUTCDate() + count);
   return end;
 }
+
+/** For the one advisory read a cap refusal may do (#101): its failure is logged, never thrown. */
+const WRITE_LIMITS_LOGGER = new Logger('PermissionsLimits');
 
 @Injectable()
 export class PermissionsWriteService {
@@ -3127,14 +3130,20 @@ export class PermissionsWriteService {
   ): Promise<LimitRaise | undefined> {
     const spec = LIMIT_REGISTRY.find((one) => one.key === key);
     if (spec?.source !== 'plan' || !actor.planKeys) return undefined;
-    const plans = await tx.permPlan.findMany({
-      include: {
-        features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
-        limits: { select: { limitKey: true, value: true } },
-      },
-      orderBy: { key: 'asc' },
-    });
-    return limitRaise({ spec, cap, planKeys: actor.planKeys, catalogue: planCapOffers(plans) });
+    // ⚠ Advice on top of the refusal: a failed read is logged and the refusal still goes out, number alone.
+    try {
+      const plans = await tx.permPlan.findMany({
+        include: {
+          features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+          limits: { select: { limitKey: true, value: true } },
+        },
+        orderBy: { key: 'asc' },
+      });
+      return limitRaise({ spec, cap, planKeys: actor.planKeys, catalogue: planCapOffers(plans) });
+    } catch (error) {
+      WRITE_LIMITS_LOGGER.warn(`Could not read the plans to name the one raising '${key}': ${String(error)}`);
+      return undefined;
+    }
   }
 
   private async requireMembership(tx: PermissionsTransaction, organizationId: string, userId: string) {
