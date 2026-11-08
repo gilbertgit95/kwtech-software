@@ -228,6 +228,25 @@ describe('the daily check (platform_billing.daily_check)', () => {
     expect(billing.store().notices).toHaveLength(1);
   });
 
+  it('keeps the count of a reminder claimed before another one failed to be recorded', async () => {
+    const billing = await onBasic();
+    // Two reminders owed today: the request without payment details, then the overdue day.
+    await billing.writes.submit(ORG, OWNER, 'renew', null, noonOn('2026-12-02'));
+    const create = billing.client.platformBillingNotice.create.bind(billing.client.platformBillingNotice);
+    let calls = 0;
+    billing.client.platformBillingNotice.create = async (args) => {
+      calls += 1;
+      if (calls === 2) throw new Error('database went away');
+      return create(args);
+    };
+    const result = await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG]));
+    expect(result.handled).toBe(1);
+    expect(told(billing)).toEqual(['no_payment_details']);
+    // The next run records and sends the one that failed.
+    await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG]));
+    expect(told(billing)).toEqual(['no_payment_details', 'overdue']);
+  });
+
   it('says nothing about paying to an organization that cancelled, and nothing to one on a trial', async () => {
     const billing = await onBasic();
     await billing.writes.cancel(ORG, OWNER, noonOn('2026-11-20'));

@@ -180,7 +180,14 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
         accessUntil: window?.accessUntil ?? null,
         daysLeft: reminder.daysLeft,
       };
-      const row = await this.claim(organizationId, reminder, window?.periodEnd ?? null, { ...notice }, now);
+      let row: NoticeRow | null;
+      try {
+        row = await this.claim(organizationId, reminder, window?.periodEnd ?? null, { ...notice }, now);
+      } catch (error) {
+        // Not written, so still owed next run; what was claimed before it is kept and charged.
+        this.logger.warn(`A billing reminder (${reminder.kind}) could not be recorded: ${errorText(error)}`);
+        continue;
+      }
       if (!row) continue;
       claimed += 1;
       try {
