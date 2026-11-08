@@ -219,15 +219,20 @@ export interface PlatformBillingTransaction {
       orderBy?: { requestedAt: SortOrder } | { decidedAt: SortOrder };
     }): Promise<RequestRow | null>;
     /** How many requests wait past a day, for the approvers' digest: a count, never the rows. */
-    count(args: { where: { state: 'pending'; requestedAt: { lt: Date } } }): Promise<number>;
+    /** Requests waiting past a day (the approvers' digest), or the history's matches (its count): never the rows. */
+    count(args: {
+      where: { state: 'pending'; requestedAt: { lt: Date } } | ({ organizationId: string } & HistoryFilterWhere);
+    }): Promise<number>;
     findMany(args: {
       /** A page of an organization's history or of the queue, or the pending requests naming a plan (an archive). */
       where: {
         organizationId?: string;
-        state?: RequestState;
+        state?: RequestState | { notIn: RequestState[] };
         planKey?: string;
         fromPlanKey?: string;
         kind?: RequestKind;
+        /** A year of the history, in the billing time zone. */
+        requestedAt?: { gte: Date; lt: Date };
       };
       orderBy: Array<{ requestedAt: SortOrder } | { id: SortOrder }>;
       take: number;
@@ -295,7 +300,11 @@ export interface PlatformBillingTransaction {
       where: { requestId?: string; organizationId?: string; status?: { not: BillStatus } };
       orderBy?: { number: SortOrder };
     }): Promise<BillRow | null>;
-    findMany(args: { where: { requestId: { in: string[] } }; orderBy: { number: SortOrder } }): Promise<BillRow[]>;
+    findMany(args: {
+      /** A page of requests' bills, or an organization's bills issued in a range (the statement). */
+      where: { requestId: { in: string[] } } | { organizationId: string; issuedAt: { gte: Date; lt: Date } };
+      orderBy: { number: SortOrder };
+    }): Promise<BillRow[]>;
     count(args: { where: Record<string, never> }): Promise<number>;
     create(args: {
       data: {
@@ -317,7 +326,16 @@ export interface PlatformBillingTransaction {
   };
 
   platformBillingReceipt: {
-    findMany(args: { where: { requestId: { in: string[] } }; orderBy: { number: SortOrder } }): Promise<ReceiptRow[]>;
+    findMany(args: {
+      /** A page of requests' receipts, or an organization's receipts issued in a range (the statement). */
+      where: { requestId: { in: string[] } } | { organizationId: string; issuedAt: { gte: Date; lt: Date } };
+      orderBy: { number: SortOrder };
+    }): Promise<ReceiptRow[]>;
+    /** Money received in a range (the history's totals): receipts that stand, a count and a sum. */
+    aggregate(args: {
+      where: { organizationId: string; issuedAt: { gte: Date; lt: Date }; voidedAt: null };
+      _sum: { amount: true };
+    }): Promise<{ _sum: { amount: number | null } }>;
     findFirst(args: {
       where: { requestId: string; kind?: string; voidedAt?: null };
       orderBy: { number: SortOrder };
@@ -346,12 +364,20 @@ export interface PlatformBillingTransaction {
 
   platformBillingCredit: {
     /** The balance is the sum of the ledger: never a stored number that could drift from it. */
-    aggregate(args: { where: { organizationId: string }; _sum: { amount: true } }): Promise<{
+    /** The balance, or the balance before a day (a statement's opening credit). */
+    aggregate(args: { where: { organizationId: string; createdAt?: { lt: Date } }; _sum: { amount: true } }): Promise<{
       _sum: { amount: number | null };
     }>;
     findMany(args: {
-      /** A receipt's entries (a void), or a subscription's archive entries (an archive once, its reversal). */
-      where: { receiptId: string } | { subscriptionId: string; kind: { in: string[] } };
+      /**
+       * A receipt's entries (a void), a subscription's archive entries (an
+       * archive once, its reversal), or an organization's entries in a range
+       * (the statement).
+       */
+      where:
+        | { receiptId: string }
+        | { subscriptionId: string; kind: { in: string[] } }
+        | { organizationId: string; createdAt: { gte: Date; lt: Date } };
       orderBy: { createdAt: SortOrder };
     }): Promise<CreditRow[]>;
     create(args: {
@@ -448,6 +474,12 @@ export interface PlatformBillingTransaction {
 }
 
 /** What a settings write sets. */
+/** The history's filters as a `where` (`PlatformBillingService.history`). */
+export interface HistoryFilterWhere {
+  state?: RequestState | { notIn: RequestState[] };
+  requestedAt?: { gte: Date; lt: Date };
+}
+
 export interface SettingsWrite {
   currency?: string;
   timeZone?: string;

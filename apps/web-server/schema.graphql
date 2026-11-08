@@ -1486,8 +1486,13 @@ type PlatformBillingBill {
   fromPlanLabel: String
   id: String!
   issuedAt: String!
+  issuedOn: String!
+  issuerDetails: String!
+  issuerName: String!
   lines: [PlatformBillingLine!]!
   number: String!
+  periodEnd: String
+  periodStart: String
   planLabel: String!
   status: String!
   total: Int!
@@ -1512,6 +1517,12 @@ type PlatformBillingEvent {
 type PlatformBillingHistoryPage {
   items: [PlatformBillingRequest!]!
   nextCursor: String
+  totals: PlatformBillingHistoryTotals!
+}
+
+type PlatformBillingHistoryTotals {
+  paidInYear: Int
+  requests: Int!
 }
 
 type PlatformBillingLine {
@@ -1524,6 +1535,7 @@ type PlatformBillingOverview {
   creditBalance: Int!
   currency: String!
   organizationId: String!
+  organizationName: String
   paymentAccounts: [PlatformBillingPaymentAccount!]!
   pending: PlatformBillingRequest
   plans: [PlatformBillingPlanOffer!]!
@@ -1624,13 +1636,23 @@ type PlatformBillingQuote {
 
 type PlatformBillingReceipt {
   amount: Int!
+  billNumber: String
   currency: String!
   id: String!
   issuedAt: String!
+  issuedOn: String!
+  issuerDetails: String!
+  issuerName: String!
   kind: String!
   method: String!
+  notice: String!
   number: String!
+  paidOn: String!
+  periodEnd: String
+  periodStart: String
+  planLabel: String!
   reference: String
+  title: String!
   voidReason: String
   voidedAt: String
 }
@@ -1699,6 +1721,31 @@ type PlatformBillingStanding {
   planLabel: String
   prepaid: Boolean!
   trial: Boolean!
+}
+
+type PlatformBillingStatement {
+  billed: Int!
+  closingCredit: Int!
+  currency: String!
+  entries: [PlatformBillingStatementEntry!]!
+  from: String!
+  openingCredit: Int!
+  paid: Int!
+  to: String!
+}
+
+type PlatformBillingStatementEntry {
+  at: String!
+  billed: Int!
+  credit: Int!
+  creditBalance: Int!
+  day: String!
+  detail: String!
+  id: String!
+  kind: String!
+  note: String
+  number: String
+  paid: Int!
 }
 
 type PosAvailabilityChange {
@@ -2242,7 +2289,7 @@ type Query {
   permissionSubscriptions(organizationId: String): [PermissionSubscription!]!
   permissionUserAppRoles(userIds: [String!]!): [UserAppRole!]!
   permissionUserOrganizations(userIds: [String!]!): [UserOrganization!]!
-  platformBillingHistory(cursor: String, limit: Int, organizationId: String!): PlatformBillingHistoryPage!
+  platformBillingHistory(cursor: String, hideClosed: Boolean, limit: Int, organizationId: String!, state: String, year: Int): PlatformBillingHistoryPage!
   platformBillingOverview(organizationId: String!): PlatformBillingOverview!
   platformBillingPreview(kind: String!, organizationId: String!, planKey: String): PlatformBillingPreview!
   platformBillingPrices: [PlatformBillingPrice!]!
@@ -2250,6 +2297,7 @@ type Query {
   platformBillingRequest(organizationId: String!, requestId: String!): PlatformBillingRequest
   platformBillingReview(requestId: String!): PlatformBillingQueueItem
   platformBillingSettings: PlatformBillingSettings!
+  platformBillingStatement(from: String!, organizationId: String!, to: String!): PlatformBillingStatement!
   posCatalogue(includeArchived: Boolean, organizationId: String!, workspaceId: String!): PosCatalogue!
   posCustomer(customerId: String!, organizationId: String!, workspaceId: String!): PosCustomer
   posCustomers(includeArchived: Boolean, organizationId: String!, search: String, workspaceId: String!): [PosCustomer!]!

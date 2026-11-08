@@ -1,6 +1,7 @@
 import { composeRoutes, matchRouteWithParams, routeRedirect } from '@kwtech/module-kit';
 import { denialReason } from '@kwtech/module-permissions';
 import { FeatureDenied } from '@kwtech/module-permissions/react';
+import { billingPageHref } from '@kwtech/module-platform-billing/react';
 import { notFound, redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { BareShell } from '@/components/layout/bare-shell';
@@ -122,7 +123,16 @@ export default async function ModuleRoutePage({
           the same person for the same reason, and a wording change to one used
           to be a silent inconsistency in the other.
         */}
-        <FeatureDenied title={route.title} reason={denied} />
+        <FeatureDenied
+          title={route.title}
+          reason={denied}
+          // An expired plan is fixed on the Billing page: the reason links straight to it (#119).
+          nextStep={
+            denied === 'subscription_expired' && scope.organizationId
+              ? { href: billingPageHref(scope.organizationId), label: 'Open billing to renew' }
+              : undefined
+          }
+        />
       </AppShell>
     );
   }

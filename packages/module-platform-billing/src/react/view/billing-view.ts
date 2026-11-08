@@ -466,3 +466,26 @@ export function planChoices(
       (mode !== 'change_plan' || !plan.current),
   );
 }
+
+/**
+ * The stamp a printed document carries (plan §7): a bill's status in
+ * capitals, PAID with the receipt that paid it; a receipt VOID when it was
+ * reversed, and otherwise none.
+ */
+export function documentStamp(
+  document: { kind: 'bill'; status: string; paidBy: string | null } | { kind: 'receipt'; voided: boolean },
+): string | null {
+  if (document.kind === 'receipt') return document.voided ? 'VOID' : null;
+  switch (document.status) {
+    case 'unpaid':
+      return 'UNPAID';
+    case 'submitted':
+      return 'PAYMENT SUBMITTED, PENDING VERIFICATION';
+    case 'paid':
+      return document.paidBy ? `PAID, RECEIPT ${document.paidBy}` : 'PAID';
+    case 'cancelled':
+      return 'CANCELLED';
+    default:
+      return document.status.toUpperCase();
+  }
+}

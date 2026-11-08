@@ -20,5 +20,14 @@ export type {
 } from './billing-client.js';
 export { createBillingClient } from './billing-client.js';
 export { platformBillingWebModule } from './module.js';
+export { BillingDocumentPage, type BillingDocumentPageProps } from './pages/billing-document-page.js';
 export { BillingPage, type BillingPageProps } from './pages/billing-page.js';
-export { BILLING_PAGE_ROUTE, billingPageHref } from './routes.js';
+export { BillingStatementPage, type BillingStatementPageProps } from './pages/billing-statement-page.js';
+export {
+  BILLING_DOCUMENT_ROUTE,
+  BILLING_PAGE_ROUTE,
+  BILLING_STATEMENT_ROUTE,
+  billingDocumentHref,
+  billingPageHref,
+  billingStatementHref,
+} from './routes.js';

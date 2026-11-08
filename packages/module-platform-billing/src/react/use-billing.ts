@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type BillingClient,
+  type BillingHistoryFilter,
   type BillingHistoryPageView,
   type BillingOverviewView,
   createBillingClient,
@@ -13,6 +14,9 @@ export interface BillingState {
   history: BillingHistoryPageView | null;
   /** Why the history could not be read; the rest of the page still works. */
   historyError: string | null;
+  /** The history's filters, and changing them (the first page is read again). */
+  filter: BillingHistoryFilter;
+  setFilter: (filter: BillingHistoryFilter) => void;
   error: string | null;
   /** Something the person did worked: said in a `role="status"` line. */
   notice: string | null;
@@ -38,6 +42,8 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
   const [history, setHistory] = useState<BillingHistoryPageView | null>(null);
   /** The history's own failure: said in its section with a retry, never hiding the status and its buttons. */
   const [historyError, setHistoryError] = useState<string | null>(null);
+  /** The history's filters (year, state, hide what changed nothing): the first page is read again when they change. */
+  const [filter, setFilter] = useState<BillingHistoryFilter>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,7 +65,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     async (isCancelled: () => boolean = () => false): Promise<boolean> => {
       const [nextOverview, nextHistory] = await Promise.allSettled([
         client.overview(organizationId),
-        client.history(organizationId, null),
+        client.history(organizationId, null, filter),
       ]);
       if (isCancelled()) return false;
       if (nextHistory.status === 'fulfilled') {
@@ -76,7 +82,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
       setError(sentence(nextOverview.reason, 'Could not load billing.'));
       return false;
     },
-    [client, organizationId],
+    [client, organizationId, filter],
   );
 
   const reload = useCallback(() => readAll(), [readAll]);
@@ -127,16 +133,17 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     loadingMore.current = true;
     const startedIn = generation.current;
     try {
-      const next = await client.history(organizationId, history.nextCursor);
+      const next = await client.history(organizationId, history.nextCursor, filter);
       // The history was replaced while this page was loading: it belongs to the old list, so it is dropped.
       if (generation.current !== startedIn) return;
       // Appended to what is shown NOW (a reload may have replaced it meanwhile), without repeating a request.
       setHistory((current) => {
-        const shown = current ?? { items: [], nextCursor: null };
+        const shown = current ?? { items: [], nextCursor: null, totals: next.totals };
         const seen = new Set(shown.items.map((item) => item.id));
         return {
           items: [...shown.items, ...next.items.filter((item) => !seen.has(item.id))],
           nextCursor: next.nextCursor,
+          totals: next.totals,
         };
       });
     } catch (cause) {
@@ -144,12 +151,14 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     } finally {
       loadingMore.current = false;
     }
-  }, [client, organizationId, history]);
+  }, [client, organizationId, history, filter]);
 
   return {
     overview,
     history,
     historyError,
+    filter,
+    setFilter,
     error,
     notice,
     busy,

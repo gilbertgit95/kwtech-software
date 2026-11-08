@@ -19,4 +19,13 @@ export class PlatformBillingPeopleAdapter implements PlatformBillingPeople {
     });
     return found !== null;
   }
+
+  /** The organization's name, for what billing prints ("Billed to"). */
+  async organizationName(organizationId: string): Promise<string | null> {
+    const found = await this.prisma.permOrganization.findFirst({
+      where: { id: organizationId },
+      select: { name: true },
+    });
+    return found?.name ?? null;
+  }
 }

@@ -10,7 +10,7 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phases 4, 5b and 6a done (#93, #95, #117).** The pure core (#91), the schema, the
+**Status: phases 4, 5b and 6 done (#93, #95, #117, #119).** The pure core (#91), the schema, the
 services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
 the audited admin adjustments, the settings and the prices; composed into the
@@ -50,9 +50,24 @@ and points the organization overview's card here (`apps/web-app/src/modules.ts`)
   rules, said before sending), and Withdraw.
 - **The history**: one row per request, its bills, receipts and every step in
   words (`eventSentence`), each instant shown as its day in the billing time
-  zone.
-- Printing, CSV, history filters and totals, and the gated pages' three
-  reasons come in phase 6b. The platform's pages are phase 7 (#97).
+  zone. Filtered on the server by year and state (or with withdrawn and
+  rejected hidden), with the count and, for a year, what was received, over
+  every page (`historyWhere`).
+- **Printing** (`chrome: 'fullscreen'`, so the browser prints the document
+  alone): `/organizations/:organizationId/billing/documents/:requestId?kind=bill|receipt&number=…`
+  prints a bill or a receipt from its own snapshot (issuer, lines, period,
+  the receipt's title and "not an official receipt" notice), with today's
+  stamp (`documentStamp`: UNPAID, PAYMENT SUBMITTED PENDING VERIFICATION,
+  PAID with its receipt, CANCELLED, VOID).
+- **The statement of account**, `/organizations/:organizationId/billing/statement?from=&to=`
+  (at most two years): every bill, receipt and credit entry, the credit
+  balance running beside them, opening and closing credit, what was billed
+  and received (`buildStatement`); printable, and downloadable as CSV
+  (`statementCsv`). No "amount owed" column: an overpayment is a receipt and
+  a credit entry, and netting them would count it twice.
+- **An expired organization's denials link here**: the app passes the Billing
+  page as `FeatureDenied`'s `nextStep` for `subscription_expired`.
+- The platform's pages are phase 7 (#97).
 
 ## In a NestJS app
 

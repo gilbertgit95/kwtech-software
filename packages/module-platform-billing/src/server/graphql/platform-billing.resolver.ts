@@ -1,11 +1,13 @@
 import { declareScope, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
-import { Inject, SetMetadata } from '@nestjs/common';
-import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Inject, Optional, SetMetadata } from '@nestjs/common';
+import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { daysBetween, isDayKey } from '../../domain/days.js';
 import { billingRefusal } from '../platform-billing.errors.js';
 import type { PlatformBillingModuleOptions } from '../platform-billing.options.js';
 import { PlatformBillingService } from '../platform-billing.service.js';
-import { PLATFORM_BILLING_OPTIONS } from '../platform-billing.tokens.js';
+import { PLATFORM_BILLING_OPTIONS, PLATFORM_BILLING_PEOPLE } from '../platform-billing.tokens.js';
 import { PlatformBillingWriteService } from '../platform-billing-write.service.js';
+import type { PlatformBillingPeople } from '../ports.js';
 import {
   PlatformBillingHistoryPageType,
   PlatformBillingOverviewType,
@@ -13,11 +15,15 @@ import {
   PlatformBillingPaymentInputType,
   PlatformBillingPreviewType,
   PlatformBillingRequestType,
+  PlatformBillingStatementType,
 } from './platform-billing.types.js';
 import { renderOverview, renderPreview, renderRequest } from './render.js';
 
 /** The kinds the owner chooses: one mutation, bound to `change_plan` (D8). */
 const CHOSEN_KINDS = ['subscribe', 'change_plan', 'replace'] as const;
+
+/** The longest statement one read returns: two years of days. */
+const STATEMENT_MAX_DAYS = 731;
 type ChosenKind = (typeof CHOSEN_KINDS)[number];
 
 /** The kinds a preview may ask about. */
@@ -53,6 +59,8 @@ export class PlatformBillingResolver {
     private readonly reads: PlatformBillingService,
     private readonly writes: PlatformBillingWriteService,
     @Inject(PLATFORM_BILLING_OPTIONS) private readonly options: PlatformBillingModuleOptions,
+    /** Unbound: the organization's name is unknown, and printed documents say so. */
+    @Optional() @Inject(PLATFORM_BILLING_PEOPLE) private readonly people?: PlatformBillingPeople,
   ) {}
 
   // ── reads (platform-billing:read) ─────────────────────────────────────────
@@ -65,7 +73,8 @@ export class PlatformBillingResolver {
     this.actor(gql.req);
     const context = await this.reads.context(organizationId, new Date());
     const pending = context.pending ? await this.reads.organizationRequest(organizationId, context.pending.id) : null;
-    return renderOverview(context, pending);
+    const name = this.people ? await this.people.organizationName(organizationId) : null;
+    return renderOverview(context, pending, name);
   }
 
   /** What a request would cost today, or why it cannot be made: the check `submit` runs. */
@@ -88,10 +97,33 @@ export class PlatformBillingResolver {
     @Context() gql: { req?: unknown },
     @Args('organizationId') organizationId: string,
     @Args() page: PlatformBillingPageArgs,
+    @Args('year', { type: () => Int, nullable: true }) year?: number | null,
+    @Args('state', { type: () => String, nullable: true }) state?: string | null,
+    @Args('hideClosed', { type: () => Boolean, nullable: true }) hideClosed?: boolean | null,
   ): Promise<PlatformBillingHistoryPageType> {
     this.actor(gql.req);
-    const result = await this.reads.history(organizationId, page.cursor ?? null, page.limit ?? null);
-    return { items: result.items.map(renderRequest), nextCursor: result.nextCursor };
+    const result = await this.reads.history(organizationId, page.cursor ?? null, page.limit ?? null, {
+      year,
+      state,
+      hideClosed,
+    });
+    return { items: result.items.map(renderRequest), nextCursor: result.nextCursor, totals: result.totals };
+  }
+
+  /** The statement of account for the days `from` to `to`, both included, in the billing time zone. */
+  @Query(() => PlatformBillingStatementType, { name: 'platformBillingStatement' })
+  async statement(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('from') from: string,
+    @Args('to') to: string,
+  ): Promise<PlatformBillingStatementType> {
+    this.actor(gql.req);
+    // A range of days, at most two years: a statement is read in one go, never paged.
+    if (!isDayKey(from) || !isDayKey(to) || from > to || daysBetween(from, to) > STATEMENT_MAX_DAYS) {
+      throw billingRefusal('invalid', { field: 'range', maxDays: STATEMENT_MAX_DAYS });
+    }
+    return this.reads.statement(organizationId, from, to);
   }
 
   /** Null for a request that does not exist AND for one in another organization: the same answer. */
