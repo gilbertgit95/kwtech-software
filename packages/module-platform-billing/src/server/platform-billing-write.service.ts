@@ -1,7 +1,7 @@
 import { isValidTimeZone } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { accessWindow, isOnTime, planHold, planRenewal } from '../domain/access.js';
-import { addDays, type DayKey, isDayKey, platformDayStart } from '../domain/days.js';
+import { addDays, type DayKey, isDayKey, platformDay, platformDayStart } from '../domain/days.js';
 import { type BillSnapshot, billSnapshot, type ReceiptSnapshot, readBillSnapshot } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
 import { isPaymentMethod, needsReference, normaliseReference, type PaymentMethod } from '../domain/payments.js';
@@ -39,7 +39,7 @@ import {
   PLATFORM_BILLING_PRISMA_WRITE,
   PLATFORM_BILLING_SUBSCRIPTIONS,
 } from './platform-billing.tokens.js';
-import type { PlatformBillingPeople, PlatformBillingSubscriptions } from './ports.js';
+import type { BillingSubscriptionRow, PlatformBillingPeople, PlatformBillingSubscriptions } from './ports.js';
 
 /** The kinds `submit` takes. A cancel is `cancel`: it is priced at nothing and needs no approval. */
 export type SubmittableKind = Exclude<RequestKind, 'cancel'>;
@@ -121,6 +121,7 @@ export class PlatformBillingWriteService {
     now: Date,
   ): Promise<RequestRow> {
     return this.prisma.$transaction(async (tx) => {
+      await this.lockOrganization(tx, organizationId);
       const context = await this.reads.context(organizationId, now, tx);
       const preview = await this.reads.preview(context, kind, planKey);
       if (preview.refused) {
@@ -188,8 +189,7 @@ export class PlatformBillingWriteService {
   ): Promise<RequestRow> {
     const details = preparePayment(input);
     return this.prisma.$transaction(async (tx) => {
-      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId, organizationId } });
-      if (!request) throw billingRefusal('not_found');
+      const request = await this.lockedRequest(tx, { id: requestId, organizationId });
       const step = nextState(request.state, 'edit_details');
       if ('refused' in step) throw billingRefusal(step.refused);
 
@@ -321,8 +321,7 @@ export class PlatformBillingWriteService {
   async approve(requestId: string, actorId: string, input: ApprovalInput, now: Date): Promise<RequestRow> {
     const received = preparePayment({ ...input, sender: null, note: null });
     return this.prisma.$transaction(async (tx) => {
-      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
-      if (!request) throw billingRefusal('not_found');
+      const request = await this.lockedRequest(tx, { id: requestId });
       const context = await this.reads.context(request.organizationId, now, tx);
       const plan = context.plans.get(request.planKey);
       if (!plan) throw billingRefusal('not_found');
@@ -517,8 +516,7 @@ export class PlatformBillingWriteService {
     if (received.amount <= 0) throw billingRefusal('nothing_received');
     const text = prepareText(reason);
     return this.prisma.$transaction(async (tx) => {
-      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
-      if (!request) throw billingRefusal('not_found');
+      const request = await this.lockedRequest(tx, { id: requestId });
       const step = nextState(request.state, 'close_as_credit');
       if ('refused' in step) throw billingRefusal(step.refused);
       if (input.detailsVersion !== request.detailsVersion) throw billingRefusal('details_changed');
@@ -635,8 +633,7 @@ export class PlatformBillingWriteService {
     const text = prepareText(reason);
     if (!text) throw billingRefusal('invalid', { field: 'reason' });
     return this.prisma.$transaction(async (tx) => {
-      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
-      if (!request) throw billingRefusal('not_found');
+      const request = await this.lockedRequest(tx, { id: requestId });
       const step = nextState(request.state, 'void');
       if ('refused' in step) throw billingRefusal(step.refused);
 
@@ -652,7 +649,10 @@ export class PlatformBillingWriteService {
       if (notLatest) throw billingRefusal(notLatest, latest ? { latestRequestId: latest.id } : {});
 
       const context = await this.reads.context(request.organizationId, now, tx);
-      if (!context.live || context.live.subscriptionId !== request.subscriptionId) {
+      // ⚠ The live row must still be the one this approval left: the same row (or the one a newer
+      // void restored in its place) in the same state. An admin's edit since is never overwritten.
+      const ownRow = context.live ? await this.isApprovalsRow(tx, request, context.live.subscriptionId) : false;
+      if (!context.live || !ownRow || !leftAsApproved(context.live, request, context.settings.timeZone)) {
         throw billingRefusal('subscription_changed');
       }
       const before = readSubscriptionBefore(request.subscriptionBefore);
@@ -666,7 +666,13 @@ export class PlatformBillingWriteService {
       });
       if (voided.count === 0) throw billingRefusal('not_approved');
 
-      await this.reverseSubscription(tx, request.organizationId, plan, context.settings.timeZone);
+      const restored = await this.reverseSubscription(tx, request.organizationId, plan, context.settings.timeZone);
+      if (plan.kind === 'restore_plan') {
+        await tx.platformBillingRequest.update({
+          where: { id: requestId },
+          data: { restoredSubscriptionId: restored },
+        });
+      }
 
       const receipt = await tx.platformBillingReceipt.findFirst({
         where: { requestId, kind: 'payment', voidedAt: null },
@@ -730,6 +736,7 @@ export class PlatformBillingWriteService {
    */
   async cancel(organizationId: string, actorId: string, now: Date): Promise<RequestRow> {
     return this.prisma.$transaction(async (tx) => {
+      await this.lockOrganization(tx, organizationId);
       const context = await this.reads.context(organizationId, now, tx);
       const refused = checkNewRequest({
         kind: 'cancel',
@@ -873,8 +880,7 @@ export class PlatformBillingWriteService {
     now: Date,
   ): Promise<RequestRow> {
     return this.prisma.$transaction(async (tx) => {
-      const request = await tx.platformBillingRequest.findFirst({ where: { id: requestId, ...scope } });
-      if (!request) throw billingRefusal('not_found');
+      const request = await this.lockedRequest(tx, { id: requestId, ...scope });
       const step = nextState(request.state, action);
       if ('refused' in step) throw billingRefusal(step.refused);
       const changed = await tx.platformBillingRequest.updateMany({
@@ -930,7 +936,7 @@ export class PlatformBillingWriteService {
     organizationId: string,
     plan: VoidPlan,
     timeZone: string,
-  ): Promise<void> {
+  ): Promise<string> {
     switch (plan.kind) {
       case 'restore_period':
       case 'restore_plan': {
@@ -941,17 +947,62 @@ export class PlatformBillingWriteService {
           billingDay: plan.period.billingDay,
           accessUntil: new Date(plan.accessUntil),
         };
-        if (plan.kind === 'restore_period') await this.subscriptions.renew(write, tx);
-        else await this.subscriptions.start({ ...write, planKey: plan.planKey }, tx);
-        return;
+        const written =
+          plan.kind === 'restore_period'
+            ? await this.subscriptions.renew(write, tx)
+            : await this.subscriptions.start({ ...write, planKey: plan.planKey }, tx);
+        return written.subscriptionId;
       }
       case 'end':
-        await this.subscriptions.end({ organizationId }, tx);
-        return;
+        return (await this.subscriptions.end({ organizationId }, tx)).subscriptionId;
       case 'restore_access':
-        await this.subscriptions.setAccessUntil({ organizationId, accessUntil: new Date(plan.accessUntil) }, tx);
-        return;
+        return (
+          await this.subscriptions.setAccessUntil({ organizationId, accessUntil: new Date(plan.accessUntil) }, tx)
+        ).subscriptionId;
     }
+  }
+
+  /**
+   * Whether `liveId` is the row `request`'s approval wrote: the same id, or
+   * the row a void of the NEXT approval started to put this one's plan back
+   * (its `subscriptionBefore` names this approval's row). Anything else is a
+   * row somebody else wrote.
+   */
+  private async isApprovalsRow(tx: PlatformBillingTransaction, request: RequestRow, liveId: string): Promise<boolean> {
+    if (liveId === request.subscriptionId) return true;
+    const restorer = await tx.platformBillingRequest.findFirst({
+      where: { organizationId: request.organizationId, state: 'voided', restoredSubscriptionId: liveId },
+    });
+    if (!restorer) return false;
+    return readSubscriptionBefore(restorer.subscriptionBefore)?.subscriptionId === request.subscriptionId;
+  }
+
+  /**
+   * ⚠ Takes the organization's decision lock in THIS transaction
+   * (`PlatformBillingLock`): held until commit, so two decisions about one
+   * organization never read its subscription at the same time.
+   */
+  private async lockOrganization(tx: PlatformBillingTransaction, organizationId: string): Promise<void> {
+    await tx.platformBillingLock.upsert({
+      where: { organizationId },
+      create: { organizationId, version: 1 },
+      update: { version: { increment: 1 } },
+    });
+  }
+
+  /**
+   * The request, read again AFTER its organization's lock is taken: the first
+   * read only finds the organization, and what a decision checks must be what
+   * the previous decision committed.
+   */
+  private async lockedRequest(
+    tx: PlatformBillingTransaction,
+    where: { id: string; organizationId?: string },
+  ): Promise<RequestRow> {
+    const found = await tx.platformBillingRequest.findFirst({ where });
+    if (!found) throw billingRefusal('not_found');
+    await this.lockOrganization(tx, found.organizationId);
+    return this.reread(tx, found.id);
   }
 
   /** The hold a renewal's first covering details earn (D9). */
@@ -1144,6 +1195,19 @@ function beforeOf(context: BillingContext, request: RequestRow | null): Subscrip
     billingDay: period?.billingDay ?? null,
     accessUntil: accessUntil?.toISOString() ?? null,
   };
+}
+
+/**
+ * Whether the live row is still in the state the approval (or cancel) left
+ * it: its plan, its period end and its access end. A row edited since by an
+ * admin, a later hold or anything else keeps its id but not this, and a void
+ * would overwrite that edit with the values from before the approval.
+ */
+function leftAsApproved(live: BillingSubscriptionRow, request: RequestRow, timeZone: string): boolean {
+  if (!request.accessUntil || !live.accessUntil || !request.periodEnd || !live.currentPeriodEnd) return false;
+  if (live.accessUntil.getTime() !== request.accessUntil.getTime()) return false;
+  if (live.planKey !== request.planKey) return false;
+  return platformDay(live.currentPeriodEnd, timeZone) === dateColumnToDay(request.periodEnd);
 }
 
 /**

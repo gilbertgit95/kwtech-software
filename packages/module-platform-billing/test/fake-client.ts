@@ -41,6 +41,8 @@ interface Store {
   settings: SettingsRow | null;
   counters: CounterRow[];
   events: EventRow[];
+  /** How many times each organization's decision lock was taken. */
+  locks: Record<string, number>;
   /** The organization's live subscription, as permissions would hold it. */
   subscriptions: Map<string, BillingSubscriptionRow>;
   /** Every subscription write, in order: what an approval applied. */
@@ -59,6 +61,7 @@ function emptyStore(): Store {
     settings: null,
     counters: [],
     events: [],
+    locks: {},
     subscriptions: new Map(),
     subscriptionWrites: [],
   };
@@ -149,6 +152,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           subscriptionId: null,
           applied: null,
           subscriptionBefore: null,
+          restoredSubscriptionId: null,
           voidedById: null,
           voidedAt: null,
           voidReason: null,
@@ -316,6 +320,14 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         };
         store.settings = { ...base, ...(store.settings ? update : create) } as SettingsRow;
         return { ...store.settings };
+      },
+    },
+    platformBillingLock: {
+      // The fake runs one transaction at a time already; the lock is recorded so a test can see it taken.
+      async upsert({ where }) {
+        const store = get();
+        store.locks[where.organizationId] = (store.locks[where.organizationId] ?? 0) + 1;
+        return { organizationId: where.organizationId, version: store.locks[where.organizationId] ?? 0 };
       },
     },
     platformBillingCounter: {

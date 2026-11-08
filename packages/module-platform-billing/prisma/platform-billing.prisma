@@ -135,6 +135,10 @@ model PlatformBillingRequest {
   /// prices and the plan may all have moved.
   applied            String?
   subscriptionBefore Json?
+  /// The row a void of this request STARTED, putting the previous plan back
+  /// (`restore_plan`). The earlier approval that wrote that plan recognises
+  /// it by this, so A → B → C can be voided newest first all the way down.
+  restoredSubscriptionId String?
 
   /// Who voided an approval, when, and why: the approval's own `decided*`
   /// fields stay as they were, so the history shows both acts.
@@ -302,6 +306,21 @@ model PlatformBillingSettings {
   updatedAt   DateTime @updatedAt
 
   @@map("platform_billing_settings")
+}
+
+/// ⚠ ONE DECISION AT A TIME PER ORGANIZATION. Every billing write (a
+/// submission, payment details, an approval, a rejection, a close, a void, a
+/// cancel) upserts this row first, so its row lock holds the next decision
+/// for the same organization until the first commits. Without it, a void and
+/// a cancel could each read the subscription before the other wrote it, and
+/// the void restore an access end over the cancel. A request's own
+/// compare-and-set covers one request; this covers the organization.
+model PlatformBillingLock {
+  organizationId String @id
+  /// Bumped by every decision: the write that takes the lock.
+  version        Int    @default(0)
+
+  @@map("platform_billing_lock")
 }
 
 /// ⚠ NUMBERING WITHOUT GAPS: one row per sequence (`bill`, `receipt`), incremented

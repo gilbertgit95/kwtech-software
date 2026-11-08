@@ -634,7 +634,14 @@ Decisions 1, 2, 3 and 5 gate the next step.
   - **Newest first across the organization, not only within a period**
     (stricter than D9a's wording). A renewal into the next period rests on
     the approval before it as much as a later plan change does. A void is
-    also refused when the live row is no longer the one the approval wrote.
+    also refused when the live row is no longer the one the approval wrote:
+    its id (or the row a void of the next approval restored, so A → B → C
+    unwinds all the way) and its plan, period end and access end, so an
+    admin's edit to the same row is never overwritten.
+  - **One decision at a time per organization.** Every billing write first
+    upserts the organization's `platform_billing_lock` row, whose row lock
+    holds the next decision until the first commits: a request's
+    compare-and-set covers one request, not a void racing a cancel.
   - **A hold ends with the approval.** The access a void restores is the one
     before the request's own hold, as a rejection gives back.
   - **Close as credit** (D12a) records whatever was received, issues a
@@ -647,6 +654,9 @@ Decisions 1, 2, 3 and 5 gate the next step.
     no longer covers. A cancel kept pending until the period's end was not
     done: withdrawing it after the end would hand back grace days, and it
     would block a renewal behind it.
+  - **Cancel trusts the `change_plan` key as the owner's right** (D8), as
+    `submit` does: a role granting it is a deliberate grant, since grants add
+    up and there is no owner flag apart from the role.
   - **Not done here, in P4b-2:** plan archives, the audited
     `/admin/subscriptions` adjustments, and the Free + Basic trial.
 

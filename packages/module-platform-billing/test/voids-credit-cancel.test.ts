@@ -8,6 +8,7 @@ const OWNER = 'owner1';
 const APPROVER = 'approver1';
 const ZONE = 'Asia/Manila';
 
+/** The refusal reason `work` was refused with; fails the test when it was not refused. */
 async function refusal(work: Promise<unknown>): Promise<string> {
   try {
     await work;
@@ -18,14 +19,17 @@ async function refusal(work: Promise<unknown>): Promise<string> {
   throw new Error('Expected a refusal');
 }
 
+/** Payment details of `amount` centavos in cash. */
 function cash(amount: number, paidOn = '2026-11-15') {
   return { method: 'cash', amount, paidOn };
 }
 
+/** What an approver confirms: the details version they saw and the payment received. */
 function approval(detailsVersion: number, amount: number, paidOn = '2026-11-15') {
   return { detailsVersion, method: 'cash', amount, paidOn };
 }
 
+/** An instant as its Manila day, for assertions. */
 function day(instant: Date | null | undefined): string | null {
   return instant ? platformDay(instant, ZONE) : null;
 }
@@ -188,6 +192,57 @@ describe('voiding an approval (D9a)', () => {
     await billing.writes.void(pending.id, APPROVER, 'mistake', now);
     expect(await refusal(billing.writes.void(pending.id, APPROVER, 'mistake', now))).toBe('not_approved');
     expect(billing.store().credits).toEqual([]);
+  });
+
+  it('⚠ refuses when an admin edited the same row since, never overwriting the edit', async () => {
+    const billing = fakeBilling();
+    giveSubscription(billing, ORG, 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    await setPrices(billing);
+    const now = noonOn('2026-11-27');
+    const request = await billing.writes.submit(ORG, OWNER, 'renew', null, now);
+    await billing.writes.enterPayment(ORG, request.id, OWNER, cash(100_000, '2026-11-27'), now);
+    await billing.writes.approve(request.id, APPROVER, approval(1, 100_000, '2026-11-27'), now);
+    // The same row, extended by hand: its id passes, its state does not.
+    const live = billing.store().subscriptions.get(ORG);
+    if (!live) throw new Error('No live row');
+    const extended = new Date('2027-02-01T00:00:00.000Z');
+    billing.store().subscriptions.set(ORG, { ...live, accessUntil: extended });
+
+    expect(await refusal(billing.writes.void(request.id, APPROVER, 'mistake', noonOn('2026-11-28')))).toBe(
+      'subscription_changed',
+    );
+    expect(billing.store().subscriptions.get(ORG)?.accessUntil?.getTime()).toBe(extended.getTime());
+  });
+
+  it('⚠ voids A → B → C newest first all the way down, through the row the first void restored', async () => {
+    const billing = fakeBilling();
+    giveSubscription(billing, ORG, 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    await setPrices(billing);
+    const up = await billing.writes.submit(ORG, OWNER, 'change_plan', 'pro', noonOn('2026-11-16'));
+    await billing.writes.enterPayment(ORG, up.id, OWNER, cash(25_000, '2026-11-16'), noonOn('2026-11-16'));
+    await billing.writes.approve(up.id, APPROVER, approval(1, 25_000, '2026-11-16'), noonOn('2026-11-16'));
+    const down = await billing.writes.submit(ORG, OWNER, 'change_plan', 'basic', noonOn('2026-11-20'));
+    await billing.writes.approve(down.id, APPROVER, approval(0, 0, '2026-11-20'), noonOn('2026-11-20'));
+
+    await billing.writes.void(down.id, APPROVER, 'mistake', noonOn('2026-11-21'));
+    expect(billing.store().subscriptions.get(ORG)?.planKey).toBe('pro');
+    // A new row put Pro back; the upgrade's approval recognises it and can be voided in turn.
+    await billing.writes.void(up.id, APPROVER, 'mistake', noonOn('2026-11-21'));
+    const live = billing.store().subscriptions.get(ORG);
+    expect([live?.planKey, day(live?.currentPeriodEnd), day(live?.accessUntil)]).toEqual([
+      'basic',
+      '2026-12-01',
+      '2026-12-08',
+    ]);
+    expect(await billing.reads.creditBalance(ORG)).toBe(0);
+  });
+
+  it('takes the organization’s decision lock in every decision', async () => {
+    const { billing, request } = await approvedSubscribe();
+    // Submit, payment details and approval: one each.
+    expect(billing.store().locks[ORG]).toBe(3);
+    await billing.writes.void(request.id, APPROVER, 'mistake', noonOn('2026-11-16'));
+    expect(billing.store().locks[ORG]).toBe(4);
   });
 
   it('⚠ refuses when the subscription changed since the approval, never overwriting the change', async () => {

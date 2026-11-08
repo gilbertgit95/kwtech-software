@@ -44,6 +44,7 @@ export interface RequestRow {
   /** How the approval wrote the subscription (`AppliedHow`), and the live row before it: what a void reverses. */
   applied: string | null;
   subscriptionBefore: unknown;
+  restoredSubscriptionId: string | null;
   voidedById: string | null;
   voidedAt: Date | null;
   voidReason: string | null;
@@ -196,6 +197,7 @@ export interface PlatformBillingTransaction {
         pricedForPeriodEnd?: Date;
         periodEnd?: Date;
         subscriptionId?: string;
+        restoredSubscriptionId?: string;
       };
       orderBy?: { requestedAt: SortOrder } | { decidedAt: SortOrder };
     }): Promise<RequestRow | null>;
@@ -230,7 +232,10 @@ export interface PlatformBillingTransaction {
       data: RequestUpdate;
     }): Promise<{ count: number }>;
     /** Only after the compare-and-set above has decided the request: a link written in the same transaction. */
-    update(args: { where: { id: string }; data: { subscriptionId: string } }): Promise<RequestRow>;
+    update(args: {
+      where: { id: string };
+      data: { subscriptionId: string } | { restoredSubscriptionId: string };
+    }): Promise<RequestRow>;
   };
 
   platformBillingPayment: {
@@ -351,6 +356,15 @@ export interface PlatformBillingTransaction {
       create: SettingsWrite & { id: string };
       update: SettingsWrite;
     }): Promise<SettingsRow>;
+  };
+
+  /** The organization's decision lock (`PlatformBillingLock`): upserted first by every billing write. */
+  platformBillingLock: {
+    upsert(args: {
+      where: { organizationId: string };
+      create: { organizationId: string; version: number };
+      update: { version: { increment: number } };
+    }): Promise<{ organizationId: string; version: number }>;
   };
 
   platformBillingCounter: {

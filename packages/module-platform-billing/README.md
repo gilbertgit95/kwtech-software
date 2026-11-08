@@ -112,11 +112,19 @@ presses it.
   of the receipt's credit entries gets a `void_reversal` (the balance may go
   negative). ⚠ **Newest first across the organization**
   (`void_not_latest`), and never over a subscription changed since
-  (`subscription_changed`), which also refuses approvals made before #110,
+  (`subscription_changed`): the live row must be the approval's own (or the
+  row a void of the next approval restored in its place,
+  `restoredSubscriptionId`) and still carry the plan, period end and access
+  end the approval wrote. That also refuses approvals made before #110,
   since they recorded nothing to reverse.
 - **Cancel** applies at once, decided by the owner (`cancel_needs_no_approval`):
   no bill, no credit, access to the period's end without grace. Renewing
   opens at once after a cancel and undoes it.
+- **One decision at a time per organization**: every write takes the
+  organization's row in `platform_billing_lock` first, so a void and a cancel
+  (or two approvals of different requests) never read the subscription at
+  the same moment. Proved on Postgres: the second transaction waits for the
+  first to commit.
 - **Numbering has no gaps**: `platform_billing_counter`, one row per sequence,
   incremented in the issuing transaction. A rollback gives the number back.
 - **Settings** (D16): the currency and the time zone are locked once any bill
