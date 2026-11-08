@@ -14,7 +14,8 @@ it is never on a workspace's Apps page.
 services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
 the audited admin adjustments, the settings and the prices; composed into the
-API. Still to come: the daily check (#95), and the pages (#96, #97).
+API; and the daily check with every notification (#95). Still to come: the
+pages (#96, #97).
 
 ## In a Next.js app
 
@@ -38,6 +39,7 @@ platformBillingServerModule({
 | `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription (and every live row on a plan, for an archive), and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
 | `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps) and an organization's usage of the caps (D6) | the module refuses to boot |
 | `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15) | every approver is flagged as a member: the flag never blocks |
+| `PLATFORM_BILLING_NOTIFIER` | the reminders, the approvers' digest and each request's steps, as notifications; each answers whether it was delivered | nobody is told, and the daily check writes nothing, so binding it later still delivers that day's reminders |
 
 ⚠ **The shared transaction.** An approval writes the decision, the
 subscription, the bill's stamp, the receipt, its number and every credit
@@ -207,6 +209,40 @@ presses it.
 Every refusal is a reason code with words (`refusalText(reason)`), shared by the
 server, the pages and the tests. Counts and dates (short by 100, remove 2
 members) travel beside the code, never inside the sentence.
+
+## Processes
+
+**`platform_billing.daily_check`** ("Billing reminders"), run by `module-jobs`
+with `reach: 'organizations'` and `serves: null`: it reaches every
+organization, an expired one included, with no plan gate (#94).
+
+- **Daily at 08:00 in the billing time zone** (every day of the week), at
+  least an hour apart if an admin changes it. At most 300 seconds and 2000
+  notices a run; past that the rest wait for the next run (a quiet
+  organization costs nothing, so a capped run reaches further each time). A
+  run more than 12 hours late is skipped and counted.
+- **What it says** (`planReminders`): 7, 3 and 1 days before the due date and
+  on it; each overdue day with the days of access left; the last day; the
+  day access ended. Daily while a request waits with no payment details. A
+  request whose details cover the bill silences the "please pay" notices; a
+  cancelled organization hears none of them; a trial is not a paid plan and
+  hears nothing. Once a day, billing approvers hear how many requests have
+  waited more than a day (a count, never names).
+- **⚠ Once, by a row of its own** (`platform_billing_notice`, unique per
+  organization, kind, period and day): written BEFORE the send, `sentAt` set
+  after it, both on the run's own clock. Each run first retries rows never
+  sent from the last day and a half; older ones would say something stale
+  ("5 days left") and are left unsent, counted in the log. Keyed by the
+  notice's own day, so a second run that day creates nothing and a missed
+  milestone is caught up once. One organization's failure is logged and the
+  run goes on to the next.
+- **⚠ It never decides access.** Access ends by itself at `accessUntil`
+  (D14). It does not mark expired subscriptions `canceled` either: the live
+  row is what explains "your plan ended on <date>", what charges a late
+  renewal for the access used (D10), and what keeps it a renewal.
+- **Paused:** nobody is reminded and nobody hears about waiting requests;
+  access still ends on time. Request notices (approved, rejected, …) are not
+  the process: they are sent after each decision commits.
 
 ## What it declares
 

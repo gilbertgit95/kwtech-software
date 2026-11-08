@@ -11,9 +11,9 @@ import type { NotificationSource } from '@kwtech/module-notification';
  * declared with no producer is a switch on the preferences page that does
  * nothing.
  *
- * `mutable: false` is for what must always arrive — security notices. Nothing
- * here yet: the first producers are wired in follow-up changes, each through a
- * port its own module declares (PLAN §9).
+ * `mutable: false` is for what must always arrive: security notices, and
+ * billing's warnings that access is about to end (`billing.reminder`). Each
+ * producer reaches this through a port its own module declares (PLAN §9).
  */
 export const NOTIFICATION_SOURCES: readonly NotificationSource[] = [
   /*
@@ -52,4 +52,18 @@ export const NOTIFICATION_SOURCES: readonly NotificationSource[] = [
    */
   { key: 'booking.request', label: 'Bookings: requests to confirm', mutable: true },
   { key: 'booking.customer', label: 'Bookings: cancelled or moved by the customer', mutable: true },
+
+  /*
+   * Platform billing (`./platform-billing/notifier.ts`, #95). Three sources:
+   * - the daily check's countdown, overdue days and expiry. NOT mutable: it
+   *   is the only warning before an organization loses access, and muting it
+   *   would let that arrive unannounced;
+   * - a request's steps (approved, rejected, kept as credit, details still
+   *   missing), to the organization's owner and admins;
+   * - what approvers have to check: a new request, new payment details, and
+   *   the daily count of requests waiting more than a day.
+   */
+  { key: 'billing.reminder', label: 'Billing: renewal and expiry reminders', mutable: false },
+  { key: 'billing.request', label: 'Billing: your requests', mutable: true },
+  { key: 'billing.approvals', label: 'Billing: requests to approve', mutable: true },
 ];

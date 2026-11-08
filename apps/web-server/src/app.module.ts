@@ -100,6 +100,7 @@ import {
 } from '@kwtech/module-permissions/server';
 import { PLATFORM_BILLING_ORGANIZATION_KEYS } from '@kwtech/module-platform-billing';
 import {
+  PLATFORM_BILLING_NOTIFIER,
   PLATFORM_BILLING_PEOPLE,
   PLATFORM_BILLING_PLANS,
   PLATFORM_BILLING_SUBSCRIPTIONS,
@@ -168,6 +169,7 @@ import { NoteAuthorDirectoryAdapter } from './note/author-directory.js';
 import { NOTIFICATION_SOURCES } from './notifications/sources.js';
 import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
+import { PlatformBillingNotifierAdapter } from './platform-billing/notifier.js';
 import { PlatformBillingPeopleAdapter } from './platform-billing/people.js';
 import { PlanArchiveToBilling } from './platform-billing/plan-archive.js';
 import { PlatformBillingPlansAdapter } from './platform-billing/plans.js';
@@ -1092,6 +1094,19 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
       provide: PLATFORM_BILLING_PEOPLE,
       inject: [PrismaService],
       useFactory: (prisma: PrismaService) => new PlatformBillingPeopleAdapter(prisma),
+    },
+
+    /*
+     * Reminders, the approvers' digest and the request notices, spoken by
+     * module-notification (#95). Unbound, the daily check would tell nobody,
+     * and nobody would hear a request was approved.
+     */
+    imports: [NOTIFICATION_SERVER_MODULE.nestModule],
+    notifierProvider: {
+      provide: PLATFORM_BILLING_NOTIFIER,
+      inject: [PrismaService, NotificationSender],
+      useFactory: (prisma: PrismaService, sender: NotificationSender) =>
+        new PlatformBillingNotifierAdapter(prisma, sender),
     },
 
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,

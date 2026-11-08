@@ -3,7 +3,12 @@ import { PlatformBillingResolver } from './graphql/platform-billing.resolver.js'
 import { PlatformBillingAdminResolver } from './graphql/platform-billing-admin.resolver.js';
 import type { PlatformBillingModuleOptions } from './platform-billing.options.js';
 import { PlatformBillingService } from './platform-billing.service.js';
-import { PLATFORM_BILLING_OPTIONS, PLATFORM_BILLING_PEOPLE } from './platform-billing.tokens.js';
+import {
+  PLATFORM_BILLING_NOTIFIER,
+  PLATFORM_BILLING_OPTIONS,
+  PLATFORM_BILLING_PEOPLE,
+} from './platform-billing.tokens.js';
+import { PlatformBillingDailyCheck } from './platform-billing-daily.process.js';
 import { PlatformBillingWriteService } from './platform-billing-write.service.js';
 
 /**
@@ -40,6 +45,11 @@ export class PlatformBillingModule {
       options.peopleProvider
         ? (options.peopleProvider as Provider)
         : { provide: PLATFORM_BILLING_PEOPLE, useValue: undefined },
+      // Unbound: nobody is told, and the daily check records nothing as sent.
+      options.notifierProvider
+        ? (options.notifierProvider as Provider)
+        : { provide: PLATFORM_BILLING_NOTIFIER, useValue: undefined },
+      PlatformBillingDailyCheck,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider as Provider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider as Provider);
@@ -49,7 +59,12 @@ export class PlatformBillingModule {
       module: PlatformBillingModule,
       imports: (options.imports ?? []) as NonNullable<DynamicModule['imports']>,
       providers,
-      exports: [PlatformBillingService, PlatformBillingWriteService, PLATFORM_BILLING_OPTIONS],
+      exports: [
+        PlatformBillingService,
+        PlatformBillingWriteService,
+        PlatformBillingDailyCheck,
+        PLATFORM_BILLING_OPTIONS,
+      ],
     };
   }
 }

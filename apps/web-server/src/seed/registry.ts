@@ -35,7 +35,7 @@ import {
   isRoleLevel,
   LIMIT_CONTRIBUTIONS,
 } from '@kwtech/module-permissions';
-import { PLATFORM_BILLING_FEATURE_REGISTRY } from '@kwtech/module-platform-billing';
+import { PLATFORM_BILLING_FEATURE_REGISTRY, PLATFORM_BILLING_PROCESS_REGISTRY } from '@kwtech/module-platform-billing';
 import { PRINT_FEATURE_REGISTRY, PRINT_LIMIT_REGISTRY } from '@kwtech/module-print';
 import { STUDIO_FEATURE_REGISTRY, STUDIO_LIMIT_REGISTRY, STUDIO_PROCESS_REGISTRY } from '@kwtech/module-print-studio';
 import { QUEUE_FEATURE_REGISTRY, QUEUE_LIMIT_REGISTRY } from '@kwtech/module-queuing-window';
@@ -256,7 +256,12 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * prices. Four keys are organization level and work without a plan (D13,
    * `planExemptFeatures` in app.module.ts); four are app level.
    */
-  { key: 'platform-billing', features: PLATFORM_BILLING_FEATURE_REGISTRY },
+  // The daily check (#95): it reaches every organization, with no plan gate.
+  {
+    key: 'platform-billing',
+    features: PLATFORM_BILLING_FEATURE_REGISTRY,
+    processes: PLATFORM_BILLING_PROCESS_REGISTRY,
+  },
 ];
 
 export const ALL_FEATURES: readonly FeatureSpec[] = composeFeatures(MODULE_DECLARATIONS).map(toFeatureSpec);

@@ -4,6 +4,7 @@ import type {
   CounterRow,
   CreditRow,
   EventRow,
+  NoticeRow,
   PaymentRow,
   PlatformBillingTransaction,
   PlatformBillingWriteClient,
@@ -13,10 +14,12 @@ import type {
   SettingsRow,
 } from '../src/server/platform-billing.repository.js';
 import { PlatformBillingService } from '../src/server/platform-billing.service.js';
+import { PlatformBillingDailyCheck } from '../src/server/platform-billing-daily.process.js';
 import { PlatformBillingWriteService } from '../src/server/platform-billing-write.service.js';
 import type {
   BillingPlan,
   BillingSubscriptionRow,
+  PlatformBillingNotifier,
   PlatformBillingPeople,
   PlatformBillingPlans,
   PlatformBillingSubscriptions,
@@ -43,6 +46,7 @@ interface Store {
   events: EventRow[];
   /** How many times each organization's decision lock was taken. */
   locks: Record<string, number>;
+  notices: NoticeRow[];
   /** The organization's live subscription, as permissions would hold it. */
   subscriptions: Map<string, BillingSubscriptionRow>;
   /** Every subscription write, in order: what an approval applied. */
@@ -62,6 +66,7 @@ function emptyStore(): Store {
     counters: [],
     events: [],
     locks: {},
+    notices: [],
     subscriptions: new Map(),
     subscriptionWrites: [],
   };
@@ -101,6 +106,14 @@ function matches<T extends object>(row: T, where: Record<string, unknown>): bool
     if (isDate(wanted)) return isDate(value) && value.getTime() === wanted.getTime();
     if (typeof wanted === 'object' && wanted !== null) {
       if ('in' in wanted) return (wanted as { in: unknown[] }).in.includes(value);
+      if ('lte' in wanted) {
+        const ceiling = (wanted as { lte: unknown }).lte;
+        return isDate(value) && isDate(ceiling) && value.getTime() <= ceiling.getTime();
+      }
+      if ('lt' in wanted) {
+        const ceiling = (wanted as { lt: unknown }).lt;
+        return isDate(value) && isDate(ceiling) && value.getTime() < ceiling.getTime();
+      }
       if ('gt' in wanted) {
         const floor = (wanted as { gt: unknown }).gt;
         return isDate(value) && isDate(floor) && value.getTime() > floor.getTime();
@@ -166,6 +179,10 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         };
         store.requests.push(row);
         return { ...row };
+      },
+      /** How many requests match, for the approvers' digest. */
+      async count({ where }) {
+        return get().requests.filter((row) => matches(row, where)).length;
       },
       async updateMany({ where, data }) {
         const rows = get().requests.filter((row) => matches(row, where));
@@ -327,6 +344,43 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         return { ...store.settings };
       },
     },
+    platformBillingNotice: {
+      /** Writes a notice, refusing a second for the same organization, kind, period and day. */
+      async create({ data }) {
+        const store = get();
+        // The `@@unique([organizationId, kind, periodKey, day])`, as Postgres enforces it.
+        const taken = store.notices.some(
+          (row) =>
+            row.organizationId === data.organizationId &&
+            row.kind === data.kind &&
+            row.periodKey === data.periodKey &&
+            row.day.getTime() === data.day.getTime(),
+        );
+        if (taken) throw uniqueViolation();
+        const row: NoticeRow = { id: id('ntc'), sentAt: null, ...data, data: structuredClone(data.data) };
+        store.notices.push(row);
+        return structuredClone(row);
+      },
+      /** The unsent notices, oldest first. */
+      async findMany({ where, take }) {
+        return get()
+          .notices.filter((row) => matches(row, where))
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+          .slice(0, take)
+          .map((row) => structuredClone(row));
+      },
+      /** How many notices match: the stale unsent ones, for the log. */
+      async count({ where }) {
+        return get().notices.filter((row) => matches(row, where)).length;
+      },
+      /** Marks a notice sent. */
+      async update({ where, data }) {
+        const row = get().notices.find((one) => one.id === where.id);
+        if (!row) throw new Error('No such notice');
+        Object.assign(row, data);
+        return structuredClone(row);
+      },
+    },
     platformBillingLock: {
       // The fake runs one transaction at a time already; the lock is recorded so a test can see it taken.
       async upsert({ where }) {
@@ -370,8 +424,11 @@ export interface FakeBilling {
   subscriptions: PlatformBillingSubscriptions;
   plans: PlatformBillingPlans & { list: BillingPlan[]; usageOf: Record<string, number> };
   people: PlatformBillingPeople & { members: Set<string> };
+  /** Every notice told, in order; `failing` makes the next sends fail, as a mail server down would. */
+  notifier: PlatformBillingNotifier & { told: Array<{ what: string; notice: unknown }>; failing: boolean };
   reads: PlatformBillingService;
   writes: PlatformBillingWriteService;
+  daily: PlatformBillingDailyCheck;
 }
 
 /** Basic 1,000 and Pro 1,500 a month, both public; Free with no price. */
@@ -543,9 +600,33 @@ export function fakeBilling(): FakeBilling {
     },
   };
 
+  const notifier = {
+    told: [] as Array<{ what: string; notice: unknown }>,
+    failing: false,
+    /** Records a reminder, or fails while `failing`. */
+    async reminder(notice: unknown) {
+      if (notifier.failing) return false;
+      notifier.told.push({ what: 'reminder', notice });
+      return true;
+    },
+    /** Records a digest, or fails while `failing`. */
+    async approversDigest(notice: unknown) {
+      if (notifier.failing) return false;
+      notifier.told.push({ what: 'approvers', notice });
+      return true;
+    },
+    /** Records a request notice, or fails while `failing`. */
+    async requestChanged(notice: unknown) {
+      if (notifier.failing) return false;
+      notifier.told.push({ what: 'request', notice });
+      return true;
+    },
+  } as FakeBilling['notifier'];
+
   const reads = new PlatformBillingService(client, subscriptions, plans);
-  const writes = new PlatformBillingWriteService(client, reads, subscriptions, people);
-  return { store: () => store, client, subscriptions, plans, people, reads, writes };
+  const writes = new PlatformBillingWriteService(client, reads, subscriptions, people, notifier);
+  const daily = new PlatformBillingDailyCheck(client, reads, notifier);
+  return { store: () => store, client, subscriptions, plans, people, notifier, reads, writes, daily };
 }
 
 /** Puts `organizationId` on `planKey` for the period `[start, end)`, access to `accessUntil` (days, Manila). */
@@ -556,16 +637,17 @@ export function giveSubscription(
   start: string,
   end: string,
   accessUntil: string,
-  options: { trial?: boolean } = {},
+  options: { trial?: boolean; timeZone?: string } = {},
 ): void {
+  const zone = options.timeZone ?? 'Asia/Manila';
   billing.store().subscriptions.set(organizationId, {
     subscriptionId: id('sub'),
     planKey,
     planArchived: false,
-    periodStart: platformDayStart(start, 'Asia/Manila'),
-    currentPeriodEnd: platformDayStart(end, 'Asia/Manila'),
+    periodStart: platformDayStart(start, zone),
+    currentPeriodEnd: platformDayStart(end, zone),
     billingDay: Number(start.slice(8, 10)),
-    accessUntil: platformDayStart(accessUntil, 'Asia/Manila'),
+    accessUntil: platformDayStart(accessUntil, zone),
     trial: options.trial ?? false,
   });
 }

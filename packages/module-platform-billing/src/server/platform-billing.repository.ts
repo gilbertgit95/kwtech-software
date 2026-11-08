@@ -135,6 +135,18 @@ export interface SettingsRow {
   updatedAt: Date;
 }
 
+/** A notice the daily check owes (`PlatformBillingNotice`). */
+export interface NoticeRow {
+  id: string;
+  organizationId: string;
+  kind: string;
+  periodKey: string;
+  day: Date;
+  data: unknown;
+  createdAt: Date;
+  sentAt: Date | null;
+}
+
 export interface CounterRow {
   sequence: string;
   value: number;
@@ -201,9 +213,13 @@ export interface PlatformBillingTransaction {
         restoredSubscriptionId?: string;
         /** Decided after an instant: an adjustment made since an approval (a void's check). */
         decidedAt?: { gt: Date };
+        /** Made before an instant: a request waiting too long (the approvers' digest). */
+        requestedAt?: { lt: Date };
       };
       orderBy?: { requestedAt: SortOrder } | { decidedAt: SortOrder };
     }): Promise<RequestRow | null>;
+    /** How many requests wait past a day, for the approvers' digest: a count, never the rows. */
+    count(args: { where: { state: 'pending'; requestedAt: { lt: Date } } }): Promise<number>;
     findMany(args: {
       /** A page of an organization's history or of the queue, or the pending requests naming a plan (an archive). */
       where: {
@@ -381,6 +397,22 @@ export interface PlatformBillingTransaction {
       create: { organizationId: string; version: number };
       update: { version: { increment: number } };
     }): Promise<{ organizationId: string; version: number }>;
+  };
+
+  /** The daily check's notices: written before sending, marked sent after. */
+  platformBillingNotice: {
+    create(args: {
+      data: { organizationId: string; kind: string; periodKey: string; day: Date; data: JsonInput; createdAt: Date };
+    }): Promise<NoticeRow>;
+    /** The unsent notices still worth sending (written after `createdAt.gt`), oldest first. */
+    findMany(args: {
+      where: { sentAt: null; createdAt: { gt: Date } };
+      orderBy: { createdAt: SortOrder };
+      take: number;
+    }): Promise<NoticeRow[]>;
+    /** The unsent notices too old to send now, counted for the log. */
+    count(args: { where: { sentAt: null; createdAt: { lte: Date } } }): Promise<number>;
+    update(args: { where: { id: string }; data: { sentAt: Date } }): Promise<NoticeRow>;
   };
 
   platformBillingCounter: {

@@ -1,3 +1,6 @@
+import type { DayKey } from '../domain/days.js';
+import type { ReminderKind } from '../domain/notices.js';
+import type { RequestKind } from '../domain/requests.js';
 import type { PlatformBillingTransaction } from './platform-billing.repository.js';
 
 /**
@@ -121,4 +124,75 @@ export interface PlatformBillingPlans {
 export interface PlatformBillingPeople {
   /** Whether `userId` is a member of `organizationId` (D15: flagged, never blocking). */
   isMember(userId: string, organizationId: string): Promise<boolean>;
+}
+
+/**
+ * A reminder the daily check owes an organization (plan §4 "The daily
+ * check"). JSON-safe: days are `YYYY-MM-DD` in the billing time zone.
+ */
+export interface BillingReminderNotice {
+  organizationId: string;
+  kind: ReminderKind;
+  /** The plan the reminder is about, by key; the app renders its label. */
+  planKey: string | null;
+  /** The due date (the period's end), and the first day without access. */
+  periodEnd: DayKey | null;
+  accessUntil: DayKey | null;
+  /** Days left until the due date (countdown) or of access (overdue, last warning). */
+  daysLeft: number;
+}
+
+/** Billing approvers told that requests have waited more than a day. Counts, never names. */
+export interface ApproversDigestNotice {
+  waiting: number;
+  /** ISO: when the oldest of them was made. */
+  oldestRequestedAt: string;
+  /** The same, as its day in the billing time zone: what the words say. */
+  oldestRequestedOn: DayKey;
+}
+
+/** A step a request took that somebody should hear about. */
+export type BillingRequestStep =
+  | 'submitted'
+  | 'details_entered'
+  | 'approved'
+  | 'rejected'
+  | 'withdrawn'
+  | 'voided'
+  | 'closed_as_credit'
+  | 'cancelled';
+
+/**
+ * A request's step, sent AFTER its transaction committed: `submitted` and
+ * `details_entered` go to approvers (something to check), the decisions to
+ * the organization's owner and admins.
+ */
+export interface BillingRequestNotice {
+  organizationId: string;
+  requestId: string;
+  kind: RequestKind;
+  step: BillingRequestStep;
+  planKey: string;
+  /** The approver's or owner's words, for a rejection, a withdrawal or a void. */
+  reason: string | null;
+}
+
+/**
+ * TELLING PEOPLE (`module-notification`'s job, reached by a port: modules
+ * never import modules). The app's adapter chooses the words and finds the
+ * recipients: the organization's billing-key holders, or the app-level
+ * holders of the approve key.
+ *
+ * ⚠ Each returns whether the notice was DELIVERED (or there was nobody to
+ * tell): the daily check sets a notice's `sentAt` only then, and retries the
+ * rest on its next run. The request notices are told after the commit and
+ * never fail the write.
+ *
+ * Unbound: nobody is told, and the daily check writes nothing, so binding it
+ * later still delivers that day's reminders.
+ */
+export interface PlatformBillingNotifier {
+  reminder(notice: BillingReminderNotice): Promise<boolean>;
+  approversDigest(notice: ApproversDigestNotice): Promise<boolean>;
+  requestChanged(notice: BillingRequestNotice): Promise<boolean>;
 }
