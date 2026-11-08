@@ -920,15 +920,21 @@ export class PermissionsResolver {
   async createSubscription(
     @Context() gqlContext: { req?: unknown },
     @Args('input') input: SubscriptionDraftInput,
+    // Required (D5): a subscription written by hand is an adjustment, kept with its reason.
+    @Args('reason') reason: string,
   ): Promise<PermissionSubscriptionType> {
     const actor = await this.requireActor(gqlContext.req);
-    const { subscriptionId } = await this.writes.startSubscription(actor, {
-      organizationId: input.organizationId,
-      workspaceId: input.workspaceId,
-      planKey: input.planKey,
-      status: input.status,
-      currentPeriodEnd: input.currentPeriodEnd,
-    });
+    const { subscriptionId } = await this.writes.startSubscription(
+      actor,
+      {
+        organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
+        planKey: input.planKey,
+        status: input.status,
+        currentPeriodEnd: input.currentPeriodEnd,
+      },
+      reason,
+    );
     return this.requireSubscriptionView(subscriptionId);
   }
 
@@ -947,9 +953,10 @@ export class PermissionsResolver {
     @Args('subscriptionId') subscriptionId: string,
     @Args('status') status: string,
     @Args('currentPeriodEnd') currentPeriodEnd: string,
+    @Args('reason') reason: string,
   ): Promise<PermissionSubscriptionType> {
     const actor = await this.requireActor(gqlContext.req);
-    await this.writes.updateSubscription(actor, subscriptionId, { status, currentPeriodEnd });
+    await this.writes.updateSubscription(actor, subscriptionId, { status, currentPeriodEnd, reason });
     return this.requireSubscriptionView(subscriptionId);
   }
 
@@ -959,9 +966,10 @@ export class PermissionsResolver {
   async endSubscription(
     @Context() gqlContext: { req?: unknown },
     @Args('subscriptionId') subscriptionId: string,
+    @Args('reason') reason: string,
   ): Promise<PermissionSubscriptionType> {
     const actor = await this.requireActor(gqlContext.req);
-    await this.writes.endSubscription(actor, subscriptionId);
+    await this.writes.endSubscription(actor, subscriptionId, reason);
     return this.requireSubscriptionView(subscriptionId);
   }
 

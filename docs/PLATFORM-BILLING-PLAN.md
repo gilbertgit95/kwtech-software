@@ -1,13 +1,13 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 to 3b and 5a done, phases 4a, 4b-1 and 4b-2 done (2026-11-08).** Phase 1
+Status: **phases 1 to 5a done (2026-11-08).** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
 and the API for requests, payment details, approvals and rejections, settings
 and prices, composed into the API; 4b-1 (#110) the voids, closing as credit
-and cancel; 4b-2 (#112) plan archives and the trial; 4b-3 (the audited
-adjustments) follows. The work is tracked by
+and cancel; 4b-2 (#112) plan archives and the trial; 4b-3 (#114) the
+audited adjustments. The work is tracked by
 issue #88 and its sub-issues #89 to #98; the plans it bills for were settled
 in #89 (PLAN §13, 2026-11-07). Every decision below is the operator's, or
 proposed in #88 and marked as such (§9); the questions still open are in §11 and
@@ -275,7 +275,11 @@ Each lock or effective date is shown beside the setting.
   a reason**, shown in the organization's history as "adjusted by X, no
   payment" (D5). Nothing writes a subscription without a billing record. The
   existing `billing:manage` key and `billing` tag are reconciled with the
-  `platform-billing:*` keys so there are not two "billing"s.
+  `platform-billing:*` keys so there are not two "billing"s. **Built (#114):**
+  each write requires a reason and is recorded inside its transaction as an
+  approved `adjustment` request; `billing:manage` is labelled "Adjust
+  subscriptions (no payment)" (the key is unchanged, since renaming one is a
+  data migration).
 - **New organizations** start on Free, with one Basic trial (D2).
 - **On release**, every live organization subscription is given a period end
   (30 days after release) and its owners are notified, so the new check
@@ -380,7 +384,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P2 | #91 | P1 | The package, its keys, the refusal union, and every rule above as pure functions with tests. **Done** 2026-11-07 |
 | P3 | #92 | P2 | ⚠ `module-permissions`: `periodStart`, `billingDay`, `accessUntil`; the expired reason; the fallback to Free; billing keys exempt; the release migration. **Done** 2026-11-07 |
 | P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (`liveOrganizationId`), billing's write methods. **Done** 2026-11-07 |
-| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); **4b-2 done** 2026-11-08 (#112: archives, the trial); 4b-3: the audited adjustments |
+| P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); **4b-2 done** 2026-11-08 (#112: archives, the trial); **4b-3 done** 2026-11-08 (#114: the audited adjustments) |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
 | P5b | #95 | P4, P5a | The daily check and every notification |
 | P6 | #96 | P4 (P5b) | The organization's Billing page |

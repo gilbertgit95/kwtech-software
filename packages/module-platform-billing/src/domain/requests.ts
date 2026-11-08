@@ -19,7 +19,16 @@ export type RequestKind =
   /** The current plan was archived: choose another, at any standing. */
   | 'replace'
   /** End at the period's end. */
-  | 'cancel';
+  | 'cancel'
+  /**
+   * Not asked for by the organization: a subscription written by hand on the
+   * admin screens, with no payment (D5). Recorded already decided, with the
+   * admin's reason, so the history shows it; never priced, never voided.
+   */
+  | 'adjustment';
+
+/** The kinds an organization asks for and billing prices: not a cancel (priced at nothing) nor an adjustment. */
+export type PricedKind = Exclude<RequestKind, 'cancel' | 'adjustment'>;
 
 export type RequestState = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'voided' | 'closed_as_credit';
 
@@ -131,6 +140,9 @@ export function checkNewRequest(input: NewRequestInput): PlatformBillingRefusal 
       if (input.standing.hasPaidSubscription && !input.standing.overdueOrExpired) return 'already_subscribed';
       return checkChosenPlan(plan, input.currentPlanKey, input.overCaps);
     }
+    case 'adjustment':
+      // Written by the admin screens, never requested.
+      return 'invalid';
     case 'change_plan': {
       if (!input.standing.hasPaidSubscription) return 'no_subscription';
       if (input.standing.currentPlanArchived) return 'plan_archived';

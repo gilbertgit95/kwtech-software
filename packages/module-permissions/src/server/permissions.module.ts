@@ -96,6 +96,13 @@ export interface PermissionsModuleOptions {
   planArchiveHookProvider?: Provider;
 
   /**
+   * Binds PERMISSIONS_SUBSCRIPTION_AUDIT: who records a subscription written
+   * by hand (start, change, end, each with a required reason) as an
+   * adjustment, inside its transaction (D5). Unbound, only the row is kept.
+   */
+  subscriptionAuditProvider?: Provider;
+
+  /**
    * Which transports the module publishes. Both default to on: importing the
    * module is meant to BE the registration — REST routes appear in the app and
    * in openapi.json, resolvers join the composed GraphQL schema, and the app
@@ -339,6 +346,7 @@ export class PermissionsModule {
     ];
     if (options.pubsubProvider) providers.push(options.pubsubProvider);
     if (options.planArchiveHookProvider) providers.push(options.planArchiveHookProvider);
+    if (options.subscriptionAuditProvider) providers.push(options.subscriptionAuditProvider);
     if (options.prismaProvider) providers.push(options.prismaProvider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider);
     else providers.push({ provide: PERMISSIONS_PRISMA_WRITE, useValue: undefined });

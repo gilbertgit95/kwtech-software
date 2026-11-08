@@ -130,8 +130,9 @@ function delegates(get: () => Store): PlatformBillingTransaction {
       },
       async create({ data }) {
         const store = get();
-        if (store.requests.some((row) => row.pendingOrganizationId === data.pendingOrganizationId))
-          throw uniqueViolation();
+        // Unique as Postgres is: NULLs never collide, so decided requests coexist.
+        const slot = data.pendingOrganizationId;
+        if (slot !== null && store.requests.some((row) => row.pendingOrganizationId === slot)) throw uniqueViolation();
         const row: RequestRow = {
           id: id('req'),
           state: 'pending',

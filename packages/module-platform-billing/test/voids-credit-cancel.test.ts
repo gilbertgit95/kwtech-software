@@ -381,3 +381,70 @@ describe('cancelling at the period’s end', () => {
     expect(await refusal(billing.writes.cancel(ORG, OWNER, noonOn('2026-11-10')))).toBe('pending_request_exists');
   });
 });
+
+describe('adjustments on the admin screens (D5)', () => {
+  /** An admin's hand-written change, as permissions reports it, recorded in one transaction. */
+  function adjust(billing: ReturnType<typeof fakeBilling>, subscriptionId: string, accessUntil: Date) {
+    return billing.client.$transaction((tx) =>
+      billing.writes.recordAdjustment(
+        {
+          actorId: 'admin1',
+          organizationId: ORG,
+          subscriptionId,
+          action: 'update',
+          planKey: 'basic',
+          reason: 'extended for the outage',
+          at: noonOn('2026-11-20'),
+          after: { status: 'active', currentPeriodEnd: new Date('2026-12-31T16:00:00.000Z'), accessUntil },
+        },
+        tx,
+      ),
+    );
+  }
+
+  it('records an approved adjustment with the reason, no bill, no receipt and no credit', async () => {
+    const billing = fakeBilling();
+    giveSubscription(billing, ORG, 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    await setPrices(billing);
+    const live = billing.store().subscriptions.get(ORG);
+    // Beside a pending request: an adjustment never takes the pending slot, so it is never refused for one.
+    await billing.writes.submit(ORG, OWNER, 'change_plan', 'pro', noonOn('2026-11-16'));
+    const row = await adjust(billing, live?.subscriptionId ?? '', new Date('2027-01-07T16:00:00.000Z'));
+    expect(row).toMatchObject({
+      kind: 'adjustment',
+      state: 'approved',
+      decidedById: 'admin1',
+      decisionReason: 'extended for the outage',
+      pendingOrganizationId: null,
+      subscriptionId: live?.subscriptionId,
+    });
+    expect(day(row.periodEnd)).toBe('2027-01-01');
+    expect(billing.store().receipts).toEqual([]);
+    expect(billing.store().credits).toEqual([]);
+    const adjusted = billing.store().events.find((event) => event.step === 'adjusted');
+    expect(adjusted).toMatchObject({ reason: 'update', actorId: 'admin1' });
+    expect(adjusted?.data).toMatchObject({ reason: 'extended for the outage', payment: 'none' });
+    expect(await refusal(billing.writes.void(row.id, APPROVER, 'mistake', noonOn('2026-11-21')))).toBe(
+      'adjustment_not_voidable',
+    );
+  });
+
+  it('⚠ refuses voiding an approval under a later adjustment as a changed subscription, never "void the later first"', async () => {
+    const billing = fakeBilling();
+    await setPrices(billing);
+    const now = noonOn('2026-11-15');
+    const request = await billing.writes.submit(ORG, OWNER, 'subscribe', 'basic', now);
+    await billing.writes.enterPayment(ORG, request.id, OWNER, cash(100_000), now);
+    await billing.writes.approve(request.id, APPROVER, approval(1, 100_000), now);
+    const live = billing.store().subscriptions.get(ORG);
+    if (!live) throw new Error('No live row');
+    // The admin extends the row by hand, and the audit records it.
+    const extended = new Date('2027-01-07T16:00:00.000Z');
+    billing.store().subscriptions.set(ORG, { ...live, accessUntil: extended });
+    await adjust(billing, live.subscriptionId, extended);
+
+    expect(await refusal(billing.writes.void(request.id, APPROVER, 'mistake', noonOn('2026-11-21')))).toBe(
+      'subscription_changed',
+    );
+  });
+});

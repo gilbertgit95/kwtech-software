@@ -593,10 +593,20 @@ export interface PermissionsClient {
    */
   leaveOrganization(organizationId: string): Promise<WriteResult>;
 
-  createSubscription(input: SubscriptionInput): Promise<SubscriptionView>;
+  /**
+   * Each takes the admin's REASON, required (D5): a subscription written by
+   * hand is an adjustment with no payment, kept in the organization's billing
+   * history with these words.
+   */
+  createSubscription(input: SubscriptionInput, reason: string): Promise<SubscriptionView>;
   /** Status and renewal date only. The target and the plan are fixed at creation. */
-  updateSubscription(subscriptionId: string, status: string, currentPeriodEnd: string): Promise<SubscriptionView>;
-  endSubscription(subscriptionId: string): Promise<SubscriptionView>;
+  updateSubscription(
+    subscriptionId: string,
+    status: string,
+    currentPeriodEnd: string,
+    reason: string,
+  ): Promise<SubscriptionView>;
+  endSubscription(subscriptionId: string, reason: string): Promise<SubscriptionView>;
 }
 
 const ROLE_FIELDS = 'id key label level organizationId icon isSystem disabled features limits { limitKey value }';
@@ -1163,36 +1173,37 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
       return data.revokeWorkspaceRole;
     },
 
-    async createSubscription(input) {
+    async createSubscription(input, reason) {
       const data = await graphql<{ createSubscription: SubscriptionView }>(
-        `mutation CreateSubscription($input: SubscriptionDraftInput!) {
-           createSubscription(input: $input) { ${SUBSCRIPTION_FIELDS} }
+        `mutation CreateSubscription($input: SubscriptionDraftInput!, $reason: String!) {
+           createSubscription(input: $input, reason: $reason) { ${SUBSCRIPTION_FIELDS} }
          }`,
-        { input },
+        { input, reason },
       );
       return data.createSubscription;
     },
 
-    async updateSubscription(subscriptionId, status, currentPeriodEnd) {
+    async updateSubscription(subscriptionId, status, currentPeriodEnd, reason) {
       const data = await graphql<{ updateSubscription: SubscriptionView }>(
-        `mutation UpdateSubscription($subscriptionId: String!, $status: String!, $currentPeriodEnd: String!) {
+        `mutation UpdateSubscription($subscriptionId: String!, $status: String!, $currentPeriodEnd: String!, $reason: String!) {
            updateSubscription(
              subscriptionId: $subscriptionId
              status: $status
              currentPeriodEnd: $currentPeriodEnd
+             reason: $reason
            ) { ${SUBSCRIPTION_FIELDS} }
          }`,
-        { subscriptionId, status, currentPeriodEnd },
+        { subscriptionId, status, currentPeriodEnd, reason },
       );
       return data.updateSubscription;
     },
 
-    async endSubscription(subscriptionId) {
+    async endSubscription(subscriptionId, reason) {
       const data = await graphql<{ endSubscription: SubscriptionView }>(
-        `mutation EndSubscription($subscriptionId: String!) {
-           endSubscription(subscriptionId: $subscriptionId) { ${SUBSCRIPTION_FIELDS} }
+        `mutation EndSubscription($subscriptionId: String!, $reason: String!) {
+           endSubscription(subscriptionId: $subscriptionId, reason: $reason) { ${SUBSCRIPTION_FIELDS} }
          }`,
-        { subscriptionId },
+        { subscriptionId, reason },
       );
       return data.endSubscription;
     },

@@ -3,6 +3,7 @@
 import { DatePicker } from '@kwtech/web-ui/react';
 import { useId, useMemo, useState } from 'react';
 import {
+  checkAdjustmentReason,
   type SubscriptionDraft,
   type SubscriptionDraftErrors,
   subscriptionPeriodField,
@@ -70,6 +71,13 @@ export function SubscriptionForm({
     currentPeriodEnd: subscriptionPeriodField(subscription?.currentPeriodEnd ?? null),
   });
   const [errors, setErrors] = useState<SubscriptionDraftErrors>({});
+  /**
+   * Why, required (D5): a subscription written here has no payment behind it,
+   * so it is an ADJUSTMENT, kept in the organization's billing history with
+   * these words. Not part of the draft: it describes this save, not the row.
+   */
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -124,23 +132,30 @@ export function SubscriptionForm({
           }),
     });
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    const why = checkAdjustmentReason(reason);
+    setReasonError(why);
+    if (Object.keys(found).length > 0 || why) return;
 
     setSaving(true);
     setFailure(null);
     try {
       onSaved(
         editing
-          ? await client.updateSubscription(subscription.id, draft.status, draft.currentPeriodEnd)
-          : await client.createSubscription({
-              organizationId: draft.organizationId,
-              workspaceId: draft.workspaceId,
-              planKey: draft.planKey,
-              status: draft.status,
-              currentPeriodEnd: draft.currentPeriodEnd,
-            }),
+          ? await client.updateSubscription(subscription.id, draft.status, draft.currentPeriodEnd, reason)
+          : await client.createSubscription(
+              {
+                organizationId: draft.organizationId,
+                workspaceId: draft.workspaceId,
+                planKey: draft.planKey,
+                status: draft.status,
+                currentPeriodEnd: draft.currentPeriodEnd,
+              },
+              reason,
+            ),
       );
       setSaved(true);
+      // The next save is another adjustment, with its own reason.
+      setReason('');
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : 'Could not save the subscription.');
     } finally {
@@ -261,7 +276,7 @@ export function SubscriptionForm({
       <Field
         label="Renews on"
         error={errors.currentPeriodEnd}
-        hint="Recorded, not enforced. Nothing reads this to decide entitlement — status does that, so a lapsed date cannot switch access off without a row saying so."
+        hint="Access ends on this date plus the grace days (#92), and the organization falls back to Free. Empty means no end."
       >
         {(id) => (
           // web-ui's calendar, not `<input type="date">`, whose calendar ignores the theme (issue #4).
@@ -276,6 +291,28 @@ export function SubscriptionForm({
             className="w-full"
             aria-invalid={errors.currentPeriodEnd ? true : undefined}
             onChange={(day) => edit((current) => ({ ...current, currentPeriodEnd: day ?? '' }))}
+          />
+        )}
+      </Field>
+
+      <Field
+        label="Reason"
+        error={reasonError ?? undefined}
+        hint="Required. Kept in the organization’s billing history as an adjustment with no payment, with your name."
+      >
+        {(id) => (
+          <textarea
+            id={id}
+            value={reason}
+            rows={2}
+            maxLength={500}
+            placeholder="For example: agreed discount for the pilot, or fold of workspace subscriptions"
+            onChange={(event) => {
+              setSaved(false);
+              setReason(event.target.value);
+            }}
+            aria-invalid={reasonError ? true : undefined}
+            className={inputClass(Boolean(reasonError))}
           />
         )}
       </Field>

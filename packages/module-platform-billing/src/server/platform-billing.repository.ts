@@ -194,7 +194,7 @@ export interface PlatformBillingTransaction {
         id?: string;
         organizationId?: string;
         state?: RequestState;
-        kind?: RequestKind;
+        kind?: RequestKind | { not: RequestKind };
         pricedForPeriodEnd?: Date;
         periodEnd?: Date;
         subscriptionId?: string;
@@ -222,7 +222,8 @@ export interface PlatformBillingTransaction {
         kind: RequestKind;
         planKey: string;
         fromPlanKey: string | null;
-        pendingOrganizationId: string;
+        /** The organization's id while pending; null for a request recorded already decided (an adjustment). */
+        pendingOrganizationId: string | null;
         requestedById: string;
         requestedAt: Date;
         pricedOn: Date;

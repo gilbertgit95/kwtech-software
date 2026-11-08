@@ -8,7 +8,7 @@ import { checkAmount, findReferenceReuse } from '../domain/payments.js';
 import { type CapOverrun, capsBlockingDowngrade } from '../domain/plans.js';
 import { isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import type { PlatformBillingRefusal } from '../domain/refusals.js';
-import { checkNewRequest, type RequestKind } from '../domain/requests.js';
+import { checkNewRequest, type PricedKind } from '../domain/requests.js';
 import {
   type BillingStanding,
   billingStanding,
@@ -240,11 +240,7 @@ export class PlatformBillingService {
    * the check `submit` runs, as a preview the page shows before anyone presses
    * Request.
    */
-  async preview(
-    context: BillingContext,
-    kind: Exclude<RequestKind, 'cancel'>,
-    planKey: string | null,
-  ): Promise<RequestPreview> {
+  async preview(context: BillingContext, kind: PricedKind, planKey: string | null): Promise<RequestPreview> {
     const currentPlanKey = context.live?.planKey ?? null;
     const wanted = kind === 'renew' ? currentPlanKey : planKey;
     const plan = wanted ? (context.plans.get(wanted) ?? null) : null;

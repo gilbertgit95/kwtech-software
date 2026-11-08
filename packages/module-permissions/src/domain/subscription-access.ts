@@ -61,8 +61,9 @@ export function partitionSubscriptions<T extends SubscriptionAccessRow>(
  * and the new-organization default. The same 7 billing uses by default
  * (`DEFAULT_GRACE_DAYS` in module-platform-billing), restated here because a
  * module never imports a module; billing's own writes pass their own
- * `accessUntil` (the setting a super admin changes, plus any hold). Phase 4
- * turns the admin writes into billing adjustments (D5), and this goes with them.
+ * `accessUntil` (the setting a super admin changes, plus any hold). The admin
+ * writes are billing adjustments since #114 (D5), recorded with their reason,
+ * and still take this grace: an adjustment sets a date, not a billed period.
  */
 export const UNBILLED_GRACE_DAYS = 7;
 

@@ -10,12 +10,11 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phase 4b-2 (#112, part of #93).** The pure core (#91), the schema,
-the services and the GraphQL API for requests, payment details, approvals and
+**Status: phase 4 done (#93).** The pure core (#91), the schema, the
+services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
-the settings and the prices; composed into the API. Still to come: the
-audited admin adjustments (4b-3), the daily check (#95), and the pages (#96,
-#97).
+the audited admin adjustments, the settings and the prices; composed into the
+API. Still to come: the daily check (#95), and the pages (#96, #97).
 
 ## In a Next.js app
 
@@ -128,6 +127,16 @@ presses it.
   the archive day to the period end and any month paid ahead
   (`planArchiveCredit`), with the sentence on the ledger line. Bringing the
   plan back reverses that credit for the rows still on it.
+- **An adjustment** (D5): a subscription written by hand on
+  `/admin/subscriptions` reaches billing through `module-permissions`'
+  `PERMISSIONS_SUBSCRIPTION_AUDIT`, inside the write's transaction
+  (`recordAdjustment`), and is recorded as an approved request of kind
+  `adjustment`: decided by the admin, the required reason as its decision,
+  no bill, receipt or credit, and an `adjusted` step ("adjusted by X, no
+  payment"). It never takes the pending slot, is never voided
+  (`adjustment_not_voidable`), and is not "the later approval" a void waits
+  on: an approval under a later adjustment is refused as
+  `subscription_changed`, since the row changed.
 - **A trial** (D2, `perm_subscription.trialUserId`) reads as unpaid: there is
   nothing to renew, change, cancel or credit, and the owner subscribes, which
   ends the trial row.
@@ -156,7 +165,8 @@ presses it.
 ## Vocabulary
 
 - **Request:** what an organization asks for, one of `subscribe`, `renew`,
-  `change_plan`, `replace` (the current plan was archived) or `cancel`. Every
+  `change_plan`, `replace` (the current plan was archived) or `cancel`; or an
+  `adjustment`, recorded for a subscription an admin wrote by hand. Every
   month of a subscription is a request we approve.
 - **Period:** one calendar month from a start day (included) to an end day
   (excluded, the due date), keeping a **billing day** that a short month clamps
