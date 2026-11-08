@@ -404,7 +404,14 @@ export interface PlatformBillingTransaction {
     create(args: {
       data: { organizationId: string; kind: string; periodKey: string; day: Date; data: JsonInput; createdAt: Date };
     }): Promise<NoticeRow>;
-    findMany(args: { where: { sentAt: null }; orderBy: { createdAt: SortOrder }; take: number }): Promise<NoticeRow[]>;
+    /** The unsent notices still worth sending (written after `createdAt.gt`), oldest first. */
+    findMany(args: {
+      where: { sentAt: null; createdAt: { gt: Date } };
+      orderBy: { createdAt: SortOrder };
+      take: number;
+    }): Promise<NoticeRow[]>;
+    /** The unsent notices too old to send now, counted for the log. */
+    count(args: { where: { sentAt: null; createdAt: { lte: Date } } }): Promise<number>;
     update(args: { where: { id: string }; data: { sentAt: Date } }): Promise<NoticeRow>;
   };
 

@@ -21,7 +21,8 @@ describe('planReminders: what an organization is told on a day', () => {
   });
 
   it('says each overdue day with the days left, then the last warning, then the expiry once', () => {
-    expect(planReminders(WINDOW, '2026-12-01', null)).toEqual([{ kind: 'overdue', day: '2026-12-01', daysLeft: 7 }]);
+    expect(planReminders(WINDOW, '2026-12-01', null)).toEqual([{ kind: 'due_today', day: '2026-12-01', daysLeft: 7 }]);
+    expect(planReminders(WINDOW, '2026-12-02', null)).toEqual([{ kind: 'overdue', day: '2026-12-02', daysLeft: 6 }]);
     expect(planReminders(WINDOW, '2026-12-04', null)).toEqual([{ kind: 'overdue', day: '2026-12-04', daysLeft: 4 }]);
     expect(planReminders(WINDOW, '2026-12-07', null)).toEqual([
       { kind: 'last_warning', day: '2026-12-07', daysLeft: 1 },
@@ -146,6 +147,31 @@ describe('the daily check (platform_billing.daily_check)', () => {
     expect(told(billing)).toEqual(['overdue']);
     expect(billing.notifier.told[0]?.notice).toMatchObject({ daysLeft: 5 });
     expect(billing.store().notices.every((row) => row.sentAt !== null)).toBe(true);
+  });
+
+  it('⚠ goes on past an organization whose check fails, so one never silences the rest', async () => {
+    const billing = await onBasic();
+    giveSubscription(billing, 'org2', 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    const read = billing.subscriptions.live.bind(billing.subscriptions);
+    billing.subscriptions.live = async (organizationId, tx) => {
+      if (organizationId === ORG) throw new Error('unreadable');
+      return read(organizationId, tx);
+    };
+    const result = await billing.daily.run(runContext(noonOn('2026-11-24'), [ORG, 'org2']));
+    expect(result.handled).toBe(1);
+    expect(billing.notifier.told.map((one) => (one.notice as { organizationId: string }).organizationId)).toEqual([
+      'org2',
+    ]);
+  });
+
+  it('does not retry a notice too old to be true any more: the next one says the current thing', async () => {
+    const billing = await onBasic();
+    billing.notifier.failing = true;
+    await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG]));
+    billing.notifier.failing = false;
+    // Two days on: the 3rd's "5 days left" is stale; only the 5th's own notice goes out.
+    await billing.daily.run(runContext(noonOn('2026-12-05'), [ORG]));
+    expect(billing.notifier.told.map((one) => one.notice)).toEqual([expect.objectContaining({ daysLeft: 3 })]);
   });
 
   it('stops at its item limit and leaves the rest for the next run, which finishes them', async () => {

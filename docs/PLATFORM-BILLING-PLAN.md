@@ -416,10 +416,10 @@ decisions #90 lists each have a PLAN §13 entry.
   approve key (#95).
 - **Decided: an expired organization falls back to Free** (the operator,
   2026-11-07, PLAN §12.131), read from `organization.fallback_plan`.
-- **The expired reason reads the latest organization-wide row whose
-  `accessUntil` has passed** while it is still `active`. When phase 5b's sweep
-  writes `canceled` on those rows, the read must keep finding them, or the
-  screens fall back to saying "not in your plan".
+- **Settled: the expired reason reads the latest organization-wide row whose
+  `accessUntil` has passed** while it is still `active`. No sweep writes
+  `canceled` on it (the daily check only tells people, #95), so the live row
+  stays and the read finds it unchanged.
 - **Open: official tax receipts** (PLAN §12.128) and **proof uploads** once
   file storage exists (PLAN §12.129).
 - **Open: a trial repeated with a new sign-up** (PLAN §12.130).

@@ -24,6 +24,14 @@ const ORGANIZATION_PAGE = 100;
 /** Unsent notices retried per run, oldest first. */
 const RETRY_BATCH = 200;
 
+/**
+ * How long an unsent notice is still worth sending: a day and a half. Past
+ * it, what it says ("5 days left", "overdue") is stale, and the organization
+ * may have renewed; the next run's own notice says the current thing. The
+ * stale rows stay, unsent, counted in the log, and never starve newer ones.
+ */
+const RETRY_WINDOW_MS = 36 * 60 * 60 * 1000;
+
 /** The organization id a notice to billing approvers is filed under: it belongs to no organization. */
 export const PLATFORM_NOTICE_ORGANIZATION = 'platform';
 
@@ -88,6 +96,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     const today: DayKey = occurrence.dayKey;
 
     result.handled += await this.retryUnsent(notifier, context);
+    const now = context.now;
 
     let cursor: string | null = null;
     let budget = context.maxItems;
@@ -107,14 +116,25 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
          * organizations reaches further each time instead of re-reading the
          * first ones forever. Sequential: a few reads and at most two notices each.
          */
-        const handled = await this.checkOrganization(notifier, organization.organizationId, context.now, today);
-        result.handled += handled;
-        budget -= handled;
+        try {
+          const handled = await this.checkOrganization(notifier, organization.organizationId, now, today);
+          result.handled += handled;
+          budget -= handled;
+        } catch (error) {
+          // ⚠ One organization's failure must not silence the ones after it: the order is stable, so it would every run.
+          this.logger.warn(`The billing check of one organization failed: ${errorText(error)}`);
+        }
       }
       cursor = budget > 0 ? page.nextCursor : null;
     } while (cursor !== null);
 
-    if (!context.signal.aborted) result.handled += await this.approversDigest(notifier, context.now, today);
+    if (!context.signal.aborted) {
+      try {
+        result.handled += await this.approversDigest(notifier, now, today);
+      } catch (error) {
+        this.logger.warn(`The billing approvers' digest failed: ${errorText(error)}`);
+      }
+    }
     return result;
   }
 
@@ -143,9 +163,9 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
         accessUntil: window?.accessUntil ?? null,
         daysLeft: reminder.daysLeft,
       };
-      const row = await this.claim(organizationId, reminder, window?.periodEnd ?? null, { ...notice });
+      const row = await this.claim(organizationId, reminder, window?.periodEnd ?? null, { ...notice }, now);
       if (!row) continue;
-      if (await this.deliver(row, () => notifier.reminder(notice))) sent += 1;
+      if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
     }
     return sent;
   }
@@ -164,11 +184,15 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       oldestRequestedAt: oldest.requestedAt.toISOString(),
       oldestRequestedOn: platformDay(oldest.requestedAt, settings.timeZone),
     };
-    const row = await this.claim(PLATFORM_NOTICE_ORGANIZATION, { kind: 'approvers_pending', day: today }, null, {
-      ...notice,
-    });
+    const row = await this.claim(
+      PLATFORM_NOTICE_ORGANIZATION,
+      { kind: 'approvers_pending', day: today },
+      null,
+      { ...notice },
+      now,
+    );
     if (!row) return 0;
-    return (await this.deliver(row, () => notifier.approversDigest(notice))) ? 1 : 0;
+    return (await this.deliver(row, () => notifier.approversDigest(notice), now)) ? 1 : 0;
   }
 
   /**
@@ -181,6 +205,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     reminder: Pick<PlannedReminder, 'day'> & { kind: string },
     periodEnd: DayKey | null,
     data: Record<string, JsonValue>,
+    now: Date,
   ): Promise<NoticeRow | null> {
     try {
       return await this.prisma.platformBillingNotice.create({
@@ -190,7 +215,8 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
           periodKey: periodEnd ?? '-',
           day: dayToDateColumn(reminder.day),
           data,
-          createdAt: new Date(),
+          // The run's clock, never the machine's: a replayed run stamps its own time.
+          createdAt: now,
         },
       });
     } catch (error) {
@@ -200,22 +226,26 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   }
 
   /** Sends, and marks the row sent only when the send succeeded. A failed send never fails the run. */
-  private async deliver(row: NoticeRow, send: () => Promise<boolean>): Promise<boolean> {
+  private async deliver(row: NoticeRow, send: () => Promise<boolean>, now: Date): Promise<boolean> {
     let delivered = false;
     try {
       delivered = await send();
     } catch (error) {
       this.logger.warn(`A billing notice (${row.kind}) could not be sent: ${errorText(error)}`);
     }
-    if (delivered)
-      await this.prisma.platformBillingNotice.update({ where: { id: row.id }, data: { sentAt: new Date() } });
+    if (delivered) await this.prisma.platformBillingNotice.update({ where: { id: row.id }, data: { sentAt: now } });
     return delivered;
   }
 
   /** The rows a previous run wrote and could not send, oldest first, sent again from what they recorded. */
   private async retryUnsent(notifier: PlatformBillingNotifier, context: ProcessRunContext): Promise<number> {
+    const cutoff = new Date(context.now.getTime() - RETRY_WINDOW_MS);
+    const stale = await this.prisma.platformBillingNotice.count({
+      where: { sentAt: null, createdAt: { lte: cutoff } },
+    });
+    if (stale > 0) this.logger.warn(`${stale} billing notice(s) were never sent and are now too old to send.`);
     const rows = await this.prisma.platformBillingNotice.findMany({
-      where: { sentAt: null },
+      where: { sentAt: null, createdAt: { gt: cutoff } },
       orderBy: { createdAt: 'asc' },
       take: RETRY_BATCH,
     });
@@ -232,7 +262,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
                 oldestRequestedOn: String(data.oldestRequestedOn ?? noticeDay(row)),
               })
           : () => notifier.reminder(reminderFrom(row, data));
-      if (await this.deliver(row, send)) sent += 1;
+      if (await this.deliver(row, send, context.now)) sent += 1;
     }
     return sent;
   }

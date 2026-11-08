@@ -230,9 +230,12 @@ organization, an expired one included, with no plan gate (#94).
   waited more than a day (a count, never names).
 - **⚠ Once, by a row of its own** (`platform_billing_notice`, unique per
   organization, kind, period and day): written BEFORE the send, `sentAt` set
-  after it. Each run first retries rows never sent. Keyed by the notice's own
-  day, so a second run that day creates nothing and a missed milestone is
-  caught up once.
+  after it, both on the run's own clock. Each run first retries rows never
+  sent from the last day and a half; older ones would say something stale
+  ("5 days left") and are left unsent, counted in the log. Keyed by the
+  notice's own day, so a second run that day creates nothing and a missed
+  milestone is caught up once. One organization's failure is logged and the
+  run goes on to the next.
 - **⚠ It never decides access.** Access ends by itself at `accessUntil`
   (D14). It does not mark expired subscriptions `canceled` either: the live
   row is what explains "your plan ended on <date>", what charges a late

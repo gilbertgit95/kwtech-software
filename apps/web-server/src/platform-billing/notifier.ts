@@ -99,7 +99,11 @@ export class PlatformBillingNotifierAdapter implements PlatformBillingNotifier {
             ],
           }),
       // A request's steps fold into one unread row per request.
-      group: { key: `billing:request:${notice.requestId}`, title: `{count} updates on a billing request` },
+      // The audience is in the key: one person can be both an approver and an organization's owner.
+      group: {
+        key: `billing:request:${notice.requestId}:${toApprovers ? 'approvers' : 'organization'}`,
+        title: '{count} updates on a billing request',
+      },
     });
     return sent !== null;
   }

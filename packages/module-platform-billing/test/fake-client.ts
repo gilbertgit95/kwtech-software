@@ -106,6 +106,10 @@ function matches<T extends object>(row: T, where: Record<string, unknown>): bool
     if (isDate(wanted)) return isDate(value) && value.getTime() === wanted.getTime();
     if (typeof wanted === 'object' && wanted !== null) {
       if ('in' in wanted) return (wanted as { in: unknown[] }).in.includes(value);
+      if ('lte' in wanted) {
+        const ceiling = (wanted as { lte: unknown }).lte;
+        return isDate(value) && isDate(ceiling) && value.getTime() <= ceiling.getTime();
+      }
       if ('lt' in wanted) {
         const ceiling = (wanted as { lt: unknown }).lt;
         return isDate(value) && isDate(ceiling) && value.getTime() < ceiling.getTime();
@@ -364,6 +368,10 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
           .slice(0, take)
           .map((row) => structuredClone(row));
+      },
+      /** How many notices match: the stale unsent ones, for the log. */
+      async count({ where }) {
+        return get().notices.filter((row) => matches(row, where)).length;
       },
       /** Marks a notice sent. */
       async update({ where, data }) {

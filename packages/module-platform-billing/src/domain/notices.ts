@@ -46,9 +46,8 @@ export interface PendingForReminders {
   hasDetails: boolean;
 }
 
-/** How many days before the due date the countdown speaks, latest first. */
+/** How many days before the due date the countdown speaks, latest first. The due date itself is said with the overdue days. */
 const COUNTDOWN: ReadonlyArray<{ before: number; kind: ReminderKind }> = [
-  { before: 0, kind: 'due_today' },
   { before: 1, kind: 'due_in_1' },
   { before: 3, kind: 'due_in_3' },
   { before: 7, kind: 'due_in_7' },
@@ -87,11 +86,9 @@ export function planReminders(
   if (today >= periodEnd) {
     const left = daysBetween(today, accessUntil);
     const last = addDays(accessUntil, -1);
-    planned.push(
-      today === last
-        ? { kind: 'last_warning', day: today, daysLeft: left }
-        : { kind: 'overdue', day: today, daysLeft: left },
-    );
+    // The due date is said as such; the last day of access outranks it when grace is a single day.
+    const kind: ReminderKind = today === last ? 'last_warning' : today === periodEnd ? 'due_today' : 'overdue';
+    planned.push({ kind, day: today, daysLeft: left });
     return planned;
   }
 

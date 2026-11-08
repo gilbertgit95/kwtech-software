@@ -1229,7 +1229,7 @@ export class PlatformBillingWriteService {
   private async tell(row: RequestRow, step: BillingRequestStep, reason: string | null): Promise<void> {
     if (!this.notifier) return;
     try {
-      await this.notifier.requestChanged({
+      const delivered = await this.notifier.requestChanged({
         organizationId: row.organizationId,
         requestId: row.id,
         kind: row.kind,
@@ -1237,6 +1237,7 @@ export class PlatformBillingWriteService {
         planKey: row.planKey,
         reason,
       });
+      if (!delivered) this.logger.warn(`The ${step} notice for billing request ${row.id} was not delivered.`);
     } catch (error) {
       this.logger.warn(
         `The ${step} notice for a billing request could not be sent: ${error instanceof Error ? error.message : String(error)}`,
