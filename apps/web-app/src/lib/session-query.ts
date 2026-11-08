@@ -1,6 +1,7 @@
 import { AUTH_DEVICE_COOKIE, isAuthDeviceId, type Viewer } from '@kwtech/module-auth';
 import { getSessionToken } from '@kwtech/module-auth/next';
 import type { PermissionContext } from '@kwtech/module-permissions';
+import { PLATFORM_BILLING_OPERATIONS, type PlanComparison } from '@kwtech/module-platform-billing';
 import { cookies } from 'next/headers';
 import { cache } from 'react';
 
@@ -418,6 +419,53 @@ export const getOrganizationPlan = cache(async (organizationId: string): Promise
       (row) => row.workspaceId === null && row.status === 'active' && !row.planArchived,
     );
     return plan ? { planKey: plan.planKey, planLabel: plan.planLabel, planIcon: plan.planIcon } : null;
+  } catch {
+    return null;
+  }
+});
+
+/**
+ * The organization's plans side by side (#101), for the sentence under a
+ * `not_entitled` denial: which plans include the feature. Its own request,
+ * as `getOrganizationPlan`, so a refusal or an outage costs that sentence
+ * and nothing else: null, and the denial still says to upgrade.
+ */
+export const getPlanComparison = cache(async (organizationId: string): Promise<PlanComparison | null> => {
+  const token = await getSessionToken();
+  if (!token) return null;
+
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+  try {
+    const response = await fetch(`${apiUrl}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ query: PLATFORM_BILLING_OPERATIONS.planComparison, variables: { organizationId } }),
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      data?: {
+        platformBillingPlanComparison: {
+          currentPlanKey: string | null;
+          plans: (Omit<PlanComparison['plans'][number], 'limits'> & {
+            limits: { key: string; value: number | null }[];
+          })[];
+          features: PlanComparison['features'];
+          limits: PlanComparison['limits'];
+        } | null;
+      };
+    };
+    const wire = body.data?.platformBillingPlanComparison;
+    if (!wire) return null;
+    return {
+      currentPlanKey: wire.currentPlanKey,
+      features: wire.features,
+      limits: wire.limits,
+      plans: wire.plans.map((plan) => ({
+        ...plan,
+        limits: Object.fromEntries(plan.limits.map((limit) => [limit.key, limit.value])),
+      })),
+    };
   } catch {
     return null;
   }

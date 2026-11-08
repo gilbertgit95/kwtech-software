@@ -812,6 +812,11 @@ step is somebody else's. For `subscription_expired` the app passes the
 organization's Billing page to those whose role opens it, and "ask the owner or
 an admin" to the rest (#119): this module does not know that page, the app does.
 
+It also takes an optional `detail`, a sentence under the reason that only the
+app can write. For `not_entitled` the app says which plans include the feature
+("Point of sale is in Basic and Pro. You are on Free.") and links to the plan
+comparison, for those whose role opens billing (#101).
+
 ## Tags, filtering and paging
 
 ### Tags

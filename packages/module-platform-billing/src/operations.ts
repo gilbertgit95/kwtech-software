@@ -31,6 +31,16 @@ const SETTINGS = `currency timeZone graceDays issuerName issuerDetails paymentAc
 
 export const PLATFORM_BILLING_OPERATIONS = {
   // ── the organization (organization scope) ──
+  planComparison: /* GraphQL */ `
+    query PlatformBillingPlanComparison($organizationId: String!) {
+      platformBillingPlanComparison(organizationId: $organizationId) {
+        currency currentPlanKey
+        plans { key label monthly current offered features limits { key value } }
+        features { key label module }
+        limits { key label }
+      }
+    }
+  `,
   overview: /* GraphQL */ `
     query PlatformBillingOverview($organizationId: String!) {
       platformBillingOverview(organizationId: $organizationId) {

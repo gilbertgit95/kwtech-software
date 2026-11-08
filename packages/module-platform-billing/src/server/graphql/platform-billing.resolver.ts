@@ -12,6 +12,7 @@ import {
   PlatformBillingOverviewType,
   PlatformBillingPageArgs,
   PlatformBillingPaymentInputType,
+  PlatformBillingPlanComparisonType,
   PlatformBillingPreviewType,
   PlatformBillingRequestType,
   PlatformBillingStatementType,
@@ -129,6 +130,28 @@ export class PlatformBillingResolver {
     this.actor(gql.req);
     const detail = await this.reads.organizationRequest(organizationId, requestId);
     return detail ? renderRequest(detail) : null;
+  }
+
+  /** The plans side by side, for the organization (#101). Read with `read`, as the Billing page. */
+  @Query(() => PlatformBillingPlanComparisonType, { name: 'platformBillingPlanComparison' })
+  async planComparison(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+  ): Promise<PlatformBillingPlanComparisonType> {
+    this.actor(gql.req);
+    const context = await this.reads.context(organizationId, new Date());
+    const comparison = this.reads.comparison(context);
+    return {
+      currency: context.settings.currency,
+      currentPlanKey: comparison.currentPlanKey,
+      plans: comparison.plans.map((plan) => ({
+        ...plan,
+        features: [...plan.features],
+        limits: Object.entries(plan.limits).map(([key, value]) => ({ key, value })),
+      })),
+      features: comparison.features.map((feature) => ({ ...feature })),
+      limits: comparison.limits.map((limit) => ({ ...limit })),
+    };
   }
 
   // ── requests ──────────────────────────────────────────────────────────────

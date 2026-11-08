@@ -1512,6 +1512,32 @@ type PlatformBillingCollected {
   receipts: Int!
 }
 
+type PlatformBillingComparedCap {
+  key: String!
+  value: Int
+}
+
+type PlatformBillingComparedFeature {
+  key: String!
+  label: String!
+  module: String!
+}
+
+type PlatformBillingComparedLimit {
+  key: String!
+  label: String!
+}
+
+type PlatformBillingComparedPlan {
+  current: Boolean!
+  features: [String!]!
+  key: String!
+  label: String!
+  limits: [PlatformBillingComparedCap!]!
+  monthly: Int
+  offered: Boolean!
+}
+
 type PlatformBillingEvent {
   actorId: String
   at: String!
@@ -1596,6 +1622,14 @@ input PlatformBillingPaymentInput {
   paidOn: String!
   reference: String
   sender: String
+}
+
+type PlatformBillingPlanComparison {
+  currency: String!
+  currentPlanKey: String
+  features: [PlatformBillingComparedFeature!]!
+  limits: [PlatformBillingComparedLimit!]!
+  plans: [PlatformBillingComparedPlan!]!
 }
 
 type PlatformBillingPlanEntry {
@@ -2361,6 +2395,7 @@ type Query {
   platformBillingHistory(cursor: String, hideClosed: Boolean, limit: Int, organizationId: String!, state: String, year: Int): PlatformBillingHistoryPage!
   platformBillingOrganizations(cursor: String, filter: String, limit: Int): PlatformBillingOrganizationPage!
   platformBillingOverview(organizationId: String!): PlatformBillingOverview!
+  platformBillingPlanComparison(organizationId: String!): PlatformBillingPlanComparison!
   platformBillingPlanList: [PlatformBillingPlanEntry!]!
   platformBillingPreview(kind: String!, organizationId: String!, planKey: String): PlatformBillingPreview!
   platformBillingPrices: [PlatformBillingPrice!]!

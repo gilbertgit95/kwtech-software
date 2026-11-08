@@ -55,15 +55,22 @@ export interface FeatureDeniedProps {
    * Absent: the sentence alone.
    */
   nextStep?: { label: string; href?: string | undefined } | undefined;
+  /**
+   * A sentence under the reason that only the app can write (#101): for
+   * `not_entitled`, which plans include this ("Point of sale is in Basic and
+   * Pro. You are on Free."), worked out from the plans the app knows.
+   */
+  detail?: string | undefined;
 }
 
 /** A refused page: its title, the reason in words, and where to act on it when the caller knows. */
-export function FeatureDenied({ title, reason, header, nextStep }: FeatureDeniedProps) {
+export function FeatureDenied({ title, reason, header, nextStep, detail }: FeatureDeniedProps) {
   return (
     <div className="mx-auto w-full max-w-4xl">
       {header}
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{denialMessage(reason)}</p>
+      {detail ? <p className="mt-1 text-sm text-foreground">{detail}</p> : null}
       {nextStep?.href ? (
         <a
           href={nextStep.href}

@@ -9,6 +9,7 @@ import { BillingHistory } from '../components/billing-history.js';
 import { PendingRequest } from '../components/pending-request.js';
 import { PlanRequest, type PlanRequestMode } from '../components/plan-request.js';
 import { buttonClass, ErrorLine, Reason, toneClass } from '../components/ui.js';
+import { billingPlansHref } from '../routes.js';
 import { useBilling } from '../use-billing.js';
 import {
   type BillingAbilities,
@@ -195,6 +196,9 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
                     {cancel.reason ? <Reason>{cancel.reason}</Reason> : null}
                   </div>
                 ) : null}
+                <a href={billingPlansHref(organizationId)} className={buttonClass()}>
+                  Compare plans
+                </a>
               </div>
             )}
           </section>

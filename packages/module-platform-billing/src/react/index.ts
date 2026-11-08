@@ -36,6 +36,7 @@ export { AdminRequestPage, type AdminRequestPageProps } from './pages/admin-requ
 export { AdminSettingsPage, type AdminSettingsPageProps } from './pages/admin-settings-page.js';
 export { BillingDocumentPage, type BillingDocumentPageProps } from './pages/billing-document-page.js';
 export { BillingPage, type BillingPageProps } from './pages/billing-page.js';
+export { BillingPlansPage, type BillingPlansPageProps } from './pages/billing-plans-page.js';
 export { BillingStatementPage, type BillingStatementPageProps } from './pages/billing-statement-page.js';
 export {
   BILLING_ADMIN_DOCUMENT_ROUTE,
@@ -46,6 +47,7 @@ export {
   BILLING_ADMIN_SETTINGS_ROUTE,
   BILLING_DOCUMENT_ROUTE,
   BILLING_PAGE_ROUTE,
+  BILLING_PLANS_ROUTE,
   BILLING_STATEMENT_ROUTE,
   billingAdminDocumentHref,
   billingAdminOrganizationsHref,
@@ -53,5 +55,6 @@ export {
   billingAdminRequestHref,
   billingDocumentHref,
   billingPageHref,
+  billingPlansHref,
   billingStatementHref,
 } from './routes.js';

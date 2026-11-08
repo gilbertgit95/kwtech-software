@@ -1,3 +1,4 @@
+import type { CatalogueLabels } from '../domain/comparison.js';
 import type { DayKey } from '../domain/days.js';
 import type { ReminderKind } from '../domain/notices.js';
 import type { RequestKind } from '../domain/requests.js';
@@ -119,6 +120,12 @@ export interface PlatformBillingPlans {
    * never refused on a count nobody took (D6).
    */
   usage(organizationId: string): Promise<Readonly<Record<string, number>>>;
+  /**
+   * What each feature and cap is called, from the app's composed registries:
+   * the plan comparison's rows (#101). Optional: an adapter without it lists
+   * the plans and prices with no rows, never a key shown as a name.
+   */
+  labels?(): CatalogueLabels;
 }
 
 export interface PlatformBillingPeople {

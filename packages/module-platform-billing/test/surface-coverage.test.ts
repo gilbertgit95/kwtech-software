@@ -44,7 +44,7 @@ function handlers(target: { prototype: object }): Array<[string, object]> {
 
 describe('the resolvers', () => {
   it('publish operations — the reflection has to work for this suite to mean anything', () => {
-    expect(ORGANIZATION_OPERATIONS).toHaveLength(10);
+    expect(ORGANIZATION_OPERATIONS).toHaveLength(11);
     expect(ADMIN_OPERATIONS).toHaveLength(14);
   });
 

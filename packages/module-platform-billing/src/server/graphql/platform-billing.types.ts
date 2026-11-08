@@ -88,6 +88,50 @@ export class PlatformBillingPlanOfferType {
   @Field() current!: boolean;
 }
 
+/** One cap of one plan in the comparison: null is no limit. */
+@ObjectType('PlatformBillingComparedCap')
+export class PlatformBillingComparedCapType {
+  @Field() key!: string;
+  @Field(() => Int, { nullable: true }) value!: number | null;
+}
+
+/** A plan in the comparison (#101): today's price, its features by key, its caps. */
+@ObjectType('PlatformBillingComparedPlan')
+export class PlatformBillingComparedPlanType {
+  @Field() key!: string;
+  @Field() label!: string;
+  @Field(() => Int, { nullable: true }) monthly!: number | null;
+  @Field() current!: boolean;
+  /** False for the organization's own plan when it is not public or archived: listed, not choosable. */
+  @Field() offered!: boolean;
+  @Field(() => [String]) features!: string[];
+  @Field(() => [PlatformBillingComparedCapType]) limits!: PlatformBillingComparedCapType[];
+}
+
+/** A row label of the comparison: a feature (with its module) or a cap. */
+@ObjectType('PlatformBillingComparedFeature')
+export class PlatformBillingComparedFeatureType {
+  @Field() key!: string;
+  @Field() label!: string;
+  @Field() module!: string;
+}
+
+@ObjectType('PlatformBillingComparedLimit')
+export class PlatformBillingComparedLimitType {
+  @Field() key!: string;
+  @Field() label!: string;
+}
+
+/** The plans side by side (#101), from the rows the caps and features are enforced from. */
+@ObjectType('PlatformBillingPlanComparison')
+export class PlatformBillingPlanComparisonType {
+  @Field() currency!: string;
+  @Field(() => String, { nullable: true }) currentPlanKey!: string | null;
+  @Field(() => [PlatformBillingComparedPlanType]) plans!: PlatformBillingComparedPlanType[];
+  @Field(() => [PlatformBillingComparedFeatureType]) features!: PlatformBillingComparedFeatureType[];
+  @Field(() => [PlatformBillingComparedLimitType]) limits!: PlatformBillingComparedLimitType[];
+}
+
 /** A plan as the platform's price list shows it: every plan, archived ones included, with today's price. */
 @ObjectType('PlatformBillingPlanEntry')
 export class PlatformBillingPlanEntryType {

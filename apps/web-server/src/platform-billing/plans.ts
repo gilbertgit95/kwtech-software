@@ -1,7 +1,9 @@
 import { LIMIT } from '@kwtech/module-permissions';
+import type { CatalogueLabels } from '@kwtech/module-platform-billing';
 import type { BillingPlan, PlatformBillingPlans } from '@kwtech/module-platform-billing/server';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ALL_FEATURES, ALL_LIMITS } from '../seed/registry.js';
 
 /**
  * Plans and how much of each cap an organization uses, for billing (D6). Both
@@ -39,6 +41,23 @@ export class PlatformBillingPlansAdapter implements PlatformBillingPlans {
       features: row.features.map((feature) => feature.featureKey),
       limits: Object.fromEntries(row.limits.map((limit) => [limit.limitKey, limit.value])),
     }));
+  }
+
+  /**
+   * The composed registries' names for the plan comparison (#101): the code
+   * is the source of truth for what a key is called (principle 4), so a plan
+   * row naming a key no module declares never shows up as a raw key.
+   */
+  labels(): CatalogueLabels {
+    return {
+      features: ALL_FEATURES.map((feature) => ({ key: feature.key, label: feature.label, module: feature.module })),
+      limits: ALL_LIMITS.map((limit) => ({
+        key: limit.key,
+        label: limit.label,
+        source: limit.source,
+        defaultValue: limit.defaultValue,
+      })),
+    };
   }
 
   /** The organization's counts for the caps permissions' own tables hold. */
