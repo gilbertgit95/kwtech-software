@@ -1,5 +1,5 @@
 import { declareScope, REQUIRED_SCOPE_METADATA } from '@kwtech/module-kit';
-import { Inject, Optional, SetMetadata } from '@nestjs/common';
+import { Inject, Logger, Optional, SetMetadata } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { billingRefusal } from '../platform-billing.errors.js';
 import type { PlatformBillingModuleOptions } from '../platform-billing.options.js';
@@ -59,6 +59,8 @@ export class PlatformBillingResolver {
     @Optional() @Inject(PLATFORM_BILLING_PEOPLE) private readonly people?: PlatformBillingPeople,
   ) {}
 
+  private readonly logger = new Logger('PlatformBillingResolver');
+
   // ── reads (platform-billing:read) ─────────────────────────────────────────
 
   @Query(() => PlatformBillingOverviewType, { name: 'platformBillingOverview' })
@@ -69,8 +71,7 @@ export class PlatformBillingResolver {
     this.actor(gql.req);
     const context = await this.reads.context(organizationId, new Date());
     const pending = context.pending ? await this.reads.organizationRequest(organizationId, context.pending.id) : null;
-    const name = this.people ? await this.people.organizationName(organizationId) : null;
-    return renderOverview(context, pending, name);
+    return renderOverview(context, pending, await this.organizationName(organizationId));
   }
 
   /** What a request would cost today, or why it cannot be made: the check `submit` runs. */
@@ -200,6 +201,23 @@ export class PlatformBillingResolver {
     const detail = await this.reads.organizationRequest(organizationId, requestId);
     if (!detail) throw billingRefusal('not_found');
     return renderRequest(detail);
+  }
+
+  /**
+   * The organization's name for what billing prints, or null: unbound, or a
+   * read that failed. ⚠ A failure is logged and never blocks the page, the
+   * documents or the statement, which were all read successfully without it.
+   */
+  private async organizationName(organizationId: string): Promise<string | null> {
+    if (!this.people) return null;
+    try {
+      return await this.people.organizationName(organizationId);
+    } catch (error) {
+      this.logger.warn(
+        `The organization's name could not be read for billing: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   /** The caller, proven by the app's guard; refused when the request carries none. */

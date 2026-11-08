@@ -54,6 +54,13 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    * appending it would skip what lies between.
    */
   const generation = useRef(0);
+  /**
+   * Each read of the history's first page takes a ticket; only the latest
+   * ticket's answer is shown. A filter change takes one too, so a slower read
+   * started before it (a reload, a retry, the re-read after an act) never
+   * puts the old filter's rows and totals back.
+   */
+  const historyTicket = useRef(0);
 
   /**
    * Reads the overview and the first page of the history, EACH ON ITS OWN:
@@ -63,12 +70,16 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    */
   const readAll = useCallback(
     async (isCancelled: () => boolean = () => false): Promise<boolean> => {
+      historyTicket.current += 1;
+      const ticket = historyTicket.current;
       const [nextOverview, nextHistory] = await Promise.allSettled([
         client.overview(organizationId),
         client.history(organizationId, null, filter),
       ]);
       if (isCancelled()) return false;
-      if (nextHistory.status === 'fulfilled') {
+      if (ticket !== historyTicket.current) {
+        // A later read (or a filter change) superseded this one's history: only its overview is kept.
+      } else if (nextHistory.status === 'fulfilled') {
         generation.current += 1;
         setHistory(nextHistory.value);
         setHistoryError(null);
@@ -133,6 +144,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    */
   const changeFilter = useCallback((next: BillingHistoryFilter) => {
     generation.current += 1;
+    historyTicket.current += 1;
     setHistory(null);
     setHistoryError(null);
     setFilter(next);

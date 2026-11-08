@@ -122,12 +122,7 @@ export default async function ModuleRoutePage({
      * role opens it (the owner and admins, D8): the rest are told who to ask,
      * rather than linked to a page that refuses them too (#119).
      */
-    const expiredStep =
-      denied === 'subscription_expired' && scope.organizationId
-        ? (await routeDenial(PLATFORM_BILLING_FEATURE.read, scope)) === undefined
-          ? { href: billingPageHref(scope.organizationId), label: 'Open billing to renew' }
-          : { label: "Ask the organization's owner or an admin to renew it on the Billing page." }
-        : undefined;
+    const expiredStep = await expiredNextStep(denied, scope);
     return (
       <AppShell title={route.title} scope={scope}>
         {/*
@@ -202,6 +197,21 @@ async function routeDenial(feature: string | undefined, scope: SessionScope) {
   if (permissions?.effective.includes(feature)) return undefined;
 
   return denialReason(permissions ?? undefined, [feature]) ?? 'not_granted';
+}
+
+/**
+ * The next step under an expired plan's denial (#119): a link to Billing for
+ * those whose role opens it, and who to ask for everyone else. Nothing for
+ * any other reason.
+ */
+async function expiredNextStep(
+  denied: string,
+  scope: SessionScope,
+): Promise<{ label: string; href?: string } | undefined> {
+  if (denied !== 'subscription_expired' || !scope.organizationId) return undefined;
+  const canOpenBilling = (await routeDenial(PLATFORM_BILLING_FEATURE.read, scope)) === undefined;
+  if (!canOpenBilling) return { label: "Ask the organization's owner or an admin to renew it on the Billing page." };
+  return { href: billingPageHref(scope.organizationId), label: 'Open billing to renew' };
 }
 
 /** `?a=1&b=2` from Next's parsed search params, or '' when there are none. */
