@@ -95,8 +95,16 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     if (occurrence.kind === 'too_late') return { ...result, skippedLate: 1 };
     const today: DayKey = occurrence.dayKey;
 
+    /*
+     * ⚠ ONE BUDGET FOR THE WHOLE RUN (`maxItems`), spent by retries, the
+     * organizations' reminders and the digest alike. What does not fit is
+     * never claimed, so it is still owed, and found, on the next run.
+     */
+    let budget = context.maxItems;
     try {
-      result.handled += await this.retryUnsent(notifier, context);
+      const retried = await this.retryUnsent(notifier, context, budget);
+      result.handled += retried;
+      budget -= retried;
     } catch (error) {
       // Reading the unsent rows failed: today's notices are still worth sending.
       this.logger.warn(`The billing notice retry failed: ${errorText(error)}`);
@@ -104,7 +112,6 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     const now = context.now;
 
     let cursor: string | null = null;
-    let budget = context.maxItems;
     do {
       if (context.signal.aborted) break;
       const page = await context.organizations(cursor, ORGANIZATION_PAGE);
@@ -122,7 +129,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
          * first ones forever. Sequential: a few reads and at most two notices each.
          */
         try {
-          const handled = await this.checkOrganization(notifier, organization.organizationId, now, today);
+          const handled = await this.checkOrganization(notifier, organization.organizationId, now, today, budget);
           result.handled += handled;
           budget -= handled;
         } catch (error) {
@@ -133,7 +140,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       cursor = budget > 0 ? page.nextCursor : null;
     } while (cursor !== null);
 
-    if (!context.signal.aborted) {
+    if (!context.signal.aborted && budget > 0) {
       try {
         result.handled += await this.approversDigest(notifier, now, today);
       } catch (error) {
@@ -149,6 +156,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     organizationId: string,
     now: Date,
     today: DayKey,
+    allowance: number,
   ): Promise<number> {
     const billing = await this.reads.context(organizationId, now);
     const window = billing.standing.hasPaidSubscription ? billing.standing.window : null;
@@ -159,7 +167,10 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       (reminder) => !(billing.cancelled && ASKS_TO_PAY.includes(reminder.kind)),
     );
     let sent = 0;
+    let claimed = 0;
     for (const reminder of planned) {
+      // At most `allowance` NEW claims: one already written costs nothing, and one past it is not written, so the next run still owes it.
+      if (claimed >= allowance) break;
       const notice: BillingReminderNotice = {
         organizationId,
         kind: reminder.kind,
@@ -170,6 +181,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       };
       const row = await this.claim(organizationId, reminder, window?.periodEnd ?? null, { ...notice }, now);
       if (!row) continue;
+      claimed += 1;
       if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
     }
     return sent;
@@ -243,7 +255,12 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   }
 
   /** The rows a previous run wrote and could not send, oldest first, sent again from what they recorded. */
-  private async retryUnsent(notifier: PlatformBillingNotifier, context: ProcessRunContext): Promise<number> {
+  private async retryUnsent(
+    notifier: PlatformBillingNotifier,
+    context: ProcessRunContext,
+    allowance: number,
+  ): Promise<number> {
+    if (allowance <= 0) return 0;
     const cutoff = new Date(context.now.getTime() - RETRY_WINDOW_MS);
     const stale = await this.prisma.platformBillingNotice.count({
       where: { sentAt: null, createdAt: { lte: cutoff } },
@@ -252,7 +269,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     const rows = await this.prisma.platformBillingNotice.findMany({
       where: { sentAt: null, createdAt: { gt: cutoff } },
       orderBy: { createdAt: 'asc' },
-      take: RETRY_BATCH,
+      take: Math.min(RETRY_BATCH, allowance),
     });
     let sent = 0;
     for (const row of rows) {

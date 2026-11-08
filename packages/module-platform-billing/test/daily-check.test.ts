@@ -204,6 +204,18 @@ describe('the daily check (platform_billing.daily_check)', () => {
     expect(told(billing)).toHaveLength(3);
   });
 
+  it('⚠ spends one budget across the run: what does not fit is not claimed, and the next run sends it', async () => {
+    const billing = await onBasic();
+    // Two reminders owed today: the request without payment details, and the overdue day.
+    await billing.writes.submit(ORG, OWNER, 'renew', null, noonOn('2026-12-02'));
+    const first = await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG], 1));
+    expect(first.handled).toBe(1);
+    expect(billing.store().notices).toHaveLength(1);
+    const second = await billing.daily.run(runContext(noonOn('2026-12-03'), [ORG], 1));
+    expect(second.handled).toBe(1);
+    expect(told(billing).sort()).toEqual(['no_payment_details', 'overdue']);
+  });
+
   it('says nothing about paying to an organization that cancelled, and nothing to one on a trial', async () => {
     const billing = await onBasic();
     await billing.writes.cancel(ORG, OWNER, noonOn('2026-11-20'));
