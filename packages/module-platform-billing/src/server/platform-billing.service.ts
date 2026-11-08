@@ -127,6 +127,17 @@ export interface RequestPreview {
 }
 
 /**
+ * The reads every organization's context shares: read once by a walk over
+ * many organizations (the platform's standings), never by a decision, which
+ * reads them again inside its own transaction.
+ */
+export interface SharedBillingReads {
+  settings: BillingSettings;
+  prices: readonly PriceRow[];
+  plans: ReadonlyMap<string, BillingPlan>;
+}
+
+/**
  * Every read billing makes. The write service reads through the same methods,
  * passing its transaction, so a decision and the page that explains it are
  * worked out from one account of the organization.
@@ -202,12 +213,13 @@ export class PlatformBillingService {
     organizationId: string,
     now: Date,
     db: PlatformBillingTransaction = this.prisma,
+    shared?: SharedBillingReads,
   ): Promise<BillingContext> {
     const isWrite = db !== this.prisma;
     const [settings, prices, plans, live, creditBalance, pending] = await Promise.all([
-      this.settings(db),
-      this.prices(db),
-      this.plans(),
+      shared?.settings ?? this.settings(db),
+      shared?.prices ?? this.prices(db),
+      shared?.plans ?? this.plans(),
       this.subscriptions.live(organizationId, isWrite ? db : undefined),
       this.creditBalance(organizationId, db),
       db.platformBillingRequest.findFirst({ where: { organizationId, state: 'pending' } }),

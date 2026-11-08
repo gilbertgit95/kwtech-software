@@ -1,7 +1,9 @@
 import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
 import { PLATFORM_BILLING_FEATURE, PLATFORM_BILLING_FEATURE_REGISTRY } from '../feature-keys.js';
 import { AdminDocumentPage } from './pages/admin-document-page.js';
+import { AdminOrganizationsPage } from './pages/admin-organizations-page.js';
 import { AdminQueuePage } from './pages/admin-queue-page.js';
+import { AdminReportsPage } from './pages/admin-reports-page.js';
 import { AdminRequestPage } from './pages/admin-request-page.js';
 import { AdminSettingsPage } from './pages/admin-settings-page.js';
 import { BillingDocumentPage } from './pages/billing-document-page.js';
@@ -9,6 +11,8 @@ import { BillingPage } from './pages/billing-page.js';
 import { BillingStatementPage } from './pages/billing-statement-page.js';
 import {
   BILLING_ADMIN_DOCUMENT_ROUTE,
+  BILLING_ADMIN_ORGANIZATIONS_ROUTE,
+  BILLING_ADMIN_REPORTS_ROUTE,
   BILLING_ADMIN_REQUEST_ROUTE,
   BILLING_ADMIN_ROUTE,
   BILLING_ADMIN_SETTINGS_ROUTE,
@@ -80,6 +84,16 @@ function AdminDocumentRoute({ params, searchParams }: ModuleRouteProps) {
       number={one(searchParams?.number)}
     />
   );
+}
+
+/** Every organization's standing: the filter from the query. */
+function AdminOrganizationsRoute({ searchParams }: ModuleRouteProps) {
+  return <AdminOrganizationsPage filter={one(searchParams?.filter)} />;
+}
+
+/** The reports: the range from the query. */
+function AdminReportsRoute({ searchParams }: ModuleRouteProps) {
+  return <AdminReportsPage from={one(searchParams?.from)} to={one(searchParams?.to)} />;
 }
 
 /** The platform's billing settings and prices: no params. */
@@ -154,11 +168,25 @@ export const platformBillingWebModule: WebModuleDescriptor = {
       chrome: 'fullscreen',
     },
     {
+      path: BILLING_ADMIN_ORGANIZATIONS_ROUTE,
+      component: AdminOrganizationsRoute,
+      title: 'Organizations’ billing',
+      feature: PLATFORM_BILLING_FEATURE.queueRead,
+      nav: { group: ADMINISTRATION_NAV_GROUP, order: 33, icon: 'organization' },
+    },
+    {
+      path: BILLING_ADMIN_REPORTS_ROUTE,
+      component: AdminReportsRoute,
+      title: 'Billing reports',
+      feature: PLATFORM_BILLING_FEATURE.queueRead,
+      nav: { group: ADMINISTRATION_NAV_GROUP, order: 34, icon: 'chart-bar' },
+    },
+    {
       path: BILLING_ADMIN_SETTINGS_ROUTE,
       component: AdminSettingsRoute,
       title: 'Billing settings',
       feature: PLATFORM_BILLING_FEATURE.queueRead,
-      nav: { group: ADMINISTRATION_NAV_GROUP, order: 34, icon: 'wallet' },
+      nav: { group: ADMINISTRATION_NAV_GROUP, order: 35, icon: 'wallet' },
     },
   ],
 };

@@ -12,7 +12,9 @@
 
 export type {
   BillingAdminClient,
+  BillingOrganizationPageView,
   BillingQueueItemView,
+  BillingReportView,
   BillingSettingsView,
 } from './billing-admin-client.js';
 export { createBillingAdminClient } from './billing-admin-client.js';
@@ -27,7 +29,9 @@ export type {
 export { createBillingClient } from './billing-client.js';
 export { platformBillingWebModule } from './module.js';
 export { AdminDocumentPage, type AdminDocumentPageProps } from './pages/admin-document-page.js';
+export { AdminOrganizationsPage, type AdminOrganizationsPageProps } from './pages/admin-organizations-page.js';
 export { AdminQueuePage, type AdminQueuePageProps } from './pages/admin-queue-page.js';
+export { AdminReportsPage, type AdminReportsPageProps } from './pages/admin-reports-page.js';
 export { AdminRequestPage, type AdminRequestPageProps } from './pages/admin-request-page.js';
 export { AdminSettingsPage, type AdminSettingsPageProps } from './pages/admin-settings-page.js';
 export { BillingDocumentPage, type BillingDocumentPageProps } from './pages/billing-document-page.js';
@@ -35,6 +39,8 @@ export { BillingPage, type BillingPageProps } from './pages/billing-page.js';
 export { BillingStatementPage, type BillingStatementPageProps } from './pages/billing-statement-page.js';
 export {
   BILLING_ADMIN_DOCUMENT_ROUTE,
+  BILLING_ADMIN_ORGANIZATIONS_ROUTE,
+  BILLING_ADMIN_REPORTS_ROUTE,
   BILLING_ADMIN_REQUEST_ROUTE,
   BILLING_ADMIN_ROUTE,
   BILLING_ADMIN_SETTINGS_ROUTE,
@@ -42,6 +48,8 @@ export {
   BILLING_PAGE_ROUTE,
   BILLING_STATEMENT_ROUTE,
   billingAdminDocumentHref,
+  billingAdminOrganizationsHref,
+  billingAdminReportsHref,
   billingAdminRequestHref,
   billingDocumentHref,
   billingPageHref,

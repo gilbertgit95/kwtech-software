@@ -1,7 +1,7 @@
 'use client';
 
 import { PLATFORM_BILLING_OPERATIONS } from '../operations.js';
-import { type BillingRequestView, DEFAULT_GRAPHQL_PATH } from './billing-client.js';
+import { type BillingRequestView, type BillingStandingView, DEFAULT_GRAPHQL_PATH } from './billing-client.js';
 
 /**
  * THE PLATFORM'S BILLING CLIENT (phase 7): the queue, the decisions, the
@@ -70,6 +70,55 @@ export interface BillingPlanEntryView {
   monthly: number | null;
 }
 
+/** One organization's standing on the platform's list (phase 7b). */
+export interface BillingOrganizationStandingView {
+  organizationId: string;
+  name: string;
+  standing: BillingStandingView;
+  /** Centavos: positive is credit held, negative is owed. */
+  creditBalance: number;
+  pendingRequestId: string | null;
+}
+
+export interface BillingOrganizationPageView {
+  items: BillingOrganizationStandingView[];
+  nextCursor: string | null;
+  /** False when the app does not list organizations to billing. */
+  available: boolean;
+}
+
+/** Money collected in one period (a day or a month) by one method. */
+export interface BillingCollectedView {
+  period: string;
+  method: string;
+  amount: number;
+  receipts: number;
+}
+
+export interface BillingReportView {
+  from: string;
+  to: string;
+  currency: string;
+  total: number;
+  receipts: number;
+  byDay: BillingCollectedView[];
+  byMonth: BillingCollectedView[];
+  byMethod: BillingCollectedView[];
+  perPlan: Array<{ planKey: string | null; planLabel: string; amount: number; receipts: number }>;
+  standings: {
+    organizations: number;
+    byKind: Array<{ kind: string; count: number }>;
+    overdue: number;
+    expired: number;
+    pending: number;
+    creditHeld: number;
+    creditOwed: number;
+    organizationsWithCredit: number;
+    complete: boolean;
+    available: boolean;
+  };
+}
+
 /** What an approver confirms: the details version they reviewed, and the payment as received. */
 export interface BillingApprovalInput {
   detailsVersion: number;
@@ -92,6 +141,8 @@ export interface BillingAdminClient {
   prices(): Promise<BillingPriceRowView[]>;
   planList(): Promise<BillingPlanEntryView[]>;
   setPrice(planKey: string, monthly: number, effectiveFrom: string): Promise<BillingPriceRowView[]>;
+  organizations(cursor: string | null, filter: string | null): Promise<BillingOrganizationPageView>;
+  report(from: string, to: string): Promise<BillingReportView>;
 }
 
 /**
@@ -206,6 +257,21 @@ export function createBillingAdminClient(path = DEFAULT_GRAPHQL_PATH): BillingAd
           effectiveFrom,
         })
       ).setPlatformBillingPrice;
+    },
+    /** Every organization's standing, by id, optionally filtered. */
+    async organizations(cursor, filter) {
+      return (
+        await graphql<{ platformBillingOrganizations: BillingOrganizationPageView }>(ops.organizations, {
+          cursor,
+          limit: 50,
+          filter,
+        })
+      ).platformBillingOrganizations;
+    },
+    /** The report for a range of days, with the standings counted. */
+    async report(from, to) {
+      return (await graphql<{ platformBillingReport: BillingReportView }>(ops.report, { from, to }))
+        .platformBillingReport;
     },
   };
 }

@@ -10,15 +10,15 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phases 4 and 5b done (#93, #95); phase 6 built (#117, #119), its in-app check (#96) waiting on phase 7; phase 7a built (#121).** The pure core (#91), the schema, the
+**Status: phases 4 and 5b done (#93, #95); phase 6 built (#117, #119), its in-app check (#96) waiting on phase 7; phase 7 built (#121, #123).** The pure core (#91), the schema, the
 services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
 the audited admin adjustments, the settings and the prices; composed into the
 API; the daily check with every notification (#95); and the organization's
 Billing page with printing, the statement of account and its CSV (#117,
 #119); the platform's queue, request page, reprints and settings with the
-plans' prices (#121). Still to come: every organization's standing and the
-reports (#97).
+plans' prices (#121); every organization's standing and the reports (#123).
+Still to come: the release pass (#98).
 
 ## In a Next.js app
 
@@ -98,6 +98,22 @@ group. All are read with `queue_read`; inside them the decisions hide without
   price, its price history, and a form to set a price from a day
   (`platformBillingPlanList`, `checkSettingsDraft`, `settingsChange` sends
   only what changed, `checkPriceDraft`).
+- **Organizations' billing**, `/admin/billing/organizations?filter=` (phase
+  7b, #123): every organization's standing, plan, the day it turns on, its
+  credit or what it owes, and a waiting request to open. Filters: needs
+  attention (overdue, held or expired), overdue, expired, credit or owed,
+  request waiting (`matchesStanding`). Paged by organization: a filtered
+  page reads at most `STANDINGS_SCAN_MAX` organizations and may come back
+  short, and Show more goes on from the last one read.
+- **Billing reports**, `/admin/billing/reports?from=&to=` (at most two
+  years): money collected by month and by day, a column per method, and per
+  plan, payments kept as credit apart (`buildCollectionsReport`,
+  `collectedTable`); printable and as CSV (`collectionsCsv`). Money counts on
+  the day its receipt was issued in the billing time zone, so a closed month
+  never changes; a voided receipt never counts. With it, today's standings
+  counted: how many overdue and expired, requests waiting, credit held and
+  owed kept apart (`summariseStandings`), over at most
+  `STANDINGS_SUMMARY_MAX` organizations, and says so past that (PLAN §12.134).
 
 ## In a NestJS app
 
@@ -116,7 +132,7 @@ platformBillingServerModule({
 |---|---|---|
 | `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription (and every live row on a plan, for an archive), and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
 | `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps) and an organization's usage of the caps (D6) | the module refuses to boot |
-| `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15) | every approver is flagged as a member: the flag never blocks |
+| `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15), the organization's name for documents, and a page of every organization by id (the platform's standings and reports) | every approver is flagged as a member: the flag never blocks; documents print the id; the standings and the counts say they are unavailable |
 | `PLATFORM_BILLING_NOTIFIER` | the reminders, the approvers' digest and each request's steps, as notifications; each answers whether it was delivered | nobody is told, and the daily check writes nothing, so binding it later still delivers that day's reminders |
 
 ⚠ **The shared transaction.** An approval writes the decision, the
@@ -146,7 +162,7 @@ App level (`PlatformBillingAdminResolver`, no scope):
 
 | Operation | Key |
 |---|---|
-| `platformBillingQueue`, `platformBillingDecided`, `platformBillingReview`, `platformBillingSettings`, `platformBillingPrices`, `platformBillingPlanList` | `queue_read` |
+| `platformBillingQueue`, `platformBillingDecided`, `platformBillingReview`, `platformBillingSettings`, `platformBillingPrices`, `platformBillingPlanList`, `platformBillingOrganizations`, `platformBillingReport` | `queue_read` |
 | `approvePlatformBillingRequest`, `rejectPlatformBillingRequest`, `closePlatformBillingRequestAsCredit` | `approve` |
 | `voidPlatformBillingRequest` | `void` |
 | `setPlatformBillingSettings`, `setPlatformBillingPrice` | `manage_settings` |

@@ -1505,6 +1505,13 @@ type PlatformBillingCapOverrun {
   remove: Int!
 }
 
+type PlatformBillingCollected {
+  amount: Float!
+  method: String!
+  period: String!
+  receipts: Int!
+}
+
 type PlatformBillingEvent {
   actorId: String
   at: String!
@@ -1529,6 +1536,20 @@ type PlatformBillingLine {
   amount: Int!
   days: Int
   kind: String!
+}
+
+type PlatformBillingOrganizationPage {
+  available: Boolean!
+  items: [PlatformBillingOrganizationStanding!]!
+  nextCursor: String
+}
+
+type PlatformBillingOrganizationStanding {
+  creditBalance: Int!
+  name: String!
+  organizationId: String!
+  pendingRequestId: String
+  standing: PlatformBillingStanding!
 }
 
 type PlatformBillingOverview {
@@ -1592,6 +1613,13 @@ type PlatformBillingPlanOffer {
   key: String!
   label: String!
   monthly: Int
+}
+
+type PlatformBillingPlanRevenue {
+  amount: Float!
+  planKey: String
+  planLabel: String!
+  receipts: Int!
 }
 
 type PlatformBillingPreview {
@@ -1666,6 +1694,19 @@ type PlatformBillingReceipt {
   voidedAt: String
 }
 
+type PlatformBillingReport {
+  byDay: [PlatformBillingCollected!]!
+  byMethod: [PlatformBillingCollected!]!
+  byMonth: [PlatformBillingCollected!]!
+  currency: String!
+  from: String!
+  perPlan: [PlatformBillingPlanRevenue!]!
+  receipts: Int!
+  standings: PlatformBillingStandingsSummary!
+  to: String!
+  total: Float!
+}
+
 type PlatformBillingRequest {
   accessUntil: String
   approverIsMember: Boolean!
@@ -1730,6 +1771,24 @@ type PlatformBillingStanding {
   planLabel: String
   prepaid: Boolean!
   trial: Boolean!
+}
+
+type PlatformBillingStandingCount {
+  count: Int!
+  kind: String!
+}
+
+type PlatformBillingStandingsSummary {
+  available: Boolean!
+  byKind: [PlatformBillingStandingCount!]!
+  complete: Boolean!
+  creditHeld: Float!
+  creditOwed: Float!
+  expired: Int!
+  organizations: Int!
+  organizationsWithCredit: Int!
+  overdue: Int!
+  pending: Int!
 }
 
 type PlatformBillingStatement {
@@ -2300,11 +2359,13 @@ type Query {
   permissionUserOrganizations(userIds: [String!]!): [UserOrganization!]!
   platformBillingDecided(cursor: String, limit: Int): PlatformBillingQueuePage!
   platformBillingHistory(cursor: String, hideClosed: Boolean, limit: Int, organizationId: String!, state: String, year: Int): PlatformBillingHistoryPage!
+  platformBillingOrganizations(cursor: String, filter: String, limit: Int): PlatformBillingOrganizationPage!
   platformBillingOverview(organizationId: String!): PlatformBillingOverview!
   platformBillingPlanList: [PlatformBillingPlanEntry!]!
   platformBillingPreview(kind: String!, organizationId: String!, planKey: String): PlatformBillingPreview!
   platformBillingPrices: [PlatformBillingPrice!]!
   platformBillingQueue(cursor: String, limit: Int): PlatformBillingQueuePage!
+  platformBillingReport(from: String!, to: String!): PlatformBillingReport!
   platformBillingRequest(organizationId: String!, requestId: String!): PlatformBillingRequest
   platformBillingReview(requestId: String!): PlatformBillingQueueItem
   platformBillingSettings: PlatformBillingSettings!

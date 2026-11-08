@@ -22,6 +22,7 @@ export * from './domain/plans.js';
 export * from './domain/pricing.js';
 export * from './domain/quotes.js';
 export * from './domain/refusals.js';
+export * from './domain/reports.js';
 export * from './domain/requests.js';
 export * from './domain/standing.js';
 export * from './domain/statement.js';

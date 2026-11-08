@@ -1,25 +1,30 @@
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { platformDay } from '../../domain/days.js';
+import { isStandingFilter } from '../../domain/reports.js';
 import { priceOn } from '../../domain/standing.js';
 import { billingRefusal } from '../platform-billing.errors.js';
 import type { PlatformBillingModuleOptions } from '../platform-billing.options.js';
 import { PlatformBillingService, type RequestDetail } from '../platform-billing.service.js';
 import { PLATFORM_BILLING_OPTIONS, PLATFORM_BILLING_PEOPLE } from '../platform-billing.tokens.js';
+import { PlatformBillingReportsService } from '../platform-billing-reports.service.js';
 import { PlatformBillingWriteService } from '../platform-billing-write.service.js';
 import type { PlatformBillingPeople } from '../ports.js';
 import {
   PlatformBillingApprovalInputType,
+  PlatformBillingOrganizationArgs,
+  PlatformBillingOrganizationPageType,
   PlatformBillingPageArgs,
   PlatformBillingPlanEntryType,
   PlatformBillingPriceType,
   PlatformBillingQueueItemType,
   PlatformBillingQueuePageType,
+  PlatformBillingReportType,
   PlatformBillingRequestType,
   PlatformBillingSettingsInputType,
   PlatformBillingSettingsType,
 } from './platform-billing.types.js';
-import { renderRequest } from './render.js';
+import { renderRequest, renderStanding } from './render.js';
 
 /**
  * THE PLATFORM'S SIDE: the queue of requests, the decisions, the settings and
@@ -43,11 +48,61 @@ export class PlatformBillingAdminResolver {
   constructor(
     private readonly reads: PlatformBillingService,
     private readonly writes: PlatformBillingWriteService,
+    private readonly reports: PlatformBillingReportsService,
     @Inject(PLATFORM_BILLING_OPTIONS) private readonly options: PlatformBillingModuleOptions,
     @Optional() @Inject(PLATFORM_BILLING_PEOPLE) private readonly people?: PlatformBillingPeople,
   ) {}
 
   private readonly logger = new Logger('PlatformBillingAdminResolver');
+
+  /**
+   * Every organization's standing (phase 7b), by id, optionally filtered. A
+   * filter that names nothing billing knows is ignored, never passed on.
+   */
+  @Query(() => PlatformBillingOrganizationPageType, { name: 'platformBillingOrganizations' })
+  async organizations(
+    @Context() gql: { req?: unknown },
+    @Args() args: PlatformBillingOrganizationArgs,
+  ): Promise<PlatformBillingOrganizationPageType> {
+    this.actor(gql.req);
+    const filter = args.filter && isStandingFilter(args.filter) ? args.filter : null;
+    const page = await this.reports.standings(new Date(), args.cursor ?? null, args.limit ?? null, filter);
+    return {
+      items: page.items.map((one) => ({
+        organizationId: one.organizationId,
+        name: one.name,
+        standing: renderStanding(one.context),
+        creditBalance: one.context.creditBalance,
+        pendingRequestId: one.context.pending?.id ?? null,
+      })),
+      nextCursor: page.nextCursor,
+      available: this.reports.available,
+    };
+  }
+
+  /** The report for the days `from` to `to` (at most two years), with every organization's standing counted. */
+  @Query(() => PlatformBillingReportType, { name: 'platformBillingReport' })
+  async report(
+    @Context() gql: { req?: unknown },
+    @Args('from') from: string,
+    @Args('to') to: string,
+  ): Promise<PlatformBillingReportType> {
+    this.actor(gql.req);
+    const [collections, standings] = await Promise.all([
+      this.reports.collections(from, to),
+      this.reports.summary(new Date()),
+    ]);
+    const { byKind, ...counts } = standings.summary;
+    return {
+      ...collections,
+      standings: {
+        ...counts,
+        byKind: Object.entries(byKind).map(([kind, count]) => ({ kind, count })),
+        complete: standings.complete,
+        available: this.reports.available,
+      },
+    };
+  }
 
   /** Pending requests, oldest first, each with the checks an approver reads. */
   @Query(() => PlatformBillingQueuePageType, { name: 'platformBillingQueue' })
