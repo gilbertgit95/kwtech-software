@@ -395,6 +395,7 @@ describe('adjustments on the admin screens (D5)', () => {
           planKey: 'basic',
           reason: 'extended for the outage',
           at: noonOn('2026-11-20'),
+          before: { status: 'active', currentPeriodEnd: null, accessUntil: null },
           after: { status: 'active', currentPeriodEnd: new Date('2026-12-31T16:00:00.000Z'), accessUntil },
         },
         tx,
@@ -423,10 +424,34 @@ describe('adjustments on the admin screens (D5)', () => {
     expect(billing.store().credits).toEqual([]);
     const adjusted = billing.store().events.find((event) => event.step === 'adjusted');
     expect(adjusted).toMatchObject({ reason: 'update', actorId: 'admin1' });
-    expect(adjusted?.data).toMatchObject({ reason: 'extended for the outage', payment: 'none' });
+    expect(adjusted?.data).toMatchObject({
+      reason: 'extended for the outage',
+      payment: 'none',
+      before: { status: 'active', currentPeriodEnd: null, accessUntil: null },
+      after: { status: 'active', accessUntil: '2027-01-07T16:00:00.000Z' },
+    });
     expect(await refusal(billing.writes.void(row.id, APPROVER, 'mistake', noonOn('2026-11-21')))).toBe(
       'adjustment_not_voidable',
     );
+  });
+
+  it('⚠ refuses voiding an approval under a later adjustment even when it left every date as it was', async () => {
+    const billing = fakeBilling();
+    await setPrices(billing);
+    const now = noonOn('2026-11-15');
+    const request = await billing.writes.submit(ORG, OWNER, 'subscribe', 'basic', now);
+    await billing.writes.enterPayment(ORG, request.id, OWNER, cash(100_000), now);
+    await billing.writes.approve(request.id, APPROVER, approval(1, 100_000), now);
+    const live = billing.store().subscriptions.get(ORG);
+    if (!live?.accessUntil) throw new Error('No live row');
+    // An admin "adjusts" the row without changing it: the row's state still matches the approval.
+    await adjust(billing, live.subscriptionId, live.accessUntil);
+    expect(billing.store().subscriptions.get(ORG)?.accessUntil?.getTime()).toBe(live.accessUntil.getTime());
+
+    expect(await refusal(billing.writes.void(request.id, APPROVER, 'mistake', noonOn('2026-11-21')))).toBe(
+      'subscription_changed',
+    );
+    expect(billing.store().receipts[0]?.voidedAt).toBeNull();
   });
 
   it('⚠ refuses voiding an approval under a later adjustment as a changed subscription, never "void the later first"', async () => {

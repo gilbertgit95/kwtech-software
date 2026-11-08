@@ -1358,7 +1358,8 @@ describe('subscriptions', () => {
         status: 'active',
         currentPeriodEnd: new Date('2026-03-01T00:00:00.000Z'),
       });
-      expect(heard[2]?.after).toBeNull();
+      // An end keeps its row, now canceled.
+      expect(heard[2]?.after).toMatchObject({ status: 'canceled' });
     });
   });
 

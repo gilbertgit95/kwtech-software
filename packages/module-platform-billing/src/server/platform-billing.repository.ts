@@ -199,6 +199,8 @@ export interface PlatformBillingTransaction {
         periodEnd?: Date;
         subscriptionId?: string;
         restoredSubscriptionId?: string;
+        /** Decided after an instant: an adjustment made since an approval (a void's check). */
+        decidedAt?: { gt: Date };
       };
       orderBy?: { requestedAt: SortOrder } | { decidedAt: SortOrder };
     }): Promise<RequestRow | null>;

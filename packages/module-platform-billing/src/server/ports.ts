@@ -92,7 +92,9 @@ export interface BillingAdjustment {
   planKey: string;
   reason: string;
   at: Date;
-  after: { status: string; currentPeriodEnd: Date | null; accessUntil: Date | null } | null;
+  /** The row just before the write (null for a start), and after it (an end keeps its row, canceled). */
+  before: { status: string; currentPeriodEnd: Date | null; accessUntil: Date | null } | null;
+  after: { status: string; currentPeriodEnd: Date | null; accessUntil: Date | null };
 }
 
 /** A plan as billing needs it: its listing, and its features and caps for D6. */

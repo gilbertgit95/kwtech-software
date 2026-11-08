@@ -278,7 +278,7 @@ export function SubscriptionForm({
       <Field
         label="Renews on"
         error={errors.currentPeriodEnd}
-        hint={`Access ends ${UNBILLED_GRACE_DAYS} days after this date. The organization then falls back to the platform’s plan for when no subscription is in force, or to no plan if none is set. Empty means no end.`}
+        hint={`Only an Active subscription gives access, and then until ${UNBILLED_GRACE_DAYS} days after this date (empty: no end). After that the organization falls back to the platform’s plan for when no subscription is in force, or to no plan if none is set.`}
       >
         {(id) => (
           // web-ui's calendar, not `<input type="date">`, whose calendar ignores the theme (issue #4).

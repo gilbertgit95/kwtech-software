@@ -15,8 +15,21 @@ export interface SubscriptionAdjustment {
   /** The admin's own words, required and trimmed. */
   reason: string;
   at: Date;
-  /** The row as it is after the write; null for an `end`. */
-  after: { status: string; currentPeriodEnd: Date | null; accessUntil: Date | null } | null;
+  /**
+   * The row as it was just before the write, read in the same transaction;
+   * null for a `start`, which never replaces a live row (a second one is
+   * refused). With `after`, what an auditor needs to say what changed.
+   */
+  before: AdjustedRow | null;
+  /** The row as it is after the write. An `end` keeps its row, now `canceled`. */
+  after: AdjustedRow;
+}
+
+/** The fields of a subscription row an adjustment changes. */
+export interface AdjustedRow {
+  status: string;
+  currentPeriodEnd: Date | null;
+  accessUntil: Date | null;
 }
 
 /**

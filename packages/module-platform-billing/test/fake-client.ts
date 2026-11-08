@@ -101,6 +101,10 @@ function matches<T extends object>(row: T, where: Record<string, unknown>): bool
     if (isDate(wanted)) return isDate(value) && value.getTime() === wanted.getTime();
     if (typeof wanted === 'object' && wanted !== null) {
       if ('in' in wanted) return (wanted as { in: unknown[] }).in.includes(value);
+      if ('gt' in wanted) {
+        const floor = (wanted as { gt: unknown }).gt;
+        return isDate(value) && isDate(floor) && value.getTime() > floor.getTime();
+      }
       if ('not' in wanted) return value !== (wanted as { not: unknown }).not;
     }
     return value === wanted;

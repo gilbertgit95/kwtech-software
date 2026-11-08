@@ -133,10 +133,10 @@ presses it.
   (`recordAdjustment`), and is recorded as an approved request of kind
   `adjustment`: decided by the admin, the required reason as its decision,
   no bill, receipt or credit, and an `adjusted` step ("adjusted by X, no
-  payment"). It never takes the pending slot, is never voided
-  (`adjustment_not_voidable`), and is not "the later approval" a void waits
-  on: an approval under a later adjustment is refused as
-  `subscription_changed`, since the row changed.
+  payment") carrying the row before and after. It never takes the pending
+  slot, is never voided (`adjustment_not_voidable`), and is not "the later
+  approval" a void waits on: an approval with any adjustment after it, even
+  one that left the dates as they were, is refused as `subscription_changed`.
 - **A trial** (D2, `perm_subscription.trialUserId`) reads as unpaid: there is
   nothing to renew, change, cancel or credit, and the owner subscribes, which
   ends the trial row.

@@ -1224,6 +1224,7 @@ export class PermissionsWriteService {
           planKey: plan.key,
           reason: why,
           at: this.now(),
+          before: null,
           after: { status, currentPeriodEnd, accessUntil },
         },
         tx,
@@ -1259,6 +1260,7 @@ export class PermissionsWriteService {
 
     return db.$transaction(async (tx) => {
       const existing = await this.requireLiveSubscription(tx, subscriptionId);
+      const before = await this.adjustedRow(tx, existing);
 
       const status = toSubscriptionStatus(input.status);
       const currentPeriodEnd = subscriptionPeriodEnd(input.currentPeriodEnd);
@@ -1283,6 +1285,7 @@ export class PermissionsWriteService {
           planKey: existing.planKey,
           reason: why,
           at: this.now(),
+          before,
           after: { status, currentPeriodEnd, accessUntil },
         },
         tx,
@@ -1312,6 +1315,7 @@ export class PermissionsWriteService {
 
     return db.$transaction(async (tx) => {
       const existing = await this.requireLiveSubscription(tx, subscriptionId);
+      const before = await this.adjustedRow(tx, existing);
 
       await tx.permSubscription.update({
         where: { id: existing.id },
@@ -1329,7 +1333,9 @@ export class PermissionsWriteService {
           planKey: existing.planKey,
           reason: why,
           at: this.now(),
-          after: null,
+          before,
+          // The row stays, canceled, with the dates it had.
+          after: { ...before, status: 'canceled' },
         },
         tx,
       );
@@ -2700,6 +2706,28 @@ export class PermissionsWriteService {
     });
     if (!plan) throw new PermissionWriteError('not_found', 'No such plan', { planKey });
     return plan;
+  }
+
+  /**
+   * The fields an adjustment changes, as the row holds them now, read in the
+   * write's transaction: what the audit records as `before`. Through the
+   * entitlement read (the one shape that carries the dates), filtered to the
+   * row by id; an admin write is rare, so its plan include is no cost.
+   */
+  private async adjustedRow(
+    tx: PermissionsTransaction,
+    existing: { id: string; organizationId: string; status: string },
+  ): Promise<{ status: string; currentPeriodEnd: Date | null; accessUntil: Date | null }> {
+    const rows = await tx.permSubscription.findMany({
+      where: { organizationId: existing.organizationId, endedAt: null },
+      include: { plan: { include: { features: { where: { feature: { deprecatedAt: null } } }, limits: true } } },
+    });
+    const row = rows.find((one) => one.id === existing.id);
+    return {
+      status: row?.status ?? existing.status,
+      currentPeriodEnd: row?.currentPeriodEnd ?? null,
+      accessUntil: row?.accessUntil ?? null,
+    };
   }
 
   /** A subscription that exists and has not been ended. See `updateSubscription`. */

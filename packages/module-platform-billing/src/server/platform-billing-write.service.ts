@@ -666,6 +666,21 @@ export class PlatformBillingWriteService {
       const notLatest = checkVoid(request.id, approvals);
       if (notLatest) throw billingRefusal(notLatest, latest ? { latestRequestId: latest.id } : {});
 
+      // ⚠ An adjustment since this approval changed what it wrote, even one that left the dates as they were:
+      // the void would undo the admin's act as well. Checked apart from the state comparison below.
+      const adjustedSince =
+        request.decidedAt === null
+          ? null
+          : await tx.platformBillingRequest.findFirst({
+              where: {
+                organizationId: request.organizationId,
+                state: 'approved',
+                kind: 'adjustment',
+                decidedAt: { gt: request.decidedAt },
+              },
+            });
+      if (adjustedSince) throw billingRefusal('subscription_changed', { adjustmentId: adjustedSince.id });
+
       const context = await this.reads.context(request.organizationId, now, tx);
       // ⚠ The live row must still be the one this approval left: the same row (or the one a newer
       // void restored in its place) in the same state. An admin's edit since is never overwritten.
@@ -949,7 +964,7 @@ export class PlatformBillingWriteService {
         pricedForPeriodEnd: null,
       },
     });
-    const after = input.after;
+    const { after, before } = input;
     await tx.platformBillingRequest.updateMany({
       where: { id: request.id, state: 'pending' },
       data: {
@@ -959,19 +974,27 @@ export class PlatformBillingWriteService {
         decisionReason: input.reason,
         subscriptionId: input.subscriptionId,
         applied: 'adjustment',
-        ...(after?.currentPeriodEnd
+        ...(after.currentPeriodEnd
           ? { periodEnd: dayToDateColumn(platformDay(after.currentPeriodEnd, settings.timeZone)) }
           : {}),
-        ...(after?.accessUntil ? { accessUntil: after.accessUntil } : {}),
+        ...(after.accessUntil ? { accessUntil: after.accessUntil } : {}),
       },
     });
+    // Both sides of the change, so the history says what it was as well as what it became.
+    const asData = (row: BillingAdjustment['after'] | null): JsonValue =>
+      row
+        ? {
+            status: row.status,
+            currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
+            accessUntil: row.accessUntil?.toISOString() ?? null,
+          }
+        : null;
     await this.event(tx, request, input.at, input.actorId, 'adjusted', input.action, {
       reason: input.reason,
       planKey: input.planKey,
       payment: 'none',
-      status: after?.status ?? null,
-      currentPeriodEnd: after?.currentPeriodEnd?.toISOString() ?? null,
-      accessUntil: after?.accessUntil?.toISOString() ?? null,
+      before: asData(before),
+      after: asData(after),
     });
     return this.reread(tx, request.id);
   }
