@@ -69,6 +69,7 @@ describe('buildStatement: the statement of account', () => {
 });
 
 describe('the statement and the history, read from the store', () => {
+  /** An organization subscribed to Basic on 15 November, paid 1,200 for a 1,000 bill. */
   async function approvedSubscribe() {
     const billing = fakeBilling();
     await setPrices(billing);

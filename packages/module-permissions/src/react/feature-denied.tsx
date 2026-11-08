@@ -55,6 +55,7 @@ export interface FeatureDeniedProps {
   nextStep?: { href: string; label: string } | undefined;
 }
 
+/** A refused page: its title, the reason in words, and where to act on it when the caller knows. */
 export function FeatureDenied({ title, reason, header, nextStep }: FeatureDeniedProps) {
   return (
     <div className="mx-auto w-full max-w-4xl">
