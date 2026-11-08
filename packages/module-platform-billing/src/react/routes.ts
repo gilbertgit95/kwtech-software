@@ -59,3 +59,21 @@ export function billingAdminDocumentHref(requestId: string, kind: 'bill' | 'rece
   const query = new URLSearchParams({ kind, number });
   return `${billingAdminRequestHref(requestId)}/document?${query.toString()}`;
 }
+
+/** Every organization's billing standing (phase 7b). */
+export const BILLING_ADMIN_ORGANIZATIONS_ROUTE = '/admin/billing/organizations';
+
+/** The platform's billing reports for a range of days (phase 7b). */
+export const BILLING_ADMIN_REPORTS_ROUTE = '/admin/billing/reports';
+
+/** The organizations list with a filter (`attention`, `overdue`…), or all of them with none. */
+export function billingAdminOrganizationsHref(filter: string | null): string {
+  return filter
+    ? `${BILLING_ADMIN_ORGANIZATIONS_ROUTE}?${new URLSearchParams({ filter }).toString()}`
+    : BILLING_ADMIN_ORGANIZATIONS_ROUTE;
+}
+
+/** The reports for the days `from` to `to`, both included. */
+export function billingAdminReportsHref(from: string, to: string): string {
+  return `${BILLING_ADMIN_REPORTS_ROUTE}?${new URLSearchParams({ from, to }).toString()}`;
+}

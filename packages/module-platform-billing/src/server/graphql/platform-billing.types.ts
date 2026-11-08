@@ -391,3 +391,90 @@ export class PlatformBillingPageArgs {
   @Field(() => String, { nullable: true }) cursor?: string | null;
   @Field(() => Int, { nullable: true }) limit?: number | null;
 }
+
+/** One organization's standing on the platform's list (phase 7b). */
+@ObjectType('PlatformBillingOrganizationStanding')
+export class PlatformBillingOrganizationStandingType {
+  @Field() organizationId!: string;
+  @Field() name!: string;
+  @Field(() => PlatformBillingStandingType) standing!: PlatformBillingStandingType;
+  /** Centavos: positive is credit held, negative is owed. */
+  @Field(() => Int) creditBalance!: number;
+  /** The request waiting for a decision, if any: the approver's next stop. */
+  @Field(() => String, { nullable: true }) pendingRequestId!: string | null;
+}
+
+/** A page of organizations' standings, by id. */
+@ObjectType('PlatformBillingOrganizationPage')
+export class PlatformBillingOrganizationPageType {
+  @Field(() => [PlatformBillingOrganizationStandingType]) items!: PlatformBillingOrganizationStandingType[];
+  /** The last organization examined; null at the end. */
+  @Field(() => String, { nullable: true }) nextCursor!: string | null;
+  /** False when the app does not list organizations to billing (the people port unbound). */
+  @Field() available!: boolean;
+}
+
+/** A page of standings, optionally filtered: `attention`, `overdue`, `expired`, `credit`, `pending`. */
+@ArgsType()
+export class PlatformBillingOrganizationArgs {
+  @Field(() => String, { nullable: true }) cursor?: string | null;
+  @Field(() => Int, { nullable: true }) limit?: number | null;
+  @Field(() => String, { nullable: true }) filter?: string | null;
+}
+
+/** Money collected in one period (a day `YYYY-MM-DD` or a month `YYYY-MM`) by one method. */
+@ObjectType('PlatformBillingCollected')
+export class PlatformBillingCollectedType {
+  @Field() period!: string;
+  @Field() method!: string;
+  @Field(() => Int) amount!: number;
+  @Field(() => Int) receipts!: number;
+}
+
+/** What one plan earned; `planKey` null for payments kept as credit. */
+@ObjectType('PlatformBillingPlanRevenue')
+export class PlatformBillingPlanRevenueType {
+  @Field(() => String, { nullable: true }) planKey!: string | null;
+  @Field() planLabel!: string;
+  @Field(() => Int) amount!: number;
+  @Field(() => Int) receipts!: number;
+}
+
+/** How many organizations stand in one kind. */
+@ObjectType('PlatformBillingStandingCount')
+export class PlatformBillingStandingCountType {
+  @Field() kind!: string;
+  @Field(() => Int) count!: number;
+}
+
+/** Every organization's standing, counted; credit held and owed apart. */
+@ObjectType('PlatformBillingStandingsSummary')
+export class PlatformBillingStandingsSummaryType {
+  @Field(() => Int) organizations!: number;
+  @Field(() => [PlatformBillingStandingCountType]) byKind!: PlatformBillingStandingCountType[];
+  @Field(() => Int) overdue!: number;
+  @Field(() => Int) expired!: number;
+  @Field(() => Int) pending!: number;
+  @Field(() => Int) creditHeld!: number;
+  @Field(() => Int) creditOwed!: number;
+  @Field(() => Int) organizationsWithCredit!: number;
+  /** False past STANDINGS_SUMMARY_MAX organizations: the counts cover only those read. */
+  @Field() complete!: boolean;
+  /** False when the app does not list organizations to billing. */
+  @Field() available!: boolean;
+}
+
+/** The platform's report for a range of days (phase 7b). */
+@ObjectType('PlatformBillingReport')
+export class PlatformBillingReportType {
+  @Field() from!: string;
+  @Field() to!: string;
+  @Field() currency!: string;
+  @Field(() => Int) total!: number;
+  @Field(() => Int) receipts!: number;
+  @Field(() => [PlatformBillingCollectedType]) byDay!: PlatformBillingCollectedType[];
+  @Field(() => [PlatformBillingCollectedType]) byMonth!: PlatformBillingCollectedType[];
+  @Field(() => [PlatformBillingCollectedType]) byMethod!: PlatformBillingCollectedType[];
+  @Field(() => [PlatformBillingPlanRevenueType]) perPlan!: PlatformBillingPlanRevenueType[];
+  @Field(() => PlatformBillingStandingsSummaryType) standings!: PlatformBillingStandingsSummaryType;
+}

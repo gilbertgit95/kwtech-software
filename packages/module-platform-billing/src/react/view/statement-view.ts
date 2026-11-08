@@ -53,12 +53,12 @@ export function statementLineLabel(
 }
 
 /** A CSV field: quoted, with quotes doubled, so a note with a comma stays one column. */
-function field(value: string): string {
+export function csvField(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
 /** Centavos as a plain decimal for a spreadsheet (`1000.50`), never a currency-formatted string. */
-function decimal(centavos: number): string {
+export function csvDecimal(centavos: number): string {
   return (centavos / 100).toFixed(2);
 }
 
@@ -70,18 +70,18 @@ function decimal(centavos: number): string {
 export function statementCsv(statement: BillingStatementView): string {
   const rows: string[][] = [
     ['Day', 'Item', 'Billed', 'Paid', 'Credit', 'Credit balance'],
-    ['', `Opening credit (${statement.currency})`, '', '', '', decimal(statement.openingCredit)],
+    ['', `Opening credit (${statement.currency})`, '', '', '', csvDecimal(statement.openingCredit)],
     ...statement.entries.map((entry) => [
       entry.day,
       statementLineLabel(entry),
-      entry.billed ? decimal(entry.billed) : '',
-      entry.paid ? decimal(entry.paid) : '',
-      entry.credit ? decimal(entry.credit) : '',
-      decimal(entry.creditBalance),
+      entry.billed ? csvDecimal(entry.billed) : '',
+      entry.paid ? csvDecimal(entry.paid) : '',
+      entry.credit ? csvDecimal(entry.credit) : '',
+      csvDecimal(entry.creditBalance),
     ]),
-    ['', 'Totals', decimal(statement.billed), decimal(statement.paid), '', decimal(statement.closingCredit)],
+    ['', 'Totals', csvDecimal(statement.billed), csvDecimal(statement.paid), '', csvDecimal(statement.closingCredit)],
   ];
-  return `${rows.map((row) => row.map(field).join(',')).join('\r\n')}\r\n`;
+  return `${rows.map((row) => row.map(csvField).join(',')).join('\r\n')}\r\n`;
 }
 
 /** The statement's file name: `statement-2026-11-01-to-2026-11-30.csv`. */

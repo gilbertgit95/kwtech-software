@@ -177,6 +177,8 @@ describe('the platform pages in the descriptor', () => {
       '/admin/billing',
       '/admin/billing/requests/:requestId',
       '/admin/billing/requests/:requestId/document',
+      '/admin/billing/organizations',
+      '/admin/billing/reports',
       '/admin/billing/settings',
     ]);
     expect(new Set(admin.map((route) => route.feature))).toEqual(new Set(['platform-billing:queue_read']));

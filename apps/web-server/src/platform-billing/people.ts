@@ -3,9 +3,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 /**
- * Whether an approver belongs to the organization whose payment they approve
- * (D15): flagged on the request and in the queue, never blocking, because a
- * small platform may have one approver. Memberships are permissions' table.
+ * Who billing deals with, from permissions' tables: whether an approver
+ * belongs to the organization whose payment they approve (D15: flagged on the
+ * request and in the queue, never blocking, because a small platform may have
+ * one approver), the name billing prints, and the organizations the
+ * platform's standings walk.
  */
 @Injectable()
 export class PlatformBillingPeopleAdapter implements PlatformBillingPeople {
@@ -27,5 +29,19 @@ export class PlatformBillingPeopleAdapter implements PlatformBillingPeople {
       select: { name: true },
     });
     return found?.name ?? null;
+  }
+
+  /**
+   * A page of every organization by id, archived ones included (one that
+   * left may still hold credit or owe), for the platform's standings and
+   * reports. Keyset by id, so a page never shifts as organizations are added.
+   */
+  async organizations(after: string | null, limit: number): Promise<Array<{ id: string; name: string }>> {
+    return this.prisma.permOrganization.findMany({
+      where: after === null ? {} : { id: { gt: after } },
+      orderBy: { id: 'asc' },
+      take: limit,
+      select: { id: true, name: true },
+    });
   }
 }

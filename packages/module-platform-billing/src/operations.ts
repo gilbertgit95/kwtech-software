@@ -120,6 +120,32 @@ export const PLATFORM_BILLING_OPERATIONS = {
       }
     }
   `,
+  organizations: /* GraphQL */ `
+    query PlatformBillingOrganizations($cursor: String, $limit: Int, $filter: String) {
+      platformBillingOrganizations(cursor: $cursor, limit: $limit, filter: $filter) {
+        items {
+          organizationId name creditBalance pendingRequestId
+          standing { kind days planKey planLabel planArchived cancelled trial periodStart periodEnd accessUntil graceDays holdDays prepaid }
+        }
+        nextCursor available
+      }
+    }
+  `,
+  report: /* GraphQL */ `
+    query PlatformBillingReport($from: String!, $to: String!) {
+      platformBillingReport(from: $from, to: $to) {
+        from to currency total receipts
+        byDay { period method amount receipts }
+        byMonth { period method amount receipts }
+        byMethod { period method amount receipts }
+        perPlan { planKey planLabel amount receipts }
+        standings {
+          organizations byKind { kind count } overdue expired pending
+          creditHeld creditOwed organizationsWithCredit complete available
+        }
+      }
+    }
+  `,
   planList: /* GraphQL */ `
     query PlatformBillingPlanList {
       platformBillingPlanList { key label isPublic archived monthly }

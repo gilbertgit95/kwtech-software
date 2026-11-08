@@ -130,6 +130,19 @@ export interface PlatformBillingPeople {
    * renames prints its new name on a reprint, as a statement would.
    */
   organizationName(organizationId: string): Promise<string | null>;
+  /**
+   * A page of every organization, by id ascending after `after` (null from
+   * the start), at most `limit`: what the platform's standings and reports
+   * walk (phase 7b). Fewer than `limit` means the end. Archived organizations
+   * are included: one that left may still hold credit or owe.
+   */
+  organizations(after: string | null, limit: number): Promise<readonly BillingOrganizationEntry[]>;
+}
+
+/** One organization, as billing's platform pages list it. */
+export interface BillingOrganizationEntry {
+  id: string;
+  name: string;
 }
 
 /**

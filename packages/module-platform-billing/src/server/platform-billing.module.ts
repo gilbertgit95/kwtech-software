@@ -9,6 +9,7 @@ import {
   PLATFORM_BILLING_PEOPLE,
 } from './platform-billing.tokens.js';
 import { PlatformBillingDailyCheck } from './platform-billing-daily.process.js';
+import { PlatformBillingReportsService } from './platform-billing-reports.service.js';
 import { PlatformBillingWriteService } from './platform-billing-write.service.js';
 
 /**
@@ -39,6 +40,7 @@ export class PlatformBillingModule {
       { provide: PLATFORM_BILLING_OPTIONS, useValue: options },
       PlatformBillingService,
       PlatformBillingWriteService,
+      PlatformBillingReportsService,
       options.subscriptionsProvider as Provider,
       options.plansProvider as Provider,
       // ⚠ Bound to `undefined` when absent, so "nobody answered" is stated: every approver is flagged (D15).
@@ -62,6 +64,7 @@ export class PlatformBillingModule {
       exports: [
         PlatformBillingService,
         PlatformBillingWriteService,
+        PlatformBillingReportsService,
         PlatformBillingDailyCheck,
         PLATFORM_BILLING_OPTIONS,
       ],

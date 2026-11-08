@@ -15,6 +15,7 @@ import type {
 } from '../src/server/platform-billing.repository.js';
 import { PlatformBillingService } from '../src/server/platform-billing.service.js';
 import { PlatformBillingDailyCheck } from '../src/server/platform-billing-daily.process.js';
+import { PlatformBillingReportsService } from '../src/server/platform-billing-reports.service.js';
 import { PlatformBillingWriteService } from '../src/server/platform-billing-write.service.js';
 import type {
   BillingPlan,
@@ -427,7 +428,8 @@ export interface FakeBilling {
   client: PlatformBillingWriteClient;
   subscriptions: PlatformBillingSubscriptions;
   plans: PlatformBillingPlans & { list: BillingPlan[]; usageOf: Record<string, number> };
-  people: PlatformBillingPeople & { members: Set<string> };
+  people: PlatformBillingPeople & { members: Set<string>; organizationList: Array<{ id: string; name: string }> };
+  reports: PlatformBillingReportsService;
   /** Every notice told, in order; `failing` makes the next sends fail, as a mail server down would. */
   notifier: PlatformBillingNotifier & { told: Array<{ what: string; notice: unknown }>; failing: boolean };
   reads: PlatformBillingService;
@@ -606,6 +608,15 @@ export function fakeBilling(): FakeBilling {
     async organizationName() {
       return 'Acme';
     },
+    /** The organizations the platform's standings walk: set by a test, listed by id as permissions would. */
+    organizationList: [] as Array<{ id: string; name: string }>,
+    /** A page by id ascending after `after`, as the app's adapter answers. */
+    async organizations(after: string | null, limit: number) {
+      return [...people.organizationList]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .filter((organization) => after === null || organization.id > after)
+        .slice(0, limit);
+    },
   };
 
   const notifier = {
@@ -634,7 +645,8 @@ export function fakeBilling(): FakeBilling {
   const reads = new PlatformBillingService(client, subscriptions, plans);
   const writes = new PlatformBillingWriteService(client, reads, subscriptions, people, notifier);
   const daily = new PlatformBillingDailyCheck(client, reads, notifier);
-  return { store: () => store, client, subscriptions, plans, people, notifier, reads, writes, daily };
+  const reports = new PlatformBillingReportsService(reads, client, people);
+  return { store: () => store, client, subscriptions, plans, people, notifier, reads, writes, daily, reports };
 }
 
 /** Puts `organizationId` on `planKey` for the period `[start, end)`, access to `accessUntil` (days, Manila). */

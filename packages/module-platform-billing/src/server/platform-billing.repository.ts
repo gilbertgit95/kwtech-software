@@ -233,6 +233,8 @@ export interface PlatformBillingTransaction {
         kind?: RequestKind;
         /** A year of the history, in the billing time zone. */
         requestedAt?: { gte: Date; lt: Date };
+        /** The requests a page of receipts belongs to (the collections report: what each payment bought). */
+        id?: { in: string[] };
       };
       orderBy: Array<{ requestedAt: SortOrder } | { id: SortOrder }>;
       take: number;
@@ -328,7 +330,11 @@ export interface PlatformBillingTransaction {
   platformBillingReceipt: {
     findMany(args: {
       /** A page of requests' receipts, or an organization's receipts issued in a range (the statement). */
-      where: { requestId: { in: string[] } } | { organizationId: string; issuedAt: { gte: Date; lt: Date } };
+      where:
+        | { requestId: { in: string[] } }
+        | { organizationId: string; issuedAt: { gte: Date; lt: Date } }
+        /** Every organization's receipts that stand, issued in a range (the platform's collections report). */
+        | { issuedAt: { gte: Date; lt: Date }; voidedAt: null };
       orderBy: { number: SortOrder };
     }): Promise<ReceiptRow[]>;
     /** Money received in a range (the history's totals): receipts that stand, a count and a sum. */
