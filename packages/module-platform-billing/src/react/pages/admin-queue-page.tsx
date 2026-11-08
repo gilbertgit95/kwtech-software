@@ -1,7 +1,7 @@
 'use client';
 
 import { DEFAULT_TIME_ZONE } from '@kwtech/module-kit';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type BillingAdminClient,
   type BillingQueuePageView,
@@ -30,6 +30,13 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
   const [error, setError] = useState<string | null>(null);
   /** The billing time zone, from the settings: every request's day is shown in it. */
   const [timeZone, setTimeZone] = useState<string>(DEFAULT_TIME_ZONE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /**
+   * Which list is in view, bumped on every fresh load (a tab switch). A
+   * "Show more" answer for an older list is dropped: appended to the new tab
+   * it would mix the two lists and hand over the old tab's cursor.
+   */
+  const generation = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,8 +55,10 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
 
   const load = useCallback(
     (which: 'waiting' | 'decided', isCancelled: () => boolean = () => false) => {
+      generation.current += 1;
       setPage(null);
       setError(null);
+      setLoadingMore(false);
       (which === 'waiting' ? api.queue(null) : api.decided(null))
         .then((next) => {
           if (!isCancelled()) setPage(next);
@@ -69,21 +78,32 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
     };
   }, [load, tab]);
 
-  /** The next page of the list in view, appended without repeats. */
+  /**
+   * The next page of the list in view, appended without repeats. The answer
+   * counts only if the same list is still in view and still ends at the
+   * cursor it was asked from; one request at a time, so a double click asks
+   * once.
+   */
   async function more() {
-    if (!page?.nextCursor) return;
+    const cursor = page?.nextCursor;
+    if (!cursor || loadingMore) return;
+    const asked = generation.current;
+    setLoadingMore(true);
     try {
-      const next = await (tab === 'waiting' ? api.queue(page.nextCursor) : api.decided(page.nextCursor));
+      const next = await (tab === 'waiting' ? api.queue(cursor) : api.decided(cursor));
+      if (asked !== generation.current) return;
       setPage((current) => {
-        const shown = current?.items ?? [];
-        const seen = new Set(shown.map((item) => item.request.id));
+        if (!current || current.nextCursor !== cursor) return current;
+        const seen = new Set(current.items.map((item) => item.request.id));
         return {
-          items: [...shown, ...next.items.filter((item) => !seen.has(item.request.id))],
+          items: [...current.items, ...next.items.filter((item) => !seen.has(item.request.id))],
           nextCursor: next.nextCursor,
         };
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load more.');
+      if (asked === generation.current) setError(cause instanceof Error ? cause.message : 'Could not load more.');
+    } finally {
+      if (asked === generation.current) setLoadingMore(false);
     }
   }
 
@@ -170,8 +190,8 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
           </ul>
         )}
         {page?.nextCursor ? (
-          <button type="button" className={`${buttonClass()} mt-3`} onClick={() => void more()}>
-            Show more
+          <button type="button" className={`${buttonClass()} mt-3`} disabled={loadingMore} onClick={() => void more()}>
+            {loadingMore ? 'Loading…' : 'Show more'}
           </button>
         ) : null}
       </Section>

@@ -212,17 +212,30 @@ export class PlatformBillingAdminResolver {
    * PLATFORM_BILLING_PAGE_MAX, and each check is one indexed read.
    */
   private async items(details: readonly RequestDetail[], viewerId: string): Promise<PlatformBillingQueueItemType[]> {
-    const items: PlatformBillingQueueItemType[] = [];
-    for (const detail of details) {
-      const member = await this.isMember(viewerId, detail.request.organizationId);
-      const flags = await this.reads.flags(detail, viewerId, member);
-      items.push({
-        request: renderRequest(detail),
-        organizationName: await this.organizationName(detail.request.organizationId),
-        flags: { ...flags, referenceUsedOn: [...flags.referenceUsedOn] },
-      });
-    }
-    return items;
+    // Each item is independent, so they are read in parallel. One organization often has several requests on a
+    // page: its name is read once, the promise shared.
+    const names = new Map<string, Promise<string | null>>();
+    const nameOf = (organizationId: string) => {
+      const known = names.get(organizationId);
+      if (known) return known;
+      const read = this.organizationName(organizationId);
+      names.set(organizationId, read);
+      return read;
+    };
+    return Promise.all(
+      details.map(async (detail) => {
+        const organizationId = detail.request.organizationId;
+        const [flags, organizationName] = await Promise.all([
+          this.isMember(viewerId, organizationId).then((member) => this.reads.flags(detail, viewerId, member)),
+          nameOf(organizationId),
+        ]);
+        return {
+          request: renderRequest(detail),
+          organizationName,
+          flags: { ...flags, referenceUsedOn: [...flags.referenceUsedOn] },
+        };
+      }),
+    );
   }
 
   /** The organization's name, or null: unbound, or a read that failed (logged, never blocking the queue). */

@@ -93,8 +93,9 @@ export function AdminRequestPage({ requestId, client }: AdminRequestPageProps) {
       setError(cause instanceof Error ? cause.message : 'That did not work.');
       return false;
     } finally {
-      setBusy(false);
+      // ⚠ Busy until the re-read lands: enabled earlier, a second decision would be sent against the page as it was.
       await load();
+      setBusy(false);
     }
   }
 
@@ -141,10 +142,10 @@ export function AdminRequestPage({ requestId, client }: AdminRequestPageProps) {
         'Closed as credit: the payment received was added to the organization’s credit.',
       );
     }
-    if (done) {
-      setDecision(null);
-      setReason('');
-    }
+    // Closed either way: a failure's message is at the top of the page, which the dialog would cover. The
+    // reason is kept after a failure, so trying again does not mean typing it again.
+    setDecision(null);
+    if (done) setReason('');
   }
 
   if (!requestId) return <p className="text-sm text-muted-foreground">No request in the address.</p>;

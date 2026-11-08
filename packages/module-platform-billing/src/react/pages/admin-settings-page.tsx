@@ -90,8 +90,9 @@ export function AdminSettingsPage({ client }: AdminSettingsPageProps) {
       setError(cause instanceof Error ? cause.message : 'Could not save the settings.');
       return false;
     } finally {
-      setBusy(false);
+      // ⚠ Busy until the re-read lands: enabled earlier, a second save would diff against the settings as they were and could undo the first.
       await load();
+      setBusy(false);
     }
   }
 
