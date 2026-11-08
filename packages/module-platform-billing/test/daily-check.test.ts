@@ -63,9 +63,11 @@ describe('the daily check (platform_billing.daily_check)', () => {
       maxItems,
       tooLateAfterMinutes: 720,
       signal: new AbortController().signal,
+      /** None: this process reaches organizations. */
       async workspaces() {
         return { workspaces: [], nextCursor: null };
       },
+      /** The given organizations, a page at a time, as module-jobs pages them. */
       async organizations(cursor, limit) {
         const start = cursor ? organizations.indexOf(cursor) + 1 : 0;
         const page = organizations.slice(start, start + limit);
@@ -85,6 +87,7 @@ describe('the daily check (platform_billing.daily_check)', () => {
       .map((one) => (one.notice as { kind: string }).kind);
   }
 
+  /** ORG on Basic, due on 1 December, with prices set. */
   async function onBasic() {
     const billing = fakeBilling();
     giveSubscription(billing, ORG, 'basic', '2026-11-01', '2026-12-01', '2026-12-08');

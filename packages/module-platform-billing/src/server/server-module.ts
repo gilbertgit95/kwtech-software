@@ -10,6 +10,7 @@ const PLATFORM_BILLING_PROCESS_HANDLERS: Record<string, unknown> = {
   [PLATFORM_BILLING_PROCESS.dailyCheck]: PlatformBillingDailyCheck,
 };
 
+/** Each declaration with its handler, or a boot failure naming the one missing. */
 function platformBillingProcesses(): ProcessContribution[] {
   return PLATFORM_BILLING_PROCESS_REGISTRY.map((declaration) => {
     const handler = PLATFORM_BILLING_PROCESS_HANDLERS[declaration.key];

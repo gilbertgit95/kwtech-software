@@ -35,6 +35,7 @@ export class PlatformBillingNotifierAdapter implements PlatformBillingNotifier {
     private readonly sender: NotificationSender,
   ) {}
 
+  /** A daily-check reminder, to the organization's owner and admins. */
   async reminder(notice: BillingReminderNotice): Promise<boolean> {
     const recipientIds = await this.billingHolders(notice.organizationId);
     if (recipientIds.length === 0) return true;
@@ -54,6 +55,7 @@ export class PlatformBillingNotifierAdapter implements PlatformBillingNotifier {
     return sent !== null;
   }
 
+  /** The daily count of requests waiting more than a day, to billing approvers. */
   async approversDigest(notice: ApproversDigestNotice): Promise<boolean> {
     const recipientIds = await this.approvers();
     if (recipientIds.length === 0) return true;
@@ -69,6 +71,7 @@ export class PlatformBillingNotifierAdapter implements PlatformBillingNotifier {
     return sent !== null;
   }
 
+  /** A request's step: what to check goes to approvers, a decision to the organization. */
   async requestChanged(notice: BillingRequestNotice): Promise<boolean> {
     const plan = await this.planLabel(notice.planKey);
     const toApprovers = notice.step === 'submitted' || notice.step === 'details_entered';

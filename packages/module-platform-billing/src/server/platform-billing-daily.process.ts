@@ -74,6 +74,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     @Optional() @Inject(PLATFORM_BILLING_NOTIFIER) private readonly notifier?: PlatformBillingNotifier,
   ) {}
 
+  /** One run: retry what was never sent, sweep the organizations, then the approvers' digest. Counts, never names. */
   async run(context: ProcessRunContext): Promise<ProcessRunResult> {
     const result: ProcessRunResult = { handled: 0, skippedLate: 0, leftForNext: 0 };
     const notifier = this.notifier;
@@ -255,6 +256,7 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
 }
 
+/** An error as a sentence for the log. */
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

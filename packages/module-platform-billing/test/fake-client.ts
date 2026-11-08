@@ -176,6 +176,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         store.requests.push(row);
         return { ...row };
       },
+      /** How many requests match, for the approvers' digest. */
       async count({ where }) {
         return get().requests.filter((row) => matches(row, where)).length;
       },
@@ -340,6 +341,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
       },
     },
     platformBillingNotice: {
+      /** Writes a notice, refusing a second for the same organization, kind, period and day. */
       async create({ data }) {
         const store = get();
         // The `@@unique([organizationId, kind, periodKey, day])`, as Postgres enforces it.
@@ -355,6 +357,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         store.notices.push(row);
         return structuredClone(row);
       },
+      /** The unsent notices, oldest first. */
       async findMany({ where, take }) {
         return get()
           .notices.filter((row) => matches(row, where))
@@ -362,6 +365,7 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           .slice(0, take)
           .map((row) => structuredClone(row));
       },
+      /** Marks a notice sent. */
       async update({ where, data }) {
         const row = get().notices.find((one) => one.id === where.id);
         if (!row) throw new Error('No such notice');
@@ -591,16 +595,19 @@ export function fakeBilling(): FakeBilling {
   const notifier = {
     told: [] as Array<{ what: string; notice: unknown }>,
     failing: false,
+    /** Records a reminder, or fails while `failing`. */
     async reminder(notice: unknown) {
       if (notifier.failing) return false;
       notifier.told.push({ what: 'reminder', notice });
       return true;
     },
+    /** Records a digest, or fails while `failing`. */
     async approversDigest(notice: unknown) {
       if (notifier.failing) return false;
       notifier.told.push({ what: 'approvers', notice });
       return true;
     },
+    /** Records a request notice, or fails while `failing`. */
     async requestChanged(notice: unknown) {
       if (notifier.failing) return false;
       notifier.told.push({ what: 'request', notice });
