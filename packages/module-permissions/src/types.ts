@@ -252,6 +252,14 @@ export interface PermissionContext {
   entitled: readonly FeatureKey[] | null;
 
   /**
+   * The plans that entitle this context (the Free fallback included), by key:
+   * what a cap refusal names as the plan that set it (#101). `null` with no
+   * entitlement model, as `entitled`. Optional so a context built by hand (a
+   * test, an older caller) still type-checks; absent reads as no plan.
+   */
+  planKeys?: readonly string[] | null;
+
+  /**
    * The APP-level roles this caller holds, sorted by key.
    *
    * Belongs here for the same reason `granted` and `entitled` do: the context

@@ -344,6 +344,20 @@ registry, so a row in its table for a key nobody declared is ignored, and the
 screen that sets it has no control to offer. Setting the value in the database
 changes nothing, with no error to explain why.
 
+### Saying a cap was reached: `limitReachedText` (#101)
+
+A refused `LimitDecision` may carry `raise`: the plan that set the cap and the
+smallest public plan that raises it, worked out by the enforcer (a module
+cannot know plans). A module never writes its own sentence for a cap; it calls
+`limitReachedText(decision, { one: 'branch', many: 'branches' })`:
+
+| `raise` | Sentence |
+|---|---|
+| plan and next | "Basic allows 1 branch. Pro allows 5." |
+| next has no limit | "Basic allows 1 branch. Pro has no limit." |
+| plan, no next | "Pro allows 5 branches. This is the most any plan allows. Contact us for a Custom plan." |
+| absent (a role's cap, the default, no plans) | "You can have 3 boards here." |
+
 ### A fourth: background processes
 
 Work a module does on a **schedule** rather than on a request. Same split:

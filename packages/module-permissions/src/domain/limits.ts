@@ -1,4 +1,4 @@
-import type { LimitContribution } from '@kwtech/module-kit';
+import type { LimitContribution, LimitRaise } from '@kwtech/module-kit';
 import type { PlanEntitlement } from './grants.js';
 
 /**
@@ -158,6 +158,8 @@ export interface LimitDecision {
    * honest, and `limit === null` says the same thing.
    */
   remaining: number | null;
+  /** Which plan set a refused plan-sourced cap and which raises it (#101); module-kit's `LimitDecision.raise`. */
+  raise?: LimitRaise;
 }
 
 /** The part of a role grant that carries caps. Only app-level roles contribute. */

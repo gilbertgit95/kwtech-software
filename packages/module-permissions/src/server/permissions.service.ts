@@ -1,5 +1,5 @@
-import type { DefaultMomentContribution } from '@kwtech/module-kit';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { DefaultMomentContribution, LimitRaise } from '@kwtech/module-kit';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   APP_DEFAULT,
   APP_DEFAULT_MOMENT_REGISTRY,
@@ -9,6 +9,7 @@ import {
 } from '../defaults.js';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
+import { limitRaise } from '../domain/limit-raise.js';
 import {
   checkLimit,
   LIMIT,
@@ -112,6 +113,9 @@ export interface ResolvedDefault {
    */
   targetUnavailable: boolean;
 }
+
+/** For the one advisory read a refusal may do (#101): its failure is logged, never thrown. */
+const LIMITS_LOGGER = new Logger('PermissionsLimits');
 
 @Injectable()
 export class PermissionsService {
@@ -1356,7 +1360,51 @@ export class PermissionsService {
      * `defaultValue`, which is what an unconfigured person is entitled to.
      */
     const limits = ctx ? ctx.limits : resolveLimits({ roles: [] }, this.limitRegistry());
-    return this.decideDeclaredLimit(limits, input.key, input.current);
+    const decision = this.decideDeclaredLimit(limits, input.key, input.current);
+    if (decision.allowed || decision.limit === null || !ctx?.planKeys) return decision;
+    /*
+     * ⚠ THE REFUSAL STANDS EVEN IF THE PLANS CANNOT BE READ. Naming the plan
+     * is advice on top of the decision: a failed catalogue read must not turn
+     * "you are at your cap" into an error, which would read as an outage. It
+     * is logged and the refusal goes out with the number alone.
+     */
+    try {
+      const raise = await this.limitRaiseFor(input.key, decision.limit, ctx.planKeys);
+      return raise ? { ...decision, raise } : decision;
+    } catch (error) {
+      LIMITS_LOGGER.warn(`Could not read the plans to name the one raising '${input.key}': ${String(error)}`);
+      return decision;
+    }
+  }
+
+  /**
+   * Which plan set a refused cap and which one raises it (#101), read only on
+   * a refusal: a cap that fits costs no extra query. Undefined for a
+   * role-sourced cap, which no plan sells.
+   */
+  async limitRaiseFor(key: LimitKey, cap: number, planKeys: readonly string[]): Promise<LimitRaise | undefined> {
+    const spec = this.limitRegistry().find((one) => one.key === key);
+    if (spec?.source !== 'plan') return undefined;
+    // The plan list's own read (one signature on the structural client), not a second shape of it.
+    const plans = await this.prisma.permPlan.findMany({
+      include: {
+        features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
+      orderBy: { key: 'asc' },
+    });
+    return limitRaise({
+      spec,
+      cap,
+      planKeys,
+      catalogue: plans.map((plan) => ({
+        key: plan.key,
+        label: plan.label,
+        isPublic: plan.isPublic,
+        archived: plan.archivedAt !== null,
+        limits: Object.fromEntries(plan.limits.map((limit) => [limit.limitKey, limit.value])),
+      })),
+    });
   }
 
   checkDeclaredLimit(ctx: PermissionContext, key: LimitKey, current: number): LimitDecision {

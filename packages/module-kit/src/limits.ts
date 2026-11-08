@@ -82,6 +82,77 @@ export interface LimitDecision {
   limit: number | null;
   current: number;
   remaining: number | null;
+  /**
+   * Which plan set this cap and which plan raises it (#101), when the cap is
+   * plan-sourced and refused. Absent for a role-sourced cap, for an app with no
+   * plans, and from a checker that does not know plans: the sentence then says
+   * only the number (`limitReachedText`).
+   */
+  raise?: LimitRaise;
+}
+
+/** A plan as a cap refusal names it. */
+export interface LimitPlanRef {
+  key: string;
+  label: string;
+}
+
+/**
+ * ⚠ WORKED OUT BY THE ENFORCER, NEVER BY THE MODULE. A module cannot know the
+ * plans (§9: modules do not import permissions), so the checker that resolved
+ * the cap adds this; the module only carries it into its refusal.
+ */
+export interface LimitRaise {
+  /** The organization's plan that set the cap; null when no plan did (the declared default). */
+  plan: LimitPlanRef | null;
+  /**
+   * The smallest public plan with a higher cap, and that cap (`null` = no
+   * limit). Null when no public plan allows more: the sentence then points to
+   * a Custom plan.
+   */
+  next: (LimitPlanRef & { limit: number | null }) | null;
+}
+
+/** What a cap counts, as the sentence says it: `{ one: 'branch', many: 'branches' }`. */
+export interface LimitNoun {
+  one: string;
+  many: string;
+}
+
+/** A count with its noun, singular for one: "1 branch", "5,000 items for sale". */
+function counted(value: number, noun: LimitNoun): string {
+  return `${value.toLocaleString('en-US')} ${value === 1 ? noun.one : noun.many}`;
+}
+
+/**
+ * THE ONE SENTENCE FOR A CAP REACHED (#101), so the modules that refuse caps do
+ * not each grow their own wording:
+ *
+ *   - "Basic allows 1 branch. Pro allows 5."
+ *   - "Pro allows 5 branches. This is the most any plan allows. Contact us for a Custom plan."
+ *   - "Basic allows 1 branch. Pro has no limit."
+ *   - "You can have 3 boards here." (a cap no plan set: a role's, or the default)
+ *
+ * `limit` null (no cap) never reaches here: a refusal always has a number.
+ */
+export function limitReachedText(decision: Pick<LimitDecision, 'limit' | 'raise'>, noun: LimitNoun): string {
+  const cap = decision.limit ?? 0;
+  const raise = decision.raise;
+  if (!raise?.plan) {
+    const base = `You can have ${counted(cap, noun)} here.`;
+    return raise?.next ? `${base} ${nextSentence(raise.next)}` : base;
+  }
+  const base = `${raise.plan.label} allows ${counted(cap, noun)}.`;
+  return raise.next
+    ? `${base} ${nextSentence(raise.next)}`
+    : `${base} This is the most any plan allows. Contact us for a Custom plan.`;
+}
+
+/** The plan that raises the cap, as its own sentence: "Pro allows 5." or "Pro has no limit." */
+function nextSentence(next: NonNullable<LimitRaise['next']>): string {
+  return next.limit === null
+    ? `${next.label} has no limit.`
+    : `${next.label} allows ${next.limit.toLocaleString('en-US')}.`;
 }
 
 export interface LimitCheckInput {

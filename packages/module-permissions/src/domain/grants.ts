@@ -265,6 +265,7 @@ export function composeContext(input: ComposeInput): PermissionContext {
     granted: [...granted].sort(),
     grantedAtAppLevel: [...appLevel].sort(),
     entitled,
+    planKeys: input.plans === undefined ? null : [...new Set((input.plans ?? []).map((plan) => plan.planKey))],
     appRoles,
     ...(input.subscriptionEndedAt ? { subscriptionEndedAt: input.subscriptionEndedAt } : {}),
   };
