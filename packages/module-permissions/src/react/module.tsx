@@ -774,9 +774,9 @@ export interface PermissionsWebModuleOptions {
   /**
    * Where an organization's plan lives when another module owns it (the
    * billing module's Billing page). Given, the read-only
-   * `/organizations/:organizationId/subscription` is not composed and the
-   * organization overview's card opens this page instead, shown to holders of
-   * its key. Absent: the module's own read-only page, as before.
+   * `/organizations/:organizationId/subscription` becomes a redirect to it
+   * (out of the drawer), and the organization overview's card opens it,
+   * shown to holders of its key. Absent: the module's own read-only page.
    */
   planPage?: OrganizationPlanPage;
 }
@@ -795,10 +795,18 @@ export function permissionsWebModuleWith(options: PermissionsWebModuleOptions = 
   }
   return {
     ...permissionsWebModule,
-    routes: (permissionsWebModule.routes ?? [])
-      .filter((route) => route.path !== ORGANIZATION_SUBSCRIPTION_ROUTE)
-      .map((route) =>
-        route.component === OrganizationHomeRoute ? { ...route, component: OrganizationHomeWithPlanRoute } : route,
-      ),
+    routes: (permissionsWebModule.routes ?? []).map((route) => {
+      if (route.path === ORGANIZATION_SUBSCRIPTION_ROUTE) {
+        // Kept as a redirect, out of the drawer: an older link (a notice, a bookmark) still lands on the plan page.
+        const { nav: _nav, ...rest } = route;
+        return {
+          ...rest,
+          redirectTo: `/organizations/:organizationId/${planPage.section}`,
+          feature: planPage.feature,
+          title: planPage.title,
+        };
+      }
+      return route.component === OrganizationHomeRoute ? { ...route, component: OrganizationHomeWithPlanRoute } : route;
+    }),
   };
 }

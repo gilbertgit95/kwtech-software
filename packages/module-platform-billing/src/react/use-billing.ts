@@ -15,7 +15,8 @@ export interface BillingState {
   /** Something the person did worked: said in a `role="status"` line. */
   notice: string | null;
   busy: boolean;
-  reload: () => Promise<void>;
+  /** Reads the page again; answers whether it worked. */
+  reload: () => Promise<boolean>;
   /** Runs one act at a time and re-reads after it, whatever happened. Returns whether it succeeded. */
   run: (action: (client: BillingClient) => Promise<unknown>, done?: string) => Promise<boolean>;
   /** The next page of the history. */
@@ -44,7 +45,8 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
    */
   const generation = useRef(0);
 
-  const reload = useCallback(async () => {
+  /** Reads the page again. Answers whether it worked, so an act that succeeded is never reported as failed. */
+  const reload = useCallback(async (): Promise<boolean> => {
     try {
       const [nextOverview, nextHistory] = await Promise.all([
         client.overview(organizationId),
@@ -53,8 +55,10 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
       generation.current += 1;
       setOverview(nextOverview);
       setHistory(nextHistory);
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load billing.');
+      return false;
     }
   }, [client, organizationId]);
 
@@ -83,12 +87,18 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
       setBusy(true);
       setError(null);
       setNotice(null);
+      let acted = false;
       try {
         await action(client);
+        acted = true;
         if (done) setNotice(done);
-        await reload();
+        // ⚠ The act is done whatever the re-read says: a failed re-read is said as such, with Reload beside it.
+        if (!(await reload())) {
+          setError('That was saved, but the page could not refresh. Reload to see it.');
+        }
         return true;
       } catch (cause) {
+        if (acted) return true;
         setError(cause instanceof Error ? cause.message : 'That did not work.');
         await reload();
         return false;

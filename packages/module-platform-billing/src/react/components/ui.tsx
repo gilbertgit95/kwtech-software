@@ -88,17 +88,32 @@ export function toneClass(tone: BillingTone): string {
   }
 }
 
-/** A failure, announced, with a way to clear it. */
-export function ErrorLine({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+/** A failure, announced, with a way to clear it and, where it helps, to read the page again. */
+export function ErrorLine({
+  message,
+  onDismiss,
+  onReload,
+}: {
+  message: string;
+  onDismiss: () => void;
+  onReload?: (() => void) | undefined;
+}) {
   return (
     <div
       role="alert"
       className="flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
     >
       <span>{message}</span>
-      <button type="button" className="shrink-0 font-medium underline" onClick={onDismiss}>
-        Dismiss
-      </button>
+      <span className="flex shrink-0 gap-3">
+        {onReload ? (
+          <button type="button" className="font-medium underline" onClick={onReload}>
+            Reload
+          </button>
+        ) : null}
+        <button type="button" className="font-medium underline" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </span>
     </div>
   );
 }

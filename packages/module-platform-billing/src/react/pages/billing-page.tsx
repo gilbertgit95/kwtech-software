@@ -91,7 +91,21 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
         </p>
       </header>
 
-      {state.error ? <ErrorLine message={state.error} onDismiss={state.dismissError} /> : null}
+      {state.error ? (
+        <ErrorLine
+          message={state.error}
+          onDismiss={state.dismissError}
+          // Beside the page it explains: a failed re-read after an act is fixed by reading again, not by repeating the act.
+          onReload={
+            state.overview
+              ? () => {
+                  state.dismissError();
+                  void state.reload();
+                }
+              : undefined
+          }
+        />
+      ) : null}
       {state.notice ? (
         <p role="status" className="text-sm text-muted-foreground">
           {state.notice}

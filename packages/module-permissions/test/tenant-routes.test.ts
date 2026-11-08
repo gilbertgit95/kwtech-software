@@ -398,11 +398,12 @@ describe('another module owning the plan page (billing, #96)', () => {
   };
   const configured = permissionsWebModuleWith({ planPage }).routes ?? [];
 
-  it('drops the read-only subscription page, and only it', () => {
-    const paths = (list: typeof configured) => list.map((route) => route.path);
-    expect(paths(routes)).toContain('/organizations/:organizationId/subscription');
-    expect(paths(configured)).not.toContain('/organizations/:organizationId/subscription');
-    expect(configured).toHaveLength(routes.length - 1);
+  it('turns the read-only subscription page into a redirect to the plan page, out of the drawer', () => {
+    const old = configured.find((route) => route.path === '/organizations/:organizationId/subscription');
+    expect(old?.redirectTo).toBe('/organizations/:organizationId/billing');
+    expect(old?.nav).toBeUndefined();
+    expect(old?.feature).toBe('platform-billing:read');
+    expect(configured).toHaveLength(routes.length);
   });
 
   it('keeps the overview at its paths, rendered with the plan page', () => {
