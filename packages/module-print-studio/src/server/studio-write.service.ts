@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { canSeeLayout, checkShareLayout, isStudioVisibility, planChangeLayout } from '../domain/access.js';
 import { prepareCalibration, prepareCalibrationName } from '../domain/calibration.js';
@@ -280,8 +280,9 @@ export class StudioWriteService {
       const current = await tx.studioLayout.count({ where: { ...scope, ownerId: actorId } });
       const decision = await this.checkCap(scope, actorId, current);
       if (!decision.allowed) {
-        throw new StudioWriteError('limit_reached', `You can keep ${decision.limit} layouts here`, {
+        throw new StudioWriteError('limit_reached', limitReachedText(decision, { one: 'layout', many: 'layouts' }), {
           limit: decision.limit,
+          raise: decision.raise,
         });
       }
       return tx.studioLayout.create({ data: { ...scope, ownerId: actorId, updatedById: actorId, ...values } });

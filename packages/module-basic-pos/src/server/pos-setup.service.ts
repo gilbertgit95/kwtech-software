@@ -1,4 +1,4 @@
-import type { SheetImportMode, SheetMatchKey, SheetProblem } from '@kwtech/module-kit';
+import { limitReachedText, type SheetImportMode, type SheetMatchKey, type SheetProblem } from '@kwtech/module-kit';
 import { Inject, Injectable } from '@nestjs/common';
 import { readDefaultReference, readReferenceOptions } from '../domain/references.js';
 import {
@@ -136,8 +136,8 @@ export class PosSetupService {
     if (decision.allowed) return;
     throw new PosWriteError(
       'limit_reached',
-      `This store can have ${decision.limit} items and sizes for sale, and this file would make ${liveAfter}. Archive some, or mark some rows Archived. Nothing was changed.`,
-      { limit: decision.limit, liveAfter },
+      `${limitReachedText(decision, { one: 'item or size for sale', many: 'items and sizes for sale' })} This file would make ${liveAfter.toLocaleString('en-US')}. Archive some, or mark some rows Archived. Nothing was changed.`,
+      { limit: decision.limit, liveAfter, raise: decision.raise },
     );
   }
 }

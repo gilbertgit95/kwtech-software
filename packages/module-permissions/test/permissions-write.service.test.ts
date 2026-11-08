@@ -705,6 +705,16 @@ describe('H1 — capacity is enforced where the row is created', () => {
     expect(writes.memberships).toHaveLength(0);
   });
 
+  it('says the cap in the shared sentence (#101), not the limit key', async () => {
+    const { svc } = fake(emptyState({ memberships: [{ id: 'm1', userId: 'u1', organizationId: 'org1' }] }));
+    await expect(
+      svc.addMember(actor([FEATURE.membersInvite], { [LIMIT.organizationMembers]: 1 }), {
+        organizationId: 'org1',
+        userId: 'u2',
+      }),
+    ).rejects.toMatchObject({ reason: 'at_capacity', message: 'You can have 1 member here.' });
+  });
+
   it('allows the member that exactly fills the cap', async () => {
     const { svc } = fake(emptyState({ memberships: [{ id: 'm1', userId: 'u1', organizationId: 'org1' }] }));
     await expect(

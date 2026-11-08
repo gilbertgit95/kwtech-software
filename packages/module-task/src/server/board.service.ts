@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { checkBoardLifecycle, checkConfigureBoard, isTaskBoardVisibility } from '../domain/access.js';
 import {
@@ -134,9 +134,11 @@ export class TaskBoardService {
       const current = await tx.taskBoard.count({ where: { ...scope, ownerId: actorId } });
       const decision = await this.checkCap(scope, actorId, TASK_LIMIT.boards, current);
       if (!decision.allowed) {
-        throw new TaskWriteError('limit_reached', `You can own ${decision.limit} boards here, counting archived ones`, {
-          limit: decision.limit,
-        });
+        throw new TaskWriteError(
+          'limit_reached',
+          `${limitReachedText(decision, { one: 'board', many: 'boards' })} Archived boards count too.`,
+          { limit: decision.limit, raise: decision.raise },
+        );
       }
       const board = await tx.taskBoard.create({ data: { ...scope, ownerId: actorId, name, visibility } });
       let rank: number | null = null;

@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   BOOKING_SERVICES_MAX,
@@ -301,8 +301,8 @@ export class BookingCatalogueService {
     if (decision.allowed) return;
     throw new BookingWriteError(
       'limit_reached',
-      `This workspace can take bookings for ${decision.limit} resources — archive one, or upgrade the plan`,
-      { limit: decision.limit },
+      `${limitReachedText(decision, { one: 'resource', many: 'resources' })} Archive one to make room.`,
+      { limit: decision.limit, raise: decision.raise },
     );
   }
 

@@ -9,7 +9,7 @@ import {
 } from '../defaults.js';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
-import { limitRaise } from '../domain/limit-raise.js';
+import { limitRaise, planCapOffers } from '../domain/limit-raise.js';
 import {
   checkLimit,
   LIMIT,
@@ -1397,13 +1397,7 @@ export class PermissionsService {
       spec,
       cap,
       planKeys,
-      catalogue: plans.map((plan) => ({
-        key: plan.key,
-        label: plan.label,
-        isPublic: plan.isPublic,
-        archived: plan.archivedAt !== null,
-        limits: Object.fromEntries(plan.limits.map((limit) => [limit.limitKey, limit.value])),
-      })),
+      catalogue: planCapOffers(plans),
     });
   }
 
