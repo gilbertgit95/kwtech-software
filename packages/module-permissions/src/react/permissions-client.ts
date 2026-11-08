@@ -1173,6 +1173,7 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
       return data.revokeWorkspaceRole;
     },
 
+    /** Starts a subscription by hand, with the reason it is recorded under (D5). */
     async createSubscription(input, reason) {
       const data = await graphql<{ createSubscription: SubscriptionView }>(
         `mutation CreateSubscription($input: SubscriptionDraftInput!, $reason: String!) {
@@ -1183,6 +1184,7 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
       return data.createSubscription;
     },
 
+    /** Changes a live subscription's status or period end, with the reason (D5). */
     async updateSubscription(subscriptionId, status, currentPeriodEnd, reason) {
       const data = await graphql<{ updateSubscription: SubscriptionView }>(
         `mutation UpdateSubscription($subscriptionId: String!, $status: String!, $currentPeriodEnd: String!, $reason: String!) {
@@ -1198,6 +1200,7 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
       return data.updateSubscription;
     },
 
+    /** Ends a subscription, with the reason (D5). The row stays, canceled. */
     async endSubscription(subscriptionId, reason) {
       const data = await graphql<{ endSubscription: SubscriptionView }>(
         `mutation EndSubscription($subscriptionId: String!, $reason: String!) {

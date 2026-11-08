@@ -915,6 +915,11 @@ export class PermissionsResolver {
     return this.permissions.listOrganizations();
   }
 
+  /**
+   * Starts a subscription by hand. Not a sale: an ADJUSTMENT with no payment,
+   * so it takes a required reason and is recorded in the organization's
+   * billing history (D5, `PERMISSIONS_SUBSCRIPTION_AUDIT`).
+   */
   @RequireFeature(FEATURE.billingManage)
   @Mutation(() => PermissionSubscriptionType, { name: 'createSubscription' })
   async createSubscription(

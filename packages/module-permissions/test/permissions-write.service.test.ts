@@ -1329,9 +1329,11 @@ describe('subscriptions', () => {
       const heard: Array<{ action: string; reason: string; subscriptionId: string; after: unknown }> = [];
       const locks: string[] = [];
       const audit = {
+        /** Records which organization's billing lock each write took. */
         async lock(organizationId: string) {
           locks.push(organizationId);
         },
+        /** Records what each write told the audit. */
         async subscriptionAdjusted(input: { action: string; reason: string; subscriptionId: string; after: unknown }) {
           heard.push({
             action: input.action,

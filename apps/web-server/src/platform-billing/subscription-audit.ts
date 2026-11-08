@@ -30,6 +30,7 @@ export class SubscriptionAuditToBilling implements PermissionsSubscriptionAudit 
     await billing.lockForAdjustment(organizationId, billingTransaction(tx));
   }
 
+  /** Records the write as billing's `adjustment`, in the write's own transaction (`recordAdjustment`). */
   async subscriptionAdjusted(input: SubscriptionAdjustment, tx: PermissionsTransaction): Promise<void> {
     const billing = this.moduleRef.get(PlatformBillingWriteService, { strict: false });
     await billing.recordAdjustment(input, billingTransaction(tx));
