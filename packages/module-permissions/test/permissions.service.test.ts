@@ -1475,3 +1475,62 @@ describe('loadContext — accessUntil, the fallback plan and the billing exempti
     expect((await without.loadContext('u1', { organizationId: 'org1' }))?.effective).toEqual([]);
   });
 });
+
+describe('checkLimitForActor — a refused plan cap names the plan that raises it (#101)', () => {
+  const catalogue: PlanDefinitionRow[] = [
+    {
+      key: 'starter',
+      label: 'Basic',
+      isPublic: true,
+      icon: null,
+      archivedAt: null,
+      features: [],
+      limits: [{ limitKey: LIMIT.organizationMembers, value: 3 }],
+    },
+    {
+      key: 'pro',
+      label: 'Pro',
+      isPublic: true,
+      icon: null,
+      archivedAt: null,
+      features: [],
+      limits: [{ limitKey: LIMIT.organizationMembers, value: 10 }],
+    },
+  ];
+  const onBasic = () =>
+    service({
+      membership: membership(),
+      plans: catalogue,
+      subscriptions: [
+        plan([], [{ limitKey: LIMIT.organizationMembers, value: 3 }], {
+          planKey: 'starter',
+          plan: { key: 'starter', label: 'Basic' },
+        }),
+      ],
+    }).svc;
+
+  it('adds the plan and the next one to a refusal', async () => {
+    const decision = await onBasic().checkLimitForActor({
+      actorId: 'u1',
+      key: LIMIT.organizationMembers,
+      current: 3,
+      organizationId: 'org1',
+    });
+    expect(decision).toMatchObject({
+      allowed: false,
+      limit: 3,
+      raise: { plan: { key: 'starter', label: 'Basic' }, next: { key: 'pro', label: 'Pro', limit: 10 } },
+    });
+  });
+
+  it('adds nothing to a cap that fits', async () => {
+    const decision = await onBasic().checkLimitForActor({
+      actorId: 'u1',
+      key: LIMIT.organizationMembers,
+      current: 1,
+      organizationId: 'org1',
+    });
+    expect(decision.allowed).toBe(true);
+    expect(decision.raise).toBeUndefined();
+  });
+});

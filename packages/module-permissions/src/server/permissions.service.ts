@@ -1,4 +1,4 @@
-import type { DefaultMomentContribution } from '@kwtech/module-kit';
+import type { DefaultMomentContribution, LimitRaise } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   APP_DEFAULT,
@@ -9,6 +9,7 @@ import {
 } from '../defaults.js';
 import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
+import { limitRaise } from '../domain/limit-raise.js';
 import {
   checkLimit,
   LIMIT,
@@ -1356,7 +1357,40 @@ export class PermissionsService {
      * `defaultValue`, which is what an unconfigured person is entitled to.
      */
     const limits = ctx ? ctx.limits : resolveLimits({ roles: [] }, this.limitRegistry());
-    return this.decideDeclaredLimit(limits, input.key, input.current);
+    const decision = this.decideDeclaredLimit(limits, input.key, input.current);
+    if (decision.allowed || decision.limit === null || !ctx?.planKeys) return decision;
+    const raise = await this.limitRaiseFor(input.key, decision.limit, ctx.planKeys);
+    return raise ? { ...decision, raise } : decision;
+  }
+
+  /**
+   * Which plan set a refused cap and which one raises it (#101), read only on
+   * a refusal: a cap that fits costs no extra query. Undefined for a
+   * role-sourced cap, which no plan sells.
+   */
+  async limitRaiseFor(key: LimitKey, cap: number, planKeys: readonly string[]): Promise<LimitRaise | undefined> {
+    const spec = this.limitRegistry().find((one) => one.key === key);
+    if (spec?.source !== 'plan') return undefined;
+    // The plan list's own read (one signature on the structural client), not a second shape of it.
+    const plans = await this.prisma.permPlan.findMany({
+      include: {
+        features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+        limits: { select: { limitKey: true, value: true } },
+      },
+      orderBy: { key: 'asc' },
+    });
+    return limitRaise({
+      spec,
+      cap,
+      planKeys,
+      catalogue: plans.map((plan) => ({
+        key: plan.key,
+        label: plan.label,
+        isPublic: plan.isPublic,
+        archived: plan.archivedAt !== null,
+        limits: Object.fromEntries(plan.limits.map((limit) => [limit.limitKey, limit.value])),
+      })),
+    });
   }
 
   checkDeclaredLimit(ctx: PermissionContext, key: LimitKey, current: number): LimitDecision {

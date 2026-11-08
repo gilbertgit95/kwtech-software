@@ -213,6 +213,15 @@ organization indistinguishable from an unauthorised one — the user is told
 wrong team. `PermissionsService.checkCapacity()` returns `limit`, `current` and
 `remaining` so the message can say what to do about it.
 
+**A refused plan cap names the plan that raises it (#101).** When
+`checkLimitForActor` (the `LimitChecker` every module is bound to) refuses a
+plan-sourced cap, it adds `raise`: the organization's plan whose number is the
+cap, and the smallest public, unarchived plan with a higher one
+(`limitRaise`, in `domain/limit-raise.ts`; non-public plans such as Custom are
+never offered). The catalogue is read only on a refusal. A role-sourced cap
+gets none, since no plan sells it. The context carries `planKeys`, the plans
+that entitle it (the Free fallback included), for this.
+
 Resolution mirrors entitlement exactly:
 
 | Plans | Limits |
