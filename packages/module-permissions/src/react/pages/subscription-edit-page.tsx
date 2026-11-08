@@ -2,7 +2,7 @@
 
 import { ConfirmDialog } from '@kwtech/web-ui/react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { checkAdjustmentReason } from '../../domain/subscription-draft.js';
+import { ADJUSTMENT_REASON_MAX, checkAdjustmentReason } from '../../domain/subscription-draft.js';
 import { FEATURE } from '../../feature-keys.js';
 import {
   createPermissionsClient,
@@ -209,14 +209,19 @@ export function SubscriptionEditPage({
                   id={endReasonId}
                   value={endReason}
                   rows={2}
-                  maxLength={500}
+                  maxLength={ADJUSTMENT_REASON_MAX}
                   onChange={(event) => setEndReason(event.target.value)}
                   aria-invalid={endReasonError ? true : undefined}
+                  aria-describedby={`${endReasonId}-note`}
                   className={`mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm ${
                     endReasonError ? 'border-destructive' : 'border-border'
                   }`}
                 />
-                <span className={`mt-1 block text-xs ${endReasonError ? 'text-destructive' : ''}`}>
+                <span
+                  id={`${endReasonId}-note`}
+                  role={endReasonError ? 'alert' : undefined}
+                  className={`mt-1 block text-xs ${endReasonError ? 'text-destructive' : ''}`}
+                >
                   {endReasonError ??
                     'Required. Kept in the organization’s billing history as an adjustment with no payment.'}
                 </span>

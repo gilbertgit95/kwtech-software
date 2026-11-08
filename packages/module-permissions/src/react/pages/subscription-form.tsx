@@ -2,7 +2,9 @@
 
 import { DatePicker } from '@kwtech/web-ui/react';
 import { useId, useMemo, useState } from 'react';
+import { UNBILLED_GRACE_DAYS } from '../../domain/subscription-access.js';
 import {
+  ADJUSTMENT_REASON_MAX,
   checkAdjustmentReason,
   type SubscriptionDraft,
   type SubscriptionDraftErrors,
@@ -276,7 +278,7 @@ export function SubscriptionForm({
       <Field
         label="Renews on"
         error={errors.currentPeriodEnd}
-        hint="Access ends on this date plus the grace days (#92), and the organization falls back to Free. Empty means no end."
+        hint={`Access ends ${UNBILLED_GRACE_DAYS} days after this date. The organization then falls back to the platform’s plan for when no subscription is in force, or to no plan if none is set. Empty means no end.`}
       >
         {(id) => (
           // web-ui's calendar, not `<input type="date">`, whose calendar ignores the theme (issue #4).
@@ -305,13 +307,14 @@ export function SubscriptionForm({
             id={id}
             value={reason}
             rows={2}
-            maxLength={500}
+            maxLength={ADJUSTMENT_REASON_MAX}
             placeholder="For example: agreed discount for the pilot, or fold of workspace subscriptions"
             onChange={(event) => {
               setSaved(false);
               setReason(event.target.value);
             }}
             aria-invalid={reasonError ? true : undefined}
+            aria-describedby={`${id}-note`}
             className={inputClass(Boolean(reasonError))}
           />
         )}
@@ -388,10 +391,15 @@ function Field({
         {label}
       </label>
       {children(id)}
+      {/* `${id}-note`, so a control can point `aria-describedby` at whichever note is showing. */}
       {error ? (
-        <p className="mt-1 text-xs text-destructive">{error}</p>
+        <p id={`${id}-note`} role="alert" className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
       ) : hint ? (
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+        <p id={`${id}-note`} className="mt-1 text-xs text-muted-foreground">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
