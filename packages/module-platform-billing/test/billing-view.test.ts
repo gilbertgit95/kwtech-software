@@ -9,6 +9,7 @@ import {
   formatInstantDay,
   formatMoney,
   mainAction,
+  planChoices,
 } from '../src/react/view/billing-view.js';
 import { checkPaymentDraft, parseAmount, paymentInput } from '../src/react/view/payment-form.js';
 
@@ -184,5 +185,28 @@ describe('the payment details form', () => {
       sender: null,
       note: null,
     });
+  });
+});
+
+describe('the plans a request may name', () => {
+  const plans = [
+    { key: 'free', label: 'Free', monthly: null, isPublic: true, archived: false, current: false },
+    { key: 'lite', label: 'Lite', monthly: 0, isPublic: true, archived: false, current: false },
+    { key: 'basic', label: 'Basic', monthly: 100_000, isPublic: true, archived: false, current: true },
+    { key: 'pro', label: 'Pro', monthly: 150_000, isPublic: true, archived: false, current: false },
+    { key: 'old', label: 'Old', monthly: 80_000, isPublic: true, archived: true, current: false },
+  ];
+  const keys = (mode: Parameters<typeof planChoices>[1]) => planChoices(plans, mode).map((plan) => plan.key);
+
+  it('offers a change every other priced plan, a zero-priced one included', () => {
+    expect(keys('change_plan')).toEqual(['lite', 'pro']);
+  });
+
+  it('⚠ offers a replacement a zero-priced plan too', () => {
+    expect(keys('replace')).toEqual(['lite', 'basic', 'pro']);
+  });
+
+  it('offers a subscribe paid plans only, the plan being tried included', () => {
+    expect(keys('subscribe')).toEqual(['basic', 'pro']);
   });
 });

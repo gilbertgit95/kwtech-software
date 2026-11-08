@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from 'react';
 import type { BillingClient, BillingOverviewView, BillingPreviewView, ChosenPlanKind } from '../billing-client.js';
-import { formatDay, formatMoney, lineLabel } from '../view/billing-view.js';
+import { formatDay, formatMoney, lineLabel, planChoices } from '../view/billing-view.js';
 import { buttonClass, Section } from './ui.js';
 
 /** What the panel asks for: a renewal of the current plan, or a plan someone chooses. */
@@ -38,15 +38,7 @@ export function PlanRequest({
   onClose: () => void;
 }) {
   const groupId = useId();
-  // Only a plan CHANGE leaves the current plan out: a trial's owner subscribes to the plan they are trying.
-  // A plan change may go down to a plan priced at nothing (it has a price, of zero); a subscribe is to a paid plan.
-  const choices = overview.plans.filter(
-    (plan) =>
-      plan.monthly !== null &&
-      (mode === 'change_plan' ? plan.monthly >= 0 : plan.monthly > 0) &&
-      !plan.archived &&
-      (mode !== 'change_plan' || !plan.current),
-  );
+  const choices = planChoices(overview.plans, mode);
   const [planKey, setPlanKey] = useState<string | null>(mode === 'renew' ? null : (choices[0]?.key ?? null));
   const [preview, setPreview] = useState<BillingPreviewView | null>(null);
   const [failure, setFailure] = useState<string | null>(null);

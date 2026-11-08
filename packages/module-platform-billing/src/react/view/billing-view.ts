@@ -1,5 +1,10 @@
 import { DEFAULT_TIME_ZONE, isValidTimeZone, zonedDayKey } from '@kwtech/module-kit';
-import type { BillingEventView, BillingOverviewView, BillingStandingView } from '../billing-client.js';
+import type {
+  BillingEventView,
+  BillingOverviewView,
+  BillingPlanOfferView,
+  BillingStandingView,
+} from '../billing-client.js';
 
 /**
  * THE BILLING PAGE'S RULES, as pure functions (frontend rules: view logic in
@@ -436,4 +441,28 @@ export function standingWord(standing: Pick<BillingStandingView, 'kind' | 'trial
     default:
       return 'Free';
   }
+}
+
+/**
+ * The plans a request may name, by what it is (`PlanRequest`'s list):
+ * - only a plan CHANGE leaves the current plan out: a trial's owner
+ *   subscribes to the plan they are trying;
+ * - a plan change and a replacement may go to a plan priced at zero (it has
+ *   a price, of nothing): leaving a paid plan for it is allowed;
+ * - a subscribe is to a paid plan: the free plan is what the organization is
+ *   already on without one.
+ * An archived plan, and one with no price at all, are never offered.
+ */
+export function planChoices(
+  plans: readonly BillingPlanOfferView[],
+  mode: 'renew' | 'subscribe' | 'change_plan' | 'replace',
+): BillingPlanOfferView[] {
+  const zeroAllowed = mode === 'change_plan' || mode === 'replace';
+  return plans.filter(
+    (plan) =>
+      plan.monthly !== null &&
+      (zeroAllowed ? plan.monthly >= 0 : plan.monthly > 0) &&
+      !plan.archived &&
+      (mode !== 'change_plan' || !plan.current),
+  );
 }
