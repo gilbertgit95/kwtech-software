@@ -1,4 +1,5 @@
 import { archiveCreditNote, planArchiveCredit } from '../src/domain/archives.js';
+import { platformDayStart } from '../src/domain/days.js';
 import { billingStanding, type SubscriptionDays } from '../src/domain/standing.js';
 import { PlatformBillingWriteError } from '../src/server/platform-billing.errors.js';
 import { type FakeBilling, fakeBilling, giveSubscription, noonOn, setPrices } from './fake-client.js';
@@ -96,6 +97,34 @@ describe('archiving a plan, as billing hears of it', () => {
     // Archived again on the 21st: the days left from then.
     await archive(billing, 'basic', true, '2026-11-21');
     expect(await billing.reads.creditBalance(ORG)).toBe(33_333);
+  });
+
+  it('⚠ credits from what was committed while it waited for the lock, not from its first read', async () => {
+    const billing = await onBasicFake();
+    const read = billing.subscriptions.liveOnPlan.bind(billing.subscriptions);
+    let calls = 0;
+    billing.subscriptions.liveOnPlan = async (planKey, tx) => {
+      const rows = await read(planKey, tx);
+      calls += 1;
+      // A renewal of December commits right after the first read, while the archive waits on ORG's lock.
+      // (Written through `tx`: the fake's transaction reads its own copy, as a read after the lock sees the commit.)
+      if (calls === 1) {
+        await billing.subscriptions.renew(
+          {
+            organizationId: ORG,
+            periodStart: platformDayStart('2026-12-01', 'Asia/Manila'),
+            periodEnd: platformDayStart('2027-01-01', 'Asia/Manila'),
+            billingDay: 1,
+            accessUntil: platformDayStart('2027-01-08', 'Asia/Manila'),
+          },
+          tx,
+        );
+      }
+      return rows;
+    };
+    await archive(billing, 'basic', true, '2026-11-25');
+    // 6 days of November and December, paid ahead: the renewed row, not the stale one.
+    expect(billing.store().credits.map((credit) => credit.amount)).toEqual([120_000]);
   });
 
   it('withdraws pending requests naming the plan that have no payment, cancelling their bills', async () => {

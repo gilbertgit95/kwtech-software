@@ -77,6 +77,8 @@ interface State {
     liveOrganizationId?: string | null;
     accessUntil?: Date | null;
     currentPeriodEnd?: Date | null;
+    /** The founder account a trial row was given for (unique, D2). */
+    trialUserId?: string | null;
   }[];
   /**
    * The platform's defaults, as stored.
@@ -497,10 +499,12 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
           planKey?: string;
           endedAt?: null;
           liveOrganizationId?: string;
+          trialUserId?: string;
         };
       }) =>
         state.subscriptions.find(
           (sub) =>
+            (args.where.trialUserId === undefined || sub.trialUserId === args.where.trialUserId) &&
             (args.where.liveOrganizationId === undefined || sub.liveOrganizationId === args.where.liveOrganizationId) &&
             (args.where.id === undefined || sub.id === args.where.id) &&
             (args.where.organizationId === undefined || sub.organizationId === args.where.organizationId) &&
@@ -517,12 +521,15 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
           currentPeriodEnd: Date | null;
           accessUntil: Date | null;
           liveOrganizationId: string | null;
+          trialUserId?: string | null;
         };
       }) => {
-        // The unique `liveOrganizationId`, enforced as the database does (#105).
+        // The unique `liveOrganizationId` and `trialUserId`, enforced as the database does (#105, D2).
         const taken =
-          args.data.liveOrganizationId !== null &&
-          state.subscriptions.some((sub) => sub.liveOrganizationId === args.data.liveOrganizationId);
+          (args.data.liveOrganizationId !== null &&
+            state.subscriptions.some((sub) => sub.liveOrganizationId === args.data.liveOrganizationId)) ||
+          (typeof args.data.trialUserId === 'string' &&
+            state.subscriptions.some((sub) => sub.trialUserId === args.data.trialUserId));
         if (taken) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
         writes.subscriptions.push(args.data);
         const row = { id: id('sub'), ...args.data, endedAt: null };
@@ -2290,6 +2297,22 @@ describe('the platform defaults', () => {
         expect(rows(writes).map((row) => [row.planKey, row.trialUserId ?? null])).toEqual([
           ['basic', 'actor'],
           ['free', null],
+        ]);
+      });
+
+      it('still gives a different founder a trial after another account used one', async () => {
+        const { svc, writes } = fake(emptyState({ plans, defaults }));
+        await svc.createOrganization(founder(), { key: 'first', name: 'First' });
+        await svc.createOrganization(
+          { ...founder(), subjectId: 'someone-else' },
+          {
+            key: 'second',
+            name: 'Second',
+          },
+        );
+        expect(rows(writes).map((row) => [row.planKey, row.trialUserId ?? null])).toEqual([
+          ['basic', 'actor'],
+          ['basic', 'someone-else'],
         ]);
       });
 

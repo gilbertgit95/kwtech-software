@@ -849,13 +849,30 @@ export class PlatformBillingWriteService {
     const settings = await this.reads.settings(tx);
     const today = platformDay(now, settings.timeZone);
     const label = (await this.reads.plans()).get(planKey)?.label ?? planKey;
-    const named = archived ? await this.pendingNaming(tx, planKey) : [];
-    const rows = await this.subscriptions.liveOnPlan(planKey, tx);
-
-    // ⚠ Every organization's lock, in ONE order, before anything is read or
-    // written: two archives at once then queue instead of deadlocking.
-    const organizations = [...new Set([...named, ...rows].map((one) => one.organizationId))].sort();
-    for (const organizationId of organizations) await this.lockOrganization(tx, organizationId);
+    // ⚠ READ, LOCK, READ AGAIN. The first read only decides whom to lock;
+    // every organization is locked in ONE sorted order, so two archives at
+    // once queue instead of deadlocking. A decision that committed while this
+    // waited (a renewal, a plan change, new payment details) is only visible
+    // to a read made after the lock, so both lists are read again and the
+    // second answer is the one used. An organization that appears only in the
+    // second read is locked too, before anything of it is written.
+    const locked = new Set<string>();
+    const lockAll = async (ids: readonly string[]) => {
+      for (const organizationId of [...new Set(ids)].sort()) {
+        if (locked.has(organizationId)) continue;
+        await this.lockOrganization(tx, organizationId);
+        locked.add(organizationId);
+      }
+    };
+    const readBoth = async () =>
+      [
+        archived ? await this.pendingNaming(tx, planKey) : [],
+        await this.subscriptions.liveOnPlan(planKey, tx),
+      ] as const;
+    const [firstNamed, firstRows] = await readBoth();
+    await lockAll([...firstNamed, ...firstRows].map((one) => one.organizationId));
+    const [named, rows] = await readBoth();
+    await lockAll([...named, ...rows].map((one) => one.organizationId));
 
     if (named.length > 0) {
       const paid: string[] = [];
