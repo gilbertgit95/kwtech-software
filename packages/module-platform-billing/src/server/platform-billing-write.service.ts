@@ -6,6 +6,8 @@ import { addDays, type DayKey, isDayKey, platformDay, platformDayStart } from '.
 import { type BillSnapshot, billSnapshot, type ReceiptSnapshot, readBillSnapshot } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
 import {
+  BILLING_GRACE_MAX,
+  BILLING_ISSUER_DETAILS_MAX,
   BILLING_TEXT_MAX,
   isPaymentMethod,
   needsReference,
@@ -101,8 +103,8 @@ const ARCHIVE_SWEEP_MAX = 5000;
 /** The longest free text a person types into billing (a note, a reason, a reference): `BILLING_TEXT_MAX`. */
 export const PLATFORM_BILLING_TEXT_MAX = BILLING_TEXT_MAX;
 
-/** The most grace a super admin may set: a month. More is not grace, it is a free plan. */
-export const PLATFORM_BILLING_GRACE_MAX = 31;
+/** The most grace a super admin may set: `BILLING_GRACE_MAX`, shared with the settings form. */
+export const PLATFORM_BILLING_GRACE_MAX = BILLING_GRACE_MAX;
 
 /**
  * Every write billing makes.
@@ -1066,7 +1068,8 @@ export class PlatformBillingWriteService {
         data.graceDays = input.graceDays;
       }
       if (input.issuerName != null) data.issuerName = prepareText(input.issuerName) ?? '';
-      if (input.issuerDetails != null) data.issuerDetails = prepareText(input.issuerDetails, 2000) ?? '';
+      if (input.issuerDetails != null)
+        data.issuerDetails = prepareText(input.issuerDetails, BILLING_ISSUER_DETAILS_MAX) ?? '';
       if (input.paymentAccounts != null) {
         const accounts = input.paymentAccounts.map((account) => ({
           method: account.method,

@@ -10,13 +10,15 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phases 4 and 5b done (#93, #95); phase 6 built (#117, #119), its in-app check (#96) waiting on phase 7.** The pure core (#91), the schema, the
+**Status: phases 4 and 5b done (#93, #95); phase 6 built (#117, #119), its in-app check (#96) waiting on phase 7; phase 7a built (#121).** The pure core (#91), the schema, the
 services and the GraphQL API for requests, payment details, approvals and
 rejections, voids, closing as credit, cancelling, plan archives, the trial,
 the audited admin adjustments, the settings and the prices; composed into the
 API; the daily check with every notification (#95); and the organization's
 Billing page with printing, the statement of account and its CSV (#117,
-#119). Still to come: the platform's pages (#97).
+#119); the platform's queue, request page, reprints and settings with the
+plans' prices (#121). Still to come: every organization's standing and the
+reports (#97).
 
 ## In a Next.js app
 
@@ -67,7 +69,35 @@ and points the organization overview's card here (`apps/web-app/src/modules.ts`)
   a credit entry, and netting them would count it twice.
 - **An expired organization's denials link here**: the app passes the Billing
   page as `FeatureDenied`'s `nextStep` for `subscription_expired`.
-- The platform's pages are phase 7 (#97).
+
+**The platform's pages** (phase 7a, #121), app level, in the Administration
+group. All are read with `queue_read`; inside them the decisions hide without
+`approve` or `void`, and the settings changes without `manage_settings`
+(`useHoldsFeature`; the API refuses again).
+
+- **The billing queue**, `/admin/billing`: Waiting (ready to check first,
+  then the oldest, `sortQueue`) and Decided (newest first,
+  `platformBillingDecided`), each card with the organization's name, the bill
+  and how many checks flag.
+- **One request**, `/admin/billing/requests/:requestId`: the checks in words,
+  each naming what triggered it (`queueChecks`: short or over the bill, a
+  reference used elsewhere, a self-request, a member approving, a hold in
+  force), the bill, every version of the organization's payment details, the
+  timeline. Approve starts from the latest details (`approvalDraft`) and
+  sends the details version reviewed, so details changed since are refused;
+  Reject and Void need a reason, Close as credit takes the payment and an
+  optional one (`checkDecisionReason`). Void shows only on an approved
+  request.
+- **A reprint**, `/admin/billing/requests/:requestId/document?kind=&number=`
+  (`chrome: 'fullscreen'`): the organization's own printed document
+  (`PrintedDocument`), read through the review query, so staff need no
+  membership.
+- **Billing settings**, `/admin/billing/settings`: currency and time zone
+  (fixed once anything is billed, D16), grace days (`BILLING_GRACE_MAX`), the
+  issuer, the accounts organizations pay into; and every plan with today's
+  price, its price history, and a form to set a price from a day
+  (`platformBillingPlanList`, `checkSettingsDraft`, `settingsChange` sends
+  only what changed, `checkPriceDraft`).
 
 ## In a NestJS app
 
@@ -116,7 +146,7 @@ App level (`PlatformBillingAdminResolver`, no scope):
 
 | Operation | Key |
 |---|---|
-| `platformBillingQueue`, `platformBillingReview`, `platformBillingSettings`, `platformBillingPrices` | `queue_read` |
+| `platformBillingQueue`, `platformBillingDecided`, `platformBillingReview`, `platformBillingSettings`, `platformBillingPrices`, `platformBillingPlanList` | `queue_read` |
 | `approvePlatformBillingRequest`, `rejectPlatformBillingRequest`, `closePlatformBillingRequestAsCredit` | `approve` |
 | `voidPlatformBillingRequest` | `void` |
 | `setPlatformBillingSettings`, `setPlatformBillingPrice` | `manage_settings` |

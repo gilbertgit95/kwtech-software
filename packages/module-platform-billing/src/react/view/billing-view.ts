@@ -85,6 +85,15 @@ export function formatInstantDay(iso: string, timeZone: string): string {
   return formatDay(zonedDayKey(date, isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE));
 }
 
+/**
+ * The day `now` is in the billing time zone, as a day key: what the platform's
+ * forms start their dates from. An unknown zone falls back to
+ * `DEFAULT_TIME_ZONE`, never UTC.
+ */
+export function billingDayOf(now: Date, timeZone: string): string {
+  return zonedDayKey(now, isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE);
+}
+
 /** `1 day`, `3 days`. */
 function days(count: number | null): string {
   const value = count ?? 0;

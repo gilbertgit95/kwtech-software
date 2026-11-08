@@ -107,14 +107,27 @@ export const PLATFORM_BILLING_OPERATIONS = {
   queue: /* GraphQL */ `
     query PlatformBillingQueue($cursor: String, $limit: Int) {
       platformBillingQueue(cursor: $cursor, limit: $limit) {
-        items { request { ${REQUEST} } flags { ${FLAGS} } }
+        items { request { ${REQUEST} } organizationName flags { ${FLAGS} } }
         nextCursor
       }
     }
   `,
+  decided: /* GraphQL */ `
+    query PlatformBillingDecided($cursor: String, $limit: Int) {
+      platformBillingDecided(cursor: $cursor, limit: $limit) {
+        items { request { ${REQUEST} } organizationName flags { ${FLAGS} } }
+        nextCursor
+      }
+    }
+  `,
+  planList: /* GraphQL */ `
+    query PlatformBillingPlanList {
+      platformBillingPlanList { key label isPublic archived monthly }
+    }
+  `,
   review: /* GraphQL */ `
     query PlatformBillingReview($requestId: String!) {
-      platformBillingReview(requestId: $requestId) { request { ${REQUEST} } flags { ${FLAGS} } }
+      platformBillingReview(requestId: $requestId) { request { ${REQUEST} } organizationName flags { ${FLAGS} } }
     }
   `,
   settings: /* GraphQL */ `

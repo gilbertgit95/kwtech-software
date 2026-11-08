@@ -114,6 +114,8 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     description: "See every organization's requests, standing and credit, and the platform's billing reports.",
     bindings: [
       { surface: 'graphql_operation', identifier: 'Query.platformBillingQueue' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingDecided' },
+      { surface: 'graphql_operation', identifier: 'Query.platformBillingPlanList' },
       { surface: 'graphql_operation', identifier: 'Query.platformBillingReview' },
       { surface: 'graphql_operation', identifier: 'Query.platformBillingSettings' },
       { surface: 'graphql_operation', identifier: 'Query.platformBillingPrices' },

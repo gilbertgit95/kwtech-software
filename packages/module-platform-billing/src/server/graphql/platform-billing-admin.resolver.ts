@@ -1,14 +1,17 @@
-import { Inject, Optional } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { platformDay } from '../../domain/days.js';
+import { priceOn } from '../../domain/standing.js';
 import { billingRefusal } from '../platform-billing.errors.js';
 import type { PlatformBillingModuleOptions } from '../platform-billing.options.js';
-import { PlatformBillingService } from '../platform-billing.service.js';
+import { PlatformBillingService, type RequestDetail } from '../platform-billing.service.js';
 import { PLATFORM_BILLING_OPTIONS, PLATFORM_BILLING_PEOPLE } from '../platform-billing.tokens.js';
 import { PlatformBillingWriteService } from '../platform-billing-write.service.js';
 import type { PlatformBillingPeople } from '../ports.js';
 import {
   PlatformBillingApprovalInputType,
   PlatformBillingPageArgs,
+  PlatformBillingPlanEntryType,
   PlatformBillingPriceType,
   PlatformBillingQueueItemType,
   PlatformBillingQueuePageType,
@@ -44,6 +47,8 @@ export class PlatformBillingAdminResolver {
     @Optional() @Inject(PLATFORM_BILLING_PEOPLE) private readonly people?: PlatformBillingPeople,
   ) {}
 
+  private readonly logger = new Logger('PlatformBillingAdminResolver');
+
   /** Pending requests, oldest first, each with the checks an approver reads. */
   @Query(() => PlatformBillingQueuePageType, { name: 'platformBillingQueue' })
   async queue(
@@ -52,14 +57,37 @@ export class PlatformBillingAdminResolver {
   ): Promise<PlatformBillingQueuePageType> {
     const viewerId = this.actor(gql.req);
     const result = await this.reads.pendingRequests(page.cursor ?? null, page.limit ?? null);
-    const items: PlatformBillingQueueItemType[] = [];
-    for (const detail of result.items) {
-      // Sequential: a page is at most PLATFORM_BILLING_PAGE_MAX, and each check is one indexed read.
-      const member = await this.isMember(viewerId, detail.request.organizationId);
-      const flags = await this.reads.flags(detail, viewerId, member);
-      items.push({ request: renderRequest(detail), flags: { ...flags, referenceUsedOn: [...flags.referenceUsedOn] } });
-    }
-    return { items, nextCursor: result.nextCursor };
+    return { items: await this.items(result.items, viewerId), nextCursor: result.nextCursor };
+  }
+
+  /** Decided requests, newest first: where an approval to void, or any past bill or receipt, is found. */
+  @Query(() => PlatformBillingQueuePageType, { name: 'platformBillingDecided' })
+  async decided(
+    @Context() gql: { req?: unknown },
+    @Args() page: PlatformBillingPageArgs,
+  ): Promise<PlatformBillingQueuePageType> {
+    const viewerId = this.actor(gql.req);
+    const result = await this.reads.decidedRequests(page.cursor ?? null, page.limit ?? null);
+    return { items: await this.items(result.items, viewerId), nextCursor: result.nextCursor };
+  }
+
+  /** Every plan, archived ones included, with today's price: the price list's rows. */
+  @Query(() => [PlatformBillingPlanEntryType], { name: 'platformBillingPlanList' })
+  async planList(@Context() gql: { req?: unknown }): Promise<PlatformBillingPlanEntryType[]> {
+    this.actor(gql.req);
+    const [plans, prices, settings] = await Promise.all([
+      this.reads.plans(),
+      this.reads.prices(),
+      this.reads.settings(),
+    ]);
+    const today = platformDay(new Date(), settings.timeZone);
+    return [...plans.values()].map((plan) => ({
+      key: plan.key,
+      label: plan.label,
+      isPublic: plan.isPublic,
+      archived: plan.archived,
+      monthly: priceOn(prices, plan.key, today),
+    }));
   }
 
   @Query(() => PlatformBillingQueueItemType, { name: 'platformBillingReview', nullable: true })
@@ -70,12 +98,7 @@ export class PlatformBillingAdminResolver {
     const viewerId = this.actor(gql.req);
     const detail = await this.reads.anyRequest(requestId);
     if (!detail) return null;
-    const flags = await this.reads.flags(
-      detail,
-      viewerId,
-      await this.isMember(viewerId, detail.request.organizationId),
-    );
-    return { request: renderRequest(detail), flags: { ...flags, referenceUsedOn: [...flags.referenceUsedOn] } };
+    return (await this.items([detail], viewerId))[0] ?? null;
   }
 
   @Query(() => PlatformBillingSettingsType, { name: 'platformBillingSettings' })
@@ -181,6 +204,52 @@ export class PlatformBillingAdminResolver {
     const detail = await this.reads.anyRequest(requestId);
     if (!detail) throw billingRefusal('not_found');
     return renderRequest(detail);
+  }
+
+  /**
+   * Each request as an approver reads it: rendered, its checks, and its
+   * organization's name. Read in parallel with `Promise.all`, bounded by
+   * the page: at most PLATFORM_BILLING_PAGE_MAX items, each a few indexed
+   * reads.
+   */
+  private async items(details: readonly RequestDetail[], viewerId: string): Promise<PlatformBillingQueueItemType[]> {
+    // Each item is independent, so they are read in parallel. One organization often has several requests on a
+    // page: its name is read once, the promise shared.
+    const names = new Map<string, Promise<string | null>>();
+    const nameOf = (organizationId: string) => {
+      const known = names.get(organizationId);
+      if (known) return known;
+      const read = this.organizationName(organizationId);
+      names.set(organizationId, read);
+      return read;
+    };
+    return Promise.all(
+      details.map(async (detail) => {
+        const organizationId = detail.request.organizationId;
+        const [flags, organizationName] = await Promise.all([
+          this.isMember(viewerId, organizationId).then((member) => this.reads.flags(detail, viewerId, member)),
+          nameOf(organizationId),
+        ]);
+        return {
+          request: renderRequest(detail),
+          organizationName,
+          flags: { ...flags, referenceUsedOn: [...flags.referenceUsedOn] },
+        };
+      }),
+    );
+  }
+
+  /** The organization's name, or null: unbound, or a read that failed (logged, never blocking the queue). */
+  private async organizationName(organizationId: string): Promise<string | null> {
+    if (!this.people) return null;
+    try {
+      return await this.people.organizationName(organizationId);
+    } catch (error) {
+      this.logger.warn(
+        `An organization's name could not be read for the queue: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   /** Unbound: flagged as a member, the side that asks for a second look (D15). */
