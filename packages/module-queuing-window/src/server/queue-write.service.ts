@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type LimitChecker, NULL_LIMIT_CHECKER } from '@kwtech/module-kit';
+import { type LimitChecker, limitReachedText, NULL_LIMIT_CHECKER } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { checkLineShape, formatTicketLabel, prepareLineName, preparePrefix } from '../domain/lines.js';
 import { prepareNickname } from '../domain/nicknames.js';
@@ -940,9 +940,11 @@ export class QueueWriteService {
       workspaceId: scope.workspaceId,
     });
     if (!decision.allowed) {
-      throw new QueueWriteError('cap_reached', `This workspace can have ${decision.limit} windows`, {
-        limit: decision.limit,
-      });
+      throw new QueueWriteError(
+        'cap_reached',
+        `${limitReachedText(decision, { one: 'window', many: 'windows' })} Archive one to add another.`,
+        { limit: decision.limit, raise: decision.raise },
+      );
     }
   }
 }

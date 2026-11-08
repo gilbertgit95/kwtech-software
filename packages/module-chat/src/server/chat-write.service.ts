@@ -1,4 +1,4 @@
-import type { LimitChecker } from '@kwtech/module-kit';
+import { type LimitChecker, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { CHAT_DEFAULT, type ChatDefaultReader } from '../defaults.js';
 import { clearAtFrom, effectiveAvailability, isAvailability } from '../domain/availability.js';
@@ -207,10 +207,11 @@ export class ChatWriteService {
 
       const decision = await this.checker.check({ actorId, key: CHAT_LIMIT.groupChats, current });
       if (!decision.allowed) {
-        throw new ChatWriteError('cap_reached', 'You have as many group chats as your role allows', {
-          limit: decision.limit,
-          current: decision.current,
-        });
+        throw new ChatWriteError(
+          'cap_reached',
+          `${limitReachedText(decision, { one: 'group chat', many: 'group chats' })} Groups you started and are still in count: archive one you own, or leave one, to start another.`,
+          { limit: decision.limit, current: decision.current },
+        );
       }
 
       const blocks = await tx.chatBlock.findMany({

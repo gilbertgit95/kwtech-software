@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { isValidTimeZone } from '@kwtech/module-kit';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { isValidTimeZone, type LimitRaise, limitReachedText } from '@kwtech/module-kit';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { hasFeature } from '../check.js';
 import {
   APP_DEFAULT,
@@ -20,6 +20,7 @@ import {
   normaliseInviteEmail,
   validateInvitationDraft,
 } from '../domain/invitation.js';
+import { limitRaise, PERMISSIONS_LIMIT_NOUNS, planCapOffers } from '../domain/limit-raise.js';
 import { assertPlanLimits, LIMIT, LIMIT_REGISTRY, type LimitKey, type LimitSpec } from '../domain/limits.js';
 import { clonePlanFeatures, type PlanDraft, planLimitValues, validatePlanDraft } from '../domain/plan-draft.js';
 import { cloneFeatures, type RoleDraft, roleLimitValues, validateRoleDraft } from '../domain/role-draft.js';
@@ -153,6 +154,9 @@ function defaultPeriodEnd(days: string | null, now: Date): Date | null {
   end.setUTCDate(end.getUTCDate() + count);
   return end;
 }
+
+/** For the one advisory read a cap refusal may do (#101): its failure is logged, never thrown. */
+const WRITE_LIMITS_LOGGER = new Logger('PermissionsLimits');
 
 @Injectable()
 export class PermissionsWriteService {
@@ -3106,7 +3110,39 @@ export class PermissionsWriteService {
       // 'at_capacity', never 'not_permitted'. A full organization is not an
       // unauthorised one, and answering "access denied" to "invite a colleague"
       // sends the ticket to the wrong team.
-      throw new PermissionWriteError('at_capacity', `Limit '${key}' reached`, { limit: key, cap: limit, current });
+      const raise = await this.limitRaiseIn(tx, actor, key, limit);
+      const noun = PERMISSIONS_LIMIT_NOUNS[key] ?? { one: 'one', many: 'of these' };
+      throw new PermissionWriteError('at_capacity', limitReachedText(raise ? { limit, raise } : { limit }, noun), {
+        limit: key,
+        cap: limit,
+        current,
+        ...(raise ? { raise } : {}),
+      });
+    }
+  }
+
+  /** Which plan set the refused cap and which raises it (#101), read in the refusing transaction. */
+  private async limitRaiseIn(
+    tx: PermissionsTransaction,
+    actor: PermissionContext,
+    key: LimitKey,
+    cap: number,
+  ): Promise<LimitRaise | undefined> {
+    const spec = LIMIT_REGISTRY.find((one) => one.key === key);
+    if (spec?.source !== 'plan' || !actor.planKeys) return undefined;
+    // ⚠ Advice on top of the refusal: a failed read is logged and the refusal still goes out, number alone.
+    try {
+      const plans = await tx.permPlan.findMany({
+        include: {
+          features: { where: { feature: { deprecatedAt: null } }, select: { featureKey: true } },
+          limits: { select: { limitKey: true, value: true } },
+        },
+        orderBy: { key: 'asc' },
+      });
+      return limitRaise({ spec, cap, planKeys: actor.planKeys, catalogue: planCapOffers(plans) });
+    } catch (error) {
+      WRITE_LIMITS_LOGGER.warn(`Could not read the plans to name the one raising '${key}': ${String(error)}`);
+      return undefined;
     }
   }
 

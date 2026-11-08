@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   canSeeNote,
@@ -94,9 +94,11 @@ export class NoteWriteService {
       const current = await tx.note.count({ where: { ...scope, authorId: actorId } });
       const decision = await this.checkCap(scope, actorId, current);
       if (!decision.allowed) {
-        throw new NoteWriteError('limit_reached', `You can keep ${decision.limit} notes here, counting the trash`, {
-          limit: decision.limit,
-        });
+        throw new NoteWriteError(
+          'limit_reached',
+          `${limitReachedText(decision, { one: 'note', many: 'notes' })} Notes in the trash count; empty it to make room.`,
+          { limit: decision.limit, raise: decision.raise },
+        );
       }
       return tx.note.create({
         data: {

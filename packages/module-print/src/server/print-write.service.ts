@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { prepareAgentName } from '../domain/agents.js';
 import { PRINT_PAIRING_CODE_LENGTH, pairingCodeFromBytes, pairingExpiry } from '../domain/pairing.js';
@@ -67,8 +67,8 @@ export class PrintWriteService {
       if (!decision.allowed) {
         throw new PrintWriteError(
           'limit_reached',
-          `This workspace can have ${decision.limit} paired computers — revoke one first`,
-          { limit: decision.limit },
+          `${limitReachedText(decision, { one: 'paired computer', many: 'paired computers' })} Revoke one to pair another.`,
+          { limit: decision.limit, raise: decision.raise },
         );
       }
       await tx.printPairingCode.deleteMany({

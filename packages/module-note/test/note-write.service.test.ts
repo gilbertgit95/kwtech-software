@@ -82,6 +82,18 @@ describe('the per-person cap', () => {
     expect(check).toHaveBeenCalledWith({ actorId: ANA, key: NOTE_LIMIT.notes, current: 0, ...SCOPE });
   });
 
+  it('names the plan that raises the cap, in the shared sentence (#101)', async () => {
+    const raise = { plan: { key: 'starter', label: 'Basic' }, next: { key: 'pro', label: 'Pro', limit: 500 } };
+    const { writes } = harness({
+      limits: { check: async ({ current }) => ({ allowed: false, limit: 100, current, remaining: 0, raise }) },
+    });
+    await expect(writes.create(SCOPE, ANA, {})).rejects.toMatchObject({
+      reason: 'limit_reached',
+      message: 'Basic allows 100 notes. Pro allows 500. Notes in the trash count; empty it to make room.',
+      detail: { limit: 100, raise },
+    });
+  });
+
   it('⚠ with no checker bound, holds the DECLARED DEFAULT — never unlimited', async () => {
     const { writes, prisma } = harness();
     const cap = NOTE_LIMIT_REGISTRY[0]?.defaultValue ?? 0;

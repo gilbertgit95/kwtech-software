@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { isStockItemKind, isStockUnit } from '../domain/guards.js';
 import { checkLowStockAt } from '../domain/levels.js';
@@ -383,8 +383,8 @@ export class StockCatalogueService {
     if (!decision.allowed) {
       throw new StockWriteError(
         'limit_reached',
-        `This store can count ${decision.limit} stock items — archive some first`,
-        { limit: decision.limit },
+        `${limitReachedText(decision, { one: 'stock item', many: 'stock items' })} Archive some to make room.`,
+        { limit: decision.limit, raise: decision.raise },
       );
     }
   }

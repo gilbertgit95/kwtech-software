@@ -1,5 +1,5 @@
-import type { LimitRaise } from '@kwtech/module-kit';
-import type { LimitSpec } from './limits.js';
+import type { LimitNoun, LimitRaise } from '@kwtech/module-kit';
+import { LIMIT, type LimitSpec } from './limits.js';
 
 /** A plan as the cap advice reads it: its own number for each key it sets. */
 export interface PlanCapOffer {
@@ -57,3 +57,30 @@ export function limitRaise(input: {
     next: next ? { key: next.key, label: next.label, limit: capOf(next, spec) } : null,
   };
 }
+
+/** A plan row as both services read it (the plan list's own shape), as the advice reads it. */
+export function planCapOffers(
+  rows: readonly {
+    key: string;
+    label: string;
+    isPublic: boolean;
+    archivedAt: Date | null;
+    limits: readonly { limitKey: string; value: number }[];
+  }[],
+): PlanCapOffer[] {
+  return rows.map((plan) => ({
+    key: plan.key,
+    label: plan.label,
+    isPublic: plan.isPublic,
+    archived: plan.archivedAt !== null,
+    limits: Object.fromEntries(plan.limits.map((limit) => [limit.limitKey, limit.value])),
+  }));
+}
+
+/** What this module's own caps count, as `limitReachedText` says it. */
+export const PERMISSIONS_LIMIT_NOUNS: Readonly<Record<string, LimitNoun>> = {
+  [LIMIT.userOrganizations]: { one: 'organization', many: 'organizations' },
+  [LIMIT.organizationMembers]: { one: 'member', many: 'members' },
+  [LIMIT.organizationWorkspaces]: { one: 'workspace', many: 'workspaces' },
+  [LIMIT.workspaceMembers]: { one: 'workspace member', many: 'workspace members' },
+};

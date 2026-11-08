@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   checkCreateTask,
@@ -112,9 +112,11 @@ export class TaskWriteService {
       const current = await tx.task.count({ where: { ...scope, creatorId: actorId } });
       const decision = await this.checkCap(scope, actorId, current);
       if (!decision.allowed) {
-        throw new TaskWriteError('limit_reached', `You can keep ${decision.limit} tasks here, counting archived ones`, {
-          limit: decision.limit,
-        });
+        throw new TaskWriteError(
+          'limit_reached',
+          `${limitReachedText(decision, { one: 'task', many: 'tasks' })} Archived tasks count too.`,
+          { limit: decision.limit, raise: decision.raise },
+        );
       }
       const columns = await columnsOf(tx, board.id);
       const column = input.columnId ? columns.find((candidate) => candidate.id === input.columnId) : columns[0];

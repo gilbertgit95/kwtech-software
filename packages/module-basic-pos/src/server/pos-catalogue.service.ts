@@ -1,4 +1,4 @@
-import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
+import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { POS_AVAILABILITY_BATCH_MAX, preparePosAvailabilityTargets } from '../domain/availability.js';
 import { checkPosCost, checkPosPrice } from '../domain/money.js';
@@ -576,8 +576,8 @@ export class PosCatalogueService {
     if (!decision.allowed) {
       throw new PosWriteError(
         'limit_reached',
-        `This store can have ${decision.limit} items and variants for sale — archive some first`,
-        { limit: decision.limit },
+        `${limitReachedText(decision, { one: 'item or size for sale', many: 'items and sizes for sale' })} Archive some to make room.`,
+        { limit: decision.limit, raise: decision.raise },
       );
     }
   }

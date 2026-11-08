@@ -149,7 +149,7 @@ describe('importing a store’s setup from Excel (issue #35)', () => {
     const h = harness({ limits: capAt(4) });
     const refused = await refusal(h.setup.import(SCOPE, ANA, cafe(), 'merge', false));
     expect(refused.reason).toBe('limit_reached');
-    expect(refused.message).toMatch(/can have 4 items and sizes for sale, and this file would make 5/);
+    expect(refused.message).toMatch(/can have 4 items and sizes for sale here\. This file would make 5\./);
     expect(h.prisma.state.posCategory).toEqual([]);
   });
 
