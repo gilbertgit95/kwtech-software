@@ -15,6 +15,7 @@ export * from './platform-billing.options.js';
 export * from './platform-billing.repository.js';
 export * from './platform-billing.service.js';
 export * from './platform-billing.tokens.js';
+export * from './platform-billing-daily.process.js';
 export * from './platform-billing-write.service.js';
 export * from './ports.js';
 export * from './server-module.js';

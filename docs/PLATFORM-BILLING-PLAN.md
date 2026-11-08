@@ -1,6 +1,6 @@
 # `module-platform-billing` — plan
 
-Status: **phases 1 to 5a done (2026-11-08).** Phase 1
+Status: **phases 1 to 5b done (2026-11-08).** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
@@ -243,7 +243,9 @@ Rules around it:
 
 A process in `src/processes.ts`, run by `module-jobs` at **app level**
 (phase 5a: today a process only reaches workspaces of entitled organizations,
-JOBS-PLAN D12). It writes `canceled`/`endedAt` past `accessUntil` and
+JOBS-PLAN D12). **As built (#95) it does not write `canceled`/`endedAt`**:
+access already ends at `accessUntil` (D14), and the live row is what explains
+the expiry, charges a late renewal (D10) and keeps it a renewal. It
 notifies:
 
 - the organization's billing-key holders: day −7, −3, −1, the due date, daily
@@ -386,7 +388,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | P3b | #105 | P3 | The fold of workspace subscriptions, one active subscription per organization (`liveOrganizationId`), billing's write methods. **Done** 2026-11-07 |
 | P4 | #93 | P3 | Schema, services, API, wiring, roles, the back doors. Starts with the transaction spike. **4a done** 2026-11-08 (the spike, requests, payment details, approvals, rejections, settings, prices); **4b-1 done** 2026-11-08 (#110: voids, close as credit, cancel); **4b-2 done** 2026-11-08 (#112: archives, the trial); **4b-3 done** 2026-11-08 (#114: the audited adjustments) |
 | P5a | #94 | P1 | `module-jobs` runs app-level processes (`reach: 'organizations'`). **Done** 2026-11-07 |
-| P5b | #95 | P4, P5a | The daily check and every notification |
+| P5b | #95 | P4, P5a | The daily check and every notification. **Done** 2026-11-08 |
 | P6 | #96 | P4 (P5b) | The organization's Billing page |
 | P7 | #97 | P4 | The platform queue, settings and reports |
 | P8 | #98 | all | README, end-to-end pass, release; close #88 |
@@ -409,8 +411,9 @@ decisions #90 lists each have a PLAN §13 entry.
   instants at the start of platform days, so a zone change would move days
   already billed; "forward only" needs the periods kept as days first (PLAN
   §12.133).
-- **Notifications to platform staff** outside any organization must be
-  checked against `module-notification` before P5b.
+- **Settled: notifications to platform staff** go out with
+  `module-notification`'s `global` context, to the holders of the app-level
+  approve key (#95).
 - **Decided: an expired organization falls back to Free** (the operator,
   2026-11-07, PLAN §12.131), read from `organization.fallback_plan`.
 - **The expired reason reads the latest organization-wide row whose

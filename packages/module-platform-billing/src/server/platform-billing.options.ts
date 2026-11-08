@@ -13,6 +13,8 @@ export interface PlatformBillingModuleOptions {
   plansProvider?: unknown;
   /** A `PlatformBillingPeople` provider. Unbound: every approver is flagged as a member (D15). */
   peopleProvider?: unknown;
+  /** A `PlatformBillingNotifier` provider (`module-notification`'s sender). Unbound: nobody is told. */
+  notifierProvider?: unknown;
 
   /** Modules the host wants visible inside this one's injector. */
   imports?: unknown[];

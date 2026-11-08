@@ -1,5 +1,5 @@
 import { isValidTimeZone } from '@kwtech/module-kit';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { accessWindow, isOnTime, planHold, planRenewal } from '../domain/access.js';
 import { archiveCreditNote, archiveReversalNote, planArchiveCredit } from '../domain/archives.js';
 import { addDays, type DayKey, isDayKey, platformDay, platformDayStart } from '../domain/days.js';
@@ -37,13 +37,16 @@ import {
   subscriptionDays,
 } from './platform-billing.service.js';
 import {
+  PLATFORM_BILLING_NOTIFIER,
   PLATFORM_BILLING_PEOPLE,
   PLATFORM_BILLING_PRISMA_WRITE,
   PLATFORM_BILLING_SUBSCRIPTIONS,
 } from './platform-billing.tokens.js';
 import type {
   BillingAdjustment,
+  BillingRequestStep,
   BillingSubscriptionRow,
+  PlatformBillingNotifier,
   PlatformBillingPeople,
   PlatformBillingSubscriptions,
 } from './ports.js';
@@ -120,7 +123,11 @@ export class PlatformBillingWriteService {
     private readonly reads: PlatformBillingService,
     @Inject(PLATFORM_BILLING_SUBSCRIPTIONS) private readonly subscriptions: PlatformBillingSubscriptions,
     @Optional() @Inject(PLATFORM_BILLING_PEOPLE) private readonly people?: PlatformBillingPeople,
+    /** Unbound: nobody is told of a request's steps. */
+    @Optional() @Inject(PLATFORM_BILLING_NOTIFIER) private readonly notifier?: PlatformBillingNotifier,
   ) {}
+
+  private readonly logger = new Logger('PlatformBillingWrite');
 
   // ── the organization's side ───────────────────────────────────────────────
 
@@ -135,7 +142,7 @@ export class PlatformBillingWriteService {
     planKey: string | null,
     now: Date,
   ): Promise<RequestRow> {
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       await this.lockOrganization(tx, organizationId);
       const context = await this.reads.context(organizationId, now, tx);
       const preview = await this.reads.preview(context, kind, planKey);
@@ -182,6 +189,9 @@ export class PlatformBillingWriteService {
       }
       return request;
     });
+    // After the commit: a notice never fails the write it reports.
+    await this.tell(row, 'submitted', null);
+    return row;
   }
 
   /**
@@ -203,7 +213,7 @@ export class PlatformBillingWriteService {
     now: Date,
   ): Promise<RequestRow> {
     const details = preparePayment(input);
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId, organizationId });
       const step = nextState(request.state, 'edit_details');
       if ('refused' in step) throw billingRefusal(step.refused);
@@ -307,6 +317,9 @@ export class PlatformBillingWriteService {
       if (changed.count === 0) throw billingRefusal('details_changed');
       return this.reread(tx, requestId);
     });
+    // After the commit: a notice never fails the write it reports.
+    await this.tell(row, 'details_entered', null);
+    return row;
   }
 
   /** The organization takes its request back. Nothing changes; its bill is cancelled and any hold given back. */
@@ -335,7 +348,7 @@ export class PlatformBillingWriteService {
    */
   async approve(requestId: string, actorId: string, input: ApprovalInput, now: Date): Promise<RequestRow> {
     const received = preparePayment({ ...input, sender: null, note: null });
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId });
       const context = await this.reads.context(request.organizationId, now, tx);
       const plan = context.plans.get(request.planKey);
@@ -505,6 +518,9 @@ export class PlatformBillingWriteService {
       });
       return this.reread(tx, requestId);
     });
+    // After the commit: a notice never fails the write it reports.
+    await this.tell(row, 'approved', null);
+    return row;
   }
 
   /**
@@ -530,7 +546,7 @@ export class PlatformBillingWriteService {
     const received = preparePayment({ ...input, sender: null, note: null });
     if (received.amount <= 0) throw billingRefusal('nothing_received');
     const text = prepareText(reason);
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId });
       const step = nextState(request.state, 'close_as_credit');
       if ('refused' in step) throw billingRefusal(step.refused);
@@ -630,6 +646,9 @@ export class PlatformBillingWriteService {
       await this.event(tx, request, now, actorId, 'credit', 'closed_as_credit', { amount: received.amount });
       return this.reread(tx, requestId);
     });
+    // After the commit: a notice never fails the write it reports.
+    await this.tell(row, 'closed_as_credit', text);
+    return row;
   }
 
   /**
@@ -647,7 +666,7 @@ export class PlatformBillingWriteService {
   async void(requestId: string, actorId: string, reason: string, now: Date): Promise<RequestRow> {
     const text = prepareText(reason);
     if (!text) throw billingRefusal('invalid', { field: 'reason' });
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId });
       if (request.kind === 'adjustment') throw billingRefusal('adjustment_not_voidable');
       const step = nextState(request.state, 'void');
@@ -754,6 +773,9 @@ export class PlatformBillingWriteService {
       await this.event(tx, request, now, actorId, 'voided', null, { reason: text, subscription: plan.kind });
       return this.reread(tx, requestId);
     });
+    // After the commit: a notice never fails the write it reports.
+    await this.tell(row, 'voided', text);
+    return row;
   }
 
   /**
@@ -768,7 +790,7 @@ export class PlatformBillingWriteService {
    * cancel and a renewal pressed together cannot both land.
    */
   async cancel(organizationId: string, actorId: string, now: Date): Promise<RequestRow> {
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       await this.lockOrganization(tx, organizationId);
       const context = await this.reads.context(organizationId, now, tx);
       const refused = checkNewRequest({
@@ -837,6 +859,9 @@ export class PlatformBillingWriteService {
       });
       return this.reread(tx, request.id);
     });
+    // After the commit: a notice never fails the write it reports.
+    await this.tell(row, 'cancelled', null);
+    return row;
   }
 
   /**
@@ -1082,7 +1107,7 @@ export class PlatformBillingWriteService {
     reason: string | null,
     now: Date,
   ): Promise<RequestRow> {
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId, ...scope });
       const step = nextState(request.state, action);
       if ('refused' in step) throw billingRefusal(step.refused);
@@ -1109,6 +1134,8 @@ export class PlatformBillingWriteService {
       await this.event(tx, request, now, actorId, action === 'withdraw' ? 'withdrawn' : 'rejected', null, { reason });
       return this.reread(tx, requestId);
     });
+    await this.tell(row, action === 'withdraw' ? 'withdrawn' : 'rejected', reason);
+    return row;
   }
 
   /**
@@ -1191,6 +1218,30 @@ export class PlatformBillingWriteService {
         createdAt: now,
       },
     });
+  }
+
+  /**
+   * Tells the notifier of a request's step, AFTER its transaction committed:
+   * telling inside it would announce a step that can still roll back. A
+   * failure is logged, never thrown: the step already happened, and turning a
+   * notification problem into an error would make somebody repeat it.
+   */
+  private async tell(row: RequestRow, step: BillingRequestStep, reason: string | null): Promise<void> {
+    if (!this.notifier) return;
+    try {
+      await this.notifier.requestChanged({
+        organizationId: row.organizationId,
+        requestId: row.id,
+        kind: row.kind,
+        step,
+        planKey: row.planKey,
+        reason,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `The ${step} notice for a billing request could not be sent: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /** The subscription write a void makes (`planVoid`), in billing's transaction. */

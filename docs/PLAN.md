@@ -618,6 +618,29 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-08** — **Billing's daily check tells people and never decides access: it does not end expired subscriptions (#95, billing P5b).**
+
+  - **Notices only.** Access already ends at `accessUntil`, compared on every
+    request (D14). Writing `canceled`/`endedAt` past it, as the plan said,
+    was not done: the live row is what says "your plan ended on <date>", what
+    a late renewal reads to charge the access used (D10), and what keeps it a
+    renewal rather than a new subscribe. Ending it would lose all three for
+    nothing the clock does not already do.
+  - **One row per notice, keyed by its own day** (`platform_billing_notice`,
+    `@@unique([organizationId, kind, periodKey, day])`), written before the
+    send, `sentAt` after; each run retries the unsent first. A missed
+    milestone is caught up once, a second run creates nothing.
+  - **The run's item limit counts notices handled, not organizations read**:
+    counting organizations would re-read the first ones forever whenever a
+    run was capped below the number of organizations.
+  - **Approvers are told with a `global` notification**, to the holders of
+    the app-level approve key; organizations' notices go to members whose
+    role holds `platform-billing:read` (the owner and admins). The expiry
+    warnings are a non-mutable source (`billing.reminder`).
+  - **The process key is `platform_billing.daily_check`**, its `module`
+    field `platform_billing`: process keys are snake case, and the module
+    key's hyphen is not allowed in them.
+
 - **2026-11-08** — **A subscription written by hand needs a reason and is recorded as a billing adjustment in the same transaction; billing phase 4 is done (#114, closes #93, billing P4b-3).**
 
   - **The reason is required on all three writes** (`checkAdjustmentReason`,

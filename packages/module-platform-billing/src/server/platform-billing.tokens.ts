@@ -35,3 +35,10 @@ export const PLATFORM_BILLING_PLANS = 'kwtech:platform-billing-plans';
  * member" is the side that errs towards a second look.
  */
 export const PLATFORM_BILLING_PEOPLE = 'kwtech:platform-billing-people';
+
+/**
+ * The `PlatformBillingNotifier`: reminders, the approvers' digest and the
+ * request notices, spoken as notifications by the app. ⚠ Unbound: nobody is
+ * told, and the daily check records nothing as sent.
+ */
+export const PLATFORM_BILLING_NOTIFIER = 'kwtech:platform-billing-notifier';

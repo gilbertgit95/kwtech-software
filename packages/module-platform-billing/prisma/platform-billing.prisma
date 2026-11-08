@@ -367,3 +367,36 @@ model PlatformBillingEvent {
   @@index([organizationId, at])
   @@map("platform_billing_event")
 }
+
+/// ⚠ ONE ROW PER NOTICE THE DAILY CHECK OWES, written BEFORE it is sent
+/// (plan §4 "The daily check", #95). `sentAt` is set only once the send
+/// succeeded, and every run first retries the rows without it, so a failure
+/// between writing and sending never silences a warning. A crash after
+/// sending but before `sentAt` may send one twice, which is better than a
+/// missed expiry warning.
+///
+/// The unique key is the notice's own day (a countdown milestone, an overdue
+/// day, the day access ended), so a second run that day creates nothing, and
+/// a run missed on a milestone catches it up once.
+model PlatformBillingNotice {
+  id             String   @id @default(cuid())
+  /// The organization told, or `platform` for a notice to billing approvers.
+  organizationId String
+  /// `ReminderKind`, or `approvers_pending`.
+  kind           String
+  /// The period the notice is about, as its end day (`YYYY-MM-DD`), or `-`
+  /// when it is about none (a request without details, the approvers' digest).
+  periodKey      String
+  /// The day the notice is for, in the billing time zone.
+  day            DateTime @db.Date
+  /// What the notice says: days left, dates, counts. Rendered by the app's notifier.
+  data           Json     @default("{}")
+  createdAt      DateTime @default(now())
+  sentAt         DateTime?
+
+  @@unique([organizationId, kind, periodKey, day])
+  /// The retry sweep: rows written and never sent.
+  @@index([sentAt])
+  @@map("platform_billing_notice")
+}
+
