@@ -68,6 +68,7 @@ export class PlatformBillingSubscriptionsAdapter implements PlatformBillingSubsc
         currentPeriodEnd: true,
         billingDay: true,
         accessUntil: true,
+        trialUserId: true,
         plan: { select: { archivedAt: true } },
       },
     });
@@ -80,7 +81,41 @@ export class PlatformBillingSubscriptionsAdapter implements PlatformBillingSubsc
       currentPeriodEnd: row.currentPeriodEnd,
       billingDay: row.billingDay,
       accessUntil: row.accessUntil,
+      trial: row.trialUserId !== null,
     };
+  }
+
+  /** Every live organization-wide row on `planKey`: whom an archive of it owes credit (D12b). */
+  async liveOnPlan(
+    planKey: string,
+    tx: PlatformBillingTransaction,
+  ): Promise<Array<BillingSubscriptionRow & { organizationId: string }>> {
+    const rows = await sharedTransaction(tx).permSubscription.findMany({
+      where: { planKey, liveOrganizationId: { not: null } },
+      select: {
+        id: true,
+        organizationId: true,
+        planKey: true,
+        periodStart: true,
+        currentPeriodEnd: true,
+        billingDay: true,
+        accessUntil: true,
+        trialUserId: true,
+        plan: { select: { archivedAt: true } },
+      },
+      orderBy: { organizationId: 'asc' },
+    });
+    return rows.map((row) => ({
+      organizationId: row.organizationId,
+      subscriptionId: row.id,
+      planKey: row.planKey,
+      planArchived: row.plan.archivedAt !== null,
+      periodStart: row.periodStart,
+      currentPeriodEnd: row.currentPeriodEnd,
+      billingDay: row.billingDay,
+      accessUntil: row.accessUntil,
+      trial: row.trialUserId !== null,
+    }));
   }
 
   /** A renewal before access ended: the same row moves on (`renewSubscription`). */

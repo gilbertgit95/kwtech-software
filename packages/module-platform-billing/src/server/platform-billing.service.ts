@@ -393,6 +393,7 @@ export function subscriptionDays(row: BillingSubscriptionRow, timeZone: string):
     periodEnd: row.currentPeriodEnd ? platformDay(row.currentPeriodEnd, timeZone) : null,
     billingDay: row.billingDay,
     accessUntil: row.accessUntil ? platformDay(row.accessUntil, timeZone) : null,
+    trial: row.trial,
   };
 }
 

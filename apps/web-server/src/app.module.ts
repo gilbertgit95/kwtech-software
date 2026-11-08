@@ -90,6 +90,7 @@ import {
 } from '@kwtech/module-notification/server';
 import {
   FeatureGuard,
+  PERMISSIONS_PLAN_ARCHIVE_HOOK,
   PERMISSIONS_PUBSUB,
   PermissionsLimitChecker,
   PermissionsService,
@@ -167,6 +168,7 @@ import { NOTIFICATION_SOURCES } from './notifications/sources.js';
 import { NotificationUserDirectoryAdapter } from './notifications/user-directory.js';
 import { sendInvitationEmail } from './permissions/invitation-mail.js';
 import { PlatformBillingPeopleAdapter } from './platform-billing/people.js';
+import { PlanArchiveToBilling } from './platform-billing/plan-archive.js';
 import { PlatformBillingPlansAdapter } from './platform-billing/plans.js';
 import { PlatformBillingSubscriptionsAdapter } from './platform-billing/subscriptions.js';
 import { PosKeyAccess } from './pos/access-check.js';
@@ -648,6 +650,15 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
      * or in any resolver (PLAN §7).
      */
     pubsubProvider: { provide: PERMISSIONS_PUBSUB, useValue: realtimePubSub() },
+
+    /*
+     * An archive tells billing, inside the archive's own transaction: billing
+     * closes the pending requests naming the plan and credits the paid days
+     * its organizations lose (#112, D12b). Unbound, an archive would cut
+     * access and credit nobody. The hook looks billing's service up at call
+     * time; see ./platform-billing/plan-archive.ts for the cycle it avoids.
+     */
+    planArchiveHookProvider: { provide: PERMISSIONS_PLAN_ARCHIVE_HOOK, useClass: PlanArchiveToBilling },
 
     /*
      * EVERY module's features, not just this module's own.

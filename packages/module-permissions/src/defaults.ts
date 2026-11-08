@@ -176,6 +176,10 @@ export const APP_DEFAULT = {
   organizationPlanStatus: 'organization.plan_status',
   /** How many days that subscription's first period runs for. */
   organizationPlanPeriodDays: 'organization.plan_period_days',
+  /** The plan a new organization tries first, once per founder account (D2). */
+  organizationTrialPlan: 'organization.trial_plan',
+  /** How many days that trial runs for. */
+  organizationTrialDays: 'organization.trial_days',
   /** How long an invitation stays valid. */
   invitationExpiryDays: 'invitation.expiry_days',
   /** The workspace-level role the CREATOR of a new workspace is granted. */
@@ -185,6 +189,9 @@ export const APP_DEFAULT = {
 } as const;
 
 export type AppDefaultKey = (typeof APP_DEFAULT)[keyof typeof APP_DEFAULT];
+
+/** The trial's length when `organization.trial_days` is unset: 14 days (PLATFORM-BILLING-PLAN D2). */
+export const DEFAULT_TRIAL_DAYS = 14;
 
 /**
  * Every default the platform has, in the order the screen shows them —
@@ -261,7 +268,7 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
     moment: 'organization_created',
     label: 'Status that subscription starts in',
     description:
-      'Only `active` entitles anything. ⚠ Nothing compares a subscription to the clock (§12.40), so `past_due` is a label a screen can show and not an expiry the guard enforces.',
+      'Only `active` entitles anything, and only until its period end (#92): `past_due` is a label a screen can show, not an expiry.',
     whenUnset: 'The subscription starts active, which is the only status that entitles anything.',
   },
   {
@@ -271,9 +278,27 @@ export const APP_DEFAULT_REGISTRY: readonly AppDefaultSpec[] = [
     moment: 'organization_created',
     label: 'Length of the first period',
     description:
-      'Sets the new subscription’s renewal date, that many days out. Useful as a trial length — but read the next line before treating it as one.',
-    whenUnset:
-      'The subscription has no renewal date at all. ⚠ That is also what it means when set: an `active` row entitles regardless of the date (§12.40), so this records an intention for a billing provider to act on and expires nothing on its own.',
+      'Sets the new subscription’s period end, that many days out, and access ends with it (#92). For a trial, use the trial defaults below: those are given once per account.',
+    whenUnset: 'The subscription has no period end, so it entitles until somebody ends it.',
+  },
+  {
+    key: APP_DEFAULT.organizationTrialPlan,
+    module: 'permissions',
+    kind: 'plan',
+    moment: 'organization_created',
+    label: 'Trial plan for a new organization',
+    description:
+      'A new organization starts on this plan for the trial days, ONCE per founder account: an account that already had a trial gets the plan for a new organization instead. A trial has no grace; when it ends the organization falls back to the plan when no subscription is in force. Archived plans cannot be chosen.',
+    whenUnset: 'No trial: a new organization starts on the plan for a new organization.',
+  },
+  {
+    key: APP_DEFAULT.organizationTrialDays,
+    module: 'permissions',
+    kind: 'days',
+    moment: 'organization_created',
+    label: 'Length of the trial',
+    description: 'How many days the trial plan runs for. Access ends on the last day, with no grace.',
+    whenUnset: `The trial runs for ${DEFAULT_TRIAL_DAYS} days.`,
   },
   {
     key: APP_DEFAULT.invitationExpiryDays,

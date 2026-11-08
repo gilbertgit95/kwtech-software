@@ -618,6 +618,35 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-08** — **An archive credits its organizations inside its own transaction and waits on payments only an approver can confirm; a new organization gets one trial per founder account (#112, part of #93, billing P4b-2).**
+
+  - **The archive tells billing in its transaction.** `module-permissions`
+    gains an optional port, `PERMISSIONS_PLAN_ARCHIVE_HOOK`, called inside
+    `setPlanArchived` when the flag changes; the app binds it to billing's
+    `planArchiveChanged`. Billing's service is looked up with `ModuleRef` at
+    call time, because billing's subscriptions adapter already injects
+    permissions' write service and injecting back would be a cycle. Telling
+    billing after the commit was not done: an archive could then commit
+    without its credit.
+  - **A pending request with payment details refuses the archive**
+    (`archive_pending_payments`), stricter than the plan's "closed as
+    credit". The system never saw the money; closing it as credit unseen
+    would turn typed-in details into credit. Those without payment are
+    withdrawn by the system (`plan_archived`).
+  - **The credit is once per subscription row** (`platform_billing_credit.subscriptionId`):
+    the paid days from the archive day to the period end, plus a month paid
+    ahead. Bringing the plan back reverses it for rows still on the plan; an
+    organization that already moved keeps it, since it lost the days.
+  - **The trial is two defaults and a unique column.**
+    `organization.trial_plan` (seeded to Starter: D2 said Basic, #89 named
+    that tier `starter`) and `organization.trial_days` (14) start a new
+    organization on the trial, with no grace, once per founder account
+    (`perm_subscription.trialUserId @unique`, ended rows included). Billing
+    reads a trial as unpaid, so the owner subscribes instead of renewing
+    days nobody paid, and an archive credits nothing for it.
+  - **Not done here, in P4b-3:** the audited `/admin/subscriptions`
+    adjustments with a reason (D5).
+
 - **2026-11-08** — **Billing voids reverse exactly what the approval recorded, newest first across the organization; a cancel applies at once (#110, part of #93, billing P4b-1).**
 
   The first half of P4b: the decisions billing makes on its own.

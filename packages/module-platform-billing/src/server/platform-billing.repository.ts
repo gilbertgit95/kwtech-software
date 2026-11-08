@@ -108,6 +108,7 @@ export interface CreditRow {
   requestId: string | null;
   billId: string | null;
   receiptId: string | null;
+  subscriptionId: string | null;
   note: string | null;
   createdById: string | null;
   createdAt: Date;
@@ -202,7 +203,14 @@ export interface PlatformBillingTransaction {
       orderBy?: { requestedAt: SortOrder } | { decidedAt: SortOrder };
     }): Promise<RequestRow | null>;
     findMany(args: {
-      where: { organizationId?: string; state?: RequestState };
+      /** A page of an organization's history or of the queue, or the pending requests naming a plan (an archive). */
+      where: {
+        organizationId?: string;
+        state?: RequestState;
+        planKey?: string;
+        fromPlanKey?: string;
+        kind?: RequestKind;
+      };
       orderBy: Array<{ requestedAt: SortOrder } | { id: SortOrder }>;
       take: number;
       cursor?: { id: string };
@@ -322,7 +330,11 @@ export interface PlatformBillingTransaction {
     aggregate(args: { where: { organizationId: string }; _sum: { amount: true } }): Promise<{
       _sum: { amount: number | null };
     }>;
-    findMany(args: { where: { receiptId: string }; orderBy: { createdAt: SortOrder } }): Promise<CreditRow[]>;
+    findMany(args: {
+      /** A receipt's entries (a void), or a subscription's archive entries (an archive once, its reversal). */
+      where: { receiptId: string } | { subscriptionId: string; kind: { in: string[] } };
+      orderBy: { createdAt: SortOrder };
+    }): Promise<CreditRow[]>;
     create(args: {
       data: {
         organizationId: string;
@@ -331,6 +343,7 @@ export interface PlatformBillingTransaction {
         requestId: string | null;
         billId: string | null;
         receiptId: string | null;
+        subscriptionId?: string | null;
         note: string | null;
         createdById: string | null;
         createdAt: Date;

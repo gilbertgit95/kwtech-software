@@ -77,6 +77,8 @@ interface State {
     liveOrganizationId?: string | null;
     accessUntil?: Date | null;
     currentPeriodEnd?: Date | null;
+    /** The founder account a trial row was given for (unique, D2). */
+    trialUserId?: string | null;
   }[];
   /**
    * The platform's defaults, as stored.
@@ -497,10 +499,12 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
           planKey?: string;
           endedAt?: null;
           liveOrganizationId?: string;
+          trialUserId?: string;
         };
       }) =>
         state.subscriptions.find(
           (sub) =>
+            (args.where.trialUserId === undefined || sub.trialUserId === args.where.trialUserId) &&
             (args.where.liveOrganizationId === undefined || sub.liveOrganizationId === args.where.liveOrganizationId) &&
             (args.where.id === undefined || sub.id === args.where.id) &&
             (args.where.organizationId === undefined || sub.organizationId === args.where.organizationId) &&
@@ -517,12 +521,15 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
           currentPeriodEnd: Date | null;
           accessUntil: Date | null;
           liveOrganizationId: string | null;
+          trialUserId?: string | null;
         };
       }) => {
-        // The unique `liveOrganizationId`, enforced as the database does (#105).
+        // The unique `liveOrganizationId` and `trialUserId`, enforced as the database does (#105, D2).
         const taken =
-          args.data.liveOrganizationId !== null &&
-          state.subscriptions.some((sub) => sub.liveOrganizationId === args.data.liveOrganizationId);
+          (args.data.liveOrganizationId !== null &&
+            state.subscriptions.some((sub) => sub.liveOrganizationId === args.data.liveOrganizationId)) ||
+          (typeof args.data.trialUserId === 'string' &&
+            state.subscriptions.some((sub) => sub.trialUserId === args.data.trialUserId));
         if (taken) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
         writes.subscriptions.push(args.data);
         const row = { id: id('sub'), ...args.data, endedAt: null };
@@ -1228,6 +1235,31 @@ describe('plan definitions', () => {
 
     await svc.setPlanArchived(author(), 'team', false);
     expect(state.plans[0]?.archivedAt).toBeNull();
+  });
+
+  it('tells the archive hook inside the transaction, once per change, and rolls the archive back when it refuses', async () => {
+    const { client } = fake();
+    const calls: Array<{ planKey: string; archived: boolean }> = [];
+    let refuse = false;
+    const hook = {
+      async planArchiveChanged(input: { planKey: string; archived: boolean; at: Date }) {
+        calls.push({ planKey: input.planKey, archived: input.archived });
+        if (refuse) throw new Error('A payment is waiting on this plan.');
+      },
+    };
+    const svc = new PermissionsWriteService(client, {}, undefined, hook);
+    await svc.createPlan(author(), planDraft({ features: [SELLABLE] }));
+
+    await svc.setPlanArchived(author(), 'team', true);
+    // Archiving an archived plan changes nothing and tells nobody.
+    await svc.setPlanArchived(author(), 'team', true);
+    expect(calls).toEqual([{ planKey: 'team', archived: true }]);
+
+    await svc.setPlanArchived(author(), 'team', false);
+    refuse = true;
+    // Refused with the hook's reason. (This fake does not roll a transaction back; Postgres does.)
+    await expect(svc.setPlanArchived(author(), 'team', true)).rejects.toThrow('A payment is waiting on this plan.');
+    expect(calls).toHaveLength(3);
   });
 
   /**
@@ -2225,6 +2257,85 @@ describe('the platform defaults', () => {
 
       await svc.createOrganization(founder(), { key: 'new', name: 'New' });
       expect(writes.subscriptions).toEqual([]);
+    });
+
+    describe('the trial (D2)', () => {
+      const plans = [
+        { key: 'free', label: 'Free', isPublic: true, icon: null, archivedAt: null },
+        { key: 'basic', label: 'Basic', isPublic: true, icon: null, archivedAt: null },
+      ];
+      const defaults = [
+        { key: APP_DEFAULT.organizationPlan, value: 'free' },
+        { key: APP_DEFAULT.organizationTrialPlan, value: 'basic' },
+      ];
+      /** The subscription rows the fake was asked to create, as the trial tests read them. */
+      interface Written {
+        planKey: string;
+        trialUserId?: string | null;
+        periodStart?: Date | null;
+        currentPeriodEnd?: Date | null;
+        accessUntil?: Date | null;
+      }
+      const rows = (writes: { subscriptions: unknown[] }) => writes.subscriptions as Written[];
+
+      it('starts a new organization on the trial plan for 14 days, with no grace', async () => {
+        const { svc, writes } = fake(emptyState({ plans, defaults }));
+        await svc.createOrganization(founder(), { key: 'new', name: 'New' });
+        expect(writes.subscriptions).toHaveLength(1);
+        const trial = rows(writes)[0];
+        expect(trial).toMatchObject({ planKey: 'basic', status: 'active', trialUserId: 'actor', workspaceId: null });
+        const start = trial?.periodStart?.getTime() ?? 0;
+        expect(trial?.currentPeriodEnd?.getTime()).toBe(start + 14 * 86_400_000);
+        // The period end itself: access ends with the trial.
+        expect(trial?.accessUntil?.getTime()).toBe(trial?.currentPeriodEnd?.getTime());
+      });
+
+      it('⚠ gives an account ONE trial: its next organization starts on the usual default', async () => {
+        const { svc, writes } = fake(emptyState({ plans, defaults }));
+        await svc.createOrganization(founder(), { key: 'first', name: 'First' });
+        await svc.createOrganization(founder(), { key: 'second', name: 'Second' });
+        expect(rows(writes).map((row) => [row.planKey, row.trialUserId ?? null])).toEqual([
+          ['basic', 'actor'],
+          ['free', null],
+        ]);
+      });
+
+      it('still gives a different founder a trial after another account used one', async () => {
+        const { svc, writes } = fake(emptyState({ plans, defaults }));
+        await svc.createOrganization(founder(), { key: 'first', name: 'First' });
+        await svc.createOrganization(
+          { ...founder(), subjectId: 'someone-else' },
+          {
+            key: 'second',
+            name: 'Second',
+          },
+        );
+        expect(rows(writes).map((row) => [row.planKey, row.trialUserId ?? null])).toEqual([
+          ['basic', 'actor'],
+          ['basic', 'someone-else'],
+        ]);
+      });
+
+      it('runs for the trial days set, and skips an archived trial plan', async () => {
+        const custom = fake(
+          emptyState({ plans, defaults: [...defaults, { key: APP_DEFAULT.organizationTrialDays, value: '7' }] }),
+        );
+        await custom.svc.createOrganization(founder(), { key: 'new', name: 'New' });
+        const trial = rows(custom.writes)[0];
+        expect((trial?.currentPeriodEnd?.getTime() ?? 0) - (trial?.periodStart?.getTime() ?? 0)).toBe(7 * 86_400_000);
+
+        const archived = fake(
+          emptyState({
+            plans: [
+              { key: 'free', label: 'Free', isPublic: true, icon: null, archivedAt: null },
+              { key: 'basic', label: 'Basic', isPublic: true, icon: null, archivedAt: new Date() },
+            ],
+            defaults,
+          }),
+        );
+        await archived.svc.createOrganization(founder(), { key: 'new', name: 'New' });
+        expect(rows(archived.writes).map((row) => row.planKey)).toEqual(['free']);
+      });
     });
 
     it('writes no subscription at all when no plan default is set', async () => {

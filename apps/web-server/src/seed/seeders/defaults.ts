@@ -140,7 +140,7 @@ async function startingPlanKey(prisma: SeedPrisma): Promise<string | null> {
 type SeedPrisma = Parameters<Seeder['run']>[0]['prisma'];
 
 /**
- * The two defaults that point at a PLAN, set only where no row exists — a row
+ * The defaults that point at a PLAN, set only where no row exists — a row
  * cleared on purpose (value null) is a decision and is left alone. Returns how
  * many it wrote.
  *
@@ -153,6 +153,10 @@ type SeedPrisma = Parameters<Seeder['run']>[0]['prisma'];
  * - `organization.plan`: the smallest public live plan.
  * - `organization.fallback_plan`: Free, by key — the operator's decision
  *   (2026-11-07, PLAN §12.131) names the plan, so "smallest" would be a guess.
+ * - `organization.trial_plan`: Starter, by key. D2 says "Free, plus one
+ *   trial of Basic for 14 days"; #89 named the tier above Free `starter`.
+ *   `organization.trial_days` is left unset, which reads as
+ *   `DEFAULT_TRIAL_DAYS` (14).
  */
 export async function seedPlanDefaults({ prisma, log }: Parameters<Seeder['run']>[0]): Promise<number> {
   const existing = new Set((await prisma.permDefault.findMany({ select: { key: true } })).map((row) => row.key));
@@ -173,6 +177,15 @@ export async function seedPlanDefaults({ prisma, log }: Parameters<Seeder['run']
     const free = await prisma.permPlan.findFirst({ where: { key: 'free', archivedAt: null }, select: { key: true } });
     if (free) await write(APP_DEFAULT.organizationFallbackPlan, free.key, 'Free, when no subscription is in force');
     else log(`${APP_DEFAULT.organizationFallbackPlan} — skipped, no live free plan here yet`);
+  }
+
+  if (!existing.has(APP_DEFAULT.organizationTrialPlan)) {
+    const starter = await prisma.permPlan.findFirst({
+      where: { key: 'starter', archivedAt: null },
+      select: { key: true },
+    });
+    if (starter) await write(APP_DEFAULT.organizationTrialPlan, starter.key, 'one trial per founder account (D2)');
+    else log(`${APP_DEFAULT.organizationTrialPlan} — skipped, no live starter plan here yet`);
   }
   return written;
 }

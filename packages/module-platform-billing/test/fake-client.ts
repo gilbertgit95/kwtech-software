@@ -272,11 +272,11 @@ function delegates(get: () => Store): PlatformBillingTransaction {
       },
       async findMany({ where }) {
         return get()
-          .credits.filter((row) => row.receiptId === where.receiptId)
+          .credits.filter((row) => matches(row, where))
           .map((row) => ({ ...row }));
       },
       async create({ data }) {
-        const row: CreditRow = { id: id('cr'), ...data };
+        const row: CreditRow = { id: id('cr'), subscriptionId: null, ...data };
         get().credits.push(row);
         return { ...row };
       },
@@ -442,6 +442,7 @@ export function fakeBilling(): FakeBilling {
           currentPeriodEnd: null,
           billingDay: null,
           accessUntil: null,
+          trial: false,
           ...change,
         }
       : { ...(live as BillingSubscriptionRow), ...change };
@@ -456,6 +457,11 @@ export function fakeBilling(): FakeBilling {
   };
 
   const subscriptions: PlatformBillingSubscriptions = {
+    async liveOnPlan(planKey) {
+      return [...current().subscriptions.entries()]
+        .filter(([, row]) => row.planKey === planKey)
+        .map(([organizationId, row]) => ({ ...row, organizationId }));
+    },
     async live(organizationId) {
       const row = current().subscriptions.get(organizationId);
       return row ? { ...row } : null;
@@ -545,6 +551,7 @@ export function giveSubscription(
   start: string,
   end: string,
   accessUntil: string,
+  options: { trial?: boolean } = {},
 ): void {
   billing.store().subscriptions.set(organizationId, {
     subscriptionId: id('sub'),
@@ -554,6 +561,7 @@ export function giveSubscription(
     currentPeriodEnd: platformDayStart(end, 'Asia/Manila'),
     billingDay: Number(start.slice(8, 10)),
     accessUntil: platformDayStart(accessUntil, 'Asia/Manila'),
+    trial: options.trial ?? false,
   });
 }
 

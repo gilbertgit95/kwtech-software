@@ -89,6 +89,13 @@ export interface PermissionsModuleOptions {
   pubsubProvider?: Provider;
 
   /**
+   * Binds PERMISSIONS_PLAN_ARCHIVE_HOOK: who else is told, inside the
+   * archive's transaction, when a plan is archived or brought back (billing
+   * credits the paid days lost, D12b). Unbound, nobody is.
+   */
+  planArchiveHookProvider?: Provider;
+
+  /**
    * Which transports the module publishes. Both default to on: importing the
    * module is meant to BE the registration — REST routes appear in the app and
    * in openapi.json, resolvers join the composed GraphQL schema, and the app
@@ -331,6 +338,7 @@ export class PermissionsModule {
       PermissionsLimitChecker,
     ];
     if (options.pubsubProvider) providers.push(options.pubsubProvider);
+    if (options.planArchiveHookProvider) providers.push(options.planArchiveHookProvider);
     if (options.prismaProvider) providers.push(options.prismaProvider);
     if (options.prismaWriteProvider) providers.push(options.prismaWriteProvider);
     else providers.push({ provide: PERMISSIONS_PRISMA_WRITE, useValue: undefined });

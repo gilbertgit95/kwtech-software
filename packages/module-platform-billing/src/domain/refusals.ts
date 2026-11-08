@@ -34,6 +34,7 @@ export type PlatformBillingRefusal =
   | 'subscription_changed'
   | 'nothing_received'
   | 'already_cancelled'
+  | 'archive_pending_payments'
   | 'trial_used'
   | 'currency_locked'
   | 'time_zone_locked'
@@ -139,6 +140,11 @@ export const PLATFORM_BILLING_REFUSALS: Readonly<Record<PlatformBillingRefusal, 
   already_cancelled: {
     message: 'This subscription is already set to end at the close of its period.',
     nextStep: 'Nothing more to do. To keep the plan after all, renew it.',
+  },
+  archive_pending_payments: {
+    message:
+      'Requests waiting on this plan already have payment details. Archiving would leave those payments undecided, and only an approver can confirm a payment was received.',
+    nextStep: 'Decide them in the billing queue first (reject them, or close them as credit), then archive the plan.',
   },
   trial_used: {
     message: 'A free trial was already used by this account.',

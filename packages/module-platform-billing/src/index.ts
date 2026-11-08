@@ -11,6 +11,7 @@
  */
 
 export * from './domain/access.js';
+export * from './domain/archives.js';
 export * from './domain/days.js';
 export * from './domain/documents.js';
 export * from './domain/money.js';

@@ -10,12 +10,12 @@ and its decisions (D1 to D17) are in
 **Not a sub-app.** Its keys are organization and app level, never workspace;
 it is never on a workspace's Apps page.
 
-**Status: phase 4b-1 (#110, part of #93).** The pure core (#91), the schema,
+**Status: phase 4b-2 (#112, part of #93).** The pure core (#91), the schema,
 the services and the GraphQL API for requests, payment details, approvals and
-rejections, voids, closing as credit, cancelling, the settings and the
-prices; composed into the API. Still to come: plan archives, the audited
-admin adjustments and the trial (4b-2), the daily check (#95), and the pages
-(#96, #97).
+rejections, voids, closing as credit, cancelling, plan archives, the trial,
+the settings and the prices; composed into the API. Still to come: the
+audited admin adjustments (4b-3), the daily check (#95), and the pages (#96,
+#97).
 
 ## In a Next.js app
 
@@ -36,7 +36,7 @@ platformBillingServerModule({
 
 | Port | What it answers | Unbound |
 |---|---|---|
-| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription, and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
+| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription (and every live row on a plan, for an archive), and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
 | `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps) and an organization's usage of the caps (D6) | the module refuses to boot |
 | `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15) | every approver is flagged as a member: the flag never blocks |
 
@@ -117,6 +117,20 @@ presses it.
   `restoredSubscriptionId`) and still carry the plan, period end and access
   end the approval wrote. That also refuses approvals made before #110,
   since they recorded nothing to reverse.
+- **A plan archive** (D12b) reaches billing through `module-permissions`'
+  `PERMISSIONS_PLAN_ARCHIVE_HOOK`, inside the archive's own transaction
+  (`planArchiveChanged`). First, every pending request naming the plan (for
+  it, or a change away from it) is withdrawn by the system (`plan_archived`),
+  except that ⚠ **one with payment details refuses the archive**
+  (`archive_pending_payments`) until an approver rejects it or closes it as
+  credit: only an approver confirms money arrived. Then every organization
+  on the plan is credited, once per subscription row, for its paid days from
+  the archive day to the period end and any month paid ahead
+  (`planArchiveCredit`), with the sentence on the ledger line. Bringing the
+  plan back reverses that credit for the rows still on it.
+- **A trial** (D2, `perm_subscription.trialUserId`) reads as unpaid: there is
+  nothing to renew, change, cancel or credit, and the owner subscribes, which
+  ends the trial row.
 - **Cancel** applies at once, decided by the owner (`cancel_needs_no_approval`):
   no bill, no credit, access to the period's end without grace. Renewing
   opens at once after a cancel and undoes it.
@@ -177,6 +191,7 @@ presses it.
 | `domain/standing.ts` | `billingStanding` (the row's period, the current one, a month paid ahead, the access window), `requestStanding`, `priceOn` |
 | `domain/pricing.ts` | `priceRequest`: one request priced on a day, for the preview, the bill at submission and a downgrade's bill at approval |
 | `domain/documents.ts` | `BillSnapshot`, `ReceiptSnapshot`: what a document said when issued |
+| `domain/archives.ts` | `planArchiveCredit`: the paid days an archive takes away, and the ledger's sentence (D12b) |
 | `domain/voids.ts` | `planVoid`: what reversing an approval writes to the subscription, from what it recorded (D9a) |
 
 Every refusal is a reason code with words (`refusalText(reason)`), shared by the

@@ -624,6 +624,13 @@ model PermSubscription {
   /// Every write that creates or ends a row keeps it in step.
   liveOrganizationId String? @unique
 
+  /// ⚠ A TRIAL, AND ONE PER ACCOUNT, by construction (PLATFORM-BILLING-PLAN D2).
+  /// The founder account a new organization's trial was given for, or null for
+  /// every other row. Unique across ALL rows, ended ones included, so an
+  /// account that has had a trial never gets a second, whichever organization
+  /// it founds next. Billing reads a trial row as unpaid: its days were free.
+  trialUserId String? @unique
+
   organization PermOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    PermWorkspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   plan         PermPlan         @relation(fields: [planKey], references: [key])
