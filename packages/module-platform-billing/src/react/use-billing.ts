@@ -92,13 +92,26 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
     [client, reload],
   );
 
+  const loadingMore = useRef(false);
   const loadMore = useCallback(async () => {
-    if (!history?.nextCursor) return;
+    // One page at a time: two quick presses would read the same cursor and append the page twice.
+    if (!history?.nextCursor || loadingMore.current) return;
+    loadingMore.current = true;
     try {
       const next = await client.history(organizationId, history.nextCursor);
-      setHistory({ items: [...history.items, ...next.items], nextCursor: next.nextCursor });
+      // Appended to what is shown NOW (a reload may have replaced it meanwhile), without repeating a request.
+      setHistory((current) => {
+        const shown = current ?? { items: [], nextCursor: null };
+        const seen = new Set(shown.items.map((item) => item.id));
+        return {
+          items: [...shown.items, ...next.items.filter((item) => !seen.has(item.id))],
+          nextCursor: next.nextCursor,
+        };
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load more of the history.');
+    } finally {
+      loadingMore.current = false;
     }
   }, [client, organizationId, history]);
 

@@ -140,6 +140,7 @@ export function PendingRequest({
                   <select
                     id={id}
                     value={draft.method}
+                    aria-invalid={errors.method ? true : undefined}
                     aria-describedby={note}
                     onChange={(event) => edit({ method: event.target.value })}
                     className={inputClass(Boolean(errors.method))}
@@ -166,13 +167,14 @@ export function PendingRequest({
                 )}
               </Field>
               <Field label="Day paid" error={errors.paidOn}>
-                {(id) => (
+                {(id, note) => (
                   <DatePicker
                     id={id}
                     value={draft.paidOn || null}
                     today={overview.today}
                     className="w-full"
                     aria-invalid={errors.paidOn ? true : undefined}
+                    aria-describedby={note}
                     onChange={(day) => edit({ paidOn: day ?? '' })}
                   />
                 )}
@@ -202,6 +204,7 @@ export function PendingRequest({
                   <input
                     id={id}
                     value={draft.sender}
+                    aria-invalid={errors.sender ? true : undefined}
                     aria-describedby={note}
                     onChange={(event) => edit({ sender: event.target.value })}
                     className={inputClass(Boolean(errors.sender))}
@@ -214,6 +217,7 @@ export function PendingRequest({
                     id={id}
                     rows={2}
                     value={draft.note}
+                    aria-invalid={errors.note ? true : undefined}
                     aria-describedby={note}
                     onChange={(event) => edit({ note: event.target.value })}
                     className={inputClass(Boolean(errors.note))}

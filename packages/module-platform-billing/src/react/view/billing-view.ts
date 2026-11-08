@@ -1,3 +1,4 @@
+import { DEFAULT_TIME_ZONE, isValidTimeZone, zonedDayKey } from '@kwtech/module-kit';
 import type { BillingEventView, BillingOverviewView, BillingStandingView } from '../billing-client.js';
 
 /**
@@ -70,23 +71,13 @@ export function formatDay(day: string | null): string {
 /**
  * An instant as its day in the billing time zone: `1 Dec 2026`. Never the
  * browser's zone, which would date an evening payment a day later for some
- * viewers. An unknown zone falls back to the instant's UTC day.
+ * viewers. An unknown zone falls back to `DEFAULT_TIME_ZONE`, never UTC.
  */
 export function formatInstantDay(iso: string, timeZone: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(date);
-    const part = (type: string) => parts.find((one) => one.type === type)?.value ?? '';
-    return formatDay(`${part('year')}-${part('month')}-${part('day')}`);
-  } catch {
-    return formatDay(iso.slice(0, 10));
-  }
+  // module-kit's one rule for "which day is this instant", and its fallback zone, never UTC.
+  return formatDay(zonedDayKey(date, isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE));
 }
 
 /** `1 day`, `3 days`. */

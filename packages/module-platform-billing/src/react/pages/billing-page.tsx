@@ -45,7 +45,14 @@ export interface BillingPageProps {
  *
  * ⚠ Hiding a control is cosmetic: the API authorises every act again.
  */
-export function BillingPage({ organizationId, client }: BillingPageProps) {
+export function BillingPage(props: BillingPageProps) {
+  // ⚠ Keyed by organization: a new organization starts from nothing, never from the last one's
+  // overview and pending request (whose id would then be sent with the new organization's).
+  return <OrganizationBilling key={props.organizationId ?? ''} {...props} />;
+}
+
+/** The page for one organization; `BillingPage` remounts it when the organization changes. */
+function OrganizationBilling({ organizationId, client }: BillingPageProps) {
   const state = useBilling(organizationId ?? '', client ? { client } : {});
   const can: BillingAbilities = {
     choosePlan: useHoldsFeature(PLATFORM_BILLING_FEATURE.changePlan),
@@ -92,7 +99,19 @@ export function BillingPage({ organizationId, client }: BillingPageProps) {
       ) : null}
 
       {!overview || !status || !main || !change || !cancel ? (
-        state.error ? null : (
+        state.error ? (
+          // A first load that failed can be tried again: dismissing the error alone would leave the skeleton for ever.
+          <button
+            type="button"
+            className={buttonClass()}
+            onClick={() => {
+              state.dismissError();
+              void state.reload();
+            }}
+          >
+            Try again
+          </button>
+        ) : (
           <div className="h-40 animate-pulse rounded-lg bg-muted" />
         )
       ) : (

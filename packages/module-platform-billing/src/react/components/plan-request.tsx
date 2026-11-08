@@ -38,8 +38,9 @@ export function PlanRequest({
   onClose: () => void;
 }) {
   const groupId = useId();
+  // Only a plan CHANGE leaves the current plan out: a trial's owner subscribes to the plan they are trying.
   const choices = overview.plans.filter(
-    (plan) => plan.monthly !== null && plan.monthly > 0 && !plan.archived && (mode === 'renew' || !plan.current),
+    (plan) => plan.monthly !== null && plan.monthly > 0 && !plan.archived && (mode !== 'change_plan' || !plan.current),
   );
   const [planKey, setPlanKey] = useState<string | null>(mode === 'renew' ? null : (choices[0]?.key ?? null));
   const [preview, setPreview] = useState<BillingPreviewView | null>(null);

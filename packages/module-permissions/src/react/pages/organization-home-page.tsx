@@ -34,12 +34,30 @@ import { useMyOrganization } from './use-my-organization.js';
  * `organization:read` sees. Knowing that your company has eleven people and two
  * workspaces is not the same disclosure as being able to list or change them.
  */
+/**
+ * The organization's plan page when another module owns it: the billing
+ * module's Billing page, in an app that composes it. Named by its section
+ * under `/organizations/:organizationId/` and the key that opens it, because
+ * this module may not import that one (PLAN §9).
+ */
+export interface OrganizationPlanPage {
+  /** The path segment after the organization: `billing`. */
+  section: string;
+  /** The key the page's route declares: the card is shown to its holders. */
+  feature: string;
+  title: string;
+  description: string;
+}
+
 export function OrganizationHomePage({
   organizationId,
   client,
+  planPage,
 }: {
   organizationId: string | undefined;
   client?: PermissionsClient;
+  /** Where the plan lives when another module owns it (billing); absent, the read-only Subscription page. */
+  planPage?: OrganizationPlanPage | undefined;
 }) {
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
   const { detail, error, notice } = useMyOrganization(api, organizationId);
@@ -173,13 +191,23 @@ export function OrganizationHomePage({
                 description="The workspaces here, who is in each, and what they may do once inside."
               />
             </FeatureGate>
-            <FeatureGate allOf={[FEATURE.subscriptionsRead]}>
-              <Card
-                href={organizationSectionHref(detail.id, 'subscription')}
-                title="Subscription"
-                description="The plan this organization is on and what it entitles."
-              />
-            </FeatureGate>
+            {planPage ? (
+              <FeatureGate allOf={[planPage.feature]}>
+                <Card
+                  href={organizationSectionHref(detail.id, planPage.section)}
+                  title={planPage.title}
+                  description={planPage.description}
+                />
+              </FeatureGate>
+            ) : (
+              <FeatureGate allOf={[FEATURE.subscriptionsRead]}>
+                <Card
+                  href={organizationSectionHref(detail.id, 'subscription')}
+                  title="Subscription"
+                  description="The plan this organization is on and what it entitles."
+                />
+              </FeatureGate>
+            )}
             {/*
               Settings is offered to everybody holding `organization:read`, not
               only to somebody who may rename — because leaving lives there too,

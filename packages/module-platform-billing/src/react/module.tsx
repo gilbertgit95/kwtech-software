@@ -22,8 +22,8 @@ function BillingRoute({ params }: ModuleRouteProps) {
  * workspace's Apps page.
  *
  * ⚠ It replaces `module-permissions`' read-only
- * `/organizations/:organizationId/subscription`; the app drops that route
- * when it composes both (apps/web-app/src/modules.ts).
+ * `/organizations/:organizationId/subscription`: the app hands permissions
+ * this page as its `planPage` (apps/web-app/src/modules.ts).
  */
 export const platformBillingWebModule: WebModuleDescriptor = {
   key: 'platform-billing',

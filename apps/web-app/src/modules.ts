@@ -11,7 +11,8 @@ import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
 import { localNetworkWebModule } from '@kwtech/module-local-network/react';
 import { noteWebModule } from '@kwtech/module-note/react';
 import { notificationWebModule } from '@kwtech/module-notification/react';
-import { permissionsWebModule } from '@kwtech/module-permissions/react';
+import { permissionsWebModuleWith } from '@kwtech/module-permissions/react';
+import { PLATFORM_BILLING_FEATURE } from '@kwtech/module-platform-billing';
 import { platformBillingWebModule } from '@kwtech/module-platform-billing/react';
 import { printWebModule } from '@kwtech/module-print/react';
 import { studioWebModule } from '@kwtech/module-print-studio/react';
@@ -41,20 +42,23 @@ import { taskWebModule } from '@kwtech/module-task/react';
  */
 /**
  * ⚠ The Billing page REPLACES permissions' read-only subscription page (#96):
- * one place an organization sees its plan. Dropped here, by its path, because
- * the two modules may not know each other (PLAN §9); the app is the one party
- * composing both. The page still exists in the package for an app without
- * billing.
+ * one place an organization sees its plan. Handed to permissions as its
+ * `planPage`, because the two modules may not know each other (PLAN §9): it
+ * drops its own page and points the organization overview's card here,
+ * shown to the holders of the Billing page's key.
  */
-const PERMISSIONS_SUBSCRIPTION_PAGE = '/organizations/:organizationId/subscription';
-const permissionsWithoutSubscriptionPage: WebModuleDescriptor = {
-  ...permissionsWebModule,
-  routes: (permissionsWebModule.routes ?? []).filter((route) => route.path !== PERMISSIONS_SUBSCRIPTION_PAGE),
-};
+const permissionsWithBillingPage = permissionsWebModuleWith({
+  planPage: {
+    section: 'billing',
+    feature: PLATFORM_BILLING_FEATURE.read,
+    title: 'Billing',
+    description: 'Your plan, what is due and when, payment details, bills and receipts.',
+  },
+});
 
 const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   authWebModule,
-  permissionsWithoutSubscriptionPage,
+  permissionsWithBillingPage,
   // The organization's Billing page (#96): plan, what is due, requests, payment details and history.
   platformBillingWebModule,
   chatWebModule(),

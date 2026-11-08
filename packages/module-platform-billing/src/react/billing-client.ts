@@ -214,13 +214,19 @@ export interface BillingClient {
 export function createBillingClient(path = DEFAULT_GRAPHQL_PATH): BillingClient {
   /** One document POSTed to the route handler: its data, or its first error as the sentence to show. */
   async function graphql<T>(document: string, variables: Record<string, unknown>): Promise<T> {
-    const response = await fetch(path, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ query: document, variables }),
-      cache: 'no-store',
-    });
+    let response: Response;
+    try {
+      response = await fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ query: document, variables }),
+        cache: 'no-store',
+      });
+    } catch {
+      // The network itself failed: the browser's own words ("Failed to fetch") mean nothing to a person.
+      throw new Error('Cannot reach the server.');
+    }
     if (!response.ok) {
       throw new Error(response.status === 401 ? 'Your session has ended. Sign in again.' : 'Cannot reach the server.');
     }

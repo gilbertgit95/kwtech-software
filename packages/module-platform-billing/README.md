@@ -21,15 +21,18 @@ pages (#97).
 ## In a Next.js app
 
 ```ts
+import { permissionsWebModuleWith } from '@kwtech/module-permissions/react';
 import { platformBillingWebModule } from '@kwtech/module-platform-billing/react';
-// WEB_MODULES: [...permissions without its /subscription page, platformBillingWebModule, ...]
+// WEB_MODULES: [permissionsWebModuleWith({ planPage: { section: 'billing', feature: 'platform-billing:read', … } }),
+//               platformBillingWebModule, …]
 ```
 
 **The Billing page**, `/organizations/:organizationId/billing`
 (`platform-billing:read`, in the Organization group). Not a sub-app: a
 drawer page, never on a workspace's Apps page. ⚠ It replaces
-`module-permissions`' read-only `/organizations/:organizationId/subscription`;
-the app drops that route when it composes both (`apps/web-app/src/modules.ts`).
+`module-permissions`' read-only `/organizations/:organizationId/subscription`:
+the app hands permissions this page as its `planPage`, which drops that route
+and points the organization overview's card here (`apps/web-app/src/modules.ts`).
 
 - **The status** (`billingStatus`): the plan, the due date, the credit, and
   the rule behind every date (grace, a hold, a trial, a cancel, an archived

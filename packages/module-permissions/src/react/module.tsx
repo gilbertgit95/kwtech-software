@@ -8,7 +8,7 @@ import { FeaturesPage } from './pages/features-page.js';
 import { InviteUserPage } from './pages/invite-user-page.js';
 import { MyOrganizationsPage } from './pages/my-organizations-page.js';
 import { OrganizationDetailPage } from './pages/organization-detail-page.js';
-import { OrganizationHomePage } from './pages/organization-home-page.js';
+import { OrganizationHomePage, type OrganizationPlanPage } from './pages/organization-home-page.js';
 import { OrganizationMembersPage } from './pages/organization-members-page.js';
 import { OrganizationNewPage } from './pages/organization-new-page.js';
 import { OrganizationSettingsPage } from './pages/organization-settings-page.js';
@@ -164,6 +164,9 @@ function MyOrganizationNewRoute(_props: ModuleRouteProps) {
 function OrganizationHomeRoute({ params }: ModuleRouteProps) {
   return <OrganizationHomePage organizationId={params?.organizationId} />;
 }
+
+/** The read-only subscription page's path: dropped when another module owns the plan page. */
+const ORGANIZATION_SUBSCRIPTION_ROUTE = '/organizations/:organizationId/subscription';
 
 function OrganizationMembersRoute({ params }: ModuleRouteProps) {
   return <OrganizationMembersPage organizationId={params?.organizationId} />;
@@ -500,7 +503,7 @@ export const permissionsWebModule: WebModuleDescriptor = {
       nav: { group: WORKSPACE_NAV_GROUP, order: 30, icon: 'settings' },
     },
     {
-      path: '/organizations/:organizationId/subscription',
+      path: ORGANIZATION_SUBSCRIPTION_ROUTE,
       component: OrganizationSubscriptionRoute,
       title: 'Subscription',
       // Already an ORGANIZATION-level key, and has been since it was written —
@@ -766,3 +769,36 @@ export const permissionsWebModule: WebModuleDescriptor = {
     },
   ],
 };
+
+export interface PermissionsWebModuleOptions {
+  /**
+   * Where an organization's plan lives when another module owns it (the
+   * billing module's Billing page). Given, the read-only
+   * `/organizations/:organizationId/subscription` is not composed and the
+   * organization overview's card opens this page instead, shown to holders of
+   * its key. Absent: the module's own read-only page, as before.
+   */
+  planPage?: OrganizationPlanPage;
+}
+
+/**
+ * `permissionsWebModule`, configured. The one option today is `planPage`: an
+ * app composing billing hands it the Billing page, so an organization has one
+ * place to see its plan, and neither module names the other.
+ */
+export function permissionsWebModuleWith(options: PermissionsWebModuleOptions = {}): WebModuleDescriptor {
+  const planPage = options.planPage;
+  if (!planPage) return permissionsWebModule;
+  /** The overview, its plan card pointing at the plan page. */
+  function OrganizationHomeWithPlanRoute({ params }: ModuleRouteProps) {
+    return <OrganizationHomePage organizationId={params?.organizationId} planPage={planPage} />;
+  }
+  return {
+    ...permissionsWebModule,
+    routes: (permissionsWebModule.routes ?? [])
+      .filter((route) => route.path !== ORGANIZATION_SUBSCRIPTION_ROUTE)
+      .map((route) =>
+        route.component === OrganizationHomeRoute ? { ...route, component: OrganizationHomeWithPlanRoute } : route,
+      ),
+  };
+}
