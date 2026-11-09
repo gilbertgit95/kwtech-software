@@ -1,8 +1,9 @@
 import type { ProcessRunContext } from '@kwtech/module-kit';
 import { platformDay } from '../src/domain/days.js';
 import { PlatformBillingWriteError } from '../src/server/platform-billing.errors.js';
+import { PlatformBillingDailyCheck } from '../src/server/platform-billing-daily.process.js';
 import { PLATFORM_BILLING_SYSTEM_ACTOR } from '../src/server/platform-billing-write.service.js';
-import { type FakeBilling, fakeBilling, noonOn, setPrices } from './fake-client.js';
+import { type FakeBilling, fakeBilling, giveSubscription, noonOn, setPrices } from './fake-client.js';
 
 const ORG = 'org1';
 const OWNER = 'owner1';
@@ -319,5 +320,41 @@ describe('a price rise scheduled before the due date (#129)', () => {
     const kinds = billing.store().notices.map((row) => row.kind);
     expect(kinds).toContain('due_in_7');
     expect(kinds).not.toContain('auto_renew_upcoming');
+  });
+});
+
+describe('renewals come before reminders in the daily check (#129)', () => {
+  function runOver(now: Date, organizations: readonly string[], maxItems: number): ProcessRunContext {
+    return {
+      now,
+      schedule: { kind: 'daily', times: ['08:00'], weekdays: [0, 1, 2, 3, 4, 5, 6] },
+      maxItems,
+      tooLateAfterMinutes: 720,
+      signal: new AbortController().signal,
+      async workspaces() {
+        return { workspaces: [], nextCursor: null };
+      },
+      async organizations() {
+        return { organizations: organizations.map((organizationId) => ({ organizationId })), nextCursor: null };
+      },
+    };
+  }
+
+  it('⚠ renews even when other organizations’ reminders use up the run', async () => {
+    const billing = await prepaid(3);
+    await billing.writes.setAutoRenew(ORG, OWNER, true, noonOn('2026-11-15'));
+    // Another organization, earlier in the order, due the same day with nothing to pay it from.
+    giveSubscription(billing, 'org0', 'basic', '2026-11-15', '2026-12-15', '2026-12-22');
+    await billing.daily.run(runOver(noonOn('2026-12-15'), ['org0', ORG], 1));
+    expect(billing.store().requests.filter((row) => row.automatic)).toHaveLength(1);
+  });
+
+  it('renews with no notifier bound: renewing is not telling', async () => {
+    const billing = await prepaid(3);
+    await billing.writes.setAutoRenew(ORG, OWNER, true, noonOn('2026-11-15'));
+    const unbound = new PlatformBillingDailyCheck(billing.client, billing.reads, billing.writes);
+    await unbound.run(runOver(noonOn('2026-12-15'), [ORG], 100));
+    expect(billing.store().requests.filter((row) => row.automatic)).toHaveLength(1);
+    expect(billing.store().notices).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import {
   processOccurrence,
 } from '@kwtech/module-kit';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { type AutoRenewSkip, paidUpToMoved } from '../domain/auto-renew.js';
+import { type AutoRenewSkip, paidUpToMoved, planAutoRenew } from '../domain/auto-renew.js';
 import { type DayKey, platformDay } from '../domain/days.js';
 import { isWaitingTooLong, type PlannedReminder, planReminders, type ReminderKind } from '../domain/notices.js';
 import {
@@ -98,8 +98,6 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   /** One run: retry what was never sent, sweep the organizations, then the approvers' digest. Counts, never names. */
   async run(context: ProcessRunContext): Promise<ProcessRunResult> {
     const result: ProcessRunResult = { handled: 0, skippedLate: 0, leftForNext: 0 };
-    const notifier = this.notifier;
-    if (!notifier) return result;
 
     // ⚠ The billing zone's day and time, from the run's one clock: never the machine's.
     const settings = await this.reads.settings();
@@ -107,6 +105,21 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     if (occurrence.kind === 'none') return result;
     if (occurrence.kind === 'too_late') return { ...result, skippedLate: 1 };
     const today: DayKey = occurrence.dayKey;
+
+    /*
+     * ⚠ RENEWALS FIRST, ON A BUDGET OF THEIR OWN (#129). A renewal from credit
+     * keeps an organization's plan; a reminder only talks about it. Swept
+     * before any notice, over the organizations whose switch is on, so a day
+     * of reminders elsewhere can never use up the run and leave a due renewal
+     * untried until its access ends. Runs with no notifier too: renewing is
+     * not telling.
+     */
+    const renewed = await this.autoRenewSweep(context);
+    result.handled += renewed.renewed;
+    result.leftForNext += renewed.leftForNext;
+
+    const notifier = this.notifier;
+    if (!notifier) return result;
 
     /*
      * ⚠ ONE BUDGET FOR THE WHOLE RUN (`maxItems`), spent by retries, the
@@ -164,6 +177,38 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     return result;
   }
 
+  /**
+   * Every organization with auto-renew on, a page at a time by id, renewed
+   * when `planAutoRenew` says so (#129). At most `maxItems` renewals a run;
+   * the rest are still due tomorrow, inside their grace. One organization's
+   * failure is logged and the sweep goes on.
+   */
+  private async autoRenewSweep(context: ProcessRunContext): Promise<{ renewed: number; leftForNext: number }> {
+    let renewed = 0;
+    let after: string | null = null;
+    for (;;) {
+      if (context.signal.aborted) return { renewed, leftForNext: 0 };
+      const page = await this.prisma.platformBillingAutoRenew.findMany({
+        where: { enabled: true, ...(after ? { organizationId: { gt: after } } : {}) },
+        orderBy: { organizationId: 'asc' },
+        take: ORGANIZATION_PAGE,
+      });
+      for (const [index, row] of page.entries()) {
+        if (context.signal.aborted) return { renewed, leftForNext: 0 };
+        if (renewed >= context.maxItems) return { renewed, leftForNext: page.length - index };
+        try {
+          // Sequential: each renewal is a transaction under its organization's lock.
+          const outcome = await this.writes.autoRenew(row.organizationId, context.now);
+          if (outcome.kind === 'renewed') renewed += 1;
+        } catch (error) {
+          this.logger.warn(`The billing auto-renew of one organization failed: ${errorText(error)}`);
+        }
+      }
+      if (page.length < ORGANIZATION_PAGE) return { renewed, leftForNext: 0 };
+      after = page.at(-1)?.organizationId ?? null;
+    }
+  }
+
   /** The reminders one organization is owed today, each written once and sent. */
   private async checkOrganization(
     notifier: PlatformBillingNotifier,
@@ -174,58 +219,57 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   ): Promise<{ claimed: number; sent: number }> {
     let sent = 0;
     let claimed = 0;
-    let billing = await this.reads.context(organizationId, now);
+    const billing = await this.reads.context(organizationId, now);
 
     /*
      * ⚠ RENEW BEFORE REMINDING (#129). A plan renewed from credit is no longer
      * due, so reading again after it means today's notices are about the new
      * period: nobody is told "due today" about a plan that just renewed.
      */
-    if (billing.autoRenew.enabled && allowance > 0) {
-      /*
-       * ⚠ ISOLATED, as each reminder is: an auto-renew that throws (a refusal
-       * inside the approval, the subscriptions port, the notice row) is logged,
-       * and the organization still gets today's due, overdue and expiry
-       * notices below. Otherwise one persistent failure would silence them
-       * every day until access ended unannounced.
-       */
+    /*
+     * Auto-renew on and the plan due, but not renewed by the sweep before this
+     * (#129): the owner hears why, once a period, keyed by the due date. Pure
+     * here: the renewing is `autoRenewSweep`'s, which has already run.
+     */
+    const skip =
+      billing.autoRenew.enabled && claimed < allowance
+        ? planAutoRenew({
+            enabled: true,
+            standing: billing.standing,
+            today,
+            hasPendingRequest: billing.pending !== null,
+            cancelled: billing.cancelled,
+            planArchived: billing.live?.planArchived ?? false,
+            renewal: this.reads.renewalFromCredit(billing),
+          })
+        : null;
+    if (skip?.kind === 'skip' && billing.standing.window) {
+      const window = billing.standing.window;
+      const notice: BillingReminderNotice = {
+        organizationId,
+        kind: 'auto_renew_skipped',
+        planKey: billing.live?.planKey ?? null,
+        periodEnd: window.periodEnd,
+        accessUntil: window.accessUntil,
+        daysLeft: 0,
+        autoRenewSkip: skip.reason,
+        short: skip.short,
+        currency: billing.settings.currency,
+      };
       try {
-        const outcome = await this.writes.autoRenew(organizationId, now);
-        if (outcome.kind === 'renewed') {
+        const row = await this.claim(
+          organizationId,
+          { kind: 'auto_renew_skipped', day: window.periodEnd },
+          window.periodEnd,
+          { ...notice },
+          now,
+        );
+        if (row) {
           claimed += 1;
-          if (outcome.told) sent += 1;
-          billing = await this.reads.context(organizationId, now);
-        }
-        if (outcome.kind === 'skip' && billing.standing.window) {
-          const window = billing.standing.window;
-          const notice: BillingReminderNotice = {
-            organizationId,
-            kind: 'auto_renew_skipped',
-            planKey: billing.live?.planKey ?? null,
-            periodEnd: window.periodEnd,
-            accessUntil: window.accessUntil,
-            daysLeft: 0,
-            autoRenewSkip: outcome.reason,
-            short: outcome.short,
-            currency: billing.settings.currency,
-          };
-          // Keyed by the due date: said once a period, whatever day the run found it.
-          const row = await this.claim(
-            organizationId,
-            { kind: 'auto_renew_skipped', day: window.periodEnd },
-            window.periodEnd,
-            { ...notice },
-            now,
-          );
-          if (row) {
-            claimed += 1;
-            if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
-          }
+          if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
         }
       } catch (error) {
-        this.logger.warn(`The billing auto-renew of one organization failed: ${errorText(error)}`);
-        // Whatever it committed before failing is what the reminders must be about.
-        billing = await this.reads.context(organizationId, now);
+        this.logger.warn(`A billing auto-renew notice could not be recorded: ${errorText(error)}`);
       }
     }
 

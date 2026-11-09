@@ -447,6 +447,12 @@ export interface PlatformBillingTransaction {
   /** The owner's auto-renew switch (#129): one row per organization, no row is off. */
   platformBillingAutoRenew: {
     findUnique(args: { where: { organizationId: string } }): Promise<AutoRenewRow | null>;
+    /** The switches turned on, a page at a time by organization id: what the daily check sweeps. */
+    findMany(args: {
+      where: { enabled: true; organizationId?: { gt: string } };
+      orderBy: { organizationId: SortOrder };
+      take: number;
+    }): Promise<AutoRenewRow[]>;
     upsert(args: {
       where: { organizationId: string };
       create: AutoRenewRow;

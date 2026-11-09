@@ -364,16 +364,17 @@ organization, an expired one included, with no plan gate (#94).
   notices a run; past that the rest wait for the next run (a quiet
   organization costs nothing, so a capped run reaches further each time). A
   run more than 12 hours late is skipped and counted.
-- **First it renews from credit** (#129): for an organization whose owner
-  turned auto-renew on, `autoRenew` (above), then it reads the organization
-  again, so a plan that just renewed is not reminded as due. When the plan
-  was due and did not renew, the owner hears why once a period
-  (`auto_renew_skipped`, keyed by the due date), beside the usual notices.
-  A renewal counts against the run's item limit like a notice. ⚠ The step
-  is isolated: a failure in it is logged and the organization's reminders
-  still go out. A price rise that moves the credit's paid-up-to date earlier
-  is said once (`paid_up_to_moved`, `paidUpToMoved`), within a week of the
-  day it took effect.
+- **First it renews from credit** (#129), before any notice and with or
+  without a notifier: every organization whose owner turned auto-renew on
+  (`platform_billing_auto_renew`, a page at a time), through `autoRenew`
+  (above). ⚠ On a budget of its own (`maxItems` renewals a run), so a day of
+  reminders elsewhere can never use up the run and leave a due renewal
+  untried until access ends. A failure is logged and the sweep goes on.
+  Then, when the plan was due and did not renew, the owner hears why once a
+  period (`auto_renew_skipped`, keyed by the due date), beside the usual
+  notices. A price rise that moves the credit's paid-up-to date earlier is
+  said once (`paid_up_to_moved`, `paidUpToMoved`), within a week of the day
+  it took effect.
 - **What it says** (`planReminders`): 7, 3 and 1 days before the due date and
   on it; each overdue day with the days of access left; the last day; the
   day access ended. Daily while a request waits with no payment details. A

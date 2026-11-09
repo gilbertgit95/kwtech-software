@@ -559,9 +559,11 @@ export function autoRenewControl(
       shown,
       on,
       disabledReason,
-      note: on
-        ? 'A request is waiting, so the plan will not renew by itself until it is approved, rejected or withdrawn.'
-        : 'A request is waiting. Once it is approved, rejected or withdrawn, auto-renew can renew the plan from credit.',
+      note: `${
+        on
+          ? 'A request is waiting, so the plan will not renew by itself until it is approved, rejected or withdrawn.'
+          : 'A request is waiting. Once it is approved, rejected or withdrawn, auto-renew can renew the plan from credit.'
+      }${covered ? '' : ` It also needs credit for the whole renewal: ${formatMoney(next.toPay, overview.currency)} more.`}`,
     };
   }
   if (!on) {

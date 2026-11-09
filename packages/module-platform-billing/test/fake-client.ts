@@ -397,6 +397,14 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         const row = get().autoRenew.get(where.organizationId);
         return row ? { ...row } : null;
       },
+      async findMany({ where, take }) {
+        const after = where.organizationId?.gt ?? '';
+        return [...get().autoRenew.values()]
+          .filter((row) => row.enabled === where.enabled && row.organizationId > after)
+          .sort((a, b) => a.organizationId.localeCompare(b.organizationId))
+          .slice(0, take)
+          .map((row) => ({ ...row }));
+      },
       async upsert({ where, create, update }) {
         const store = get();
         const found = store.autoRenew.get(where.organizationId);
