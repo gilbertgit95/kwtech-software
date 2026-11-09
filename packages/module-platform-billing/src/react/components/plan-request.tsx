@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
+import { PLATFORM_BILLING_MONTH_CHOICES } from '../../domain/quotes.js';
 import type { BillingClient, BillingOverviewView, BillingPreviewView, ChosenPlanKind } from '../billing-client.js';
-import { formatDay, formatMoney, lineLabel, planChoices } from '../view/billing-view.js';
+import { formatDay, formatMoney, lineLabel, monthsLabel, planChoices } from '../view/billing-view.js';
 import { buttonClass, Section } from './ui.js';
 
 /** What the panel asks for: a renewal of the current plan, or a plan someone chooses. */
@@ -14,6 +15,18 @@ const TITLES: Readonly<Record<PlanRequestMode, string>> = {
   change_plan: 'Change plan',
   replace: 'Choose a replacement plan',
 };
+
+/** What the panel submits: the plan (null for a renewal), the months paid at once, and whether to turn auto-renew on (#129). */
+export interface PlanRequestChoice {
+  planKey: string | null;
+  months: number;
+  turnOnAutoRenew: boolean;
+}
+
+/** The kinds that buy whole months, so may pay for several at once (#129). A plan change runs to the period's end. */
+function buysMonths(mode: PlanRequestMode): boolean {
+  return mode !== 'change_plan';
+}
 
 /**
  * A request before it is made: the plan (unless it is a renewal), the price
@@ -27,6 +40,7 @@ export function PlanRequest({
   client,
   mode,
   busy,
+  canChoosePlan,
   onSubmit,
   onClose,
 }: {
@@ -34,16 +48,29 @@ export function PlanRequest({
   client: BillingClient;
   mode: PlanRequestMode;
   busy: boolean;
-  onSubmit: (planKey: string | null) => void;
+  /** The owner's key (D8): only they may turn auto-renew on. */
+  canChoosePlan: boolean;
+  onSubmit: (choice: PlanRequestChoice) => void;
   onClose: () => void;
 }) {
   const groupId = useId();
+  const monthsId = useId();
+  const autoId = useId();
   const choices = planChoices(overview.plans, mode);
   const [planKey, setPlanKey] = useState<string | null>(mode === 'renew' ? null : (choices[0]?.key ?? null));
-  const [latestPreview, setPreview] = useState<BillingPreviewView | null>(null);
-  // ⚠ Shown, and pressable, only for the selection it priced: a quote from the plan clicked before never stands for this one.
-  const preview = latestPreview?.kind === mode && latestPreview.planKey === planKey ? latestPreview : null;
+  const [months, setMonths] = useState(1);
+  const [turnOnAutoRenew, setTurnOnAutoRenew] = useState(true);
+  const [latestPreview, setPreview] = useState<{ months: number; view: BillingPreviewView } | null>(null);
+  // ⚠ Shown, and pressable, only for the selection it priced: a quote from the plan or months clicked before never stands for this one.
+  const preview =
+    latestPreview &&
+    latestPreview.view.kind === mode &&
+    latestPreview.view.planKey === planKey &&
+    latestPreview.months === months
+      ? latestPreview.view
+      : null;
   const [failure, setFailure] = useState<string | null>(null);
+  const offerAutoRenew = buysMonths(mode) && months > 1 && canChoosePlan && !overview.autoRenew.enabled;
 
   useEffect(() => {
     if (mode !== 'renew' && !planKey) return;
@@ -51,9 +78,9 @@ export function PlanRequest({
     setPreview(null);
     setFailure(null);
     client
-      .preview(overview.organizationId, mode, planKey)
+      .preview(overview.organizationId, mode, planKey, months)
       .then((next) => {
-        if (!cancelled) setPreview(next);
+        if (!cancelled) setPreview({ months, view: next });
       })
       .catch((cause: unknown) => {
         if (!cancelled) setFailure(cause instanceof Error ? cause.message : 'Could not price this request.');
@@ -61,7 +88,7 @@ export function PlanRequest({
     return () => {
       cancelled = true;
     };
-  }, [client, overview.organizationId, mode, planKey]);
+  }, [client, overview.organizationId, mode, planKey, months]);
 
   const money = (amount: number) => formatMoney(amount, overview.currency);
   const quote = preview?.quote ?? null;
@@ -105,6 +132,47 @@ export function PlanRequest({
         </fieldset>
       )}
 
+      {buysMonths(mode) ? (
+        <div className="mt-4 flex flex-col gap-2">
+          <label htmlFor={monthsId} className="text-sm font-medium">
+            Pay for
+          </label>
+          <select
+            id={monthsId}
+            className="w-48 rounded-md border border-border bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+            value={months}
+            aria-describedby={`${monthsId}-hint`}
+            onChange={(event) => setMonths(Number(event.target.value))}
+          >
+            {PLATFORM_BILLING_MONTH_CHOICES.map((count) => (
+              <option key={count} value={count}>
+                {monthsLabel(count)}
+              </option>
+            ))}
+          </select>
+          <p id={`${monthsId}-hint`} className="text-xs text-muted-foreground">
+            {months > 1
+              ? `This month is paid by the bill. The other ${monthsLabel(months - 1)} are kept as credit and pay each renewal after it.`
+              : 'Pay for several months at once and the extra is kept as credit for the renewals after this one.'}
+          </p>
+          {offerAutoRenew ? (
+            <label htmlFor={autoId} className="flex items-start gap-2 text-sm">
+              <input
+                id={autoId}
+                type="checkbox"
+                className="mt-0.5"
+                checked={turnOnAutoRenew}
+                onChange={(event) => setTurnOnAutoRenew(event.target.checked)}
+              />
+              <span>
+                Renew automatically from credit, so the months paid ahead need no renewal each month. You can turn it
+                off on this page.
+              </span>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mt-4" aria-live="polite">
         {failure ? (
           <p role="alert" className="text-sm text-destructive">
@@ -134,8 +202,8 @@ export function PlanRequest({
             <table className="w-full text-sm">
               <tbody>
                 {quote.lines.map((line) => (
-                  <tr key={`${line.kind}-${line.amount}`}>
-                    <td className="py-1">{lineLabel(line.kind, line.days)}</td>
+                  <tr key={`${line.kind}-${line.amount}-${line.months ?? 0}`}>
+                    <td className="py-1">{lineLabel(line.kind, line.days, line.months)}</td>
                     <td className="py-1 text-right tabular-nums">{money(line.amount)}</td>
                   </tr>
                 ))}
@@ -168,7 +236,13 @@ export function PlanRequest({
           type="button"
           className={buttonClass('primary')}
           disabled={busy || !preview?.allowed}
-          onClick={() => onSubmit(mode === 'renew' ? null : planKey)}
+          onClick={() =>
+            onSubmit({
+              planKey: mode === 'renew' ? null : planKey,
+              months: buysMonths(mode) ? months : 1,
+              turnOnAutoRenew: offerAutoRenew && turnOnAutoRenew,
+            })
+          }
         >
           {busy ? 'Requesting…' : mode === 'renew' ? 'Request renewal' : 'Request this plan'}
         </button>

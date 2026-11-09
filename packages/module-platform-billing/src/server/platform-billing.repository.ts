@@ -1,5 +1,5 @@
 import type { DayKey } from '../domain/days.js';
-import type { PaymentMethod } from '../domain/payments.js';
+import type { PaymentMethod, ReceiptMethod } from '../domain/payments.js';
 import type { RequestKind, RequestState } from '../domain/requests.js';
 
 /**
@@ -24,6 +24,10 @@ export interface RequestRow {
   pendingOrganizationId: string | null;
   requestedById: string;
   requestedAt: Date;
+  /** Months paid for at once (#129): 1 is one month. */
+  months: number;
+  /** Made and approved by the daily check from credit (#129). */
+  automatic: boolean;
   pricedOn: Date;
   pricedForPeriodEnd: Date | null;
   detailsVersion: number;
@@ -55,7 +59,11 @@ export interface PaymentRow {
   id: string;
   requestId: string;
   version: number;
-  method: PaymentMethod;
+  /**
+   * The column shares the receipts' enum, so `credit` can be read back, though
+   * nothing writes it here: the create below takes only `PaymentMethod`.
+   */
+  method: ReceiptMethod;
   amount: number;
   paidOn: Date;
   reference: string | null;
@@ -90,7 +98,7 @@ export interface ReceiptRow {
   number: number;
   amount: number;
   currency: string;
-  method: PaymentMethod;
+  method: ReceiptMethod;
   kind: string;
   snapshot: unknown;
   issuedAt: Date;
@@ -133,6 +141,14 @@ export interface SettingsRow {
   paymentAccounts: unknown;
   updatedById: string | null;
   updatedAt: Date;
+}
+
+/** The owner's auto-renew switch (`PlatformBillingAutoRenew`, #129). */
+export interface AutoRenewRow {
+  organizationId: string;
+  enabled: boolean;
+  setById: string;
+  setAt: Date;
 }
 
 /** A notice the daily check owes (`PlatformBillingNotice`). */
@@ -253,6 +269,11 @@ export interface PlatformBillingTransaction {
         requestedAt: Date;
         pricedOn: Date;
         pricedForPeriodEnd: Date | null;
+        /** #129: absent is 1. */
+        months?: number;
+        /** #129: made by the daily check, already covered (by credit) on the day it is made. */
+        automatic?: boolean;
+        coveredOn?: Date | null;
       };
     }): Promise<RequestRow>;
     /**
@@ -343,7 +364,8 @@ export interface PlatformBillingTransaction {
       _sum: { amount: true };
     }): Promise<{ _sum: { amount: number | null } }>;
     findFirst(args: {
-      where: { requestId: string; kind?: string; voidedAt?: null };
+      /** `kind` as one of several: an approval's receipt is a payment, or paid from credit (#129). */
+      where: { requestId: string; kind?: string | { in: string[] }; voidedAt?: null };
       orderBy: { number: SortOrder };
     }): Promise<ReceiptRow | null>;
     update(args: {
@@ -358,7 +380,7 @@ export interface PlatformBillingTransaction {
         number: number;
         amount: number;
         currency: string;
-        method: PaymentMethod;
+        method: ReceiptMethod;
         kind: string;
         /** A `ReceiptSnapshot`: plain data, written once. */
         snapshot: object;
@@ -420,6 +442,22 @@ export interface PlatformBillingTransaction {
       create: SettingsWrite & { id: string };
       update: SettingsWrite;
     }): Promise<SettingsRow>;
+  };
+
+  /** The owner's auto-renew switch (#129): one row per organization, no row is off. */
+  platformBillingAutoRenew: {
+    findUnique(args: { where: { organizationId: string } }): Promise<AutoRenewRow | null>;
+    /** The switches turned on, a page at a time by organization id: what the daily check sweeps. */
+    findMany(args: {
+      where: { enabled: true; organizationId?: { gt: string } };
+      orderBy: { organizationId: SortOrder };
+      take: number;
+    }): Promise<AutoRenewRow[]>;
+    upsert(args: {
+      where: { organizationId: string };
+      create: AutoRenewRow;
+      update: { enabled: boolean; setById: string; setAt: Date };
+    }): Promise<AutoRenewRow>;
   };
 
   /** The organization's decision lock (`PlatformBillingLock`): upserted first by every billing write. */

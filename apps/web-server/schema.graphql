@@ -897,10 +897,10 @@ type Mutation {
   removeTaskComment(commentId: String!, organizationId: String!, workspaceId: String!): Boolean!
   renameChat(conversationId: String!, icon: String, title: String): ChatConversation!
   renameMyOrganization(description: String, key: String!, name: String!, organizationId: String!): PermissionWriteResult!
-  renewPlatformBilling(organizationId: String!): PlatformBillingRequest!
+  renewPlatformBilling(months: Int, organizationId: String!): PlatformBillingRequest!
   reportPrintAgentJob(jobId: String!, message: String, printed: Boolean!): Boolean!
   reportPrintAgentPrinters(printers: [PrintReportedPrinterInput!]!): Boolean!
-  requestPlatformBillingPlan(kind: String!, organizationId: String!, planKey: String!): PlatformBillingRequest!
+  requestPlatformBillingPlan(kind: String!, months: Int, organizationId: String!, planKey: String!): PlatformBillingRequest!
   requestPublicBooking(input: BookingPublicRequestInput!, linkId: String!): BookingPublicRequest!
   rescheduleBookingAppointment(appointmentId: String!, organizationId: String!, resourceId: String!, startsAt: String!, workspaceId: String!): BookingAppointment!
   reschedulePublicBooking(resourceId: String!, startsAt: String!, token: String!): BookingPublicBooking!
@@ -960,6 +960,7 @@ type Mutation {
   setNoteVisibility(noteId: String!, organizationId: String!, visibility: String!, workspaceId: String!): Note!
   setPermissionDefault(key: String!, value: String): PermissionWriteResult!
   setPlanArchived(archived: Boolean!, planKey: String!): PermissionPlanDetail!
+  setPlatformBillingAutoRenew(enabled: Boolean!, organizationId: String!): PlatformBillingOverview!
   setPlatformBillingPrice(effectiveFrom: String!, monthly: Int!, planKey: String!): [PlatformBillingPrice!]!
   setPlatformBillingSettings(settings: PlatformBillingSettingsInput!): PlatformBillingSettings!
   setPosAvailability(available: Boolean!, itemIds: [String!]!, organizationId: String!, variantIds: [String!]!, workspaceId: String!): PosAvailabilityChange!
@@ -1479,6 +1480,11 @@ input PlatformBillingApprovalInput {
   reference: String
 }
 
+type PlatformBillingAutoRenew {
+  enabled: Boolean!
+  setAt: String
+}
+
 type PlatformBillingBill {
   cancelledAt: String
   cancelledReason: String
@@ -1562,6 +1568,15 @@ type PlatformBillingLine {
   amount: Int!
   days: Int
   kind: String!
+  months: Int
+}
+
+type PlatformBillingNextRenewal {
+  due: String!
+  monthly: Int!
+  monthsPaid: Int!
+  paidUpTo: String
+  toPay: Int!
 }
 
 type PlatformBillingOrganizationPage {
@@ -1579,8 +1594,10 @@ type PlatformBillingOrganizationStanding {
 }
 
 type PlatformBillingOverview {
+  autoRenew: PlatformBillingAutoRenew!
   creditBalance: Int!
   currency: String!
+  nextRenewal: PlatformBillingNextRenewal
   organizationId: String!
   organizationName: String
   paymentAccounts: [PlatformBillingPaymentAccount!]!
@@ -1744,6 +1761,7 @@ type PlatformBillingReport {
 type PlatformBillingRequest {
   accessUntil: String
   approverIsMember: Boolean!
+  automatic: Boolean!
   bill: PlatformBillingBill
   bills: [PlatformBillingBill!]!
   coveredOn: String
@@ -1757,6 +1775,7 @@ type PlatformBillingRequest {
   holdReason: String
   id: String!
   kind: String!
+  months: Int!
   organizationId: String!
   payments: [PlatformBillingPayment!]!
   periodEnd: String
@@ -2397,7 +2416,7 @@ type Query {
   platformBillingOverview(organizationId: String!): PlatformBillingOverview!
   platformBillingPlanComparison(organizationId: String!): PlatformBillingPlanComparison!
   platformBillingPlanList: [PlatformBillingPlanEntry!]!
-  platformBillingPreview(kind: String!, organizationId: String!, planKey: String): PlatformBillingPreview!
+  platformBillingPreview(kind: String!, months: Int, organizationId: String!, planKey: String): PlatformBillingPreview!
   platformBillingPrices: [PlatformBillingPrice!]!
   platformBillingQueue(cursor: String, limit: Int): PlatformBillingQueuePage!
   platformBillingReport(from: String!, to: String!): PlatformBillingReport!

@@ -8,6 +8,7 @@ import type { Centavos } from '../domain/money.js';
 import { checkAmount, findReferenceReuse } from '../domain/payments.js';
 import { type CapOverrun, capsBlockingDowngrade } from '../domain/plans.js';
 import { isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
+import type { Quote } from '../domain/quotes.js';
 import type { PlatformBillingRefusal } from '../domain/refusals.js';
 import { checkNewRequest, type PricedKind, type RequestState } from '../domain/requests.js';
 import {
@@ -94,6 +95,8 @@ export interface BillingContext {
    * starts a new row, so either leaves the cancel behind without a write.
    */
   cancelled: boolean;
+  /** The owner's auto-renew switch (#129): off when no row was ever written. */
+  autoRenew: { enabled: boolean; setAt: Date | null };
 }
 
 /** A request with what hangs off it: one row of the history (plan §7). */
@@ -217,13 +220,14 @@ export class PlatformBillingService {
     shared?: SharedBillingReads,
   ): Promise<BillingContext> {
     const isWrite = db !== this.prisma;
-    const [settings, prices, plans, live, creditBalance, pending] = await Promise.all([
+    const [settings, prices, plans, live, creditBalance, pending, autoRenew] = await Promise.all([
       shared?.settings ?? this.settings(db),
       shared?.prices ?? this.prices(db),
       shared?.plans ?? this.plans(),
       this.subscriptions.live(organizationId, isWrite ? db : undefined),
       this.creditBalance(organizationId, db),
       db.platformBillingRequest.findFirst({ where: { organizationId, state: 'pending' } }),
+      db.platformBillingAutoRenew.findUnique({ where: { organizationId } }),
     ]);
     const today = platformDay(now, settings.timeZone);
     const liveDays = live ? subscriptionDays(live, settings.timeZone) : null;
@@ -257,7 +261,33 @@ export class PlatformBillingService {
       creditBalance,
       pending,
       cancelled: cancel !== null,
+      autoRenew: { enabled: autoRenew?.enabled ?? false, setAt: autoRenew?.setAt ?? null },
     };
+  }
+
+  /**
+   * The renewal the organization's credit would pay today (#129), priced as a
+   * renewal request is, or why it cannot be: what the daily check renews from,
+   * and what "next renewal paid from credit" on the Billing page says.
+   */
+  renewalFromCredit(
+    context: BillingContext,
+    /**
+     * The day to price it on: today for a renewal made now, or the due date
+     * for one promised ahead, so a price rise scheduled before then is counted.
+     */
+    day: DayKey = context.today,
+  ): Quote | { refused: PlatformBillingRefusal } {
+    const priced = priceRequest({
+      kind: 'renew',
+      planKey: context.live?.planKey ?? '',
+      currentPlanKey: context.live?.planKey ?? null,
+      standing: context.standing,
+      prices: context.prices,
+      creditBalance: context.creditBalance,
+      day,
+    });
+    return isRefused(priced) ? priced : priced.quote;
   }
 
   /**
@@ -280,7 +310,12 @@ export class PlatformBillingService {
    * the check `submit` runs, as a preview the page shows before anyone presses
    * Request.
    */
-  async preview(context: BillingContext, kind: PricedKind, planKey: string | null): Promise<RequestPreview> {
+  async preview(
+    context: BillingContext,
+    kind: PricedKind,
+    planKey: string | null,
+    months = 1,
+  ): Promise<RequestPreview> {
     const currentPlanKey = context.live?.planKey ?? null;
     const wanted = kind === 'renew' ? currentPlanKey : planKey;
     const plan = wanted ? (context.plans.get(wanted) ?? null) : null;
@@ -311,6 +346,7 @@ export class PlatformBillingService {
       prices: context.prices,
       creditBalance: context.creditBalance,
       day: context.today,
+      months,
     });
     if (isRefused(priced)) return { priced: null, refused: priced.refused, overruns };
     return { priced, refused: null, overruns };

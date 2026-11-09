@@ -1,4 +1,6 @@
+import { paidUpTo } from '../../domain/auto-renew.js';
 import { readBillSnapshot } from '../../domain/documents.js';
+import { isRefused, priceRequest } from '../../domain/pricing.js';
 import type { QuoteLine } from '../../domain/quotes.js';
 import { refusalText } from '../../domain/refusals.js';
 import { documentNumber, priceOn } from '../../domain/standing.js';
@@ -8,6 +10,7 @@ import { type BillingContext, openBill, type RequestDetail } from '../platform-b
 import type {
   PlatformBillingBillType,
   PlatformBillingLineType,
+  PlatformBillingNextRenewalType,
   PlatformBillingOverviewType,
   PlatformBillingPreviewType,
   PlatformBillingRequestType,
@@ -21,7 +24,12 @@ import type {
 
 /** Bill lines as GraphQL returns them: a missing day count is null. */
 function lines(rows: readonly QuoteLine[]): PlatformBillingLineType[] {
-  return rows.map((line) => ({ kind: line.kind, amount: line.amount, days: line.days ?? null }));
+  return rows.map((line) => ({
+    kind: line.kind,
+    amount: line.amount,
+    days: line.days ?? null,
+    months: line.months ?? null,
+  }));
 }
 
 /** A bill: its stamp from the row, its words from the snapshot it was issued with. */
@@ -60,6 +68,8 @@ export function renderRequest(detail: RequestDetail): PlatformBillingRequestType
     fromPlanKey: request.fromPlanKey,
     requestedById: request.requestedById,
     requestedAt: request.requestedAt.toISOString(),
+    months: request.months,
+    automatic: request.automatic,
     detailsVersion: request.detailsVersion,
     coveredOn: request.coveredOn ? dateColumnToDay(request.coveredOn) : null,
     holdDays: request.holdDays,
@@ -222,6 +232,39 @@ export function renderOverview(
       current: plan.key === current,
     })),
     paymentAccounts: context.settings.paymentAccounts.map((account) => ({ ...account })),
+    autoRenew: { enabled: context.autoRenew.enabled, setAt: context.autoRenew.setAt?.toISOString() ?? null },
+    nextRenewal: renderNextRenewal(context),
+  };
+}
+
+/**
+ * The next renewal against the credit balance (#129): what it costs, what is
+ * left to pay, and how far the credit pays ahead. Null with nothing to renew.
+ */
+function renderNextRenewal(context: BillingContext): PlatformBillingNextRenewalType | null {
+  const period = context.standing.rowPeriod;
+  if (!context.standing.hasPaidSubscription || !period || !context.live) return null;
+  // ⚠ The next renewal at the price in force on its due date: a rise scheduled before it is what it will cost.
+  const day = period.end > context.today ? period.end : context.today;
+  const monthly = priceOn(context.prices, context.live.planKey, day);
+  if (monthly === null) return null;
+  const ahead = paidUpTo(period, monthly, context.creditBalance);
+  // Priced as the renewal request is (access used, a debt, the credit), so the page never promises a different total.
+  const priced = priceRequest({
+    kind: 'renew',
+    planKey: context.live.planKey,
+    currentPlanKey: context.live.planKey,
+    standing: context.standing,
+    prices: context.prices,
+    creditBalance: context.creditBalance,
+    day,
+  });
+  return {
+    due: period.end,
+    monthly,
+    toPay: isRefused(priced) ? monthly : priced.quote.total,
+    monthsPaid: ahead?.months ?? 0,
+    paidUpTo: ahead?.until ?? null,
   };
 }
 

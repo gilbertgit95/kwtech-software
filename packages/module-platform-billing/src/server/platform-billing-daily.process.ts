@@ -5,6 +5,7 @@ import {
   processOccurrence,
 } from '@kwtech/module-kit';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { type AutoRenewSkip, paidUpToMoved, planAutoRenew } from '../domain/auto-renew.js';
 import { type DayKey, platformDay } from '../domain/days.js';
 import { isWaitingTooLong, type PlannedReminder, planReminders, type ReminderKind } from '../domain/notices.js';
 import {
@@ -16,6 +17,7 @@ import {
 } from './platform-billing.repository.js';
 import { PlatformBillingService } from './platform-billing.service.js';
 import { PLATFORM_BILLING_NOTIFIER, PLATFORM_BILLING_PRISMA_WRITE } from './platform-billing.tokens.js';
+import { PlatformBillingWriteService } from './platform-billing-write.service.js';
 import type { BillingReminderNotice, PlatformBillingNotifier } from './ports.js';
 
 /** Organizations read per page: never all of them in memory (JOBS-PLAN §4c). */
@@ -36,6 +38,14 @@ const RETRY_WINDOW_MS = 36 * 60 * 60 * 1000;
 export const PLATFORM_NOTICE_ORGANIZATION = 'platform';
 
 /** The reminders that ask the organization to pay: not said once it cancelled (it chose to leave). */
+const AUTO_RENEW_SKIPS: readonly AutoRenewSkip[] = [
+  'credit_short',
+  'pending_request',
+  'plan_archived',
+  'price_not_set',
+  'access_ended',
+];
+
 const ASKS_TO_PAY: readonly ReminderKind[] = [
   'due_in_7',
   'due_in_3',
@@ -48,7 +58,9 @@ const ASKS_TO_PAY: readonly ReminderKind[] = [
 /**
  * BILLING'S DAILY CHECK (`platform_billing.daily_check`, plan §4, #95).
  *
- * Reminds each organization's owner and admins as its due date nears and
+ * Renews, from credit, the plans whose owner turned auto-renew on and whose
+ * balance pays the whole bill (#129), then reminds each organization's owner
+ * and admins as its due date nears and
  * passes, when its access ends, and while a request waits without payment
  * details; and tells billing approvers about requests waiting more than a
  * day.
@@ -78,6 +90,7 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   constructor(
     @Inject(PLATFORM_BILLING_PRISMA_WRITE) private readonly prisma: PlatformBillingWriteClient,
     private readonly reads: PlatformBillingService,
+    private readonly writes: PlatformBillingWriteService,
     /** Unbound: nobody is told, and nothing is written, so binding it later the same day still reminds. */
     @Optional() @Inject(PLATFORM_BILLING_NOTIFIER) private readonly notifier?: PlatformBillingNotifier,
   ) {}
@@ -85,8 +98,6 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   /** One run: retry what was never sent, sweep the organizations, then the approvers' digest. Counts, never names. */
   async run(context: ProcessRunContext): Promise<ProcessRunResult> {
     const result: ProcessRunResult = { handled: 0, skippedLate: 0, leftForNext: 0 };
-    const notifier = this.notifier;
-    if (!notifier) return result;
 
     // ⚠ The billing zone's day and time, from the run's one clock: never the machine's.
     const settings = await this.reads.settings();
@@ -94,6 +105,21 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     if (occurrence.kind === 'none') return result;
     if (occurrence.kind === 'too_late') return { ...result, skippedLate: 1 };
     const today: DayKey = occurrence.dayKey;
+
+    /*
+     * ⚠ RENEWALS FIRST, ON A BUDGET OF THEIR OWN (#129). A renewal from credit
+     * keeps an organization's plan; a reminder only talks about it. Swept
+     * before any notice, over the organizations whose switch is on, so a day
+     * of reminders elsewhere can never use up the run and leave a due renewal
+     * untried until its access ends. Runs with no notifier too: renewing is
+     * not telling.
+     */
+    const renewed = await this.autoRenewSweep(context);
+    result.handled += renewed.renewed;
+    result.leftForNext += renewed.leftForNext;
+
+    const notifier = this.notifier;
+    if (!notifier) return result;
 
     /*
      * ⚠ ONE BUDGET FOR THE WHOLE RUN (`maxItems`), spent by retries, the
@@ -151,6 +177,38 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     return result;
   }
 
+  /**
+   * Every organization with auto-renew on, a page at a time by id, renewed
+   * when `planAutoRenew` says so (#129). At most `maxItems` renewals a run;
+   * the rest are still due tomorrow, inside their grace. One organization's
+   * failure is logged and the sweep goes on.
+   */
+  private async autoRenewSweep(context: ProcessRunContext): Promise<{ renewed: number; leftForNext: number }> {
+    let renewed = 0;
+    let after: string | null = null;
+    for (;;) {
+      if (context.signal.aborted) return { renewed, leftForNext: 0 };
+      const page = await this.prisma.platformBillingAutoRenew.findMany({
+        where: { enabled: true, ...(after ? { organizationId: { gt: after } } : {}) },
+        orderBy: { organizationId: 'asc' },
+        take: ORGANIZATION_PAGE,
+      });
+      for (const [index, row] of page.entries()) {
+        if (context.signal.aborted) return { renewed, leftForNext: 0 };
+        if (renewed >= context.maxItems) return { renewed, leftForNext: page.length - index };
+        try {
+          // Sequential: each renewal is a transaction under its organization's lock.
+          const outcome = await this.writes.autoRenew(row.organizationId, context.now);
+          if (outcome.kind === 'renewed') renewed += 1;
+        } catch (error) {
+          this.logger.warn(`The billing auto-renew of one organization failed: ${errorText(error)}`);
+        }
+      }
+      if (page.length < ORGANIZATION_PAGE) return { renewed, leftForNext: 0 };
+      after = page.at(-1)?.organizationId ?? null;
+    }
+  }
+
   /** The reminders one organization is owed today, each written once and sent. */
   private async checkOrganization(
     notifier: PlatformBillingNotifier,
@@ -159,16 +217,125 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     today: DayKey,
     allowance: number,
   ): Promise<{ claimed: number; sent: number }> {
+    let sent = 0;
+    let claimed = 0;
     const billing = await this.reads.context(organizationId, now);
+
+    /*
+     * ⚠ RENEW BEFORE REMINDING (#129). A plan renewed from credit is no longer
+     * due, so reading again after it means today's notices are about the new
+     * period: nobody is told "due today" about a plan that just renewed.
+     */
+    /*
+     * Auto-renew on and the plan due, but not renewed by the sweep before this
+     * (#129): the owner hears why, once a period, keyed by the due date. Pure
+     * here: the renewing is `autoRenewSweep`'s, which has already run.
+     */
+    const skip =
+      billing.autoRenew.enabled && claimed < allowance
+        ? planAutoRenew({
+            enabled: true,
+            standing: billing.standing,
+            today,
+            hasPendingRequest: billing.pending !== null,
+            cancelled: billing.cancelled,
+            planArchived: billing.live?.planArchived ?? false,
+            renewal: this.reads.renewalFromCredit(billing),
+          })
+        : null;
+    if (skip?.kind === 'skip' && billing.standing.window) {
+      const window = billing.standing.window;
+      const notice: BillingReminderNotice = {
+        organizationId,
+        kind: 'auto_renew_skipped',
+        planKey: billing.live?.planKey ?? null,
+        periodEnd: window.periodEnd,
+        accessUntil: window.accessUntil,
+        daysLeft: 0,
+        autoRenewSkip: skip.reason,
+        short: skip.short,
+        currency: billing.settings.currency,
+      };
+      try {
+        const row = await this.claim(
+          organizationId,
+          { kind: 'auto_renew_skipped', day: window.periodEnd },
+          window.periodEnd,
+          { ...notice },
+          now,
+        );
+        if (row) {
+          claimed += 1;
+          if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
+        }
+      } catch (error) {
+        this.logger.warn(`A billing auto-renew notice could not be recorded: ${errorText(error)}`);
+      }
+    }
+
+    // A price rise that moved the credit's paid-up-to date earlier (#129): said once per change, isolated likewise.
+    const period = billing.standing.hasPaidSubscription ? billing.standing.rowPeriod : null;
+    const moved =
+      period && billing.live && claimed < allowance
+        ? paidUpToMoved({
+            prices: billing.prices,
+            planKey: billing.live.planKey,
+            today,
+            period,
+            balance: billing.creditBalance,
+          })
+        : null;
+    if (moved) {
+      const notice: BillingReminderNotice = {
+        organizationId,
+        kind: 'paid_up_to_moved',
+        planKey: billing.live?.planKey ?? null,
+        periodEnd: period?.end ?? null,
+        accessUntil: billing.standing.window?.accessUntil ?? null,
+        daysLeft: 0,
+        paidUpToBefore: moved.before,
+        paidUpToAfter: moved.after,
+      };
+      try {
+        // Keyed by the day the price took effect: one change, one notice.
+        const row = await this.claim(
+          organizationId,
+          { kind: 'paid_up_to_moved', day: moved.effectiveFrom },
+          moved.effectiveFrom,
+          { ...notice },
+          now,
+        );
+        if (row) {
+          claimed += 1;
+          if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
+        }
+      } catch (error) {
+        this.logger.warn(`A billing paid-up-to notice could not be recorded: ${errorText(error)}`);
+      }
+    }
+
     const window = billing.standing.hasPaidSubscription ? billing.standing.window : null;
     const pending = billing.pending
       ? { covered: billing.pending.coveredOn !== null, hasDetails: billing.pending.detailsVersion > 0 }
       : null;
-    const planned = planReminders(window, today, pending).filter(
+    // ⚠ Priced on the due date, not today: a price rise scheduled before it must not be promised as covered.
+    const due = window && window.periodEnd > today ? window.periodEnd : today;
+    const renewal = this.reads.renewalFromCredit(billing, due);
+    /*
+     * The credit pays the next renewal and the switch is on: nothing to ask anybody to pay (#129).
+     * ⚠ Only when `planAutoRenew` would renew: a waiting request or an archived plan makes it
+     * skip on the due date, so promising "renews by itself" would silence the countdown for nothing.
+     */
+    const autoRenew =
+      billing.autoRenew.enabled &&
+      !billing.cancelled &&
+      billing.pending === null &&
+      !(billing.live?.planArchived ?? false)
+        ? { covered: !('refused' in renewal) && renewal.total === 0 }
+        : null;
+    const planned = planReminders(window, today, pending, autoRenew).filter(
       (reminder) => !(billing.cancelled && ASKS_TO_PAY.includes(reminder.kind)),
     );
-    let sent = 0;
-    let claimed = 0;
     for (const reminder of planned) {
       // At most `allowance` NEW claims: one already written costs nothing, and one past it is not written, so the next run still owes it.
       if (claimed >= allowance) break;
@@ -320,6 +487,15 @@ function reminderFrom(row: NoticeRow, data: Record<string, unknown>): BillingRem
     periodEnd: text(data.periodEnd) ?? (row.periodKey === '-' ? null : row.periodKey),
     accessUntil: text(data.accessUntil),
     daysLeft: typeof data.daysLeft === 'number' ? data.daysLeft : 0,
+    ...(typeof data.autoRenewSkip === 'string' && (AUTO_RENEW_SKIPS as readonly string[]).includes(data.autoRenewSkip)
+      ? { autoRenewSkip: data.autoRenewSkip as AutoRenewSkip }
+      : {}),
+    ...(typeof data.short === 'number' ? { short: data.short } : {}),
+    ...(typeof data.currency === 'string' ? { currency: data.currency } : {}),
+    ...(typeof data.paidUpToBefore === 'string' ? { paidUpToBefore: data.paidUpToBefore } : {}),
+    ...(typeof data.paidUpToAfter === 'string' || data.paidUpToAfter === null
+      ? { paidUpToAfter: (data.paidUpToAfter as string | null) ?? null }
+      : {}),
   };
 }
 

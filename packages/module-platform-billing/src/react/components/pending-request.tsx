@@ -76,7 +76,7 @@ export function PendingRequest({
                 <tbody>
                   {bill.lines.map((line) => (
                     <tr key={`${line.kind}-${line.amount}`}>
-                      <td className="py-0.5">{lineLabel(line.kind, line.days)}</td>
+                      <td className="py-0.5">{lineLabel(line.kind, line.days, line.months)}</td>
                       <td className="py-0.5 text-right tabular-nums">{money(line.amount)}</td>
                     </tr>
                   ))}

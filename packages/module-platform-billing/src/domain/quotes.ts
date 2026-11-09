@@ -26,13 +26,53 @@ export type QuoteLineKind =
   /** Credit balance spent on this bill. Negative. */
   | 'credit_applied'
   /** A negative balance (owed after a void) added to this bill. Positive. */
-  | 'owed';
+  | 'owed'
+  /**
+   * Months bought ahead at once (#129), at the month's price: paid with the
+   * bill and held as credit on approval, which later renewals spend. Positive.
+   * After the credit lines, so a balance already held is never spent on it.
+   */
+  | 'paid_ahead';
 
-/** One line of a bill. `days` is set on the lines that are a count of days. */
+/** One line of a bill. `days` is set on the lines that are a count of days, `months` on `paid_ahead`. */
 export interface QuoteLine {
   kind: QuoteLineKind;
   amount: Centavos;
   days?: number;
+  months?: number;
+}
+
+/** The most months one request pays for (#129): a year. Past it, a mistyped number would bill a decade. */
+export const PLATFORM_BILLING_MONTHS_MAX = 12;
+
+/** The choices the Renew and Subscribe panels offer (#129). Any whole number from 1 to the maximum is accepted. */
+export const PLATFORM_BILLING_MONTH_CHOICES: readonly number[] = [1, 3, 6, 12];
+
+/** Whether `months` is a number of months one request may pay for. */
+export function isMonths(months: number): boolean {
+  return Number.isSafeInteger(months) && months >= 1 && months <= PLATFORM_BILLING_MONTHS_MAX;
+}
+
+/**
+ * A month's quote with `months - 1` more bought ahead (#129). The extra is a
+ * line of its own AFTER the quote is settled against the balance: credit
+ * already held pays for this month, never for months being bought, which
+ * would spend it only to hand it back as the same credit.
+ */
+export function withPaidAhead(quote: Quote, monthly: Centavos, months: number): Quote {
+  const extra = months - 1;
+  if (extra <= 0) return quote;
+  const amount = assertCentavos(monthly) * extra;
+  return {
+    ...quote,
+    lines: [...quote.lines, { kind: 'paid_ahead', amount, months: extra }],
+    total: quote.total + amount,
+  };
+}
+
+/** What a bill's lines bought ahead (#129): the credit its approval adds for those months. */
+export function paidAheadOf(lines: readonly Pick<QuoteLine, 'kind' | 'amount'>[]): Centavos {
+  return lines.reduce((sum, line) => (line.kind === 'paid_ahead' ? sum + line.amount : sum), 0);
 }
 
 /**

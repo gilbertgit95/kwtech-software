@@ -614,10 +614,46 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 132 | A downgrade is checked only against the caps permissions counts | before a plan sets a sub-app cap lower than a higher plan does | D6 refuses a downgrade while the organization is over the new plan's caps (#93). The app counts what `perm_*` holds — members, workspaces, the largest workspace's members — and passes those; a sub-app's caps (queue windows, notes per person, POS items) live in that module's tables and are not counted, so a downgrade is not refused on them. Expiry and plan edits already behave the same way (what is over stays, additions are refused, with the reason), so nothing is lost, but the refusal the owner would have seen is not shown. What would settle it: a count port per module (`X_USAGE`), or a cap-usage query composed from every module's `LimitContribution` |
 | 133 | The billing time zone is locked once billed, not applied forward | if the platform ever needs to change its billing time zone | D16 said a time-zone change applies to new periods only. Periods are written to `perm_subscription` as instants at the start of platform days, so changing the zone would read every stored day differently. #93 locks it once any bill exists, as the currency is (`time_zone_locked`). What would settle it: store each period's days (and the zone it was written in) beside the instants, then let a change reach only periods written after it |
 | 134 | The platform's billing standings are worked out on request, organization by organization | when the platform has more than about 2,000 organizations, or the reports page grows slow | Each organization's standing comes from its live subscription, settings and prices (`billingStanding`), so the Organizations' billing page walks organizations through the people port and reads each one's context (#123). A page examines at most `STANDINGS_SCAN_MAX` (500) and the reports' counts at most `STANDINGS_SUMMARY_MAX` (2,000), saying "counted over the first N" past it. What would settle it: a nightly table of each organization's standing written by the daily check, read by both pages, with "as of" shown |
+| 135 | Voiding a paid-ahead payment means voiding every renewal it paid for first, one at a time | when an approver has to reverse a paid-ahead payment that several automatic renewals have already spent | A void is newest first across the organization (D9a), and each renewal paid from credit (#129) is an approval resting on the one before. So undoing a 12-month payment found to be a mistake after five automatic renewals is five voids, then the payment's own, each with its reason. Correct, and each reverses its own credit, but tedious. What would settle it: a "void this and every later approval" action that runs the same voids newest first in one transaction, with one reason |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-09** — **Paying several months at once, and renewing by itself from the credit it left (#129).**
+
+  The cause: paying ahead already worked by overpaying (D7), but every month
+  still needed the owner to click Renew and an approver to approve a bill of
+  nothing, and nothing on screen said an owner could pay ahead or how far
+  the credit went. The operator asked for "pay once, stay on the plan".
+
+  - **Months at Renew and Subscribe (1, 3, 6, 12; any 1 to 12 accepted).**
+    The bill is the month plus a `paid_ahead` line, settled AFTER the credit
+    lines, so a balance already held pays this month and is never spent only
+    to be handed back. One payment, checked once by an approver; approval
+    applies one period and adds the months ahead to the credit ledger.
+  - **Auto-renew from credit, an owner-only switch (D8), off by default.**
+    The daily check renews on the due date (or a grace day after it) ONLY
+    when the credit pays the whole bill: then no money moves, and every peso
+    it spends was approved once already when it came in, so the renewal
+    needs no approver. It goes through the same approval code as a person's
+    (`approveLocked`), in one transaction under the organization's lock, and
+    is voided the same way.
+  - **Anything short of a whole bill is left to people.** Credit short, a
+    request waiting, an archived plan, no price, access already ended: no
+    renewal, and the owner is told why once a period. A cancel stops it.
+  - **The owner sees the credit as a date** ("pays renewals up to <date>"),
+    at today's price; a price rise moves it earlier.
+  - **Cash is counted once.** A renewal paid from credit has a receipt of
+    kind `paid_from_credit` for nothing received; the collections report
+    leaves it out, since the money was counted when it came in.
+  - **Not done:** no payment provider or card charging (D1 stands); no
+    automatic plan change; no "void this and every later one" (PLAN §12.135).
+  - **A price rise that shortens the credit is said once** (`paid_up_to_moved`,
+    keyed by the day the price took effect, within a week of it).
+  - **The switch turned off says nothing new**: the owner chose it, and the
+    usual countdown and overdue notices are what an organization renewing
+    by hand hears.
 
 - **2026-11-08** — **A refusal names the plan that would allow it: caps say the number and the next plan, a missing feature says which plans include it, and a page compares the plans (#101).**
 

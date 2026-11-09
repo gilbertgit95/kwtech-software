@@ -8,10 +8,12 @@ import { ArgsType, Field, Float, InputType, Int, ObjectType } from '@nestjs/grap
 
 @ObjectType('PlatformBillingLine')
 export class PlatformBillingLineType {
-  /** `month`, `new_plan_days`, `old_plan_unused`, `prepaid_month`, `access_used`, `credit_applied`, `owed`. */
+  /** `month`, `new_plan_days`, `old_plan_unused`, `prepaid_month`, `access_used`, `credit_applied`, `owed`, `paid_ahead`. */
   @Field() kind!: string;
   @Field(() => Int) amount!: number;
   @Field(() => Int, { nullable: true }) days!: number | null;
+  /** The months a `paid_ahead` line buys (#129); null on every other line. */
+  @Field(() => Int, { nullable: true }) months!: number | null;
 }
 
 /** A request's price: its lines, the total, and the credit it uses or adds. */
@@ -243,6 +245,10 @@ export class PlatformBillingRequestType {
   @Field(() => String, { nullable: true }) fromPlanKey!: string | null;
   @Field() requestedById!: string;
   @Field() requestedAt!: string;
+  /** Months paid for at once (#129): 1 is one month. */
+  @Field(() => Int) months!: number;
+  /** Renewed by the daily check from credit, with the owner's switch on (#129): nobody pressed anything. */
+  @Field() automatic!: boolean;
   /** The version approval must name: details changed after it refuse (`details_changed`). */
   @Field(() => Int) detailsVersion!: number;
   @Field(() => String, { nullable: true }) coveredOn!: string | null;
@@ -268,6 +274,27 @@ export class PlatformBillingRequestType {
   @Field(() => [PlatformBillingEventType]) events!: PlatformBillingEventType[];
 }
 
+/** The owner's auto-renew switch (#129). */
+@ObjectType('PlatformBillingAutoRenew')
+export class PlatformBillingAutoRenewType {
+  @Field() enabled!: boolean;
+  /** When it was last turned on or off (ISO), or null when it never was. */
+  @Field(() => String, { nullable: true }) setAt!: string | null;
+}
+
+/** The next renewal, as the credit balance would pay it today (#129). */
+@ObjectType('PlatformBillingNextRenewal')
+export class PlatformBillingNextRenewalType {
+  /** Its due date. */
+  @Field() due!: string;
+  /** What it costs at today's price, and what is left to pay after the credit. */
+  @Field(() => Int) monthly!: number;
+  @Field(() => Int) toPay!: number;
+  /** Whole renewals the credit pays, and the due date after them; null when it pays none. */
+  @Field(() => Int) monthsPaid!: number;
+  @Field(() => String, { nullable: true }) paidUpTo!: string | null;
+}
+
 /** The organization's Billing page in one read. */
 @ObjectType('PlatformBillingOverview')
 export class PlatformBillingOverviewType {
@@ -285,6 +312,9 @@ export class PlatformBillingOverviewType {
   @Field(() => PlatformBillingRequestType, { nullable: true }) pending!: PlatformBillingRequestType | null;
   @Field(() => [PlatformBillingPlanOfferType]) plans!: PlatformBillingPlanOfferType[];
   @Field(() => [PlatformBillingPaymentAccountType]) paymentAccounts!: PlatformBillingPaymentAccountType[];
+  @Field(() => PlatformBillingAutoRenewType) autoRenew!: PlatformBillingAutoRenewType;
+  /** Null without a paid plan to renew, or when its price is not set. */
+  @Field(() => PlatformBillingNextRenewalType, { nullable: true }) nextRenewal!: PlatformBillingNextRenewalType | null;
 }
 
 /** What the history's filter covers. */

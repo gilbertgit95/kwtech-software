@@ -11,6 +11,13 @@ export const PLATFORM_BILLING_PAYMENT_METHODS = ['cash', 'e_wallet', 'bank_trans
 
 export type PaymentMethod = (typeof PLATFORM_BILLING_PAYMENT_METHODS)[number];
 
+/**
+ * How a receipt says it was paid: a method a person sent money by, or
+ * `credit` for a renewal paid wholly from the balance (#129). Never accepted
+ * from a form: `isPaymentMethod` does not know it.
+ */
+export type ReceiptMethod = PaymentMethod | 'credit';
+
 /** Whether a wire string is a payment method. */
 export function isPaymentMethod(value: string): value is PaymentMethod {
   return (PLATFORM_BILLING_PAYMENT_METHODS as readonly string[]).includes(value);

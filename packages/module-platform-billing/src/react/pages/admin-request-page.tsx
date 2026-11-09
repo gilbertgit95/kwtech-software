@@ -24,8 +24,8 @@ import {
   formatMoney,
   lineLabel,
   paymentMethodLabel,
-  requestKindLabel,
   requestStateLabel,
+  requestTitle,
 } from '../view/billing-view.js';
 import { checkPaymentDraft, type PaymentDraft, type PaymentDraftErrors, paymentInput } from '../view/payment-form.js';
 
@@ -180,7 +180,7 @@ export function AdminRequestPage({ requestId, client }: AdminRequestPageProps) {
         <>
           <header>
             <h1 className="text-2xl font-semibold tracking-tight">
-              {item.organizationName ?? request.organizationId}: {requestKindLabel(request.kind)}
+              {item.organizationName ?? request.organizationId}: {requestTitle(request)}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {request.bill?.planLabel ?? request.planKey} · {requestStateLabel(request.state)} · requested{' '}
@@ -230,7 +230,7 @@ export function AdminRequestPage({ requestId, client }: AdminRequestPageProps) {
                         <tbody>
                           {bill.lines.map((line) => (
                             <tr key={`${line.kind}-${line.amount}`}>
-                              <td className="py-0.5">{lineLabel(line.kind, line.days)}</td>
+                              <td className="py-0.5">{lineLabel(line.kind, line.days, line.months)}</td>
                               <td className="py-0.5 text-right tabular-nums">{money(line.amount)}</td>
                             </tr>
                           ))}

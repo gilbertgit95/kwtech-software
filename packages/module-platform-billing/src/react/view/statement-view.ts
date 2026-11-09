@@ -29,6 +29,8 @@ function creditWords(kind: string): string {
       return 'Reversed with a voided receipt';
     case 'adjustment':
       return 'Adjustment by our staff';
+    case 'paid_ahead':
+      return 'Months paid ahead, kept as credit';
     default:
       return kind;
   }
@@ -46,7 +48,9 @@ export function statementLineLabel(
         ? `Receipt ${entry.number ?? ''} (void)`
         : entry.detail === 'closed_as_credit'
           ? `Receipt ${entry.number ?? ''} (payment kept as credit)`
-          : `Receipt ${entry.number ?? ''}`;
+          : entry.detail === 'paid_from_credit'
+            ? `Receipt ${entry.number ?? ''} (renewed automatically, paid from credit)`
+            : `Receipt ${entry.number ?? ''}`;
     default:
       return entry.note ?? creditWords(entry.detail);
   }

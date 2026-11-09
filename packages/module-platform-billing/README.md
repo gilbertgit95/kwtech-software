@@ -18,8 +18,9 @@ settings and the prices (#93); the daily check with every notification
 (#95); the organization's Billing page with printing, the statement of
 account and its CSV (#117, #119); the platform's queue, request page,
 reprints, settings and prices (#121), and every organization's standing and
-the reports (#123). The end-to-end pass is in PLAN §13, 2026-11-08. The
-operator's check in the running app (#96, #97) may still bring changes.
+the reports (#123). The end-to-end pass is in PLAN §13, 2026-11-08. Paying
+several months at once and renewing from credit (#129). The operator's check
+in the running app (#96, #97) may still bring changes.
 
 ## In a Next.js app
 
@@ -165,8 +166,8 @@ Organization scope (`PlatformBillingResolver`, declared on the class):
 | Operation | Key |
 |---|---|
 | `platformBillingOverview`, `platformBillingPreview`, `platformBillingHistory`, `platformBillingRequest`, `platformBillingStatement`, `platformBillingPlanComparison` | `read` |
-| `requestPlatformBillingPlan` (subscribe, change plan, replace), `cancelPlatformBilling` | `change_plan` (the owner's, D8) |
-| `renewPlatformBilling` | `renew` |
+| `requestPlatformBillingPlan` (subscribe, change plan, replace; `months` for the first and last), `cancelPlatformBilling`, `setPlatformBillingAutoRenew` | `change_plan` (the owner's, D8) |
+| `renewPlatformBilling` (`months`) | `renew` |
 | `enterPlatformBillingPayment`, `withdrawPlatformBillingRequest` | `enter_payment` |
 
 App level (`PlatformBillingAdminResolver`, no scope):
@@ -202,6 +203,30 @@ presses it.
   the lag back as credit; a change priced for a period that has ended is
   `quote_expired`. A self-approval and an approver who is a member are
   recorded, never blocked.
+- **Paying several months at once** (#129): a subscribe, a replacement or a
+  renewal takes `months` (1 to 12, `isMonths`; a plan change runs to the end
+  of its period, so it is refused with more). The bill is the month as
+  usual plus a `paid_ahead` line for the rest, after the credit lines, so a
+  balance already held pays this month and is never spent on months being
+  bought. Approval applies one period, as always, and adds the `paid_ahead`
+  amount to the credit ledger, pointing at its receipt; later renewals spend
+  it. A void of that approval reverses it with the rest of the receipt's
+  entries.
+- **Renewing from credit** (#129, `autoRenew`, run by the daily check): with
+  the owner's switch on (`platform_billing_auto_renew`, `setAutoRenew`, the
+  `change_plan` key), on the due date or a grace day after it, when the
+  credit balance pays the whole renewal (`planAutoRenew`), a renewal is
+  made, billed and approved in ONE transaction under the organization's
+  lock, through the same `approveLocked` an approver's approval runs: the
+  period continues, the bill (total 0) is paid, a receipt of kind
+  `paid_from_credit` (method `credit`, amount 0) is issued, the credit used
+  is a ledger entry. `automatic` is set, `requestedById`/`decidedById` are
+  `PLATFORM_BILLING_SYSTEM_ACTOR`, and it is neither a self-approval nor a
+  member's. Credit short, a request waiting, an archived plan, no price, or
+  access already ended: nothing is written and the reason is returned
+  (`AutoRenewSkip`). A cancel stops it silently. It is voided like any
+  renewal. The collections report counts no cash for it: the money was
+  counted when it came in.
 - **Withdraw and reject** cancel the bill (it keeps its number) and give back
   any hold.
 - **Close as credit** (D12a) keeps a pending request's payment, whatever its
@@ -296,7 +321,8 @@ live subscription.
 | `domain/days.ts` | day keys, calendar arithmetic, an instant as a platform day (`platformDay`, `platformDayStart`) |
 | `domain/periods.ts` | `periodFrom`, `nextPeriod`, `daysInPeriod`, `daysLeft` (the day of a change is the new plan's) |
 | `domain/money.ts` | `prorate`: `amount × part ÷ whole` in integers, rounded once, half up |
-| `domain/quotes.ts` | the bill's lines: `quoteMonth`, `quoteRenewal` (with the access used after a late renewal, D10), `quotePlanChange` (with a month paid ahead, D11), `approvalLagCredit` (D12), `archiveCredit` |
+| `domain/quotes.ts` | the bill's lines: `quoteMonth`, `quoteRenewal` (with the access used after a late renewal, D10), `quotePlanChange` (with a month paid ahead, D11), `approvalLagCredit` (D12), `archiveCredit`; `withPaidAhead`, `paidAheadOf`, `isMonths` (#129) |
+| `domain/auto-renew.ts` | `planAutoRenew`: whether the daily check renews from credit today, or why not; `paidUpTo`: the credit as a date; `paidUpToMoved`: a price rise that shortens it (#129) |
 | `domain/access.ts` | `accessWindow`, `standingOn` (active, renewal open, overdue, held, expired), `planHold` (D9), `planRenewal` (continue, or restart on time or late), `isOnTime` |
 | `domain/payments.ts` | payment methods, `normaliseReference`, `findReferenceReuse`, `checkAmount` (short, exact, over: D7) |
 | `domain/requests.ts` | the state machine (`allowedActions`, `nextState`), `checkNewRequest` (owner only D8, renew first, over caps D6, archived and withdrawn plans), `checkApproval`, `checkVoid` (newest first) |
@@ -322,7 +348,9 @@ members) travel beside the code, never inside the sentence.
 `_bill` and `_receipt` (snapshots, never rewritten; only the stamp changes),
 `_credit` (the ledger; the balance is its sum and may go negative), `_price`
 (per plan, from a day on), `_settings` (one row, `id = 'platform'`),
-`_counter`, `_event` (the timeline, each step with its reason code). Keyed by
+`_counter`, `_event` (the timeline, each step with its reason code),
+`_notice` (the daily check's), `_auto_renew` (the owner's switch, one row per
+organization, kept when turned off, #129). Keyed by
 `organizationId`; no foreign key leaves the module. Nothing is deleted.
 
 ## Processes
@@ -336,12 +364,25 @@ organization, an expired one included, with no plan gate (#94).
   notices a run; past that the rest wait for the next run (a quiet
   organization costs nothing, so a capped run reaches further each time). A
   run more than 12 hours late is skipped and counted.
+- **First it renews from credit** (#129), before any notice and with or
+  without a notifier: every organization whose owner turned auto-renew on
+  (`platform_billing_auto_renew`, a page at a time), through `autoRenew`
+  (above). ⚠ On a budget of its own (`maxItems` renewals a run), so a day of
+  reminders elsewhere can never use up the run and leave a due renewal
+  untried until access ends. A failure is logged and the sweep goes on.
+  Then, when the plan was due and did not renew, the owner hears why once a
+  period (`auto_renew_skipped`, keyed by the due date), beside the usual
+  notices. A price rise that moves the credit's paid-up-to date earlier is
+  said once (`paid_up_to_moved`, `paidUpToMoved`), within a week of the day
+  it took effect.
 - **What it says** (`planReminders`): 7, 3 and 1 days before the due date and
   on it; each overdue day with the days of access left; the last day; the
   day access ended. Daily while a request waits with no payment details. A
   request whose details cover the bill silences the "please pay" notices; a
   cancelled organization hears none of them; a trial is not a paid plan and
-  hears nothing. Once a day, billing approvers hear how many requests have
+  hears nothing. With auto-renew on and the credit paying the next renewal,
+  the countdown is one notice a week before that it renews by itself
+  (`auto_renew_upcoming`), never "renew it". Once a day, billing approvers hear how many requests have
   waited more than a day (a count, never names).
 - **⚠ Once, by a row of its own** (`platform_billing_notice`, unique per
   organization, kind, period and day): written BEFORE the send, `sentAt` set
