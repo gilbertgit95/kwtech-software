@@ -262,6 +262,18 @@ function sevenDaysBefore(day: string | null): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+/** A request's title in the history (#129): its kind, saying when the daily check renewed it from credit. */
+export function requestTitle(request: { kind: string; automatic?: boolean; months?: number }): string {
+  if (request.automatic) return 'Renewed automatically from credit';
+  const kind = requestKindLabel(request.kind);
+  return request.months && request.months > 1 ? `${kind}, ${monthsLabel(request.months)} at once` : kind;
+}
+
+/** "1 month", "6 months". */
+export function monthsLabel(count: number): string {
+  return count === 1 ? '1 month' : `${count} months`;
+}
+
 /** A request's kind, for people. */
 export function requestKindLabel(kind: string): string {
   switch (kind) {
@@ -318,10 +330,12 @@ export function billStatusLabel(status: string): string {
   }
 }
 
-/** A bill line, for people. */
-export function lineLabel(kind: string, lineDays: number | null): string {
+/** A bill line, for people. `lineMonths` is what a `paid_ahead` line buys (#129). */
+export function lineLabel(kind: string, lineDays: number | null, lineMonths: number | null = null): string {
   const counted = lineDays ? ` (${days(lineDays)})` : '';
   switch (kind) {
+    case 'paid_ahead':
+      return `${monthsLabel(lineMonths ?? 1)} paid ahead, kept as credit for the renewals after this one`;
     case 'month':
       return 'One month';
     case 'new_plan_days':
@@ -350,6 +364,8 @@ export function paymentMethodLabel(method: string): string {
       return 'E-wallet';
     case 'bank_transfer':
       return 'Bank transfer';
+    case 'credit':
+      return 'Paid from credit';
     default:
       return method;
   }
@@ -380,7 +396,11 @@ export function eventSentence(event: Pick<BillingEventView, 'step' | 'reason' | 
   const number = typeof data.number === 'number' ? String(data.number).padStart(6, '0') : '';
   switch (event.step) {
     case 'submitted':
-      return 'Requested.';
+      return event.reason === 'auto_renew'
+        ? 'Renewed automatically: auto-renew is on and the credit paid the whole bill.'
+        : typeof data.months === 'number' && data.months > 1
+          ? `Requested, paying for ${monthsLabel(data.months)} at once.`
+          : 'Requested.';
     case 'bill_issued':
       return `Bill B-${number} issued for ${money('total')}.`;
     case 'bill_deferred':
@@ -402,12 +422,15 @@ export function eventSentence(event: Pick<BillingEventView, 'step' | 'reason' | 
         ? 'Cancelled: access ends at the close of the period.'
         : event.reason === 'self_approved'
           ? 'Approved by the person who made it.'
-          : 'Approved: the payment was confirmed.';
+          : event.reason === 'auto_renewed_from_credit'
+            ? 'Approved automatically: paid from credit, nothing was charged.'
+            : 'Approved: the payment was confirmed.';
     case 'receipt_issued':
       return `Receipt R-${number} issued for ${money('amount')}.`;
     case 'receipt_voided':
       return `Receipt R-${number} voided.`;
     case 'credit':
+      if (event.reason === 'paid_ahead') return `Months paid ahead, kept as credit: ${money('amount')}.`;
       return `Credit ${typeof data.amount === 'number' && data.amount < 0 ? 'used' : 'added'}: ${money('amount')}.`;
     case 'rejected':
       return `Rejected.${typeof data.reason === 'string' ? ` ${data.reason}` : ''}`;
@@ -497,4 +520,62 @@ export function documentStamp(
     default:
       return document.status.toUpperCase();
   }
+}
+
+/** The auto-renew switch on the Billing page (#129): whether it can be pressed, and the words beside it. */
+export interface AutoRenewControl {
+  /** Shown at all: there is a paid plan that renews. */
+  shown: boolean;
+  on: boolean;
+  /** Off for anybody but the owner (D8), with why. */
+  disabledReason: string | null;
+  /** What it does, or will do, in this organization's case. */
+  note: string;
+}
+
+/**
+ * The auto-renew switch for `overview` (#129). It only ever spends credit:
+ * the note says plainly whether the credit pays the next renewal, so nobody
+ * thinks turning it on means they will not be asked to pay.
+ */
+export function autoRenewControl(
+  overview: Pick<BillingOverviewView, 'standing' | 'autoRenew' | 'nextRenewal' | 'currency'>,
+  can: Pick<BillingAbilities, 'choosePlan'>,
+): AutoRenewControl {
+  const s = overview.standing;
+  const next = overview.nextRenewal;
+  const shown = !s.trial && s.kind !== 'none' && !s.planArchived && next !== null;
+  const on = overview.autoRenew.enabled;
+  const disabledReason = can.choosePlan ? null : OWNER_ONLY;
+  if (!shown || !next) return { shown: false, on, disabledReason, note: '' };
+  if (s.cancelled) {
+    return { shown, on, disabledReason, note: 'The plan is set to end, so nothing renews it. Renew to keep it.' };
+  }
+  const due = formatDay(next.due);
+  const covered = next.toPay === 0;
+  if (!on) {
+    return {
+      shown,
+      on,
+      disabledReason,
+      note: covered
+        ? `Your credit pays the next renewal (${due}). Turn this on and it renews by itself that day.`
+        : 'When your credit pays a whole renewal, the plan renews by itself on its due date. Until then you renew and pay as usual.',
+    };
+  }
+  return {
+    shown,
+    on,
+    disabledReason,
+    note: covered
+      ? `Renews by itself on ${due}, paid from credit. Nothing to pay.`
+      : `Your credit does not cover the next renewal (${formatMoney(next.toPay, overview.currency)} short), so it will not renew by itself on ${due}. Renew and pay as usual.`,
+  };
+}
+
+/** The credit as a date, beside the balance (#129): "Pays renewals up to 7 Jun 2027 (5 months)", or null. */
+export function paidUpToLine(overview: Pick<BillingOverviewView, 'nextRenewal'>): string | null {
+  const next = overview.nextRenewal;
+  if (!next?.paidUpTo || next.monthsPaid < 1) return null;
+  return `Pays renewals up to ${formatDay(next.paidUpTo)} (${monthsLabel(next.monthsPaid)}, at today's price).`;
 }

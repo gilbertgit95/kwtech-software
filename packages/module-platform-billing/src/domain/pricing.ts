@@ -1,7 +1,7 @@
 import { addDays, type DayKey, daysBetween } from './days.js';
 import type { Centavos } from './money.js';
 import type { Period } from './periods.js';
-import { isUpgrade, type Quote, quoteMonth, quotePlanChange, quoteRenewal } from './quotes.js';
+import { isMonths, isUpgrade, type Quote, quoteMonth, quotePlanChange, quoteRenewal, withPaidAhead } from './quotes.js';
 import type { PlatformBillingRefusal } from './refusals.js';
 import type { PricedKind } from './requests.js';
 import { type BillingStanding, type PriceRow, priceOn } from './standing.js';
@@ -49,10 +49,19 @@ export interface PriceRequestInput {
    * line of the renewal that paid it. Null prices it at today's rate.
    */
   prepaidMonthPaid?: Centavos | null;
+  /**
+   * Months paid for at once (#129), 1 when absent. Only a subscribe, a
+   * replacement and a renewal buy whole months; a plan change runs to the end
+   * of the current period and is refused with more.
+   */
+  months?: number;
 }
 
 /** The request priced on `input.day`, or the refusal when a plan it needs has no price. */
 export function priceRequest(input: PriceRequestInput): PricedRequest | { refused: PlatformBillingRefusal } {
+  const months = input.months ?? 1;
+  if (!isMonths(months)) return { refused: 'invalid' };
+  if (months > 1 && input.kind === 'change_plan') return { refused: 'invalid' };
   const monthly = priceOn(input.prices, input.planKey, input.day);
   if (monthly === null) return { refused: 'price_not_set' };
 
@@ -60,7 +69,7 @@ export function priceRequest(input: PriceRequestInput): PricedRequest | { refuse
     case 'subscribe':
     case 'replace':
       return {
-        quote: quoteMonth(monthly, input.creditBalance),
+        quote: withPaidAhead(quoteMonth(monthly, input.creditBalance), monthly, months),
         direction: null,
         billAtSubmission: true,
         period: null,
@@ -77,7 +86,7 @@ export function priceRequest(input: PriceRequestInput): PricedRequest | { refuse
         ? { days: daysBetween(window.periodEnd, window.accessUntil), oldMonthly: monthly, oldPeriod: period }
         : undefined;
       return {
-        quote: quoteRenewal(monthly, input.creditBalance, accessUsed),
+        quote: withPaidAhead(quoteRenewal(monthly, input.creditBalance, accessUsed), monthly, months),
         direction: null,
         billAtSubmission: true,
         period,

@@ -5,13 +5,13 @@
  * schema fails that test, not a customer's Billing page.
  */
 
-const LINE = 'kind amount days';
+const LINE = 'kind amount days months';
 
 const BILL = `id number status total currency issuedAt planLabel fromPlanLabel lines { ${LINE} } cancelledAt cancelledReason
   issuerName issuerDetails issuedOn periodStart periodEnd`;
 
 const REQUEST = `
-  id organizationId kind state planKey fromPlanKey requestedById requestedAt
+  id organizationId kind state planKey fromPlanKey requestedById requestedAt months automatic
   detailsVersion coveredOn holdDays holdReason
   decidedById decidedAt decisionReason selfApproved approverIsMember
   periodStart periodEnd accessUntil voidedById voidedAt voidReason
@@ -49,12 +49,14 @@ export const PLATFORM_BILLING_OPERATIONS = {
         pending { ${REQUEST} }
         plans { key label monthly isPublic archived current }
         paymentAccounts { method label details }
+        autoRenew { enabled setAt }
+        nextRenewal { due monthly toPay monthsPaid paidUpTo }
       }
     }
   `,
   preview: /* GraphQL */ `
-    query PlatformBillingPreview($organizationId: String!, $kind: String!, $planKey: String) {
-      platformBillingPreview(organizationId: $organizationId, kind: $kind, planKey: $planKey) {
+    query PlatformBillingPreview($organizationId: String!, $kind: String!, $planKey: String, $months: Int) {
+      platformBillingPreview(organizationId: $organizationId, kind: $kind, planKey: $planKey, months: $months) {
         kind planKey allowed refusal message nextStep
         quote { lines { ${LINE} } total creditUsed creditAdded direction billAtSubmission periodStart periodEnd }
         overruns { limit have allowed remove }
@@ -88,13 +90,20 @@ export const PLATFORM_BILLING_OPERATIONS = {
     }
   `,
   requestPlan: /* GraphQL */ `
-    mutation RequestPlatformBillingPlan($organizationId: String!, $kind: String!, $planKey: String!) {
-      requestPlatformBillingPlan(organizationId: $organizationId, kind: $kind, planKey: $planKey) { ${REQUEST} }
+    mutation RequestPlatformBillingPlan($organizationId: String!, $kind: String!, $planKey: String!, $months: Int) {
+      requestPlatformBillingPlan(organizationId: $organizationId, kind: $kind, planKey: $planKey, months: $months) {
+        ${REQUEST}
+      }
     }
   `,
   renew: /* GraphQL */ `
-    mutation RenewPlatformBilling($organizationId: String!) {
-      renewPlatformBilling(organizationId: $organizationId) { ${REQUEST} }
+    mutation RenewPlatformBilling($organizationId: String!, $months: Int) {
+      renewPlatformBilling(organizationId: $organizationId, months: $months) { ${REQUEST} }
+    }
+  `,
+  setAutoRenew: /* GraphQL */ `
+    mutation SetPlatformBillingAutoRenew($organizationId: String!, $enabled: Boolean!) {
+      setPlatformBillingAutoRenew(organizationId: $organizationId, enabled: $enabled) { organizationId }
     }
   `,
   cancel: /* GraphQL */ `

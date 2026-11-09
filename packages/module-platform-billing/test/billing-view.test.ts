@@ -1,5 +1,6 @@
-import type { BillingOverviewView, BillingStandingView } from '../src/react/billing-client.js';
+import type { BillingNextRenewalView, BillingOverviewView, BillingStandingView } from '../src/react/billing-client.js';
 import {
+  autoRenewControl,
   type BillingAbilities,
   billingStatus,
   cancelControl,
@@ -8,8 +9,12 @@ import {
   formatDay,
   formatInstantDay,
   formatMoney,
+  lineLabel,
   mainAction,
+  paidUpToLine,
+  paymentMethodLabel,
   planChoices,
+  requestTitle,
 } from '../src/react/view/billing-view.js';
 import { checkPaymentDraft, parseAmount, paymentInput } from '../src/react/view/payment-form.js';
 
@@ -208,5 +213,57 @@ describe('the plans a request may name', () => {
 
   it('offers a subscribe paid plans only, the plan being tried included', () => {
     expect(keys('subscribe')).toEqual(['basic', 'pro']);
+  });
+});
+
+describe('paying ahead and renewing from credit on the Billing page (#129)', () => {
+  const next = (over: Partial<BillingNextRenewalView> = {}): BillingNextRenewalView => ({
+    due: '2026-12-01',
+    monthly: 100_000,
+    toPay: 0,
+    monthsPaid: 5,
+    paidUpTo: '2027-05-01',
+    ...over,
+  });
+  const withSwitch = (enabled: boolean, renewal: BillingNextRenewalView | null, standing = {}) => ({
+    ...overview(standing),
+    autoRenew: { enabled, setAt: null },
+    nextRenewal: renewal,
+  });
+
+  it('turns the credit into a date beside the balance', () => {
+    expect(paidUpToLine({ nextRenewal: next() })).toBe("Pays renewals up to 1 May 2027 (5 months, at today's price).");
+    expect(paidUpToLine({ nextRenewal: next({ monthsPaid: 0, paidUpTo: null }) })).toBeNull();
+    expect(paidUpToLine({ nextRenewal: null })).toBeNull();
+  });
+
+  it('says plainly whether the switch will renew the next one, or leaves it to be paid', () => {
+    expect(autoRenewControl(withSwitch(true, next()), OWNER).note).toBe(
+      'Renews by itself on 1 Dec 2026, paid from credit. Nothing to pay.',
+    );
+    expect(autoRenewControl(withSwitch(true, next({ toPay: 40_000 })), OWNER).note).toMatch(
+      /does not cover the next renewal \(₱400\.00 short\), so it will not renew by itself/,
+    );
+    expect(autoRenewControl(withSwitch(false, next()), OWNER).note).toMatch(/Turn this on and it renews by itself/);
+  });
+
+  it('is the owner’s to change, and hidden with nothing to renew', () => {
+    expect(autoRenewControl(withSwitch(false, next()), ADMIN).disabledReason).toMatch(/Only the organization's owner/);
+    expect(autoRenewControl(withSwitch(false, null), OWNER).shown).toBe(false);
+    expect(autoRenewControl(withSwitch(false, next(), { trial: true }), OWNER).shown).toBe(false);
+    expect(autoRenewControl(withSwitch(true, next(), { cancelled: true }), OWNER).note).toMatch(/set to end/);
+  });
+
+  it('names the months bought ahead, and the renewals nobody pressed', () => {
+    expect(lineLabel('paid_ahead', null, 5)).toBe(
+      '5 months paid ahead, kept as credit for the renewals after this one',
+    );
+    expect(requestTitle({ kind: 'renew', automatic: true, months: 1 })).toBe('Renewed automatically from credit');
+    expect(requestTitle({ kind: 'renew', automatic: false, months: 6 })).toBe('Renewal, 6 months at once');
+    expect(requestTitle({ kind: 'subscribe', automatic: false, months: 1 })).toBe('Subscribe');
+    expect(paymentMethodLabel('credit')).toBe('Paid from credit');
+    expect(eventSentence({ step: 'approved', reason: 'auto_renewed_from_credit', data: '{}' }, 'PHP')).toBe(
+      'Approved automatically: paid from credit, nothing was charged.',
+    );
   });
 });

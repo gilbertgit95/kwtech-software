@@ -7,11 +7,12 @@ import { PLATFORM_BILLING_FEATURE } from '../../feature-keys.js';
 import type { BillingClient } from '../billing-client.js';
 import { BillingHistory } from '../components/billing-history.js';
 import { PendingRequest } from '../components/pending-request.js';
-import { PlanRequest, type PlanRequestMode } from '../components/plan-request.js';
+import { PlanRequest, type PlanRequestChoice, type PlanRequestMode } from '../components/plan-request.js';
 import { buttonClass, ErrorLine, Reason, toneClass } from '../components/ui.js';
 import { billingPlansHref } from '../routes.js';
 import { useBilling } from '../use-billing.js';
 import {
+  autoRenewControl,
   type BillingAbilities,
   billingStatus,
   cancelControl,
@@ -19,6 +20,7 @@ import {
   formatDay,
   formatMoney,
   mainAction,
+  paidUpToLine,
 } from '../view/billing-view.js';
 
 export interface BillingPageProps {
@@ -71,13 +73,25 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
   const main = overview ? mainAction(overview, can) : null;
   const change = overview ? changePlanControl(overview, can) : null;
   const cancel = overview ? cancelControl(overview, can) : null;
+  const autoRenew = overview ? autoRenewControl(overview, can) : null;
+  const paidUpTo = overview ? paidUpToLine(overview) : null;
 
   /** Makes the request the open panel previewed; closes the panel once it is made. */
-  async function submit(planKey: string | null) {
+  async function submit(choice: PlanRequestChoice) {
     if (!mode || !organizationId) return;
     const done = await state.run(
-      (api) => (mode === 'renew' ? api.renew(organizationId) : api.requestPlan(organizationId, mode, planKey ?? '')),
-      'Requested. Pay outside the app, then add your payment details below.',
+      async (api) => {
+        const made =
+          mode === 'renew'
+            ? await api.renew(organizationId, choice.months)
+            : await api.requestPlan(organizationId, mode, choice.planKey ?? '', choice.months);
+        // After the request is made: a switch that failed to turn on never loses the request.
+        if (choice.turnOnAutoRenew) await api.setAutoRenew(organizationId, true);
+        return made;
+      },
+      choice.turnOnAutoRenew
+        ? 'Requested, and auto-renew is on. Pay outside the app, then add your payment details below.'
+        : 'Requested. Pay outside the app, then add your payment details below.',
     );
     if (done) setMode(null);
   }
@@ -154,8 +168,35 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
                 <dd>{formatDay(overview.standing.periodEnd)}</dd>
                 <dt className="text-muted-foreground">Credit</dt>
                 <dd className="tabular-nums">{formatMoney(overview.creditBalance, overview.currency)}</dd>
+                {paidUpTo ? <dd className="col-span-2 text-xs text-muted-foreground">{paidUpTo}</dd> : null}
               </dl>
             </div>
+
+            {autoRenew?.shown ? (
+              <div className="mt-4 rounded-md border border-border bg-background/60 p-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={autoRenew.on}
+                    disabled={state.busy || autoRenew.disabledReason !== null}
+                    aria-describedby="billing-auto-renew-note"
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      void state.run(
+                        (api) => api.setAutoRenew(organizationId, enabled),
+                        enabled ? 'Auto-renew is on.' : 'Auto-renew is off. Renew and pay as usual.',
+                      );
+                    }}
+                  />
+                  <span className="font-medium">Renew automatically from credit</span>
+                </label>
+                <p id="billing-auto-renew-note" className="mt-1 text-sm text-muted-foreground">
+                  {autoRenew.note}
+                </p>
+                {autoRenew.disabledReason ? <Reason>{autoRenew.disabledReason}</Reason> : null}
+              </div>
+            ) : null}
 
             {main.kind === 'pending' ? null : (
               <div className="mt-4 flex flex-wrap items-start gap-3">
@@ -210,7 +251,8 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
               client={state.client}
               mode={mode}
               busy={state.busy}
-              onSubmit={(planKey) => void submit(planKey)}
+              canChoosePlan={can.choosePlan}
+              onSubmit={(choice) => void submit(choice)}
               onClose={() => setMode(null)}
             />
           ) : null}

@@ -271,7 +271,7 @@ describe('the daily check (platform_billing.daily_check)', () => {
   it('tells nothing and writes nothing without a notifier', async () => {
     const billing = await onBasic();
     const { PlatformBillingDailyCheck } = await import('../src/server/platform-billing-daily.process.js');
-    const unbound = new PlatformBillingDailyCheck(billing.client, billing.reads);
+    const unbound = new PlatformBillingDailyCheck(billing.client, billing.reads, billing.writes);
     expect(await unbound.run(runContext(noonOn('2026-11-24'), [ORG]))).toEqual({
       handled: 0,
       skippedLate: 0,

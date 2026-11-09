@@ -1,6 +1,6 @@
 # `module-platform-billing` — plan
 
-Status: **every phase built, released 2026-11-08 (#98); the operator's check in the running app (#96, #97) to come.** Phase 1
+Status: **every phase built, released 2026-11-08 (#98); paying ahead and renewing from credit added 2026-11-09 (#129, D18); the operator's check in the running app (#96, #97) to come.** Phase 1
 is this document and its decisions (#90); phase 2 (#91) the pure core;
 phases 3 and 3b (#92, #105) the entitlement change in `module-permissions`;
 5a (#94) the app-level processes. Phase 4a (#93) is the schema, the services
@@ -376,6 +376,7 @@ decisions #90 lists each have a PLAN §13 entry.
 | D15 | An approver who belongs to the organization | **Flagged, not blocked**, in the queue and the audit: a small platform may have one approver |
 | D16 | Settings changing the past | **Currency locked once billed; time zone and lower grace apply forward only** |
 | D17 | Time and money | **One platform time zone and one currency**, from the platform settings |
+| D18 | Paying ahead, and renewing without anybody (2026-11-09, #129) | **Months at Renew and Subscribe, held as credit; an owner's switch renews from credit on the due date only when it pays the whole bill.** Approved by the operator in #129. A renewal paid wholly from credit spends money an approver already checked, so it needs no approver; anything short of that is left to people, with the reason. Cash is counted when it comes in, never again when credit is spent. Voiding a paid-ahead payment still waits on the renewals it paid for (D9a, PLAN §12.135) |
 
 ## 10. Phases
 

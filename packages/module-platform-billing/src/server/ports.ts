@@ -1,3 +1,4 @@
+import type { AutoRenewSkip } from '../domain/auto-renew.js';
 import type { CatalogueLabels } from '../domain/comparison.js';
 import type { DayKey } from '../domain/days.js';
 import type { ReminderKind } from '../domain/notices.js';
@@ -166,6 +167,13 @@ export interface BillingReminderNotice {
   accessUntil: DayKey | null;
   /** Days left until the due date (countdown) or of access (overdue, last warning). */
   daysLeft: number;
+  /**
+   * For `auto_renew_skipped` (#129): why the plan did not renew itself, and,
+   * when the credit fell short, by how much (centavos, in `currency`).
+   */
+  autoRenewSkip?: AutoRenewSkip;
+  short?: number;
+  currency?: string;
 }
 
 /** Billing approvers told that requests have waited more than a day. Counts, never names. */
@@ -186,7 +194,20 @@ export type BillingRequestStep =
   | 'withdrawn'
   | 'voided'
   | 'closed_as_credit'
-  | 'cancelled';
+  | 'cancelled'
+  /** The daily check renewed the plan from credit (#129): told to the organization, with `renewal`. */
+  | 'auto_renewed';
+
+/** What an automatic renewal left (#129): "Pro renewed to 7 Feb 2027 from credit. Credit left: ₱6,000, paid up to 7 Jun 2027". */
+export interface BillingRenewalNotice {
+  /** The new due date. */
+  periodEnd: DayKey | null;
+  /** Centavos left after the renewal, in `currency`. */
+  creditLeft: number;
+  currency: string;
+  /** The due date the credit left pays up to, or null when it pays no further renewal. */
+  paidUpTo: DayKey | null;
+}
 
 /**
  * A request's step, sent AFTER its transaction committed: `submitted` and
@@ -201,6 +222,8 @@ export interface BillingRequestNotice {
   planKey: string;
   /** The approver's or owner's words, for a rejection, a withdrawal or a void. */
   reason: string | null;
+  /** For `auto_renewed` (#129): the new due date and what credit is left. */
+  renewal?: BillingRenewalNotice;
 }
 
 /**

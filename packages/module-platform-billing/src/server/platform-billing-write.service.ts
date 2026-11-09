@@ -2,6 +2,7 @@ import { isValidTimeZone } from '@kwtech/module-kit';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { accessWindow, isOnTime, planHold, planRenewal } from '../domain/access.js';
 import { archiveCreditNote, archiveReversalNote, planArchiveCredit } from '../domain/archives.js';
+import { type AutoRenewPlan, paidUpTo, planAutoRenew } from '../domain/auto-renew.js';
 import { addDays, type DayKey, isDayKey, platformDay, platformDayStart } from '../domain/days.js';
 import { type BillSnapshot, billSnapshot, type ReceiptSnapshot, readBillSnapshot } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
@@ -13,12 +14,13 @@ import {
   needsReference,
   normaliseReference,
   type PaymentMethod,
+  type ReceiptMethod,
 } from '../domain/payments.js';
 import { type Period, periodFrom } from '../domain/periods.js';
 import { chargesAccessUsed, isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
-import { approvalLagCredit } from '../domain/quotes.js';
+import { approvalLagCredit, paidAheadOf } from '../domain/quotes.js';
 import { checkApproval, checkNewRequest, checkVoid, nextState, type PricedKind } from '../domain/requests.js';
-import { billingStanding, documentNumber, hasAnyPrice, requestStanding } from '../domain/standing.js';
+import { billingStanding, documentNumber, hasAnyPrice, priceOn, requestStanding } from '../domain/standing.js';
 import {
   type AppliedHow,
   planVoid,
@@ -52,6 +54,7 @@ import {
 } from './platform-billing.tokens.js';
 import type {
   BillingAdjustment,
+  BillingRenewalNotice,
   BillingRequestStep,
   BillingSubscriptionRow,
   PlatformBillingNotifier,
@@ -91,6 +94,26 @@ export interface SettingsInput {
   issuerDetails?: string | null | undefined;
   paymentAccounts?: ReadonlyArray<{ method: string; label: string; details: string }> | null | undefined;
 }
+
+/** A payment as an approval records it on the receipt: what an approver confirmed, or credit (#129). */
+interface ReceivedPayment {
+  method: ReceiptMethod;
+  amount: number;
+  paidOn: Date;
+  reference: string | null;
+}
+
+/**
+ * Who `requestedById`, `decidedById` and `issuedById` name on an automatic
+ * renewal (#129): the daily check, which is nobody. Not a user id, so no
+ * page can resolve it to a person, and no person can ever be it.
+ */
+export const PLATFORM_BILLING_SYSTEM_ACTOR = 'system:auto-renew';
+
+/** What the daily check's auto-renew step did for one organization (#129). */
+export type AutoRenewOutcome =
+  | Exclude<AutoRenewPlan, { kind: 'renew' }>
+  | { kind: 'renewed'; request: RequestRow; told: boolean };
 
 /**
  * The most pending requests one archive closes. A plan is archived by hand,
@@ -149,11 +172,13 @@ export class PlatformBillingWriteService {
     kind: SubmittableKind,
     planKey: string | null,
     now: Date,
+    /** Months paid for at once (#129): a subscribe, a replacement or a renewal. */
+    months = 1,
   ): Promise<RequestRow> {
     const row = await this.prisma.$transaction(async (tx) => {
       await this.lockOrganization(tx, organizationId);
       const context = await this.reads.context(organizationId, now, tx);
-      const preview = await this.reads.preview(context, kind, planKey);
+      const preview = await this.reads.preview(context, kind, planKey, months);
       if (preview.refused) {
         throw billingRefusal(preview.refused, preview.overruns.length > 0 ? { overruns: preview.overruns } : {});
       }
@@ -175,6 +200,7 @@ export class PlatformBillingWriteService {
             requestedAt: now,
             pricedOn: dayToDateColumn(context.today),
             pricedForPeriodEnd: priced.period ? dayToDateColumn(priced.period.end) : null,
+            months,
           },
         });
       } catch (error) {
@@ -186,6 +212,7 @@ export class PlatformBillingWriteService {
         planKey: wanted,
         total: priced.quote.total,
         direction: priced.direction,
+        months,
       });
       if (priced.billAtSubmission) {
         await this.issueBill(tx, request, context, priced, now, actorId);
@@ -341,6 +368,100 @@ export class PlatformBillingWriteService {
     return this.close(requestId, { organizationId }, actorId, 'withdraw', prepareText(reason), now);
   }
 
+  /**
+   * The owner's auto-renew switch (#129), bound to `change_plan` as every
+   * choice about the plan is (D8). Turning it on renews nothing at once: the
+   * daily check does, on the due date, when the credit pays the whole bill.
+   */
+  async setAutoRenew(organizationId: string, actorId: string, enabled: boolean, now: Date): Promise<void> {
+    await this.prisma.platformBillingAutoRenew.upsert({
+      where: { organizationId },
+      create: { organizationId, enabled, setById: actorId, setAt: now },
+      update: { enabled, setById: actorId, setAt: now },
+    });
+  }
+
+  /**
+   * THE DAILY CHECK'S RENEWAL FROM CREDIT (#129): when `planAutoRenew` says
+   * so, a renewal is made, billed and approved in ONE transaction, under the
+   * organization's lock, exactly as an approver's approval writes it
+   * (`approveLocked`). Its bill is paid wholly by the credit balance, so the
+   * receipt records no money ("paid from credit") and the collections report
+   * counts none: the cash was counted when it came in.
+   *
+   * ⚠ ONCE PER PERIOD, BY THE PERIOD ITSELF. The renewal moves the period on,
+   * so a second run the same day finds the plan no longer due. Two runs at
+   * once wait on the lock, and the second finds the same.
+   */
+  async autoRenew(organizationId: string, now: Date): Promise<AutoRenewOutcome> {
+    const outcome = await this.prisma.$transaction(async (tx): Promise<AutoRenewOutcome> => {
+      await this.lockOrganization(tx, organizationId);
+      const context = await this.reads.context(organizationId, now, tx);
+      const plan = planAutoRenew({
+        enabled: context.autoRenew.enabled,
+        standing: context.standing,
+        today: context.today,
+        hasPendingRequest: context.pending !== null,
+        cancelled: context.cancelled,
+        planArchived: context.live?.planArchived ?? false,
+        renewal: this.reads.renewalFromCredit(context),
+      });
+      if (plan.kind !== 'renew') return plan;
+
+      // The same checks a person's renewal passes, so a rule added there is never skipped here.
+      const preview = await this.reads.preview(context, 'renew', null);
+      const priced = preview.priced;
+      if (preview.refused || !priced || priced.quote.total > 0) return { kind: 'not_due' };
+      const planKey = context.live?.planKey ?? '';
+      const request = await tx.platformBillingRequest.create({
+        data: {
+          organizationId,
+          kind: 'renew',
+          planKey,
+          fromPlanKey: planKey,
+          pendingOrganizationId: organizationId,
+          requestedById: PLATFORM_BILLING_SYSTEM_ACTOR,
+          requestedAt: now,
+          pricedOn: dayToDateColumn(context.today),
+          pricedForPeriodEnd: priced.period ? dayToDateColumn(priced.period.end) : null,
+          months: 1,
+          automatic: true,
+          // Covered on the day it is made, by the credit: what makes it on time.
+          coveredOn: dayToDateColumn(context.today),
+        },
+      });
+      await this.event(tx, request, now, null, 'submitted', 'auto_renew', {
+        kind: 'renew',
+        planKey,
+        total: priced.quote.total,
+        direction: null,
+        months: 1,
+      });
+      await this.issueBill(tx, request, context, priced, now, null);
+      const received: ReceivedPayment = {
+        method: 'credit',
+        amount: 0,
+        paidOn: dayToDateColumn(context.today),
+        reference: null,
+      };
+      const approved = await this.approveLocked(tx, request, PLATFORM_BILLING_SYSTEM_ACTOR, received, 0, now, true);
+      return { kind: 'renewed', request: approved, told: false };
+    });
+    if (outcome.kind !== 'renewed') return outcome;
+    // After the commit: what is left, read as the page reads it, for the owner's notice.
+    const after = await this.reads.context(organizationId, now);
+    const period = after.standing.rowPeriod;
+    const monthly = after.live ? priceOn(after.prices, after.live.planKey, after.today) : null;
+    const ahead = period ? paidUpTo(period, monthly, after.creditBalance) : null;
+    const told = await this.tell(outcome.request, 'auto_renewed', null, {
+      periodEnd: period?.end ?? null,
+      creditLeft: after.creditBalance,
+      currency: after.settings.currency,
+      paidUpTo: ahead?.until ?? null,
+    });
+    return { ...outcome, told };
+  }
+
   // ── the platform's side ───────────────────────────────────────────────────
 
   /** An approver rejects, with the reason the organization reads. */
@@ -358,177 +479,210 @@ export class PlatformBillingWriteService {
     const received = preparePayment({ ...input, sender: null, note: null });
     const row = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockedRequest(tx, { id: requestId });
-      const context = await this.reads.context(request.organizationId, now, tx);
-      const plan = context.plans.get(request.planKey);
-      if (!plan) throw billingRefusal('not_found');
-
-      // A downgrade is priced on the day it is approved, and billed then (D12).
-      let bill = await tx.platformBillingBill.findFirst({
-        where: { requestId, status: { not: 'cancelled' } },
-        orderBy: { number: 'desc' },
-      });
-      let pricedNow: PricedRequest | null = null;
-      if (request.kind === 'change_plan' && !bill) {
-        const overruns = await this.reads.overruns(request.organizationId, plan);
-        if (overruns.length > 0) throw billingRefusal('over_new_plan_caps', { overruns });
-        const priced = priceRequest({
-          kind: 'change_plan',
-          planKey: request.planKey,
-          currentPlanKey: context.live?.planKey ?? null,
-          standing: context.standing,
-          prices: context.prices,
-          creditBalance: context.creditBalance,
-          day: context.today,
-        });
-        if (isRefused(priced)) throw billingRefusal(priced.refused);
-        pricedNow = priced;
-      }
-      const total = bill ? bill.total : (pricedNow?.quote.total ?? 0);
-      const pricedFor = request.pricedForPeriodEnd ? dateColumnToDay(request.pricedForPeriodEnd) : undefined;
-      const refused = checkApproval({
-        state: request.state,
-        detailsVersionSeen: input.detailsVersion,
-        detailsVersion: request.detailsVersion,
-        received: received.amount,
-        total,
-        ...(request.kind === 'change_plan' && pricedFor !== undefined
-          ? { pricedForPeriodEnd: pricedFor, currentPeriodEnd: context.standing.currentPeriod?.end ?? '' }
-          : {}),
-        planArchived: plan.archived,
-      });
-      if (refused) {
-        throw billingRefusal(refused, refused === 'payment_short' ? { short: total - received.amount } : {});
-      }
-
-      const applied = this.periodFor(request, context);
-      const selfApproved = request.requestedById === actorId;
-      const approverIsMember = this.people ? await this.people.isMember(actorId, request.organizationId) : true;
-
-      // ⚠ THE COMPARE-AND-SET, before anything else is written: the loser of two approvals stops here.
-      const decided = await tx.platformBillingRequest.updateMany({
-        where: { id: requestId, state: 'pending', detailsVersion: input.detailsVersion },
-        data: {
-          state: 'approved',
-          pendingOrganizationId: null,
-          decidedById: actorId,
-          decidedAt: now,
-          selfApproved,
-          approverIsMember,
-          periodStart: dayToDateColumn(applied.period.start),
-          periodEnd: dayToDateColumn(applied.period.end),
-          billingDay: applied.period.billingDay,
-          accessUntil: platformDayStart(applied.accessUntil, context.settings.timeZone),
-          // What a void reverses, kept as it was today (D9a).
-          applied: applied.how satisfies AppliedHow,
-          ...asJson(beforeOf(context, request)),
-        },
-      });
-      if (decided.count === 0) {
-        const again = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
-        throw billingRefusal(again && again.state === 'pending' ? 'details_changed' : 'not_pending');
-      }
-
-      if (pricedNow) bill = await this.issueBill(tx, request, context, pricedNow, now, actorId);
-      if (!bill) throw billingRefusal('not_found');
-      const snapshot = readBillSnapshot(bill.snapshot);
-
-      const write = {
-        organizationId: request.organizationId,
-        periodStart: platformDayStart(applied.period.start, context.settings.timeZone),
-        periodEnd: platformDayStart(applied.period.end, context.settings.timeZone),
-        billingDay: applied.period.billingDay,
-        accessUntil: platformDayStart(applied.accessUntil, context.settings.timeZone),
-      };
-      const { subscriptionId } =
-        applied.how === 'renew'
-          ? await this.subscriptions.renew(write, tx)
-          : applied.how === 'change'
-            ? await this.subscriptions.changePlan({ ...write, planKey: request.planKey }, tx)
-            : await this.subscriptions.start({ ...write, planKey: request.planKey }, tx);
-
-      await tx.platformBillingBill.update({ where: { id: bill.id }, data: { status: 'paid' } });
-      const receiptNumber = await this.nextNumber(tx, 'receipt');
-      const receiptSnapshot: ReceiptSnapshot = {
-        number: documentNumber('receipt', receiptNumber),
-        title: 'Acknowledgement receipt',
-        notice: 'This is not an official receipt.',
-        billNumber: documentNumber('bill', bill.number),
-        kind: 'payment',
-        organizationId: request.organizationId,
-        planLabel: plan.label,
-        amount: received.amount,
-        currency: context.settings.currency,
-        method: received.method,
-        reference: received.reference,
-        paidOn: dateColumnToDay(received.paidOn),
-        period: { start: applied.period.start, end: applied.period.end },
-        selfApproved,
-        issuer: context.settings.issuer,
-        issuedOn: context.today,
-      };
-      const receipt = await tx.platformBillingReceipt.create({
-        data: {
-          requestId,
-          billId: bill.id,
-          organizationId: request.organizationId,
-          number: receiptNumber,
-          amount: received.amount,
-          currency: context.settings.currency,
-          method: received.method,
-          kind: 'payment',
-          snapshot: receiptSnapshot,
-          issuedAt: now,
-          issuedById: actorId,
-        },
-      });
-
-      // Every ledger entry the approval makes, each pointing at its bill (plan §4).
-      const entries: Array<{ amount: Centavos; kind: string }> = [
-        { amount: -snapshot.creditUsed, kind: 'credit_used' },
-        { amount: snapshot.owedCleared, kind: 'owed_cleared' },
-        { amount: snapshot.creditAdded, kind: 'change_credit' },
-        // D7: an overpayment is credit, never change handed back.
-        { amount: received.amount - total, kind: 'overpayment' },
-        { amount: this.lagCredit(request, snapshot, context.today), kind: 'approval_lag' },
-      ];
-      for (const entry of entries) {
-        // Sequential: one transaction, and the ledger reads in the order it was written.
-        if (entry.amount === 0) continue;
-        await tx.platformBillingCredit.create({
-          data: {
-            organizationId: request.organizationId,
-            amount: entry.amount,
-            kind: entry.kind,
-            requestId,
-            billId: bill.id,
-            receiptId: receipt.id,
-            note: null,
-            createdById: actorId,
-            createdAt: now,
-          },
-        });
-        await this.event(tx, request, now, actorId, 'credit', entry.kind, { amount: entry.amount });
-      }
-
-      await tx.platformBillingRequest.update({ where: { id: requestId }, data: { subscriptionId } });
-      await this.event(tx, request, now, actorId, 'approved', selfApproved ? 'self_approved' : null, {
-        received: received.amount,
-        total,
-        how: applied.how,
-        periodStart: applied.period.start,
-        periodEnd: applied.period.end,
-        accessUntil: applied.accessUntil,
-        approverIsMember,
-      });
-      await this.event(tx, request, now, actorId, 'receipt_issued', null, {
-        number: receiptNumber,
-        amount: received.amount,
-      });
-      return this.reread(tx, requestId);
+      return this.approveLocked(tx, request, actorId, received, input.detailsVersion, now, false);
     });
     // After the commit: a notice never fails the write it reports.
     await this.tell(row, 'approved', null);
     return row;
+  }
+
+  /**
+   * The approval itself, inside a transaction that already holds the
+   * organization's lock: shared by an approver's `approve` and the daily
+   * check's `autoRenew` (#129), so an automatic renewal writes exactly what
+   * an approved one does (the period, the paid bill, a receipt, every credit
+   * entry) and a void reverses it the same way.
+   *
+   * `automatic`: nobody approved it. It is recorded as no self-approval and no
+   * member's, its receipt says "paid from credit", and its steps carry no actor.
+   */
+  private async approveLocked(
+    tx: PlatformBillingTransaction,
+    request: RequestRow,
+    actorId: string,
+    received: ReceivedPayment,
+    detailsVersion: number,
+    now: Date,
+    automatic: boolean,
+  ): Promise<RequestRow> {
+    const requestId = request.id;
+    const eventActor = automatic ? null : actorId;
+    const context = await this.reads.context(request.organizationId, now, tx);
+    const plan = context.plans.get(request.planKey);
+    if (!plan) throw billingRefusal('not_found');
+
+    // A downgrade is priced on the day it is approved, and billed then (D12).
+    let bill = await tx.platformBillingBill.findFirst({
+      where: { requestId, status: { not: 'cancelled' } },
+      orderBy: { number: 'desc' },
+    });
+    let pricedNow: PricedRequest | null = null;
+    if (request.kind === 'change_plan' && !bill) {
+      const overruns = await this.reads.overruns(request.organizationId, plan);
+      if (overruns.length > 0) throw billingRefusal('over_new_plan_caps', { overruns });
+      const priced = priceRequest({
+        kind: 'change_plan',
+        planKey: request.planKey,
+        currentPlanKey: context.live?.planKey ?? null,
+        standing: context.standing,
+        prices: context.prices,
+        creditBalance: context.creditBalance,
+        day: context.today,
+      });
+      if (isRefused(priced)) throw billingRefusal(priced.refused);
+      pricedNow = priced;
+    }
+    const total = bill ? bill.total : (pricedNow?.quote.total ?? 0);
+    const pricedFor = request.pricedForPeriodEnd ? dateColumnToDay(request.pricedForPeriodEnd) : undefined;
+    const refused = checkApproval({
+      state: request.state,
+      detailsVersionSeen: detailsVersion,
+      detailsVersion: request.detailsVersion,
+      received: received.amount,
+      total,
+      ...(request.kind === 'change_plan' && pricedFor !== undefined
+        ? { pricedForPeriodEnd: pricedFor, currentPeriodEnd: context.standing.currentPeriod?.end ?? '' }
+        : {}),
+      planArchived: plan.archived,
+    });
+    if (refused) {
+      throw billingRefusal(refused, refused === 'payment_short' ? { short: total - received.amount } : {});
+    }
+
+    const applied = this.periodFor(request, context);
+    // ⚠ Nobody approved an automatic renewal (#129): it is neither a self-approval nor a member's.
+    const selfApproved = !automatic && request.requestedById === actorId;
+    const approverIsMember = automatic
+      ? false
+      : this.people
+        ? await this.people.isMember(actorId, request.organizationId)
+        : true;
+
+    // ⚠ THE COMPARE-AND-SET, before anything else is written: the loser of two approvals stops here.
+    const decided = await tx.platformBillingRequest.updateMany({
+      where: { id: requestId, state: 'pending', detailsVersion },
+      data: {
+        state: 'approved',
+        pendingOrganizationId: null,
+        decidedById: actorId,
+        decidedAt: now,
+        selfApproved,
+        approverIsMember,
+        periodStart: dayToDateColumn(applied.period.start),
+        periodEnd: dayToDateColumn(applied.period.end),
+        billingDay: applied.period.billingDay,
+        accessUntil: platformDayStart(applied.accessUntil, context.settings.timeZone),
+        // What a void reverses, kept as it was today (D9a).
+        applied: applied.how satisfies AppliedHow,
+        ...asJson(beforeOf(context, request)),
+      },
+    });
+    if (decided.count === 0) {
+      const again = await tx.platformBillingRequest.findFirst({ where: { id: requestId } });
+      throw billingRefusal(again && again.state === 'pending' ? 'details_changed' : 'not_pending');
+    }
+
+    if (pricedNow) bill = await this.issueBill(tx, request, context, pricedNow, now, eventActor);
+    if (!bill) throw billingRefusal('not_found');
+    const snapshot = readBillSnapshot(bill.snapshot);
+
+    const write = {
+      organizationId: request.organizationId,
+      periodStart: platformDayStart(applied.period.start, context.settings.timeZone),
+      periodEnd: platformDayStart(applied.period.end, context.settings.timeZone),
+      billingDay: applied.period.billingDay,
+      accessUntil: platformDayStart(applied.accessUntil, context.settings.timeZone),
+    };
+    const { subscriptionId } =
+      applied.how === 'renew'
+        ? await this.subscriptions.renew(write, tx)
+        : applied.how === 'change'
+          ? await this.subscriptions.changePlan({ ...write, planKey: request.planKey }, tx)
+          : await this.subscriptions.start({ ...write, planKey: request.planKey }, tx);
+
+    await tx.platformBillingBill.update({ where: { id: bill.id }, data: { status: 'paid' } });
+    const receiptKind = automatic ? 'paid_from_credit' : 'payment';
+    const receiptNumber = await this.nextNumber(tx, 'receipt');
+    const receiptSnapshot: ReceiptSnapshot = {
+      number: documentNumber('receipt', receiptNumber),
+      title: 'Acknowledgement receipt',
+      notice: 'This is not an official receipt.',
+      billNumber: documentNumber('bill', bill.number),
+      kind: receiptKind,
+      organizationId: request.organizationId,
+      planLabel: plan.label,
+      amount: received.amount,
+      currency: context.settings.currency,
+      method: received.method,
+      reference: received.reference,
+      paidOn: dateColumnToDay(received.paidOn),
+      period: { start: applied.period.start, end: applied.period.end },
+      selfApproved,
+      issuer: context.settings.issuer,
+      issuedOn: context.today,
+    };
+    const receipt = await tx.platformBillingReceipt.create({
+      data: {
+        requestId,
+        billId: bill.id,
+        organizationId: request.organizationId,
+        number: receiptNumber,
+        amount: received.amount,
+        currency: context.settings.currency,
+        method: received.method,
+        kind: receiptKind,
+        snapshot: receiptSnapshot,
+        issuedAt: now,
+        issuedById: actorId,
+      },
+    });
+
+    // Every ledger entry the approval makes, each pointing at its bill (plan §4).
+    const entries: Array<{ amount: Centavos; kind: string }> = [
+      { amount: -snapshot.creditUsed, kind: 'credit_used' },
+      { amount: snapshot.owedCleared, kind: 'owed_cleared' },
+      { amount: snapshot.creditAdded, kind: 'change_credit' },
+      // D7: an overpayment is credit, never change handed back.
+      { amount: received.amount - total, kind: 'overpayment' },
+      // #129: the months bought ahead are paid for by this bill and held as credit for the renewals that spend them.
+      { amount: paidAheadOf(snapshot.lines), kind: 'paid_ahead' },
+      { amount: this.lagCredit(request, snapshot, context.today), kind: 'approval_lag' },
+    ];
+    for (const entry of entries) {
+      // Sequential: one transaction, and the ledger reads in the order it was written.
+      if (entry.amount === 0) continue;
+      await tx.platformBillingCredit.create({
+        data: {
+          organizationId: request.organizationId,
+          amount: entry.amount,
+          kind: entry.kind,
+          requestId,
+          billId: bill.id,
+          receiptId: receipt.id,
+          note: null,
+          createdById: actorId,
+          createdAt: now,
+        },
+      });
+      await this.event(tx, request, now, eventActor, 'credit', entry.kind, { amount: entry.amount });
+    }
+
+    await tx.platformBillingRequest.update({ where: { id: requestId }, data: { subscriptionId } });
+    const approvedReason = automatic ? 'auto_renewed_from_credit' : selfApproved ? 'self_approved' : null;
+    await this.event(tx, request, now, eventActor, 'approved', approvedReason, {
+      received: received.amount,
+      total,
+      how: applied.how,
+      periodStart: applied.period.start,
+      periodEnd: applied.period.end,
+      accessUntil: applied.accessUntil,
+      approverIsMember,
+    });
+    await this.event(tx, request, now, eventActor, 'receipt_issued', null, {
+      number: receiptNumber,
+      amount: received.amount,
+    });
+    return this.reread(tx, requestId);
   }
 
   /**
@@ -735,7 +889,8 @@ export class PlatformBillingWriteService {
       }
 
       const receipt = await tx.platformBillingReceipt.findFirst({
-        where: { requestId, kind: 'payment', voidedAt: null },
+        // ⚠ An automatic renewal's receipt is `paid_from_credit` (#129): voided the same way, its credit given back.
+        where: { requestId, kind: { in: ['payment', 'paid_from_credit'] }, voidedAt: null },
         orderBy: { number: 'desc' },
       });
       if (receipt) {
@@ -1235,8 +1390,13 @@ export class PlatformBillingWriteService {
    * failure is logged, never thrown: the step already happened, and turning a
    * notification problem into an error would make somebody repeat it.
    */
-  private async tell(row: RequestRow, step: BillingRequestStep, reason: string | null): Promise<void> {
-    if (!this.notifier) return;
+  private async tell(
+    row: RequestRow,
+    step: BillingRequestStep,
+    reason: string | null,
+    renewal?: BillingRenewalNotice,
+  ): Promise<boolean> {
+    if (!this.notifier) return true;
     try {
       const delivered = await this.notifier.requestChanged({
         organizationId: row.organizationId,
@@ -1245,12 +1405,15 @@ export class PlatformBillingWriteService {
         step,
         planKey: row.planKey,
         reason,
+        ...(renewal ? { renewal } : {}),
       });
       if (!delivered) this.logger.warn(`The ${step} notice for billing request ${row.id} was not delivered.`);
+      return delivered;
     } catch (error) {
       this.logger.warn(
         `The ${step} notice for a billing request could not be sent: ${error instanceof Error ? error.message : String(error)}`,
       );
+      return false;
     }
   }
 
@@ -1405,7 +1568,8 @@ export class PlatformBillingWriteService {
     context: BillingContext,
     priced: PricedRequest,
     now: Date,
-    actorId: string,
+    /** Null for a bill the system issued (an automatic renewal, #129). */
+    actorId: string | null,
   ): Promise<BillRow> {
     const number = await this.nextNumber(tx, 'bill');
     const plan = context.plans.get(request.planKey);

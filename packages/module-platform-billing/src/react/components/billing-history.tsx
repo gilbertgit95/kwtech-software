@@ -9,8 +9,8 @@ import {
   eventSentence,
   formatInstantDay,
   formatMoney,
-  requestKindLabel,
   requestStateLabel,
+  requestTitle,
 } from '../view/billing-view.js';
 import { monthOf } from '../view/statement-view.js';
 import { buttonClass, Section } from './ui.js';
@@ -137,7 +137,7 @@ export function BillingHistory({
               <details>
                 <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-3 text-sm">
                   <span className="font-medium">
-                    {requestKindLabel(request.kind)}: {request.bills.at(-1)?.planLabel ?? request.planKey}
+                    {requestTitle(request)}: {request.bills.at(-1)?.planLabel ?? request.planKey}
                   </span>
                   <span className="text-muted-foreground">
                     {requestStateLabel(request.state)} · {formatInstantDay(request.requestedAt, timeZone)}

@@ -84,6 +84,8 @@ export function buildCollectionsReport(input: {
 
   for (const receipt of input.receipts) {
     if (receipt.voidedAt) continue;
+    // ⚠ No money came in (#129): the cash it spends was counted when its paid-ahead payment was.
+    if (receipt.kind === 'paid_from_credit') continue;
     const day = platformDay(receipt.issuedAt, input.timeZone);
     // The range is the caller's query; a receipt outside it (a stale row, a zone edge) is never counted.
     if (day < input.from || day > input.to) continue;

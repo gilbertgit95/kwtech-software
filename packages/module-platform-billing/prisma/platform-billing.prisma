@@ -11,6 +11,7 @@
 //
 //   credit (the ledger per organization; the balance is the sum)
 //   price (per plan, from a day on)    settings (one row)    counter (per sequence)
+//   auto renew (the owner's switch, per organization, #129)
 //
 // ⚠ KEYED BY `organizationId`, NEVER `workspaceId`: billing is about the whole
 // organization (plan §3). `organizationId`, `planKey` and every user id are
@@ -52,6 +53,10 @@ enum PlatformBillingPaymentMethod {
   cash
   e_wallet
   bank_transfer
+  /// ⚠ RECEIPTS ONLY: a renewal paid wholly from credit (#129). Never typed by
+  /// a person: `PLATFORM_BILLING_PAYMENT_METHODS` (what the forms and the
+  /// write service accept) does not list it.
+  credit
 }
 
 /// The stamp on a bill (plan §7).
@@ -84,6 +89,13 @@ model PlatformBillingRequest {
 
   requestedById String
   requestedAt   DateTime @default(now())
+
+  /// Months paid for at once (#129): 1 is one month; more adds a "paid ahead"
+  /// line to the bill, held as credit on approval and spent on later renewals.
+  months Int @default(1)
+  /// Made and approved by the daily check from the organization's credit, with
+  /// its owner's auto-renew switch on (#129). Nobody pressed anything.
+  automatic Boolean @default(false)
 
   /// The day the request was priced, in the platform's time zone. An upgrade
   /// is priced at submission and its amount locked (D12); a downgrade's is
@@ -234,7 +246,9 @@ model PlatformBillingReceipt {
   amount   Int
   currency String
   method   PlatformBillingPaymentMethod
-  /// `payment`, or `closed_as_credit` ("Payment received, held as credit").
+  /// `payment`, `closed_as_credit` ("Payment received, held as credit"), or
+  /// `paid_from_credit` (an automatic renewal, #129: no money received, so
+  /// `amount` is 0 and the collections report leaves it out).
   kind     String @default("payment")
   snapshot Json
   issuedAt DateTime @default(now())
@@ -261,7 +275,7 @@ model PlatformBillingCredit {
   amount Int
   /// `overpayment`, `change_credit`, `credit_used`, `owed_cleared`,
   /// `approval_lag`, `closed_as_credit`, `archive`, `archive_reversal`,
-  /// `void_reversal`, `adjustment`.
+  /// `void_reversal`, `adjustment`, `paid_ahead` (#129: the months bought ahead).
   kind      String
   requestId String?
   billId    String?
@@ -315,6 +329,19 @@ model PlatformBillingSettings {
   updatedAt   DateTime @updatedAt
 
   @@map("platform_billing_settings")
+}
+
+/// The owner's auto-renew switch (#129): with it on, the daily check renews
+/// the plan on its due date when the credit balance covers the whole bill.
+/// No row is off. Kept, not deleted, when turned off, so the page can say
+/// who changed it and when.
+model PlatformBillingAutoRenew {
+  organizationId String   @id
+  enabled        Boolean
+  setById        String
+  setAt          DateTime
+
+  @@map("platform_billing_auto_renew")
 }
 
 /// ⚠ ONE DECISION AT A TIME PER ORGANIZATION. Every billing write (a

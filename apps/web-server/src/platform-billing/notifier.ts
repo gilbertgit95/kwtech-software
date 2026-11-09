@@ -149,7 +149,10 @@ type Severity = 'info' | 'success' | 'warning' | 'alert';
 
 /** The words of a reminder: what is due, and what to do about it. */
 export function reminderWords(
-  notice: Pick<BillingReminderNotice, 'kind' | 'daysLeft' | 'periodEnd' | 'accessUntil'>,
+  notice: Pick<
+    BillingReminderNotice,
+    'kind' | 'daysLeft' | 'periodEnd' | 'accessUntil' | 'autoRenewSkip' | 'short' | 'currency'
+  >,
   plan: string,
 ): { severity: Severity; title: string; body: string } {
   const due = notice.periodEnd ? shortDay(notice.periodEnd) : 'soon';
@@ -193,12 +196,48 @@ export function reminderWords(
         title: 'A billing request is waiting for its payment details',
         body: 'Nothing can be approved until they are entered. Add how and when you paid on the Billing page.',
       };
+    case 'auto_renew_upcoming':
+      return {
+        severity: 'info',
+        title: `${plan} renews by itself on ${due}`,
+        body: 'Your credit pays the whole renewal, so there is nothing to pay. Turn auto-renew off on the Billing page to stop it.',
+      };
+    case 'auto_renew_skipped':
+      return {
+        severity: 'warning',
+        title: `${plan} did not renew by itself`,
+        body: `${autoRenewSkipText(notice)} It was due on ${due}.`,
+      };
   }
+}
+
+/** Why a plan with auto-renew on was not renewed, and what to do (#129). */
+function autoRenewSkipText(notice: Pick<BillingReminderNotice, 'autoRenewSkip' | 'short' | 'currency'>): string {
+  if (!notice.autoRenewSkip) return 'Renew it from the Billing page.';
+  switch (notice.autoRenewSkip) {
+    case 'credit_short': {
+      const short = notice.short && notice.currency ? money(notice.short, notice.currency) : 'part of it';
+      return `Your credit does not cover the whole renewal (${short} short). Renew it from the Billing page and pay the rest.`;
+    }
+    case 'pending_request':
+      return 'A billing request is waiting. Finish or withdraw it, then renew from the Billing page.';
+    case 'plan_archived':
+      return 'The plan is no longer offered. Choose a replacement on the Billing page; your credit pays for it.';
+    case 'price_not_set':
+      return 'The plan has no price yet, so there was nothing to pay from credit. Renew it from the Billing page.';
+    case 'access_ended':
+      return 'Access had already ended. Renew it from the Billing page.';
+  }
+}
+
+/** "₱1,500.00" for centavos: the same format as the Billing page. */
+function money(centavos: number, currency: string): string {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(centavos / 100);
 }
 
 /** The words of a request's step. */
 export function requestWords(
-  notice: Pick<BillingRequestNotice, 'step' | 'reason'>,
+  notice: Pick<BillingRequestNotice, 'step' | 'reason' | 'renewal'>,
   plan: string,
 ): { severity: Severity; title: string; body: string } {
   const because = notice.reason ? ` Reason: ${notice.reason}` : '';
@@ -239,6 +278,19 @@ export function requestWords(
         title: `${plan} will end at the close of its period`,
         body: 'No more renewals will be asked for. Renew it to keep it after all.',
       };
+    case 'auto_renewed': {
+      const renewal = notice.renewal;
+      const until = renewal?.periodEnd ? ` to ${shortDay(renewal.periodEnd)}` : '';
+      const left = renewal ? ` Credit left: ${money(renewal.creditLeft, renewal.currency)}.` : '';
+      const next = renewal?.paidUpTo
+        ? ` It pays renewals up to ${shortDay(renewal.paidUpTo)}.`
+        : ' It does not cover the next renewal: renew and pay as usual when it is due.';
+      return {
+        severity: 'success',
+        title: `${plan} renewed${until}, paid from credit`,
+        body: `Nothing was charged.${left}${renewal ? next : ''}`,
+      };
+    }
   }
 }
 

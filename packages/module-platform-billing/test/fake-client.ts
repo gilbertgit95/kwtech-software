@@ -1,5 +1,6 @@
 import { platformDayStart } from '../src/domain/days.js';
 import type {
+  AutoRenewRow,
   BillRow,
   CounterRow,
   CreditRow,
@@ -48,6 +49,8 @@ interface Store {
   /** How many times each organization's decision lock was taken. */
   locks: Record<string, number>;
   notices: NoticeRow[];
+  /** The owners' auto-renew switches (#129), by organization. */
+  autoRenew: Map<string, AutoRenewRow>;
   /** The organization's live subscription, as permissions would hold it. */
   subscriptions: Map<string, BillingSubscriptionRow>;
   /** Every subscription write, in order: what an approval applied. */
@@ -68,6 +71,7 @@ function emptyStore(): Store {
     events: [],
     locks: {},
     notices: [],
+    autoRenew: new Map(),
     subscriptions: new Map(),
     subscriptionWrites: [],
   };
@@ -176,6 +180,8 @@ function delegates(get: () => Store): PlatformBillingTransaction {
           voidReason: null,
           updatedAt: data.requestedAt,
           ...data,
+          months: data.months ?? 1,
+          automatic: data.automatic ?? false,
         };
         store.requests.push(row);
         return { ...row };
@@ -384,6 +390,19 @@ function delegates(get: () => Store): PlatformBillingTransaction {
         if (!row) throw new Error('No such notice');
         Object.assign(row, data);
         return structuredClone(row);
+      },
+    },
+    platformBillingAutoRenew: {
+      async findUnique({ where }) {
+        const row = get().autoRenew.get(where.organizationId);
+        return row ? { ...row } : null;
+      },
+      async upsert({ where, create, update }) {
+        const store = get();
+        const found = store.autoRenew.get(where.organizationId);
+        const row = found ? { ...found, ...update } : { ...create };
+        store.autoRenew.set(where.organizationId, row);
+        return { ...row };
       },
     },
     platformBillingLock: {
@@ -644,7 +663,7 @@ export function fakeBilling(): FakeBilling {
 
   const reads = new PlatformBillingService(client, subscriptions, plans);
   const writes = new PlatformBillingWriteService(client, reads, subscriptions, people, notifier);
-  const daily = new PlatformBillingDailyCheck(client, reads, notifier);
+  const daily = new PlatformBillingDailyCheck(client, reads, writes, notifier);
   const reports = new PlatformBillingReportsService(reads, client, people);
   return { store: () => store, client, subscriptions, plans, people, notifier, reads, writes, daily, reports };
 }

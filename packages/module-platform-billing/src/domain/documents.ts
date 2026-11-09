@@ -1,6 +1,6 @@
 import type { DayKey } from './days.js';
 import type { Centavos } from './money.js';
-import type { PaymentMethod } from './payments.js';
+import type { ReceiptMethod } from './payments.js';
 import type { Period } from './periods.js';
 import type { Quote, QuoteLine } from './quotes.js';
 import type { RequestKind } from './requests.js';
@@ -50,12 +50,13 @@ export interface ReceiptSnapshot {
   /** ⚠ Printed on every receipt until official receipts are settled (PLAN §12.128). */
   notice: 'This is not an official receipt.';
   billNumber: string | null;
-  kind: 'payment' | 'closed_as_credit';
+  /** `paid_from_credit`: an automatic renewal (#129), `amount` 0 and the credit spent on the bill's lines. */
+  kind: 'payment' | 'closed_as_credit' | 'paid_from_credit';
   organizationId: string;
   planLabel: string;
   amount: Centavos;
   currency: string;
-  method: PaymentMethod;
+  method: ReceiptMethod;
   reference: string | null;
   paidOn: DayKey;
   /** The period the payment bought, when it bought one. */

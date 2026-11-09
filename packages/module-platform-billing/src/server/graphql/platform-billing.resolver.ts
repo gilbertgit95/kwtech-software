@@ -82,12 +82,18 @@ export class PlatformBillingResolver {
     @Args('organizationId') organizationId: string,
     @Args('kind') kind: string,
     @Args('planKey', { type: () => String, nullable: true }) planKey?: string | null,
+    /** Months paid for at once (#129); absent is 1. */
+    @Args('months', { type: () => Int, nullable: true }) months?: number | null,
   ): Promise<PlatformBillingPreviewType> {
     this.actor(gql.req);
     if (!(PREVIEW_KINDS as readonly string[]).includes(kind)) throw billingRefusal('invalid', { field: 'kind' });
     const context = await this.reads.context(organizationId, new Date());
     const wanted = kind as (typeof PREVIEW_KINDS)[number];
-    return renderPreview(kind, planKey ?? null, await this.reads.preview(context, wanted, planKey ?? null));
+    return renderPreview(
+      kind,
+      planKey ?? null,
+      await this.reads.preview(context, wanted, planKey ?? null, months ?? 1),
+    );
   }
 
   @Query(() => PlatformBillingHistoryPageType, { name: 'platformBillingHistory' })
@@ -163,9 +169,12 @@ export class PlatformBillingResolver {
     @Args('organizationId') organizationId: string,
     @Args('kind') kind: string,
     @Args('planKey') planKey: string,
+    /** Months paid for at once (#129), for a subscribe or a replacement; absent is 1. */
+    @Args('months', { type: () => Int, nullable: true }) months?: number | null,
   ): Promise<PlatformBillingRequestType> {
     if (!(CHOSEN_KINDS as readonly string[]).includes(kind)) throw billingRefusal('invalid', { field: 'kind' });
-    const row = await this.writes.submit(organizationId, this.actor(gql.req), kind as ChosenKind, planKey, new Date());
+    const actorId = this.actor(gql.req);
+    const row = await this.writes.submit(organizationId, actorId, kind as ChosenKind, planKey, new Date(), months ?? 1);
     return this.render(organizationId, row.id);
   }
 
@@ -174,9 +183,26 @@ export class PlatformBillingResolver {
   async renew(
     @Context() gql: { req?: unknown },
     @Args('organizationId') organizationId: string,
+    /** Months paid for at once (#129); absent is 1. */
+    @Args('months', { type: () => Int, nullable: true }) months?: number | null,
   ): Promise<PlatformBillingRequestType> {
-    const row = await this.writes.submit(organizationId, this.actor(gql.req), 'renew', null, new Date());
+    const row = await this.writes.submit(organizationId, this.actor(gql.req), 'renew', null, new Date(), months ?? 1);
     return this.render(organizationId, row.id);
+  }
+
+  /**
+   * The owner's auto-renew switch (#129), bound to `change_plan` (D8): renew
+   * by itself on the due date when the credit pays the whole bill. Returns the
+   * overview, which says what it will do.
+   */
+  @Mutation(() => PlatformBillingOverviewType, { name: 'setPlatformBillingAutoRenew' })
+  async setAutoRenew(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('enabled') enabled: boolean,
+  ): Promise<PlatformBillingOverviewType> {
+    await this.writes.setAutoRenew(organizationId, this.actor(gql.req), enabled, new Date());
+    return this.overview(gql, organizationId);
   }
 
   /**

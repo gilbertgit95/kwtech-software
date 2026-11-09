@@ -15,7 +15,7 @@ import {
   formatMoney,
   lineLabel,
   paymentMethodLabel,
-  requestKindLabel,
+  requestTitle,
 } from '../view/billing-view.js';
 
 export interface BillingDocumentPageProps {
@@ -160,7 +160,7 @@ export function PrintedDocument({
         <dd>{overview.organizationName ?? organizationId}</dd>
         <dt className="text-muted-foreground">For</dt>
         <dd>
-          {requestKindLabel(request.kind)}: {bill?.planLabel ?? receipt?.planLabel}
+          {requestTitle(request)}: {bill?.planLabel ?? receipt?.planLabel}
           {bill?.fromPlanLabel ? ` (from ${bill.fromPlanLabel})` : ''}
         </dd>
         {periodStart ? (
@@ -175,7 +175,9 @@ export function PrintedDocument({
           <>
             <dt className="text-muted-foreground">Paid</dt>
             <dd>
-              {formatDay(receipt.paidOn)} by {paymentMethodLabel(receipt.method)}
+              {receipt.method === 'credit'
+                ? `${formatDay(receipt.paidOn)}, from the organization's credit`
+                : `${formatDay(receipt.paidOn)} by ${paymentMethodLabel(receipt.method)}`}
               {receipt.reference ? `, reference ${receipt.reference}` : ''}
             </dd>
             {receipt.billNumber ? (
@@ -193,10 +195,16 @@ export function PrintedDocument({
           {bill ? (
             bill.lines.map((line) => (
               <tr key={`${line.kind}-${line.amount}`} className="border-b border-border">
-                <td className="py-2">{lineLabel(line.kind, line.days)}</td>
+                <td className="py-2">{lineLabel(line.kind, line.days, line.months)}</td>
                 <td className="py-2 text-right tabular-nums">{money(line.amount)}</td>
               </tr>
             ))
+          ) : receipt && receipt.kind === 'paid_from_credit' ? (
+            // An automatic renewal (#129): the credit paid the bill, and no money was received.
+            <tr className="border-b border-border">
+              <td className="py-2">Paid from credit (nothing was charged)</td>
+              <td className="py-2 text-right tabular-nums">{money(creditPaid(request, receipt.billNumber))}</td>
+            </tr>
           ) : receipt ? (
             <tr className="border-b border-border">
               <td className="py-2">
@@ -221,4 +229,11 @@ export function PrintedDocument({
       {receipt ? <p className="mt-8 text-xs text-muted-foreground">{receipt.notice}</p> : null}
     </>
   );
+}
+
+/** What the credit paid on the bill a receipt names (#129): its `credit_applied` line, as a positive amount. */
+function creditPaid(request: BillingRequestView | null, billNumber: string | null): number {
+  const bill = request?.bills.find((one) => one.number === billNumber);
+  const line = bill?.lines.find((one) => one.kind === 'credit_applied');
+  return line ? -line.amount : 0;
 }

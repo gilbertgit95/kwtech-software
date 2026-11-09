@@ -27,7 +27,17 @@ export type ReminderKind =
   /** Access has ended: the organization is on the fallback plan. */
   | 'expired'
   /** A request is waiting with no payment details: nothing can be approved until they are entered (loophole 14). */
-  | 'no_payment_details';
+  | 'no_payment_details'
+  /**
+   * Auto-renew is on and the credit pays the next renewal (#129): said once,
+   * a week before the due date, in place of the countdown that asks to pay.
+   */
+  | 'auto_renew_upcoming'
+  /**
+   * Auto-renew is on, the plan was due, and it was not renewed, with why
+   * (#129, `AutoRenewSkip`). Written by the daily check itself, once a period.
+   */
+  | 'auto_renew_skipped';
 
 /** One notice the daily check owes, with the day that keys it. */
 export interface PlannedReminder {
@@ -46,12 +56,21 @@ export interface PendingForReminders {
   hasDetails: boolean;
 }
 
+/** What the plan reads about auto-renew (#129): null when it is off. */
+export interface AutoRenewForReminders {
+  /** The credit balance pays the whole next renewal, so nobody needs to pay. */
+  covered: boolean;
+}
+
 /** How many days before the due date the countdown speaks, latest first. The due date itself is said with the overdue days. */
 const COUNTDOWN: ReadonlyArray<{ before: number; kind: ReminderKind }> = [
   { before: 1, kind: 'due_in_1' },
   { before: 3, kind: 'due_in_3' },
   { before: 7, kind: 'due_in_7' },
 ];
+
+/** The countdown's first milestone, in days before the due date: when an automatic renewal is announced. */
+const COUNTDOWN_FIRST = 7;
 
 /**
  * The reminders an organization is owed on `today`, given its access window
@@ -63,6 +82,10 @@ const COUNTDOWN: ReadonlyArray<{ before: number; kind: ReminderKind }> = [
  * - A pending request whose details cover the bill silences the countdown and
  *   the overdue notices: the organization did its part and is waiting on us.
  *   The expiry is still said, since access did end.
+ * - Auto-renew on and the credit paying the next renewal (#129): one notice
+ *   a week before that it renews by itself, in place of the countdown. On
+ *   the due date the daily check renews it before reminding, so the due and
+ *   overdue notices are said only when it could not, beside the reason.
  * - Otherwise: the countdown stage today falls in, an overdue notice each
  *   day of grace (the last day is the last warning), and the expiry.
  */
@@ -70,6 +93,7 @@ export function planReminders(
   window: AccessWindow | null,
   today: DayKey,
   pending: PendingForReminders | null,
+  autoRenew: AutoRenewForReminders | null = null,
 ): readonly PlannedReminder[] {
   const planned: PlannedReminder[] = [];
   if (pending && !pending.hasDetails) planned.push({ kind: 'no_payment_details', day: today, daysLeft: 0 });
@@ -89,6 +113,14 @@ export function planReminders(
     // The due date is said as such; the last day of access outranks it when grace is a single day.
     const kind: ReminderKind = today === last ? 'last_warning' : today === periodEnd ? 'due_today' : 'overdue';
     planned.push({ kind, day: today, daysLeft: left });
+    return planned;
+  }
+
+  // ⚠ Nothing to pay (#129): one notice that it renews by itself, never "renew it" days before it does.
+  if (autoRenew?.covered) {
+    const notice = addDays(periodEnd, -COUNTDOWN_FIRST);
+    if (notice <= today)
+      planned.push({ kind: 'auto_renew_upcoming', day: notice, daysLeft: daysBetween(today, periodEnd) });
     return planned;
   }
 

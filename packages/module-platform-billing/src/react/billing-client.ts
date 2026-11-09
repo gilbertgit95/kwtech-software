@@ -18,6 +18,8 @@ export interface BillingLineView {
   kind: string;
   amount: number;
   days: number | null;
+  /** The months a `paid_ahead` line buys (#129); null on the others. */
+  months: number | null;
 }
 
 export interface BillingBillView {
@@ -98,6 +100,10 @@ export interface BillingRequestView {
   state: string;
   planKey: string;
   fromPlanKey: string | null;
+  /** Months paid for at once (#129). */
+  months: number;
+  /** Renewed by the daily check from credit (#129). */
+  automatic: boolean;
   requestedById: string;
   requestedAt: string;
   detailsVersion: number;
@@ -171,6 +177,21 @@ export interface BillingOverviewView {
   pending: BillingRequestView | null;
   plans: BillingPlanOfferView[];
   paymentAccounts: BillingPaymentAccountView[];
+  /** The owner's auto-renew switch (#129). */
+  autoRenew: { enabled: boolean; setAt: string | null };
+  /** The next renewal against the credit (#129); null with no paid plan, or no price. */
+  nextRenewal: BillingNextRenewalView | null;
+}
+
+/** The next renewal as the credit would pay it today (#129). */
+export interface BillingNextRenewalView {
+  due: string;
+  /** Centavos: the month at today's price, and what is left to pay after the credit. */
+  monthly: number;
+  toPay: number;
+  /** Whole renewals the credit pays, and the due date after them. */
+  monthsPaid: number;
+  paidUpTo: string | null;
 }
 
 /** A cap the organization is over on a plan it chose (D6). */
@@ -256,7 +277,8 @@ export type ChosenPlanKind = 'subscribe' | 'change_plan' | 'replace';
 
 export interface BillingClient {
   overview(organizationId: string): Promise<BillingOverviewView>;
-  preview(organizationId: string, kind: string, planKey: string | null): Promise<BillingPreviewView>;
+  /** `months`: paid for at once (#129), 1 when absent. */
+  preview(organizationId: string, kind: string, planKey: string | null, months?: number): Promise<BillingPreviewView>;
   history(
     organizationId: string,
     cursor: string | null,
@@ -268,8 +290,15 @@ export interface BillingClient {
   planComparison(organizationId: string): Promise<PlanComparisonView>;
   /** One request with its bills and receipts, or null when it is not this organization's. */
   request(organizationId: string, requestId: string): Promise<BillingRequestView | null>;
-  requestPlan(organizationId: string, kind: ChosenPlanKind, planKey: string): Promise<BillingRequestView>;
-  renew(organizationId: string): Promise<BillingRequestView>;
+  requestPlan(
+    organizationId: string,
+    kind: ChosenPlanKind,
+    planKey: string,
+    months?: number,
+  ): Promise<BillingRequestView>;
+  renew(organizationId: string, months?: number): Promise<BillingRequestView>;
+  /** The owner's auto-renew switch (#129). */
+  setAutoRenew(organizationId: string, enabled: boolean): Promise<void>;
   cancel(organizationId: string): Promise<BillingRequestView>;
   enterPayment(organizationId: string, requestId: string, payment: BillingPaymentInput): Promise<BillingRequestView>;
   withdraw(organizationId: string, requestId: string, reason: string | null): Promise<BillingRequestView>;
@@ -310,9 +339,14 @@ export function createBillingClient(path = DEFAULT_GRAPHQL_PATH): BillingClient 
         .platformBillingOverview;
     },
     /** A request before it is made: its price today, or its refusal with the next step. */
-    async preview(organizationId, kind, planKey) {
+    async preview(organizationId, kind, planKey, months = 1) {
       return (
-        await graphql<{ platformBillingPreview: BillingPreviewView }>(ops.preview, { organizationId, kind, planKey })
+        await graphql<{ platformBillingPreview: BillingPreviewView }>(ops.preview, {
+          organizationId,
+          kind,
+          planKey,
+          months,
+        })
       ).platformBillingPreview;
     },
     /** One page of the history, newest first. */
@@ -347,19 +381,27 @@ export function createBillingClient(path = DEFAULT_GRAPHQL_PATH): BillingClient 
       ).platformBillingStatement;
     },
     /** Subscribe, change plan or replace an archived plan (the owner's). */
-    async requestPlan(organizationId, kind, planKey) {
+    async requestPlan(organizationId, kind, planKey, months = 1) {
       return (
         await graphql<{ requestPlatformBillingPlan: BillingRequestView }>(ops.requestPlan, {
           organizationId,
           kind,
           planKey,
+          months,
         })
       ).requestPlatformBillingPlan;
     },
-    /** Another month of the current plan. */
-    async renew(organizationId) {
-      return (await graphql<{ renewPlatformBilling: BillingRequestView }>(ops.renew, { organizationId }))
+    /** Another month of the current plan, or `months` at once (#129). */
+    async renew(organizationId, months = 1) {
+      return (await graphql<{ renewPlatformBilling: BillingRequestView }>(ops.renew, { organizationId, months }))
         .renewPlatformBilling;
+    },
+    /** Turn renewing from credit on or off (#129, the owner's). */
+    async setAutoRenew(organizationId, enabled) {
+      await graphql<{ setPlatformBillingAutoRenew: { organizationId: string } }>(ops.setAutoRenew, {
+        organizationId,
+        enabled,
+      });
     },
     /** End at the close of the period (the owner's). */
     async cancel(organizationId) {

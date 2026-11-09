@@ -79,10 +79,12 @@ export const PLATFORM_BILLING_FEATURE_REGISTRY: readonly FeatureContribution[] =
     module: 'platform-billing',
     level: 'organization',
     label: 'Choose the plan',
-    description: "Subscribe, change the organization's plan, replace a plan no longer offered, or cancel.",
+    description:
+      "Subscribe, change the organization's plan, replace a plan no longer offered, cancel, or turn renewing from credit on and off.",
     bindings: [
       { surface: 'graphql_operation', identifier: 'Mutation.requestPlatformBillingPlan' },
       { surface: 'graphql_operation', identifier: 'Mutation.cancelPlatformBilling' },
+      { surface: 'graphql_operation', identifier: 'Mutation.setPlatformBillingAutoRenew' },
     ],
     tags: ['platform-billing'],
   },
