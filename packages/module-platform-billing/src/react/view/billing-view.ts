@@ -539,7 +539,7 @@ export interface AutoRenewControl {
  * thinks turning it on means they will not be asked to pay.
  */
 export function autoRenewControl(
-  overview: Pick<BillingOverviewView, 'standing' | 'autoRenew' | 'nextRenewal' | 'currency'>,
+  overview: Pick<BillingOverviewView, 'standing' | 'autoRenew' | 'nextRenewal' | 'currency' | 'pending'>,
   can: Pick<BillingAbilities, 'choosePlan'>,
 ): AutoRenewControl {
   const s = overview.standing;
@@ -553,6 +553,15 @@ export function autoRenewControl(
   }
   const due = formatDay(next.due);
   const covered = next.toPay === 0;
+  // ⚠ A waiting request is finished first: the daily check skips the renewal while it waits.
+  if (on && overview.pending) {
+    return {
+      shown,
+      on,
+      disabledReason,
+      note: 'A request is waiting, so the plan will not renew by itself until it is approved, rejected or withdrawn.',
+    };
+  }
   if (!on) {
     return {
       shown,

@@ -275,9 +275,16 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
       ? { covered: billing.pending.coveredOn !== null, hasDetails: billing.pending.detailsVersion > 0 }
       : null;
     const renewal = this.reads.renewalFromCredit(billing);
-    // The credit pays the next renewal and the switch is on: nothing to ask anybody to pay (#129).
+    /*
+     * The credit pays the next renewal and the switch is on: nothing to ask anybody to pay (#129).
+     * ⚠ Only when `planAutoRenew` would renew: a waiting request or an archived plan makes it
+     * skip on the due date, so promising "renews by itself" would silence the countdown for nothing.
+     */
     const autoRenew =
-      billing.autoRenew.enabled && !billing.cancelled
+      billing.autoRenew.enabled &&
+      !billing.cancelled &&
+      billing.pending === null &&
+      !(billing.live?.planArchived ?? false)
         ? { covered: !('refused' in renewal) && renewal.total === 0 }
         : null;
     const planned = planReminders(window, today, pending, autoRenew).filter(

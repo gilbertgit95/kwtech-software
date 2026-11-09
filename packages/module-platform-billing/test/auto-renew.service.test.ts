@@ -271,3 +271,28 @@ describe('auto-renew at the edges (#129)', () => {
     expect(moved[0]?.data).toMatchObject({ paidUpToBefore: '2027-05-15', paidUpToAfter: '2027-04-15' });
   });
 });
+
+describe('the countdown is replaced only when the plan will renew (#129)', () => {
+  it('⚠ keeps asking to pay while a request waits without details, though the credit covers it', async () => {
+    const billing = await prepaid(3);
+    await billing.writes.setAutoRenew(ORG, OWNER, true, noonOn('2026-11-15'));
+    // A renewal requested by hand, its details never entered: the daily check will skip on the due date.
+    await billing.writes.submit(ORG, OWNER, 'renew', null, noonOn('2026-12-08'));
+    await billing.daily.run({
+      now: noonOn('2026-12-08'),
+      schedule: { kind: 'daily', times: ['08:00'], weekdays: [0, 1, 2, 3, 4, 5, 6] },
+      maxItems: 100,
+      tooLateAfterMinutes: 720,
+      signal: new AbortController().signal,
+      async workspaces() {
+        return { workspaces: [], nextCursor: null };
+      },
+      async organizations() {
+        return { organizations: [{ organizationId: ORG }], nextCursor: null };
+      },
+    });
+    const kinds = billing.store().notices.map((row) => row.kind);
+    expect(kinds).not.toContain('auto_renew_upcoming');
+    expect(kinds).toContain('due_in_7');
+  });
+});

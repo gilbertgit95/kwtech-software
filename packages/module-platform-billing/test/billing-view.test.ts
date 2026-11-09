@@ -252,6 +252,8 @@ describe('paying ahead and renewing from credit on the Billing page (#129)', () 
     expect(autoRenewControl(withSwitch(false, null), OWNER).shown).toBe(false);
     expect(autoRenewControl(withSwitch(false, next(), { trial: true }), OWNER).shown).toBe(false);
     expect(autoRenewControl(withSwitch(true, next(), { cancelled: true }), OWNER).note).toMatch(/set to end/);
+    const waiting = { ...withSwitch(true, next()), pending: {} as BillingOverviewView['pending'] };
+    expect(autoRenewControl(waiting, OWNER).note).toMatch(/A request is waiting/);
   });
 
   it('names the months bought ahead, and the renewals nobody pressed', () => {
