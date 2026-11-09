@@ -214,3 +214,60 @@ describe('the daily check with auto-renew on (#129)', () => {
     expect(skipped?.data).toMatchObject({ autoRenewSkip: 'credit_short', short: 100_000 });
   });
 });
+
+describe('auto-renew at the edges (#129)', () => {
+  it('⚠ renews on the due date in the billing time zone, never by the server’s UTC day', async () => {
+    const billing = await prepaid(3);
+    await billing.writes.setAutoRenew(ORG, OWNER, true, noonOn('2026-11-15'));
+    // 23:30 on the 14th in Manila is still the day before the due date…
+    expect((await billing.writes.autoRenew(ORG, new Date('2026-12-14T15:30:00.000Z'))).kind).toBe('not_due');
+    // …and 00:30 on the 15th in Manila is the due date, though UTC still says the 14th.
+    expect((await billing.writes.autoRenew(ORG, new Date('2026-12-14T16:30:00.000Z'))).kind).toBe('renewed');
+  });
+
+  it('⚠ still reminds when the renewal fails: a failure is logged, never the end of the organization’s notices', async () => {
+    const billing = await prepaid(1);
+    await billing.writes.setAutoRenew(ORG, OWNER, true, noonOn('2026-11-15'));
+    billing.writes.autoRenew = async () => {
+      throw new Error('the subscriptions port is down');
+    };
+    await billing.daily.run({
+      now: noonOn('2026-12-15'),
+      schedule: { kind: 'daily', times: ['08:00'], weekdays: [0, 1, 2, 3, 4, 5, 6] },
+      maxItems: 100,
+      tooLateAfterMinutes: 720,
+      signal: new AbortController().signal,
+      async workspaces() {
+        return { workspaces: [], nextCursor: null };
+      },
+      async organizations() {
+        return { organizations: [{ organizationId: ORG }], nextCursor: null };
+      },
+    });
+    expect(billing.store().notices.map((row) => row.kind)).toContain('due_today');
+  });
+
+  it('tells the owner once when a price rise shortens how far the credit pays', async () => {
+    const billing = await prepaid(6);
+    await billing.writes.setPrice('admin', 'basic', 125_000, '2026-12-01');
+    const run = (day: string) =>
+      billing.daily.run({
+        now: noonOn(day),
+        schedule: { kind: 'daily', times: ['08:00'], weekdays: [0, 1, 2, 3, 4, 5, 6] },
+        maxItems: 100,
+        tooLateAfterMinutes: 720,
+        signal: new AbortController().signal,
+        async workspaces() {
+          return { workspaces: [], nextCursor: null };
+        },
+        async organizations() {
+          return { organizations: [{ organizationId: ORG }], nextCursor: null };
+        },
+      });
+    await run('2026-12-01');
+    await run('2026-12-02');
+    const moved = billing.store().notices.filter((row) => row.kind === 'paid_up_to_moved');
+    expect(moved).toHaveLength(1);
+    expect(moved[0]?.data).toMatchObject({ paidUpToBefore: '2027-05-15', paidUpToAfter: '2027-04-15' });
+  });
+});

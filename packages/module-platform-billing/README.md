@@ -322,7 +322,7 @@ live subscription.
 | `domain/periods.ts` | `periodFrom`, `nextPeriod`, `daysInPeriod`, `daysLeft` (the day of a change is the new plan's) |
 | `domain/money.ts` | `prorate`: `amount × part ÷ whole` in integers, rounded once, half up |
 | `domain/quotes.ts` | the bill's lines: `quoteMonth`, `quoteRenewal` (with the access used after a late renewal, D10), `quotePlanChange` (with a month paid ahead, D11), `approvalLagCredit` (D12), `archiveCredit`; `withPaidAhead`, `paidAheadOf`, `isMonths` (#129) |
-| `domain/auto-renew.ts` | `planAutoRenew`: whether the daily check renews from credit today, or why not; `paidUpTo`: the credit as a date (#129) |
+| `domain/auto-renew.ts` | `planAutoRenew`: whether the daily check renews from credit today, or why not; `paidUpTo`: the credit as a date; `paidUpToMoved`: a price rise that shortens it (#129) |
 | `domain/access.ts` | `accessWindow`, `standingOn` (active, renewal open, overdue, held, expired), `planHold` (D9), `planRenewal` (continue, or restart on time or late), `isOnTime` |
 | `domain/payments.ts` | payment methods, `normaliseReference`, `findReferenceReuse`, `checkAmount` (short, exact, over: D7) |
 | `domain/requests.ts` | the state machine (`allowedActions`, `nextState`), `checkNewRequest` (owner only D8, renew first, over caps D6, archived and withdrawn plans), `checkApproval`, `checkVoid` (newest first) |
@@ -369,7 +369,11 @@ organization, an expired one included, with no plan gate (#94).
   again, so a plan that just renewed is not reminded as due. When the plan
   was due and did not renew, the owner hears why once a period
   (`auto_renew_skipped`, keyed by the due date), beside the usual notices.
-  A renewal counts against the run's item limit like a notice.
+  A renewal counts against the run's item limit like a notice. ⚠ The step
+  is isolated: a failure in it is logged and the organization's reminders
+  still go out. A price rise that moves the credit's paid-up-to date earlier
+  is said once (`paid_up_to_moved`, `paidUpToMoved`), within a week of the
+  day it took effect.
 - **What it says** (`planReminders`): 7, 3 and 1 days before the due date and
   on it; each overdue day with the days of access left; the last day; the
   day access ended. Daily while a request waits with no payment details. A

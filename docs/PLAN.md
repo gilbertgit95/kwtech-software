@@ -648,10 +648,12 @@ Decisions 1, 2, 3 and 5 gate the next step.
     kind `paid_from_credit` for nothing received; the collections report
     leaves it out, since the money was counted when it came in.
   - **Not done:** no payment provider or card charging (D1 stands); no
-    automatic plan change; no "void this and every later one" (PLAN §12.135);
-    no notice when a new price moves the paid-up-to date earlier (the page
-    reworks it at today's price on every read, and the renewal it affects
-    still skips with "credit short" and says so).
+    automatic plan change; no "void this and every later one" (PLAN §12.135).
+  - **A price rise that shortens the credit is said once** (`paid_up_to_moved`,
+    keyed by the day the price took effect, within a week of it).
+  - **The switch turned off says nothing new**: the owner chose it, and the
+    usual countdown and overdue notices are what an organization renewing
+    by hand hears.
 
 - **2026-11-08** — **A refusal names the plan that would allow it: caps say the number and the next plan, a missing feature says which plans include it, and a page compares the plans (#101).**
 

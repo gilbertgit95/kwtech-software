@@ -448,18 +448,29 @@ export class PlatformBillingWriteService {
       return { kind: 'renewed', request: approved, told: false };
     });
     if (outcome.kind !== 'renewed') return outcome;
-    // After the commit: what is left, read as the page reads it, for the owner's notice.
-    const after = await this.reads.context(organizationId, now);
-    const period = after.standing.rowPeriod;
-    const monthly = after.live ? priceOn(after.prices, after.live.planKey, after.today) : null;
-    const ahead = period ? paidUpTo(period, monthly, after.creditBalance) : null;
-    const told = await this.tell(outcome.request, 'auto_renewed', null, {
-      periodEnd: period?.end ?? null,
-      creditLeft: after.creditBalance,
-      currency: after.settings.currency,
-      paidUpTo: ahead?.until ?? null,
-    });
-    return { ...outcome, told };
+    /*
+     * After the commit: what is left, read as the page reads it, for the
+     * owner's notice. ⚠ The renewal stands whatever happens here, so a failed
+     * read is logged and reported as not told, never thrown as if nothing renewed.
+     */
+    try {
+      const after = await this.reads.context(organizationId, now);
+      const period = after.standing.rowPeriod;
+      const monthly = after.live ? priceOn(after.prices, after.live.planKey, after.today) : null;
+      const ahead = period ? paidUpTo(period, monthly, after.creditBalance) : null;
+      const told = await this.tell(outcome.request, 'auto_renewed', null, {
+        periodEnd: period?.end ?? null,
+        creditLeft: after.creditBalance,
+        currency: after.settings.currency,
+        paidUpTo: ahead?.until ?? null,
+      });
+      return { ...outcome, told };
+    } catch (error) {
+      this.logger.warn(
+        `An automatic renewal was made but its notice could not be prepared: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return outcome;
+    }
   }
 
   // ── the platform's side ───────────────────────────────────────────────────

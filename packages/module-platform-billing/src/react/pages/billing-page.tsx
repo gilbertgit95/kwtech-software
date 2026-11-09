@@ -81,17 +81,23 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
     if (!mode || !organizationId) return;
     const done = await state.run(
       async (api) => {
-        const made =
-          mode === 'renew'
-            ? await api.renew(organizationId, choice.months)
-            : await api.requestPlan(organizationId, mode, choice.planKey ?? '', choice.months);
-        // After the request is made: a switch that failed to turn on never loses the request.
-        if (choice.turnOnAutoRenew) await api.setAutoRenew(organizationId, true);
-        return made;
+        if (mode === 'renew') await api.renew(organizationId, choice.months);
+        else await api.requestPlan(organizationId, mode, choice.planKey ?? '', choice.months);
+        if (!choice.turnOnAutoRenew) return 'request_made' as const;
+        // ⚠ The request is made by now: a switch that fails must not read as a failed request, which would invite a second one.
+        try {
+          await api.setAutoRenew(organizationId, true);
+          return 'auto_renew_on' as const;
+        } catch {
+          return 'auto_renew_failed' as const;
+        }
       },
-      choice.turnOnAutoRenew
-        ? 'Requested, and auto-renew is on. Pay outside the app, then add your payment details below.'
-        : 'Requested. Pay outside the app, then add your payment details below.',
+      (outcome) =>
+        outcome === 'auto_renew_on'
+          ? 'Requested, and auto-renew is on. Pay outside the app, then add your payment details below.'
+          : outcome === 'auto_renew_failed'
+            ? 'Requested. Auto-renew could not be turned on: check the switch below and try it again. Pay outside the app, then add your payment details below.'
+            : 'Requested. Pay outside the app, then add your payment details below.',
     );
     if (done) setMode(null);
   }

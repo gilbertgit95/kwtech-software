@@ -1,5 +1,5 @@
 import { accessWindow } from '../src/domain/access.js';
-import { paidUpTo, planAutoRenew } from '../src/domain/auto-renew.js';
+import { paidUpTo, paidUpToMoved, planAutoRenew } from '../src/domain/auto-renew.js';
 import { planReminders } from '../src/domain/notices.js';
 import { isRefused, priceRequest } from '../src/domain/pricing.js';
 import { isMonths, paidAheadOf } from '../src/domain/quotes.js';
@@ -188,5 +188,37 @@ describe('the collections report and credit-paid renewals (#129)', () => {
     });
     expect(report.total).toBe(600_000);
     expect(report.receipts).toBe(1);
+  });
+});
+
+describe('paidUpToMoved: a price rise that shortens the credit (#129)', () => {
+  const period = { end: '2026-12-15', billingDay: 15 };
+  const rise = [
+    { planKey: 'basic', monthly: 100_000, effectiveFrom: '2026-01-01' },
+    { planKey: 'basic', monthly: 125_000, effectiveFrom: '2026-12-01' },
+  ];
+
+  it('says how far the date moved, from the day the rise takes effect', () => {
+    expect(paidUpToMoved({ prices: rise, planKey: 'basic', today: '2026-12-01', period, balance: 500_000 })).toEqual({
+      effectiveFrom: '2026-12-01',
+      before: '2027-05-15',
+      after: '2027-04-15',
+    });
+    // A balance that no longer pays one whole renewal.
+    expect(paidUpToMoved({ prices: rise, planKey: 'basic', today: '2026-12-03', period, balance: 110_000 })).toEqual({
+      effectiveFrom: '2026-12-01',
+      before: '2027-01-15',
+      after: null,
+    });
+  });
+
+  it('is quiet for a fall, an old change, a change still to come, or no credit', () => {
+    const fall = [rise[0], { planKey: 'basic', monthly: 90_000, effectiveFrom: '2026-12-01' }].filter(
+      (row): row is (typeof rise)[number] => row !== undefined,
+    );
+    expect(paidUpToMoved({ prices: fall, planKey: 'basic', today: '2026-12-01', period, balance: 500_000 })).toBeNull();
+    expect(paidUpToMoved({ prices: rise, planKey: 'basic', today: '2026-12-09', period, balance: 500_000 })).toBeNull();
+    expect(paidUpToMoved({ prices: rise, planKey: 'basic', today: '2026-11-30', period, balance: 500_000 })).toBeNull();
+    expect(paidUpToMoved({ prices: rise, planKey: 'basic', today: '2026-12-01', period, balance: 0 })).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import {
   processOccurrence,
 } from '@kwtech/module-kit';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import type { AutoRenewSkip } from '../domain/auto-renew.js';
+import { type AutoRenewSkip, paidUpToMoved } from '../domain/auto-renew.js';
 import { type DayKey, platformDay } from '../domain/days.js';
 import { isWaitingTooLong, type PlannedReminder, planReminders, type ReminderKind } from '../domain/notices.js';
 import {
@@ -182,30 +182,82 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
      * period: nobody is told "due today" about a plan that just renewed.
      */
     if (billing.autoRenew.enabled && allowance > 0) {
-      const outcome = await this.writes.autoRenew(organizationId, now);
-      if (outcome.kind === 'renewed') {
-        claimed += 1;
-        if (outcome.told) sent += 1;
+      /*
+       * ⚠ ISOLATED, as each reminder is: an auto-renew that throws (a refusal
+       * inside the approval, the subscriptions port, the notice row) is logged,
+       * and the organization still gets today's due, overdue and expiry
+       * notices below. Otherwise one persistent failure would silence them
+       * every day until access ended unannounced.
+       */
+      try {
+        const outcome = await this.writes.autoRenew(organizationId, now);
+        if (outcome.kind === 'renewed') {
+          claimed += 1;
+          if (outcome.told) sent += 1;
+          billing = await this.reads.context(organizationId, now);
+        }
+        if (outcome.kind === 'skip' && billing.standing.window) {
+          const window = billing.standing.window;
+          const notice: BillingReminderNotice = {
+            organizationId,
+            kind: 'auto_renew_skipped',
+            planKey: billing.live?.planKey ?? null,
+            periodEnd: window.periodEnd,
+            accessUntil: window.accessUntil,
+            daysLeft: 0,
+            autoRenewSkip: outcome.reason,
+            short: outcome.short,
+            currency: billing.settings.currency,
+          };
+          // Keyed by the due date: said once a period, whatever day the run found it.
+          const row = await this.claim(
+            organizationId,
+            { kind: 'auto_renew_skipped', day: window.periodEnd },
+            window.periodEnd,
+            { ...notice },
+            now,
+          );
+          if (row) {
+            claimed += 1;
+            if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`The billing auto-renew of one organization failed: ${errorText(error)}`);
+        // Whatever it committed before failing is what the reminders must be about.
         billing = await this.reads.context(organizationId, now);
       }
-      if (outcome.kind === 'skip' && billing.standing.window) {
-        const window = billing.standing.window;
-        const notice: BillingReminderNotice = {
-          organizationId,
-          kind: 'auto_renew_skipped',
-          planKey: billing.live?.planKey ?? null,
-          periodEnd: window.periodEnd,
-          accessUntil: window.accessUntil,
-          daysLeft: 0,
-          autoRenewSkip: outcome.reason,
-          short: outcome.short,
-          currency: billing.settings.currency,
-        };
-        // Keyed by the due date: said once a period, whatever day the run found it.
+    }
+
+    // A price rise that moved the credit's paid-up-to date earlier (#129): said once per change, isolated likewise.
+    const period = billing.standing.hasPaidSubscription ? billing.standing.rowPeriod : null;
+    const moved =
+      period && billing.live && claimed < allowance
+        ? paidUpToMoved({
+            prices: billing.prices,
+            planKey: billing.live.planKey,
+            today,
+            period,
+            balance: billing.creditBalance,
+          })
+        : null;
+    if (moved) {
+      const notice: BillingReminderNotice = {
+        organizationId,
+        kind: 'paid_up_to_moved',
+        planKey: billing.live?.planKey ?? null,
+        periodEnd: period?.end ?? null,
+        accessUntil: billing.standing.window?.accessUntil ?? null,
+        daysLeft: 0,
+        paidUpToBefore: moved.before,
+        paidUpToAfter: moved.after,
+      };
+      try {
+        // Keyed by the day the price took effect: one change, one notice.
         const row = await this.claim(
           organizationId,
-          { kind: 'auto_renew_skipped', day: window.periodEnd },
-          window.periodEnd,
+          { kind: 'paid_up_to_moved', day: moved.effectiveFrom },
+          moved.effectiveFrom,
           { ...notice },
           now,
         );
@@ -213,6 +265,8 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
           claimed += 1;
           if (await this.deliver(row, () => notifier.reminder(notice), now)) sent += 1;
         }
+      } catch (error) {
+        this.logger.warn(`A billing paid-up-to notice could not be recorded: ${errorText(error)}`);
       }
     }
 
@@ -385,6 +439,10 @@ function reminderFrom(row: NoticeRow, data: Record<string, unknown>): BillingRem
       : {}),
     ...(typeof data.short === 'number' ? { short: data.short } : {}),
     ...(typeof data.currency === 'string' ? { currency: data.currency } : {}),
+    ...(typeof data.paidUpToBefore === 'string' ? { paidUpToBefore: data.paidUpToBefore } : {}),
+    ...(typeof data.paidUpToAfter === 'string' || data.paidUpToAfter === null
+      ? { paidUpToAfter: (data.paidUpToAfter as string | null) ?? null }
+      : {}),
   };
 }
 

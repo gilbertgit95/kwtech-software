@@ -1,9 +1,9 @@
-import { addMonthsAnchored, type DayKey } from './days.js';
+import { addMonthsAnchored, type DayKey, daysBetween } from './days.js';
 import type { Centavos } from './money.js';
 import type { Period } from './periods.js';
 import type { Quote } from './quotes.js';
 import type { PlatformBillingRefusal } from './refusals.js';
-import type { BillingStanding } from './standing.js';
+import type { BillingStanding, PriceRow } from './standing.js';
 
 /**
  * RENEWING BY ITSELF FROM CREDIT (#129). With the owner's switch on, the daily
@@ -104,4 +104,44 @@ export function paidUpTo(
   if (!monthly || monthly <= 0 || balance < monthly) return null;
   const months = Math.floor(balance / monthly);
   return { months, until: addMonthsAnchored(period.end, months, period.billingDay) };
+}
+
+/** How far a price change moved the paid-up-to date (#129): told to the owner once per change. */
+export interface PaidUpToMoved {
+  /** The day the new price took effect: the notice's key, so one change is said once. */
+  effectiveFrom: DayKey;
+  /** The date the credit paid up to at the old price, and at the new one (null: no longer a whole renewal). */
+  before: DayKey;
+  after: DayKey | null;
+}
+
+/** How long after a price takes effect its notice is still said: a missed run catches up, an old change is not news. */
+export const PAID_UP_TO_NOTICE_DAYS = 7;
+
+/**
+ * Whether the price in force on `today` moved the credit's paid-up-to date
+ * earlier than the price before it did (#129): a rise that took effect in the
+ * last `PAID_UP_TO_NOTICE_DAYS` days. Null for no change, a fall (the date
+ * only moves later, and nobody needs warning of that), or an old change.
+ */
+export function paidUpToMoved(input: {
+  prices: readonly PriceRow[];
+  planKey: string;
+  today: DayKey;
+  period: Pick<Period, 'end' | 'billingDay'>;
+  balance: Centavos;
+}): PaidUpToMoved | null {
+  const rows = input.prices
+    .filter((row) => row.planKey === input.planKey)
+    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  const current = rows.filter((row) => row.effectiveFrom <= input.today).at(-1);
+  if (!current) return null;
+  if (daysBetween(current.effectiveFrom, input.today) > PAID_UP_TO_NOTICE_DAYS) return null;
+  const previous = rows.filter((row) => row.effectiveFrom < current.effectiveFrom).at(-1);
+  if (!previous || current.monthly <= previous.monthly) return null;
+  const before = paidUpTo(input.period, previous.monthly, input.balance);
+  if (!before) return null;
+  const after = paidUpTo(input.period, current.monthly, input.balance);
+  if (after && after.until >= before.until) return null;
+  return { effectiveFrom: current.effectiveFrom, before: before.until, after: after?.until ?? null };
 }

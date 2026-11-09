@@ -151,7 +151,15 @@ type Severity = 'info' | 'success' | 'warning' | 'alert';
 export function reminderWords(
   notice: Pick<
     BillingReminderNotice,
-    'kind' | 'daysLeft' | 'periodEnd' | 'accessUntil' | 'autoRenewSkip' | 'short' | 'currency'
+    | 'kind'
+    | 'daysLeft'
+    | 'periodEnd'
+    | 'accessUntil'
+    | 'autoRenewSkip'
+    | 'short'
+    | 'currency'
+    | 'paidUpToBefore'
+    | 'paidUpToAfter'
   >,
   plan: string,
 ): { severity: Severity; title: string; body: string } {
@@ -201,6 +209,16 @@ export function reminderWords(
         severity: 'info',
         title: `${plan} renews by itself on ${due}`,
         body: 'Your credit pays the whole renewal, so there is nothing to pay. Turn auto-renew off on the Billing page to stop it.',
+      };
+    case 'paid_up_to_moved':
+      return {
+        severity: 'info',
+        title: `The price of ${plan} went up`,
+        body: notice.paidUpToBefore
+          ? notice.paidUpToAfter
+            ? `Your credit now pays renewals up to ${shortDay(notice.paidUpToAfter)}, not ${shortDay(notice.paidUpToBefore)}.`
+            : `Your credit no longer pays a whole renewal (it paid up to ${shortDay(notice.paidUpToBefore)}). Renew and pay the rest when it is due.`
+          : 'Your credit now pays fewer renewals. See the Billing page.',
       };
     case 'auto_renew_skipped':
       return {

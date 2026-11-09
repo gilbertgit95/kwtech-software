@@ -37,7 +37,12 @@ export type ReminderKind =
    * Auto-renew is on, the plan was due, and it was not renewed, with why
    * (#129, `AutoRenewSkip`). Written by the daily check itself, once a period.
    */
-  | 'auto_renew_skipped';
+  | 'auto_renew_skipped'
+  /**
+   * A price rise moved the date the credit pays up to earlier (#129,
+   * `paidUpToMoved`). Written by the daily check, once per price change.
+   */
+  | 'paid_up_to_moved';
 
 /** One notice the daily check owes, with the day that keys it. */
 export interface PlannedReminder {

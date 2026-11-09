@@ -23,8 +23,12 @@ export interface BillingState {
   busy: boolean;
   /** Reads the page again; answers whether it worked. */
   reload: () => Promise<boolean>;
-  /** Runs one act at a time and re-reads after it, whatever happened. Returns whether it succeeded. */
-  run: (action: (client: BillingClient) => Promise<unknown>, done?: string) => Promise<boolean>;
+  /**
+   * Runs one act at a time and re-reads after it, whatever happened. Returns
+   * whether it succeeded. `done` is the status line, or worked out from what
+   * the act returned when its outcome has parts (a request made, a switch not).
+   */
+  run: <T>(action: (client: BillingClient) => Promise<T>, done?: string | ((result: T) => string)) => Promise<boolean>;
   /** The next page of the history. */
   loadMore: () => Promise<void>;
   dismissError: () => void;
@@ -120,7 +124,7 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
   }, [readAll, filter]);
 
   const run = useCallback(
-    async (action: (client: BillingClient) => Promise<unknown>, done?: string) => {
+    async <T>(action: (client: BillingClient) => Promise<T>, done?: string | ((result: T) => string)) => {
       // One at a time: a second press while the first is in flight does nothing.
       if (inFlight.current) return false;
       inFlight.current = true;
@@ -129,9 +133,9 @@ export function useBilling(organizationId: string, options: { client?: BillingCl
       setNotice(null);
       let acted = false;
       try {
-        await action(client);
+        const result = await action(client);
         acted = true;
-        if (done) setNotice(done);
+        if (done) setNotice(typeof done === 'function' ? done(result) : done);
         // ⚠ The act is done whatever the re-read says: a failed re-read is said as such, with Reload beside it.
         if (!(await reload())) {
           setError('That was saved, but the page could not refresh. Reload to see it.');

@@ -174,6 +174,9 @@ export interface BillingReminderNotice {
   autoRenewSkip?: AutoRenewSkip;
   short?: number;
   currency?: string;
+  /** For `paid_up_to_moved` (#129): the date the credit paid up to before the new price, and after it (null: no whole renewal). */
+  paidUpToBefore?: DayKey;
+  paidUpToAfter?: DayKey | null;
 }
 
 /** Billing approvers told that requests have waited more than a day. Counts, never names. */
