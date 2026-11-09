@@ -553,13 +553,15 @@ export function autoRenewControl(
   }
   const due = formatDay(next.due);
   const covered = next.toPay === 0;
-  // ⚠ A waiting request is finished first: the daily check skips the renewal while it waits.
-  if (on && overview.pending) {
+  // ⚠ A waiting request is finished first, whichever way the switch is: the daily check skips the renewal while it waits.
+  if (overview.pending) {
     return {
       shown,
       on,
       disabledReason,
-      note: 'A request is waiting, so the plan will not renew by itself until it is approved, rejected or withdrawn.',
+      note: on
+        ? 'A request is waiting, so the plan will not renew by itself until it is approved, rejected or withdrawn.'
+        : 'A request is waiting. Once it is approved, rejected or withdrawn, auto-renew can renew the plan from credit.',
     };
   }
   if (!on) {
@@ -586,5 +588,5 @@ export function autoRenewControl(
 export function paidUpToLine(overview: Pick<BillingOverviewView, 'nextRenewal'>): string | null {
   const next = overview.nextRenewal;
   if (!next?.paidUpTo || next.monthsPaid < 1) return null;
-  return `Pays renewals up to ${formatDay(next.paidUpTo)} (${monthsLabel(next.monthsPaid)}, at today's price).`;
+  return `Pays renewals up to ${formatDay(next.paidUpTo)} (${monthsLabel(next.monthsPaid)}, at the price on the due date).`;
 }

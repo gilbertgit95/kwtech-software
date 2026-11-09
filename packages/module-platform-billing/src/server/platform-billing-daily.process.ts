@@ -274,7 +274,9 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
     const pending = billing.pending
       ? { covered: billing.pending.coveredOn !== null, hasDetails: billing.pending.detailsVersion > 0 }
       : null;
-    const renewal = this.reads.renewalFromCredit(billing);
+    // ⚠ Priced on the due date, not today: a price rise scheduled before it must not be promised as covered.
+    const due = window && window.periodEnd > today ? window.periodEnd : today;
+    const renewal = this.reads.renewalFromCredit(billing, due);
     /*
      * The credit pays the next renewal and the switch is on: nothing to ask anybody to pay (#129).
      * ⚠ Only when `planAutoRenew` would renew: a waiting request or an archived plan makes it

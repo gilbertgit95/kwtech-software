@@ -270,7 +270,14 @@ export class PlatformBillingService {
    * renewal request is, or why it cannot be: what the daily check renews from,
    * and what "next renewal paid from credit" on the Billing page says.
    */
-  renewalFromCredit(context: BillingContext): Quote | { refused: PlatformBillingRefusal } {
+  renewalFromCredit(
+    context: BillingContext,
+    /**
+     * The day to price it on: today for a renewal made now, or the due date
+     * for one promised ahead, so a price rise scheduled before then is counted.
+     */
+    day: DayKey = context.today,
+  ): Quote | { refused: PlatformBillingRefusal } {
     const priced = priceRequest({
       kind: 'renew',
       planKey: context.live?.planKey ?? '',
@@ -278,7 +285,7 @@ export class PlatformBillingService {
       standing: context.standing,
       prices: context.prices,
       creditBalance: context.creditBalance,
-      day: context.today,
+      day,
     });
     return isRefused(priced) ? priced : priced.quote;
   }

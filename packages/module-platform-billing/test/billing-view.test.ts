@@ -232,7 +232,9 @@ describe('paying ahead and renewing from credit on the Billing page (#129)', () 
   });
 
   it('turns the credit into a date beside the balance', () => {
-    expect(paidUpToLine({ nextRenewal: next() })).toBe("Pays renewals up to 1 May 2027 (5 months, at today's price).");
+    expect(paidUpToLine({ nextRenewal: next() })).toBe(
+      'Pays renewals up to 1 May 2027 (5 months, at the price on the due date).',
+    );
     expect(paidUpToLine({ nextRenewal: next({ monthsPaid: 0, paidUpTo: null }) })).toBeNull();
     expect(paidUpToLine({ nextRenewal: null })).toBeNull();
   });
@@ -253,7 +255,11 @@ describe('paying ahead and renewing from credit on the Billing page (#129)', () 
     expect(autoRenewControl(withSwitch(false, next(), { trial: true }), OWNER).shown).toBe(false);
     expect(autoRenewControl(withSwitch(true, next(), { cancelled: true }), OWNER).note).toMatch(/set to end/);
     const waiting = { ...withSwitch(true, next()), pending: {} as BillingOverviewView['pending'] };
-    expect(autoRenewControl(waiting, OWNER).note).toMatch(/A request is waiting/);
+    expect(autoRenewControl(waiting, OWNER).note).toMatch(/A request is waiting, so the plan will not renew/);
+    const waitingOff = { ...withSwitch(false, next()), pending: {} as BillingOverviewView['pending'] };
+    expect(autoRenewControl(waitingOff, OWNER).note).toMatch(
+      /Once it is approved, rejected or withdrawn, auto-renew can/,
+    );
   });
 
   it('names the months bought ahead, and the renewals nobody pressed', () => {

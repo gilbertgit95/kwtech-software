@@ -244,7 +244,9 @@ export function renderOverview(
 function renderNextRenewal(context: BillingContext): PlatformBillingNextRenewalType | null {
   const period = context.standing.rowPeriod;
   if (!context.standing.hasPaidSubscription || !period || !context.live) return null;
-  const monthly = priceOn(context.prices, context.live.planKey, context.today);
+  // ⚠ The next renewal at the price in force on its due date: a rise scheduled before it is what it will cost.
+  const day = period.end > context.today ? period.end : context.today;
+  const monthly = priceOn(context.prices, context.live.planKey, day);
   if (monthly === null) return null;
   const ahead = paidUpTo(period, monthly, context.creditBalance);
   // Priced as the renewal request is (access used, a debt, the credit), so the page never promises a different total.
@@ -255,7 +257,7 @@ function renderNextRenewal(context: BillingContext): PlatformBillingNextRenewalT
     standing: context.standing,
     prices: context.prices,
     creditBalance: context.creditBalance,
-    day: context.today,
+    day,
   });
   return {
     due: period.end,

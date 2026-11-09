@@ -296,3 +296,28 @@ describe('the countdown is replaced only when the plan will renew (#129)', () =>
     expect(kinds).toContain('due_in_7');
   });
 });
+
+describe('a price rise scheduled before the due date (#129)', () => {
+  it('⚠ keeps the countdown when the credit covers today’s price but not the due date’s', async () => {
+    const billing = await prepaid(2);
+    await billing.writes.setAutoRenew(ORG, OWNER, true, noonOn('2026-11-15'));
+    // 1,000 of credit; Basic becomes 1,250 on the 12th, before the 15 December renewal.
+    await billing.writes.setPrice('admin', 'basic', 125_000, '2026-12-12');
+    await billing.daily.run({
+      now: noonOn('2026-12-08'),
+      schedule: { kind: 'daily', times: ['08:00'], weekdays: [0, 1, 2, 3, 4, 5, 6] },
+      maxItems: 100,
+      tooLateAfterMinutes: 720,
+      signal: new AbortController().signal,
+      async workspaces() {
+        return { workspaces: [], nextCursor: null };
+      },
+      async organizations() {
+        return { organizations: [{ organizationId: ORG }], nextCursor: null };
+      },
+    });
+    const kinds = billing.store().notices.map((row) => row.kind);
+    expect(kinds).toContain('due_in_7');
+    expect(kinds).not.toContain('auto_renew_upcoming');
+  });
+});
