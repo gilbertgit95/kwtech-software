@@ -55,6 +55,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
    * finger really was, not the distance of the last render.
    */
   const dragHandlers = {
+    /** Starts a drag from the handle strip, unless the press is on its close button. */
     onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
       // The close button is in this strip; a press there is a press, not the start of a drag.
       if ((event.target as HTMLElement).closest('button')) return;
@@ -68,12 +69,14 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
        */
       if (dialog.current) finishRise(dialog.current);
     },
+    /** Moves the sheet with the finger, downwards only. */
     onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
       const element = dialog.current;
       if (!drag.current || !element) return;
       drag.current.distance = Math.max(0, event.clientY - drag.current.startY);
       placeSheet(element, drag.current.distance, false);
     },
+    /** Closes the sheet past the threshold, or springs it back. */
     onPointerUp: (event: PointerEvent<HTMLDivElement>) => {
       const element = dialog.current;
       const released = drag.current;
@@ -85,6 +88,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
       if (distance > SWIPE_CLOSE_PX) onClose();
       else placeSheet(element, 0, true);
     },
+    /** The browser took the pointer (a scroll, a system gesture): spring back, never close. */
     onPointerCancel: () => {
       drag.current = null;
       if (dialog.current) placeSheet(dialog.current, 0, true);
@@ -161,6 +165,7 @@ function placeSheet(element: HTMLElement, distance: number, spring: boolean) {
   element.style.transform = distance > 0 ? `translate3d(0, ${distance}px, 0)` : '';
 }
 
+/** Whether the viewer asked the system for less motion. False where the query cannot be asked. */
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
