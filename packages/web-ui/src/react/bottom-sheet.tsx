@@ -1,7 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type PointerEvent, type ReactNode, useEffect, useRef } from 'react';
 import { cn } from './utils.js';
 
 export interface BottomSheetProps {
@@ -31,15 +31,15 @@ export interface BottomSheetProps {
  */
 export function BottomSheet({ open, onClose, title, children, footer }: BottomSheetProps) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const drag = useRef<{ startY: number } | null>(null);
-  const [dragY, setDragY] = useState(0);
+  const drag = useRef<{ startY: number; distance: number } | null>(null);
 
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
     if (open && !element.open) element.showModal();
     if (!open && element.open) element.close();
-    if (!open) setDragY(0);
+    // A sheet closed mid-drag (Esc, a parent closing it) opens next time where it belongs.
+    if (!open) placeSheet(element, 0, false);
   }, [open]);
 
   /*
@@ -47,27 +47,51 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
    * user already tries on any sheet. Only downwards, and only from the top
    * strip — dragging inside the list must scroll it, not move the sheet.
    * Past SWIPE_CLOSE_PX it closes; short of it, it springs back.
+   *
+   * ⚠ The drag moves the element's style DIRECTLY, never through React state
+   * (#131). A state update per pointer move re-rendered the sheet and every
+   * row in it about 60 times a second, and the sheet lagged behind the finger
+   * on a phone. The distance lives in the ref, so letting go reads where the
+   * finger really was, not the distance of the last render.
    */
   const dragHandlers = {
+    /** Starts a drag from the handle strip, unless the press is on its close button. */
     onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
       // The close button is in this strip; a press there is a press, not the start of a drag.
       if ((event.target as HTMLElement).closest('button')) return;
-      drag.current = { startY: event.clientY };
+      drag.current = { startY: event.clientY, distance: 0 };
       event.currentTarget.setPointerCapture(event.pointerId);
+      /*
+       * A swipe that starts while the sheet is still rising: end the rise
+       * where it was headed. A running animation outranks the inline
+       * transform, so without this the sheet ignored the finger for what
+       * was left of the 280 ms.
+       */
+      if (dialog.current) finishRise(dialog.current);
     },
+    /** Moves the sheet with the finger, downwards only. */
     onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
-      if (!drag.current) return;
-      setDragY(Math.max(0, event.clientY - drag.current.startY));
+      const element = dialog.current;
+      if (!drag.current || !element) return;
+      drag.current.distance = Math.max(0, event.clientY - drag.current.startY);
+      placeSheet(element, drag.current.distance, false);
     },
-    onPointerUp: () => {
-      if (!drag.current) return;
+    /** Closes the sheet past the threshold, or springs it back. */
+    onPointerUp: (event: PointerEvent<HTMLDivElement>) => {
+      const element = dialog.current;
+      const released = drag.current;
       drag.current = null;
-      if (dragY > SWIPE_CLOSE_PX) onClose();
-      else setDragY(0);
+      if (!released || !element) return;
+      // Measured at the release, not the last move: a browser coalesces moves,
+      // and a quick flick past the threshold could otherwise spring back.
+      const distance = Math.max(0, event.clientY - released.startY);
+      if (distance > SWIPE_CLOSE_PX) onClose();
+      else placeSheet(element, 0, true);
     },
+    /** The browser took the pointer (a scroll, a system gesture): spring back, never close. */
     onPointerCancel: () => {
       drag.current = null;
-      setDragY(0);
+      if (dialog.current) placeSheet(dialog.current, 0, true);
     },
   };
 
@@ -82,15 +106,24 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
       className={cn(
-        'fixed inset-x-0 top-auto bottom-0 m-0 max-h-[88dvh] w-full max-w-none rounded-t-3xl border-t border-border/60 bg-card p-0 text-card-foreground shadow-2xl',
+        'fixed inset-x-0 top-auto bottom-0 m-0 max-h-[88dvh] w-full max-w-none rounded-t-3xl border-t border-border/60 bg-card p-0 text-card-foreground shadow-xl',
         // A tablet: a card floating above the bottom edge, not a strip the width of the screen.
         'md:mx-auto md:bottom-6 md:max-w-lg md:rounded-3xl md:border',
-        'backdrop:bg-black/40 backdrop:backdrop-blur-[2px]',
-        // Rises on open — the animation replays whenever the dialog goes from hidden to shown.
-        'open:animate-in open:slide-in-from-bottom open:duration-300 open:ease-out motion-reduce:open:animate-none',
-        dragY ? null : 'transition-transform duration-200 ease-out',
+        /*
+         * A plain dim backdrop that fades in with the rise. ⚠ No backdrop
+         * blur (#131): the phone re-blurred the whole page behind the sheet
+         * on every frame of the animation, for a 2px blur nobody could see,
+         * and that was most of the lag on opening.
+         */
+        'backdrop:bg-black/40 backdrop:animate-sheet-fade motion-reduce:backdrop:animate-none',
+        /*
+         * Rises on open — the animation replays whenever the dialog goes from
+         * hidden to shown. Transform only (base.css says why not tw-animate),
+         * and `will-change` puts the sheet on its own GPU layer before the
+         * first frame, so neither the rise nor a drag repaints it.
+         */
+        'open:animate-sheet-rise open:will-change-transform motion-reduce:open:animate-none',
       )}
     >
       <div className="flex max-h-[88dvh] flex-col pb-[env(safe-area-inset-bottom)]">
@@ -118,6 +151,34 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
 
 /** How far a sheet is pulled down before letting go closes it. About a third of a short sheet. */
 const SWIPE_CLOSE_PX = 90;
+
+/**
+ * Moves the sheet `distance` pixels down from where it rests, written straight
+ * to its style (see the drag handlers for why not state). `spring` animates the
+ * move, for the return when a drag is let go short of closing; while the finger
+ * is down it follows with no transition, or it would trail behind. Someone who
+ * asked for reduced motion gets no spring: the inline transition is out of
+ * reach of the `motion-reduce:` classes, so it asks the media query itself.
+ */
+function placeSheet(element: HTMLElement, distance: number, spring: boolean) {
+  element.style.transition = spring && !prefersReducedMotion() ? 'transform 200ms ease-out' : '';
+  element.style.transform = distance > 0 ? `translate3d(0, ${distance}px, 0)` : '';
+}
+
+/** Whether the viewer asked the system for less motion. False where the query cannot be asked. */
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Ends the sheet's own rise at its resting place, so a drag can move it. Only
+ * the dialog's animations (`getAnimations()` without `subtree`): the backdrop's
+ * fade carries on. `getAnimations` is guarded because jsdom has none.
+ */
+function finishRise(element: HTMLElement) {
+  if (typeof element.getAnimations !== 'function') return;
+  for (const animation of element.getAnimations()) animation.finish();
+}
 
 /** One row of a sheet: a large target with an icon tile. A link, or a button when `onClick` is given. */
 export function BottomSheetRow({
