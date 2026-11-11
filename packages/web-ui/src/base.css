@@ -70,6 +70,34 @@
 }
 
 /*
+ * The bottom sheet's rise and its backdrop's fade (`bottom-sheet.tsx`, #131).
+ *
+ * Its own keyframes rather than tw-animate's `animate-in slide-in-from-bottom`:
+ * that keyframe animates `filter: blur(…)` as well as `transform`, even when no
+ * blur is asked for, and an animated filter is repainted on the CPU on many
+ * phones, so the sheet stuttered as it rose. Transform alone, and opacity alone
+ * on the backdrop, are the two properties a browser animates on the GPU without
+ * repainting. A plain `@theme` (not `inline`) so `animate-sheet-rise` exists as
+ * a utility and the keyframes are emitted only where it is used.
+ */
+@theme {
+  --animate-sheet-rise: sheet-rise 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-sheet-fade: sheet-fade 280ms ease-out;
+
+  @keyframes sheet-rise {
+    from {
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+
+  @keyframes sheet-fade {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/*
  * ── status colours ──────────────────────────────────────────────────────────
  *
  * The four levels of the global status bar, and the ONLY colours in this system

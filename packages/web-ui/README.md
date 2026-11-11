@@ -843,6 +843,18 @@ card floating above the bottom edge. Every sheet on the phone layout uses it
 (issue #22): the frame's account and switcher, the inbox's filters, notes' and
 tasks' actions and filters.
 
+Its motion is kept cheap for a phone's GPU (issue #131), and a change to it
+should keep it so:
+
+- **It animates `transform` and `opacity` only.** The rise and the backdrop's
+  fade are `animate-sheet-rise` / `animate-sheet-fade`, declared in `base.css`.
+  They are not tw-animate's `slide-in-from-bottom`, whose keyframe also
+  animates `filter`, which phones repaint on the CPU.
+- **No backdrop blur.** Blurring the page behind a sheet as it rises is redrawn
+  every frame, and that was most of the lag.
+- **The swipe writes the element's style directly**, never React state, so
+  dragging doesn't re-render the sheet's rows on every pointer move.
+
 ## Spreadsheets: import and export (issue #35)
 
 Reading and writing `.xlsx` in the browser, and the screens around it. The
