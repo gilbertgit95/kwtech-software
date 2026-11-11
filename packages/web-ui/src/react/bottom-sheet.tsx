@@ -60,6 +60,13 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
       if ((event.target as HTMLElement).closest('button')) return;
       drag.current = { startY: event.clientY, distance: 0 };
       event.currentTarget.setPointerCapture(event.pointerId);
+      /*
+       * A swipe that starts while the sheet is still rising: end the rise
+       * where it was headed. A running animation outranks the inline
+       * transform, so without this the sheet ignored the finger for what
+       * was left of the 280 ms.
+       */
+      if (dialog.current) finishRise(dialog.current);
     },
     onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
       const element = dialog.current;
@@ -67,12 +74,15 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
       drag.current.distance = Math.max(0, event.clientY - drag.current.startY);
       placeSheet(element, drag.current.distance, false);
     },
-    onPointerUp: () => {
+    onPointerUp: (event: PointerEvent<HTMLDivElement>) => {
       const element = dialog.current;
       const released = drag.current;
       drag.current = null;
       if (!released || !element) return;
-      if (released.distance > SWIPE_CLOSE_PX) onClose();
+      // Measured at the release, not the last move: a browser coalesces moves,
+      // and a quick flick past the threshold could otherwise spring back.
+      const distance = Math.max(0, event.clientY - released.startY);
+      if (distance > SWIPE_CLOSE_PX) onClose();
       else placeSheet(element, 0, true);
     },
     onPointerCancel: () => {
@@ -142,11 +152,27 @@ const SWIPE_CLOSE_PX = 90;
  * Moves the sheet `distance` pixels down from where it rests, written straight
  * to its style (see the drag handlers for why not state). `spring` animates the
  * move, for the return when a drag is let go short of closing; while the finger
- * is down it follows with no transition, or it would trail behind.
+ * is down it follows with no transition, or it would trail behind. Someone who
+ * asked for reduced motion gets no spring: the inline transition is out of
+ * reach of the `motion-reduce:` classes, so it asks the media query itself.
  */
 function placeSheet(element: HTMLElement, distance: number, spring: boolean) {
-  element.style.transition = spring ? 'transform 200ms ease-out' : '';
+  element.style.transition = spring && !prefersReducedMotion() ? 'transform 200ms ease-out' : '';
   element.style.transform = distance > 0 ? `translate3d(0, ${distance}px, 0)` : '';
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Ends the sheet's own rise at its resting place, so a drag can move it. Only
+ * the dialog's animations (`getAnimations()` without `subtree`): the backdrop's
+ * fade carries on. `getAnimations` is guarded because jsdom has none.
+ */
+function finishRise(element: HTMLElement) {
+  if (typeof element.getAnimations !== 'function') return;
+  for (const animation of element.getAnimations()) animation.finish();
 }
 
 /** One row of a sheet: a large target with an icon tile. A link, or a button when `onClick` is given. */
