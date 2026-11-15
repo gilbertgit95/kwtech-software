@@ -441,4 +441,46 @@ describe('receipt printers (#144, R4)', () => {
     expect(await service.receiptDefault(SCOPE)).toBeNull();
     expect(h.prisma.receipts).toEqual([]);
   });
+
+  it('⚠ read no default whose printer is gone or whose computer was revoked, and offer it again', async () => {
+    const h = await harness();
+    const service = new PrintService(h.prisma);
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS);
+    await h.writes.setReceiptDefault(SCOPE, ANA, h.printer.id);
+
+    h.printer.goneAt = new Date();
+    expect(await service.receiptDefault(SCOPE)).toBeNull();
+    h.printer.goneAt = null;
+    expect(await service.receiptDefault(SCOPE)).toBe(h.printer.id);
+
+    await h.writes.revokeAgent(SCOPE, ANA, h.admission.agentId);
+    expect(await service.receiptDefault(SCOPE)).toBeNull();
+  });
+
+  it('refuse marking, or making the default, a printer that cannot print', async () => {
+    const h = await harness();
+    h.printer.goneAt = new Date();
+    expect(await refusal(h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS))).toBe('printer_gone');
+    h.printer.goneAt = null;
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS);
+    await h.writes.revokeAgent(SCOPE, ANA, h.admission.agentId);
+    expect(await refusal(h.writes.setReceiptDefault(SCOPE, ANA, h.printer.id))).toBe('not_found');
+    // Unmarking is always allowed: it only takes something away.
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, null);
+    expect(h.prisma.receipts).toEqual([]);
+  });
+
+  it('⚠ cannot leave a default pointing at a printer unmarked a moment before (the foreign key)', async () => {
+    const h = await harness();
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS);
+    // Somebody else unmarks it between this person's check and their write.
+    const findFirst = h.prisma.printReceiptPrinter.findFirst;
+    h.prisma.printReceiptPrinter.findFirst = async (args) => {
+      const found = await findFirst(args);
+      h.prisma.receipts.splice(0, h.prisma.receipts.length);
+      return found;
+    };
+    expect(await refusal(h.writes.setReceiptDefault(SCOPE, ANA, h.printer.id))).toBe('not_a_receipt_printer');
+    expect(h.prisma.receiptDefaults).toEqual([]);
+  });
 });

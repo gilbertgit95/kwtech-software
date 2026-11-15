@@ -29,9 +29,6 @@ export interface PrintPrinterWithReceipt extends PrintPrinterRow {
   receipt: PrintReceiptPrinterRow | null;
 }
 
-/** How many receipt printers one workspace's list reads. More is a mistake, not a shop. */
-export const PRINT_RECEIPT_PRINTERS_MAX = 100;
-
 const BY_NAME = [{ name: 'asc' }, { id: 'asc' }] as const;
 
 /**
@@ -62,10 +59,13 @@ export class PrintService {
       orderBy: [...BY_NAME],
       take: PRINT_AGENTS_MAX * PRINT_PRINTERS_MAX,
     });
-    const receipts = await this.prisma.printReceiptPrinter.findMany({
-      where: scope,
-      take: PRINT_RECEIPT_PRINTERS_MAX,
-    });
+    const receipts =
+      printers.length === 0
+        ? []
+        : await this.prisma.printReceiptPrinter.findMany({
+            where: { ...scope, printerId: { in: printers.map((printer) => printer.id) } },
+            take: printers.length,
+          });
     const receiptOf = new Map(receipts.map((receipt) => [receipt.printerId, receipt]));
     return agents.map((agent) => ({
       agent,
@@ -75,9 +75,26 @@ export class PrintService {
     }));
   }
 
-  /** The workspace's default receipt printer, by id, or null when none is set. */
+  /**
+   * The workspace's default receipt printer, by id, or null when none is set.
+   *
+   * ⚠ NULL TOO FOR ONE THAT CANNOT PRINT — its printer gone from its computer's
+   * report, or its computer revoked. The row stays (a printer unplugged for a
+   * day comes back as the default), but a default nobody can see or print on
+   * is no default: the page offers to choose one, and the first receipt
+   * printer marked becomes it.
+   */
   async receiptDefault(scope: PrintScope): Promise<string | null> {
     const row = await this.prisma.printReceiptDefault.findUnique({ where: { workspaceId: scope.workspaceId } });
-    return row?.printerId ?? null;
+    if (!row) return null;
+    return (await isLivePrinter(this.prisma, scope, row.printerId)) ? row.printerId : null;
   }
+}
+
+/** Whether a printer of this workspace is still reported, on a computer that is not revoked. */
+export async function isLivePrinter(prisma: PrintPrismaClient, scope: PrintScope, printerId: string): Promise<boolean> {
+  const printer = await prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
+  if (!printer || printer.goneAt !== null) return false;
+  const agent = await prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } });
+  return agent !== null && agent.revokedAt === null;
 }

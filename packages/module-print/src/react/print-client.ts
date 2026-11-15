@@ -1,6 +1,7 @@
 'use client';
 
 import { PRINT_JOB_TICKET_HEADER } from '../domain/jobs.js';
+import type { ReceiptPaperWidth } from '../domain/receipt.js';
 import { PRINT_OPERATIONS } from '../operations.js';
 import type { PrintJobFailure, PrintJobStatus, PrintPaper, PrintSettingOption } from '../types.js';
 
@@ -50,8 +51,8 @@ export interface PrintPrinterView {
 export interface PrintReceiptSettingsView {
   /** The name people know it by. Null: its queue's name. */
   label: string | null;
-  /** 58 or 80 (mm). */
-  paperWidth: number;
+  /** 58 or 80 (mm): the database refuses any other width. */
+  paperWidth: ReceiptPaperWidth;
   cutter: boolean;
   drawer: boolean;
   qr: boolean;

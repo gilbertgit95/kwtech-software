@@ -184,7 +184,11 @@ export interface PrintTransaction {
 
   printReceiptPrinter: {
     /** A workspace's receipt printers: few, and listed with its computers. */
-    findMany(args: { where: InScope; take: number }): Promise<PrintReceiptPrinterRow[]>;
+    /** The marks of the printers being listed — never "any N in the workspace", which could leave a live one out. */
+    findMany(args: {
+      where: InScope & { printerId: { in: string[] } };
+      take: number;
+    }): Promise<PrintReceiptPrinterRow[]>;
     findFirst(args: { where: InScope & { printerId: string } }): Promise<PrintReceiptPrinterRow | null>;
     upsert(args: {
       where: { printerId: string };
@@ -201,8 +205,8 @@ export interface PrintTransaction {
       create: InScope & { printerId: string; updatedById: string };
       update: { printerId: string; updatedById: string };
     }): Promise<PrintReceiptDefaultRow>;
-    /** Cleared when the default stops being a receipt printer, or a person clears it. */
-    deleteMany(args: { where: { workspaceId: string; printerId?: string } }): Promise<{ count: number }>;
+    /** Cleared by a person. (It also goes with its receipt printer, by the database's cascade.) */
+    deleteMany(args: { where: { workspaceId: string } }): Promise<{ count: number }>;
   };
 }
 

@@ -51,7 +51,11 @@ export class PrintJobService {
     if (!printer) throw refusalError('not_found');
     if (printer.goneAt !== null) throw refusalError('printer_gone');
 
-    const agent = await this.prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } });
+    // The computer and the receipt mark, read together: neither waits for the other.
+    const [agent, receipt] = await Promise.all([
+      this.prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } }),
+      this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId: printer.id } }),
+    ]);
     // A revoked computer's printers are listed nowhere; one named by id anyway is not found.
     if (!agent || agent.revokedAt !== null) throw refusalError('not_found');
     if (!isAgentOnline(agent, new Date())) throw refusalError('agent_offline');
@@ -60,7 +64,6 @@ export class PrintJobService {
     if ('refused' in options) throw refusalError(options.refused);
 
     // ⚠ One kind of job per kind of printer (#144): a receipt to a receipt printer, a document never to one.
-    const receipt = await this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId: printer.id } });
     const mismatch = checkJobForPrinter(options.format, receipt !== null);
     if (mismatch) throw refusalError(mismatch);
 

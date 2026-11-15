@@ -6,7 +6,7 @@ import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
 import { BookOpen, CircleAlert, Monitor, Plus, ReceiptText, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { PRINT_AGENT_HEARTBEAT_SECONDS } from '../domain/agents.js';
-import type { PrintReceiptSettings } from '../domain/receipt-printers.js';
+import { receiptPrinterName } from '../domain/receipt-printers.js';
 import { PRINT_FEATURE } from '../feature-keys.js';
 import { ComputerCard } from './components/computer-card.js';
 import { PairingDialog } from './components/pairing-dialog.js';
@@ -148,13 +148,23 @@ export function PrintApp({
     setReceiptError(null);
     try {
       await api.setReceiptPrinter(scope, printer.id, receipt);
-      if (receipt && receiptDefault === null) await api.setReceiptDefault(scope, printer.id);
-      setReceiptEditing(null);
     } catch (caught) {
+      // Nothing was saved: the dialog stays, with the reason.
       setReceiptError(caught instanceof Error ? caught.message : 'That did not work.');
-    } finally {
       setReceiptBusy(false);
+      return;
     }
+    // Saved. The dialog closes whatever happens next, so it never shows a state the server no longer has.
+    setReceiptEditing(null);
+    if (receipt && receiptDefault === null) {
+      try {
+        await api.setReceiptDefault(scope, printer.id);
+      } catch (caught) {
+        const reason = caught instanceof Error ? caught.message : 'That did not work.';
+        setError(`It is a receipt printer now, but it could not be made the default: ${reason}`);
+      }
+    }
+    setReceiptBusy(false);
     await load();
   }
 
@@ -348,12 +358,12 @@ export function PrintApp({
       />
 
       <TestReceiptDialog
-        printer={testPrinter?.receipt ? { ...testPrinter, receipt: testPrinter.receipt as PrintReceiptSettings } : null}
+        printer={testPrinter?.receipt ? { ...testPrinter, receipt: testPrinter.receipt } : null}
         computer={testAgent?.name ?? ''}
         blocked={testAgent && testPrinter ? cannotPrintReason(testAgent, testPrinter) : null}
         api={api}
         scope={scope}
-        printedAt={seen(new Date().toISOString()) ?? ''}
+        timeZone={timeZone}
         onClose={() => setTesting(null)}
       />
 
@@ -405,7 +415,7 @@ function ReceiptDefaultLine({
 }) {
   const selectId = useId();
   const nameOf = (entry: { agent: PrintAgentView; printer: PrintPrinterView }) =>
-    `${entry.printer.receipt?.label ?? entry.printer.name} (${entry.agent.name})`;
+    `${receiptPrinterName(entry.printer)} (${entry.agent.name})`;
   const current = printers.find((entry) => entry.printer.id === defaultId) ?? null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-xs">

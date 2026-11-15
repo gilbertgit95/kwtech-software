@@ -157,6 +157,9 @@ model PrintReceiptPrinter {
   updatedById    String
   updatedAt      DateTime     @updatedAt
 
+  /// The workspace default pointing here, if it does. Goes with this row.
+  defaultFor PrintReceiptDefault[]
+
   @@index([workspaceId])
   @@index([organizationId])
   @@map("print_receipt_printer")
@@ -167,11 +170,16 @@ model PrintReceiptPrinter {
 model PrintReceiptDefault {
   workspaceId    String   @id
   organizationId String
-  /// A `PrintReceiptPrinter`'s printer. Cleared when it stops being one.
+  /// ⚠ A `PrintReceiptPrinter`, by the database: a default that is not a
+  /// receipt printer cannot exist, and unmarking one (or its printer's row
+  /// going) deletes the default with it — no hand-written clean-up to forget,
+  /// and no race between two people to lose.
   printerId      String
+  receipt        PrintReceiptPrinter @relation(fields: [printerId], references: [printerId], onDelete: Cascade)
   updatedById    String
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime            @updatedAt
 
   @@index([organizationId])
+  @@index([printerId])
   @@map("print_receipt_default")
 }

@@ -121,14 +121,14 @@ export class PrintWriteService {
     const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
     if (!printer) throw refusalError('not_found');
     if (raw === null) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.printReceiptPrinter.deleteMany({ where: { ...scope, printerId } });
-        await tx.printReceiptDefault.deleteMany({ where: { workspaceId: scope.workspaceId, printerId } });
-      });
+      // The default pointing here goes with it, by the database's cascade.
+      await this.prisma.printReceiptPrinter.deleteMany({ where: { ...scope, printerId } });
       return;
     }
     const settings = prepareReceiptSettings(raw);
     if ('refused' in settings) throw refusalError(settings.refused);
+    // Marked only while it can print: a gone printer, or a revoked computer's, would be a receipt printer nobody can use.
+    await this.requireLive(scope, printer);
     const values = { ...settings, updatedById: actorId };
     await this.prisma.printReceiptPrinter.upsert({
       where: { printerId },
@@ -143,17 +143,30 @@ export class PrintWriteService {
       await this.prisma.printReceiptDefault.deleteMany({ where: { workspaceId: scope.workspaceId } });
       return;
     }
+    // A printer of another workspace reads as not found, as everywhere.
+    const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
+    if (!printer) throw refusalError('not_found');
     const receipt = await this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId } });
-    if (!receipt) {
-      // A printer of another workspace reads as not found, as everywhere; one of this workspace as not a receipt printer.
-      const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
-      throw refusalError(printer ? 'not_a_receipt_printer' : 'not_found');
+    if (!receipt) throw refusalError('not_a_receipt_printer');
+    await this.requireLive(scope, printer);
+    try {
+      await this.prisma.printReceiptDefault.upsert({
+        where: { workspaceId: scope.workspaceId },
+        create: { ...scope, printerId, updatedById: actorId },
+        update: { printerId, updatedById: actorId },
+      });
+    } catch (error) {
+      // ⚠ Unmarked between the check and here: the foreign key refused it (P2003), and it is what it says.
+      if (isForeignKeyViolation(error)) throw refusalError('not_a_receipt_printer');
+      throw error;
     }
-    await this.prisma.printReceiptDefault.upsert({
-      where: { workspaceId: scope.workspaceId },
-      create: { ...scope, printerId, updatedById: actorId },
-      update: { printerId, updatedById: actorId },
-    });
+  }
+
+  /** Refuses a printer that cannot print: gone from its computer's report, or on a revoked computer. */
+  private async requireLive(scope: PrintScope, printer: { agentId: string; goneAt: Date | null }): Promise<void> {
+    if (printer.goneAt !== null) throw refusalError('printer_gone');
+    const agent = await this.prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } });
+    if (!agent || agent.revokedAt !== null) throw refusalError('not_found');
   }
 
   /**
@@ -169,4 +182,9 @@ export class PrintWriteService {
     const cap = PRINT_LIMIT_REGISTRY.find((entry) => entry.key === PRINT_LIMIT.agents)?.defaultValue ?? 0;
     return { allowed: current < cap, limit: cap, current, remaining: Math.max(cap - current, 0) };
   }
+}
+
+/** A foreign key refused the write (Prisma's P2003), found structurally: this module never imports Prisma. */
+function isForeignKeyViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2003';
 }

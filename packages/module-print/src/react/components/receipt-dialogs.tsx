@@ -3,11 +3,12 @@
 import { cn } from '@kwtech/web-ui/react';
 import { ReceiptText } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
-import { encodeReceipt } from '../../domain/receipt.js';
+import { DEFAULT_RECEIPT_PROFILE, encodeReceipt, type ReceiptPaperWidth } from '../../domain/receipt.js';
 import {
   type PrintReceiptSettings,
   prepareReceiptSettings,
   RECEIPT_PRINTER_LABEL_MAX,
+  receiptPrinterName,
   receiptProfileOf,
   testReceiptLines,
 } from '../../domain/receipt-printers.js';
@@ -23,8 +24,8 @@ import { buttonClass, INPUT_CLASS } from '../ui.js';
 import { jobStatusText, toneBadgeClass } from '../view.js';
 import { Modal } from './modal.js';
 
-/** What a new receipt printer starts with: the commonest counter printer. */
-const NEW_RECEIPT: PrintReceiptSettingsView = { label: null, paperWidth: 80, cutter: true, drawer: false, qr: true };
+/** What a new receipt printer starts with: the builder's default profile, the commonest counter printer. */
+const NEW_RECEIPT: PrintReceiptSettingsView = { label: null, ...DEFAULT_RECEIPT_PROFILE };
 
 /**
  * Marks a printer as a receipt printer, or changes how it prints receipts
@@ -92,7 +93,13 @@ export function ReceiptSettingsDialog({
     <Modal
       open={printer !== null}
       busy={busy}
-      title={marked ? `Receipt settings: ${printer?.name ?? ''}` : `Use ${printer?.name ?? ''} for receipts`}
+      title={
+        printer
+          ? marked
+            ? `Receipt settings: ${receiptPrinterName(printer)}`
+            : `Use ${printer.name} for receipts`
+          : 'Receipt printer'
+      }
       description="A receipt printer prints receipts only, as text, fast. It is no longer offered for documents or the print studio."
       onClose={onClose}
       footer={
@@ -135,7 +142,7 @@ export function ReceiptSettingsDialog({
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1.5 text-sm font-medium">Paper width</legend>
         <div className="flex gap-2">
-          {[80, 58].map((width) => (
+          {([80, 58] as const satisfies readonly ReceiptPaperWidth[]).map((width) => (
             <label
               key={width}
               className={cn(
@@ -186,7 +193,7 @@ export function TestReceiptDialog({
   blocked,
   api,
   scope,
-  printedAt,
+  timeZone,
   onClose,
 }: {
   printer: (PrintPrinterView & { receipt: PrintReceiptSettings }) | null;
@@ -194,8 +201,8 @@ export function TestReceiptDialog({
   blocked: string | null;
   api: PrintClient;
   scope: PrintScopeView;
-  /** The time to print on it, already in the workspace's zone. */
-  printedAt: string;
+  /** The workspace's zone: the time on the receipt is the moment Print is pressed, there. */
+  timeZone: string;
   onClose: () => void;
 }) {
   const [working, setWorking] = useState(false);
@@ -215,6 +222,7 @@ export function TestReceiptDialog({
     setRefusal(null);
     setJob(undefined);
     try {
+      const printedAt = new Date().toLocaleString(undefined, { timeZone, dateStyle: 'medium', timeStyle: 'short' });
       const bytes = encodeReceipt(testReceiptLines(printer, printedAt), receiptProfileOf(printer.receipt));
       await printThroughAgent(
         api,
@@ -234,7 +242,7 @@ export function TestReceiptDialog({
     <Modal
       open={printer !== null}
       busy={working}
-      title={printer ? `Test receipt: ${printer.receipt.label ?? printer.name}` : 'Test receipt'}
+      title={printer ? `Test receipt: ${receiptPrinterName(printer)}` : 'Test receipt'}
       description={`A sample receipt, printed through “${computer}”: check that the ruler of digits fits one line, and the cutter, drawer and QR code.`}
       onClose={onClose}
       footer={

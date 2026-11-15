@@ -170,6 +170,11 @@ export function fakeClient(): FakeClient {
       async deleteMany({ where }) {
         const hit = receipts.filter((row) => matches(row, where));
         for (const row of hit) receipts.splice(receipts.indexOf(row), 1);
+        // The foreign key's cascade: a default pointing at a printer no longer a receipt printer goes too.
+        for (const gone of hit) {
+          const index = receiptDefaults.findIndex((row) => row.printerId === gone.printerId);
+          if (index >= 0) receiptDefaults.splice(index, 1);
+        }
         return { count: hit.length };
       },
     },
@@ -178,6 +183,10 @@ export function fakeClient(): FakeClient {
         return receiptDefaults.find((row) => row.workspaceId === where.workspaceId) ?? null;
       },
       async upsert({ where, create, update }) {
+        // The foreign key: a default must be a receipt printer.
+        if (!receipts.some((row) => row.printerId === (update.printerId ?? create.printerId))) {
+          throw Object.assign(new Error('Foreign key constraint violated'), { code: 'P2003' });
+        }
         const existing = receiptDefaults.find((row) => row.workspaceId === where.workspaceId);
         if (existing) {
           Object.assign(existing, update, { updatedAt: new Date() });

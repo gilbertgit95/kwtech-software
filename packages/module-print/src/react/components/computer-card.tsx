@@ -2,6 +2,7 @@
 
 import { cn } from '@kwtech/web-ui/react';
 import { ChevronDown, Monitor, Printer, ReceiptText, Ruler, Trash2 } from 'lucide-react';
+import { receiptPrinterName } from '../../domain/receipt-printers.js';
 import type { PrintAgentView, PrintPrinterView } from '../print-client.js';
 import { buttonClass } from '../ui.js';
 import {
@@ -194,7 +195,7 @@ function PrinterTile({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" title={printer.name}>
-            {receipt?.label ?? printer.name}
+            {receiptPrinterName(printer)}
           </p>
           <p className="truncate text-xs text-muted-foreground" title={printer.driver}>
             {/* A receipt printer named for its place still says which queue it is. */}
