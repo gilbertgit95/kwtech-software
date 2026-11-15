@@ -3,6 +3,7 @@ import {
   DEFAULT_RECEIPT_PROFILE,
   encodeReceipt,
   layoutReceipt,
+  placeOnRoll,
   RECEIPT_COLUMNS,
   RECEIPT_LINES_MAX,
   type ReceiptLine,
@@ -66,7 +67,8 @@ describe('the layout', () => {
     ).split('\n');
     expect(rows[0]).toHaveLength(32);
     expect(rows[0]?.endsWith(' PHP95.00')).toBe(true);
-    expect(rows.slice(1).every((row) => row.length <= 23)).toBe(true);
+    // The rest of the name uses the whole width, not only the room beside the price.
+    expect(rows.slice(1).every((row) => row.length <= 32)).toBe(true);
     const name = rows.map((row, index) => (index === 0 ? row.replace(/ PHP95\.00$/u, '') : row)).join(' ');
     expect(name.replace(/\s+/gu, ' ').trim()).toBe('Ensaymada with extra cheese and butter, large');
   });
@@ -157,5 +159,65 @@ describe('checking a receipt', () => {
       'receipt_too_long',
     );
     expect(checkReceipt(SALE)).toBeNull();
+  });
+});
+
+describe('what the review found (#150)', () => {
+  it('⚠ never loops when a price leaves no room for the name', () => {
+    const right = 'x'.repeat(31);
+    const rows = receiptPlainText([{ kind: 'pair', left: 'Coffee', right }], P58).split('\n');
+    expect(rows).toEqual(['Coffee', right.padStart(32)]);
+    expect(wrapReceiptText('abc', 0)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps a line break as a new row, never as "?"', () => {
+    expect(toReceiptText('Thank you!\r\nCome again')).toBe('Thank you!\nCome again');
+    const rows = receiptPlainText([{ kind: 'text', text: 'Thank you!\nCome again' }], P58).split('\n');
+    expect(rows).toEqual(['Thank you!', 'Come again']);
+  });
+
+  it('⚠ never cuts a price wider than the line: it wraps, flush right', () => {
+    const right = 'PHP 1,234,567.89 (incl. 12% VAT)';
+    const rows = receiptPlainText([{ kind: 'pair', left: 'TOTAL', right }], P58).split('\n');
+    expect(rows[0]).toBe('TOTAL');
+    expect(
+      rows
+        .slice(1)
+        .map((row) => row.trim())
+        .join(' '),
+    ).toBe(right);
+    expect(rows.every((row) => row.length <= 32)).toBe(true);
+  });
+
+  it('wraps the rest of a long name across the whole width', () => {
+    const rows = receiptPlainText(
+      [{ kind: 'pair', left: 'Ensaymada with extra cheese and butter, large size', right: 'PHP 12,345.00' }],
+      P58,
+    ).split('\n');
+    expect(rows[0]?.endsWith(' PHP 12,345.00')).toBe(true);
+    expect(rows.slice(1).some((row) => row.length > 18)).toBe(true);
+  });
+
+  it('wraps a QR code’s text to the paper in the plain roll', () => {
+    const data = `https://example.test/${'r'.repeat(100)}`;
+    const text = receiptPlainText([{ kind: 'qr', data }], P58, { markers: true });
+    expect(text.split('\n').every((row) => row.length <= 32)).toBe(true);
+  });
+
+  it('places a double-size row where it prints: each character takes two columns', () => {
+    expect(placeOnRoll('TOTAL 275', 'right', 48, true)).toBe(`${' '.repeat(30)}TOTAL 275`);
+    expect(placeOnRoll('TOTAL 275', 'right', 48)).toBe(`${' '.repeat(39)}TOTAL 275`);
+    expect(placeOnRoll('x'.repeat(24), 'center', 48, true)).toBe('x'.repeat(24));
+  });
+
+  it('folds compatibility characters as the POS search does, and drops a lone accent mark', () => {
+    expect(toReceiptText('１８０ ﬁ ½ ²')).toBe('180 fi 1/2 2');
+    expect(toReceiptText('PHP 1\u202f234')).toBe('PHP 1 234');
+    expect(toReceiptText('q\u0303 n\u0331')).toBe('q n');
+  });
+
+  it('⚠ refuses to lay out a receipt past the limits, whoever forgot to check', () => {
+    expect(() => encodeReceipt([], P80)).toThrow('receipt_empty');
+    expect(() => encodeReceipt([{ kind: 'text', text: 'x'.repeat(3000) }], P80)).toThrow('receipt_too_long');
   });
 });

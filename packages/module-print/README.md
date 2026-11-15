@@ -168,9 +168,9 @@ A receipt for a thermal printer is described as **lines**, never as bytes or a
 page, and the pure root lays it out once (`src/domain/receipt.ts`):
 
 ```ts
-import { encodeReceipt, receiptPlainText, DEFAULT_RECEIPT_PROFILE } from '@kwtech/module-print';
+import { encodeReceipt, receiptPlainText, DEFAULT_RECEIPT_PROFILE, type ReceiptLine } from '@kwtech/module-print';
 
-const lines = [
+const lines: ReceiptLine[] = [
   { kind: 'text', text: 'Kwtech Café', align: 'center', bold: true, size: 'double' },
   { kind: 'pair', left: 'Iced coffee x2', right: '₱180.00' },
   { kind: 'divider' },

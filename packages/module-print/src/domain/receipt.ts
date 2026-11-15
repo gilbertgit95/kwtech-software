@@ -124,39 +124,58 @@ const SYMBOL_WORDS: Readonly<Record<string, string>> = {
   '…': '...',
   '•': '*',
   '·': '.',
+  '⁄': '/',
   '×': 'x',
   ' ': ' ',
 };
 
+/** Whether one character is plain printable ASCII. */
+function isPrintable(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return character.length === 1 && code >= 0x20 && code <= 0x7e;
+}
+
 /**
- * Text as the printer can print it: plain ASCII, one character per column.
- * Accents are dropped ("Résumé" → "Resume"), the symbols above become words,
- * tabs become spaces, and anything else unprintable becomes "?" — never a
- * raw byte the printer would read as a command.
+ * Text as the printer can print it: plain ASCII, one character per column,
+ * with its line breaks kept (`wrapReceiptText` makes them rows; no raw
+ * newline ever reaches the printer). Compatibility forms are folded the way
+ * the POS search folds them (NFKD): "Résumé" → "Resume", "１８０" → "180",
+ * "ﬁ" → "fi", "½" → "1/2", a narrow no-break space → a space. The symbols
+ * above become words, a lone accent mark is dropped, tabs become spaces, and
+ * anything else unprintable becomes "?" — never a byte the printer would read
+ * as a command.
  */
 export function toReceiptText(text: string): string {
   let out = '';
-  for (const character of text.normalize('NFC')) {
-    const word = SYMBOL_WORDS[character];
-    if (word !== undefined) {
-      out += word;
+  for (const character of text.replace(/\r\n?/gu, '\n').normalize('NFC')) {
+    if (character === '\n') {
+      out += '\n';
       continue;
     }
     if (character === '\t') {
       out += ' ';
       continue;
     }
-    const code = character.codePointAt(0) ?? 0;
-    if (code >= 0x20 && code <= 0x7e) {
-      out += character;
-      continue;
-    }
-    // Strip the accent: "é" decomposes to "e" + a combining mark.
-    const base = character.normalize('NFD').replace(/\p{M}/gu, '');
-    const baseCode = base.codePointAt(0) ?? 0;
-    out += base.length === 1 && baseCode >= 0x20 && baseCode <= 0x7e ? base : '?';
+    out += printableFor(character);
   }
   return out;
+}
+
+/** One character as printable text: itself, its word, its folded form, nothing (a lone mark), or "?". */
+function printableFor(character: string): string {
+  if (isPrintable(character)) return character;
+  const word = SYMBOL_WORDS[character];
+  if (word !== undefined) return word;
+  const folded = character.normalize('NFKD').replace(/\p{M}/gu, '');
+  // A combining mark NFC could not join to its letter: dropped, as an accent is.
+  if (folded === '') return '';
+  let printed = '';
+  for (const part of folded) {
+    if (isPrintable(part)) printed += part;
+    else if (SYMBOL_WORDS[part] !== undefined) printed += SYMBOL_WORDS[part];
+    else return '?';
+  }
+  return printed;
 }
 
 // ── layout ──────────────────────────────────────────────────────────────────
@@ -170,7 +189,9 @@ export type ReceiptRow =
   | { kind: 'drawer' };
 
 /** Words wrapped to `width` columns; a word longer than a line is broken across lines. */
-export function wrapReceiptText(text: string, width: number): string[] {
+export function wrapReceiptText(text: string, columns: number): string[] {
+  // ⚠ At least one column: a width of 0 would never shorten a word, and loop forever.
+  const width = Math.max(1, Math.floor(columns));
   const rows: string[] = [];
   for (const paragraph of text.split('\n')) {
     let row = '';
@@ -203,6 +224,10 @@ export function wrapReceiptText(text: string, width: number): string[] {
  * they cannot lay a receipt out differently.
  */
 export function layoutReceipt(lines: readonly ReceiptLine[], profile: ReceiptPrinterProfile): ReceiptRow[] {
+  // ⚠ Enforced here too, not only by a caller that remembered: an unbounded receipt is a runaway job.
+  const refusal = checkReceipt(lines);
+  if (refusal)
+    throw new Error(`These lines cannot be printed as a receipt (${refusal}). Check them with checkReceipt first.`);
   const columns = RECEIPT_COLUMNS[profile.paperWidth];
   const rows: ReceiptRow[] = [];
   for (const line of lines) {
@@ -255,37 +280,48 @@ export function layoutReceipt(lines: readonly ReceiptLine[], profile: ReceiptPri
   return rows;
 }
 
+/** The narrowest a name may be squeezed beside its price before the price moves to a line of its own. */
+const PAIR_NAME_MIN = 8;
+
 /**
- * A name and a price on one line, the price flush right. The name wraps onto
- * further lines; the price stays on the first. A price wider than the line
- * gets a line of its own, flush right.
+ * A name and a price on one line, the price flush right. The name wraps:
+ * its first line beside the price, the rest across the whole width. A price
+ * too wide to leave the name `PAIR_NAME_MIN` columns gets lines of its own,
+ * flush right, wrapped — never cut, because a cut price is a wrong price.
  */
 function layoutPair(left: string, right: string, columns: number): string[] {
-  if (right.length >= columns) {
-    return [...wrapReceiptText(left, columns), right.slice(-columns).padStart(columns)];
+  if (right.length > columns - 1 - PAIR_NAME_MIN) {
+    const name = left.trim() ? wrapReceiptText(left, columns) : [];
+    return [...name, ...wrapReceiptText(right, columns).map((row) => row.padStart(columns))];
   }
-  // One space at least between the name and the price.
   const room = columns - right.length - 1;
   const [first = '', ...rest] = wrapReceiptText(left, room);
-  return [`${first.padEnd(room)} ${right}`, ...rest];
+  const more = rest.join(' ').trim();
+  return [`${first.padEnd(room)} ${right}`, ...(more ? wrapReceiptText(more, columns) : [])];
 }
 
-/** A row's text placed across `width` columns, as the printer's alignment would place it. */
-function placed(text: string, align: ReceiptAlign, width: number): string {
+/**
+ * Where a row's text starts on the roll, as the printer places it. A
+ * double-size character takes two columns, so a centred or right-aligned
+ * double row starts further left than its characters' count says.
+ * Exported: the reader's preview (R3) places rows the same way.
+ */
+export function placeOnRoll(text: string, align: ReceiptAlign, columns: number, double = false): string {
+  const used = double ? text.length * 2 : text.length;
   switch (align) {
     case 'left':
       return text;
     case 'right':
-      return text.padStart(width);
+      return `${' '.repeat(Math.max(columns - used, 0))}${text}`;
     case 'center':
-      return `${' '.repeat(Math.floor((width - text.length) / 2))}${text}`;
+      return `${' '.repeat(Math.max(Math.floor((columns - used) / 2), 0))}${text}`;
   }
 }
 
 /**
  * The receipt as plain text, a row per line, exactly as wide as the paper:
  * the preview (R3) and the narrow-page fallback on a normal printer (R5).
- * Double-size rows are shown at normal size, placed across the roll as printed.
+ * Double-size rows are shown at normal size, starting where they print.
  *
  * `markers` shows what paper cannot: the cut, the drawer, a QR code's place.
  */
@@ -299,14 +335,16 @@ export function receiptPlainText(
   for (const row of layoutReceipt(lines, profile)) {
     switch (row.kind) {
       case 'text':
-        // Across the whole roll, double size or not: a centred title prints centred.
-        out.push(placed(row.text, row.align, columns).trimEnd());
+        out.push(placeOnRoll(row.text, row.align, columns, row.double).trimEnd());
         break;
       case 'feed':
         for (let i = 0; i < row.lines; i += 1) out.push('');
         break;
       case 'qr':
-        out.push(placed(options.markers ? `[QR: ${row.data}]` : row.data, 'center', columns));
+        // Wrapped like any text: a long link must not make a line wider than the paper.
+        for (const text of wrapReceiptText(options.markers ? `[QR: ${row.data}]` : row.data, columns)) {
+          out.push(placeOnRoll(text, 'center', columns).trimEnd());
+        }
         break;
       case 'cut':
         if (options.markers) out.push(profile.cutter ? '✂'.padEnd(columns, '-') : '(tear here)');
