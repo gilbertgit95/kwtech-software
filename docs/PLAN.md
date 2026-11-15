@@ -615,10 +615,74 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 133 | The billing time zone is locked once billed, not applied forward | if the platform ever needs to change its billing time zone | D16 said a time-zone change applies to new periods only. Periods are written to `perm_subscription` as instants at the start of platform days, so changing the zone would read every stored day differently. #93 locks it once any bill exists, as the currency is (`time_zone_locked`). What would settle it: store each period's days (and the zone it was written in) beside the instants, then let a change reach only periods written after it |
 | 134 | The platform's billing standings are worked out on request, organization by organization | when the platform has more than about 2,000 organizations, or the reports page grows slow | Each organization's standing comes from its live subscription, settings and prices (`billingStanding`), so the Organizations' billing page walks organizations through the people port and reads each one's context (#123). A page examines at most `STANDINGS_SCAN_MAX` (500) and the reports' counts at most `STANDINGS_SUMMARY_MAX` (2,000), saying "counted over the first N" past it. What would settle it: a nightly table of each organization's standing written by the daily check, read by both pages, with "as of" shown |
 | 135 | Voiding a paid-ahead payment means voiding every renewal it paid for first, one at a time | when an approver has to reverse a paid-ahead payment that several automatic renewals have already spent | A void is newest first across the organization (D9a), and each renewal paid from credit (#129) is an approval resting on the one before. So undoing a 12-month payment found to be a mistake after five automatic renewals is five voids, then the payment's own, each with its reason. Correct, and each reverses its own credit, but tedious. What would settle it: a "void this and every later approval" action that runs the same voids newest first in one transaction, with one reason |
+| 136 | The Files list is not paged: it shows the newest 500 files a person can see | when a workspace keeps more than 500 files at once | Every file is deleted by the nightly clean-up and the room is capped by the plan (`file:storage_mb`), so a longer list is a workspace uploading thousands a day. Past 500 the page says older ones are not shown. What would settle it: the chat shape, a keyset `cursor` + `limit` on `files` |
+| 137 | A file's "Deleted at 10 PM on …" uses the declared 10 PM, not the schedule in force | if an admin moves or pauses `file.cleanup` on the Background jobs page | The page cannot read the runner's schedule (module-jobs owns it), so it shows the declared time; a moved clean-up deletes at the new time and a paused one not at all, while the page still says 10 PM. What would settle it: the effective schedule passed to `fileSettings` through a port the app answers from module-jobs |
+| 138 | A workspace whose plan stops including Files is no longer cleaned up | if an organization moves to a plan without Files while it still has files | The clean-up reaches only entitled workspaces (JOBS-PLAN D12), so the files stay in `FILES_DIR` until the plan includes Files again. Nobody can open them meanwhile (every read is `not_entitled`), but they take disk. What would settle it: a clean-up that reaches every workspace with files, not only entitled ones (a `reach` that ignores the plan for deletion only) |
+| 139 | ~~Upload and download tickets live in the API process's memory~~ **CLOSED 2026-11-15: tickets are rows (`file_ticket`)** | — | Kept as their SHA-256 and spent by one conditional delete, so any API instance spends any ticket and two racing for one cannot both win. ⚠ Several instances still need ONE store they all reach: a shared folder mounted at `FILES_DIR` on each, or the blob server |
+| 140 | Uploaded files are not in a Docker volume yet | when local hosting (#133) ships | `FILES_DIR` defaults to the repository's `uploaded-files/`. In a container that folder is lost on every update; it must be a named volume beside the database's. Not backed up on purpose: the files are temporary |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-15** — **A Files sub-app for temporary uploads, shared privately, with the workspace or with chosen people, and deleted every night at 10 PM (#138).**
+
+  The cause: nobody could hand a file to somebody else in a workspace, so
+  files went through other chat apps or USB sticks. The operator asked for a
+  place to upload any file, share it, and download it, deleted daily until a
+  blob server holds files for good.
+
+  - **`module-file-manager`, a workspace sub-app** (`file:*` keys,
+    `File*` models, on the Apps page and on phones). Three keys split by
+    risk: `file:read` (see and download), `file:write` (upload, share and
+    delete your own) and `file:manage` (how long the workspace keeps files).
+  - **Three ways to share, one rule.** Private (the owner alone, whatever
+    keys anyone holds), the workspace (everybody with `file:read`), or chosen
+    people (active members holding `file:read`, at most 50). Every read,
+    download and live event applies the same `canSeeFile`, with one
+    `not_found` for a file that does not exist and one not yours to see. Only
+    the owner re-shares or deletes. Somebody a file is shared with by name is
+    told (`file.shared`); sharing with the whole workspace tells nobody.
+  - **One moment deletes, as the operator chose: 10 PM in the workspace's
+    zone.** The `file.cleanup` process deletes every file uploaded more than
+    `retentionHours` (24 unless a `file:manage` holder changes it, 1 to 168)
+    before that 10 PM. Until then a file stays listed and downloadable: a
+    file uploaded at 9 PM on Monday is deleted at 10 PM on Tuesday. The
+    cutoff is measured from the SCHEDULED 10 PM, so every sweep of one night
+    (on time, late, twice) deletes the same files; that makes it idempotent
+    without a claim row, since there is no notice to send once. It also
+    removes bytes with no row an hour old. The rejected alternative, each file
+    vanishing exactly 24 hours after upload, was the operator's to choose.
+  - **The bytes are behind a port, `FILE_STORE`.** A folder today
+    (`createFolderFileStore(FILES_DIR)`, one folder per workspace, every file
+    named by a random 32-hex key, never by the name somebody gave it); a blob
+    server later, by binding another store and changing nothing else.
+  - **A file is not a GraphQL value**, so it moves as module-print's relay and
+    module-backup's download do: a guarded mutation decides and hands out a
+    one-time ticket (256 bits, five minutes to start an upload, one to start a
+    download), and two public routes spend it as a stream
+    (`PUT /files/upload`, `GET /files/download`, reached through the web app's
+    `/api/files/*`, which the proxy is kept off). The room is checked when the
+    ticket is given and again once the last byte has arrived; an upload that
+    sends more or less than it declared is refused and nothing is kept.
+  - **Downloads are always attachments**, as `application/octet-stream` with
+    `nosniff`, never the type the uploader declared: an HTML file served as
+    HTML would run in the app's origin.
+  - **Caps are sizes in MB**, plan-sourced and per workspace
+    (`file:file_size_mb`, `file:storage_mb`), compared in bytes by the module
+    and worded by `limitReachedText`. Sold in every paid tier: Basic 25 MB a
+    file and 500 MB in all, Pro 100 MB and 5 GB, Custom 500 MB and 50 GB. Not
+    in Free.
+
+  Not done, and why: no previews, folders, versions or public links (the
+  issue's "not in this"); no backup of the files (they are temporary); and
+  the gaps in §12.136–140 (an unpaged list of 500, the declared 10 PM shown
+  rather than the schedule in force, a workspace that loses Files is not
+  swept, no Docker volume yet). Tickets were first held in the API's memory,
+  as module-backup's are; they are rows instead (`file_ticket`, only each
+  ticket's SHA-256), so the mutation and the byte route may land on different
+  API servers. Sticky routing was rejected: it fails quietly as soon as one
+  proxy forgets it.
 
 - **2026-11-09** — **Paying several months at once, and renewing by itself from the credit it left (#129).**
 

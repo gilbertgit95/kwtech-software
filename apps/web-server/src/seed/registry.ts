@@ -11,6 +11,7 @@ import {
   CHAT_FEATURE_REGISTRY,
   CHAT_LIMIT_REGISTRY,
 } from '@kwtech/module-chat';
+import { FILE_FEATURE_REGISTRY, FILE_LIMIT_REGISTRY, FILE_PROCESS_REGISTRY } from '@kwtech/module-file-manager';
 import { JOBS_FEATURE_REGISTRY } from '@kwtech/module-jobs';
 import type { FeatureContribution } from '@kwtech/module-kit';
 import {
@@ -193,6 +194,13 @@ const MODULE_DECLARATIONS: readonly ModuleDeclaration[] = [
    * reachable by anybody signed in, and its caps never mirrored for plans.
    */
   { key: 'task', features: TASK_FEATURE_REGISTRY, limits: TASK_LIMIT_REGISTRY, processes: TASK_PROCESS_REGISTRY },
+  /*
+   * ⚠ And the Files app's (issue #138). Leave this out and every file
+   * operation is reachable by anybody signed in, the size caps are never
+   * mirrored for plans, and the nightly clean-up never runs — so no file is
+   * ever deleted.
+   */
+  { key: 'file', features: FILE_FEATURE_REGISTRY, limits: FILE_LIMIT_REGISTRY, processes: FILE_PROCESS_REGISTRY },
   { key: 'pos', features: POS_FEATURE_REGISTRY, limits: POS_LIMIT_REGISTRY, processes: POS_PROCESS_REGISTRY },
   /*
    * ⚠ And the books' — who put in what, who is owed what. Leave this out and

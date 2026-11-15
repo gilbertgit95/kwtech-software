@@ -629,6 +629,43 @@ input FeatureFilterInput {
   unboundOnly: Boolean
 }
 
+type FileEntry {
+  contentType: String!
+  createdAt: String!
+  id: String!
+  mine: Boolean!
+  name: String!
+  ownerId: String!
+  ownerName: String
+  sharedWith: [FilePerson!]!
+  sizeBytes: Int!
+  visibility: String!
+}
+
+type FileEvent {
+  actorId: String
+  fileId: String
+  kind: String!
+}
+
+type FilePerson {
+  displayName: String!
+  userId: String!
+}
+
+type FileSettings {
+  cleanupTime: String!
+  maxFileBytes: Int!
+  retentionHours: Int!
+  storageBytes: Float
+  usedBytes: Float!
+}
+
+type FileUploadTicket {
+  expiresAt: String!
+  ticket: String!
+}
+
 type FoundUser {
   displayName: String
   email: String!
@@ -837,6 +874,7 @@ type Mutation {
   declineInvitation(token: String!): InvitationDeclineResult!
   deleteBackup(name: String!): Boolean!
   deleteChatMessage(messageId: String!): ChatMessage!
+  deleteFile(fileId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteNoteForever(noteId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteStudioCalibration(calibrationId: String!, organizationId: String!, workspaceId: String!): Boolean!
   deleteStudioLayout(layoutId: String!, organizationId: String!, workspaceId: String!): Boolean!
@@ -854,6 +892,7 @@ type Mutation {
   inviteToChat(conversationId: String!, userId: String!): Boolean!
   inviteUser(appRoleId: String!, email: String!): PermissionInvitationResult!
   issueBackupDownload(name: String!): String!
+  issueFileDownload(fileId: String!, organizationId: String!, workspaceId: String!): String!
   leaveChat(conversationId: String!): Boolean!
   leaveOrganization(organizationId: String!): PermissionWriteResult!
   lendBooksMoney(input: LendBooksMoneyInput!, organizationId: String!, workspaceId: String!): BooksLoan!
@@ -952,6 +991,8 @@ type Mutation {
   setChatAvailability(availability: String!, forMinutes: Int): ChatMyAvailability!
   setChatBlocked(blocked: Boolean!, userId: String!): Boolean!
   setChatParticipantRole(conversationId: String!, role: String!, userId: String!): Boolean!
+  setFileSettings(organizationId: String!, retentionHours: Int!, workspaceId: String!): FileSettings!
+  setFileSharing(fileId: String!, organizationId: String!, sharedWith: [String!]!, visibility: String!, workspaceId: String!): FileEntry!
   setJobProcessSchedule(processKey: String!, schedule: JobScheduleInput!): JobProcess!
   setMyNoteSettings(organizationId: String!, settings: NoteSettingsInput!, workspaceId: String!): NoteSettings!
   setMyQueueNickname(nickname: String!, organizationId: String!, workspaceId: String!): String!
@@ -995,6 +1036,7 @@ type Mutation {
   shareWorkspace(organizationId: String!, userId: String!, workspaceId: String!): PermissionWriteResult!
   signUpFromInvitation(displayName: String, password: String!, token: String!): InvitationSignUpResult!
   startDirectChat(userId: String!): ChatConversation!
+  startFileUpload(input: StartFileUploadInput!, organizationId: String!, workspaceId: String!): FileUploadTicket!
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
   startPrintJob(copies: Int!, mediaType: String, organizationId: String!, paperName: String, printerId: String!, quality: String, size: Int!, workspaceId: String!): PrintJobStart!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
@@ -2372,6 +2414,9 @@ type Query {
   chatMessages(conversationId: String!, cursor: String, limit: Int): ChatMessagePage!
   chatMyAvailability: ChatMyAvailability!
   chatPresence(userIds: [String!]!): [ChatPresence!]!
+  fileSettings(organizationId: String!, workspaceId: String!): FileSettings!
+  fileShareableMembers(organizationId: String!, workspaceId: String!): [FilePerson!]!
+  files(organizationId: String!, workspaceId: String!): [FileEntry!]!
   findUserByEmail(email: String!): FoundUser
   findUsersByIds(ids: [String!]!, organizationId: String!): [FoundUser!]!
   invitationPreview(token: String!): InvitationPreview
@@ -2738,6 +2783,14 @@ type SessionInfo {
   userId: String!
 }
 
+input StartFileUploadInput {
+  contentType: String
+  name: String!
+  sharedWith: [String!]!
+  sizeBytes: Int!
+  visibility: String!
+}
+
 type StockCategory {
   archivedAt: String
   id: String!
@@ -3045,6 +3098,7 @@ type Subscription {
   bookingEvents(organizationId: String!, workspaceId: String!): BookingEvent!
   booksEvents(organizationId: String!, workspaceId: String!): BooksEvent!
   chatEvents(since: String): ChatEvent!
+  fileEvents(organizationId: String!, workspaceId: String!): FileEvent!
   noteEvents(organizationId: String!, workspaceId: String!): NoteEvent!
   notificationEvents: NotificationEvent!
   planChanged: PermissionPlanChanged!

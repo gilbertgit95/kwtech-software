@@ -38,6 +38,9 @@ envs/*
 # anywhere else in the tree is not one `git add .` away from being public.
 backups/
 *.dump
+# The Files app's uploads (FILES_DIR, issue #138): whatever people uploaded —
+# anybody's documents. Temporary, and never committed.
+uploaded-files/
 # `pnpm db:snapshot`'s export. It used to be committed as shared dev data and
 # was taken out on 2026-10-24 (PLAN §13): a dev database's rows (names, emails,
 # chat, tickets) do not belong in the repository, scrubbed or not. The file is

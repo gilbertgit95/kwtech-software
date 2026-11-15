@@ -62,6 +62,15 @@ import {
   chatServerModule,
 } from '@kwtech/module-chat/server';
 import {
+  createFolderFileStore,
+  FILE_LIMIT_CHECKER,
+  FILE_MEMBER_DIRECTORY,
+  FILE_NOTIFIER,
+  FILE_PUBSUB,
+  FILE_STORE,
+  fileServerModule,
+} from '@kwtech/module-file-manager/server';
+import {
   JOBS_ACTOR_DIRECTORY,
   JOBS_ENTITLED_WORKSPACES,
   JOBS_ORGANIZATIONS,
@@ -158,6 +167,8 @@ import { ChatPlatformAdmin } from './chat/platform-admin.js';
 import { ChatUserDirectory } from './chat/user-directory.js';
 import { env } from './config/env.js';
 import { LOCAL_NETWORK_CERTIFICATE_PATH } from './config/local-network.js';
+import { FileMemberDirectoryAdapter } from './file/member-directory.js';
+import { FileNotifierAdapter } from './file/notifier.js';
 import { argsFromContext, GRAPHQL_DRIVER, graphqlOptions, requestFromContext } from './graphql/graphql.options.js';
 import { HealthController } from './health/health.controller.js';
 import { InvitationsResolver } from './invitations/invitations.resolver.js';
@@ -187,6 +198,8 @@ import {
   booksWritePrismaProvider,
   chatPrismaProvider,
   chatWritePrismaProvider,
+  filePrismaProvider,
+  fileWritePrismaProvider,
   jobsPrismaProvider,
   jobsWritePrismaProvider,
   notePrismaProvider,
@@ -863,6 +876,44 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
 
     // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent board.
     pubsubProvider: { provide: TASK_PUBSUB, useValue: realtimePubSub() },
+  }),
+
+  /*
+   * Files — a workspace sub-app (issue #138): upload a file, share it, download
+   * it; the nightly `file.cleanup` process deletes what is older than the
+   * workspace keeps. The bytes are in a folder (FILES_DIR) until a blob server
+   * replaces the store; nothing else changes then. The adapters are in ./file/.
+   */
+  fileServerModule({
+    prismaProvider: filePrismaProvider,
+    prismaWriteProvider: fileWritePrismaProvider,
+
+    // ⚠ Without it, every upload and download is refused "not set up".
+    storeProvider: { provide: FILE_STORE, useFactory: () => createFolderFileStore(env.FILES_DIR) },
+
+    // The size caps from the plan. Omitted, the module holds its declared defaults.
+    limitCheckerProvider: { provide: FILE_LIMIT_CHECKER, useExisting: PermissionsLimitChecker },
+
+    // ⚠ Without it, a file is private or the workspace's: nobody can be chosen by name.
+    memberDirectoryProvider: {
+      provide: FILE_MEMBER_DIRECTORY,
+      inject: [PermissionsService, PrismaService],
+      useFactory: (permissions: PermissionsService, prisma: PrismaService) =>
+        new FileMemberDirectoryAdapter(permissions, prisma),
+    },
+
+    // ⚠ THE SAME notification module object as tasks import: a second would build a disconnected sender.
+    imports: [NOTIFICATION_SERVER_MODULE.nestModule],
+    notifierProvider: {
+      provide: FILE_NOTIFIER,
+      inject: [NotificationSender],
+      useFactory: (sender: NotificationSender) => new FileNotifierAdapter(sender),
+    },
+
+    resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,
+
+    // ⚠ THE SAME ENGINE every module publishes into; a second one is a silent list.
+    pubsubProvider: { provide: FILE_PUBSUB, useValue: realtimePubSub() },
   }),
 
   POS_SERVER_MODULE,

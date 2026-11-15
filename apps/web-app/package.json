@@ -20,6 +20,7 @@
     "@kwtech/module-basic-pos": "workspace:*",
     "@kwtech/module-booking": "workspace:*",
     "@kwtech/module-chat": "workspace:*",
+    "@kwtech/module-file-manager": "workspace:*",
     "@kwtech/module-jobs": "workspace:*",
     "@kwtech/module-kit": "workspace:*",
     "@kwtech/module-local-network": "workspace:*",

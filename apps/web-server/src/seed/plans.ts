@@ -3,6 +3,7 @@ import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
 import { STOCK_FEATURE, STOCK_LIMIT } from '@kwtech/module-basic-inventory';
 import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
+import { FILE_FEATURE, FILE_LIMIT } from '@kwtech/module-file-manager';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { canPlanEntitle, FEATURE, LIMIT, type PlanDefinition } from '@kwtech/module-permissions';
 import { PRINT_FEATURE, PRINT_LIMIT } from '@kwtech/module-print';
@@ -258,6 +259,19 @@ const STUDIO = Object.values(STUDIO_FEATURE);
  */
 const PRINT = Object.values(PRINT_FEATURE);
 
+/**
+ * Files (issue #138), sold where the other sub-apps are: every paid tier. All
+ * three keys are workspace level, and the caps are SIZES in MB: the largest one
+ * file, and the room a workspace's files take together. Files are temporary
+ * (the nightly clean-up deletes them), so the room is a day's worth.
+ *
+ * ⚠ The same `createPlanIfAbsent` caveat: an environment seeded before files
+ * has none of these keys, and an operator adds them and the two caps on
+ * `/admin/plans`. Until then the app is not on the Apps page (not_entitled),
+ * and the clean-up reaches no workspace.
+ */
+const FILES = Object.values(FILE_FEATURE);
+
 /*
  * ── the tiers: by SIZE, not by sub-app (issue #89, PLAN §13 2026-11-07) ──────
  *
@@ -293,6 +307,10 @@ interface AppCaps {
   bookingResources: number;
   studioLayouts: number;
   printAgents: number;
+  /** MB: the largest one file. */
+  fileSizeMb: number;
+  /** MB: the room a workspace's files take together. */
+  fileStorageMb: number;
 }
 
 /**
@@ -314,6 +332,8 @@ function appLimits(caps: AppCaps): Record<string, number> {
     [BOOKING_LIMIT.resources]: caps.bookingResources,
     [STUDIO_LIMIT.layouts]: caps.studioLayouts,
     [PRINT_LIMIT.agents]: caps.printAgents,
+    [FILE_LIMIT.fileSize]: caps.fileSizeMb,
+    [FILE_LIMIT.storage]: caps.fileStorageMb,
   };
 }
 
@@ -328,7 +348,18 @@ const EVERY_TIER = [
 ];
 
 /** Every sub-app. Each paid tier sells all of them; only the numbers differ. */
-const EVERY_SUB_APP = [...QUEUE, ...NOTES, ...TASKS, ...POS, ...BOOKS, ...STOCK, ...BOOKING, ...STUDIO, ...PRINT];
+const EVERY_SUB_APP = [
+  ...QUEUE,
+  ...NOTES,
+  ...TASKS,
+  ...POS,
+  ...BOOKS,
+  ...STOCK,
+  ...BOOKING,
+  ...STUDIO,
+  ...PRINT,
+  ...FILES,
+];
 
 /**
  * Free — trying the app with a small team: notes and tasks in one workspace.
@@ -386,6 +417,8 @@ const STARTER: PlanDefinition = {
       bookingResources: 5,
       studioLayouts: 50,
       printAgents: 1,
+      fileSizeMb: 25,
+      fileStorageMb: 500,
     }),
   },
 };
@@ -417,6 +450,8 @@ const PRO: PlanDefinition = {
       bookingResources: 25,
       studioLayouts: 500,
       printAgents: 5,
+      fileSizeMb: 100,
+      fileStorageMb: 5_000,
     }),
   },
 };
@@ -459,6 +494,8 @@ const ENTERPRISE: PlanDefinition = {
       bookingResources: 100,
       studioLayouts: 5_000,
       printAgents: 20,
+      fileSizeMb: 500,
+      fileStorageMb: 50_000,
     }),
   },
 };

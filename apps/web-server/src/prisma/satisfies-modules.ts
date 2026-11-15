@@ -5,6 +5,7 @@ import type { StockPrismaClient, StockTransaction } from '@kwtech/module-basic-i
 import type { PosPrismaClient, PosTransaction } from '@kwtech/module-basic-pos/server';
 import type { BookingPrismaClient, BookingTransaction } from '@kwtech/module-booking/server';
 import type { ChatPrismaClient, ChatTransaction } from '@kwtech/module-chat/server';
+import type { FilePrismaClient, FileTransaction } from '@kwtech/module-file-manager/server';
 import type { JobsSyncClient, JobsTransaction } from '@kwtech/module-jobs/server';
 import type { NotePrismaClient, NoteTransaction } from '@kwtech/module-note/server';
 import type { NotificationPrismaClient, NotificationTransaction } from '@kwtech/module-notification/server';
@@ -71,6 +72,9 @@ export const _printWriteDelegatesFit: PrintTransaction = client;
 
 export const _studioReadClientFits: StudioPrismaClient = client;
 export const _studioWriteDelegatesFit: StudioTransaction = client;
+
+export const _fileReadClientFits: FilePrismaClient = client;
+export const _fileWriteDelegatesFit: FileTransaction = client;
 
 export const _taskReadClientFits: TaskPrismaClient = client;
 export const _taskWriteDelegatesFit: TaskTransaction = client;

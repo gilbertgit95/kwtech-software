@@ -160,8 +160,11 @@ export const config = {
    *   /api/backups — excluded for the same reason in the other direction: a
    *                backup's file, streamed out, admitted by a one-time ticket
    *                (app/api/backups/download). Nothing there reads a session.
+   *   /api/files — excluded for both: an uploaded file's bytes in, a download
+   *                out, each admitted by a one-time ticket (app/api/files,
+   *                issue #138). Nothing there reads a session.
    *   _next, static assets — no session is read while serving a file, and a
    *                refresh round trip per image would be absurd.
    */
-  matcher: ['/((?!api/auth|api/print|api/backups|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)'],
+  matcher: ['/((?!api/auth|api/print|api/backups|api/files|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)'],
 };
