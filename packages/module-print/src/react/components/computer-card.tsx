@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@kwtech/web-ui/react';
-import { ChevronDown, Monitor, Printer, Ruler, Trash2 } from 'lucide-react';
+import { ChevronDown, Monitor, Printer, ReceiptText, Ruler, Trash2 } from 'lucide-react';
 import type { PrintAgentView, PrintPrinterView } from '../print-client.js';
 import { buttonClass } from '../ui.js';
 import {
@@ -9,6 +9,7 @@ import {
   paperMarginsText,
   paperSizeText,
   printerStatusText,
+  receiptKindText,
   splitPrinters,
   toneBadgeClass,
 } from '../view.js';
@@ -47,13 +48,20 @@ export function ComputerCard({
   busy,
   onRevoke,
   onTest,
+  onReceiptSettings,
+  isReceiptDefault,
 }: {
   agent: PrintAgentView;
   /** The last-seen time, already formatted in the workspace's zone. */
   seenText: string | null;
   busy: boolean;
   onRevoke?: (() => void) | undefined;
+  /** A test of this printer: the ruler page on a document printer, the Test receipt on a receipt printer. */
   onTest?: ((printer: PrintPrinterView) => void) | undefined;
+  /** Mark as, or change, a receipt printer (#144). Only for `print:manage_agents`. */
+  onReceiptSettings?: ((printer: PrintPrinterView) => void) | undefined;
+  /** Whether a printer is the workspace's default receipt printer. */
+  isReceiptDefault?: ((printer: PrintPrinterView) => boolean) | undefined;
 }) {
   const { present, gone } = splitPrinters(agent.printers);
   return (
@@ -115,6 +123,8 @@ export function ComputerCard({
                 printer={printer}
                 blocked={cannotPrintReason(agent, printer)}
                 onTest={onTest ? () => onTest(printer) : undefined}
+                onReceiptSettings={onReceiptSettings ? () => onReceiptSettings(printer) : undefined}
+                receiptDefault={isReceiptDefault?.(printer) ?? false}
               />
             ))}
           </ul>
@@ -149,11 +159,16 @@ function PrinterTile({
   printer,
   blocked,
   onTest,
+  onReceiptSettings,
+  receiptDefault,
 }: {
   printer: PrintPrinterView;
   blocked: string | null;
   onTest?: (() => void) | undefined;
+  onReceiptSettings?: (() => void) | undefined;
+  receiptDefault: boolean;
 }) {
+  const receipt = printer.receipt;
   const status = printerStatusText(printer);
   const facts = [
     printer.papers.length > 0 ? `${printer.papers.length} ${printer.papers.length === 1 ? 'paper' : 'papers'}` : null,
@@ -165,14 +180,25 @@ function PrinterTile({
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-border bg-background p-3">
       <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          <Printer aria-hidden="true" className="size-4.5" />
+        <span
+          className={cn(
+            'flex size-9 shrink-0 items-center justify-center rounded-lg',
+            receipt ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+          )}
+        >
+          {receipt ? (
+            <ReceiptText aria-hidden="true" className="size-4.5" />
+          ) : (
+            <Printer aria-hidden="true" className="size-4.5" />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" title={printer.name}>
-            {printer.name}
+            {receipt?.label ?? printer.name}
           </p>
           <p className="truncate text-xs text-muted-foreground" title={printer.driver}>
+            {/* A receipt printer named for its place still says which queue it is. */}
+            {receipt?.label ? `${printer.name} · ` : ''}
             {printer.driver || 'Driver not reported'}
           </p>
         </div>
@@ -180,7 +206,9 @@ function PrinterTile({
 
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge tone={status.tone}>{status.label}</Badge>
-        {printer.isDefault ? <Badge tone="muted">Default</Badge> : null}
+        {receipt ? <Badge tone="muted">{receiptKindText(receipt)}</Badge> : <Badge tone="muted">Documents</Badge>}
+        {receiptDefault ? <Badge tone="ok">Receipts print here</Badge> : null}
+        {!receipt && printer.isDefault ? <Badge tone="muted">Default</Badge> : null}
       </div>
 
       {facts.length > 0 ? <p className="text-xs text-muted-foreground">{facts.join(' · ')}</p> : null}
@@ -213,19 +241,30 @@ function PrinterTile({
         </details>
       ) : null}
 
-      {onTest && printer.papers.length > 0 ? (
-        <div className="mt-auto flex flex-col gap-1.5 border-t border-border pt-3">
-          <button
-            type="button"
-            className={cn(buttonClass('secondary', 'sm'), 'self-start')}
-            disabled={blocked !== null}
-            // Why it is off is said once, on the computer above, not under every printer.
-            title={blocked ?? undefined}
-            onClick={onTest}
-          >
-            <Ruler aria-hidden="true" className="size-3.5" />
-            Test print
-          </button>
+      {(onTest && (receipt || printer.papers.length > 0)) || onReceiptSettings ? (
+        <div className="mt-auto flex flex-wrap gap-1.5 border-t border-border pt-3">
+          {onTest && (receipt || printer.papers.length > 0) ? (
+            <button
+              type="button"
+              className={buttonClass('secondary', 'sm')}
+              disabled={blocked !== null}
+              // Why it is off is said once, on the computer above, not under every printer.
+              title={blocked ?? undefined}
+              onClick={onTest}
+            >
+              {receipt ? (
+                <ReceiptText aria-hidden="true" className="size-3.5" />
+              ) : (
+                <Ruler aria-hidden="true" className="size-3.5" />
+              )}
+              {receipt ? 'Test receipt' : 'Test print'}
+            </button>
+          ) : null}
+          {onReceiptSettings ? (
+            <button type="button" className={buttonClass('ghost', 'sm')} onClick={onReceiptSettings}>
+              {receipt ? 'Receipt settings' : 'Use for receipts…'}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </li>

@@ -120,10 +120,58 @@ model PrintPrinter {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Marked a receipt printer by a person (#144). Null: a document printer.
+  receipt PrintReceiptPrinter?
+
   /// ⚠ One row per queue per computer, kept by the database: two reports
   /// arriving at once must not leave two rows for one printer.
   @@unique([agentId, name])
   @@index([organizationId])
   @@index([workspaceId])
   @@map("print_printer")
+}
+
+/// A printer a person marked as a RECEIPT printer (#144, R4 #148): a thermal
+/// printer that takes receipts as ESC/POS bytes. Its own table, because
+/// `PrintPrinter` is a mirror every report rewrites, and this is a person's
+/// choice that must survive those reports. No row: a document printer.
+///
+/// ⚠ A receipt printer prints receipts ONLY, and a document printer documents
+/// only: the job service refuses the other kind, so an A4 page never comes out
+/// as metres of garbage on a roll.
+model PrintReceiptPrinter {
+  printerId      String       @id
+  printer        PrintPrinter @relation(fields: [printerId], references: [id], onDelete: Cascade)
+  organizationId String
+  workspaceId    String
+  /// The name people know it by, for its place ("Counter 1", "Kitchen"). Null: its queue's name.
+  label          String?
+  /// 58 or 80 (mm): 32 or 48 characters a line (`RECEIPT_COLUMNS`).
+  paperWidth     Int
+  /// It has an auto-cutter. Without one, a receipt feeds out to tear.
+  cutter         Boolean
+  /// A cash drawer is plugged into it.
+  drawer         Boolean
+  /// It prints QR codes. Without, a receipt prints the code's text.
+  qr             Boolean
+  updatedById    String
+  updatedAt      DateTime     @updatedAt
+
+  @@index([workspaceId])
+  @@index([organizationId])
+  @@map("print_receipt_printer")
+}
+
+/// The workspace's default receipt printer: where a receipt goes when the
+/// device printing it has not chosen one (#144). One per workspace, by its key.
+model PrintReceiptDefault {
+  workspaceId    String   @id
+  organizationId String
+  /// A `PrintReceiptPrinter`'s printer. Cleared when it stops being one.
+  printerId      String
+  updatedById    String
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("print_receipt_default")
 }

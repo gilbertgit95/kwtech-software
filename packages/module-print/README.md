@@ -200,9 +200,19 @@ receiptPlainText(lines, DEFAULT_RECEIPT_PROFILE); // the same roll as text: prev
 - **Read back** (R3 #147): `readReceiptBytes` / `receiptPreview` turn ESC/POS
   into the printed roll, naming any command they do not know. The agent's
   virtual receipt printers and pretend network printer draw with them.
-- Still to come in #144: receipt printers in the Printers app (R4 #148) — until
-  then nothing stops a receipt going to a document printer but the person
-  choosing it — and the POS's Print receipt (R5 #149).
+- **Receipt printers** (R4 #148): a person holding `print:manage_agents`
+  marks a printer as one in the Printers app — a name for its place
+  ("Counter 1"), 58 or 80 mm, cutter, drawer, QR — kept in
+  `PrintReceiptPrinter`, apart from the reported row every report rewrites.
+  ⚠ **One kind of job per kind of printer** (`checkJobForPrinter`): a receipt
+  is refused on a document printer (`not_a_receipt_printer`), a document on
+  a receipt printer (`receipt_printer_only`), and the print studio is not
+  offered receipt printers at all. **Test receipt** prints `testReceiptLines`:
+  a ruler of digits one line wide, bold, a price, and the QR, drawer and cut
+  where the printer has them. The workspace's **default receipt printer**
+  (`PrintReceiptDefault`) is set below the list; the first receipt printer
+  becomes it, and unmarking it clears it.
+- Still to come in #144: the POS's Print receipt (R5 #149).
 
 ## What it declares
 

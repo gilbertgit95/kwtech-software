@@ -292,6 +292,8 @@ export const printWritePrismaProvider: Provider = {
       printAgent: prisma.printAgent,
       printPairingCode: prisma.printPairingCode,
       printPrinter: prisma.printPrinter,
+      printReceiptPrinter: prisma.printReceiptPrinter,
+      printReceiptDefault: prisma.printReceiptDefault,
     }),
 };
 

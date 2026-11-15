@@ -3,6 +3,7 @@ import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { prepareAgentName } from '../domain/agents.js';
 import { PRINT_PAIRING_CODE_LENGTH, pairingCodeFromBytes, pairingExpiry } from '../domain/pairing.js';
+import { prepareReceiptSettings } from '../domain/receipt-printers.js';
 import { PRINT_LIMIT, PRINT_LIMIT_REGISTRY } from '../feature-keys.js';
 import { PrintWriteError, refusalError } from './print.errors.js';
 import type { PrintWriteClient } from './print.repository.js';
@@ -100,6 +101,58 @@ export class PrintWriteService {
     await this.prisma.printAgent.updateMany({
       where: { ...scope, id: agentId, revokedAt: null },
       data: { revokedAt: new Date(), revokedById: actorId },
+    });
+  }
+
+  /**
+   * Marks a printer as a receipt printer with its settings, or (`null`)
+   * makes it a document printer again (#144, R4).
+   *
+   * ⚠ Unmarking the workspace's default receipt printer clears the default
+   * too, in the same transaction: a default that is not a receipt printer
+   * would send every receipt to a printer that refuses them.
+   */
+  async setReceiptPrinter(
+    scope: PrintScope,
+    actorId: string,
+    printerId: string,
+    raw: { label?: unknown; paperWidth: unknown; cutter: unknown; drawer: unknown; qr: unknown } | null,
+  ): Promise<void> {
+    const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
+    if (!printer) throw refusalError('not_found');
+    if (raw === null) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.printReceiptPrinter.deleteMany({ where: { ...scope, printerId } });
+        await tx.printReceiptDefault.deleteMany({ where: { workspaceId: scope.workspaceId, printerId } });
+      });
+      return;
+    }
+    const settings = prepareReceiptSettings(raw);
+    if ('refused' in settings) throw refusalError(settings.refused);
+    const values = { ...settings, updatedById: actorId };
+    await this.prisma.printReceiptPrinter.upsert({
+      where: { printerId },
+      create: { ...scope, printerId, ...values },
+      update: values,
+    });
+  }
+
+  /** Sets the workspace's default receipt printer, which must be one; `null` clears it. */
+  async setReceiptDefault(scope: PrintScope, actorId: string, printerId: string | null): Promise<void> {
+    if (printerId === null) {
+      await this.prisma.printReceiptDefault.deleteMany({ where: { workspaceId: scope.workspaceId } });
+      return;
+    }
+    const receipt = await this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId } });
+    if (!receipt) {
+      // A printer of another workspace reads as not found, as everywhere; one of this workspace as not a receipt printer.
+      const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
+      throw refusalError(printer ? 'not_a_receipt_printer' : 'not_found');
+    }
+    await this.prisma.printReceiptDefault.upsert({
+      where: { workspaceId: scope.workspaceId },
+      create: { ...scope, printerId, updatedById: actorId },
+      update: { printerId, updatedById: actorId },
     });
   }
 

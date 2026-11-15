@@ -63,6 +63,9 @@ describe('the person’s resolver', () => {
   it('publishes operations — the reflection has to work for this suite to mean anything', () => {
     expect(PERSON_OPERATIONS).toEqual([
       'Query.printAgents',
+      'Query.printReceiptDefault',
+      'Mutation.setPrintReceiptPrinter',
+      'Mutation.setPrintReceiptDefault',
       'Mutation.createPrintPairingCode',
       'Mutation.revokePrintAgent',
       'Mutation.startPrintJob',
@@ -92,6 +95,9 @@ describe('the person’s resolver', () => {
       'Query.printJob': PRINT_FEATURE.send,
       'Mutation.createPrintPairingCode': PRINT_FEATURE.manageAgents,
       'Mutation.revokePrintAgent': PRINT_FEATURE.manageAgents,
+      'Query.printReceiptDefault': PRINT_FEATURE.read,
+      'Mutation.setPrintReceiptPrinter': PRINT_FEATURE.manageAgents,
+      'Mutation.setPrintReceiptDefault': PRINT_FEATURE.manageAgents,
     });
   });
 });

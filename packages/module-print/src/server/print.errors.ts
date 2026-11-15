@@ -1,5 +1,6 @@
 import { PRINT_AGENT_NAME_MAX } from '../domain/agents.js';
 import { PRINT_JOB_COPIES_MAX, PRINT_JOB_MAX_BYTES } from '../domain/jobs.js';
+import { RECEIPT_PRINTER_LABEL_MAX } from '../domain/receipt-printers.js';
 import type { PrintRefusal } from '../types.js';
 
 /**
@@ -58,4 +59,8 @@ const REFUSAL_MESSAGES: Record<PrintRefusal, string> = {
   job_too_large: `That file is larger than ${Math.round(PRINT_JOB_MAX_BYTES / (1024 * 1024))} MB, the most one print can carry`,
   agent_busy: 'That computer is still working on earlier prints — wait for one to finish',
   job_not_found: PRINT_JOB_NOT_FOUND_MESSAGE,
+  invalid_receipt_settings: `A receipt printer needs a paper width of 58 or 80 mm, and a name of at most ${RECEIPT_PRINTER_LABEL_MAX} characters`,
+  not_a_receipt_printer:
+    'That printer is not set up as a receipt printer — mark it as one in Printers, or choose a receipt printer',
+  receipt_printer_only: 'That is a receipt printer: it prints receipts only — choose a document printer',
 };

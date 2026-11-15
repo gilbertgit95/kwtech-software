@@ -1015,6 +1015,8 @@ type Mutation {
   setPosOrderLabel(label: String, orderId: String!, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderType(orderId: String!, orderTypeId: String, organizationId: String!, version: Int!, workspaceId: String!): PosOrder!
   setPosOrderTypeOptionArchived(archived: Boolean!, orderTypeId: String!, organizationId: String!, workspaceId: String!): PosOrderTypeOption!
+  setPrintReceiptDefault(organizationId: String!, printerId: String, workspaceId: String!): Boolean!
+  setPrintReceiptPrinter(organizationId: String!, printerId: String!, receipt: PrintReceiptSettingsInput, workspaceId: String!): Boolean!
   setQueueLineArchived(archived: Boolean!, lineId: String!, organizationId: String!, workspaceId: String!): QueueLine!
   setQueueLineNextNumber(lineId: String!, next: Int!, organizationId: String!, workspaceId: String!): Int!
   setQueueShowStaffNames(organizationId: String!, show: Boolean!, workspaceId: String!): QueueSettings!
@@ -2348,7 +2350,24 @@ type PrintPrinter {
   papers: [PrintPaper!]!
   qualities: [PrintSettingOption!]!
   quality: String
+  receipt: PrintReceiptSettings
   status: String!
+}
+
+type PrintReceiptSettings {
+  cutter: Boolean!
+  drawer: Boolean!
+  label: String
+  paperWidth: Int!
+  qr: Boolean!
+}
+
+input PrintReceiptSettingsInput {
+  cutter: Boolean!
+  drawer: Boolean!
+  label: String
+  paperWidth: Int!
+  qr: Boolean!
 }
 
 input PrintReportedMarginsInput {
@@ -2482,6 +2501,7 @@ type Query {
   posStockLevels(organizationId: String!, workspaceId: String!): PosStockLevels!
   printAgents(organizationId: String!, workspaceId: String!): [PrintAgent!]!
   printJob(jobId: String!, organizationId: String!, workspaceId: String!): PrintJob
+  printReceiptDefault(organizationId: String!, workspaceId: String!): String
   publicBooking(token: String!): BookingPublicBooking
   publicBookingMoveSlots(day: String!, token: String!): [BookingPublicSlots!]
   publicBookingPage(linkId: String!): BookingPublicPage

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { isAgentOnline } from '../domain/agents.js';
 import { prepareJobOptions } from '../domain/jobs.js';
 import { preparePapers, prepareSettings } from '../domain/printers.js';
+import { checkJobForPrinter } from '../domain/receipt-printers.js';
 import { refusalError } from './print.errors.js';
 import type { PrintPrismaClient } from './print.repository.js';
 import type { PrintScope } from './print.service.js';
@@ -57,6 +58,11 @@ export class PrintJobService {
 
     const options = prepareJobOptions(input, preparePapers(printer.papers) ?? [], prepareSettings(printer.settings));
     if ('refused' in options) throw refusalError(options.refused);
+
+    // ⚠ One kind of job per kind of printer (#144): a receipt to a receipt printer, a document never to one.
+    const receipt = await this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId: printer.id } });
+    const mismatch = checkJobForPrinter(options.format, receipt !== null);
+    if (mismatch) throw refusalError(mismatch);
 
     return this.relay.open({ ...scope, agentId: agent.id, actorId, printerName: printer.name, options });
   }

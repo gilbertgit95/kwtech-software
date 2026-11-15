@@ -42,6 +42,19 @@ export interface PrintPrinterView {
   mediaType: string | null;
   qualities: PrintSettingOption[];
   quality: string | null;
+  /** Set when a person marked it a receipt printer (#144): then it prints receipts only. */
+  receipt: PrintReceiptSettingsView | null;
+}
+
+/** A receipt printer's settings, as the Printers app shows and edits them. */
+export interface PrintReceiptSettingsView {
+  /** The name people know it by. Null: its queue's name. */
+  label: string | null;
+  /** 58 or 80 (mm). */
+  paperWidth: number;
+  cutter: boolean;
+  drawer: boolean;
+  qr: boolean;
 }
 
 export interface PrintAgentView {
@@ -70,6 +83,8 @@ export interface PrintJobRequest {
   /** One of that printer's paper types and qualities, by id. Left out or null: as the printer is set. */
   mediaType?: string | null;
   quality?: string | null;
+  /** `escpos` for a receipt's bytes (#144). Left out: a PDF. */
+  format?: 'pdf' | 'escpos';
 }
 
 export interface PrintJobStartView {
@@ -99,6 +114,12 @@ export interface PrintClient {
   sendJob(start: PrintJobStartView, pdf: Uint8Array): Promise<void>;
   /** How a job stands, or null once the server has forgotten it. */
   job(scope: PrintScopeView, jobId: string): Promise<PrintJobView | null>;
+  /** The workspace's default receipt printer's id, or null (#144). */
+  receiptDefault(scope: PrintScopeView): Promise<string | null>;
+  /** Mark a printer as a receipt printer, or (null) a document printer again. */
+  setReceiptPrinter(scope: PrintScopeView, printerId: string, receipt: PrintReceiptSettingsView | null): Promise<void>;
+  /** Set (or, with null, clear) the workspace's default receipt printer. */
+  setReceiptDefault(scope: PrintScopeView, printerId: string | null): Promise<void>;
 }
 
 export function createPrintClient(options: { graphqlPath?: string; relayPath?: string } = {}): PrintClient {
@@ -131,6 +152,16 @@ export function createPrintClient(options: { graphqlPath?: string; relayPath?: s
   const ops = PRINT_OPERATIONS;
 
   return {
+    async receiptDefault(scope) {
+      return (await graphql<{ printReceiptDefault: string | null }>(ops.printReceiptDefault, scoped(scope)))
+        .printReceiptDefault;
+    },
+    async setReceiptPrinter(scope, printerId, receipt) {
+      await graphql(ops.setPrintReceiptPrinter, scoped(scope, { printerId, receipt }));
+    },
+    async setReceiptDefault(scope, printerId) {
+      await graphql(ops.setPrintReceiptDefault, scoped(scope, { printerId }));
+    },
     async agents(scope) {
       return (await graphql<{ printAgents: PrintAgentView[] }>(ops.printAgents, scoped(scope))).printAgents;
     },

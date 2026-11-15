@@ -85,7 +85,8 @@ export interface PrintTargetOutcome {
 
 export interface PrintTarget {
   /**
-   * The workspace's printers, gone ones left out.
+   * The workspace's document printers, gone ones and receipt printers left
+   * out (a receipt printer prints receipts only, #144).
    *
    * ⚠ EMPTY FOR SOMEBODY WHO MAY NOT SEE THEM, and when they cannot be read.
    * The caller offers what it offered before this existed; the Printers page
@@ -116,7 +117,8 @@ export function createPrintTarget(options: PrintTargetOptions = {}): PrintTarget
         const agents = await client().agents(scope);
         return agents.flatMap((agent) =>
           agent.printers
-            .filter((printer) => !printer.gone)
+            // ⚠ Receipt printers print receipts only (#144): a PDF there would be refused, or garbage on a roll.
+            .filter((printer) => !printer.gone && printer.receipt === null)
             .map((printer) => ({
               id: printer.id,
               name: printer.name,

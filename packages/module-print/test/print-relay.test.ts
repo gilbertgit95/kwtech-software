@@ -2,6 +2,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { PRINT_JOBS_PER_AGENT_MAX, PRINT_RECEIPT_MAX_BYTES } from '../src/domain/jobs.js';
 import { PRINT_AGENT_SECRET_PARAM } from '../src/domain/pairing.js';
 import { DEFAULT_RECEIPT_PROFILE, encodeReceipt } from '../src/domain/receipt.js';
+import { PrintService } from '../src/server/print.service.js';
 import { PrintAgentService } from '../src/server/print-agent.service.js';
 import { PrintJobService } from '../src/server/print-job.service.js';
 import { PrintRelayService } from '../src/server/print-relay.service.js';
@@ -58,9 +59,12 @@ async function harness() {
   const start = (size = PDF.length, actor = ANA) =>
     jobs.start(SCOPE, actor, { printerId: printer.id, paperName: 'A4', copies: 1, size });
   /** A receipt job (#144): no paper, the bytes `encodeReceipt` makes. */
-  const startReceipt = (size: number) =>
-    jobs.start(SCOPE, ANA, { printerId: printer.id, paperName: null, copies: 1, size, format: 'escpos' });
-  return { prisma, relay, agents, jobs, admission, secret: paired.secret, printer, start, startReceipt };
+  const startReceipt = async (size: number) => {
+    // A receipt goes to a receipt printer only (R4): marked here as a person would in the Printers app.
+    await writes.setReceiptPrinter(SCOPE, ANA, printer.id, { paperWidth: 80, cutter: true, drawer: false, qr: true });
+    return jobs.start(SCOPE, ANA, { printerId: printer.id, paperName: null, copies: 1, size, format: 'escpos' });
+  };
+  return { prisma, relay, agents, jobs, writes, admission, secret: paired.secret, printer, start, startReceipt };
 }
 
 const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -368,5 +372,73 @@ describe('a receipt job (#144)', () => {
         h.jobs.start(SCOPE, ANA, { printerId: h.printer.id, paperName: null, copies: 1, size: 10, format: 'zpl' }),
       ),
     ).toBe('invalid_job');
+  });
+});
+
+describe('receipt printers (#144, R4)', () => {
+  const RECEIPT_SETTINGS = { label: ' Counter 1 ', paperWidth: 80, cutter: true, drawer: true, qr: false };
+  async function refusal(promise: Promise<unknown>): Promise<string | undefined> {
+    try {
+      await promise;
+      return 'did not refuse';
+    } catch (error) {
+      return (error as { reason?: string }).reason;
+    }
+  }
+
+  it('are marked by a person, listed with their computer’s printers, and survive a new report', async () => {
+    const h = await harness();
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS);
+    await h.agents.reportPrinters(h.admission, [
+      { name: 'EPSON L5290', driver: 'EPSON', isDefault: true, status: 'ready', papers: [A4] },
+    ]);
+    const service = new PrintService(h.prisma);
+    const [listed] = await service.agents(SCOPE);
+    expect(listed?.printers[0]?.receipt).toMatchObject({
+      label: 'Counter 1',
+      paperWidth: 80,
+      cutter: true,
+      drawer: true,
+      qr: false,
+      updatedById: ANA,
+    });
+  });
+
+  it('⚠ take receipts only, and a document printer takes no receipt', async () => {
+    const h = await harness();
+    expect(
+      await refusal(
+        h.jobs.start(SCOPE, ANA, { printerId: h.printer.id, paperName: null, copies: 1, size: 10, format: 'escpos' }),
+      ),
+    ).toBe('not_a_receipt_printer');
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS);
+    expect(await refusal(h.start())).toBe('receipt_printer_only');
+  });
+
+  it('refuse settings that are not a width of 58 or 80, three switches and a short name', async () => {
+    const h = await harness();
+    for (const bad of [
+      { ...RECEIPT_SETTINGS, paperWidth: 76 },
+      { ...RECEIPT_SETTINGS, cutter: 'yes' },
+      { ...RECEIPT_SETTINGS, label: 'x'.repeat(41) },
+    ]) {
+      expect(await refusal(h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, bad))).toBe('invalid_receipt_settings');
+    }
+    expect(await refusal(h.writes.setReceiptPrinter(OTHER, ANA, h.printer.id, RECEIPT_SETTINGS))).toBe('not_found');
+  });
+
+  it('have one default per workspace, which must be a receipt printer and goes when it stops being one', async () => {
+    const h = await harness();
+    const service = new PrintService(h.prisma);
+    expect(await refusal(h.writes.setReceiptDefault(SCOPE, ANA, h.printer.id))).toBe('not_a_receipt_printer');
+    expect(await refusal(h.writes.setReceiptDefault(OTHER, ANA, h.printer.id))).toBe('not_found');
+
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, RECEIPT_SETTINGS);
+    await h.writes.setReceiptDefault(SCOPE, ANA, h.printer.id);
+    expect(await service.receiptDefault(SCOPE)).toBe(h.printer.id);
+
+    await h.writes.setReceiptPrinter(SCOPE, ANA, h.printer.id, null);
+    expect(await service.receiptDefault(SCOPE)).toBeNull();
+    expect(h.prisma.receipts).toEqual([]);
   });
 });
