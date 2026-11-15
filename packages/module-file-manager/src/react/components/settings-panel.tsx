@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from '@kwtech/web-ui/react';
 import { useId, useState } from 'react';
 import { FILE_RETENTION_HOURS_MAX, FILE_RETENTION_HOURS_MIN, isValidRetentionHours } from '../../domain/retention.js';
 import type { FileSettingsView } from '../file-client.js';
@@ -12,10 +13,13 @@ export function SettingsPanel({
   state,
   settings,
   onDone,
+  bare = false,
 }: {
   state: FilesState;
   settings: FileSettingsView;
   onDone: () => void;
+  /** Without its card and heading: inside a phone's sheet, which has both. */
+  bare?: boolean;
 }) {
   const inputId = useId();
   const hintId = useId();
@@ -38,8 +42,11 @@ export function SettingsPanel({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-      <h2 className="text-base font-semibold">File settings</h2>
+    <form
+      onSubmit={submit}
+      className={cn('flex flex-col gap-3', bare ? null : 'rounded-2xl border border-border/70 bg-card p-4 shadow-sm')}
+    >
+      {bare ? null : <h2 className="text-base font-semibold">File settings</h2>}
       <div className="flex flex-col gap-1">
         <label htmlFor={inputId} className="text-sm font-medium">
           Keep files for (hours)
@@ -58,7 +65,7 @@ export function SettingsPanel({
             setHours(event.target.value);
             setSaved(false);
           }}
-          className="w-32 rounded-md border border-border bg-background px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-h-11 w-32 rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <p
           id={hintId}
