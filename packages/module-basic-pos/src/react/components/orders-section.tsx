@@ -31,7 +31,7 @@ import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { PeriodPicker } from './period-picker.js';
-import { ReceiptPrintButton, useReceiptPrint } from './receipt-print.js';
+import { ReceiptPrintButton, ReceiptPrintStatus, useReceiptPrint } from './receipt-print.js';
 
 /**
  * Orders (D23): a list, and the order in a drawer over it with what may be
@@ -394,8 +394,10 @@ export function OrderDetail({
           </button>
         ) : null}
         {/* ⚠ A reprint says so, with the time (guard rules), and goes to this device's receipt printer (#144). */}
-        {can.reprint ? <ReceiptPrintButton state={reprint} className="min-w-56" /> : null}
+        {can.reprint ? <ReceiptPrintButton state={reprint} /> : null}
       </div>
+      {/* Under the row, not inside the button: the row's buttons stay one height (#154). */}
+      {can.reprint ? <ReceiptPrintStatus state={reprint} className="-mt-1" /> : null}
 
       <TextDialog
         open={dialog.kind === 'void'}

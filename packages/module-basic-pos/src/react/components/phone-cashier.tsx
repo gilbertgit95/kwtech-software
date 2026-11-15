@@ -27,7 +27,7 @@ import { CustomerDialog, ReferenceDialog, TextDialog } from './dialogs.js';
 import { ChangeBadge, HIGHLIGHT_CARD, HIGHLIGHT_TRANSITION, SoundsBlockedNote, SoundsButton } from './order-alerts.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { PaymentDialog } from './payment-dialog.js';
-import { ReceiptPrintButton, useAutoReceipt, useReceiptPrint } from './receipt-print.js';
+import { ReceiptPrintButton, ReceiptPrintStatus, useAutoReceipt, useReceiptPrint } from './receipt-print.js';
 import { WaitBadge } from './wait-badge.js';
 
 /** Which sheet is up over the order: none, the order itself, or one of its dialogs over it. */
@@ -227,8 +227,12 @@ export function PhoneCashier({ state }: { state: TillState }) {
                 </button>
               </div>
             ) : shows === 'receipt' && order ? (
-              <div className="grid grid-cols-2 items-start gap-2">
-                <ReceiptPrintButton state={receipt} size="large" />
+              <div className="flex flex-col gap-2">
+                {/* Stacked, each the sheet's width: side by side, "Print receipt" did not fit half a phone (#154). */}
+                <div className="flex flex-col gap-1">
+                  <ReceiptPrintButton state={receipt} layout="phone" />
+                  <ReceiptPrintStatus state={receipt} className="px-1" />
+                </div>
                 <button
                   type="button"
                   className={cn(buttonClass('primary'), 'h-14 rounded-2xl text-base')}

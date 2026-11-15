@@ -120,21 +120,35 @@ export function receiptTargetText(printer: ReceiptPrinterChoice | null): string 
 }
 
 /**
- * One receipt printer in the menu: its place, its computer and width, and,
- * offline, since when (in the workspace's zone; today as a time, before
- * that with the date).
+ * One receipt printer in the menu: its computer, width and default, and
+ * whether it is online — offline, since when (in the workspace's zone; today
+ * as a time, before that with the date).
+ *
+ * `statusFirst`: a phone's row cuts a long detail short, so its status leads
+ * ("Offline since 9:02 PM · Front desk PC · 80 mm"), where it is never cut.
  */
-export function receiptPrinterDetail(printer: ReceiptPrinterChoice, timeZone: string, now: Date): string {
+export function receiptPrinterDetail(
+  printer: ReceiptPrinterChoice,
+  timeZone: string,
+  now: Date,
+  options: { statusFirst?: boolean } = {},
+): string {
   const parts = [printer.computer, `${printer.paperWidth} mm`];
   if (printer.isDefault) parts.push('workspace default');
-  if (printer.blocked === null) return [...parts, 'Online'].join(' · ');
-  if (!printer.offlineSince) return [...parts, 'Offline'].join(' · ');
+  const status = receiptPrinterStatus(printer, timeZone, now);
+  return (options.statusFirst ? [status, ...parts] : [...parts, status]).join(' · ');
+}
+
+/** "Online", "Offline", or "Offline since 9:02 PM" (a date before today). */
+function receiptPrinterStatus(printer: ReceiptPrinterChoice, timeZone: string, now: Date): string {
+  if (printer.blocked === null) return 'Online';
+  if (!printer.offlineSince) return 'Offline';
   const since = new Date(printer.offlineSince);
   const said =
     zonedDayKey(since, timeZone) === zonedDayKey(now, timeZone)
       ? since.toLocaleTimeString('en-PH', { timeZone, timeStyle: 'short' })
       : since.toLocaleString('en-PH', { timeZone, dateStyle: 'medium', timeStyle: 'short' });
-  return [...parts, `Offline since ${said}`].join(' · ');
+  return `Offline since ${said}`;
 }
 
 /** The printer a receipt goes to now, or null when it asks. */

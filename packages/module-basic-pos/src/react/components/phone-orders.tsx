@@ -27,7 +27,7 @@ import { INPUT_CLASS } from './controls.js';
 import { Alert, StatusChip } from './layout.js';
 import { LineNotes, ListTotal, OrderRefunds, OrderTotals } from './orders-section.js';
 import { PhonePeriodPicker } from './phone-period-picker.js';
-import { ReceiptPrintButton, useReceiptPrint } from './receipt-print.js';
+import { ReceiptPrintButton, ReceiptPrintStatus, useReceiptPrint } from './receipt-print.js';
 
 /**
  * ORDERS ON A PHONE (issue #72): the full screen's Orders tab, made for a
@@ -238,7 +238,10 @@ function PhoneOrderSheet({
       footer={
         order && can?.reprint ? (
           // ⚠ A reprint says so, with the time (guard rules), as on the full screen.
-          <ReceiptPrintButton state={reprint} size="large" className="w-full" />
+          <div className="flex flex-col gap-1.5">
+            <ReceiptPrintButton state={reprint} layout="phone" className="w-full" />
+            <ReceiptPrintStatus state={reprint} className="px-1" />
+          </div>
         ) : null
       }
     >

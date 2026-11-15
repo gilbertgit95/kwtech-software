@@ -60,7 +60,13 @@ import {
 import { OrderTypePicker } from './order-type-picker.js';
 import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { PaymentDialog } from './payment-dialog.js';
-import { ReceiptPrintButton, type ReceiptPrintState, useAutoReceipt, useReceiptPrint } from './receipt-print.js';
+import {
+  ReceiptPrintButton,
+  type ReceiptPrintState,
+  ReceiptPrintStatus,
+  useAutoReceipt,
+  useReceiptPrint,
+} from './receipt-print.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
 
 type Dialog =
@@ -1403,9 +1409,12 @@ function Receipt({
           Always print after payment, on this device
         </label>
       ) : null}
-      {/* Stacked: the order panel is narrow, and "Print receipt" with where it prints needs the whole width. */}
+      {/* Stacked, the order panel being narrow; both as tall as each other, where it prints under them (#154). */}
       <div className="flex flex-col gap-2">
-        <ReceiptPrintButton state={receipt} />
+        <div className="flex flex-col gap-1">
+          <ReceiptPrintButton state={receipt} height="lg" />
+          <ReceiptPrintStatus state={receipt} />
+        </div>
         <button
           type="button"
           ref={nextRef}

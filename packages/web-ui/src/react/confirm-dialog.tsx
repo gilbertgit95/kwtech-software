@@ -89,6 +89,8 @@ export function ConfirmDialog({
        * dismiss the dialog while the delete they confirmed is still in flight.
        */
       onCancel={(event) => {
+        // ⚠ Its own Escape only: a dialog nested inside passes its `cancel` up the React tree.
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         if (!pending) onCancel();
       }}
