@@ -232,16 +232,21 @@ ConvertTo-Json -Compress -InputObject ([pscustomobject]@{
  * driver stays installed, so it still prints documents too.
  *
  * The Win32 spooler calls (`OpenPrinter`, `StartDocPrinter` with `RAW`,
- * `WritePrinter`) through a few lines of C#, compiled once per job. One
- * document, one page per copy.
+ * `WritePrinter`, `AbortPrinter` on a failure) through a few lines of C#,
+ * compiled the first time into `$env:KW_PRINT_RAW_DLL` and loaded from there
+ * after. One document, one page per copy.
  *
- * Reads `$env:KW_PRINT_PRINTER`, `$env:KW_PRINT_FILE`, `$env:KW_PRINT_COPIES`.
+ * Reads `$env:KW_PRINT_PRINTER`, `$env:KW_PRINT_FILE`, `$env:KW_PRINT_COPIES`,
+ * `$env:KW_PRINT_RAW_DLL`.
  * ⚠ It writes nothing to the printer's settings.
  */
 export const WINDOWS_RAW_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -TypeDefinition @"
+# Compiled ONCE and kept beside the agent's temporary files: compiling on every receipt cost seconds each.
+$dll = $env:KW_PRINT_RAW_DLL
+if (-not (Test-Path -LiteralPath $dll)) {
+Add-Type -OutputType Library -OutputAssembly $dll -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public static class KwRawPrinter {
@@ -265,6 +270,8 @@ public static class KwRawPrinter {
   static extern bool EndPagePrinter(IntPtr handle);
   [DllImport("winspool.drv", SetLastError = true)]
   static extern bool WritePrinter(IntPtr handle, byte[] bytes, int count, out int written);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool AbortPrinter(IntPtr handle);
 
   public static void Send(string printer, byte[] bytes, int copies) {
     IntPtr handle;
@@ -276,16 +283,23 @@ public static class KwRawPrinter {
       info.DataType = "RAW";
       if (StartDocPrinter(handle, 1, info) == 0)
         throw new Exception("Windows would not start the receipt (error " + Marshal.GetLastWin32Error() + ").");
+      // A receipt that failed part-way is CANCELLED (AbortPrinter), never ended: ending it would print half a
+      // receipt, and the cashier's reprint would add a whole one after it.
+      bool complete = false;
       try {
         for (int copy = 0; copy < copies; copy++) {
           if (!StartPagePrinter(handle)) throw new Exception("Windows would not start a page (error " + Marshal.GetLastWin32Error() + ").");
           int written;
           bool ok = WritePrinter(handle, bytes, bytes.Length, out written);
+          // Read before any other call: the next one would replace it.
+          int error = Marshal.GetLastWin32Error();
           EndPagePrinter(handle);
-          if (!ok || written != bytes.Length) throw new Exception("The printer did not take the whole receipt (error " + Marshal.GetLastWin32Error() + ").");
+          if (!ok || written != bytes.Length) throw new Exception("The printer did not take the whole receipt (error " + error + ").");
         }
+        complete = true;
       } finally {
-        EndDocPrinter(handle);
+        if (complete) EndDocPrinter(handle);
+        else AbortPrinter(handle);
       }
     } finally {
       ClosePrinter(handle);
@@ -293,6 +307,8 @@ public static class KwRawPrinter {
   }
 }
 "@
+}
+Add-Type -LiteralPath $dll
 $bytes = [System.IO.File]::ReadAllBytes($env:KW_PRINT_FILE)
 [KwRawPrinter]::Send($env:KW_PRINT_PRINTER, $bytes, [int]$env:KW_PRINT_COPIES)
 '{"sent":true}'

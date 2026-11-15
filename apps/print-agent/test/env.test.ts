@@ -57,6 +57,10 @@ describe('the agent’s settings', () => {
     expect(parseEnv({ ...LOCAL, PRINT_AGENT_VIRTUAL_RECEIPTS: '/tmp/rolls' }, 'linux').virtualReceiptsDir).toBe(
       '/tmp/rolls',
     );
+    // "off" is off, never a folder called "off" — and so never refused in production either.
+    for (const off of ['off', 'OFF', 'false', '0', 'no']) {
+      expect(parseEnv({ ...LOCAL, PRINT_AGENT_VIRTUAL_RECEIPTS: off }, 'linux').virtualReceiptsDir).toBeNull();
+    }
     expect(() =>
       parseEnv(
         {

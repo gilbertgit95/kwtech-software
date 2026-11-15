@@ -71,25 +71,33 @@ export const VIRTUAL_RECEIPT_PRINTERS: readonly { name: string; width: ReceiptPa
 export type SendToPrinter = (host: string, port: number, bytes: Buffer) => Promise<void>;
 
 /**
- * One TCP connection: write the bytes, close our side, done when the printer
- * closes. ⚠ A printer that never answers is given up on after
- * `NETWORK_SEND_TIMEOUT_MS`, and the job fails with where it tried.
+ * One TCP connection: write the bytes and close our side.
+ *
+ * ⚠ SENT ONCE EVERY BYTE IS FLUSHED (`finish`), not when the printer closes:
+ * some printers keep the connection open after printing, and calling that a
+ * failure would make a cashier print the receipt twice. A printer that never
+ * accepts the connection, or stalls before taking the bytes, is given up on
+ * after `NETWORK_SEND_TIMEOUT_MS`, and the job fails with where it tried.
  */
 export const sendOverTcp: SendToPrinter = (host, port, bytes) =>
   new Promise((resolve, reject) => {
     const socket = createConnection({ host, port });
+    let flushed = false;
     socket.setTimeout(NETWORK_SEND_TIMEOUT_MS);
+    socket.once('finish', () => {
+      flushed = true;
+      resolve();
+    });
     socket.once('timeout', () => {
       socket.destroy();
-      reject(new Error(`The printer at ${host}:${port} did not answer.`));
+      if (!flushed) reject(new Error(`The printer at ${host}:${port} did not answer.`));
     });
-    socket.once('error', (error) =>
-      reject(new Error(`The printer at ${host}:${port} could not be reached — ${error.message}`)),
-    );
+    socket.once('error', (error) => {
+      if (!flushed) reject(new Error(`The printer at ${host}:${port} could not be reached — ${error.message}`));
+    });
     socket.once('connect', () => socket.end(bytes));
-    socket.once('close', (hadError) => {
-      if (!hadError) resolve();
-    });
+    // Once flushed it is sent, however the printer ends the connection (or leaves it open).
+    socket.once('close', () => socket.destroy());
   });
 
 const NO_SETTINGS = { mediaTypes: [], mediaType: null, qualities: [], quality: null };

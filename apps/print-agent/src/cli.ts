@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { hostname } from 'node:os';
-import { normalisePairingCode } from '@kwtech/module-print';
+import { normalisePairingCode, RECEIPT_COLUMNS } from '@kwtech/module-print';
 import { type AgentEnv, loadEnv } from './config/env.js';
 import type { PrinterDriver } from './printers/driver.js';
 import { createFakeDriver } from './printers/fake.js';
@@ -180,7 +180,7 @@ async function pretendPrinter(args: readonly string[]): Promise<number> {
   }
   await startPretendPrinter(port, width, (preview, bytes) => {
     log(`A receipt arrived (${bytes} bytes):`);
-    console.log(`${'='.repeat(width === 80 ? 48 : 32)}\n${preview}\n`);
+    console.log(`${'='.repeat(RECEIPT_COLUMNS[width])}\n${preview}\n`);
   });
   log(`Pretending to be a ${width} mm receipt printer on port ${port}. Stop it with Ctrl+C.`);
   // Never resolves: the server keeps the process alive until it is stopped.

@@ -30,6 +30,9 @@ export const DEFAULT_EXCLUDED_PRINTERS: readonly string[] = [
   'Send To OneNote 2016',
 ];
 
+/** What a switch-like setting reads as "off". */
+const OFF_WORDS: readonly string[] = ['off', 'false', '0', 'no'];
+
 const LOCAL_HOSTS: readonly string[] = ['localhost', '127.0.0.1', '[::1]'];
 
 /**
@@ -144,7 +147,9 @@ export function parseEnv(variables: NodeJS.ProcessEnv, platform: NodeJS.Platform
     );
   }
   const stateDir = values.PRINT_AGENT_STATE_DIR ?? defaultStateDir(platform, variables);
-  const virtual = values.PRINT_AGENT_VIRTUAL_RECEIPTS;
+  // "off", "false", "0" and "no" read as off, as an empty value does: never a folder called "off".
+  const virtualSetting = values.PRINT_AGENT_VIRTUAL_RECEIPTS;
+  const virtual = virtualSetting && !OFF_WORDS.includes(virtualSetting.toLowerCase()) ? virtualSetting : undefined;
   // ⚠ Never in a shop: a cashier choosing "Virtual receipt printer" would hand a customer nothing.
   if (virtual && values.APP_ENV === 'production') {
     throw new Error(

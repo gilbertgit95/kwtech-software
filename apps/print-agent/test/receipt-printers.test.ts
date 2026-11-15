@@ -140,6 +140,20 @@ describe('the pretend network printer', () => {
     }
   });
 
+  it('⚠ counts a receipt as sent once its bytes are flushed, even if the printer keeps the connection open', async () => {
+    const { createServer } = await import('node:net');
+    const received: Buffer[] = [];
+    // A printer that never closes its side: the send must not wait for it, or fail on its timeout.
+    const server = createServer((socket) => socket.on('data', (chunk: Buffer) => received.push(chunk)));
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      await expect(sendOverTcp('127.0.0.1', port, RECEIPT)).resolves.toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
   it('says where it tried when nothing listens', async () => {
     const server = await startPretendPrinter(0, 80, () => {});
     const { port } = server.address() as AddressInfo;

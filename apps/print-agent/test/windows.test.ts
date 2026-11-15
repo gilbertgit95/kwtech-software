@@ -156,6 +156,7 @@ describe('a receipt (#144)', () => {
         calls.push({ script, variables });
         return '{"sent":true}';
       },
+      rawDll: 'C:\\temp\\raw.dll',
     });
     await windows.printRaw({ file: 'C:\\temp\\job.bin', printerName: 'XP-80C', copies: 2 });
     expect(calls).toHaveLength(1);
@@ -164,7 +165,11 @@ describe('a receipt (#144)', () => {
       KW_PRINT_PRINTER: 'XP-80C',
       KW_PRINT_FILE: 'C:\\temp\\job.bin',
       KW_PRINT_COPIES: '2',
+      KW_PRINT_RAW_DLL: 'C:\\temp\\raw.dll',
     });
+    // Compiled once into that library, and a failed receipt cancelled rather than half printed.
+    expect(WINDOWS_RAW_SCRIPT).toContain('-OutputAssembly $dll');
+    expect(WINDOWS_RAW_SCRIPT).toContain('else AbortPrinter(handle);');
     // The spooler's own data type, so the printer's driver renders nothing.
     expect(WINDOWS_RAW_SCRIPT).toContain('info.DataType = "RAW"');
   });

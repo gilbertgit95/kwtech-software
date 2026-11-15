@@ -306,6 +306,9 @@ itself.
     each receipt sent to it asks where to save the bytes.
 - With `PRINT_AGENT_DRIVER=fake`, a receipt on a fake printer logs its length
   and SHA-256, as a PDF does.
+- ⚠ **Update the server first, then every shop's agent, before anybody prints
+  a receipt.** An agent newer than the server gets no jobs at all, and one
+  older than receipts cannot print them (PLAN §12.143–144).
 
 ## Windows
 
