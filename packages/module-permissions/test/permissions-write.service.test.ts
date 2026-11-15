@@ -1,6 +1,6 @@
 import { APP_DEFAULT } from '../src/defaults.js';
 import { composeContext } from '../src/domain/grants.js';
-import { LIMIT } from '../src/domain/limits.js';
+import { LIMIT, LIMIT_REGISTRY } from '../src/domain/limits.js';
 import { subscriptionPeriodEnd } from '../src/domain/subscription-draft.js';
 import {
   assertNotAppLevel,
@@ -1235,6 +1235,32 @@ describe('plan definitions', () => {
     await svc.updatePlan(author(), 'team', planDraft({ features: [] }));
 
     expect(state.planFeatures).toEqual([]);
+  });
+
+  /**
+   * A module's plan cap (`note:notes`, `file:storage_mb`) is a plan cap like
+   * any other. Plan writes once read this module's own list only, so saving a
+   * plan deleted every module’s stored caps (#139).
+   */
+  it("keeps every module's caps a plan sets, on create and on update", async () => {
+    const NOTE_CAP = {
+      key: 'note:notes',
+      module: 'note',
+      label: 'Notes',
+      description: 'How many notes.',
+      source: 'plan' as const,
+      countedOver: 'workspace' as const,
+      required: false,
+      defaultValue: 10,
+    };
+    const { svc, state } = fake(emptyState(), { limitRegistry: [...LIMIT_REGISTRY, NOTE_CAP] } as never);
+    await svc.createPlan(author(), planDraft({ limits: { ...REQUIRED_LIMITS, 'note:notes': '500' } }));
+    expect(state.planLimits).toContainEqual({ planKey: 'team', limitKey: 'note:notes', value: 500 });
+
+    await svc.updatePlan(author(), 'team', planDraft({ limits: { ...REQUIRED_LIMITS, 'note:notes': '700' } }));
+    expect(state.planLimits.filter((l) => l.limitKey === 'note:notes')).toEqual([
+      { planKey: 'team', limitKey: 'note:notes', value: 700 },
+    ]);
   });
 
   it('archives and restores, never deletes', async () => {

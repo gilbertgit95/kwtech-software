@@ -943,12 +943,16 @@ export class PermissionsWriteService {
     const result = await db.$transaction(async (tx) => {
       const errors = validatePlanDraft(draft, {
         registry: this.registry,
+        limits: this.limitRegistry,
         existingKeys: await this.planKeys(tx),
       });
       assertNoDraftErrors(errors, 'draft_invalid');
 
       const key = draft.key.trim();
-      const limits = planLimitValues(draft.limits);
+      // ⚠ The COMPOSED limit registry, as the role writes pass it. With this
+      // module's own list, every module's cap (`note:notes`, `file:storage_mb`…)
+      // was dropped and `replacePlanLimits` deleted the stored ones on save.
+      const limits = planLimitValues(draft.limits, this.limitRegistry);
       /*
        * Belt and braces, and worth the duplication: `validatePlanDraft` already
        * refuses a missing required cap with a per-field message, but this is
@@ -998,10 +1002,14 @@ export class PermissionsWriteService {
     const result = await db.$transaction(async (tx) => {
       const existing = await this.requirePlan(tx, planKey);
 
-      const errors = validatePlanDraft({ ...draft, key: existing.key }, { registry: this.registry });
+      const errors = validatePlanDraft(
+        { ...draft, key: existing.key },
+        { registry: this.registry, limits: this.limitRegistry },
+      );
       assertNoDraftErrors(errors, 'draft_invalid');
 
-      const limits = planLimitValues(draft.limits);
+      // The composed registry, as in `createPlan`: anything else deletes the modules' caps.
+      const limits = planLimitValues(draft.limits, this.limitRegistry);
       assertPlanLimits(existing.key, limits);
 
       await tx.permPlan.update({
