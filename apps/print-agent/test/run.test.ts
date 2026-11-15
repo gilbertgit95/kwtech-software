@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PrintAgentJob, PrintReportedPrinter } from '@kwtech/module-print';
-import type { PrinterDriver, PrintRequest } from '../src/printers/driver.js';
+import type { PrinterDriver, PrintRequest, RawPrintRequest } from '../src/printers/driver.js';
 import { createFakeDriver, FAKE_PRINTERS } from '../src/printers/fake.js';
 import { nextReconnectDelay, RECONNECT_MAX_SECONDS, runAgent, sameReport } from '../src/run.js';
 import { type AgentSession, fetchJobFile, type openSession, type SessionEnd } from '../src/server-api.js';
@@ -179,6 +179,7 @@ describe('the agent', () => {
         throw new Error('the spooler is stopped');
       },
       async print() {},
+      async printRaw() {},
     };
     const running = runAgent({
       wsUrl: 'ws://x',
@@ -203,8 +204,9 @@ describe('a job', () => {
   const temp = mkdtempSync(join(tmpdir(), 'print-agent-jobs-'));
   afterAll(() => rmSync(temp, { recursive: true, force: true }));
   const PDF = Buffer.from('%PDF-1.4 a page');
-  const job = (jobId: string): PrintAgentJob => ({
+  const job = (jobId: string, format: PrintAgentJob['format'] = 'pdf'): PrintAgentJob => ({
     jobId,
+    format,
     printerName: FAKE_PRINTERS[0]?.name ?? '',
     paper: null,
     copies: 1,
@@ -226,6 +228,7 @@ describe('a job', () => {
     const stop = new AbortController();
     const log: string[] = [];
     const printed: Array<PrintRequest & { bytes: Buffer }> = [];
+    const raw: Array<RawPrintRequest & { bytes: Buffer }> = [];
     const driver: PrinterDriver = {
       ...createFakeDriver(),
       async print(request) {
@@ -233,6 +236,9 @@ describe('a job', () => {
         const bytes = readFileSync(request.file);
         printed.push({ ...request, bytes });
         print(request, bytes);
+      },
+      async printRaw(request) {
+        raw.push({ ...request, bytes: readFileSync(request.file) });
       },
     };
     const running = runAgent({
@@ -250,8 +256,27 @@ describe('a job', () => {
     await tick(60);
     stop.abort();
     await running;
-    return { server, printed, log };
+    return { server, printed, raw, log };
   }
+
+  it('sends a receipt’s bytes to the printer as they are, never as a PDF (#144)', async () => {
+    const RECEIPT = Buffer.from([0x1b, 0x40, 0x48, 0x69, 0x0a, 0x1d, 0x56, 0x42, 0x00]);
+    const { server, printed, raw, log } = await run(
+      [{ ...job('job-r', 'escpos'), size: RECEIPT.length, copies: 2 }],
+      undefined,
+      async (_api, _secret, _job, destination) => {
+        writeFileSync(destination, RECEIPT);
+        return 'fetched';
+      },
+    );
+    expect(printed).toHaveLength(0);
+    expect(raw).toHaveLength(1);
+    expect(raw[0]?.bytes.equals(RECEIPT)).toBe(true);
+    expect(raw[0]).toMatchObject({ printerName: FAKE_PRINTERS[0]?.name, copies: 2 });
+    expect(raw[0]?.file.endsWith('job.bin')).toBe(true);
+    expect(server.results).toEqual([{ jobId: 'job-r', printed: true, message: null }]);
+    expect(log.join('\n')).toContain('Sent a receipt to');
+  });
 
   it('is fetched, handed to the printer, and reported as sent', async () => {
     const { server, printed, log } = await run([job('job-1')]);

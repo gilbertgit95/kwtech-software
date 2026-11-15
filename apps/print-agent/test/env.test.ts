@@ -18,6 +18,8 @@ describe('the agent’s settings', () => {
       wsUrl: LOCAL.WS_URL,
       driver: 'windows',
       excludedPrinters: DEFAULT_EXCLUDED_PRINTERS,
+      networkPrinters: [],
+      virtualReceiptsDir: null,
     });
     expect(env.stateDir).toContain('kwtech-print-agent');
     expect(env.stateDir.startsWith('C:\\Users\\shop\\AppData\\Roaming')).toBe(true);
@@ -35,6 +37,37 @@ describe('the agent’s settings', () => {
     );
     expect(env.excludedPrinters).toBe(DEFAULT_EXCLUDED_PRINTERS);
     expect(env.driver).toBe('fake');
+  });
+
+  it('read network receipt printers, and refuse a malformed one at start (#144)', () => {
+    expect(parseEnv({ ...LOCAL, PRINT_AGENT_NETWORK_PRINTERS: 'Counter 1=10.0.0.5' }, 'linux').networkPrinters).toEqual(
+      [{ name: 'Counter 1', host: '10.0.0.5', port: 9100 }],
+    );
+    expect(() => parseEnv({ ...LOCAL, PRINT_AGENT_NETWORK_PRINTERS: 'Counter 1' }, 'linux')).toThrow(
+      'PRINT_AGENT_NETWORK_PRINTERS: "Counter 1" is not a network receipt printer',
+    );
+  });
+
+  it('⚠ put virtual receipt printers in the state folder on "on", and never allow them in production', () => {
+    const env = parseEnv(
+      { ...LOCAL, PRINT_AGENT_STATE_DIR: '/tmp/agent', PRINT_AGENT_VIRTUAL_RECEIPTS: 'on' },
+      'linux',
+    );
+    expect(env.virtualReceiptsDir).toBe('/tmp/agent/virtual-receipts');
+    expect(parseEnv({ ...LOCAL, PRINT_AGENT_VIRTUAL_RECEIPTS: '/tmp/rolls' }, 'linux').virtualReceiptsDir).toBe(
+      '/tmp/rolls',
+    );
+    expect(() =>
+      parseEnv(
+        {
+          APP_ENV: 'production',
+          API_URL: 'https://api.example.com/api/v1',
+          WS_URL: 'wss://api.example.com/api/v1/graphql',
+          PRINT_AGENT_VIRTUAL_RECEIPTS: 'on',
+        },
+        'linux',
+      ),
+    ).toThrow('virtual receipt printers are for development, never production');
   });
 
   it('name every bad value in one line', () => {

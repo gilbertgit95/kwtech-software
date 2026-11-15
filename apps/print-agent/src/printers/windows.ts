@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { paperKey, type RawWindowsPrinter, toReport } from './convert.js';
 import type { PrinterDriver } from './driver.js';
-import { WINDOWS_PRINTERS_SCRIPT, WINDOWS_TICKET_SCRIPT } from './windows-script.js';
+import { WINDOWS_PRINTERS_SCRIPT, WINDOWS_RAW_SCRIPT, WINDOWS_TICKET_SCRIPT } from './windows-script.js';
 
 /**
  * Asking takes a while: each paper of each printer is a call into its driver
@@ -174,6 +174,19 @@ export function createWindowsDriver(
         });
       } finally {
         if (ticketFile) await restore();
+      }
+    },
+    async printRaw(request) {
+      try {
+        await run(WINDOWS_RAW_SCRIPT, {
+          KW_PRINT_PRINTER: request.printerName,
+          KW_PRINT_FILE: request.file,
+          KW_PRINT_COPIES: String(request.copies),
+        });
+      } catch (error) {
+        // The runner's sentence is about listing printers; this one says what failed.
+        const detail = error instanceof Error ? error.message.replace(/^.*? — /u, '') : String(error);
+        throw new Error(`The receipt could not be sent to "${request.printerName}" — ${detail}`);
       }
     },
     async list() {

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { type NetworkReceiptPrinter, parseNetworkPrinters } from '../printers/receipt-printers.js';
 
 /**
  * The agent's settings, checked once. A bad value stops the start with one
@@ -82,6 +83,8 @@ const schema = z.object({
   PRINT_AGENT_EXCLUDE_PRINTERS: optionalText,
   PRINT_AGENT_DRIVER: optionalText.pipe(z.enum(['windows', 'fake']).optional()),
   PRINT_AGENT_SUMATRA_PATH: optionalText,
+  PRINT_AGENT_NETWORK_PRINTERS: optionalText,
+  PRINT_AGENT_VIRTUAL_RECEIPTS: optionalText,
 });
 
 export interface AgentEnv {
@@ -94,6 +97,10 @@ export interface AgentEnv {
   driver: 'windows' | 'fake';
   /** Another SumatraPDF than the one the printing library carries. Undefined: the carried one. */
   sumatraPath: string | undefined;
+  /** Receipt printers reached on their network port, not installed in the operating system (#144). */
+  networkPrinters: readonly NetworkReceiptPrinter[];
+  /** Where the virtual receipt printers write their rolls. Null: no virtual printers (always, in production). */
+  virtualReceiptsDir: string | null;
 }
 
 /** `a, b ,c` as names. `none` is the written way to exclude nothing. */
@@ -128,15 +135,38 @@ export function parseEnv(variables: NodeJS.ProcessEnv, platform: NodeJS.Platform
       "The print agent's settings are not valid — WS_URL: must be on the same host and port as API_URL, because the secret API_URL issued is sent there. See .env.example.",
     );
   }
+  let networkPrinters: NetworkReceiptPrinter[];
+  try {
+    networkPrinters = parseNetworkPrinters(values.PRINT_AGENT_NETWORK_PRINTERS);
+  } catch (error) {
+    throw new Error(
+      `The print agent's settings are not valid — PRINT_AGENT_NETWORK_PRINTERS: ${(error as Error).message} See .env.example.`,
+    );
+  }
+  const stateDir = values.PRINT_AGENT_STATE_DIR ?? defaultStateDir(platform, variables);
+  const virtual = values.PRINT_AGENT_VIRTUAL_RECEIPTS;
+  // ⚠ Never in a shop: a cashier choosing "Virtual receipt printer" would hand a customer nothing.
+  if (virtual && values.APP_ENV === 'production') {
+    throw new Error(
+      "The print agent's settings are not valid — PRINT_AGENT_VIRTUAL_RECEIPTS: virtual receipt printers are for development, never production. See .env.example.",
+    );
+  }
   return {
     appEnv: values.APP_ENV,
     apiUrl: values.API_URL.replace(/\/+$/, ''),
     wsUrl: values.WS_URL,
-    stateDir: values.PRINT_AGENT_STATE_DIR ?? defaultStateDir(platform, variables),
+    stateDir,
     excludedPrinters: parseExcludedPrinters(values.PRINT_AGENT_EXCLUDE_PRINTERS),
     // ⚠ Anywhere but Windows there is no spooler this agent can ask, so it says so by being fake rather than failing.
     driver: values.PRINT_AGENT_DRIVER ?? (platform === 'win32' ? 'windows' : 'fake'),
     sumatraPath: values.PRINT_AGENT_SUMATRA_PATH,
+    networkPrinters,
+    // "on": a folder in the state folder; anything else: that folder.
+    virtualReceiptsDir: virtual
+      ? virtual.toLowerCase() === 'on'
+        ? join(stateDir, 'virtual-receipts')
+        : virtual
+      : null,
   };
 }
 

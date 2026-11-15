@@ -182,19 +182,27 @@ async function printJob(options: RunOptions, current: AgentSession, job: PrintAg
   let folder: string | null = null;
   try {
     folder = await mkdtemp(join(options.tempDir ?? tmpdir(), 'kwtech-print-'));
-    const file = join(folder, 'job.pdf');
+    // A receipt's bytes are no PDF, and nothing should open them as one.
+    const receipt = job.format === 'escpos';
+    const file = join(folder, receipt ? 'job.bin' : 'job.pdf');
     // Another socket of this computer took it, or it ended meanwhile: not this one's to answer for.
     if ((await fetchJob(options.apiUrl, options.secret, job, file)) === 'taken') return;
 
-    await options.driver.print({
-      file,
-      printerName: job.printerName,
-      paper: job.paper,
-      copies: job.copies,
-      mediaType: job.mediaType ?? null,
-      quality: job.quality ?? null,
-    });
-    options.log(`Sent a job to "${job.printerName}" (${job.size} bytes, ${job.copies} copy(ies)).`);
+    if (receipt) {
+      await options.driver.printRaw({ file, printerName: job.printerName, copies: job.copies });
+    } else {
+      await options.driver.print({
+        file,
+        printerName: job.printerName,
+        paper: job.paper,
+        copies: job.copies,
+        mediaType: job.mediaType ?? null,
+        quality: job.quality ?? null,
+      });
+    }
+    options.log(
+      `Sent ${receipt ? 'a receipt' : 'a job'} to "${job.printerName}" (${job.size} bytes, ${job.copies} copy(ies)).`,
+    );
     await current.reportJob(job.jobId, true, null).catch((error: unknown) => {
       // The paper is coming out either way; the web app will read "timed out", which says to look at the printer.
       options.log(`Could not tell the server the job was sent — ${reason(error)}`);

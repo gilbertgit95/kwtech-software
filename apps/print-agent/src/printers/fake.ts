@@ -64,6 +64,16 @@ export function createFakeDriver(
         `Fake print on "${request.printerName}": ${bytes.length} bytes, sha256 ${digest}, paper ${request.paper?.name ?? 'the printer’s own'}, paper type ${request.mediaType ?? 'as set'}, quality ${request.quality ?? 'as set'}, ${request.copies} copy(ies). No paper comes out.`,
       );
     },
+    async printRaw(request) {
+      if (!FAKE_PRINTERS.some((printer) => printer.name === request.printerName)) {
+        throw new Error(`There is no printer called "${request.printerName}" on this computer.`);
+      }
+      const bytes = await readFile(request.file);
+      const digest = createHash('sha256').update(bytes).digest('hex');
+      options.onPrinted?.(
+        `Fake raw print on "${request.printerName}": ${bytes.length} bytes, sha256 ${digest}, ${request.copies} copy(ies). No paper comes out.`,
+      );
+    },
     async list() {
       return FAKE_PRINTERS.filter((printer) => !excluded.includes(printer.name)).map((printer) => ({
         ...printer,

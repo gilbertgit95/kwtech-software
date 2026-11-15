@@ -166,6 +166,8 @@ print-agent start         connect, stay connected, and print what is sent
 print-agent printers      list the printers this computer would report (asks no server)
 print-agent status        say whether this computer is paired, and to what
 print-agent unpair        forget the pairing on this computer
+print-agent pretend-printer [port] [58|80]
+                          a pretend network receipt printer, for developing (needs no server)
 ```
 
 In the repository: `pnpm --filter @kwtech/print-agent build`, then
@@ -213,6 +215,8 @@ needs no working folder set. Variables already set win over the file.
 | `PRINT_AGENT_STATE_DIR` | `%APPDATA%\kwtech-print-agent`, or `~/.config/kwtech-print-agent` | where the pairing is kept |
 | `PRINT_AGENT_EXCLUDE_PRINTERS` | the ones Windows adds itself (Print to PDF, XPS, Fax, OneNote) | exact names never reported, comma separated; `none` reports all |
 | `PRINT_AGENT_DRIVER` | `windows` on Windows, `fake` elsewhere | `fake` invents two printers, for developing inside WSL |
+| `PRINT_AGENT_NETWORK_PRINTERS` | none | receipt printers on the network NOT installed in Windows: `Counter 1=192.168.1.50; Kitchen=192.168.1.51:9100` |
+| `PRINT_AGENT_VIRTUAL_RECEIPTS` | off | **developing only**: `on` (or a folder) adds two virtual receipt printers that write each roll as a text file. Refused in production |
 
 ## What it refuses, and why
 
@@ -272,6 +276,36 @@ user's files can act as this computer until it is revoked in the web app
 - A job another socket of this computer already took is skipped, not failed.
 - With `PRINT_AGENT_DRIVER=fake` nothing is printed: the log says the file's
   length and SHA-256, which is how to check that what arrived is what was sent.
+
+## Receipts (#144)
+
+A receipt job carries **ESC/POS bytes** (`encodeReceipt` in `@kwtech/module-print`),
+not a PDF, and the agent sends them to the printer **as they are** — the fast
+way a thermal printer prints text, cutting the paper and opening the drawer
+itself.
+
+- **A receipt printer installed in Windows** (USB, network, serial,
+  Bluetooth): through its own queue with the spooler's `RAW` data type
+  (`WINDOWS_RAW_SCRIPT`). The driver stays installed and renders nothing, so
+  the same printer still prints documents.
+- **A network receipt printer not installed in Windows**: named in
+  `PRINT_AGENT_NETWORK_PRINTERS`, reported as a printer, and sent the bytes on
+  its port (9100 unless given). It prints receipts only: a document sent to it
+  is refused with that reason.
+- **No printer yet?** Developing needs none:
+  - `PRINT_AGENT_VIRTUAL_RECEIPTS=on` adds "Virtual receipt printer, 80 mm" and
+    "58 mm". Each receipt is read back from its bytes and written as a text
+    roll to the state folder's `virtual-receipts/` (and the log), with ✂ where
+    it cuts and `[drawer opened]` where the drawer opens.
+  - `print-agent pretend-printer 9100` listens like a network printer and draws
+    every receipt sent to it; name it `Pretend=127.0.0.1:9100` in
+    `PRINT_AGENT_NETWORK_PRINTERS`. That is the network path exactly as a real
+    printer receives it.
+  - To try the Windows queue path with no thermal printer: add a printer with
+    Windows' built-in **Generic / Text Only** driver on the port **FILE:**;
+    each receipt sent to it asks where to save the bytes.
+- With `PRINT_AGENT_DRIVER=fake`, a receipt on a fake printer logs its length
+  and SHA-256, as a PDF does.
 
 ## Windows
 

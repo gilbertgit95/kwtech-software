@@ -1,6 +1,6 @@
 import { paperKey, toReport } from '../src/printers/convert.js';
 import { createWindowsDriver, type PdfPrintOptions } from '../src/printers/windows.js';
-import { WINDOWS_TICKET_SCRIPT } from '../src/printers/windows-script.js';
+import { WINDOWS_RAW_SCRIPT, WINDOWS_TICKET_SCRIPT } from '../src/printers/windows-script.js';
 
 /** What the script prints for one printer with two papers, the second a driver's own. */
 const LISTING = [
@@ -145,5 +145,40 @@ describe('a paper type and a quality for one job', () => {
     await windows.print({ ...job, mediaType: 'psk:Plain', quality: 'ns0000:HighQuality' });
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatch(/ns0000:Standard, not ns0000:HighQuality/);
+  });
+});
+
+describe('a receipt (#144)', () => {
+  it('sends the file through the queue as RAW, with the printer and the copies', async () => {
+    const calls: Array<{ script: string; variables: Record<string, string> }> = [];
+    const windows = createWindowsDriver([], {
+      run: async (script, variables) => {
+        calls.push({ script, variables });
+        return '{"sent":true}';
+      },
+    });
+    await windows.printRaw({ file: 'C:\\temp\\job.bin', printerName: 'XP-80C', copies: 2 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.script).toBe(WINDOWS_RAW_SCRIPT);
+    expect(calls[0]?.variables).toEqual({
+      KW_PRINT_PRINTER: 'XP-80C',
+      KW_PRINT_FILE: 'C:\\temp\\job.bin',
+      KW_PRINT_COPIES: '2',
+    });
+    // The spooler's own data type, so the printer's driver renders nothing.
+    expect(WINDOWS_RAW_SCRIPT).toContain('info.DataType = "RAW"');
+  });
+
+  it('says which printer would not take it, and why', async () => {
+    const windows = createWindowsDriver([], {
+      run: async () => {
+        throw new Error(
+          'Windows could not be asked for its printers — Windows could not open the printer (error 1801).',
+        );
+      },
+    });
+    await expect(windows.printRaw({ file: 'x', printerName: 'XP-80C', copies: 1 })).rejects.toThrow(
+      'The receipt could not be sent to "XP-80C" — Windows could not open the printer (error 1801).',
+    );
   });
 });

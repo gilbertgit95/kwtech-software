@@ -4,6 +4,7 @@ import { normalisePairingCode } from '@kwtech/module-print';
 import { type AgentEnv, loadEnv } from './config/env.js';
 import type { PrinterDriver } from './printers/driver.js';
 import { createFakeDriver } from './printers/fake.js';
+import { RECEIPT_PRINTER_PORT, startPretendPrinter, withReceiptPrinters } from './printers/receipt-printers.js';
 import { createWindowsDriver } from './printers/windows.js';
 import { runAgent } from './run.js';
 import { pairWithServer } from './server-api.js';
@@ -17,6 +18,8 @@ import { clearState, readState, stateMatchesServer, statePath, writeState } from
  *   print-agent printers      list what this computer would report (asks no server)
  *   print-agent status        say whether this computer is paired, and to what
  *   print-agent unpair        forget the pairing on this computer
+ *   print-agent pretend-printer [port] [58|80]
+ *                             a pretend network receipt printer, for developing (#144)
  *
  * ⚠ THE SECRET IS NEVER PRINTED, by any command. `status` says a pairing
  * exists and where its file is; that is all anybody at the keyboard needs.
@@ -30,11 +33,22 @@ const USAGE = `Usage:
   print-agent start         connect, stay connected, and print what is sent
   print-agent printers      list the printers this computer would report
   print-agent status        say whether this computer is paired
-  print-agent unpair        forget the pairing on this computer`;
+  print-agent unpair        forget the pairing on this computer
+  print-agent pretend-printer [port] [58|80]
+                            listen like a network receipt printer and show each receipt (for developing)`;
 
 const log = (message: string) => console.log(`${new Date().toISOString()}  ${message}`);
 
 function driverFor(env: AgentEnv): PrinterDriver {
+  // The network and virtual receipt printers sit around whichever driver lists the real ones (#144).
+  return withReceiptPrinters(systemDriverFor(env), {
+    network: env.networkPrinters,
+    virtualFolder: env.virtualReceiptsDir,
+    onPrinted: log,
+  });
+}
+
+function systemDriverFor(env: AgentEnv): PrinterDriver {
   if (env.driver === 'fake') return createFakeDriver(env.excludedPrinters, { onPrinted: log });
   return createWindowsDriver(env.excludedPrinters, {
     ...(env.sumatraPath ? { sumatraPath: env.sumatraPath } : {}),
@@ -152,6 +166,27 @@ function unpair(env: AgentEnv): number {
   return 0;
 }
 
+/**
+ * A pretend network receipt printer, for developing without one (#144, R3):
+ * name it in PRINT_AGENT_NETWORK_PRINTERS (`Pretend=127.0.0.1:9100`) and
+ * every receipt sent to it is drawn here. Runs until stopped.
+ */
+async function pretendPrinter(args: readonly string[]): Promise<number> {
+  const port = args[0] ? Number(args[0]) : RECEIPT_PRINTER_PORT;
+  const width = args[1] === '58' ? 58 : 80;
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    console.error('The port must be a number from 1 to 65535, such as 9100.');
+    return 1;
+  }
+  await startPretendPrinter(port, width, (preview, bytes) => {
+    log(`A receipt arrived (${bytes} bytes):`);
+    console.log(`${'='.repeat(width === 80 ? 48 : 32)}\n${preview}\n`);
+  });
+  log(`Pretending to be a ${width} mm receipt printer on port ${port}. Stop it with Ctrl+C.`);
+  // Never resolves: the server keeps the process alive until it is stopped.
+  return new Promise<number>(() => {});
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
   // A code read off the screen as "ABCDE FGHJK" arrives as two words; it is one argument to the person typing.
@@ -160,6 +195,8 @@ async function main(argv: readonly string[]): Promise<number> {
     console.log(USAGE);
     return command ? 0 : 1;
   }
+  // Needs no server and no pairing: it only listens.
+  if (command === 'pretend-printer') return pretendPrinter(rest);
   const env = loadEnv();
   switch (command) {
     case 'pair':
