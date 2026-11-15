@@ -8,6 +8,7 @@ import { STOCK_OPERATIONS } from '@kwtech/module-basic-inventory';
 import { POS_OPERATIONS } from '@kwtech/module-basic-pos';
 import { BOOKING_OPERATIONS } from '@kwtech/module-booking';
 import { CHAT_OPERATIONS } from '@kwtech/module-chat';
+import { FILE_OPERATIONS } from '@kwtech/module-file-manager';
 import { JOBS_OPERATIONS } from '@kwtech/module-jobs';
 import { LOCAL_NETWORK_OPERATIONS } from '@kwtech/module-local-network';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
@@ -77,6 +78,7 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   print: PRINT_OPERATIONS,
   studio: STUDIO_OPERATIONS,
   task: TASK_OPERATIONS,
+  file: FILE_OPERATIONS,
   pos: POS_OPERATIONS,
   books: BOOKS_OPERATIONS,
   stock: STOCK_OPERATIONS,

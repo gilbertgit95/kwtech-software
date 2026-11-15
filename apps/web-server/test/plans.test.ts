@@ -2,6 +2,7 @@ import { BOOKS_FEATURE } from '@kwtech/module-basic-bookkeeping';
 import { STOCK_FEATURE, STOCK_LIMIT } from '@kwtech/module-basic-inventory';
 import { POS_FEATURE, POS_LIMIT } from '@kwtech/module-basic-pos';
 import { BOOKING_FEATURE, BOOKING_LIMIT } from '@kwtech/module-booking';
+import { FILE_FEATURE, FILE_LIMIT } from '@kwtech/module-file-manager';
 import { NOTE_FEATURE, NOTE_LIMIT } from '@kwtech/module-note';
 import { assertPlanFeatureLevels, assertPlanLimits, FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { PRINT_FEATURE, PRINT_LIMIT } from '@kwtech/module-print';
@@ -38,6 +39,7 @@ const SUB_APP_KEYS: readonly string[] = [
   ...Object.values(BOOKING_FEATURE),
   ...Object.values(STUDIO_FEATURE),
   ...Object.values(PRINT_FEATURE),
+  ...Object.values(FILE_FEATURE),
 ];
 
 /** Every cap a plan sets: the plan-sourced limits of every composed module. */
@@ -150,6 +152,8 @@ describe('the seeded plans', () => {
         [BOOKING_LIMIT.resources]: 5,
         [STUDIO_LIMIT.layouts]: 50,
         [PRINT_LIMIT.agents]: 1,
+        [FILE_LIMIT.fileSize]: 25,
+        [FILE_LIMIT.storage]: 500,
       },
     ],
     [
@@ -168,6 +172,8 @@ describe('the seeded plans', () => {
         [BOOKING_LIMIT.resources]: 25,
         [STUDIO_LIMIT.layouts]: 500,
         [PRINT_LIMIT.agents]: 5,
+        [FILE_LIMIT.fileSize]: 100,
+        [FILE_LIMIT.storage]: 5_000,
       },
     ],
     [
@@ -186,6 +192,8 @@ describe('the seeded plans', () => {
         [BOOKING_LIMIT.resources]: 100,
         [STUDIO_LIMIT.layouts]: 5_000,
         [PRINT_LIMIT.agents]: 20,
+        [FILE_LIMIT.fileSize]: 500,
+        [FILE_LIMIT.storage]: 50_000,
       },
     ],
   ] as const)('%s sets exactly the caps in the #89 table', (key, caps) => {

@@ -6,6 +6,7 @@ import { stockWebModule } from '@kwtech/module-basic-inventory/react';
 import { posWebModule } from '@kwtech/module-basic-pos/react';
 import { bookingWebModule } from '@kwtech/module-booking/react';
 import { chatWebModule } from '@kwtech/module-chat/react';
+import { fileWebModule } from '@kwtech/module-file-manager/react';
 import { jobsWebModule } from '@kwtech/module-jobs/react';
 import { composeApps, type WebModuleDescriptor } from '@kwtech/module-kit';
 import { localNetworkWebModule } from '@kwtech/module-local-network/react';
@@ -79,6 +80,8 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
   // Printers: the computers paired to print for the workspace — beside the studio that will print through them.
   // Its setup guide shows where a print agent finds the server: the same public socket address the queue's display uses.
   printWebModule({ wsUrl: process.env.NEXT_PUBLIC_WS_URL }),
+  // Files: upload, share and download, deleted by the nightly clean-up (issue #138) — after printing.
+  fileWebModule(),
   // The bell, right of chat's inbox in the header (header-tool order 20).
   notificationWebModule(),
   /*
@@ -93,6 +96,7 @@ const FEATURE_MODULES: readonly WebModuleDescriptor[] = [
       task: 'Tasks',
       booking: 'Booking',
       studio: 'Print Studio',
+      file: 'Files',
       backup: 'Backups',
       platform_billing: 'Billing',
     },

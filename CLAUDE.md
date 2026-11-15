@@ -50,6 +50,7 @@ packages/module-print/      printing side: paired computers (print agents), the 
 packages/module-backup/     database backups: a super admin's Backups page, a daily 9 PM backup, the command line; files in a folder, nothing in the database
 packages/module-local-network/ a super admin's page for connecting devices on the shop's network: the local certificate and the address (only where `pnpm https:setup` turned it on, #66)
 packages/module-platform-billing/ billing for the whole app: requests we approve, prorated plan changes, grace and expiry; requests, payments and approvals so far, no pages yet (#88)
+packages/module-file-manager/ files sub-app: upload, share (private, the workspace, chosen people), download; temporary, deleted by the nightly 10 PM clean-up (#138)
 packages/web-ui/            React + Tailwind 4 components and themes
 ```
 

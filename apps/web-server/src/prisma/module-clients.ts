@@ -31,6 +31,12 @@ import {
   type ChatTransaction,
   type ChatWriteClient,
 } from '@kwtech/module-chat/server';
+import {
+  FILE_PRISMA,
+  FILE_PRISMA_WRITE,
+  type FileTransaction,
+  type FileWriteClient,
+} from '@kwtech/module-file-manager/server';
 import { JOBS_PRISMA, JOBS_PRISMA_WRITE, type JobsTransaction, type JobsWriteClient } from '@kwtech/module-jobs/server';
 import { NOTE_PRISMA, NOTE_PRISMA_WRITE, type NoteTransaction, type NoteWriteClient } from '@kwtech/module-note/server';
 import {
@@ -336,6 +342,28 @@ export const taskWritePrismaProvider: Provider = {
       // The due-reminder process's claim: one row per task per due day, written before anybody is told.
       taskDueReminder: prisma.taskDueReminder,
       taskPreference: prisma.taskPreference,
+    }),
+};
+
+/** The Files app (issue #138). Reads need no adapter — the delegates fit outright. */
+export const filePrismaProvider: Provider = {
+  provide: FILE_PRISMA,
+  useExisting: PrismaService,
+};
+
+export const fileWritePrismaProvider: Provider = {
+  provide: FILE_PRISMA_WRITE,
+  inject: [PrismaService],
+  useFactory: (prisma: PrismaService): FileWriteClient =>
+    withTransaction<FileTransaction, FileWriteClient>(prisma, {
+      /*
+       * ⚠ A file's row and its shares are written together, and an upload's
+       * room is re-counted inside the same transaction as its insert.
+       */
+      fileEntry: prisma.fileEntry,
+      fileShare: prisma.fileShare,
+      fileSettings: prisma.fileSettings,
+      fileTicket: prisma.fileTicket,
     }),
 };
 

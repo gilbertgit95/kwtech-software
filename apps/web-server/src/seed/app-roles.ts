@@ -5,6 +5,7 @@ import { STOCK_ROLE_PRESETS, type StockRolePreset } from '@kwtech/module-basic-i
 import { POS_ROLE_PRESETS, type PosRolePreset } from '@kwtech/module-basic-pos';
 import { BOOKING_ROLE_PRESETS, type BookingRolePreset } from '@kwtech/module-booking';
 import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
+import { FILE_ROLE_PRESETS, type FileRolePreset } from '@kwtech/module-file-manager';
 import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
 import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
@@ -433,6 +434,17 @@ function taskPreset(key: string): TaskRolePreset {
 }
 
 /**
+ * The Files app's presets (issue #138), read by key: every member uploads and
+ * shares their own files (`file-user`), and a workspace admin also chooses how
+ * long the workspace's files are kept (`file-admin`). THROWS if a preset is gone.
+ */
+function filePreset(key: string): FileRolePreset {
+  const preset = FILE_ROLE_PRESETS.find((one) => one.key === key);
+  if (!preset) throw new Error(`module-file-manager no longer ships a '${key}' preset; app-roles.ts must be updated.`);
+  return preset;
+}
+
+/**
  * A point-of-sale preset, read by key (POS-PLAN §4). The stores using the POS
  * have no cashiers yet, so its keys fold into the two workspace roles rather
  * than a combined role: a workspace admin is `pos-manager` (sells, discounts,
@@ -595,6 +607,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
     ...studioPreset('studio-admin').features,
     // Printing: seeing the printers, and pairing or revoking the computers that print.
     ...printPreset('print-admin').features,
+    // Files: uploading and sharing their own, and how long everybody's are kept.
+    ...filePreset('file-admin').features,
   ],
   limits: {},
 };
@@ -659,6 +673,8 @@ const WORKSPACE_SUPERVISOR: SystemRoleDefinition = {
     ...studioPreset('studio-user').features,
     // Sees the printers. Pairing a computer (which then receives print jobs) stays the admin's.
     ...printPreset('print-user').features,
+    // Uploads and shares their own files. How long files are kept stays the admin's.
+    ...filePreset('file-user').features,
   ],
   limits: {},
 };
@@ -703,6 +719,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
     ...studioPreset('studio-user').features,
     // Sees which computers and printers the workspace has. Cannot pair or revoke one.
     ...printPreset('print-user').features,
+    // Uploads files, shares and deletes their own.
+    ...filePreset('file-user').features,
   ],
   limits: {},
 };

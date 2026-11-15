@@ -115,6 +115,10 @@ const EXCLUDED_TABLES: Record<string, string> = {
   print_printer: 'rows of `print_agent`, which is not exported',
   // Personal data, not a secret: the names of files people printed are often customers' names.
   studio_log: 'print history: file names that are often customers’ names',
+  // The bytes live in FILES_DIR on the machine that took the snapshot, never in it: a restored row would be a broken download.
+  file_entry: 'uploaded files: names of people’s documents, whose bytes are not in the snapshot',
+  file_share: 'rows of `file_entry`, which is not exported',
+  file_ticket: 'one-time download and upload tickets, minutes long; never worth restoring',
 };
 
 /**

@@ -1,5 +1,6 @@
 import { posMobileModule } from '@kwtech/module-basic-pos/mobile';
 import { chatMobileModule } from '@kwtech/module-chat/mobile';
+import { fileMobileModule } from '@kwtech/module-file-manager/mobile';
 import {
   composeMobileManage,
   composeMobileScreens,
@@ -20,14 +21,16 @@ import { taskMobileModule } from '@kwtech/module-task/mobile';
  * "Mobile screens". Which modules join is chosen one at a time; a module not
  * listed is not on phones, and its pages say so with a way to the full site.
  *
- * Apps: the till (selling only), notes and tasks, in that order on the Apps
- * tab. Bottom bar: Chat and the notification Inbox. No Manage page yet.
+ * Apps: the till (selling only), notes, tasks and files, in that order on the
+ * Apps tab. Bottom bar: Chat and the notification Inbox. No Manage page yet.
  */
 export const MOBILE_MODULES: readonly MobileModuleDescriptor[] = [
   // Sell (order 10), Notes (20), Tasks (30) — the launcher's order, and the first three pinned to Home.
   posMobileModule(),
   noteMobileModule(),
   taskMobileModule(),
+  // Files (80): a phone's file picker is where many uploads start.
+  fileMobileModule(),
   // Chat, then the Inbox right of it: chat's tab is order 10, the inbox 20.
   chatMobileModule(),
   notificationMobileModule(),

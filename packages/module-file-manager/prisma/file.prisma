@@ -1,0 +1,127 @@
+// module-file-manager's schema fragment (issue #138). Composed into the app's
+// schema by apps/web-server/scripts/compose-schema.mjs; never edit the copy in
+// prisma/_modules/.
+//
+// ⚠ THE BYTES ARE NOT HERE. A row describes a file; the file itself is in the
+// store the app binds (a folder today, a blob server later), under
+// `storageKey`. A row without its bytes is a broken download, and bytes
+// without a row are a stray the nightly clean-up removes.
+//
+// ⚠ TEMPORARY BY DESIGN. Every file is deleted by the first nightly clean-up
+// after it is older than the workspace's `retentionHours`. Nothing here is
+// archived: a deleted file is gone, row and bytes.
+//
+// `userId`, `ownerId` and `workspaceId` are bare strings with no foreign key
+// (PLAN §9 rule 5): identity and workspaces belong to other modules.
+
+/// Who may see a file, besides its owner, who always may.
+///   private   — the owner alone, whatever keys anyone holds
+///   workspace — every member holding `file:read`
+///   people    — the members named in `FileShare`, who must hold `file:read`
+enum FileVisibility {
+  private
+  workspace
+  people
+}
+
+/// One uploaded file.
+model FileEntry {
+  id             String         @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  /// Who uploaded it: the only person who may share or delete it.
+  ownerId        String
+  /// The name it was uploaded with, for display and the download only. ⚠ NEVER a path on disk.
+  name           String
+  /// The type the browser declared. Shown as an icon; never trusted to serve the file with.
+  contentType    String
+  /// Exact, counted while it arrived — not the size the browser declared.
+  sizeBytes      Int
+  /// Where the bytes are in the store. Random, and unique across every workspace.
+  storageKey     String         @unique
+  visibility     FileVisibility @default(private)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  shares FileShare[]
+
+  @@index([organizationId])
+  /// The list (newest first) and the clean-up (oldest first) both read a workspace by age.
+  @@index([workspaceId, createdAt])
+  @@map("file_entry")
+}
+
+/// One person a `people` file is shared with. Kept only while the file is `people`.
+model FileShare {
+  fileId         String
+  userId         String
+  organizationId String
+  workspaceId    String
+  createdAt      DateTime  @default(now())
+  file           FileEntry @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([fileId, userId])
+  /// "What is shared with me here" — the list's second half.
+  @@index([workspaceId, userId])
+  @@index([organizationId])
+  @@map("file_share")
+}
+
+/// A workspace's choices for its files. No row means the declared defaults.
+model FileSettings {
+  workspaceId    String   @id
+  organizationId String
+  /// How old a file must be before the nightly clean-up deletes it (FILE_RETENTION_HOURS_MIN…MAX).
+  retentionHours Int
+  updatedById    String
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("file_settings")
+}
+
+/// What a ticket opens: sending one file's bytes, or reading one file's.
+enum FileTicketKind {
+  upload
+  download
+}
+
+/// A one-time ticket for the byte routes (issue #138).
+///
+/// ⚠ IN THE DATABASE, NOT ONE API'S MEMORY, so the server that spends a ticket
+/// need not be the one that gave it: behind a load balancer the mutation and
+/// the PUT or GET land wherever they land.
+///
+/// ⚠ ONLY THE TICKET'S SHA-256 IS KEPT. Somebody reading this table (a backup,
+/// a replica) learns nothing they could download with. 256 random bits need no
+/// salt or slow hash: they cannot be guessed, only stolen.
+///
+/// Spent by a conditional `deleteMany` (`tokenHash` AND not expired), whose
+/// count says who won: two requests racing for one ticket, on one server or
+/// two, cannot both spend it. Expired rows are already refused, and the
+/// nightly clean-up deletes them workspace by workspace.
+model FileTicket {
+  tokenHash      String          @id
+  kind           FileTicketKind
+  organizationId String
+  workspaceId    String
+  /// Who asked for it: the uploader, or the person downloading.
+  actorId        String
+  /// A download's file. Null for an upload.
+  fileId         String?
+  /// An upload's file, as checked when the ticket was given. Null for a download.
+  name           String?
+  contentType    String?
+  sizeBytes      Int?
+  visibility     FileVisibility?
+  sharedWith     String[]
+  expiresAt      DateTime
+  createdAt      DateTime        @default(now())
+
+  /// The nightly sweep of a workspace's expired tickets.
+  @@index([workspaceId, expiresAt])
+  /// "How many live tickets does this person hold" (FILE_TICKETS_PER_PERSON_MAX).
+  @@index([actorId, expiresAt])
+  @@index([organizationId])
+  @@map("file_ticket")
+}

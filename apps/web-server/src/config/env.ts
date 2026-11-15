@@ -276,6 +276,18 @@ const envSchema = z
     BACKUP_KEEP: z.coerce.number().int().min(1).default(30),
 
     /**
+     * ── uploaded files (module-file-manager, issue #138) ────────────────────
+     *
+     * The folder the Files app keeps uploads in, one folder per workspace.
+     * Relative to this app's directory, so the default is the repository's
+     * gitignored `uploaded-files/`. In production, an absolute path on a disk
+     * with room for every workspace's storage cap, outside the deployed code.
+     * Every file is TEMPORARY: the nightly clean-up empties it (PLAN §13,
+     * 2026-11-15), so it is not backed up.
+     */
+    FILES_DIR: z.string().trim().min(1).default('../../uploaded-files'),
+
+    /**
      * ── mail ──────────────────────────────────────────────────────────────────
      *
      * One URL rather than host/port/user/pass/secure as five variables, because

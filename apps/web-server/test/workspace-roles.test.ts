@@ -3,6 +3,7 @@ import { BOOKS_FEATURE, BOOKS_ROLE_PRESETS } from '@kwtech/module-basic-bookkeep
 import { STOCK_ROLE_PRESETS } from '@kwtech/module-basic-inventory';
 import { POS_FEATURE, POS_ROLE_PRESETS } from '@kwtech/module-basic-pos';
 import { BOOKING_ROLE_PRESETS } from '@kwtech/module-booking';
+import { FILE_ROLE_PRESETS } from '@kwtech/module-file-manager';
 import { NOTE_FEATURE, NOTE_ROLE_PRESETS } from '@kwtech/module-note';
 import { FEATURE } from '@kwtech/module-permissions';
 import { PRINT_FEATURE, PRINT_ROLE_PRESETS } from '@kwtech/module-print';
@@ -30,6 +31,7 @@ const PRESETS: readonly { key: string; features: readonly string[] }[] = [
   ...BOOKING_ROLE_PRESETS,
   ...STUDIO_ROLE_PRESETS,
   ...PRINT_ROLE_PRESETS,
+  ...FILE_ROLE_PRESETS,
 ];
 
 /** The table in issue #25: one preset per sub-app per tier, or none. */
@@ -44,6 +46,7 @@ const TIERS: Readonly<Record<string, { presets: readonly string[]; extra: readon
       'booking-front-desk',
       'studio-user',
       'print-user',
+      'file-user',
     ],
     extra: [FEATURE.workspaceRead, APP_HUB_FEATURE.read],
   },
@@ -58,6 +61,7 @@ const TIERS: Readonly<Record<string, { presets: readonly string[]; extra: readon
       'booking-manager',
       'studio-user',
       'print-user',
+      'file-user',
     ],
     extra: [FEATURE.workspaceRead, APP_HUB_FEATURE.read],
   },
@@ -72,6 +76,7 @@ const TIERS: Readonly<Record<string, { presets: readonly string[]; extra: readon
       'booking-manager',
       'studio-admin',
       'print-admin',
+      'file-admin',
     ],
     extra: [
       FEATURE.workspaceRead,

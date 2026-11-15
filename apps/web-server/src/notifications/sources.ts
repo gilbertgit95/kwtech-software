@@ -38,6 +38,12 @@ export const NOTIFICATION_SOURCES: readonly NotificationSource[] = [
   { key: 'task.due', label: 'Tasks: due today', mutable: true },
 
   /*
+   * Files (`./file/notifier.ts`): somebody shared a file with you by name.
+   * Mutable: a person sent many files can stop hearing about each.
+   */
+  { key: 'file.shared', label: 'Files: shared with you', mutable: true },
+
+  /*
    * Booking (`./booking/notifier.ts`), sent by nobody: the
    * `booking.upcoming_sessions` background process, shortly before a confirmed
    * booking starts. Mutable — and a workspace can turn the reminders off for
