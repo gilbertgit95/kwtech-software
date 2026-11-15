@@ -18,7 +18,8 @@ import {
 import { toCsv } from '../view/reports.js';
 import { buttonClass } from './controls.js';
 import { Alert } from './layout.js';
-import { downloadCsv, printHtml } from './till.js';
+import { printHtml } from './print-frame.js';
+import { downloadCsv } from './till.js';
 
 /**
  * The whole price list on paper or as a file (`view/price-list.ts`): every

@@ -626,10 +626,23 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 144 | A print agent updated before the server gets no jobs at all | when an agent is updated by itself | The agent's job subscription asks for `format`, which a server older than #146 does not have, so GraphQL refuses the subscription and every print (PDFs too) times out as `agent_did_not_fetch`. Update the server first, then the agents. What would settle it: the agent retrying the subscription without `format` when the server refuses it |
 | 145 | A receipt through a Windows queue starts PowerShell each time | if a counter prints receipts faster than about one a second | `WINDOWS_RAW_SCRIPT` runs in a new `powershell.exe` per receipt (the C# it needs is compiled once and kept). PowerShell's own start-up is still roughly half a second to a second on a shop PC, and the agent prints one job at a time. Network receipt printers (`PRINT_AGENT_NETWORK_PRINTERS`) do not pay it. What would settle it: one long-lived PowerShell per agent, fed jobs on its input |
 | 146 | The Windows RAW path has not printed on a real thermal printer | when the first receipt printer is bought | Proved with a stand-in for PowerShell and, end to end, on the virtual and pretend network printers (#151), not on Windows with a thermal printer. The first Test receipt settles it: width, cutter, drawer, and that `WritePrinter` reaches a USB printer through its driver's queue. A "Generic / Text Only" printer on `FILE:` can try the queue path before then |
+| 147 | A computer switched off still counts as online for up to 90 s | if cashiers meet it | Three missed 30 s heartbeats (`PRINT_AGENT_ONLINE_SECONDS`). A receipt tapped in that window waits 30 s for the computer, then fails with "The computer did not pick the job up…" (seen in the R5 browser test). The agent closing its socket could mark it offline at once; not done, because a socket that drops and comes back in a second would flicker the printer to offline |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-15** — **The POS prints its receipts on the receipt printer through module-kit's one printer port, the printer picked by the binder and never swapped silently (#144, R5 #149).**
+
+  The cause: R1–R4 could print a receipt, but nothing in the POS asked for one; its Print button was the browser's dialog. A module may not import `module-print`, so the POS reaches it the way the price list already did.
+
+  - **The port grew a receipt half** (`PrinterReceiptLine`, `useReceiptPrinters`): the POS describes the receipt as lines, `module-print` encodes them for the chosen printer. The line shape is a structural copy of `ReceiptLine`, checked by the app's compiler where it binds the port.
+  - **The pick is the binder's** (`pickReceiptPrinter`): this device's choice, then the workspace default, then the only receipt printer online, otherwise ask. ⚠ A chosen printer that is offline is NOT swapped for another one online: a receipt that comes out at another counter, or in the kitchen, reaches nobody. It asks, saying which and where.
+  - **This device's choice lives in the browser** (one printer id per workspace): it is about where THIS screen stands, nothing the server should hold, and a lost one falls back to the workspace default. It is the one thing module-print writes to browser storage; its test says so.
+  - **Every tap decides on a fresh read.** Found by the browser test: a list read 90 seconds earlier sent a reprint to a computer switched off since.
+  - **The fallback is a page on a document printer** (`receiptPagePdf`): the roll's own text in Courier, a narrow column on the printer's A4, handwritten as a PDF like the ruler page, so the pure root stays library-free. Then the browser's print, always in the menu.
+  - **"Always print after payment"** is per device, in the browser, and fires only when the screen saw the order go from open to paid, so a reload never prints a second copy.
+  - **Not done:** a receipt for an unpaid slip from the till's held list, kitchen tickets, and a reprint counter on the order (a reprint says REPRINT with its time, which is what the guard rule asks).
 
 - **2026-11-15** — **Receipts print on thermal printers as ESC/POS bytes, sent unchanged through the print agent (#144: #145, #146, #147).**
 

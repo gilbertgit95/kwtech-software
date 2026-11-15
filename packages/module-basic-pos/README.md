@@ -302,14 +302,45 @@ screen's Orders tab's key, so whoever may open the app has it):
   still needs somebody says what, and where (`phoneOrderNextStep`): a held one
   offers **Open Cashier** to somebody who may take payment; an unpaid one, and
   change still owed, point to the full screen's Orders tab.
-- **Print** is the full screen's reprint (`receiptHtml`, marked as a reprint
-  with the date) through the phone's own print sheet: a printer the phone
-  knows, or Save as PDF. A Bluetooth or USB receipt printer wired to the phone
-  shows there only through a print-service app for it (Android); a printer at
-  the shop's computer is out of reach from a phone's print sheet — that is the
-  print agent's job (`module-print`), not offered here.
+- **Reprint receipt** is the full screen's (see "Receipts on a receipt
+  printer"): marked as a reprint with the time, sent to this device's receipt
+  printer through the print agent, the browser's print sheet in its menu.
 - **Not done:** paying, voiding, refunding or settling change from the phone's
-  Orders; sending a receipt to a printer paired through the print agent.
+  Orders.
+
+## Receipts on a receipt printer (#144, R5)
+
+A sale's receipt prints on a thermal receipt printer at the shop's computer,
+through the print agent, with one tap: after payment (the till, the phone's
+Cashier), and as a reprint from Orders (the full screen and the phone).
+
+- **What prints** is `receiptLines(order, { timeZone, storeName, reprintedAt })`
+  (`view/receipt-lines.ts`): the workspace's name, the number and time in the
+  workspace's zone, how it was served, the reference and customer, the lines
+  with their discounts and notes, the totals, the payment and change, a
+  thank-you and the cut — what `receiptHtml` prints in a browser, as lines.
+  Money is spelled `PHP 180.00`: a roll has no peso sign. ⚠ A reprint says
+  REPRINT with its time and never opens the drawer; the original of a cash
+  sale opens it, where one is plugged in.
+- **Where it prints** is `module-print`'s pick, through module-kit's port
+  (`useReceiptPrinters`): this device's choice, the workspace default, the
+  only receipt printer online, otherwise the menu opens and says why. The
+  line under the button says where ("on Counter 1 · Online") and how it went.
+- **The ▾ menu**: every receipt printer with its computer, width and status
+  (offline ones greyed, "Offline since 9:02 PM"); choosing one prints there
+  and makes it this device's. Then "Other printers (prints as a page)", the
+  narrow-page fallback, then "Print from this browser" (`receiptHtml`).
+  Inside a phone's sheet the menu opens inside it.
+- ⚠ **Decided on a fresh read** at each tap, never the list on screen.
+- **Always print after payment** (a switch under the till's receipt, per
+  device, in this browser): prints once when THIS screen sees the order go
+  from open to paid, never for an order that was already paid when it
+  appeared, so a reload does not print it again. The phone's Cashier follows
+  the same switch.
+- **Unbound, or no printer paired**, the button is the browser's print, as
+  before. The till's print shortcut presses the same button.
+- The parts: `useReceiptPrint(order, { scope, timeZone, reprint,
+  autoAfterPayment })` and `ReceiptPrintButton` (`components/receipt-print.tsx`).
 
 ## Order types and defaults (the Items tab)
 

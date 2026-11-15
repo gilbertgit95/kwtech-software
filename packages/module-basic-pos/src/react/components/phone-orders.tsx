@@ -2,7 +2,7 @@
 
 import { useMobileSection } from '@kwtech/module-kit/react';
 import { BottomSheet, cn, LIST_ITEM, LIST_KEYS, searchIntoList } from '@kwtech/web-ui/react';
-import { ChevronRight, Hash, Info, Printer, ReceiptText, RotateCcw, Search, User } from 'lucide-react';
+import { ChevronRight, Hash, Info, ReceiptText, RotateCcw, Search, User } from 'lucide-react';
 import { useCallback, useRef } from 'react';
 import { POS_MOBILE_SECTION } from '../../mobile/sections.js';
 import type { PosOrderView } from '../pos-client.js';
@@ -22,13 +22,12 @@ import {
 } from '../view/manage.js';
 import { formatPeso } from '../view/money.js';
 import { phoneOrderNextStep } from '../view/phone-orders.js';
-import { receiptHtml } from '../view/receipt.js';
 import { lineLabel } from '../view/till.js';
-import { buttonClass, INPUT_CLASS } from './controls.js';
+import { INPUT_CLASS } from './controls.js';
 import { Alert, StatusChip } from './layout.js';
 import { LineNotes, ListTotal, OrderRefunds, OrderTotals } from './orders-section.js';
 import { PhonePeriodPicker } from './phone-period-picker.js';
-import { printHtml } from './till.js';
+import { ReceiptPrintButton, useReceiptPrint } from './receipt-print.js';
 
 /**
  * ORDERS ON A PHONE (issue #72): the full screen's Orders tab, made for a
@@ -228,6 +227,8 @@ function PhoneOrderSheet({
     ? orderActions(order, { sell: state.canSell, takePayment: state.canTakePayment, refund: state.canRefund })
     : null;
   const printing = reprintState(detail);
+  // ⚠ Only a current copy: never the one kept while it reads again, or after that failed.
+  const reprint = useReceiptPrint(order && printing === 'ready' ? order : null, { scope, timeZone, reprint: true });
 
   return (
     <BottomSheet
@@ -236,17 +237,8 @@ function PhoneOrderSheet({
       title={order ? orderTitle(order) : title}
       footer={
         order && can?.reprint ? (
-          <button
-            type="button"
-            // ⚠ Only a current copy (`reprintState`): never the one kept while it reads again, or after that failed.
-            disabled={printing !== 'ready'}
-            className={cn(buttonClass('primary'), 'h-14 w-full rounded-2xl text-base')}
-            // ⚠ A reprint says so, with the date (guard rules), as on the full screen.
-            onClick={() => printHtml(receiptHtml(order, { timeZone, reprintedAt: new Date() }))}
-          >
-            <Printer aria-hidden="true" className="size-5" />
-            {printing === 'updating' ? 'Updating…' : 'Print receipt'}
-          </button>
+          // ⚠ A reprint says so, with the time (guard rules), as on the full screen.
+          <ReceiptPrintButton state={reprint} size="large" className="w-full" />
         ) : null
       }
     >

@@ -214,12 +214,16 @@ describe('the phone’s Orders section', () => {
   });
 
   it('⚠ both screens print only a current copy', () => {
-    expect(phone).toMatch(/disabled=\{printing !== 'ready'\}/);
-    expect(read('src/react/components/orders-section.tsx')).toMatch(/disabled=\{reprintState\(detail\) !== 'ready'\}/);
+    // The receipt has no order to print (null) until the copy is current: its button is disabled.
+    expect(phone).toMatch(/useReceiptPrint\(order && printing === 'ready' \? order : null/);
+    expect(read('src/react/components/orders-section.tsx')).toMatch(
+      /useReceiptPrint\(order && reprintState\(detail\) === 'ready' \? order : null/,
+    );
   });
 
-  it('prints the full screen’s reprint, marked with the date', () => {
-    expect(phone).toMatch(/printHtml\(receiptHtml\(order, \{ timeZone, reprintedAt: new Date\(\) \}\)\)/);
+  it('prints the full screen’s reprint, marked as one (#144, R5)', () => {
+    expect(phone).toMatch(/\{ scope, timeZone, reprint: true \}/);
+    expect(read('src/react/components/orders-section.tsx')).toMatch(/reprint: true/);
   });
 
   it('is drawn by the phone app for its section key', () => {

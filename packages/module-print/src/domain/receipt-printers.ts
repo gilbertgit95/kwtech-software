@@ -122,3 +122,71 @@ export function testReceiptLines(
   lines.push({ kind: 'cut' });
   return lines;
 }
+
+/** A receipt printer as the pick sees it. */
+export interface ReceiptPickCandidate {
+  id: string;
+  /** Its name for its place, as a cashier reads it. */
+  name: string;
+  /** Its computer, as the workspace named it. */
+  computer: string;
+  isDefault: boolean;
+  /** Why it cannot print now, or null when it can. */
+  blocked: string | null;
+}
+
+/** Where a receipt goes without asking, or why it asks. The shape of module-kit's `ReceiptPick`. */
+export type ReceiptPickPlan =
+  | { kind: 'printer'; printerId: string; because: 'device' | 'default' | 'only' }
+  | { kind: 'ask'; reason: string };
+
+/**
+ * Which receipt printer a receipt goes to (#144, R5), in the order agreed:
+ * this device's choice, then the workspace default, then the only receipt
+ * printer online; otherwise ask. Only receipt printers are candidates — a
+ * document printer is never picked for a receipt.
+ *
+ * ⚠ A PRINTER CHOSEN BUT OFFLINE IS NEVER SWAPPED FOR ANOTHER. "This device
+ * prints on Counter 1" or "the shop prints on Counter 1" is a decision about
+ * WHERE the paper comes out; quietly printing at Counter 2 or in the kitchen
+ * instead would hand a customer's receipt to nobody. It asks, saying which
+ * printer is offline and what to do.
+ *
+ * A device's choice that is no longer a receipt printer (unmarked, removed)
+ * is ignored, as if never made: there is nothing to be offline.
+ */
+export function pickReceiptPrinter(
+  printers: readonly ReceiptPickCandidate[],
+  deviceChoice: string | null,
+): ReceiptPickPlan {
+  if (printers.length === 0) {
+    return {
+      kind: 'ask',
+      reason: 'There is no receipt printer here yet. Mark one in the Printers app, or print the receipt on a page.',
+    };
+  }
+  const chosen = deviceChoice === null ? undefined : printers.find((printer) => printer.id === deviceChoice);
+  if (chosen) return held(chosen, 'device');
+  const fallback = printers.find((printer) => printer.isDefault);
+  if (fallback) return held(fallback, 'default');
+  const online = printers.filter((printer) => printer.blocked === null);
+  const only = online.length === 1 ? online[0] : undefined;
+  if (only) return { kind: 'printer', printerId: only.id, because: 'only' };
+  if (online.length === 0) {
+    return {
+      kind: 'ask',
+      reason: 'No receipt printer is online. Start the print agent on its computer, or print the receipt on a page.',
+    };
+  }
+  return { kind: 'ask', reason: 'Choose the receipt printer this device prints on. It is remembered here.' };
+}
+
+/** The chosen printer, or why not: its computer is offline. */
+function held(printer: ReceiptPickCandidate, because: 'device' | 'default'): ReceiptPickPlan {
+  if (printer.blocked === null) return { kind: 'printer', printerId: printer.id, because };
+  const whose = because === 'device' ? 'this device’s receipt printer' : 'the workspace’s receipt printer';
+  return {
+    kind: 'ask',
+    reason: `“${printer.name}”, ${whose}, is offline: start the print agent on “${printer.computer}”, or choose another.`,
+  };
+}

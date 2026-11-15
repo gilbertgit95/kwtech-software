@@ -212,7 +212,21 @@ receiptPlainText(lines, DEFAULT_RECEIPT_PROFILE); // the same roll as text: prev
   where the printer has them. The workspace's **default receipt printer**
   (`PrintReceiptDefault`) is set below the list; the first receipt printer
   becomes it, and unmarking it clears it.
-- Still to come in #144: the POS's Print receipt (R5 #149).
+- **Printing a receipt from another module** (R5 #149): `createPrintTarget()`
+  also binds module-kit's receipt half of the port. `receipts()` lists the
+  receipt printers by their place and picks where a receipt goes
+  (`pickReceiptPrinter`: this device's choice → the workspace default → the
+  only one online → ask; ⚠ an offline choice is never swapped for another
+  printer). `printReceipt()` encodes the lines for THAT printer's profile and
+  sends them as `escpos`; `printReceiptAsPage()` is the fallback on a
+  document printer: `receiptPagePdf`, the roll's text in Courier as a narrow
+  column on the printer's A4 (or first) paper, onto a second sheet when
+  long. Both re-read the printer first and refuse the wrong kind with a
+  sentence.
+- ⚠ **This device's receipt printer is the one thing this module keeps in the
+  browser** (`BROWSER_RECEIPT_CHOICE`, one printer id per workspace, in
+  `localStorage`; `deviceChoice` replaces it in tests). Storage that is not
+  there is "no choice": the workspace's default, as on a new device.
 
 ## What it declares
 
