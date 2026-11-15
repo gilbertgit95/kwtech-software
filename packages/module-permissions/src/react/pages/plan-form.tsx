@@ -2,7 +2,7 @@
 
 import { ConfirmDialog, IconPicker, TreeSelect, type TreeSelectNode, useIconSet } from '@kwtech/web-ui/react';
 import { useId, useMemo, useState } from 'react';
-import { LIMIT_REGISTRY } from '../../domain/limits.js';
+import { LIMIT_REGISTRY, type LimitSpec } from '../../domain/limits.js';
 import {
   defaultPlanLimitFields,
   type PlanDraft,
@@ -12,13 +12,40 @@ import {
 } from '../../domain/plan-draft.js';
 import { canPlanEntitle } from '../../domain/plans.js';
 import type { RoleLevel } from '../../types.js';
-import { type FeatureView, featureSpecOf, type PermissionsClient, type PlanView } from '../permissions-client.js';
+import {
+  type FeatureView,
+  featureSpecOf,
+  type LimitView,
+  type PermissionsClient,
+  type PlanView,
+} from '../permissions-client.js';
 
 /** Features nobody filed under a tag. Sorted last, never hidden. */
 const UNTAGGED = 'untagged';
 
-/** The caps a plan sells. Role-sourced ones have no meaning here — see domain/limits.ts. */
-const PLAN_LIMITS = LIMIT_REGISTRY.filter((spec) => spec.source === 'plan');
+/**
+ * The caps a plan sells: every module's, from the API. Role-sourced ones have
+ * no meaning here (see domain/limits.ts).
+ *
+ * ⚠ Read from this package's own registry, the form showed and SENT only the
+ * permissions caps, and saving deleted every module's (#139). Normalised to
+ * one shape here so the validator and the fields cannot read a fetched cap
+ * differently from a compiled one.
+ */
+function planCapsOf(limits: readonly LimitView[] | undefined): readonly LimitSpec[] {
+  return (limits ?? LIMIT_REGISTRY)
+    .filter((spec) => spec.source === 'plan')
+    .map((spec) => ({
+      key: spec.key,
+      label: spec.label,
+      description: spec.description,
+      source: 'plan' as const,
+      countedOver: spec.countedOver as LimitSpec['countedOver'],
+      required: spec.required,
+      defaultValue: spec.defaultValue,
+      ...(spec.module ? { module: spec.module } : {}),
+    }));
+}
 
 /**
  * The one form behind both New and Edit.
@@ -68,12 +95,19 @@ export interface PlanFormProps {
    * it while the key sat in `perm_feature`, undeprecated and sold.
    */
   features: readonly FeatureView[];
+  /**
+   * Every declared cap, fetched from the API (`listLimits`), as `RoleForm`
+   * takes it. ⚠ Without it the form falls back to this package's own caps and
+   * every other module's has no field.
+   */
+  limits?: readonly LimitView[];
   onSaved: (plan: PlanView) => void;
   cancelHref: string;
 }
 
-export function PlanForm({ client, plan, allPlans, features, onSaved, cancelHref }: PlanFormProps) {
+export function PlanForm({ client, plan, allPlans, features, limits, onSaved, cancelHref }: PlanFormProps) {
   const editing = plan !== undefined;
+  const planCaps = useMemo(() => planCapsOf(limits), [limits]);
   /*
    * Name → component, from whatever the app published. Null when no
    * `IconSetProvider` is mounted, in which case the field falls back to a text
@@ -103,7 +137,7 @@ export function PlanForm({ client, plan, allPlans, features, onSaved, cancelHref
      */
     limits: plan
       ? planLimitFields(Object.fromEntries(plan.limits.map((limit) => [limit.limitKey, limit.value])))
-      : defaultPlanLimitFields(),
+      : defaultPlanLimitFields(planCapsOf(limits)),
   });
   const [errors, setErrors] = useState<PlanDraftErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -211,6 +245,7 @@ export function PlanForm({ client, plan, allPlans, features, onSaved, cancelHref
       // The same list the server validates against, so the form cannot refuse
       // something the API would accept, or offer something it would not.
       registry: features.map(featureSpecOf),
+      limits: planCaps,
       ...(editing ? { originalKey: plan.key } : {}),
     });
     setErrors(found);
@@ -225,15 +260,17 @@ export function PlanForm({ client, plan, allPlans, features, onSaved, cancelHref
         isPublic: draft.isPublic,
         icon: draft.icon.trim() || null,
         features: [...draft.features],
-        limits: PLAN_LIMITS.map((spec) => ({
-          limitKey: spec.key,
-          value: (draft.limits[spec.key] ?? '').trim(),
-        })).filter(
-          // Blanks are dropped rather than sent as empty strings: an absent
-          // optional cap means "this plan does not set it", and the server's
-          // `planLimitValues` reads absence the same way.
-          (limit) => limit.value !== '',
-        ),
+        limits: planCaps
+          .map((spec) => ({
+            limitKey: spec.key,
+            value: (draft.limits[spec.key] ?? '').trim(),
+          }))
+          .filter(
+            // Blanks are dropped rather than sent as empty strings: an absent
+            // optional cap means "this plan does not set it", and the server's
+            // `planLimitValues` reads absence the same way.
+            (limit) => limit.value !== '',
+          ),
       };
       onSaved(editing ? await client.updatePlan(plan.key, input) : await client.createPlan(input));
       setSaved(true);
@@ -328,7 +365,7 @@ export function PlanForm({ client, plan, allPlans, features, onSaved, cancelHref
         {errors.limits ? <p className="mb-2 text-sm text-destructive">{errors.limits}</p> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {PLAN_LIMITS.map((spec) => (
+          {planCaps.map((spec) => (
             <Field
               key={spec.key}
               label={spec.required ? `${spec.label} *` : spec.label}

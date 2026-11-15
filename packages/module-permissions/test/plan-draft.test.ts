@@ -118,13 +118,13 @@ describe('validatePlanDraft', () => {
 
 describe('plan limit fields', () => {
   it('round-trips numbers through the strings a form edits', () => {
-    expect(planLimitValues(planLimitFields({ [LIMIT.organizationMembers]: 10 }))).toEqual({
+    expect(planLimitValues(planLimitFields({ [LIMIT.organizationMembers]: 10 }), LIMIT_REGISTRY)).toEqual({
       [LIMIT.organizationMembers]: 10,
     });
   });
 
   it('drops blanks rather than writing zero — blank means "this plan does not set it"', () => {
-    expect(planLimitValues({ ...LIMITS, [LIMIT.workspaceMembers]: '   ' })).toEqual({
+    expect(planLimitValues({ ...LIMITS, [LIMIT.workspaceMembers]: '   ' }, LIMIT_REGISTRY)).toEqual({
       [LIMIT.organizationMembers]: 10,
       [LIMIT.organizationWorkspaces]: 3,
     });
@@ -172,7 +172,7 @@ describe('the caps a new plan starts with', () => {
 
     const fresh: PlanDraft = { ...EMPTY_PLAN_DRAFT, key: 'team', label: 'Team' };
     expect(validatePlanDraft(fresh, { registry: REGISTRY })).toEqual({});
-    expect(planLimitValues(fresh.limits)[LIMIT.organizationMembers]).toBe(DEFAULT_PLAN_LIMIT);
+    expect(planLimitValues(fresh.limits, LIMIT_REGISTRY)[LIMIT.organizationMembers]).toBe(DEFAULT_PLAN_LIMIT);
   });
 
   /**

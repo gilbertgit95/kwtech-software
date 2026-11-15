@@ -5,6 +5,7 @@ import { FEATURE } from '../../feature-keys.js';
 import {
   createPermissionsClient,
   type FeatureView,
+  type LimitView,
   type PermissionsClient,
   type PlanView,
 } from '../permissions-client.js';
@@ -36,6 +37,7 @@ export function PlanNewPage({
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
   const [plans, setPlans] = useState<PlanView[] | null>(null);
   const [features, setFeatures] = useState<FeatureView[] | null>(null);
+  const [limits, setLimits] = useState<LimitView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,11 +48,13 @@ export function PlanNewPage({
      * API rather than this package's own registry — otherwise another module's
      * keys are invisible and a clone silently drops them.
      */
-    Promise.all([api.listPlans(), api.listFeatures()])
-      .then(([planList, featureList]) => {
+    // The caps too, from the API: this package's own list has no field for any module's (#139).
+    Promise.all([api.listPlans(), api.listFeatures(), api.listLimits()])
+      .then(([planList, featureList, limitList]) => {
         if (cancelled) return;
         setPlans(planList);
         setFeatures(featureList);
+        setLimits(limitList);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load existing plans.');
@@ -82,10 +86,17 @@ export function PlanNewPage({
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
-      ) : plans === null || features === null ? (
+      ) : plans === null || features === null || limits === null ? (
         <div className="h-64 animate-pulse rounded-md bg-muted" />
       ) : (
-        <PlanForm client={api} allPlans={plans} features={features} onSaved={onSaved} cancelHref={listHref} />
+        <PlanForm
+          client={api}
+          allPlans={plans}
+          features={features}
+          limits={limits}
+          onSaved={onSaved}
+          cancelHref={listHref}
+        />
       )}
     </AdminPage>
   );
