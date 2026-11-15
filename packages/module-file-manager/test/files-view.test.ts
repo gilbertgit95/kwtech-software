@@ -136,6 +136,11 @@ describe('the new layout’s rules (#142)', () => {
     // 3 PM on the 16th in London, read at 3 AM on the 17th: also yesterday.
     expect(uploadedLabel(at, 'Europe/London', next)).toMatch(/^Yesterday, /u);
     expect(uploadedLabel(at, 'Europe/London', new Date('2026-11-16T20:00:00.000Z'))).toMatch(/^Today, /u);
+    // ⚠ The boundary that tells the zones apart: at 17:00Z it is already the 17th in Manila (1 AM)
+    // but still the 16th in London (5 PM), so one upload is "Yesterday" in one and "Today" in the other.
+    const split = new Date('2026-11-16T17:00:00.000Z');
+    expect(uploadedLabel(at, 'Asia/Manila', split)).toMatch(/^Yesterday, /u);
+    expect(uploadedLabel(at, 'Europe/London', split)).toMatch(/^Today, /u);
   });
 
   it('words an empty list by what emptied it', () => {
