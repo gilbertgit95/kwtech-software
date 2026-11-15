@@ -3,6 +3,8 @@
  * half, the web half and the print agent hold the same rules.
  */
 
+import type { PrintJobFormat } from './domain/jobs.js';
+
 /**
  * What the spooler says about a printer.
  *
@@ -110,6 +112,8 @@ export type PrintJobFailure =
   | 'agent_did_not_fetch'
   | 'nothing_sent'
   | 'not_a_pdf'
+  /** A receipt job whose bytes do not start with the ESC/POS reset `encodeReceipt` always sends first. */
+  | 'not_a_receipt'
   | 'wrong_size'
   | 'interrupted'
   | 'printer_refused'
@@ -118,6 +122,12 @@ export type PrintJobFailure =
 /** A job as the computer is told of it. JSON-safe. */
 export interface PrintAgentJob {
   jobId: string;
+  /**
+   * `pdf`: a file to open and print (the print studio, documents). `escpos`:
+   * a receipt's bytes, sent to the printer AS THEY ARE (#144). Left out by a
+   * server older than receipts: a PDF.
+   */
+  format: PrintJobFormat;
   /** The queue's name on that computer. */
   printerName: string;
   /** Null: whatever the printer is set to. */

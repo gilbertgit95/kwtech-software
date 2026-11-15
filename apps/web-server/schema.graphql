@@ -1038,7 +1038,7 @@ type Mutation {
   startDirectChat(userId: String!): ChatConversation!
   startFileUpload(input: StartFileUploadInput!, organizationId: String!, workspaceId: String!): FileUploadTicket!
   startGroupChat(icon: String, title: String!, userIds: [String!]!): ChatConversation!
-  startPrintJob(copies: Int!, mediaType: String, organizationId: String!, paperName: String, printerId: String!, quality: String, size: Int!, workspaceId: String!): PrintJobStart!
+  startPrintJob(copies: Int!, format: String, mediaType: String, organizationId: String!, paperName: String, printerId: String!, quality: String, size: Int!, workspaceId: String!): PrintJobStart!
   startQueue(continueNumbering: Boolean, organizationId: String!, workspaceId: String!): QueueSession!
   startStockTake(categoryIds: [String!]!, note: String, organizationId: String!, workspaceId: String!): StockTake!
   stopQueue(organizationId: String!, workspaceId: String!): Boolean!
@@ -2291,6 +2291,7 @@ type PrintAgent {
 
 type PrintAgentJob {
   copies: Int!
+  format: String!
   jobId: String!
   mediaType: String
   paper: PrintPaper

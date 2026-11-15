@@ -17,6 +17,8 @@ export interface StartPrintJobInput {
   /** One of the printer's paper types and qualities, by id. Left out: as the printer is set. */
   mediaType?: unknown;
   quality?: unknown;
+  /** `pdf` (left out) or `escpos`, a receipt. */
+  format?: unknown;
 }
 
 /**

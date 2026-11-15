@@ -1,6 +1,7 @@
 import { PassThrough, Writable } from 'node:stream';
-import { PRINT_JOBS_PER_AGENT_MAX } from '../src/domain/jobs.js';
+import { PRINT_JOBS_PER_AGENT_MAX, PRINT_RECEIPT_MAX_BYTES } from '../src/domain/jobs.js';
 import { PRINT_AGENT_SECRET_PARAM } from '../src/domain/pairing.js';
+import { DEFAULT_RECEIPT_PROFILE, encodeReceipt } from '../src/domain/receipt.js';
 import { PrintAgentService } from '../src/server/print-agent.service.js';
 import { PrintJobService } from '../src/server/print-job.service.js';
 import { PrintRelayService } from '../src/server/print-relay.service.js';
@@ -56,7 +57,10 @@ async function harness() {
   if (!printer) throw new Error('the harness has no printer');
   const start = (size = PDF.length, actor = ANA) =>
     jobs.start(SCOPE, actor, { printerId: printer.id, paperName: 'A4', copies: 1, size });
-  return { prisma, relay, agents, jobs, admission, secret: paired.secret, printer, start };
+  /** A receipt job (#144): no paper, the bytes `encodeReceipt` makes. */
+  const startReceipt = (size: number) =>
+    jobs.start(SCOPE, ANA, { printerId: printer.id, paperName: null, copies: 1, size, format: 'escpos' });
+  return { prisma, relay, agents, jobs, admission, secret: paired.secret, printer, start, startReceipt };
 }
 
 const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +74,7 @@ describe('opening a job', () => {
     const told = (await watching.next()).value;
     expect(told).toEqual({
       jobId: opened.jobId,
+      format: 'pdf',
       printerName: 'EPSON L5290',
       paper: A4,
       copies: 1,
@@ -298,5 +303,70 @@ describe('how it went', () => {
     });
     await expect(h.agents.jobs(h.admission)).rejects.toMatchObject({ reason: 'agent_revoked' });
     expect(await h.agents.admitSecret(h.secret)).toBeNull();
+  });
+});
+
+describe('a receipt job (#144)', () => {
+  const RECEIPT = Buffer.from(
+    encodeReceipt(
+      [
+        { kind: 'text', text: 'Kwtech Cafe', align: 'center', bold: true },
+        { kind: 'pair', left: 'Iced coffee', right: 'PHP90.00' },
+        { kind: 'cut' },
+      ],
+      DEFAULT_RECEIPT_PROFILE,
+    ),
+  );
+
+  it('tells the computer it is a receipt, with no paper, and passes its bytes unchanged', async () => {
+    const h = await harness();
+    const watching = await h.agents.jobs(h.admission);
+    const opened = await h.startReceipt(RECEIPT.length);
+    expect((await watching.next()).value).toMatchObject({
+      format: 'escpos',
+      paper: null,
+      mediaType: null,
+      quality: null,
+    });
+    const out = sink();
+    const fetching = h.relay.fetch(opened.jobId, h.admission.agentId, out.stream, out.begin);
+    await h.relay.send(opened.jobId, opened.ticket, source(RECEIPT, 3));
+    expect(await fetching).toBe(true);
+    expect(out.bytes().equals(RECEIPT)).toBe(true);
+    await watching.return?.();
+  });
+
+  it('⚠ refuses bytes that are not a receipt before the computer is sent one', async () => {
+    const h = await harness();
+    const opened = await h.startReceipt(PDF.length);
+    const out = sink();
+    const fetching = h.relay.fetch(opened.jobId, h.admission.agentId, out.stream, out.begin);
+    const job = await h.relay.send(opened.jobId, opened.ticket, source(PDF));
+    expect(job).toMatchObject({ status: 'failed', failure: 'not_a_receipt' });
+    expect(await fetching).toBe(false);
+    expect(out.bytes()).toHaveLength(0);
+  });
+
+  it('refuses a receipt that names a paper, or is larger than a receipt can be', async () => {
+    const h = await harness();
+    const refusal = async (promise: Promise<unknown>) => {
+      try {
+        await promise;
+        return 'did not refuse';
+      } catch (error) {
+        return (error as { reason?: string }).reason;
+      }
+    };
+    expect(
+      await refusal(
+        h.jobs.start(SCOPE, ANA, { printerId: h.printer.id, paperName: 'A4', copies: 1, size: 10, format: 'escpos' }),
+      ),
+    ).toBe('invalid_job');
+    expect(await refusal(h.startReceipt(PRINT_RECEIPT_MAX_BYTES + 1))).toBe('job_too_large');
+    expect(
+      await refusal(
+        h.jobs.start(SCOPE, ANA, { printerId: h.printer.id, paperName: null, copies: 1, size: 10, format: 'zpl' }),
+      ),
+    ).toBe('invalid_job');
   });
 });

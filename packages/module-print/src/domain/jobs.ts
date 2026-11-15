@@ -65,7 +65,23 @@ export function printJobContentPath(jobId: string): string {
 }
 
 /** What a person asks for when they print. */
+/**
+ * What a job carries (#144). `pdf` is opened and printed by the computer's
+ * PDF printing; `escpos` is a receipt's bytes (`encodeReceipt`), sent to the
+ * printer unchanged — the fast way a thermal printer prints text.
+ */
+export const PRINT_JOB_FORMATS = ['pdf', 'escpos'] as const;
+export type PrintJobFormat = (typeof PRINT_JOB_FORMATS)[number];
+
+/**
+ * The largest receipt, in bytes. A long receipt is a few kilobytes; this
+ * leaves room for a logo later and refuses a PDF sent as a "receipt".
+ */
+export const PRINT_RECEIPT_MAX_BYTES = 256 * 1024;
+
 export interface PrintJobOptions {
+  /** `pdf` unless a receipt was asked for. */
+  format: PrintJobFormat;
   /** The paper to print on, by the name the printer reported. Null: whatever that printer is set to. */
   paper: PrintPaper | null;
   copies: number;
@@ -94,11 +110,21 @@ export interface PrintJobOptions {
  * setting stands.
  */
 export function prepareJobOptions(
-  input: { paperName: unknown; copies: unknown; size: unknown; mediaType?: unknown; quality?: unknown },
+  input: {
+    paperName: unknown;
+    copies: unknown;
+    size: unknown;
+    mediaType?: unknown;
+    quality?: unknown;
+    format?: unknown;
+  },
   papers: readonly PrintPaper[],
   settings: Pick<PrintPrinterSettings, 'mediaTypes' | 'qualities'> = { mediaTypes: [], qualities: [] },
 ): PrintJobOptions | { refused: PrintRefusal } {
   const { paperName, copies, size } = input;
+  const format = input.format ?? 'pdf';
+  if (!(PRINT_JOB_FORMATS as readonly unknown[]).includes(format)) return { refused: 'invalid_job' };
+  if (format === 'escpos') return prepareReceiptJob(input);
   const mediaType = chosenOption(input.mediaType, settings.mediaTypes);
   const quality = chosenOption(input.quality, settings.qualities);
   if (mediaType === undefined || quality === undefined) return { refused: 'invalid_job' };
@@ -107,10 +133,32 @@ export function prepareJobOptions(
   }
   if (typeof size !== 'number' || !Number.isInteger(size) || size < 1) return { refused: 'invalid_job' };
   if (size > PRINT_JOB_MAX_BYTES) return { refused: 'job_too_large' };
-  if (paperName == null) return { paper: null, copies, size, mediaType, quality };
+  if (paperName == null) return { format: 'pdf', paper: null, copies, size, mediaType, quality };
   if (typeof paperName !== 'string') return { refused: 'invalid_job' };
   const paper = papers.find((one) => one.name === paperName);
-  return paper ? { paper, copies, size, mediaType, quality } : { refused: 'invalid_job' };
+  return paper ? { format: 'pdf', paper, copies, size, mediaType, quality } : { refused: 'invalid_job' };
+}
+
+/**
+ * A receipt's options: copies and its size, and nothing else. A receipt
+ * printer is told no paper, paper type or quality — the roll is the paper —
+ * so a receipt that names one is a mistake in the sender, refused.
+ */
+function prepareReceiptJob(input: {
+  paperName: unknown;
+  copies: unknown;
+  size: unknown;
+  mediaType?: unknown;
+  quality?: unknown;
+}): PrintJobOptions | { refused: PrintRefusal } {
+  const { copies, size } = input;
+  if (input.paperName != null || input.mediaType != null || input.quality != null) return { refused: 'invalid_job' };
+  if (typeof copies !== 'number' || !Number.isInteger(copies) || copies < 1 || copies > PRINT_JOB_COPIES_MAX) {
+    return { refused: 'invalid_job' };
+  }
+  if (typeof size !== 'number' || !Number.isInteger(size) || size < 1) return { refused: 'invalid_job' };
+  if (size > PRINT_RECEIPT_MAX_BYTES) return { refused: 'job_too_large' };
+  return { format: 'escpos', paper: null, copies, size, mediaType: null, quality: null };
 }
 
 /** `%PDF-`: what every PDF starts with. */
@@ -127,6 +175,27 @@ const PDF_START = [0x25, 0x50, 0x44, 0x46, 0x2d];
 export function startsLikePdf(bytes: Uint8Array): boolean {
   return bytes.length >= PDF_START.length && PDF_START.every((byte, index) => bytes[index] === byte);
 }
+
+/** `ESC @`: the reset `encodeReceipt` sends first, always. */
+const RECEIPT_START = [0x1b, 0x40];
+
+/**
+ * Whether a receipt job's first bytes are a receipt's: the same "checked
+ * before anything is passed on" as `startsLikePdf`, for bytes the computer
+ * sends to a printer unread. A file that is plainly something else (a PDF, a
+ * page of text) is refused rather than printed as garbage on a roll.
+ */
+export function startsLikeReceipt(bytes: Uint8Array): boolean {
+  return bytes.length >= RECEIPT_START.length && RECEIPT_START.every((byte, index) => bytes[index] === byte);
+}
+
+/** How many first bytes decide a format, and whether they do. */
+export const FORMAT_START: Readonly<
+  Record<PrintJobFormat, { bytes: number; matches: (bytes: Uint8Array) => boolean; refusal: PrintJobFailure }>
+> = {
+  pdf: { bytes: PDF_START.length, matches: startsLikePdf, refusal: 'not_a_pdf' },
+  escpos: { bytes: RECEIPT_START.length, matches: startsLikeReceipt, refusal: 'not_a_receipt' },
+};
 
 /** A job that will not change again. */
 export function isJobEnded(status: PrintJobStatus): boolean {
@@ -151,6 +220,8 @@ export function jobFailureText(failure: PrintJobFailure): string {
       return 'The file never arrived from this browser.';
     case 'not_a_pdf':
       return 'That file is not a PDF.';
+    case 'not_a_receipt':
+      return 'That was not a receipt this app made.';
     case 'wrong_size':
       return 'The file changed size on the way. Try again.';
     case 'interrupted':

@@ -17,6 +17,7 @@ const text = (bytes: Uint8Array) => Buffer.from(bytes).toString('latin1');
 describe('a request to print', () => {
   it('names one of the printer’s own papers, or none', () => {
     expect(prepareJobOptions({ paperName: 'A4', copies: 2, size: 1000 }, [A4, PHOTO])).toEqual({
+      format: 'pdf',
       paper: A4,
       copies: 2,
       size: 1000,
@@ -24,6 +25,7 @@ describe('a request to print', () => {
       quality: null,
     });
     expect(prepareJobOptions({ paperName: null, copies: 1, size: 1 }, [A4])).toEqual({
+      format: 'pdf',
       paper: null,
       copies: 1,
       size: 1,
