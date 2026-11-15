@@ -84,6 +84,10 @@ describe('the new layout’s rules (#142)', () => {
     expect(fileKindOf('application/octet-stream', 'backup.tar.gz')).toBe('archive');
     expect(fileKindOf('', '.env')).toBe('other');
     expect(fileKindOf('', 'README')).toBe('other');
+    // ⚠ Not Object's own keys: these once returned a function and crashed the icon.
+    expect(fileKindOf('', 'report.constructor')).toBe('other');
+    expect(fileKindOf('', 'a.__proto__')).toBe('other');
+    expect(fileKindOf('', 'x.toString')).toBe('other');
   });
 
   const files = [

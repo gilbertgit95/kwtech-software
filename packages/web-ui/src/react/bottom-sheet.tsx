@@ -12,6 +12,12 @@ export interface BottomSheetProps {
   children: ReactNode;
   /** Kept in view below the scrolling body: the sheet's own buttons (Clear, Done). */
   footer?: ReactNode;
+  /**
+   * False while the sheet must stay open (an upload still sending, a save in
+   * flight): no swipe, no Esc, no backdrop tap, and the close button is
+   * disabled. The sheet's own buttons say what to wait for. Default true.
+   */
+  dismissible?: boolean;
 }
 
 /**
@@ -29,7 +35,7 @@ export interface BottomSheetProps {
  * frame and every module's phone screens (notes, tasks, the inbox's filters),
  * so every sheet on a phone looks and behaves the same.
  */
-export function BottomSheet({ open, onClose, title, children, footer }: BottomSheetProps) {
+export function BottomSheet({ open, onClose, title, children, footer, dismissible = true }: BottomSheetProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const drag = useRef<{ startY: number; distance: number } | null>(null);
 
@@ -59,6 +65,8 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
     onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
       // The close button is in this strip; a press there is a press, not the start of a drag.
       if ((event.target as HTMLElement).closest('button')) return;
+      // Held open: a drag would move a sheet that cannot close, and leave it where the finger let go.
+      if (!dismissible) return;
       drag.current = { startY: event.clientY, distance: 0 };
       event.currentTarget.setPointerCapture(event.pointerId);
       /*
@@ -102,9 +110,13 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
       aria-label={title}
       // Esc and the browser's own close both arrive here; the parent's state follows.
       onClose={onClose}
+      // ⚠ Esc closes a native dialog BEFORE `close` fires, so holding it open means cancelling `cancel`.
+      onCancel={(event) => {
+        if (!dismissible) event.preventDefault();
+      }}
       // A tap on the backdrop lands on the dialog element itself, never on its content.
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && dismissible) onClose();
       }}
       className={cn(
         'fixed inset-x-0 top-auto bottom-0 m-0 max-h-[88dvh] w-full max-w-none rounded-t-3xl border-t border-border/60 bg-card p-0 text-card-foreground shadow-xl',
@@ -135,8 +147,9 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
             <button
               type="button"
               onClick={onClose}
+              disabled={!dismissible}
               aria-label="Close"
-              className="grid size-9 place-items-center rounded-full bg-muted text-muted-foreground transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-9 disabled:opacity-40 place-items-center rounded-full bg-muted text-muted-foreground transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X aria-hidden className="size-4" />
             </button>

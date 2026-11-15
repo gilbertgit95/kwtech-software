@@ -43,19 +43,16 @@ export function FileToolbar({
           className="min-h-11 w-full rounded-2xl border border-border/70 bg-card pr-3 pl-10 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl:min-h-10 @2xl:text-sm"
         />
       </div>
-      <div
-        role="tablist"
-        aria-label="Show"
-        className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] @2xl:mx-0 @2xl:px-0"
-      >
+      {/* Filters, not tabs: toggle buttons in a group, each a plain tab stop (no arrow-key widget to honour). */}
+      <fieldset className="-mx-4 flex min-w-0 gap-2 overflow-x-auto px-4 [scrollbar-width:none] @2xl:mx-0 @2xl:px-0">
+        <legend className="sr-only">Show</legend>
         {FILE_FILTERS.map((choice) => {
           const selected = choice.value === filter;
           return (
             <button
               key={choice.value}
               type="button"
-              role="tab"
-              aria-selected={selected}
+              aria-pressed={selected}
               onClick={() => onFilter(choice.value)}
               className={cn(
                 'inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -76,7 +73,7 @@ export function FileToolbar({
             </button>
           );
         })}
-      </div>
+      </fieldset>
     </div>
   );
 }

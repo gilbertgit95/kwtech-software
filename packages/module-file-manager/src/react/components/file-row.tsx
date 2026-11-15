@@ -21,11 +21,11 @@ import { useShareDraft } from './share-draft.js';
 import { SharingFields } from './sharing-fields.js';
 
 /**
- * The columns of the list in a WIDE box (`@3xl`): name, sharing, size, when
+ * The columns of the list in a WIDE box (`@5xl`, 64rem): name, sharing, size, when
  * it goes, actions. Shared with the header row in `FileApp`, so the two
  * cannot drift apart.
  */
-export const FILE_ROW_COLUMNS = '@3xl:grid @3xl:grid-cols-[minmax(0,1fr)_13rem_5.5rem_13rem_9.5rem] @3xl:items-center';
+export const FILE_ROW_COLUMNS = '@5xl:grid @5xl:grid-cols-[minmax(0,1fr)_12rem_5rem_12rem_9.5rem] @5xl:items-center';
 
 /** The sharing as a small badge: an icon and a word, never colour alone. */
 export function SharingBadge({ file }: { file: FileEntryView }) {
@@ -107,19 +107,19 @@ export function FileRow({
             <p className="truncate text-xs text-muted-foreground">
               {ownerLabel(file)} · {uploadedLabel(file.createdAt, timeZone, now)}
               {/* Narrow box only: the wide one has columns for these. */}
-              <span className="@3xl:hidden"> · {formatFileSize(file.sizeBytes)}</span>
+              <span className="@5xl:hidden"> · {formatFileSize(file.sizeBytes)}</span>
             </p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 @3xl:hidden">
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 @5xl:hidden">
               <SharingBadge file={file} />
               <DeletionNote deletion={deletion} />
             </div>
           </div>
         </div>
-        <div className="hidden min-w-0 @3xl:block">
+        <div className="hidden min-w-0 @5xl:block">
           <SharingBadge file={file} />
         </div>
-        <p className="hidden text-sm tabular-nums text-muted-foreground @3xl:block">{formatFileSize(file.sizeBytes)}</p>
-        <div className="hidden min-w-0 @3xl:block">
+        <p className="hidden text-sm tabular-nums text-muted-foreground @5xl:block">{formatFileSize(file.sizeBytes)}</p>
+        <div className="hidden min-w-0 @5xl:block">
           <DeletionNote deletion={deletion} />
         </div>
         <div className="flex shrink-0 items-center justify-end gap-1">
@@ -184,16 +184,16 @@ function ShareEditor({
         </p>
       ) : null}
       <div className="flex justify-end gap-2">
-        <button type="button" className={buttonClass('ghost')} onClick={onDone}>
+        <button type="button" className={buttonClass('ghost')} onClick={onDone} disabled={draft.saving}>
           Cancel
         </button>
         <button
           type="button"
           className={buttonClass('primary')}
           onClick={() => void draft.save()}
-          disabled={state.busy}
+          disabled={draft.saving || state.busy}
         >
-          {state.busy ? 'Saving…' : 'Save sharing'}
+          {draft.saving ? 'Saving…' : 'Save sharing'}
         </button>
       </div>
     </div>

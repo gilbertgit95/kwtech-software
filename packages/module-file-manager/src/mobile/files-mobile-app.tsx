@@ -160,7 +160,10 @@ export function FilesMobileApp({ organizationId, workspaceId, client }: FilesMob
         <BottomSheet open={sheet === 'settings'} onClose={() => setSheet(null)} title="File settings">
           <div className="flex flex-col gap-3">
             <ErrorBanner state={state} />
-            <SettingsPanel state={state} settings={settings} onDone={() => setSheet(null)} bare />
+            {/* Mounted only while open: each opening starts from the settings as they are now. */}
+            {sheet === 'settings' ? (
+              <SettingsPanel state={state} settings={settings} onDone={() => setSheet(null)} bare />
+            ) : null}
           </div>
         </BottomSheet>
       ) : null}
@@ -331,10 +334,9 @@ function UploadSheet({
   return (
     <BottomSheet
       open={open}
-      onClose={() => {
-        // A sheet is not swiped away mid-upload: the bytes are still leaving.
-        if (!draft.uploading) onClose();
-      }}
+      onClose={onClose}
+      // Held open mid-upload: the bytes are still leaving, and the progress is here.
+      dismissible={!draft.uploading}
       title="Upload a file"
       footer={
         <div className="flex gap-2">
@@ -373,19 +375,25 @@ function ShareSheet({ file, state, onClose }: { file: FileEntryView; state: File
     <BottomSheet
       open
       onClose={onClose}
+      dismissible={!draft.saving}
       title={`Share “${file.name}”`}
       footer={
         <div className="flex gap-2">
-          <button type="button" className={buttonClass('secondary', 'min-h-12 flex-1 rounded-xl')} onClick={onClose}>
+          <button
+            type="button"
+            className={buttonClass('secondary', 'min-h-12 flex-1 rounded-xl')}
+            onClick={onClose}
+            disabled={draft.saving}
+          >
             Cancel
           </button>
           <button
             type="button"
             className={buttonClass('primary', 'min-h-12 flex-1 rounded-xl')}
             onClick={() => void draft.save()}
-            disabled={state.busy}
+            disabled={draft.saving || state.busy}
           >
-            {state.busy ? 'Saving…' : 'Save'}
+            {draft.saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       }

@@ -158,7 +158,8 @@ export function fileKindOf(contentType: string, name: string): FileKind {
   if (type === 'application/pdf') return 'pdf';
   const dot = name.lastIndexOf('.');
   const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
-  return EXTENSION_KINDS[extension] ?? 'other';
+  // ⚠ Own keys only: `report.constructor` must not find Object's `constructor` (and crash the icon).
+  return Object.hasOwn(EXTENSION_KINDS, extension) ? (EXTENSION_KINDS[extension] ?? 'other') : 'other';
 }
 
 /** The three ways to narrow the list. */
