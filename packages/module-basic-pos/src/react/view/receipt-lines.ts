@@ -109,10 +109,14 @@ export function receiptMoney(centavos: number): string {
   return formatPeso(centavos).replace('₱', 'PHP ');
 }
 
-/** Where a receipt will print, under the button: "on Counter 2 · Online", or what is wrong. */
+/**
+ * Where a receipt will print, under the button: "on Counter 2 · Online".
+ * Only an online printer is ever picked (`module-print`'s rule): one offline
+ * makes it ask, and the line says why instead.
+ */
 export function receiptTargetText(printer: ReceiptPrinterChoice | null): string {
   if (!printer) return 'Choose a receipt printer.';
-  return printer.blocked === null ? `on ${printer.name} · Online` : `on ${printer.name} · Offline`;
+  return `on ${printer.name} · Online`;
 }
 
 /**

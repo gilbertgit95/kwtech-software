@@ -201,8 +201,18 @@ export interface PrintTargetOptions {
   deviceChoice?: DeviceReceiptChoice;
 }
 
-/** The sentence for a receipt that cannot be printed at all: too long, or nothing on it. */
-const RECEIPT_REFUSED = 'This receipt is too long to print, or has nothing on it.';
+/** Why a receipt cannot be printed at all, as a sentence: each reason its own. */
+function receiptRefusalText(lines: readonly ReceiptLine[]): string | null {
+  const refusal = checkReceipt(lines);
+  switch (refusal) {
+    case null:
+      return null;
+    case 'receipt_empty':
+      return 'This receipt has nothing on it to print.';
+    case 'receipt_too_long':
+      return 'This receipt is too long to print on a roll. Print it on a page instead.';
+  }
+}
 
 export function createPrintTarget(options: PrintTargetOptions = {}): PrintTarget {
   let made: PrintClient | null = options.client ?? null;
@@ -339,7 +349,8 @@ export function createPrintTarget(options: PrintTargetOptions = {}): PrintTarget
 
     async printReceipt(scope, job, onStatus = () => {}) {
       try {
-        if (checkReceipt(job.lines)) return { sent: false, message: RECEIPT_REFUSED };
+        const refused = receiptRefusalText(job.lines);
+        if (refused) return { sent: false, message: refused };
         const found = await find(scope, job.printerId);
         if (typeof found === 'string') return { sent: false, message: found };
         const { receipt } = found.printer;
@@ -364,7 +375,8 @@ export function createPrintTarget(options: PrintTargetOptions = {}): PrintTarget
 
     async printReceiptAsPage(scope, job, onStatus = () => {}) {
       try {
-        if (checkReceipt(job.lines)) return { sent: false, message: RECEIPT_REFUSED };
+        const refused = receiptRefusalText(job.lines);
+        if (refused) return { sent: false, message: refused };
         const found = await find(scope, job.printerId);
         if (typeof found === 'string') return { sent: false, message: found };
         const { printer } = found;

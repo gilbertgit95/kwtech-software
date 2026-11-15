@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ReceiptPrinterChoice } from '@kwtech/module-kit';
 import type { PosOrderLineView, PosOrderView } from '../src/react/pos-client.js';
 import {
@@ -160,7 +162,6 @@ describe('where a receipt prints, as the cashier reads it', () => {
 
   it('says the printer and whether it is online, under the button', () => {
     expect(receiptTargetText(PRINTER)).toBe('on Counter 2 · Online');
-    expect(receiptTargetText({ ...PRINTER, blocked: 'offline' })).toBe('on Counter 2 · Offline');
     expect(receiptTargetText(null)).toBe('Choose a receipt printer.');
   });
 
@@ -177,5 +178,26 @@ describe('where a receipt prints, as the cashier reads it', () => {
   it('finds the picked printer, or none when it asks', () => {
     expect(pickedReceiptPrinter([PRINTER], { kind: 'printer', printerId: 'p1', because: 'default' })).toBe(PRINTER);
     expect(pickedReceiptPrinter([PRINTER], { kind: 'ask', reason: 'Choose' })).toBeNull();
+  });
+});
+
+describe('who prints by itself, and how many originals (#144, R5)', () => {
+  const read = (path: string) => readFileSync(join(__dirname, '..', path), 'utf8');
+  const hook = read('src/react/components/receipt-print.tsx');
+
+  it('⚠ prints after payment only from the screen that took it, never from one that heard of it', () => {
+    // No effect watching the order: a second till seeing it paid would print a second original and open its drawer.
+    expect(hook).not.toMatch(/autoAfterPayment/u);
+    expect(read('src/react/components/till.tsx')).toMatch(
+      /onPaid=\{\(paid\) => \{[^}]*receipt\.printAfterPayment\(paid\)/su,
+    );
+    expect(read('src/react/components/phone-cashier.tsx')).toMatch(
+      /const settled = \(done: PosOrderView\) => \{[^}]*receipt\.printAfterPayment\(done\)/su,
+    );
+  });
+
+  it('⚠ prints one original: once one went to a printer, later prints of that order are copies', () => {
+    expect(hook).toMatch(/if \(outcome\?\.sent\) originals\.current\.add\(current\.id\)/u);
+    expect(hook).toMatch(/reprint \|\| originals\.current\.has\(current\.id\)/u);
   });
 });

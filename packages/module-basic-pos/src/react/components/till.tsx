@@ -147,13 +147,9 @@ export function Till({
   const { catalogue, order, client, scope } = state;
   const open = order?.status === 'open' ? order : null;
   const finished = order && order.status !== 'open' ? order : null;
-  /**
-   * The receipt (#144, R5), read from the WHOLE order and not only the
-   * finished one: "Always print after payment" prints when this till sees an
-   * order go from open to paid, never on one already paid when it appeared.
-   */
+  /** The receipt (#144, R5): the button, the print shortcut, and "Always print after payment". */
   const [autoReceipt, setAutoReceipt] = useAutoReceipt(scope.workspaceId);
-  const receipt = useReceiptPrint(order, { scope, timeZone: state.timeZone, autoAfterPayment: autoReceipt });
+  const receipt = useReceiptPrint(order, { scope, timeZone: state.timeZone });
 
   // Opening this view (Cashier or Classic) reads the ranking again: the till's state outlives it (issue #47).
   const { reloadRanks } = state;
@@ -606,7 +602,11 @@ export function Till({
           order={open}
           state={state}
           keymap={state.keymap}
-          onPaid={() => close()}
+          onPaid={(paid) => {
+            close();
+            // Only the till that TOOK the payment prints by itself: another till hearing of it never does.
+            if (autoReceipt) receipt.printAfterPayment(paid);
+          }}
           onClose={close}
         />
         <PendingDialog

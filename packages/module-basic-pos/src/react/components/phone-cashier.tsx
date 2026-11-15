@@ -73,7 +73,7 @@ export function PhoneCashier({ state }: { state: TillState }) {
   const order = state.order;
   // The receipt (#144, R5): this device's "Always print after payment" as on the full screen.
   const [autoReceipt] = useAutoReceipt(scope.workspaceId);
-  const receipt = useReceiptPrint(order, { scope, timeZone: state.timeZone, autoAfterPayment: autoReceipt });
+  const receipt = useReceiptPrint(order, { scope, timeZone: state.timeZone });
   const open = order?.status === 'open' ? order : null;
   const lines = open?.lines ?? [];
   const summary = waitingSummary(state.pending, now);
@@ -110,6 +110,8 @@ export function PhoneCashier({ state }: { state: TillState }) {
   const settled = (done: PosOrderView) => {
     setSettledHereId(done.id);
     setSheet('order');
+    // This phone took the payment: only it prints by itself, never another till that heard of it.
+    if (autoReceipt) receipt.printAfterPayment(done);
   };
 
   return (

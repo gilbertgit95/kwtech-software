@@ -41,6 +41,8 @@ import { printHtml } from './print-frame.js';
 export interface ReceiptPrintState {
   order: PosOrderView | null;
   reprint: boolean;
+  /** The printers are being read for the first time: the button waits. */
+  loading: boolean;
   /** False: nothing is bound or no printer is paired; the button is the browser's print. */
   usesPrinters: boolean;
   receiptPrinters: readonly ReceiptPrinterChoice[];
@@ -56,6 +58,8 @@ export interface ReceiptPrintState {
   setMenuOpen: (open: boolean) => void;
   /** The one tap: on the picked printer, or open the menu to ask. */
   printNow: () => void;
+  /** "Always print after payment", called with the order THIS screen just paid. */
+  printAfterPayment: (paid: PosOrderView) => void;
   printOn: (printerId: string) => void;
   printAsPage: (printerId: string) => void;
   printInBrowser: () => void;
@@ -65,14 +69,14 @@ export interface ReceiptPrintState {
 /**
  * The receipt printing for one order, or none (`null`: nothing to print yet).
  *
- * `autoAfterPayment`: print once, by itself, when THIS screen sees the order
- * go from open to paid (the device's "Always print after payment"). Never on
- * an order that was already paid when it appeared: a reload must not print a
- * second receipt.
+ * ⚠ ONE ORIGINAL. Once a receipt for this order has gone to a printer from
+ * this screen, every later print of it is a copy: marked REPRINT with its
+ * time, and it never opens the drawer. A second tap must not hand out a
+ * second original, nor the till.
  */
 export function useReceiptPrint(
   order: PosOrderView | null,
-  options: { scope: PosScopeView; timeZone: string; reprint?: boolean; autoAfterPayment?: boolean },
+  options: { scope: PosScopeView; timeZone: string; reprint?: boolean },
 ): ReceiptPrintState {
   const { scope, timeZone } = options;
   const reprint = options.reprint ?? false;
@@ -83,106 +87,151 @@ export function useReceiptPrint(
   const [said, setSaid] = useState<ReceiptPrintState['said']>(null);
   const [menuOpen, setMenuOpenState] = useState(false);
   const inFlight = useRef(false);
+  /** Orders whose original receipt this screen has printed. */
+  const originals = useRef(new Set<string>());
 
   const receiptPrinters = receipts.printing?.printers ?? [];
   const pick = receipts.printing?.pick ?? null;
   const target = pick ? pickedReceiptPrinter(receiptPrinters, pick) : null;
+  /** Bound but not read yet: neither the browser's print nor a printer, until it is known which. */
+  const loading = receipts.bound && receipts.printing === null;
   const usesPrinters = receipts.bound && (receiptPrinters.length > 0 || documents.printers.length > 0);
 
-  // A different order, a fresh line under the button.
+  // Another order, a fresh line under the button. ⚠ Not on null: a reprint's order is null while it reads again.
+  const lastOrderId = useRef<string | null>(null);
   const orderId = order?.id ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset per ORDER, not when it is re-read.
-  useEffect(() => setSaid(null), [orderId]);
+  useEffect(() => {
+    if (orderId === null || orderId === lastOrderId.current) return;
+    lastOrderId.current = orderId;
+    setSaid(null);
+  }, [orderId]);
 
+  const isCopy = useCallback((current: PosOrderView) => reprint || originals.current.has(current.id), [reprint]);
   const lines = useCallback(
-    (current: PosOrderView) => receiptLines(current, { timeZone, storeName, reprintedAt: reprint ? new Date() : null }),
-    [timeZone, storeName, reprint],
+    (current: PosOrderView) =>
+      receiptLines(current, { timeZone, storeName, reprintedAt: isCopy(current) ? new Date() : null }),
+    [timeZone, storeName, isCopy],
   );
 
+  /** The receipt on its way now, if any: what an automatic print waits for rather than being dropped. */
+  const active = useRef<Promise<void>>(Promise.resolve());
   const run = useCallback(
     /** `send` hands back null when it asked instead of printing: the line under the button then says why. */
-    async (send: (current: PosOrderView) => Promise<PrinterOutcome | null>) => {
-      if (!order || inFlight.current) return;
+    (send: (current: PosOrderView) => Promise<PrinterOutcome | null>, current: PosOrderView | null = order) => {
+      if (!current || inFlight.current) return active.current;
       inFlight.current = true;
       setBusy(true);
       setSaid({ text: 'Reaching the printer…', ok: null });
-      try {
-        const outcome = await send(order);
-        setSaid(outcome ? { text: outcome.message, ok: outcome.sent } : null);
-      } finally {
-        inFlight.current = false;
-        setBusy(false);
-      }
+      const going = (async () => {
+        try {
+          const outcome = await send(current);
+          if (outcome?.sent) originals.current.add(current.id);
+          setSaid(outcome ? { text: outcome.message, ok: outcome.sent } : null);
+        } catch (caught) {
+          setSaid({ text: caught instanceof Error ? caught.message : 'Could not print the receipt.', ok: false });
+        } finally {
+          inFlight.current = false;
+          setBusy(false);
+        }
+      })();
+      active.current = going;
+      return going;
     },
     [order],
   );
 
+  const onStep = useCallback((text: string) => setSaid({ text, ok: null }), []);
   const printOn = useCallback(
     (printerId: string) => {
       // Chosen in the menu: this device's printer from now on, so the next tap needs no menu.
       receipts.choose(printerId);
-      void run((current) => receipts.print(printerId, lines(current), (text) => setSaid({ text, ok: null })));
+      void run((current) => receipts.print(printerId, lines(current), onStep));
     },
-    [receipts, run, lines],
+    [receipts, run, lines, onStep],
   );
   const printAsPage = useCallback(
-    (printerId: string) =>
-      void run((current) => receipts.printAsPage(printerId, lines(current), (text) => setSaid({ text, ok: null }))),
-    [receipts, run, lines],
+    (printerId: string) => void run((current) => receipts.printAsPage(printerId, lines(current), onStep)),
+    [receipts, run, lines, onStep],
   );
   const printInBrowser = useCallback(() => {
     if (!order) return;
-    printHtml(receiptHtml(order, { timeZone, storeName, reprintedAt: reprint ? new Date() : null }));
-  }, [order, timeZone, storeName, reprint]);
+    printHtml(receiptHtml(order, { timeZone, storeName, reprintedAt: isCopy(order) ? new Date() : null }));
+  }, [order, timeZone, storeName, isCopy]);
 
+  const { refresh: refreshReceipts } = receipts;
+  const { refresh: refreshDocuments } = documents;
   const setMenuOpen = useCallback(
     (open: boolean) => {
       // Opened: read again, so a computer switched on since shows without leaving the page.
       if (open) {
-        receipts.refresh();
-        documents.refresh();
+        refreshReceipts();
+        refreshDocuments();
       }
       setMenuOpenState(open);
     },
-    [receipts, documents],
+    [refreshReceipts, refreshDocuments],
   );
 
   /**
+   * Where this receipt goes now, on a fresh read, or why it cannot go there.
+   *
    * ⚠ DECIDED ON A FRESH READ, not on the list on screen: read minutes ago,
    * it would send the receipt to a computer switched off since (found by the
-   * browser test, #144 R5). The read is one small query; a receipt is worth it.
+   * browser test, #144 R5).
    */
+  const decide = useCallback(async (): Promise<{ printerId: string } | { reason: string }> => {
+    const fresh = await receipts.read();
+    const chosen = fresh ? pickedReceiptPrinter(fresh.printers, fresh.pick) : null;
+    if (chosen) return { printerId: chosen.id };
+    return { reason: fresh?.pick.kind === 'ask' ? fresh.pick.reason : 'Choose a receipt printer.' };
+  }, [receipts]);
+
   const printNow = useCallback(() => {
-    if (!order || inFlight.current) return;
+    if (!order || inFlight.current || loading) return;
     if (!usesPrinters) {
       printInBrowser();
       return;
     }
     void run(async (current) => {
-      const fresh = await receipts.read();
-      const chosen = fresh ? pickedReceiptPrinter(fresh.printers, fresh.pick) : null;
-      if (!chosen) {
-        setMenuOpen(true);
+      const where = await decide();
+      if ('reason' in where) {
+        // The read just happened: open the menu on it, without reading again.
+        setMenuOpenState(true);
         return null;
       }
-      return receipts.print(chosen.id, lines(current), (text) => setSaid({ text, ok: null }));
+      return receipts.print(where.printerId, lines(current), onStep);
     });
-  }, [order, usesPrinters, printInBrowser, setMenuOpen, run, receipts, lines]);
+  }, [order, loading, usesPrinters, printInBrowser, run, decide, receipts, lines, onStep]);
 
-  // "Always print after payment": once, when this screen saw the order paid.
-  const seen = useRef<{ id: string; status: string } | null>(null);
-  useEffect(() => {
-    const before = seen.current;
-    seen.current = order ? { id: order.id, status: order.status } : null;
-    if (!options.autoAfterPayment || !order || reprint || order.status !== 'paid') return;
-    if (before?.id !== order.id || before.status === 'paid') return;
-    // Only to the printer it would pick: never a menu nobody asked for, never a page.
-    if (target && target.blocked === null) printNow();
-  }, [order, options.autoAfterPayment, reprint, target, printNow]);
+  /**
+   * "Always print after payment": called by the screen that TOOK the payment,
+   * with the order it paid, never by a screen that only heard about it (a
+   * second till would print a second original, and open its drawer).
+   * ⚠ Never opens a menu nobody asked for: when it cannot print, it says so.
+   */
+  const printAfterPayment = useCallback(
+    (paid: PosOrderView) => {
+      if (paid.status !== 'paid' || !receipts.bound) return;
+      // ⚠ Queued behind a receipt still on its way (a quick next sale), never dropped: a tap may be refused while busy, this may not.
+      const print = () =>
+        run(async (current) => {
+          const where = await decide();
+          if ('reason' in where) return { sent: false, message: `Not printed by itself. ${where.reason}` };
+          return receipts.print(where.printerId, lines(current), onStep);
+        }, paid);
+      void (async () => {
+        // Waits for EVERY receipt ahead of it, a tap that started meanwhile included.
+        while (inFlight.current) await active.current;
+        await print();
+      })();
+    },
+    [receipts, run, decide, lines, onStep],
+  );
 
   return {
     order,
     reprint,
+    loading,
     usesPrinters,
     receiptPrinters,
     documentPrinters: documents.printers,
@@ -193,6 +242,7 @@ export function useReceiptPrint(
     menuOpen,
     setMenuOpen,
     printNow,
+    printAfterPayment,
     printOn,
     printAsPage,
     printInBrowser,
@@ -228,7 +278,7 @@ export function ReceiptPrintButton({
       <button
         type="button"
         className={cn(buttonClass('secondary'), height, className)}
-        disabled={!state.order}
+        disabled={!state.order || state.loading}
         onClick={state.printInBrowser}
       >
         <Printer aria-hidden="true" className="size-4" />

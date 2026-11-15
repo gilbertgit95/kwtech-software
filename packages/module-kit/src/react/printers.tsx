@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   PrinterChoice,
   PrinterJob,
@@ -98,7 +98,8 @@ export function usePrinters(scope: PrinterScope): PrintersState {
     },
     [port, scope, refresh],
   );
-  return { printers, refresh, print };
+  // One object while nothing changes: a screen's callbacks and effects that depend on it stay put.
+  return useMemo(() => ({ printers, refresh, print }), [printers, refresh, print]);
 }
 
 /** What `useReceiptPrinters` hands a screen. */
@@ -142,22 +143,30 @@ export function useReceiptPrinters(scope: PrinterScope): ReceiptPrintersState {
   const port = usePrinter();
   const [printing, setPrinting] = useState<ReceiptPrinting | null>(null);
   const [reads, setReads] = useState(0);
+  /**
+   * ⚠ THE NEWEST READ WINS. A tap's `read()` and a refresh can be on the way
+   * at once; the one STARTED last is kept, whichever answers last, so an
+   * older answer never puts back a printer list that is no longer true.
+   */
+  const latest = useRef(0);
+  const unreadable: ReceiptPrinting = {
+    printers: [],
+    pick: { kind: 'ask', reason: 'The receipt printers could not be read.' },
+  };
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: `reads` is the "read again" signal, not a value used.
   useEffect(() => {
     if (!port) {
       setPrinting(null);
       return;
     }
+    latest.current += 1;
+    const mine = latest.current;
     let current = true;
-    port.receipts(scope).then(
-      (found) => {
-        if (current) setPrinting(found);
-      },
-      () => {
-        if (current)
-          setPrinting({ printers: [], pick: { kind: 'ask', reason: 'The receipt printers could not be read.' } });
-      },
-    );
+    const keep = (found: ReceiptPrinting) => {
+      if (current && mine === latest.current) setPrinting(found);
+    };
+    port.receipts(scope).then(keep, () => keep(unreadable));
     return () => {
       current = false;
     };
@@ -166,13 +175,16 @@ export function useReceiptPrinters(scope: PrinterScope): ReceiptPrintersState {
   const refresh = useCallback(() => setReads((count) => count + 1), []);
   const read = useCallback(async (): Promise<ReceiptPrinting | null> => {
     if (!port) return null;
+    latest.current += 1;
+    const mine = latest.current;
     let found: ReceiptPrinting;
     try {
       found = await port.receipts(scope);
     } catch {
       found = { printers: [], pick: { kind: 'ask', reason: 'The receipt printers could not be read.' } };
     }
-    setPrinting(found);
+    // Handed back either way: the tap decides on what IT read. Shown only if nothing newer started since.
+    if (mine === latest.current) setPrinting(found);
     return found;
   }, [port, scope]);
   const choose = useCallback(
@@ -210,5 +222,9 @@ export function useReceiptPrinters(scope: PrinterScope): ReceiptPrintersState {
       send('printReceiptAsPage', printerId, lines, onStatus),
     [send],
   );
-  return { bound: port !== null, printing, refresh, read, choose, print, printAsPage };
+  const bound = port !== null;
+  return useMemo(
+    () => ({ bound, printing, refresh, read, choose, print, printAsPage }),
+    [bound, printing, refresh, read, choose, print, printAsPage],
+  );
 }
