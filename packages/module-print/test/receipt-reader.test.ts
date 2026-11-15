@@ -49,6 +49,19 @@ describe('reading ESC/POS back', () => {
       { kind: 'line', text: 'A', align: 'left', bold: false, double: false },
     ]);
     expect(receiptPreview(Uint8Array.from([0x07, 0x41, 0x0a]), 58)).toBe('[07]\nA');
+    // In the middle of a line it stays where it came, not above the text it interrupted.
+    const mid = [...Buffer.from('TOTAL'), 0x1b, 0x74, 0x10, ...Buffer.from(' 180'), 0x0a];
+    expect(receiptPreview(Uint8Array.from(mid), 58)).toBe('TOTAL[1B 74][10] 180');
+    // A barcode it does not read (PDF417, cn 48) is shown, never dropped.
+    const pdf417 = [0x1d, 0x28, 0x6b, 0x03, 0x00, 0x30, 0x51, 0x30];
+    expect(readReceiptBytes(Uint8Array.from(pdf417))).toEqual([
+      { kind: 'unknown', command: '1D 28 6B 03 00 30 51 30' },
+    ]);
+  });
+
+  it('feeds n lines in all after text, as a printer does: the printed line is the first', () => {
+    const bytes = Uint8Array.from([...Buffer.from('Thanks'), 0x1b, 0x64, 3, ...Buffer.from('Next'), 0x0a]);
+    expect(receiptPreview(bytes, 58)).toBe('Thanks\n\n\nNext');
   });
 
   it('does not throw on a command cut short', () => {

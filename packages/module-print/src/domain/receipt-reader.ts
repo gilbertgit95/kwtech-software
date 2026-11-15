@@ -1,4 +1,4 @@
-import { RECEIPT_COLUMNS, type ReceiptAlign, type ReceiptPaperWidth } from './receipt.js';
+import { placeOnRoll, RECEIPT_COLUMNS, type ReceiptAlign, type ReceiptPaperWidth, wrapReceiptText } from './receipt.js';
 
 /**
  * ESC/POS bytes read back into what a receipt printer would put on paper
@@ -64,8 +64,15 @@ export function readReceiptBytes(bytes: Uint8Array): ReadReceiptMark[] {
     i += count;
     return taken;
   };
+  /**
+   * A command it does not know, shown WHERE IT CAME: inside the line being
+   * printed when one is, so the roll shows "TOTAL[1B 74 10] 180" rather than
+   * the command above the text it interrupted.
+   */
   const unknown = (from: number): void => {
-    marks.push({ kind: 'unknown', command: hex([...bytes.subarray(from, Math.min(i, bytes.length))]) });
+    const command = hex([...bytes.subarray(from, Math.min(i, bytes.length))]);
+    if (text) text += `[${command}]`;
+    else marks.push({ kind: 'unknown', command });
   };
 
   while (i < bytes.length) {
@@ -103,12 +110,17 @@ export function readReceiptBytes(bytes: Uint8Array): ReadReceiptMark[] {
           continue;
         }
         case 0x64: {
-          // ESC d n: print what is buffered, then feed n lines
+          // ESC d n: print what is buffered and feed n lines IN ALL — the printed line is the first of them.
           const n = take(1)?.[0];
           if (n === undefined) break;
-          if (text) flush();
-          for (let line = 0; line < n; line += 1)
+          let blanks = n;
+          if (text) {
+            flush();
+            blanks = Math.max(n - 1, 0);
+          }
+          for (let line = 0; line < blanks; line += 1) {
             marks.push({ kind: 'line', text: '', align, bold: false, double: false });
+          }
           continue;
         }
         case 0x70: // ESC p m t1 t2: drawer pulse
@@ -147,16 +159,21 @@ export function readReceiptBytes(bytes: Uint8Array): ReadReceiptMark[] {
           const length = (head[1] ?? 0) + (head[2] ?? 0) * 256;
           const body = take(length);
           if (!body) break;
-          if (body[0] === 0x31 && body[1] === 0x50) {
+          // ⚠ Only QR (cn 49) is read. Another symbol (PDF417 is cn 48) is SHOWN as unknown, never dropped.
+          if (body[0] !== 0x31) {
+            unknown(start);
+            continue;
+          }
+          if (body[1] === 0x50) {
             pendingQr = String.fromCharCode(...body.slice(3));
             continue;
           }
-          if (body[0] === 0x31 && body[1] === 0x51) {
+          if (body[1] === 0x51) {
             marks.push({ kind: 'qr', data: pendingQr ?? '' });
             pendingQr = null;
             continue;
           }
-          // Model, size, error correction: settings, nothing printed.
+          // QR model, size, error correction: settings, nothing printed.
           continue;
         }
         default:
@@ -183,12 +200,13 @@ export function receiptPreview(bytes: Uint8Array, paperWidth: ReceiptPaperWidth)
   const out: string[] = [];
   for (const mark of readReceiptBytes(bytes)) {
     switch (mark.kind) {
-      case 'line': {
-        out.push(placedOnRoll(mark.text, mark.align, columns));
+      case 'line':
+        out.push(placeOnRoll(mark.text, mark.align, columns, mark.double).trimEnd());
         break;
-      }
       case 'qr':
-        out.push(placedOnRoll(`[QR: ${mark.data}]`, 'center', columns));
+        for (const text of wrapReceiptText(`[QR: ${mark.data}]`, columns)) {
+          out.push(placeOnRoll(text, 'center', columns).trimEnd());
+        }
         break;
       case 'cut':
         out.push('✂'.padEnd(columns, '-'));
@@ -202,16 +220,4 @@ export function receiptPreview(bytes: Uint8Array, paperWidth: ReceiptPaperWidth)
     }
   }
   return out.join('\n');
-}
-
-/** A line placed across the roll as the printer's alignment places it. */
-function placedOnRoll(text: string, align: ReceiptAlign, columns: number): string {
-  switch (align) {
-    case 'left':
-      return text;
-    case 'right':
-      return text.padStart(columns);
-    case 'center':
-      return `${' '.repeat(Math.max(Math.floor((columns - text.length) / 2), 0))}${text}`.trimEnd();
-  }
 }

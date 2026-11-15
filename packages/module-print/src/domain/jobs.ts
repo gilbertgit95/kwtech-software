@@ -64,7 +64,6 @@ export function printJobContentPath(jobId: string): string {
   return `/print/jobs/${encodeURIComponent(jobId)}/content`;
 }
 
-/** What a person asks for when they print. */
 /**
  * What a job carries (#144). `pdf` is opened and printed by the computer's
  * PDF printing; `escpos` is a receipt's bytes (`encodeReceipt`), sent to the
@@ -79,6 +78,7 @@ export type PrintJobFormat = (typeof PRINT_JOB_FORMATS)[number];
  */
 export const PRINT_RECEIPT_MAX_BYTES = 256 * 1024;
 
+/** What a person asks for when they print. */
 export interface PrintJobOptions {
   /** `pdf` unless a receipt was asked for. */
   format: PrintJobFormat;
@@ -121,22 +121,34 @@ export function prepareJobOptions(
   papers: readonly PrintPaper[],
   settings: Pick<PrintPrinterSettings, 'mediaTypes' | 'qualities'> = { mediaTypes: [], qualities: [] },
 ): PrintJobOptions | { refused: PrintRefusal } {
-  const { paperName, copies, size } = input;
+  const { paperName } = input;
   const format = input.format ?? 'pdf';
   if (!(PRINT_JOB_FORMATS as readonly unknown[]).includes(format)) return { refused: 'invalid_job' };
   if (format === 'escpos') return prepareReceiptJob(input);
   const mediaType = chosenOption(input.mediaType, settings.mediaTypes);
   const quality = chosenOption(input.quality, settings.qualities);
   if (mediaType === undefined || quality === undefined) return { refused: 'invalid_job' };
-  if (typeof copies !== 'number' || !Number.isInteger(copies) || copies < 1 || copies > PRINT_JOB_COPIES_MAX) {
-    return { refused: 'invalid_job' };
-  }
-  if (typeof size !== 'number' || !Number.isInteger(size) || size < 1) return { refused: 'invalid_job' };
-  if (size > PRINT_JOB_MAX_BYTES) return { refused: 'job_too_large' };
+  const counted = prepareCount(input.copies, input.size, PRINT_JOB_MAX_BYTES);
+  if ('refused' in counted) return counted;
+  const { copies, size } = counted;
   if (paperName == null) return { format: 'pdf', paper: null, copies, size, mediaType, quality };
   if (typeof paperName !== 'string') return { refused: 'invalid_job' };
   const paper = papers.find((one) => one.name === paperName);
   return paper ? { format: 'pdf', paper, copies, size, mediaType, quality } : { refused: 'invalid_job' };
+}
+
+/** Copies and a declared size, checked the same for every format. */
+function prepareCount(
+  copies: unknown,
+  size: unknown,
+  maxBytes: number,
+): { copies: number; size: number } | { refused: PrintRefusal } {
+  if (typeof copies !== 'number' || !Number.isInteger(copies) || copies < 1 || copies > PRINT_JOB_COPIES_MAX) {
+    return { refused: 'invalid_job' };
+  }
+  if (typeof size !== 'number' || !Number.isInteger(size) || size < 1) return { refused: 'invalid_job' };
+  if (size > maxBytes) return { refused: 'job_too_large' };
+  return { copies, size };
 }
 
 /**
@@ -151,14 +163,10 @@ function prepareReceiptJob(input: {
   mediaType?: unknown;
   quality?: unknown;
 }): PrintJobOptions | { refused: PrintRefusal } {
-  const { copies, size } = input;
   if (input.paperName != null || input.mediaType != null || input.quality != null) return { refused: 'invalid_job' };
-  if (typeof copies !== 'number' || !Number.isInteger(copies) || copies < 1 || copies > PRINT_JOB_COPIES_MAX) {
-    return { refused: 'invalid_job' };
-  }
-  if (typeof size !== 'number' || !Number.isInteger(size) || size < 1) return { refused: 'invalid_job' };
-  if (size > PRINT_RECEIPT_MAX_BYTES) return { refused: 'job_too_large' };
-  return { format: 'escpos', paper: null, copies, size, mediaType: null, quality: null };
+  const counted = prepareCount(input.copies, input.size, PRINT_RECEIPT_MAX_BYTES);
+  if ('refused' in counted) return counted;
+  return { format: 'escpos', paper: null, ...counted, mediaType: null, quality: null };
 }
 
 /** `%PDF-`: what every PDF starts with. */
