@@ -14,7 +14,8 @@
 
 const PAPER = 'name width height margins { top right bottom left }';
 const OPTION = 'id label';
-const PRINTER = `id name driver isDefault status gone papers { ${PAPER} } mediaTypes { ${OPTION} } mediaType qualities { ${OPTION} } quality`;
+const RECEIPT = 'label paperWidth cutter drawer qr';
+const PRINTER = `id name driver isDefault status gone papers { ${PAPER} } mediaTypes { ${OPTION} } mediaType qualities { ${OPTION} } quality receipt { ${RECEIPT} }`;
 const AGENT = `id name hostName agentVersion online lastSeenAt pairedAt printers { ${PRINTER} }`;
 const JOB = 'id status failure message';
 const SCOPE_VARS = '$organizationId: String!, $workspaceId: String!';
@@ -26,6 +27,21 @@ export const PRINT_OPERATIONS = {
   /** The workspace's paired computers, by name, each with its printers. Revoked ones are left out. */
   printAgents: `query PrintAgents(${SCOPE_VARS}) {
     printAgents(${SCOPE_ARGS}) { ${AGENT} }
+  }`,
+
+  /** The workspace's default receipt printer's id, or null (#144). */
+  printReceiptDefault: `query PrintReceiptDefault(${SCOPE_VARS}) {
+    printReceiptDefault(${SCOPE_ARGS})
+  }`,
+
+  /** Mark a printer as a receipt printer (with its settings), or pass null to make it a document printer again. */
+  setPrintReceiptPrinter: `mutation SetPrintReceiptPrinter(${SCOPE_VARS}, $printerId: String!, $receipt: PrintReceiptSettingsInput) {
+    setPrintReceiptPrinter(${SCOPE_ARGS}, printerId: $printerId, receipt: $receipt)
+  }`,
+
+  /** Set (or, with null, clear) the workspace's default receipt printer. */
+  setPrintReceiptDefault: `mutation SetPrintReceiptDefault(${SCOPE_VARS}, $printerId: String) {
+    setPrintReceiptDefault(${SCOPE_ARGS}, printerId: $printerId)
   }`,
 
   /** A one-time code for one computer. ⚠ The code is in THIS answer and nowhere else, ever. */

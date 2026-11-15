@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { isAgentOnline } from '../domain/agents.js';
 import { prepareJobOptions } from '../domain/jobs.js';
 import { preparePapers, prepareSettings } from '../domain/printers.js';
+import { checkJobForPrinter } from '../domain/receipt-printers.js';
 import { refusalError } from './print.errors.js';
 import type { PrintPrismaClient } from './print.repository.js';
 import type { PrintScope } from './print.service.js';
@@ -50,13 +51,21 @@ export class PrintJobService {
     if (!printer) throw refusalError('not_found');
     if (printer.goneAt !== null) throw refusalError('printer_gone');
 
-    const agent = await this.prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } });
+    // The computer and the receipt mark, read together: neither waits for the other.
+    const [agent, receipt] = await Promise.all([
+      this.prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } }),
+      this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId: printer.id } }),
+    ]);
     // A revoked computer's printers are listed nowhere; one named by id anyway is not found.
     if (!agent || agent.revokedAt !== null) throw refusalError('not_found');
     if (!isAgentOnline(agent, new Date())) throw refusalError('agent_offline');
 
     const options = prepareJobOptions(input, preparePapers(printer.papers) ?? [], prepareSettings(printer.settings));
     if ('refused' in options) throw refusalError(options.refused);
+
+    // ⚠ One kind of job per kind of printer (#144): a receipt to a receipt printer, a document never to one.
+    const mismatch = checkJobForPrinter(options.format, receipt !== null);
+    if (mismatch) throw refusalError(mismatch);
 
     return this.relay.open({ ...scope, agentId: agent.id, actorId, printerName: printer.name, options });
   }

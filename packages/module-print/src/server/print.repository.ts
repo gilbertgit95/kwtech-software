@@ -85,6 +85,34 @@ export interface PrintPrinterValues {
   goneAt: null;
 }
 
+/** A printer a person marked as a receipt printer (#144). */
+export interface PrintReceiptPrinterRow extends InScope {
+  printerId: string;
+  label: string | null;
+  paperWidth: number;
+  cutter: boolean;
+  drawer: boolean;
+  qr: boolean;
+  updatedById: string;
+  updatedAt: Date;
+}
+
+/** The workspace's default receipt printer. */
+export interface PrintReceiptDefaultRow extends InScope {
+  printerId: string;
+  updatedById: string;
+  updatedAt: Date;
+}
+
+interface PrintReceiptValues {
+  label: string | null;
+  paperWidth: number;
+  cutter: boolean;
+  drawer: boolean;
+  qr: boolean;
+  updatedById: string;
+}
+
 export interface PrintTransaction {
   printAgent: {
     /** ⚠ A person's only way to find one computer: by id AND scope. */
@@ -152,6 +180,33 @@ export interface PrintTransaction {
       where: { agentId: string; name: { in: string[] }; goneAt: null };
       data: { goneAt: Date };
     }): Promise<{ count: number }>;
+  };
+
+  printReceiptPrinter: {
+    /** A workspace's receipt printers: few, and listed with its computers. */
+    /** The marks of the printers being listed — never "any N in the workspace", which could leave a live one out. */
+    findMany(args: {
+      where: InScope & { printerId: { in: string[] } };
+      take: number;
+    }): Promise<PrintReceiptPrinterRow[]>;
+    findFirst(args: { where: InScope & { printerId: string } }): Promise<PrintReceiptPrinterRow | null>;
+    upsert(args: {
+      where: { printerId: string };
+      create: InScope & { printerId: string } & PrintReceiptValues;
+      update: PrintReceiptValues;
+    }): Promise<PrintReceiptPrinterRow>;
+    deleteMany(args: { where: InScope & { printerId: string } }): Promise<{ count: number }>;
+  };
+
+  printReceiptDefault: {
+    findUnique(args: { where: { workspaceId: string } }): Promise<PrintReceiptDefaultRow | null>;
+    upsert(args: {
+      where: { workspaceId: string };
+      create: InScope & { printerId: string; updatedById: string };
+      update: { printerId: string; updatedById: string };
+    }): Promise<PrintReceiptDefaultRow>;
+    /** Cleared by a person. (It also goes with its receipt printer, by the database's cascade.) */
+    deleteMany(args: { where: { workspaceId: string } }): Promise<{ count: number }>;
   };
 }
 

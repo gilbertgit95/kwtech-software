@@ -262,6 +262,7 @@ describe('printing for another module', () => {
         gone: false,
         papers: [A4],
         ...SETTINGS,
+        receipt: null,
       },
       {
         id: 'printer-2',
@@ -272,6 +273,18 @@ describe('printing for another module', () => {
         gone: true,
         papers: [A4],
         ...NONE,
+        receipt: null,
+      },
+      {
+        id: 'printer-3',
+        name: 'XP-80C',
+        driver: 'Xprinter',
+        isDefault: false,
+        status: 'ready',
+        gone: false,
+        papers: [],
+        ...NONE,
+        receipt: { label: 'Counter 1', paperWidth: 80, cutter: true, drawer: false, qr: true },
       },
     ],
     ...over,
@@ -298,13 +311,19 @@ describe('printing for another module', () => {
       async job() {
         return ends instanceof Error ? null : ends;
       },
+      async receiptDefault() {
+        return null;
+      },
+      async setReceiptPrinter() {},
+      async setReceiptDefault() {},
     };
     return { print: createPrintTarget({ client, wait: () => Promise.resolve() }), started };
   }
   const printed: PrintJobView = { id: 'job-1', status: 'printed', failure: null, message: null };
   const job = { printerId: 'printer-1', pdf: PDF, width: 21000, height: 29700 };
 
-  it('offers the printers that are still there, each with its computer', async () => {
+  // ⚠ The receipt printer (printer-3) is not offered: documents never go to a receipt printer (#144).
+  it('offers the document printers that are still there, each with its computer', async () => {
     expect(await target([agent()]).print.printers(SCOPE)).toEqual([
       {
         id: 'printer-1',

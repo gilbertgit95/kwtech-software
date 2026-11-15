@@ -51,7 +51,7 @@ export const PRINT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'See the printers',
     description: 'See the computers paired to print for this workspace, their printers, and whether they are online.',
     tags: ['print'],
-    bindings: [op('Query.printAgents')],
+    bindings: [op('Query.printAgents'), op('Query.printReceiptDefault')],
   },
   {
     key: PRINT_FEATURE.send,
@@ -85,7 +85,13 @@ export const PRINT_FEATURE_REGISTRY: readonly FeatureContribution[] = [
     label: 'Pair and revoke computers',
     description: 'Pair a computer so it can print for this workspace, and revoke one that should no longer.',
     tags: ['print'],
-    bindings: [op('Mutation.createPrintPairingCode'), op('Mutation.revokePrintAgent')],
+    // Which printers print receipts, and the default, are the same say over where the workspace's printing goes.
+    bindings: [
+      op('Mutation.createPrintPairingCode'),
+      op('Mutation.revokePrintAgent'),
+      op('Mutation.setPrintReceiptPrinter'),
+      op('Mutation.setPrintReceiptDefault'),
+    ],
   },
 ];
 

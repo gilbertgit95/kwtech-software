@@ -91,7 +91,13 @@ export type PrintRefusal =
   | 'invalid_job'
   | 'job_too_large'
   | 'agent_busy'
-  | 'job_not_found';
+  | 'job_not_found'
+  /** A receipt printer's settings that are not a width of 58 or 80, three switches and a short name (#144). */
+  | 'invalid_receipt_settings'
+  /** A receipt sent to a printer nobody marked as a receipt printer. */
+  | 'not_a_receipt_printer'
+  /** A document sent to a receipt printer, which prints receipts only. */
+  | 'receipt_printer_only';
 
 /**
  * Where a print job is.

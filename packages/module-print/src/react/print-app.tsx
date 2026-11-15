@@ -3,16 +3,24 @@
 import { type AppProps, resolveSocketUrl } from '@kwtech/module-kit';
 import { useHoldsFeature, useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog, cn } from '@kwtech/web-ui/react';
-import { BookOpen, CircleAlert, Monitor, Plus, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BookOpen, CircleAlert, Monitor, Plus, ReceiptText, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { PRINT_AGENT_HEARTBEAT_SECONDS } from '../domain/agents.js';
+import { receiptPrinterName } from '../domain/receipt-printers.js';
 import { PRINT_FEATURE } from '../feature-keys.js';
 import { ComputerCard } from './components/computer-card.js';
 import { PairingDialog } from './components/pairing-dialog.js';
+import { ReceiptSettingsDialog, TestReceiptDialog } from './components/receipt-dialogs.js';
 import { SetupGuideDialog } from './components/setup-guide-dialog.js';
 import { TestPrintDialog } from './components/test-print-dialog.js';
-import { createPrintClient, type PrintAgentView, type PrintClient, type PrintPrinterView } from './print-client.js';
-import { buttonClass } from './ui.js';
+import {
+  createPrintClient,
+  type PrintAgentView,
+  type PrintClient,
+  type PrintPrinterView,
+  type PrintReceiptSettingsView,
+} from './print-client.js';
+import { buttonClass, INPUT_CLASS } from './ui.js';
 import {
   type AgentServerSettings,
   agentServerSettings,
@@ -83,10 +91,17 @@ export function PrintApp({
   }, [wsUrl]);
   const [revoking, setRevoking] = useState<PrintAgentView | null>(null);
   const [testing, setTesting] = useState<{ agent: PrintAgentView; printer: PrintPrinterView } | null>(null);
+  /** The workspace's default receipt printer's id (#144). */
+  const [receiptDefault, setReceiptDefault] = useState<string | null>(null);
+  const [receiptEditing, setReceiptEditing] = useState<PrintPrinterView | null>(null);
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setAgents(await api.agents(scope));
+      const [list, defaultId] = await Promise.all([api.agents(scope), api.receiptDefault(scope)]);
+      setAgents(list);
+      setReceiptDefault(defaultId);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load the printers.');
@@ -120,6 +135,57 @@ export function PrintApp({
     }
     await load();
   }
+
+  /**
+   * Marks a printer as a receipt printer (or a document printer again). The
+   * FIRST receipt printer also becomes the default, so receipts have
+   * somewhere to go the moment one exists; a person changes it below.
+   */
+  async function saveReceipt(receipt: PrintReceiptSettingsView | null) {
+    const printer = receiptEditing;
+    if (!printer) return;
+    setReceiptBusy(true);
+    setReceiptError(null);
+    try {
+      await api.setReceiptPrinter(scope, printer.id, receipt);
+    } catch (caught) {
+      // Nothing was saved: the dialog stays, with the reason.
+      setReceiptError(caught instanceof Error ? caught.message : 'That did not work.');
+      setReceiptBusy(false);
+      return;
+    }
+    // Saved. The dialog closes whatever happens next, so it never shows a state the server no longer has.
+    setReceiptEditing(null);
+    if (receipt && receiptDefault === null) {
+      try {
+        await api.setReceiptDefault(scope, printer.id);
+      } catch (caught) {
+        const reason = caught instanceof Error ? caught.message : 'That did not work.';
+        setError(`It is a receipt printer now, but it could not be made the default: ${reason}`);
+      }
+    }
+    setReceiptBusy(false);
+    await load();
+  }
+
+  async function chooseReceiptDefault(printerId: string | null) {
+    setBusy(true);
+    try {
+      await api.setReceiptDefault(scope, printerId);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'That did not work.');
+    } finally {
+      setBusy(false);
+    }
+    await load();
+  }
+
+  const receiptPrinters = (agents ?? []).flatMap((agent) =>
+    agent.printers
+      .filter((printer) => printer.receipt !== null && !printer.gone)
+      .map((printer) => ({ agent, printer })),
+  );
 
   const seen = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString(undefined, { timeZone, dateStyle: 'medium', timeStyle: 'short' }) : null;
@@ -225,6 +291,16 @@ export function PrintApp({
         </div>
       ) : null}
 
+      {receiptPrinters.length > 0 ? (
+        <ReceiptDefaultLine
+          printers={receiptPrinters}
+          defaultId={receiptDefault}
+          canManage={canManage}
+          busy={busy}
+          onChoose={(printerId) => void chooseReceiptDefault(printerId)}
+        />
+      ) : null}
+
       <ul className="flex flex-col gap-4">
         {(agents ?? []).map((agent) => (
           <ComputerCard
@@ -234,6 +310,15 @@ export function PrintApp({
             busy={busy}
             onRevoke={canManage ? () => setRevoking(agent) : undefined}
             onTest={canSend ? (printer) => setTesting({ agent, printer }) : undefined}
+            onReceiptSettings={
+              canManage
+                ? (printer) => {
+                    setReceiptError(null);
+                    setReceiptEditing(printer);
+                  }
+                : undefined
+            }
+            isReceiptDefault={(printer) => printer.id === receiptDefault}
           />
         ))}
       </ul>
@@ -264,8 +349,27 @@ export function PrintApp({
         }}
       />
 
+      <ReceiptSettingsDialog
+        printer={receiptEditing}
+        busy={receiptBusy}
+        error={receiptError}
+        onSave={(receipt) => void saveReceipt(receipt)}
+        onClose={() => setReceiptEditing(null)}
+      />
+
+      <TestReceiptDialog
+        printer={testPrinter?.receipt ? { ...testPrinter, receipt: testPrinter.receipt } : null}
+        computer={testAgent?.name ?? ''}
+        blocked={testAgent && testPrinter ? cannotPrintReason(testAgent, testPrinter) : null}
+        api={api}
+        scope={scope}
+        timeZone={timeZone}
+        onClose={() => setTesting(null)}
+      />
+
       <TestPrintDialog
-        printer={testPrinter}
+        // A receipt printer takes the Test receipt above, never the ruler page.
+        printer={testPrinter?.receipt ? null : testPrinter}
         computer={testAgent?.name ?? ''}
         blocked={testAgent && testPrinter ? cannotPrintReason(testAgent, testPrinter) : null}
         api={api}
@@ -287,6 +391,61 @@ export function PrintApp({
         onCancel={() => setRevoking(null)}
         onConfirm={() => void revoke()}
       />
+    </div>
+  );
+}
+
+/**
+ * Where receipts go when a device has not chosen (#144): the workspace's
+ * default receipt printer. A choice for `print:manage_agents`, a line for
+ * everybody else.
+ */
+function ReceiptDefaultLine({
+  printers,
+  defaultId,
+  canManage,
+  busy,
+  onChoose,
+}: {
+  printers: readonly { agent: PrintAgentView; printer: PrintPrinterView }[];
+  defaultId: string | null;
+  canManage: boolean;
+  busy: boolean;
+  onChoose: (printerId: string | null) => void;
+}) {
+  const selectId = useId();
+  const nameOf = (entry: { agent: PrintAgentView; printer: PrintPrinterView }) =>
+    `${receiptPrinterName(entry.printer)} (${entry.agent.name})`;
+  const current = printers.find((entry) => entry.printer.id === defaultId) ?? null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-xs">
+      <ReceiptText aria-hidden="true" className="size-4 text-primary" />
+      {canManage ? (
+        <>
+          <label htmlFor={selectId} className="font-medium">
+            Receipts print on
+          </label>
+          <select
+            id={selectId}
+            className={cn(INPUT_CLASS, 'w-auto min-w-48')}
+            value={defaultId ?? ''}
+            disabled={busy}
+            onChange={(event) => onChoose(event.target.value || null)}
+          >
+            <option value="">No default: each device chooses</option>
+            {printers.map((entry) => (
+              <option key={entry.printer.id} value={entry.printer.id}>
+                {nameOf(entry)}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <span>
+          <span className="font-medium">Receipts print on: </span>
+          {current ? nameOf(current) : 'no default; each device chooses'}
+        </span>
+      )}
     </div>
   );
 }

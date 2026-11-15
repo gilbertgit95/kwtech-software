@@ -6,8 +6,7 @@ import { formatPairingCode } from '../../domain/pairing.js';
 import { preparePapers, prepareSettings, toPrinterStatus } from '../../domain/printers.js';
 import { PrintWriteError } from '../print.errors.js';
 import type { PrintModuleOptions } from '../print.options.js';
-import type { PrintPrinterRow } from '../print.repository.js';
-import { type PrintAgentWithPrinters, PrintService } from '../print.service.js';
+import { type PrintAgentWithPrinters, type PrintPrinterWithReceipt, PrintService } from '../print.service.js';
 import { PRINT_OPTIONS } from '../print.tokens.js';
 import { PrintJobService } from '../print-job.service.js';
 import { PrintWriteService } from '../print-write.service.js';
@@ -17,6 +16,7 @@ import {
   PrintJobType,
   PrintPairingCodeType,
   type PrintPrinterType,
+  PrintReceiptSettingsInputType,
 } from './print.types.js';
 
 /**
@@ -65,6 +65,46 @@ export class PrintResolver {
     const now = new Date();
     const agents = await this.print.agents({ organizationId, workspaceId });
     return agents.map((entry) => renderAgent(entry, now));
+  }
+
+  /** The workspace's default receipt printer, by id (#144). Null: none set. */
+  @Query(() => String, { name: 'printReceiptDefault', nullable: true })
+  async receiptDefault(
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+  ): Promise<string | null> {
+    return this.print.receiptDefault({ organizationId, workspaceId });
+  }
+
+  /** Mark a printer as a receipt printer with its settings, or (`receipt` null) a document printer again. */
+  @Mutation(() => Boolean, { name: 'setPrintReceiptPrinter' })
+  async setReceiptPrinter(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('printerId') printerId: string,
+    @Args('receipt', { type: () => PrintReceiptSettingsInputType, nullable: true })
+    receipt?: PrintReceiptSettingsInputType | null,
+  ): Promise<boolean> {
+    await this.writes.setReceiptPrinter(
+      { organizationId, workspaceId },
+      this.actor(gql.req),
+      printerId,
+      receipt ?? null,
+    );
+    return true;
+  }
+
+  /** Set the workspace's default receipt printer, or (`printerId` null) clear it. */
+  @Mutation(() => Boolean, { name: 'setPrintReceiptDefault' })
+  async setReceiptDefault(
+    @Context() gql: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('workspaceId') workspaceId: string,
+    @Args('printerId', { type: () => String, nullable: true }) printerId?: string | null,
+  ): Promise<boolean> {
+    await this.writes.setReceiptDefault({ organizationId, workspaceId }, this.actor(gql.req), printerId ?? null);
+    return true;
   }
 
   /**
@@ -157,7 +197,7 @@ function renderAgent({ agent, printers }: PrintAgentWithPrinters, now: Date): Pr
   };
 }
 
-function renderPrinter(row: PrintPrinterRow): PrintPrinterType {
+function renderPrinter(row: PrintPrinterWithReceipt): PrintPrinterType {
   return {
     id: row.id,
     name: row.name,
@@ -168,5 +208,14 @@ function renderPrinter(row: PrintPrinterRow): PrintPrinterType {
     // ⚠ A `Json` column, read through the same check a report passes. A row that no longer reads has no papers, not a crash.
     papers: preparePapers(row.papers) ?? [],
     ...prepareSettings(row.settings),
+    receipt: row.receipt
+      ? {
+          label: row.receipt.label,
+          paperWidth: row.receipt.paperWidth,
+          cutter: row.receipt.cutter,
+          drawer: row.receipt.drawer,
+          qr: row.receipt.qr,
+        }
+      : null,
   };
 }

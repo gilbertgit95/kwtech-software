@@ -238,3 +238,10 @@ export function toneBadgeClass(tone: 'ok' | 'muted' | 'bad'): string {
       return 'bg-muted text-muted-foreground';
   }
 }
+
+/** "Receipt · 80 mm · cuts · drawer": a receipt printer's kind and what it can do, for its badge (#144). */
+export function receiptKindText(receipt: { paperWidth: number; cutter: boolean; drawer: boolean }): string {
+  return ['Receipt', `${receipt.paperWidth} mm`, receipt.cutter ? 'cuts' : null, receipt.drawer ? 'drawer' : null]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
+}

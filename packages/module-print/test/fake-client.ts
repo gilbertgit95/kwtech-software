@@ -2,6 +2,8 @@ import type {
   PrintAgentRow,
   PrintPairingCodeRow,
   PrintPrinterRow,
+  PrintReceiptDefaultRow,
+  PrintReceiptPrinterRow,
   PrintTransaction,
   PrintWriteClient,
 } from '../src/server/print.repository.js';
@@ -20,6 +22,8 @@ export interface FakeClient extends PrintWriteClient {
   agents: PrintAgentRow[];
   codes: PrintPairingCodeRow[];
   printers: PrintPrinterRow[];
+  receipts: PrintReceiptPrinterRow[];
+  receiptDefaults: PrintReceiptDefaultRow[];
 }
 
 type Where = Record<string, unknown>;
@@ -60,6 +64,8 @@ export function fakeClient(): FakeClient {
   const agents: PrintAgentRow[] = [];
   const codes: PrintPairingCodeRow[] = [];
   const printers: PrintPrinterRow[] = [];
+  const receipts: PrintReceiptPrinterRow[] = [];
+  const receiptDefaults: PrintReceiptDefaultRow[] = [];
 
   const delegates: PrintTransaction = {
     printAgent: {
@@ -144,6 +150,58 @@ export function fakeClient(): FakeClient {
         return { count: hit.length };
       },
     },
+    printReceiptPrinter: {
+      async findMany({ where, take }) {
+        return receipts.filter((row) => matches(row, where)).slice(0, take);
+      },
+      async findFirst({ where }) {
+        return receipts.find((row) => matches(row, where)) ?? null;
+      },
+      async upsert({ where, create, update }) {
+        const existing = receipts.find((row) => row.printerId === where.printerId);
+        if (existing) {
+          Object.assign(existing, update, { updatedAt: new Date() });
+          return existing;
+        }
+        const row: PrintReceiptPrinterRow = { ...create, updatedAt: new Date() };
+        receipts.push(row);
+        return row;
+      },
+      async deleteMany({ where }) {
+        const hit = receipts.filter((row) => matches(row, where));
+        for (const row of hit) receipts.splice(receipts.indexOf(row), 1);
+        // The foreign key's cascade: a default pointing at a printer no longer a receipt printer goes too.
+        for (const gone of hit) {
+          const index = receiptDefaults.findIndex((row) => row.printerId === gone.printerId);
+          if (index >= 0) receiptDefaults.splice(index, 1);
+        }
+        return { count: hit.length };
+      },
+    },
+    printReceiptDefault: {
+      async findUnique({ where }) {
+        return receiptDefaults.find((row) => row.workspaceId === where.workspaceId) ?? null;
+      },
+      async upsert({ where, create, update }) {
+        // The foreign key: a default must be a receipt printer.
+        if (!receipts.some((row) => row.printerId === (update.printerId ?? create.printerId))) {
+          throw Object.assign(new Error('Foreign key constraint violated'), { code: 'P2003' });
+        }
+        const existing = receiptDefaults.find((row) => row.workspaceId === where.workspaceId);
+        if (existing) {
+          Object.assign(existing, update, { updatedAt: new Date() });
+          return existing;
+        }
+        const row: PrintReceiptDefaultRow = { ...create, updatedAt: new Date() };
+        receiptDefaults.push(row);
+        return row;
+      },
+      async deleteMany({ where }) {
+        const hit = receiptDefaults.filter((row) => matches(row, where));
+        for (const row of hit) receiptDefaults.splice(receiptDefaults.indexOf(row), 1);
+        return { count: hit.length };
+      },
+    },
   };
 
   return {
@@ -151,6 +209,8 @@ export function fakeClient(): FakeClient {
     agents,
     codes,
     printers,
+    receipts,
+    receiptDefaults,
     async $transaction(fn) {
       return fn(delegates);
     },

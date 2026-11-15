@@ -3,6 +3,7 @@ import { type LimitChecker, type LimitDecision, limitReachedText } from '@kwtech
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { prepareAgentName } from '../domain/agents.js';
 import { PRINT_PAIRING_CODE_LENGTH, pairingCodeFromBytes, pairingExpiry } from '../domain/pairing.js';
+import { prepareReceiptSettings } from '../domain/receipt-printers.js';
 import { PRINT_LIMIT, PRINT_LIMIT_REGISTRY } from '../feature-keys.js';
 import { PrintWriteError, refusalError } from './print.errors.js';
 import type { PrintWriteClient } from './print.repository.js';
@@ -104,6 +105,71 @@ export class PrintWriteService {
   }
 
   /**
+   * Marks a printer as a receipt printer with its settings, or (`null`)
+   * makes it a document printer again (#144, R4).
+   *
+   * ⚠ Unmarking the workspace's default receipt printer clears the default
+   * too, in the same transaction: a default that is not a receipt printer
+   * would send every receipt to a printer that refuses them.
+   */
+  async setReceiptPrinter(
+    scope: PrintScope,
+    actorId: string,
+    printerId: string,
+    raw: { label?: unknown; paperWidth: unknown; cutter: unknown; drawer: unknown; qr: unknown } | null,
+  ): Promise<void> {
+    const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
+    if (!printer) throw refusalError('not_found');
+    if (raw === null) {
+      // The default pointing here goes with it, by the database's cascade.
+      await this.prisma.printReceiptPrinter.deleteMany({ where: { ...scope, printerId } });
+      return;
+    }
+    const settings = prepareReceiptSettings(raw);
+    if ('refused' in settings) throw refusalError(settings.refused);
+    // Marked only while it can print: a gone printer, or a revoked computer's, would be a receipt printer nobody can use.
+    await this.requireLive(scope, printer);
+    const values = { ...settings, updatedById: actorId };
+    await this.prisma.printReceiptPrinter.upsert({
+      where: { printerId },
+      create: { ...scope, printerId, ...values },
+      update: values,
+    });
+  }
+
+  /** Sets the workspace's default receipt printer, which must be one; `null` clears it. */
+  async setReceiptDefault(scope: PrintScope, actorId: string, printerId: string | null): Promise<void> {
+    if (printerId === null) {
+      await this.prisma.printReceiptDefault.deleteMany({ where: { workspaceId: scope.workspaceId } });
+      return;
+    }
+    // A printer of another workspace reads as not found, as everywhere.
+    const printer = await this.prisma.printPrinter.findFirst({ where: { ...scope, id: printerId } });
+    if (!printer) throw refusalError('not_found');
+    const receipt = await this.prisma.printReceiptPrinter.findFirst({ where: { ...scope, printerId } });
+    if (!receipt) throw refusalError('not_a_receipt_printer');
+    await this.requireLive(scope, printer);
+    try {
+      await this.prisma.printReceiptDefault.upsert({
+        where: { workspaceId: scope.workspaceId },
+        create: { ...scope, printerId, updatedById: actorId },
+        update: { printerId, updatedById: actorId },
+      });
+    } catch (error) {
+      // ⚠ Unmarked between the check and here: the foreign key refused it (P2003), and it is what it says.
+      if (isForeignKeyViolation(error)) throw refusalError('not_a_receipt_printer');
+      throw error;
+    }
+  }
+
+  /** Refuses a printer that cannot print: gone from its computer's report, or on a revoked computer. */
+  private async requireLive(scope: PrintScope, printer: { agentId: string; goneAt: Date | null }): Promise<void> {
+    if (printer.goneAt !== null) throw refusalError('printer_gone');
+    const agent = await this.prisma.printAgent.findFirst({ where: { ...scope, id: printer.agentId } });
+    if (!agent || agent.revokedAt !== null) throw refusalError('not_found');
+  }
+
+  /**
    * The cap for this workspace, as a decision on `current`.
    *
    * ⚠ Shared with `PrintAgentService.pair`, which is why it is public: the two
@@ -116,4 +182,9 @@ export class PrintWriteService {
     const cap = PRINT_LIMIT_REGISTRY.find((entry) => entry.key === PRINT_LIMIT.agents)?.defaultValue ?? 0;
     return { allowed: current < cap, limit: cap, current, remaining: Math.max(cap - current, 0) };
   }
+}
+
+/** A foreign key refused the write (Prisma's P2003), found structurally: this module never imports Prisma. */
+function isForeignKeyViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2003';
 }

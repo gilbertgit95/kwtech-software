@@ -52,6 +52,46 @@ export class PrintSettingOptionType {
   label!: string;
 }
 
+/** A printer marked as a receipt printer, as a person set it (#144). */
+@ObjectType('PrintReceiptSettings')
+export class PrintReceiptSettingsType {
+  /** The name people know it by. Null: its queue's name. */
+  @Field(() => String, { nullable: true })
+  label!: string | null;
+
+  /** 58 or 80 (mm). */
+  @Field(() => Int)
+  paperWidth!: number;
+
+  @Field()
+  cutter!: boolean;
+
+  @Field()
+  drawer!: boolean;
+
+  @Field()
+  qr!: boolean;
+}
+
+/** What a person sets to make a printer a receipt printer. Checked by `prepareReceiptSettings`. */
+@InputType('PrintReceiptSettingsInput')
+export class PrintReceiptSettingsInputType {
+  @Field(() => String, { nullable: true })
+  label?: string | null;
+
+  @Field(() => Int)
+  paperWidth!: number;
+
+  @Field()
+  cutter!: boolean;
+
+  @Field()
+  drawer!: boolean;
+
+  @Field()
+  qr!: boolean;
+}
+
 @ObjectType('PrintPrinter')
 export class PrintPrinterType {
   @Field()
@@ -91,6 +131,10 @@ export class PrintPrinterType {
 
   @Field(() => String, { nullable: true })
   quality!: string | null;
+
+  /** Set when a person marked it a receipt printer: then it prints receipts only. Null: a document printer. */
+  @Field(() => PrintReceiptSettingsType, { nullable: true })
+  receipt!: PrintReceiptSettingsType | null;
 }
 
 @ObjectType('PrintAgent')
