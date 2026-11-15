@@ -131,9 +131,11 @@ export interface FileTransaction {
         expiresAt: Date;
       };
     }): Promise<FileTicketRow>;
-    /** Spending (`tokenHash` + `kind` + not expired) and the sweep (`expiresAt` passed). */
+    /** Spending (`tokenHash` + `kind` + not expired) and the nightly sweep of a workspace's expired ones. */
     deleteMany(args: {
-      where: { tokenHash: string; kind: FileTicketKind; expiresAt: { gt: Date } } | { expiresAt: { lte: Date } };
+      where:
+        | { tokenHash: string; kind: FileTicketKind; expiresAt: { gt: Date } }
+        | (InScope & { expiresAt: { lte: Date } });
     }): Promise<{ count: number }>;
   };
 }

@@ -69,6 +69,17 @@ describe('the nightly clean-up', () => {
     expect(await h.cleanup.run(context(TUESDAY_10PM))).toMatchObject({ handled: 0 });
   });
 
+  it('deletes the workspace’s expired tickets, and leaves the live ones', async () => {
+    const h = harness();
+    h.client.now = MONDAY_9PM;
+    const saved = await uploadAs(h, ANA, 'monday.txt', 'x');
+    await h.transfers.issueDownload(SCOPE, ANA, saved.file.id, MONDAY_9PM);
+    await h.transfers.issueDownload(SCOPE, ANA, saved.file.id, new Date(MONDAY_10PM.getTime() - 10_000));
+
+    await h.cleanup.run(context(MONDAY_10PM));
+    expect(h.client.state.fileTicket).toHaveLength(1);
+  });
+
   it('stops at its item limit, and the next sweep finishes', async () => {
     const h = harness();
     h.client.now = MONDAY_9PM;

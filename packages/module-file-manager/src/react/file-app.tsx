@@ -5,13 +5,14 @@ import { useWorkspaceTimeZone } from '@kwtech/module-kit/react';
 import { ConfirmDialog } from '@kwtech/web-ui/react';
 import { Settings, Upload } from 'lucide-react';
 import { useState } from 'react';
+import { FILE_LIST_MAX } from '../domain/files.js';
 import { buttonClass } from './components/controls.js';
 import { FileRow } from './components/file-row.js';
 import { SettingsPanel } from './components/settings-panel.js';
 import { UploadPanel } from './components/upload-panel.js';
 import type { FileClient, FileEntryView } from './file-client.js';
 import { useFiles } from './use-files.js';
-import { cleanupTimeLabel, FILE_LIST_SHOWN_MAX, retentionLabel, usageFraction, usageLabel } from './view/files-view.js';
+import { cleanupTimeLabel, retentionLabel, usageFraction, usageLabel } from './view/files-view.js';
 
 export interface FileAppProps extends AppProps {
   /** Injectable, for tests. */
@@ -150,9 +151,9 @@ export function FileApp({ organizationId, workspaceId, client }: FileAppProps) {
             ))}
           </ul>
         ) : null}
-        {files && files.length >= FILE_LIST_SHOWN_MAX ? (
+        {files && files.length >= FILE_LIST_MAX ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Showing the newest {FILE_LIST_SHOWN_MAX} files. Older ones are still here until tonight’s clean-up.
+            Showing the newest {FILE_LIST_MAX} files. Older ones are still here until tonight’s clean-up.
           </p>
         ) : null}
       </section>

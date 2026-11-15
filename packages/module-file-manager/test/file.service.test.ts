@@ -263,17 +263,26 @@ describe('tickets, with several API servers', () => {
     expect(await h.transfers.redeem(ticket, h.client.now)).toBeNull();
   });
 
-  it('refuses one ticket past the per-person cap, and forgets expired ones when the next is asked for', async () => {
+  it('refuses one ticket past the per-person cap, saying why, and gives them again once those expire', async () => {
     const h = harness();
     const saved = await uploadAs(h, ANA, 'plan.pdf', 'hello');
     for (let i = 0; i < FILE_TICKETS_PER_PERSON_MAX; i += 1) {
       await h.transfers.issueDownload(SCOPE, ANA, saved.file.id, h.client.now);
     }
-    expect(await refusal(h.transfers.issueDownload(SCOPE, ANA, saved.file.id, h.client.now))).toBe('ticket_invalid');
+    expect(await refusal(h.transfers.issueDownload(SCOPE, ANA, saved.file.id, h.client.now))).toBe(
+      'too_many_transfers',
+    );
 
     const later = new Date(h.client.now.getTime() + 61_000);
-    await h.transfers.issueDownload(SCOPE, ANA, saved.file.id, later);
-    expect(h.client.state.fileTicket).toHaveLength(1);
+    expect(await h.transfers.issueDownload(SCOPE, ANA, saved.file.id, later)).toEqual(expect.any(String));
+  });
+
+  it('⚠ does not hand over a file made private after its ticket was given', async () => {
+    const h = harness();
+    const saved = await uploadAs(h, ANA, 'plan.pdf', 'hello', { visibility: 'people', sharedWith: [BEN] });
+    const ticket = await h.transfers.issueDownload(SCOPE, BEN, saved.file.id, h.client.now);
+    await h.writes.setSharing(SCOPE, ANA, saved.file.id, { visibility: 'private', sharedWith: [] });
+    expect(await h.transfers.redeem(ticket, h.client.now)).toBeNull();
   });
 });
 

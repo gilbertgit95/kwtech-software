@@ -1,6 +1,12 @@
 import type { LimitChecker, LimitDecision } from '@kwtech/module-kit';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { canSeeFile, FILE_BYTES_PER_MB, FILE_SHARE_PEOPLE_MAX, FILE_SIZE_CEILING_MB } from '../domain/files.js';
+import {
+  canSeeFile,
+  FILE_BYTES_PER_MB,
+  FILE_LIST_MAX,
+  FILE_SHARE_PEOPLE_MAX,
+  FILE_SIZE_CEILING_MB,
+} from '../domain/files.js';
 import { FILE_CLEANUP_TIME, FILE_RETENTION_HOURS_DEFAULT } from '../domain/retention.js';
 import { FILE_LIMIT, FILE_LIMIT_REGISTRY } from '../feature-keys.js';
 import type { FileAudience } from '../types.js';
@@ -8,14 +14,6 @@ import { fileRefusalError } from './file.errors.js';
 import type { FileEntryRow, FilePrismaClient, FileTransaction, InScope } from './file.repository.js';
 import { FILE_LIMIT_CHECKER, FILE_MEMBER_DIRECTORY, FILE_PRISMA } from './file.tokens.js';
 import type { FileMember, FileMemberDirectory } from './ports.js';
-
-/**
- * ⚠ THE MOST FILES ONE LIST RETURNS. Not paged, on purpose: every file is
- * deleted by the nightly clean-up and the workspace's room is capped, so a
- * list longer than this is a workspace uploading thousands a day. Past it the
- * newest show and the page says how many are not shown; PLAN §12 records it.
- */
-export const FILE_LIST_MAX = 500;
 
 /** A file together with the people it is shared with: everything `canSeeFile` reads. */
 export interface FileWithAudience {

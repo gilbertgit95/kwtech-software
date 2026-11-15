@@ -143,13 +143,15 @@ so every server must reach the same one: one shared folder mounted at
 
 Refusals on the byte routes are JSON `{ reason, message }`: 404 for a ticket
 unknown, spent or expired (one answer for all three), 400 for a size mismatch,
-413 for a cap, 503 when no store is bound.
+413 for a cap, 429 for somebody holding 100 live tickets (`too_many_transfers`), 503 when no store is bound.
+
+⚠ A download is checked AGAIN when its ticket is spent: a file made private, or unshared from that person, in the minute since is not handed over.
 
 ## Processes
 
 **`file.cleanup` — File clean-up.** Every night at 10 PM in each workspace's
-own time, it deletes the files older than the workspace keeps them, and the
-strays at least an hour old. The row goes first, then the bytes: a failure
+own time, it deletes the files older than the workspace keeps them, the
+strays at least an hour old, and the workspace's expired tickets. The row goes first, then the bytes: a failure
 between them leaves a stray, never a row whose download is broken.
 
 - **Schedule:** daily at 22:00, every day. An admin may change it to other

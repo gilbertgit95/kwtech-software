@@ -620,6 +620,8 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 138 | A workspace whose plan stops including Files is no longer cleaned up | if an organization moves to a plan without Files while it still has files | The clean-up reaches only entitled workspaces (JOBS-PLAN D12), so the files stay in `FILES_DIR` until the plan includes Files again. Nobody can open them meanwhile (every read is `not_entitled`), but they take disk. What would settle it: a clean-up that reaches every workspace with files, not only entitled ones (a `reach` that ignores the plan for deletion only) |
 | 139 | ~~Upload and download tickets live in the API process's memory~~ **CLOSED 2026-11-15: tickets are rows (`file_ticket`)** | — | Kept as their SHA-256 and spent by one conditional delete, so any API instance spends any ticket and two racing for one cannot both win. ⚠ Several instances still need ONE store they all reach: a shared folder mounted at `FILES_DIR` on each, or the blob server |
 | 140 | Uploaded files are not in a Docker volume yet | when local hosting (#133) ships | `FILES_DIR` defaults to the repository's `uploaded-files/`. In a container that folder is lost on every update; it must be a named volume beside the database's. Not backed up on purpose: the files are temporary |
+| 141 | An upload must finish within 5 minutes | before a plan sells files that take longer than that to send (Custom's 500 MB at under ~1.7 MB/s) | Node's `server.requestTimeout` is 300 s on the API and on the Next server in front of it, so a slower upload is cut off and refused "could not be saved". Raising it on the API alone does not help: the Next route handler's own server and `fetch` keep their limits. What would settle it: uploads sent straight to the blob server (a signed URL) once it exists, or raised timeouts on both servers for `/files/upload` only |
+| 142 | A download that fails after its ticket was given is not explained on the page | if people report "the download failed" with no reason | The page starts a download by clicking a link, so the browser, not the page, receives a 404 (the file was cleaned up, made private, or its bytes are missing in that minute) and shows its own "Failed". `issueFileDownload` already refuses with a reason for everything it can see. Fetching the bytes in the page would explain it but holds the whole file in memory |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
@@ -676,9 +678,10 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
   Not done, and why: no previews, folders, versions or public links (the
   issue's "not in this"); no backup of the files (they are temporary); and
-  the gaps in §12.136–140 (an unpaged list of 500, the declared 10 PM shown
+  the gaps in §12.136–142 (an unpaged list of 500, the declared 10 PM shown
   rather than the schedule in force, a workspace that loses Files is not
-  swept, no Docker volume yet). Tickets were first held in the API's memory,
+  swept, no Docker volume yet, an upload must finish within 5 minutes, a
+  download that fails in its last minute is explained by the browser only). Tickets were first held in the API's memory,
   as module-backup's are; they are rows instead (`file_ticket`, only each
   ticket's SHA-256), so the mutation and the byte route may land on different
   API servers. Sticky routing was rejected: it fails quietly as soon as one

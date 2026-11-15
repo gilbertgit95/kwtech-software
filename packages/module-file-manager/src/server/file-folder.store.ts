@@ -53,7 +53,6 @@ export function createFolderFileStore(root: string): FileStore {
 
   return {
     async write(workspaceId, storageKey, source, maxBytes): Promise<FileStoreWrite> {
-      await mkdir(pathOf(workspaceId), { recursive: true });
       const part = keyPath(workspaceId, storageKey, PART);
       let sizeBytes = 0;
       const counter = new Transform({
@@ -64,13 +63,42 @@ export function createFolderFileStore(root: string): FileStore {
           else done(null, chunk);
         },
       });
+      /*
+       * ⚠ The source is PIPED in, not part of the pipeline. `pipeline` destroys
+       * every stream on an error, and destroying the request destroys its
+       * socket: the 400 "did not arrive whole" could then never be sent. Piped,
+       * the counter's refusal only unpipes it, and the controller answers.
+       *
+       * The source's own failure (the browser went away) is therefore forwarded
+       * by hand, and listened for FIRST: it can happen while the folder is
+       * still being made, and missed there, the write would wait forever.
+       */
+      let gone: Error | null = null;
+      let piping = false;
+      const forward = (error?: Error) => {
+        gone ??= error ?? new Error('The upload ended before its last byte.');
+        if (piping) counter.destroy(gone);
+      };
+      const onClose = () => {
+        if (!source.readableEnded) forward();
+      };
+      source.once('error', forward);
+      source.once('close', onClose);
       try {
+        await mkdir(pathOf(workspaceId), { recursive: true });
+        if (gone) throw gone;
+        piping = true;
+        source.pipe(counter);
         // `wx`: never overwrite — a key is random, and a collision is a fault, not a replacement.
-        await pipeline(source, counter, createWriteStream(part, { flags: 'wx' }));
+        await pipeline(counter, createWriteStream(part, { flags: 'wx' }));
       } catch (error) {
         await rm(part, { force: true });
         if (error instanceof FileTooLargeError) return { kind: 'too_large' };
         throw error;
+      } finally {
+        source.off('error', forward);
+        source.off('close', onClose);
+        source.unpipe(counter);
       }
       await rename(part, keyPath(workspaceId, storageKey));
       return { kind: 'stored', sizeBytes };

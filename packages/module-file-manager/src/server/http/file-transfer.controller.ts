@@ -107,6 +107,8 @@ function statusOf(reason: FileRefusal): number {
       return 413;
     case 'not_configured':
       return 503;
+    case 'too_many_transfers':
+      return 429;
     case 'not_owner':
     case 'not_permitted':
       return 403;

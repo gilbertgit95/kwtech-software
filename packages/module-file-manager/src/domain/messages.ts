@@ -45,6 +45,8 @@ export function fileRefusalMessage(reason: FileRefusal): string {
       return 'The file did not arrive whole. Try uploading it again.';
     case 'ticket_invalid':
       return 'That link has expired. Start the upload or download again.';
+    case 'too_many_transfers':
+      return 'You have started a lot of uploads and downloads in the last few minutes. Wait a few minutes, then try again.';
     case 'not_configured':
       return 'Files are not set up on this server yet. Ask the person who runs it to set FILES_DIR.';
   }

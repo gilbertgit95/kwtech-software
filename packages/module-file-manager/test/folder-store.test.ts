@@ -39,6 +39,23 @@ describe('the folder store', () => {
     expect(await readdir(join(root, WORKSPACE))).toEqual([]);
   });
 
+  it('⚠ leaves the request open when it stops one, so the refusal can still be sent', async () => {
+    const store = createFolderFileStore(root);
+    const source = Readable.from([Buffer.from('too long'), Buffer.from(' and more')]);
+    expect(await store.write(WORKSPACE, KEY, source, 3)).toEqual({ kind: 'too_large' });
+    expect(source.destroyed).toBe(false);
+  });
+
+  it('fails, and keeps nothing, when the browser goes away mid-upload', async () => {
+    const store = createFolderFileStore(root);
+    const source = new Readable({ read() {} });
+    source.push(Buffer.from('ab'));
+    const writing = store.write(WORKSPACE, KEY, source, 10);
+    setImmediate(() => source.destroy(new Error('socket hang up')));
+    await expect(writing).rejects.toThrow('socket hang up');
+    expect(await readdir(join(root, WORKSPACE))).toEqual([]);
+  });
+
   it('⚠ refuses a key or a workspace that could leave its folder', async () => {
     const store = createFolderFileStore(root);
     await expect(store.open(WORKSPACE, '../../etc/passwd')).rejects.toThrow('32 hex characters');

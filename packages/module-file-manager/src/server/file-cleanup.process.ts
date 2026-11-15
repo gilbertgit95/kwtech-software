@@ -121,6 +121,8 @@ export class FileCleanupProcess implements ProcessHandler {
     }
 
     if (!context.signal.aborted) counts.handled += await this.removeStrays(scope, context.now);
+    // Spent nothing and refused by `spend` already: kept only until now, so the table stays the size of what is live.
+    await this.prisma.fileTicket.deleteMany({ where: { ...scope, expiresAt: { lte: context.now } } });
     if (deleted > 0) {
       await this.events.publish({
         ...scope,

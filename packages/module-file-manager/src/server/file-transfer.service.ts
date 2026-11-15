@@ -45,7 +45,7 @@ export function fileTicketHash(ticket: string): string {
  * The two halves of a transfer: the guarded mutation that DECIDES and hands
  * out a ticket, and the route that spends it, as a stream.
  *
- ## THE TICKETS ARE ROWS, so any API instance spends any ticket
+ * ## THE TICKETS ARE ROWS, so any API instance spends any ticket
  *
  * One-time, short-lived, 256 random bits each, kept as their SHA-256
  * (`FileTicket`). Behind a load balancer the mutation and the byte route land
@@ -184,8 +184,18 @@ export class FileTransferService {
     if (!held?.fileId || !this.store) return null;
     const scope = { organizationId: held.organizationId, workspaceId: held.workspaceId };
 
-    const file = await this.prisma.fileEntry.findFirst({ where: { ...scope, id: held.fileId } });
-    if (!file) return null;
+    /*
+     * ⚠ SEEN AGAIN, at the moment the bytes leave. The ticket proved who asked
+     * a minute ago; if the owner made the file private or took this person off
+     * it since, "private" is the promise that counts.
+     */
+    let file: FileWithAudience['file'];
+    try {
+      file = (await this.files.visible(scope, held.actorId, held.fileId)).file;
+    } catch (error) {
+      if (error instanceof FileWriteError) return null;
+      throw error;
+    }
     const opened = await this.store.open(scope.workspaceId, file.storageKey);
     if (!opened) {
       this.logger.warn({ event: 'file.bytes_missing', fileId: file.id });
@@ -203,10 +213,9 @@ export class FileTransferService {
       Pick<FileTicketRow, 'fileId' | 'name' | 'contentType' | 'sizeBytes' | 'visibility' | 'sharedWith'>
     >,
   ): Promise<string> {
-    // Every expired ticket, anybody's: an indexed delete, and the table stays the size of what is live.
-    await this.prisma.fileTicket.deleteMany({ where: { expiresAt: { lte: now } } });
+    // Expired rows are left for the nightly clean-up (`file.cleanup`): every one is already refused by `spend`.
     const live = await this.prisma.fileTicket.count({ where: { actorId, expiresAt: { gt: now } } });
-    if (live >= FILE_TICKETS_PER_PERSON_MAX) throw fileRefusalError('ticket_invalid');
+    if (live >= FILE_TICKETS_PER_PERSON_MAX) throw fileRefusalError('too_many_transfers');
 
     const ticket = randomBytes(32).toString('base64url');
     await this.prisma.fileTicket.create({ data: { ...scope, ...data, actorId, tokenHash: fileTicketHash(ticket) } });

@@ -94,6 +94,3 @@ export function checkUploadDraft(
   }
   return null;
 }
-
-/** The most files one list returns — the server's `FILE_LIST_MAX`, restated because `/react` never imports `/server`. */
-export const FILE_LIST_SHOWN_MAX = 500;

@@ -40,5 +40,7 @@ export type FileRefusal =
   | 'size_mismatch'
   /** A ticket unknown, spent or expired: ONE answer for all three. */
   | 'ticket_invalid'
+  /** The person already holds FILE_TICKETS_PER_PERSON_MAX live tickets: they clear within minutes. */
+  | 'too_many_transfers'
   /** The app bound no store: files are not set up on this server. */
   | 'not_configured';

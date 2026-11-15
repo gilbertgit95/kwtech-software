@@ -11,6 +11,14 @@ export const FILE_NAME_MAX = 255;
 /** The most people one file can be shared with by name. Past this, share it with the workspace. */
 export const FILE_SHARE_PEOPLE_MAX = 50;
 
+/**
+ * The most files one list returns, newest first. Files are deleted nightly
+ * and the room is capped, so more is a workspace uploading thousands a day;
+ * past it the page says only the newest are shown (PLAN §12.136). Here, not
+ * in `/server`, so the page reads the same number.
+ */
+export const FILE_LIST_MAX = 500;
+
 /** The longest declared content type kept. Anything longer is replaced, not refused: it is only an icon. */
 export const FILE_CONTENT_TYPE_MAX = 127;
 
