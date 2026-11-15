@@ -162,6 +162,39 @@ opened it and nobody else.
   reaches the network anywhere but its API client. `test/surface-coverage.test.ts`
   fails on a GraphQL operation that is neither bound to a key nor declared public.
 
+## Receipts (#144)
+
+A receipt for a thermal printer is described as **lines**, never as bytes or a
+page, and the pure root lays it out once (`src/domain/receipt.ts`):
+
+```ts
+import { encodeReceipt, receiptPlainText, DEFAULT_RECEIPT_PROFILE, type ReceiptLine } from '@kwtech/module-print';
+
+const lines: ReceiptLine[] = [
+  { kind: 'text', text: 'Kwtech Café', align: 'center', bold: true, size: 'double' },
+  { kind: 'pair', left: 'Iced coffee x2', right: '₱180.00' },
+  { kind: 'divider' },
+  { kind: 'pair', left: 'TOTAL', right: '₱180.00', bold: true },
+  { kind: 'cut' },
+];
+encodeReceipt(lines, DEFAULT_RECEIPT_PROFILE);   // ESC/POS bytes, sent to the printer as they are
+receiptPlainText(lines, DEFAULT_RECEIPT_PROFILE); // the same roll as text: previews, a narrow page
+```
+
+- **Characters, not millimetres:** 48 per line on 80 mm paper, 32 on 58 mm
+  (`RECEIPT_COLUMNS`). Names wrap; a price stays flush right on the first line.
+- **Only what a printer can print:** plain ASCII. Accents are dropped, `₱`
+  becomes `PHP` (most printers have no peso sign), and nothing unprintable is
+  ever sent raw (`toReceiptText`).
+- **Only the common ESC/POS commands:** reset, align, bold, double size, feed,
+  cut, the drawer. A printer's profile (`ReceiptPrinterProfile`) says whether
+  it has a cutter, a drawer and QR codes; without one, a receipt degrades — no
+  cut (the paper still feeds out to tear), no drawer pulse, the QR's text
+  instead of the code.
+- Still to come in #144: the agent printing these bytes (R2 #146), a virtual
+  printer to develop without one (R3 #147), receipt printers in the Printers
+  app (R4 #148), and the POS's Print receipt (R5 #149).
+
 ## What it declares
 
 | Key | Lets you |
