@@ -21,6 +21,15 @@ export const WEB_MODULES = [/* … */ fileWebModule()];
 import { fileMobileModule } from '@kwtech/module-file-manager/mobile';
 ```
 
+**Two layouts, one hook (#142).** `FileApp` is the Apps page's: laid out by
+its box, a table in a wide box (name, who can see it, size, when it goes,
+Download and ⋯) and cards in a narrow one, with a file dropped anywhere on it
+starting an upload. `FilesMobileApp` is the phone's own screen, as Tasks and
+Notes have: one storage card, search, All · Mine · Shared with me chips with
+counts, cards that flex to two columns on a wide phone, a round ＋ that opens
+the upload as a bottom sheet, and a sheet of actions per file. Both read
+`useFiles`, so the rules, refusals and live updates are the same.
+
 A file is not JSON, so the bytes have two route handlers of their own, passed
 on as streams. **No session is read there:** the one-time ticket the guarded
 mutation gave is the authorisation.
