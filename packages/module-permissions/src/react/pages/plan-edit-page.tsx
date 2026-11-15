@@ -7,6 +7,7 @@ import { FeatureGate } from '../feature-gate.js';
 import {
   createPermissionsClient,
   type FeatureView,
+  type LimitView,
   type PermissionsClient,
   type PlanView,
 } from '../permissions-client.js';
@@ -34,17 +35,20 @@ export function PlanEditPage({
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
   const [plans, setPlans] = useState<PlanView[] | null>(null);
   const [features, setFeatures] = useState<FeatureView[] | null>(null);
+  const [limits, setLimits] = useState<LimitView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.listPlans(), api.listFeatures()])
-      .then(([planList, featureList]) => {
+    // The caps too, from the API: this package's own list has no field for any module's (#139).
+    Promise.all([api.listPlans(), api.listFeatures(), api.listLimits()])
+      .then(([planList, featureList, limitList]) => {
         if (cancelled) return;
         setPlans(planList);
         setFeatures(featureList);
+        setLimits(limitList);
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load the plan.');
@@ -93,7 +97,7 @@ export function PlanEditPage({
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
-      ) : plans === null || features === null ? (
+      ) : plans === null || features === null || limits === null ? (
         <div className="h-64 animate-pulse rounded-md bg-muted" />
       ) : !plan ? (
         <AdminPlaceholder>No plan with that key. It may have been renamed.</AdminPlaceholder>
@@ -129,6 +133,7 @@ export function PlanEditPage({
             plan={plan}
             allPlans={plans}
             features={features}
+            limits={limits}
             onSaved={onSaved}
             cancelHref={listHref}
           />

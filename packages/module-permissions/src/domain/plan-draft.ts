@@ -227,10 +227,13 @@ function validatePlanLimits(
  * and anything unparseable is skipped, because a value that reached here after
  * validation passed would have to be a bug rather than user input, and writing
  * `NaN` into a cap is the worst available way to react to one.
+ *
+ * ⚠ `registry` is REQUIRED: a silent default to this module's own list is
+ * what dropped every module's caps on save (#139).
  */
 export function planLimitValues(
   limits: Readonly<Record<string, string>>,
-  registry: readonly LimitSpec[] = LIMIT_REGISTRY,
+  registry: readonly LimitSpec[],
 ): Record<string, number> {
   const values: Record<string, number> = {};
   for (const spec of registry) {

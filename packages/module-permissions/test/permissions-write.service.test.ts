@@ -1,6 +1,6 @@
 import { APP_DEFAULT } from '../src/defaults.js';
 import { composeContext } from '../src/domain/grants.js';
-import { LIMIT, LIMIT_REGISTRY } from '../src/domain/limits.js';
+import { LIMIT, LIMIT_REGISTRY, type LimitSpec } from '../src/domain/limits.js';
 import { subscriptionPeriodEnd } from '../src/domain/subscription-draft.js';
 import {
   assertNotAppLevel,
@@ -143,7 +143,10 @@ interface Writes {
 /** Absent means active — see `State.memberships`. */
 const isActive = (membership: { status?: string }) => (membership.status ?? 'active') === 'active';
 
-function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: string } = {}) {
+function fake(
+  state: State = emptyState(),
+  moduleOptions: { defaultAppRoleKey?: string; limitRegistry?: readonly LimitSpec[] } = {},
+) {
   const writes: Writes = {
     organizations: [],
     memberships: [],
@@ -464,11 +467,11 @@ function fake(state: State = emptyState(), moduleOptions: { defaultAppRoleKey?: 
       },
     },
     permPlanLimit: {
-      deleteMany: async (args: { where: { planKey: string; limitKey?: { notIn: string[] } } }) => {
+      deleteMany: async (args: { where: { planKey: string; limitKey?: { in: string[] } } }) => {
         const before = state.planLimits.length;
-        const keep = args.where.limitKey?.notIn ?? [];
+        const doomed = args.where.limitKey?.in;
         state.planLimits = state.planLimits.filter(
-          (l) => l.planKey !== args.where.planKey || keep.includes(l.limitKey),
+          (l) => l.planKey !== args.where.planKey || (doomed !== undefined && !doomed.includes(l.limitKey)),
         );
         return { count: before - state.planLimits.length };
       },
@@ -1253,7 +1256,7 @@ describe('plan definitions', () => {
       required: false,
       defaultValue: 10,
     };
-    const { svc, state } = fake(emptyState(), { limitRegistry: [...LIMIT_REGISTRY, NOTE_CAP] } as never);
+    const { svc, state } = fake(emptyState(), { limitRegistry: [...LIMIT_REGISTRY, NOTE_CAP] });
     await svc.createPlan(author(), planDraft({ limits: { ...REQUIRED_LIMITS, 'note:notes': '500' } }));
     expect(state.planLimits).toContainEqual({ planKey: 'team', limitKey: 'note:notes', value: 500 });
 
@@ -1261,6 +1264,19 @@ describe('plan definitions', () => {
     expect(state.planLimits.filter((l) => l.limitKey === 'note:notes')).toEqual([
       { planKey: 'team', limitKey: 'note:notes', value: 700 },
     ]);
+
+    // Cleared in the form: a declared cap the draft leaves out is removed.
+    await svc.updatePlan(author(), 'team', planDraft());
+    expect(state.planLimits.some((l) => l.limitKey === 'note:notes')).toBe(false);
+  });
+
+  it('⚠ never deletes a stored cap this build does not declare', async () => {
+    const { svc, state } = fake();
+    await svc.createPlan(author(), planDraft());
+    state.planLimits.push({ planKey: 'team', limitKey: 'unmounted:things', value: 9 });
+
+    await svc.updatePlan(author(), 'team', planDraft());
+    expect(state.planLimits).toContainEqual({ planKey: 'team', limitKey: 'unmounted:things', value: 9 });
   });
 
   it('archives and restores, never deletes', async () => {

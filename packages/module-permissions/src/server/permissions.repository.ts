@@ -926,7 +926,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
   };
 
   permPlanLimit: {
-    deleteMany(args: { where: { planKey: string; limitKey?: { notIn: string[] } } }): Promise<{ count: number }>;
+    deleteMany(args: { where: { planKey: string; limitKey?: { in: string[] } } }): Promise<{ count: number }>;
     upsert(args: {
       where: { planKey_limitKey: { planKey: string; limitKey: string } };
       create: { planKey: string; limitKey: string; value: number };
