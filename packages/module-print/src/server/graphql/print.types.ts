@@ -170,6 +170,10 @@ export class PrintAgentJobType {
   @Field()
   jobId!: string;
 
+  /** `pdf` or `escpos` (a receipt's bytes, sent to the printer as they are). */
+  @Field()
+  format!: string;
+
   /** The queue's name on that computer. */
   @Field()
   printerName!: string;

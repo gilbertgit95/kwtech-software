@@ -111,6 +111,8 @@ export class PrintResolver {
     @Args('paperName', { type: () => String, nullable: true }) paperName?: string | null,
     @Args('mediaType', { type: () => String, nullable: true }) mediaType?: string | null,
     @Args('quality', { type: () => String, nullable: true }) quality?: string | null,
+    /** `pdf` (left out) or `escpos`, a receipt (#144). */
+    @Args('format', { type: () => String, nullable: true }) format?: string | null,
   ): Promise<PrintJobStartType> {
     return this.jobs.start({ organizationId, workspaceId }, this.actor(gql.req), {
       printerId,
@@ -119,6 +121,7 @@ export class PrintResolver {
       size,
       mediaType,
       quality,
+      format,
     });
   }
 

@@ -20,6 +20,18 @@ export interface PrintRequest {
   quality?: string | null;
 }
 
+/**
+ * A receipt's bytes to send to a printer AS THEY ARE (#144): ESC/POS from
+ * `encodeReceipt`, which the printer reads itself. Nothing opens or renders
+ * them on this computer.
+ */
+export interface RawPrintRequest {
+  /** The bytes, on this computer's disk. The caller deletes the file afterwards, whatever happens. */
+  file: string;
+  printerName: string;
+  copies: number;
+}
+
 export interface PrinterDriver {
   /** Every printer the system has installed, minus the excluded ones, with its papers. */
   list(): Promise<PrintReportedPrinter[]>;
@@ -29,4 +41,10 @@ export interface PrinterDriver {
    * a sentence a person can read, when it would not.
    */
   print(request: PrintRequest): Promise<void>;
+  /**
+   * Hand a receipt's bytes to a printer unchanged. Resolves when the printer
+   * (or its queue) has taken them, and throws, with a sentence a person can
+   * read, when it would not.
+   */
+  printRaw(request: RawPrintRequest): Promise<void>;
 }

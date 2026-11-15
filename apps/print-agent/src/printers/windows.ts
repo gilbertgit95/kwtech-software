@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { paperKey, type RawWindowsPrinter, toReport } from './convert.js';
 import type { PrinterDriver } from './driver.js';
-import { WINDOWS_PRINTERS_SCRIPT, WINDOWS_TICKET_SCRIPT } from './windows-script.js';
+import { WINDOWS_PRINTERS_SCRIPT, WINDOWS_RAW_SCRIPT, WINDOWS_TICKET_SCRIPT } from './windows-script.js';
 
 /**
  * Asking takes a while: each paper of each printer is a call into its driver
@@ -99,10 +101,19 @@ export function createWindowsDriver(
     onSkipped?: (names: readonly string[]) => void;
     /** Hears when a driver printed with another setting than the job asked for. */
     onNote?: (message: string) => void;
+    /** Where the compiled RAW printing library is kept. The system's temporary folder when left out. */
+    rawDll?: string;
   } = {},
 ): PrinterDriver {
   const run = options.run ?? runWindowsPowerShell;
   const printPdf = options.print ?? printWithSumatra;
+  // Versioned by the script itself: a changed script compiles a new library rather than loading a stale one.
+  const rawDll =
+    options.rawDll ??
+    join(
+      tmpdir(),
+      `kwtech-raw-printer-${createHash('sha256').update(WINDOWS_RAW_SCRIPT).digest('hex').slice(0, 12)}.dll`,
+    );
   /** Each paper's number in its driver, from the last listing. */
   let kinds: Map<string, number> | null = null;
   return {
@@ -174,6 +185,20 @@ export function createWindowsDriver(
         });
       } finally {
         if (ticketFile) await restore();
+      }
+    },
+    async printRaw(request) {
+      try {
+        await run(WINDOWS_RAW_SCRIPT, {
+          KW_PRINT_PRINTER: request.printerName,
+          KW_PRINT_FILE: request.file,
+          KW_PRINT_COPIES: String(request.copies),
+          KW_PRINT_RAW_DLL: rawDll,
+        });
+      } catch (error) {
+        // The runner's sentence is about listing printers; this one says what failed.
+        const detail = error instanceof Error ? error.message.replace(/^.*? — /u, '') : String(error);
+        throw new Error(`The receipt could not be sent to "${request.printerName}" — ${detail}`);
       }
     },
     async list() {

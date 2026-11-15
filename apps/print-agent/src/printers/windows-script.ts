@@ -223,3 +223,93 @@ ConvertTo-Json -Compress -InputObject ([pscustomobject]@{
   quality = Get-Choice $merged.ValidatedPrintTicket 'psk:PageOutputQuality'
 })
 `;
+
+/**
+ * Sends a receipt's bytes through a printer's Windows queue UNCHANGED (#144):
+ * the spooler's "RAW" data type, which passes them to the port with no driver
+ * rendering. It is how a USB, network, serial or Bluetooth receipt printer
+ * installed in Windows prints text the fast way — and the printer's own
+ * driver stays installed, so it still prints documents too.
+ *
+ * The Win32 spooler calls (`OpenPrinter`, `StartDocPrinter` with `RAW`,
+ * `WritePrinter`, `AbortPrinter` on a failure) through a few lines of C#,
+ * compiled the first time into `$env:KW_PRINT_RAW_DLL` and loaded from there
+ * after. One document, one page per copy.
+ *
+ * Reads `$env:KW_PRINT_PRINTER`, `$env:KW_PRINT_FILE`, `$env:KW_PRINT_COPIES`,
+ * `$env:KW_PRINT_RAW_DLL`.
+ * ⚠ It writes nothing to the printer's settings.
+ */
+export const WINDOWS_RAW_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# Compiled ONCE and kept beside the agent's temporary files: compiling on every receipt cost seconds each.
+$dll = $env:KW_PRINT_RAW_DLL
+if (-not (Test-Path -LiteralPath $dll)) {
+Add-Type -OutputType Library -OutputAssembly $dll -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class KwRawPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DocInfo {
+    [MarshalAs(UnmanagedType.LPWStr)] public string Name;
+    [MarshalAs(UnmanagedType.LPWStr)] public string OutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string DataType;
+  }
+  [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool ClosePrinter(IntPtr handle);
+  [DllImport("winspool.drv", EntryPoint = "StartDocPrinterW", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern int StartDocPrinter(IntPtr handle, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DocInfo info);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndDocPrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool StartPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool EndPagePrinter(IntPtr handle);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool WritePrinter(IntPtr handle, byte[] bytes, int count, out int written);
+  [DllImport("winspool.drv", SetLastError = true)]
+  static extern bool AbortPrinter(IntPtr handle);
+
+  public static void Send(string printer, byte[] bytes, int copies) {
+    IntPtr handle;
+    if (!OpenPrinter(printer, out handle, IntPtr.Zero))
+      throw new Exception("Windows could not open the printer (error " + Marshal.GetLastWin32Error() + ").");
+    try {
+      DocInfo info = new DocInfo();
+      info.Name = "Receipt";
+      info.DataType = "RAW";
+      if (StartDocPrinter(handle, 1, info) == 0)
+        throw new Exception("Windows would not start the receipt (error " + Marshal.GetLastWin32Error() + ").");
+      // A receipt that failed part-way is CANCELLED (AbortPrinter), never ended: ending it would print half a
+      // receipt, and the cashier's reprint would add a whole one after it.
+      bool complete = false;
+      try {
+        for (int copy = 0; copy < copies; copy++) {
+          if (!StartPagePrinter(handle)) throw new Exception("Windows would not start a page (error " + Marshal.GetLastWin32Error() + ").");
+          int written;
+          bool ok = WritePrinter(handle, bytes, bytes.Length, out written);
+          // Read before any other call: the next one would replace it.
+          int error = Marshal.GetLastWin32Error();
+          EndPagePrinter(handle);
+          if (!ok || written != bytes.Length) throw new Exception("The printer did not take the whole receipt (error " + error + ").");
+        }
+        complete = true;
+      } finally {
+        if (complete) EndDocPrinter(handle);
+        else AbortPrinter(handle);
+      }
+    } finally {
+      ClosePrinter(handle);
+    }
+  }
+}
+"@
+}
+Add-Type -LiteralPath $dll
+$bytes = [System.IO.File]::ReadAllBytes($env:KW_PRINT_FILE)
+[KwRawPrinter]::Send($env:KW_PRINT_PRINTER, $bytes, [int]$env:KW_PRINT_COPIES)
+'{"sent":true}'
+`;

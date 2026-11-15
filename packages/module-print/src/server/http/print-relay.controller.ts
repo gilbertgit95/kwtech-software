@@ -77,9 +77,10 @@ export class PrintRelayController {
   ): Promise<void> {
     const admission = await this.agents.admitSecret(secret);
     const delivered = admission
-      ? await this.relay.fetch(jobId, admission.agentId, response, (size) => {
+      ? await this.relay.fetch(jobId, admission.agentId, response, (size, format) => {
           response.writeHead(200, {
-            'content-type': 'application/pdf',
+            // A receipt's bytes are no document type: the computer sends them to the printer unread.
+            'content-type': format === 'escpos' ? 'application/octet-stream' : 'application/pdf',
             'content-length': String(size),
             // A print job is nobody's to cache.
             'cache-control': 'no-store',

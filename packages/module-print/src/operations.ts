@@ -41,8 +41,8 @@ export const PRINT_OPERATIONS = {
    * Open a job for one printer. ⚠ The answer's ticket is what lets THIS browser
    * send the file, once, to `printJobContentPath(jobId)`; it is nowhere else.
    */
-  startPrintJob: `mutation StartPrintJob(${SCOPE_VARS}, $printerId: String!, $paperName: String, $copies: Int!, $size: Int!, $mediaType: String, $quality: String) {
-    startPrintJob(${SCOPE_ARGS}, printerId: $printerId, paperName: $paperName, copies: $copies, size: $size, mediaType: $mediaType, quality: $quality) { jobId ticket }
+  startPrintJob: `mutation StartPrintJob(${SCOPE_VARS}, $printerId: String!, $paperName: String, $copies: Int!, $size: Int!, $mediaType: String, $quality: String, $format: String) {
+    startPrintJob(${SCOPE_ARGS}, printerId: $printerId, paperName: $paperName, copies: $copies, size: $size, mediaType: $mediaType, quality: $quality, format: $format) { jobId ticket }
   }`,
 
   /** How a job is going. Null once it is forgotten, or for somebody else's. */
@@ -69,7 +69,7 @@ export const PRINT_OPERATIONS = {
 
   /** Over the socket. The jobs for this computer, as each is opened; ones already waiting come first. */
   printAgentJobs: `subscription PrintAgentJobs {
-    printAgentJobs { jobId printerName paper { ${PAPER} } copies size mediaType quality }
+    printAgentJobs { jobId format printerName paper { ${PAPER} } copies size mediaType quality }
   }`,
 
   /** Over the socket. How the printing of one job went. */

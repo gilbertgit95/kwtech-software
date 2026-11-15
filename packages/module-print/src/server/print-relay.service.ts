@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
   cleanJobMessage,
+  FORMAT_START,
   isJobEnded,
   isJobTicketShaped,
   PRINT_JOB_CONNECT_SECONDS,
@@ -11,8 +12,8 @@ import {
   PRINT_JOB_PRINT_SECONDS,
   PRINT_JOB_TICKET_BYTES,
   PRINT_JOBS_PER_AGENT_MAX,
+  type PrintJobFormat,
   type PrintJobOptions,
-  startsLikePdf,
 } from '../domain/jobs.js';
 import type { PrintAgentJob, PrintJobFailure, PrintJobStatus } from '../types.js';
 import { refusalError } from './print.errors.js';
@@ -45,7 +46,11 @@ interface RelayJob extends InScope {
   message: string | null;
   endedAt: number | null;
   sender: { stream: Readable; settle: (view: PrintJobView) => void } | null;
-  fetcher: { stream: Writable; begin: (size: number) => void; settle: (delivered: boolean) => void } | null;
+  fetcher: {
+    stream: Writable;
+    begin: (size: number, format: PrintJobFormat) => void;
+    settle: (delivered: boolean) => void;
+  } | null;
   timer: NodeJS.Timeout | null;
 }
 
@@ -122,6 +127,7 @@ export class PrintRelayService implements OnModuleDestroy {
       ticketHash: hashTicket(ticket),
       job: {
         jobId: '',
+        format: input.options.format,
         printerName: input.printerName,
         paper: input.options.paper,
         copies: input.options.copies,
@@ -179,7 +185,12 @@ export class PrintRelayService implements OnModuleDestroy {
    * has a fetcher: ⚠ ONE COMPUTER, ONE FETCH. A second socket of the same
    * computer is told of the job too, and must find it taken.
    */
-  fetch(jobId: string, agentId: string, stream: Writable, begin: (size: number) => void): Promise<boolean> {
+  fetch(
+    jobId: string,
+    agentId: string,
+    stream: Writable,
+    begin: (size: number, format: PrintJobFormat) => void,
+  ): Promise<boolean> {
     const job = this.jobs.get(jobId);
     if (!job || job.agentId !== agentId || job.status !== 'waiting' || job.fetcher) return Promise.resolve(false);
     return new Promise((resolve) => {
@@ -286,7 +297,7 @@ export class PrintRelayService implements OnModuleDestroy {
 
     void pipeline(
       sender.stream,
-      gate(job.job.size, () => fetcher.begin(job.job.size)),
+      gate(job.job.size, job.job.format, () => fetcher.begin(job.job.size, job.job.format)),
       fetcher.stream,
     ).then(
       () => {
@@ -352,7 +363,8 @@ function view(job: RelayJob): PrintJobView {
  * then, so a file that is not a PDF is refused with the computer's request
  * still unanswered — a refusal, not half a download.
  */
-function gate(size: number, begin: () => void): Transform {
+function gate(size: number, format: PrintJobFormat, begin: () => void): Transform {
+  const start = FORMAT_START[format];
   let seen = 0;
   let held: Buffer | null = Buffer.alloc(0);
   return new Transform({
@@ -362,16 +374,16 @@ function gate(size: number, begin: () => void): Transform {
       if (held === null) return callback(null, chunk);
 
       held = Buffer.concat([held, chunk]);
-      // Five bytes decide it; a sender may deliver them one at a time.
-      if (held.length < 5 && seen < size) return callback();
-      if (!startsLikePdf(held)) return callback(new RelayStop('not_a_pdf'));
+      // A few first bytes decide it (five for a PDF, two for a receipt); a sender may deliver them one at a time.
+      if (held.length < start.bytes && seen < size) return callback();
+      if (!start.matches(held)) return callback(new RelayStop(start.refusal));
       const first = held;
       held = null;
       begin();
       callback(null, first);
     },
     flush(callback) {
-      if (held !== null) return callback(new RelayStop(held.length === 0 ? 'nothing_sent' : 'not_a_pdf'));
+      if (held !== null) return callback(new RelayStop(held.length === 0 ? 'nothing_sent' : start.refusal));
       callback(seen === size ? null : new RelayStop('wrong_size'));
     },
   });

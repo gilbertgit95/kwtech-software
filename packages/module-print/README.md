@@ -191,9 +191,18 @@ receiptPlainText(lines, DEFAULT_RECEIPT_PROFILE); // the same roll as text: prev
   it has a cutter, a drawer and QR codes; without one, a receipt degrades — no
   cut (the paper still feeds out to tear), no drawer pulse, the QR's text
   instead of the code.
-- Still to come in #144: the agent printing these bytes (R2 #146), a virtual
-  printer to develop without one (R3 #147), receipt printers in the Printers
-  app (R4 #148), and the POS's Print receipt (R5 #149).
+- **A receipt is a print job of its own format** (R2 #146): `startPrintJob`
+  with `format: "escpos"`, no paper, no paper type or quality, at most
+  `PRINT_RECEIPT_MAX_BYTES` (256 KB). The relay lets it through only if it
+  starts with the reset `encodeReceipt` sends first (`not_a_receipt`
+  otherwise), and the computer sends the bytes to the printer unread
+  (`apps/print-agent/README.md`, "Receipts").
+- **Read back** (R3 #147): `readReceiptBytes` / `receiptPreview` turn ESC/POS
+  into the printed roll, naming any command they do not know. The agent's
+  virtual receipt printers and pretend network printer draw with them.
+- Still to come in #144: receipt printers in the Printers app (R4 #148) — until
+  then nothing stops a receipt going to a document printer but the person
+  choosing it — and the POS's Print receipt (R5 #149).
 
 ## What it declares
 
