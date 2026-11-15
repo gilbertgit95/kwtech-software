@@ -175,6 +175,13 @@ describe('where a receipt prints, as the cashier reads it', () => {
     expect(receiptPrinterDetail(before, 'Asia/Manila', NOW)).toMatch(/Offline since Nov 13, 2026/u);
   });
 
+  it('puts the status first on a phone, whose row cuts a long detail short (#154)', () => {
+    const off = { ...PRINTER, blocked: 'off', offlineSince: '2026-11-15T01:02:00Z' };
+    expect(receiptPrinterDetail(off, 'Asia/Manila', NOW, { statusFirst: true })).toMatch(
+      /^Offline since 9:02.* · Front desk PC · 80 mm · workspace default$/u,
+    );
+  });
+
   it('finds the picked printer, or none when it asks', () => {
     expect(pickedReceiptPrinter([PRINTER], { kind: 'printer', printerId: 'p1', because: 'default' })).toBe(PRINTER);
     expect(pickedReceiptPrinter([PRINTER], { kind: 'ask', reason: 'Choose' })).toBeNull();

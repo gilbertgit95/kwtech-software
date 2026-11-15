@@ -146,7 +146,10 @@ function DialogModal({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      onClose={onClose}
+      // ⚠ Its own close only: React passes a nested dialog's `close` up the component tree (#154).
+      onClose={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       // Clicking the backdrop targets the <dialog> itself; clicking anything inside targets a descendant.
       onClick={(event) => {
         if (event.target === ref.current) ref.current?.close();

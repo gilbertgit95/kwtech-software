@@ -44,6 +44,8 @@ export function SheetDialog({
       ref={ref}
       aria-labelledby={titleId}
       onCancel={(event) => {
+        // ⚠ Its own Escape only: a dialog nested inside passes its `cancel` up the React tree.
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         if (!busy) onClose();
       }}

@@ -109,10 +109,14 @@ export function BottomSheet({ open, onClose, title, children, footer, dismissibl
       ref={dialog}
       aria-label={title}
       // Esc and the browser's own close both arrive here; the parent's state follows.
-      onClose={onClose}
+      // ⚠ ITS OWN close only: React passes a nested dialog's `close` up the component tree, and a
+      // sheet opened from inside this one (the receipt's printer sheet, #154) closed this one too.
+      onClose={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       // ⚠ Esc closes a native dialog BEFORE `close` fires, so holding it open means cancelling `cancel`.
       onCancel={(event) => {
-        if (!dismissible) event.preventDefault();
+        if (event.target === event.currentTarget && !dismissible) event.preventDefault();
       }}
       // A tap on the backdrop lands on the dialog element itself, never on its content.
       onClick={(event) => {

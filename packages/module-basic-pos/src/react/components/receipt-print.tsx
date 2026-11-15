@@ -3,6 +3,8 @@
 import type { PrinterChoice, PrinterOutcome, ReceiptPrinterChoice } from '@kwtech/module-kit';
 import { usePrinters, useReceiptPrinters, useWorkspaceName } from '@kwtech/module-kit/react';
 import {
+  BottomSheet,
+  BottomSheetRow,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -250,137 +252,287 @@ export function useReceiptPrint(
   };
 }
 
+/** How tall the button is: the height of the buttons it sits beside. */
+const HEIGHTS = {
+  /** `buttonClass`'s own height: a row of the full screen's buttons (Orders: Refund, Void). */
+  md: '',
+  /** The till's "Next order". */
+  lg: 'h-11 text-base',
+  /** A phone's sheet: its "Done" and "Pay" buttons, a thumb's target. */
+  phone: 'h-14 text-base',
+} as const;
+
 /**
- * "Print receipt ▾", with where it prints under it and how it went. Looks
- * only: the hook does the work, so the till's shortcut presses the same
- * button.
+ * "Print receipt ▾": one tap prints where it says, ▾ chooses. Looks only: the
+ * hook does the work, so the till's shortcut presses the same button.
+ *
+ * - `layout="phone"`: the ▾ opens a BOTTOM SHEET of big rows, as every choice
+ *   on the phone's POS does (`PhoneDialogs`, 2026-10-29); the desktop keeps
+ *   its dropdown. (#154: a desktop menu on a phone felt like the desktop.)
+ * - ⚠ THE BUTTON ONLY, no line under it: it sits in a row with its
+ *   neighbours at their height. `ReceiptPrintStatus` is the "on Counter 1 ·
+ *   Online" line, placed by the caller under the row.
  */
 export function ReceiptPrintButton({
   state,
-  size = 'normal',
+  layout = 'desktop',
+  height = layout === 'phone' ? 'phone' : 'md',
   className,
 }: {
   state: ReceiptPrintState;
-  /** `large` on a phone: a thumb's target. */
-  size?: 'normal' | 'large';
+  layout?: 'desktop' | 'phone';
+  height?: keyof typeof HEIGHTS;
   className?: string;
 }) {
-  // Read at each render: "offline since" says today's time as a time, an older one with its date.
-  const now = new Date();
-  // Inside a phone's sheet (a native <dialog>), the menu must open inside it, or it opens behind the sheet.
-  const wrapper = useRef<HTMLDivElement>(null);
-  const sheet = state.menuOpen ? (wrapper.current?.closest('dialog') ?? null) : null;
   const label = state.reprint ? 'Reprint receipt' : 'Print receipt';
-  const height = size === 'large' ? 'h-12 text-base' : 'h-10';
+  const size = HEIGHTS[height];
+  const round = layout === 'phone' ? 'rounded-2xl' : '';
+  const icon = layout === 'phone' ? 'size-5' : 'size-4';
 
   if (!state.usesPrinters) {
     return (
       <button
         type="button"
-        className={cn(buttonClass('secondary'), height, className)}
+        className={cn(buttonClass('secondary'), size, round, className)}
         disabled={!state.order || state.loading}
         onClick={state.printInBrowser}
       >
-        <Printer aria-hidden="true" className="size-4" />
+        <Printer aria-hidden="true" className={icon} />
         {label}
       </button>
     );
   }
 
+  const chooser = cn(buttonClass('secondary'), size, round, 'shrink-0 rounded-l-none border-l-0 px-2.5');
   return (
-    <div ref={wrapper} className={cn('flex min-w-0 flex-col gap-1', className)}>
-      <div className="flex min-w-0">
-        <button
-          type="button"
-          className={cn(buttonClass('secondary'), height, 'min-w-0 flex-1 rounded-r-none')}
-          disabled={!state.order || state.busy}
-          onClick={state.printNow}
-        >
-          <ReceiptText aria-hidden="true" className="size-4 shrink-0" />
-          <span className="truncate">{state.busy ? 'Printing…' : label}</span>
-        </button>
-        <DropdownMenu open={state.menuOpen} onOpenChange={state.setMenuOpen}>
-          <DropdownMenuTrigger
-            className={cn(buttonClass('secondary'), height, 'rounded-l-none border-l-0 px-2')}
+    <div className={cn('flex min-w-0', className)}>
+      <button
+        type="button"
+        className={cn(buttonClass('secondary'), size, round, 'min-w-0 flex-1 rounded-r-none')}
+        disabled={!state.order || state.busy}
+        onClick={state.printNow}
+      >
+        <ReceiptText aria-hidden="true" className={cn(icon, 'shrink-0')} />
+        <span className="truncate">{state.busy ? 'Printing…' : label}</span>
+      </button>
+      {layout === 'phone' ? (
+        <>
+          <button
+            type="button"
+            className={chooser}
             disabled={!state.order || state.busy}
             aria-label="Choose the printer"
+            onClick={() => state.setMenuOpen(true)}
           >
-            <ChevronDown aria-hidden="true" className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            container={sheet}
-            // In a sheet, kept inside it (the sheet clips what passes its edge), scrolling when it is taller.
-            {...(sheet ? { collisionBoundary: sheet, collisionPadding: 8 } : {})}
-            className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
-          >
-            {state.askReason ? (
-              <p role="status" className="px-2 py-1.5 text-xs text-muted-foreground">
-                {state.askReason}
-              </p>
-            ) : null}
-            <DropdownMenuLabel>Receipt printers</DropdownMenuLabel>
-            {state.receiptPrinters.length === 0 ? (
-              <p className="px-2 pb-1.5 text-xs text-muted-foreground">
-                None yet. In the Printers app, choose “Use for receipts…” on a printer.
-              </p>
-            ) : null}
-            {state.receiptPrinters.map((printer) => (
-              <DropdownMenuItem
-                key={printer.id}
-                disabled={printer.blocked !== null}
-                onSelect={() => state.printOn(printer.id)}
-                className="items-start"
-              >
-                <ReceiptText aria-hidden="true" className="mt-0.5" />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">
-                    {printer.name}
-                    {state.target?.id === printer.id ? ' ✓' : ''}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {receiptPrinterDetail(printer, state.timeZone, now)}
-                  </span>
-                </span>
-              </DropdownMenuItem>
-            ))}
-            {state.documentPrinters.length > 0 ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Other printers (prints as a page)</DropdownMenuLabel>
-                {state.documentPrinters.map((printer) => (
-                  <DropdownMenuItem
-                    key={printer.id}
-                    disabled={printer.blocked !== null}
-                    onSelect={() => state.printAsPage(printer.id)}
-                    className="items-start"
-                  >
-                    <Printer aria-hidden="true" className="mt-0.5" />
-                    <span className="min-w-0">
-                      <span className="block truncate">{printer.name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {printer.blocked ?? `${printer.computer} · a narrow column on its paper`}
-                      </span>
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-              </>
-            ) : null}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={state.printInBrowser}>
-              <Globe aria-hidden="true" />
-              Print from this browser
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <p
-        role="status"
-        className={cn('truncate text-xs', state.said?.ok === false ? 'text-destructive' : 'text-muted-foreground')}
-      >
-        {state.said?.text ?? (state.target ? receiptTargetText(state.target) : (state.askReason ?? ''))}
-      </p>
+            <ChevronDown aria-hidden="true" className={icon} />
+          </button>
+          <PrinterSheet state={state} />
+        </>
+      ) : (
+        <PrinterDropdown state={state} triggerClassName={chooser} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Where the receipt will print, or how it went: the line under the button's
+ * row. `aria-live` through `role="status"`, so a screen reader hears it.
+ */
+export function ReceiptPrintStatus({ state, className }: { state: ReceiptPrintState; className?: string }) {
+  if (!state.usesPrinters) return null;
+  return (
+    <p
+      role="status"
+      className={cn(
+        'min-h-4 truncate text-xs',
+        state.said?.ok === false ? 'text-destructive' : 'text-muted-foreground',
+        className,
+      )}
+    >
+      {state.said?.text ?? (state.target ? receiptTargetText(state.target) : (state.askReason ?? ''))}
+    </p>
+  );
+}
+
+/** One printer as a choice, in either list: what it is, and why it cannot be chosen now. */
+interface ChoiceRow {
+  key: string;
+  icon: 'receipt' | 'page' | 'browser';
+  title: string;
+  detail: string | null;
+  picked: boolean;
+  disabled: boolean;
+  onPick: () => void;
+}
+
+/** The menu's sections, as data: the dropdown and the sheet show the same choices in the same order. */
+function choiceSections(
+  state: ReceiptPrintState,
+  now: Date,
+  /** A phone's row cuts its detail short: the status goes first, where it is never cut. */
+  statusFirst = false,
+): { label: string | null; rows: ChoiceRow[]; empty?: string }[] {
+  return [
+    {
+      label: 'Receipt printers',
+      empty: 'None yet. In the Printers app, choose “Use for receipts…” on a printer.',
+      rows: state.receiptPrinters.map((printer) => ({
+        key: printer.id,
+        icon: 'receipt',
+        title: printer.name,
+        detail: receiptPrinterDetail(printer, state.timeZone, now, { statusFirst }),
+        picked: state.target?.id === printer.id,
+        disabled: printer.blocked !== null,
+        onPick: () => state.printOn(printer.id),
+      })),
+    },
+    {
+      label: state.documentPrinters.length > 0 ? 'Other printers (prints as a page)' : null,
+      rows: state.documentPrinters.map((printer) => ({
+        key: printer.id,
+        icon: 'page',
+        title: printer.name,
+        detail: printer.blocked ?? `${printer.computer} · a narrow column on its paper`,
+        picked: false,
+        disabled: printer.blocked !== null,
+        onPick: () => state.printAsPage(printer.id),
+      })),
+    },
+    {
+      label: null,
+      rows: [
+        {
+          key: 'browser',
+          icon: 'browser',
+          title: 'Print from this browser',
+          detail: null,
+          picked: false,
+          disabled: false,
+          onPick: state.printInBrowser,
+        },
+      ],
+    },
+  ];
+}
+
+function RowIcon({ icon, className }: { icon: ChoiceRow['icon']; className?: string | undefined }) {
+  if (icon === 'receipt') return <ReceiptText aria-hidden="true" className={className} />;
+  if (icon === 'page') return <Printer aria-hidden="true" className={className} />;
+  return <Globe aria-hidden="true" className={className} />;
+}
+
+/** The desktop's ▾: a dropdown under the button. */
+function PrinterDropdown({ state, triggerClassName }: { state: ReceiptPrintState; triggerClassName: string }) {
+  // Read at each render: "offline since" says today's time as a time, an older one with its date.
+  const now = new Date();
+  // Inside a native <dialog>, the menu must open inside it, or it opens behind it.
+  const anchor = useRef<HTMLSpanElement>(null);
+  const dialog = state.menuOpen ? (anchor.current?.closest('dialog') ?? null) : null;
+  return (
+    <DropdownMenu open={state.menuOpen} onOpenChange={state.setMenuOpen}>
+      <span ref={anchor} className="contents" />
+      <DropdownMenuTrigger
+        className={triggerClassName}
+        disabled={!state.order || state.busy}
+        aria-label="Choose the printer"
+      >
+        <ChevronDown aria-hidden="true" className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        container={dialog}
+        // In a dialog, kept inside it (it clips what passes its edge), scrolling when it is taller.
+        {...(dialog ? { collisionBoundary: dialog, collisionPadding: 8 } : {})}
+        className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
+      >
+        {state.askReason ? (
+          <p role="status" className="px-2 py-1.5 text-xs text-muted-foreground">
+            {state.askReason}
+          </p>
+        ) : null}
+        {choiceSections(state, now).map((section, index) =>
+          section.rows.length === 0 && !section.empty ? null : (
+            <div key={section.label ?? `section-${index}`}>
+              {index > 0 ? <DropdownMenuSeparator /> : null}
+              {section.label ? <DropdownMenuLabel>{section.label}</DropdownMenuLabel> : null}
+              {section.rows.length === 0 && section.empty ? (
+                <p className="px-2 pb-1.5 text-xs text-muted-foreground">{section.empty}</p>
+              ) : null}
+              {section.rows.map((row) => (
+                <DropdownMenuItem
+                  key={row.key}
+                  disabled={row.disabled}
+                  onSelect={row.onPick}
+                  className={row.detail ? 'items-start' : undefined}
+                >
+                  <RowIcon icon={row.icon} className={row.detail ? 'mt-0.5' : undefined} />
+                  <span className="min-w-0">
+                    <span className={cn('block truncate', row.icon === 'receipt' ? 'font-medium' : null)}>
+                      {row.title}
+                      {row.picked ? ' ✓' : ''}
+                    </span>
+                    {row.detail ? <span className="block text-xs text-muted-foreground">{row.detail}</span> : null}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </div>
+          ),
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The phone's ▾: a bottom sheet of thumb-sized rows (#154), the same choices
+ * as the desktop's dropdown. Picking one closes it and prints.
+ */
+function PrinterSheet({ state }: { state: ReceiptPrintState }) {
+  const now = new Date();
+  const pick = (row: ChoiceRow) => {
+    state.setMenuOpen(false);
+    row.onPick();
+  };
+  return (
+    <BottomSheet
+      open={state.menuOpen}
+      onClose={() => state.setMenuOpen(false)}
+      title={state.reprint ? 'Reprint the receipt on…' : 'Print the receipt on…'}
+    >
+      <div className="flex flex-col gap-4 pb-2">
+        {state.askReason ? (
+          <p role="status" className="rounded-xl bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+            {state.askReason}
+          </p>
+        ) : null}
+        {choiceSections(state, now, true).map((section, index) =>
+          section.rows.length === 0 && !section.empty ? null : (
+            <section key={section.label ?? `section-${index}`} className="flex flex-col gap-2">
+              {section.label ? (
+                <h3 className="px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  {section.label}
+                </h3>
+              ) : null}
+              {section.rows.length === 0 && section.empty ? (
+                <p className="px-1 text-sm text-muted-foreground">{section.empty}</p>
+              ) : null}
+              {section.rows.map((row) => (
+                <BottomSheetRow
+                  key={row.key}
+                  icon={<RowIcon icon={row.icon} className="size-5" />}
+                  label={row.picked ? `${row.title} ✓` : row.title}
+                  detail={row.detail}
+                  current={row.picked}
+                  disabled={row.disabled}
+                  onClick={() => pick(row)}
+                />
+              ))}
+            </section>
+          ),
+        )}
+      </div>
+    </BottomSheet>
   );
 }
 
