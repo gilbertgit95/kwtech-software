@@ -1,4 +1,5 @@
 import type { PrintPaper } from '../types.js';
+import { pdfLiteral, pdfNumber, pdfPoints, writePdf } from './pdf.js';
 
 /**
  * The ruler page: one sheet that proves a printer prints at exact size, and
@@ -17,11 +18,6 @@ import type { PrintPaper } from '../types.js';
  * ⚠ VECTOR ONLY. A picture of a ruler would be resampled by a driver; a line
  * between two coordinates is drawn where it says.
  */
-
-/** Hundredths of a millimetre, the module's unit, as PDF points (1/72 inch). */
-function points(length: number): number {
-  return (length * 72) / 2540;
-}
 
 /** From the paper's LEFT edge to the corner where the lines meet. Hundredths of a millimetre. */
 export const RULER_FROM_LEFT = 2000;
@@ -48,17 +44,6 @@ export function rulerLineLength(paper: Pick<PrintPaper, 'width' | 'height'>): nu
   return RULER_LENGTHS.find((length) => length <= across && length <= down) ?? 2000;
 }
 
-/** A number as PDF writes one: at most three decimals, no exponent. */
-function number(value: number): string {
-  return String(Math.round(value * 1000) / 1000);
-}
-
-/** Text as a PDF literal string. ⚠ ASCII ONLY: anything else is dropped, because the page uses a base font with no encoding. */
-function literal(text: string): string {
-  const ascii = [...text].filter((character) => character >= ' ' && character <= '~').join('');
-  return `(${ascii.replace(/[\\()]/g, (character) => `\\${character}`)})`;
-}
-
 const mm = (hundredths: number) => String(Math.round(hundredths / 10) / 10);
 
 /**
@@ -66,23 +51,23 @@ const mm = (hundredths: number) => String(Math.round(hundredths / 10) / 10);
  * that paper's size.
  */
 export function rulerPagePdf(paper: Pick<PrintPaper, 'name' | 'width' | 'height'>): Uint8Array {
-  const width = points(paper.width);
-  const height = points(paper.height);
+  const width = pdfPoints(paper.width);
+  const height = pdfPoints(paper.height);
   const length = rulerLineLength(paper);
-  const line = points(length);
+  const line = pdfPoints(length);
   // PDF measures up from the bottom; the corner is measured down from the top.
-  const x = points(RULER_FROM_LEFT);
-  const y = height - points(RULER_FROM_TOP);
-  const tick = points(300);
-  const text = points(500);
+  const x = pdfPoints(RULER_FROM_LEFT);
+  const y = height - pdfPoints(RULER_FROM_TOP);
+  const tick = pdfPoints(300);
+  const text = pdfPoints(500);
 
   const strokes = [
     // The two lines, meeting at the corner.
-    `${number(x)} ${number(y)} m ${number(x + line)} ${number(y)} l S`,
-    `${number(x)} ${number(y)} m ${number(x)} ${number(y - line)} l S`,
+    `${pdfNumber(x)} ${pdfNumber(y)} m ${pdfNumber(x + line)} ${pdfNumber(y)} l S`,
+    `${pdfNumber(x)} ${pdfNumber(y)} m ${pdfNumber(x)} ${pdfNumber(y - line)} l S`,
     // A tick across each far end, so there is something exact to put the ruler against.
-    `${number(x + line)} ${number(y - tick)} m ${number(x + line)} ${number(y + tick)} l S`,
-    `${number(x - tick)} ${number(y - line)} m ${number(x + tick)} ${number(y - line)} l S`,
+    `${pdfNumber(x + line)} ${pdfNumber(y - tick)} m ${pdfNumber(x + line)} ${pdfNumber(y + tick)} l S`,
+    `${pdfNumber(x - tick)} ${pdfNumber(y - line)} m ${pdfNumber(x + tick)} ${pdfNumber(y - line)} l S`,
   ];
   const lines = [
     'Ruler page - printed at actual size (100%)',
@@ -96,33 +81,11 @@ export function rulerPagePdf(paper: Pick<PrintPaper, 'name' | 'width' | 'height'
     'BT',
     '/F1 8 Tf',
     `${leading} TL`,
-    `${number(x + text)} ${number(y - text - 8)} Td`,
-    ...lines.map((entry, index) => `${index === 0 ? '' : 'T* '}${literal(entry)} Tj`),
+    `${pdfNumber(x + text)} ${pdfNumber(y - text - 8)} Td`,
+    ...lines.map((entry, index) => `${index === 0 ? '' : 'T* '}${pdfLiteral(entry)} Tj`),
     'ET',
   ];
   const content = ['0.7 w', '0 G', ...strokes, ...words].join('\n');
 
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${number(width)} ${number(height)}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-  ];
-
-  // Every character is ASCII, so a string's length is its length in bytes and the offsets below are exact.
-  let file = '%PDF-1.4\n';
-  const offsets: number[] = [];
-  objects.forEach((body, index) => {
-    offsets.push(file.length);
-    file += `${index + 1} 0 obj\n${body}\nendobj\n`;
-  });
-  const xref = file.length;
-  file += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets) file += `${String(offset).padStart(10, '0')} 00000 n \n`;
-  file += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-
-  const bytes = new Uint8Array(file.length);
-  for (let index = 0; index < file.length; index += 1) bytes[index] = file.charCodeAt(index);
-  return bytes;
+  return writePdf([{ width, height, content }], 'Helvetica');
 }

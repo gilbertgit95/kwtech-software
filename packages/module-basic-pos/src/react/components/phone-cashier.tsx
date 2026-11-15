@@ -2,7 +2,7 @@
 
 import { useMobileSection } from '@kwtech/module-kit/react';
 import { BottomSheet, cn, LIST_ITEM, LIST_KEYS } from '@kwtech/web-ui/react';
-import { Ban, ChevronRight, CircleCheck, Hash, Inbox, Minus, Plus, Printer, Trash2, User } from 'lucide-react';
+import { Ban, ChevronRight, CircleCheck, Hash, Inbox, Minus, Plus, Trash2, User } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { POS_MOBILE_SECTION } from '../../mobile/sections.js';
 import type { PosOrderView } from '../pos-client.js';
@@ -11,7 +11,6 @@ import { useOrderAlerts } from '../use-order-alerts.js';
 import type { TillState } from '../use-till.js';
 import { formatPeso } from '../view/money.js';
 import { phoneCashierSheet, settledElsewhereText, waitingSummary } from '../view/phone-cashier.js';
-import { receiptHtml } from '../view/receipt.js';
 import {
   canLeaveOrder,
   heldOrderDetail,
@@ -28,7 +27,7 @@ import { CustomerDialog, ReferenceDialog, TextDialog } from './dialogs.js';
 import { ChangeBadge, HIGHLIGHT_CARD, HIGHLIGHT_TRANSITION, SoundsBlockedNote, SoundsButton } from './order-alerts.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { PaymentDialog } from './payment-dialog.js';
-import { printHtml } from './till.js';
+import { ReceiptPrintButton, useAutoReceipt, useReceiptPrint } from './receipt-print.js';
 import { WaitBadge } from './wait-badge.js';
 
 /** Which sheet is up over the order: none, the order itself, or one of its dialogs over it. */
@@ -72,6 +71,9 @@ export function PhoneCashier({ state }: { state: TillState }) {
   const [soundsOpen, setSoundsOpen] = useState(false);
 
   const order = state.order;
+  // The receipt (#144, R5): this device's "Always print after payment" as on the full screen.
+  const [autoReceipt] = useAutoReceipt(scope.workspaceId);
+  const receipt = useReceiptPrint(order, { scope, timeZone: state.timeZone, autoAfterPayment: autoReceipt });
   const open = order?.status === 'open' ? order : null;
   const lines = open?.lines ?? [];
   const summary = waitingSummary(state.pending, now);
@@ -223,15 +225,8 @@ export function PhoneCashier({ state }: { state: TillState }) {
                 </button>
               </div>
             ) : shows === 'receipt' && order ? (
-              <div className="grid grid-cols-[auto_1fr] gap-2">
-                <button
-                  type="button"
-                  className={cn(buttonClass('secondary'), 'h-14 rounded-2xl')}
-                  onClick={() => printHtml(receiptHtml(order, { timeZone: state.timeZone }))}
-                >
-                  <Printer aria-hidden="true" className="size-5" />
-                  Print
-                </button>
+              <div className="grid grid-cols-2 items-start gap-2">
+                <ReceiptPrintButton state={receipt} size="large" />
                 <button
                   type="button"
                   className={cn(buttonClass('primary'), 'h-14 rounded-2xl text-base')}

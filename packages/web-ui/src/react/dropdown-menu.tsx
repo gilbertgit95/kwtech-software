@@ -25,12 +25,21 @@ export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export function DropdownMenuContent({
   className,
   sideOffset = 4,
+  container,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  /**
+   * Where the menu is portalled to. Left out: the document's body. ⚠ A menu
+   * inside a native `<dialog>` (a `BottomSheet`, a `SheetDialog`) must be
+   * portalled INTO it: the dialog sits in the browser's top layer, above
+   * every z-index, and a menu in the body opens behind it, unreachable.
+   */
+  container?: HTMLElement | null;
+}) {
   return (
     // Portalled, so the menu is not clipped by the header's `overflow` or
     // out-stacked by anything with a z-index further up the tree.
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={container ?? undefined}>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(

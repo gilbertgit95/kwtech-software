@@ -13,6 +13,7 @@ export * from './domain/jobs.js';
 export * from './domain/pairing.js';
 export * from './domain/printers.js';
 export * from './domain/receipt.js';
+export * from './domain/receipt-page.js';
 export * from './domain/receipt-printers.js';
 export * from './domain/receipt-reader.js';
 export * from './domain/ruler.js';

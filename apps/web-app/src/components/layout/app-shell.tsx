@@ -1,5 +1,5 @@
 import { SessionKeeper } from '@kwtech/module-auth/react';
-import { WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
+import { WorkspaceNameProvider, WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { FEATURE } from '@kwtech/module-permissions';
 import { PermissionsProvider } from '@kwtech/module-permissions/react';
 import { displayApplyScript } from '@kwtech/web-ui';
@@ -539,7 +539,12 @@ export async function AppShell({
               <WorkspaceTimeZoneProvider
                 timeZone={workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.timeZone ?? null}
               >
-                {children}
+                {/* Its name too: a receipt is headed with the shop's name (#144, R5). */}
+                <WorkspaceNameProvider
+                  name={workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? null}
+                >
+                  {children}
+                </WorkspaceNameProvider>
               </WorkspaceTimeZoneProvider>
             </main>
             {/*

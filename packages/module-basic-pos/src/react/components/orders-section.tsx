@@ -1,7 +1,7 @@
 'use client';
 
 import { cn, LIST_KEYS, ListDrawer, listNeighbours, searchIntoList } from '@kwtech/web-ui/react';
-import { Printer, RotateCcw, Search } from 'lucide-react';
+import { RotateCcw, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { POS_ORDERS_READ_MAX } from '../../domain/orders.js';
 import { planRefund } from '../../domain/refunds.js';
@@ -23,7 +23,7 @@ import {
   whenText,
 } from '../view/manage.js';
 import { formatPercent, formatPeso, parsePeso } from '../view/money.js';
-import { METHOD_LABELS, receiptHtml } from '../view/receipt.js';
+import { METHOD_LABELS } from '../view/receipt.js';
 import { periodText } from '../view/reports.js';
 import { lineLabel } from '../view/till.js';
 import { buttonClass, Field, INPUT_CLASS, Modal } from './controls.js';
@@ -31,7 +31,7 @@ import { TextDialog } from './dialogs.js';
 import { Alert, Empty, RowButton, StatusChip, Tabs } from './layout.js';
 import { PaymentDialog } from './payment-dialog.js';
 import { PeriodPicker } from './period-picker.js';
-import { printHtml } from './till.js';
+import { ReceiptPrintButton, useReceiptPrint } from './receipt-print.js';
 
 /**
  * Orders (D23): a list, and the order in a drawer over it with what may be
@@ -237,6 +237,12 @@ export function OrderDetail({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const order = detail.data;
+  // ⚠ Only a current copy (`reprintState`): never the one kept while it reads again, or after that failed.
+  const reprint = useReceiptPrint(order && reprintState(detail) === 'ready' ? order : null, {
+    scope,
+    timeZone,
+    reprint: true,
+  });
 
   if (!order) {
     return detail.error ? (
@@ -387,19 +393,8 @@ export function OrderDetail({
             Void
           </button>
         ) : null}
-        {can.reprint ? (
-          <button
-            type="button"
-            // ⚠ Only a current copy (`reprintState`): never the one kept while it reads again, or after that failed.
-            disabled={reprintState(detail) !== 'ready'}
-            className={buttonClass('ghost')}
-            // ⚠ A reprint says so, with the date (guard rules).
-            onClick={() => printHtml(receiptHtml(order, { timeZone, reprintedAt: new Date() }))}
-          >
-            <Printer aria-hidden="true" className="size-4" />
-            Reprint
-          </button>
-        ) : null}
+        {/* ⚠ A reprint says so, with the time (guard rules), and goes to this device's receipt printer (#144). */}
+        {can.reprint ? <ReceiptPrintButton state={reprint} className="min-w-56" /> : null}
       </div>
 
       <TextDialog

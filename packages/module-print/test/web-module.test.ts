@@ -117,10 +117,20 @@ describe('the web half', () => {
     expect(files.length).toBeGreaterThanOrEqual(5);
   });
 
-  it('⚠ writes nothing to browser storage', () => {
+  it('⚠ writes nothing to browser storage but this device’s receipt printer, by id', () => {
     for (const path of files) {
-      expect([path, /localStorage|sessionStorage|indexedDB|caches\.open/u.test(code(path))]).toEqual([path, false]);
+      // The one exception (#144, R5): which receipt printer this device prints on. Never a file.
+      const allowed = path.endsWith('print-target.ts') ? 1 : 0;
+      const uses = code(path).match(/localStorage|sessionStorage|indexedDB|caches\.open/gu) ?? [];
+      expect([path, uses.length > 0 && allowed === 0]).toEqual([path, false]);
     }
+    const target = code(join(root, 'print-target.ts'));
+    expect(target.match(/localStorage\?\.(\w+)\(/gu)).toEqual([
+      'localStorage?.getItem(',
+      'localStorage?.removeItem(',
+      'localStorage?.setItem(',
+    ]);
+    expect(/sessionStorage|indexedDB|caches\.open/u.test(target)).toBe(false);
   });
 
   it('reaches the network from the API client alone', () => {
@@ -291,8 +301,14 @@ describe('printing for another module', () => {
   });
 
   /** A client whose computers are `agents`, and whose one job ends as `ends`. */
-  function target(agents: PrintAgentView[] | Error, ends: PrintJobView | null | Error = null) {
+  function target(
+    agents: PrintAgentView[] | Error,
+    ends: PrintJobView | null | Error = null,
+    receipts: { fallback?: string | null; device?: string | null } = {},
+  ) {
     const started: Array<Record<string, unknown>> = [];
+    const sentBytes: Uint8Array[] = [];
+    const kept = new Map<string, string | null>([['ws-1', receipts.device ?? null]]);
     const client: PrintClient = {
       async agents() {
         if (agents instanceof Error) throw agents;
@@ -307,17 +323,30 @@ describe('printing for another module', () => {
         started.push({ ...request, size });
         return { jobId: 'job-1', ticket: 't'.repeat(43) };
       },
-      async sendJob() {},
+      async sendJob(_ticket, bytes) {
+        sentBytes.push(bytes);
+      },
       async job() {
         return ends instanceof Error ? null : ends;
       },
       async receiptDefault() {
-        return null;
+        return receipts.fallback ?? null;
       },
       async setReceiptPrinter() {},
       async setReceiptDefault() {},
     };
-    return { print: createPrintTarget({ client, wait: () => Promise.resolve() }), started };
+    const deviceChoice = {
+      read: (workspaceId: string) => kept.get(workspaceId) ?? null,
+      write: (workspaceId: string, printerId: string | null) => {
+        kept.set(workspaceId, printerId);
+      },
+    };
+    return {
+      print: createPrintTarget({ client, wait: () => Promise.resolve(), deviceChoice }),
+      started,
+      sentBytes,
+      kept,
+    };
   }
   const printed: PrintJobView = { id: 'job-1', status: 'printed', failure: null, message: null };
   const job = { printerId: 'printer-1', pdf: PDF, width: 21000, height: 29700 };
@@ -406,6 +435,82 @@ describe('printing for another module', () => {
     expect(failed.message).toMatch(/Out of paper/u);
     const forgotten = await target([agent()], null).print.print(SCOPE, job);
     expect(forgotten.sent).toBe(false);
+  });
+
+  // ── Receipts (#144, R5) ──
+  const LINES = [
+    { kind: 'text', text: 'Kape Tayo', align: 'center' },
+    { kind: 'pair', left: 'Iced coffee x2', right: 'PHP 180.00' },
+    { kind: 'cut' },
+  ] as const;
+
+  it('offers the receipt printers by their place, with width, default and why one cannot print', async () => {
+    const offline = agent({ online: false, lastSeenAt: '2026-11-15T01:02:00.000Z' });
+    const { printers, pick } = await target([offline], null, { fallback: 'printer-3' }).print.receipts(SCOPE);
+    expect(printers).toEqual([
+      {
+        id: 'printer-3',
+        name: 'Counter 1',
+        computer: 'Front desk PC',
+        paperWidth: 80,
+        isDefault: true,
+        blocked: expect.stringMatching(/offline/u),
+        offlineSince: '2026-11-15T01:02:00.000Z',
+      },
+    ]);
+    // ⚠ The default is offline: it asks, it never sends the receipt elsewhere.
+    expect(pick).toMatchObject({ kind: 'ask', reason: expect.stringMatching(/Counter 1.*offline/u) });
+  });
+
+  it('sends a receipt to the only receipt printer online, and remembers a device’s choice', async () => {
+    const { print, kept } = target([agent()]);
+    expect((await print.receipts(SCOPE)).pick).toEqual({ kind: 'printer', printerId: 'printer-3', because: 'only' });
+    print.chooseReceiptPrinter(SCOPE, 'printer-3');
+    expect(kept.get('ws-1')).toBe('printer-3');
+    expect((await print.receipts(SCOPE)).pick).toMatchObject({ because: 'device' });
+  });
+
+  it('prints a receipt as ESC/POS for that printer, one copy, with no paper named', async () => {
+    const { print, started, sentBytes } = target([agent()], printed);
+    expect(await print.printReceipt(SCOPE, { printerId: 'printer-3', lines: LINES })).toEqual({
+      sent: true,
+      message: 'Sent to the printer.',
+    });
+    expect(started).toEqual([
+      { printerId: 'printer-3', paperName: null, copies: 1, format: 'escpos', size: sentBytes[0]?.byteLength },
+    ]);
+    // ESC @ first: the bytes are a receipt, not a PDF.
+    expect([...(sentBytes[0] ?? []).slice(0, 2)]).toEqual([0x1b, 0x40]);
+  });
+
+  it('⚠ refuses a receipt on a document printer, and a page on a receipt printer, opening no job', async () => {
+    const { print, started } = target([agent()], printed);
+    expect(await print.printReceipt(SCOPE, { printerId: 'printer-1', lines: LINES })).toMatchObject({
+      sent: false,
+      message: expect.stringMatching(/not a receipt printer/u),
+    });
+    expect(await print.printReceiptAsPage(SCOPE, { printerId: 'printer-3', lines: LINES })).toMatchObject({
+      sent: false,
+    });
+    expect(started).toEqual([]);
+  });
+
+  it('prints the fallback page on a document printer’s A4, as a PDF', async () => {
+    const { print, started, sentBytes } = target([agent()], printed);
+    expect(await print.printReceiptAsPage(SCOPE, { printerId: 'printer-1', lines: LINES })).toMatchObject({
+      sent: true,
+    });
+    expect(started[0]).toMatchObject({ printerId: 'printer-1', paperName: 'A4', copies: 1 });
+    expect(started[0]).not.toHaveProperty('format');
+    expect(new TextDecoder().decode(sentBytes[0]).startsWith('%PDF-')).toBe(true);
+  });
+
+  it('refuses an empty receipt with a sentence, and offers no printers when they cannot be read', async () => {
+    const { print, started } = target([agent()], printed);
+    expect((await print.printReceipt(SCOPE, { printerId: 'printer-3', lines: [] })).sent).toBe(false);
+    expect(started).toEqual([]);
+    const refused = await target(new Error('You do not have access')).print.receipts(SCOPE);
+    expect(refused).toMatchObject({ printers: [], pick: { kind: 'ask' } });
   });
 });
 

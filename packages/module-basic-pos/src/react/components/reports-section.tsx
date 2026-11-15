@@ -34,7 +34,8 @@ import {
 import { buttonClass } from './controls.js';
 import { Alert, Empty, Tabs } from './layout.js';
 import { PeriodPicker } from './period-picker.js';
-import { downloadCsv, printHtml } from './till.js';
+import { printHtml } from './print-frame.js';
+import { downloadCsv } from './till.js';
 
 const REPORT_TABS = [
   { key: 'dashboard', label: 'Dashboard' },

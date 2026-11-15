@@ -655,6 +655,31 @@ const printing = usePrinters(scope);
 menu renders nothing: the screen is what it was without it. Making the PDF is
 the module's own work, since only it knows what it prints.
 
+### Receipts on a receipt printer (#144, R5)
+
+The same port prints a receipt on a thermal receipt printer. A module
+describes it as `PrinterReceiptLine`s (text, a left/right pair, a divider, a
+feed, a QR code, the cut, the drawer), never as bytes: the binder lays them
+out for the chosen printer's width and sends its own commands.
+
+- `useReceiptPrinters(scope)` → `{ bound, printing, refresh, read, choose,
+  print, printAsPage }`. `printing` is `{ printers, pick }`: every receipt
+  printer (`ReceiptPrinterChoice`: its place, computer, width, default,
+  `blocked`, `offlineSince`) and where a receipt goes on this device
+  (`ReceiptPick`).
+- **The pick is the binder's**, in the order #144 agreed: this device's
+  choice → the workspace default → the only receipt printer online →
+  otherwise `ask`, with the reason. ⚠ A chosen printer that is offline is
+  never swapped for another: it asks. A document printer is never picked.
+- ⚠ **Decide a tap on `read()`**, a fresh read, not on the list on screen:
+  read minutes ago, it would send the receipt to a computer switched off
+  since.
+- `choose(id)` makes a printer this device's; `printAsPage(id, lines)` prints
+  the receipt as a narrow column on a document printer, the fallback when no
+  receipt printer can.
+- `useWorkspaceName()` (with `WorkspaceNameProvider`, which the app's shells
+  render) is what a receipt is headed with.
+
 ## Spreadsheet import and export
 
 A module that lets people move its setup in and out of Excel declares its

@@ -23,8 +23,10 @@ export {
   PrinterProvider,
   type PrinterProviderProps,
   type PrintersState,
+  type ReceiptPrintersState,
   usePrinter,
   usePrinters,
+  useReceiptPrinters,
 } from './printers.js';
 export {
   RealtimeProvider,
@@ -41,6 +43,11 @@ export {
   useStatusChannel,
   useStatusMessages,
 } from './status-context.js';
+export {
+  useWorkspaceName,
+  WorkspaceNameProvider,
+  type WorkspaceNameProviderProps,
+} from './workspace-name.js';
 export {
   useWorkspaceTimeZone,
   WorkspaceTimeZoneProvider,

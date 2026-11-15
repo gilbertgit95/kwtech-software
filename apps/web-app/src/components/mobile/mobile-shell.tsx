@@ -1,5 +1,5 @@
 import { SessionKeeper } from '@kwtech/module-auth/react';
-import { FeatureAccessProvider, WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
+import { FeatureAccessProvider, WorkspaceNameProvider, WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { scopePath } from '@kwtech/module-permissions';
 import { displayApplyScript } from '@kwtech/web-ui';
 import { headers } from 'next/headers';
@@ -184,7 +184,7 @@ export async function MobileShell({
               <MobileSectionStrip />
               <main className="min-h-0 flex-1 overflow-hidden">
                 <WorkspaceTimeZoneProvider timeZone={activeWorkspace?.timeZone ?? null}>
-                  {children}
+                  <WorkspaceNameProvider name={activeWorkspace?.name ?? null}>{children}</WorkspaceNameProvider>
                 </WorkspaceTimeZoneProvider>
               </main>
               <StatusBarHost />

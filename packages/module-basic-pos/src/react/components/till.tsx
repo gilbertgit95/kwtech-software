@@ -11,7 +11,6 @@ import {
   Minus,
   Percent,
   Plus,
-  Printer,
   RefreshCw,
   StickyNote,
   ToggleRight,
@@ -26,7 +25,6 @@ import type { TillState } from '../use-till.js';
 import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
 import { ORDER_PANEL_RULES, ORDER_PANEL_STORAGE_KEY } from '../view/order-panel.js';
-import { receiptHtml } from '../view/receipt.js';
 import { leftOf, type PosStockMap, stockWarning, tileLeft } from '../view/stock.js';
 import {
   gridCategories,
@@ -62,6 +60,7 @@ import {
 import { OrderTypePicker } from './order-type-picker.js';
 import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { PaymentDialog } from './payment-dialog.js';
+import { ReceiptPrintButton, type ReceiptPrintState, useAutoReceipt, useReceiptPrint } from './receipt-print.js';
 import { ShortcutBar, ShortcutHelp } from './shortcuts.js';
 
 type Dialog =
@@ -148,6 +147,13 @@ export function Till({
   const { catalogue, order, client, scope } = state;
   const open = order?.status === 'open' ? order : null;
   const finished = order && order.status !== 'open' ? order : null;
+  /**
+   * The receipt (#144, R5), read from the WHOLE order and not only the
+   * finished one: "Always print after payment" prints when this till sees an
+   * order go from open to paid, never on one already paid when it appeared.
+   */
+  const [autoReceipt, setAutoReceipt] = useAutoReceipt(scope.workspaceId);
+  const receipt = useReceiptPrint(order, { scope, timeZone: state.timeZone, autoAfterPayment: autoReceipt });
 
   // Opening this view (Cashier or Classic) reads the ranking again: the till's state outlives it (issue #47).
   const { reloadRanks } = state;
@@ -340,7 +346,7 @@ export function Till({
         if (lines.length > 0 && state.canDiscount) setDialog({ kind: 'orderDiscount' });
         return true;
       case 'print':
-        if (finished) printHtml(receiptHtml(finished, { timeZone: state.timeZone }));
+        if (finished) receipt.printNow();
         return true;
       case 'payCash':
       case 'payEwallet':
@@ -560,7 +566,9 @@ export function Till({
           {finished ? (
             <Receipt
               order={finished}
-              timeZone={state.timeZone}
+              receipt={receipt}
+              autoReceipt={autoReceipt}
+              onAutoReceipt={setAutoReceipt}
               nextRef={nextRef}
               onNext={() => {
                 state.clear();
@@ -1314,12 +1322,18 @@ function QuantityField({
 /** The finished order: paid, or released unpaid. Print, then the next customer. */
 function Receipt({
   order,
-  timeZone,
+  receipt,
+  autoReceipt,
+  onAutoReceipt,
   nextRef,
   onNext,
 }: {
   order: PosOrderView;
-  timeZone: string;
+  /** Printing its receipt: the till's, so the shortcut and the button are one. */
+  receipt: ReceiptPrintState;
+  /** This device's "Always print after payment". */
+  autoReceipt: boolean;
+  onAutoReceipt: (on: boolean) => void;
   /** Where focus goes after a sale (`focusHome`): Enter starts the next order. */
   nextRef: RefObject<HTMLButtonElement | null>;
   onNext: () => void;
@@ -1378,15 +1392,20 @@ function Receipt({
           </>
         ) : null}
       </dl>
-      <div className="grid grid-cols-[auto_1fr] gap-2">
-        <button
-          type="button"
-          className={buttonClass('secondary')}
-          onClick={() => printHtml(receiptHtml(order, { timeZone }))}
-        >
-          <Printer aria-hidden="true" className="size-4" />
-          Print
-        </button>
+      {receipt.usesPrinters ? (
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            className="size-4"
+            checked={autoReceipt}
+            onChange={(event) => onAutoReceipt(event.target.checked)}
+          />
+          Always print after payment, on this device
+        </label>
+      ) : null}
+      {/* Stacked: the order panel is narrow, and "Print receipt" with where it prints needs the whole width. */}
+      <div className="flex flex-col gap-2">
+        <ReceiptPrintButton state={receipt} />
         <button
           type="button"
           ref={nextRef}
@@ -1400,31 +1419,6 @@ function Receipt({
       </div>
     </div>
   );
-}
-
-/**
- * Prints HTML through a hidden frame: only the receipt prints, never the Apps
- * page and the other apps open on it. Removed once the print dialog closes.
- */
-export function printHtml(html: string): void {
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.position = 'fixed';
-  frame.style.width = '0';
-  frame.style.height = '0';
-  frame.style.border = '0';
-  document.body.append(frame);
-  const doc = frame.contentDocument;
-  if (!doc || !frame.contentWindow) {
-    frame.remove();
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-  frame.contentWindow.addEventListener('afterprint', () => frame.remove(), { once: true });
-  frame.contentWindow.focus();
-  frame.contentWindow.print();
 }
 
 /**

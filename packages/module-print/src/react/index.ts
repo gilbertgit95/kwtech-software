@@ -8,11 +8,16 @@
 
 export * from './module.js';
 export {
+  BROWSER_RECEIPT_CHOICE,
   createPrintTarget,
+  type DeviceReceiptChoice,
   type PrintTarget,
   type PrintTargetJob,
   type PrintTargetOptions,
   type PrintTargetOutcome,
   type PrintTargetPrinter,
+  type PrintTargetReceiptJob,
+  type PrintTargetReceiptPrinter,
+  type PrintTargetReceipts,
   type PrintTargetSetting,
 } from './print-target.js';
