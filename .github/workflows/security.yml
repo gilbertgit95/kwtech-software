@@ -1,0 +1,59 @@
+# Security checks (#156). Both are free for a public repository on any plan.
+#
+# - CodeQL reads the TypeScript and JavaScript (and these workflow files) for
+#   security bugs: injection, unsafe redirects, a PR title run as shell. Its
+#   findings land in the Security tab and, on a PR, as annotations.
+# - Dependency review refuses a PR that ADDS a dependency with a known
+#   vulnerability of high severity or worse. It looks only at what the PR
+#   changes in pnpm-lock.yaml; what is already there is Dependabot's job.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Weekly, so a new CodeQL query finds old code too, not only new changes.
+  schedule:
+    - cron: '27 3 * * 1'
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v5
+      # No build: CodeQL reads JavaScript and TypeScript from source.
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

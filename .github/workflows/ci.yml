@@ -1,0 +1,112 @@
+# The checks a PR must pass before it merges into main (#156). The job names
+# are the status checks the `main-rule-sets` ruleset requires, so renaming a
+# job means updating the ruleset too, or every PR waits for a check that never
+# reports.
+#
+# Free: the repository is public, and GitHub Actions minutes on standard
+# runners are unlimited for public repositories on any plan.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to the same PR cancels the run it replaces: only the newest
+# commit's result can be merged anyway.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, build, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      # Reads the version from package.json's `packageManager`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The public templates are the configuration. They hold no secrets (the
+      # check below proves it) and are what a new checkout is told to copy, so
+      # the tests run against exactly what a developer starts from. Without a
+      # file, env.ts fails at import: DATABASE_URL and AUTH_JWT_SECRET have no
+      # default.
+      - name: Configure from .env.example
+        run: |
+          cp apps/web-server/.env.example apps/web-server/.env.local
+          cp apps/web-app/.env.example apps/web-app/.env.local
+
+      - name: .env.example files hold no secrets
+        run: node scripts/env.mjs check --examples-only
+      - name: Lint (biome, package boundaries)
+        run: pnpm lint
+      # Build before typecheck and test: both depend on the packages' dist/
+      # and the generated Prisma client, and `next build` catches what tsc
+      # does not (server/client boundaries, route errors).
+      - name: Build
+        run: pnpm build
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+
+  prisma:
+    name: Prisma migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A throwaway database, gone with the job. The same major as the dev
+    # container (scripts/dev-db.mjs).
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kwtech_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kwtech_ci?schema=public
+    defaults:
+      run:
+        working-directory: apps/web-server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The schema is composed from every module's fragment, so a migration
+      # can be missing because of a change in a package, not just here.
+      - name: Compose the schema
+        run: pnpm db:compose
+      - name: Apply every migration to an empty database
+        run: pnpm exec prisma migrate deploy
+      # Empty means the committed migrations build exactly the schema the code
+      # declares. Exit 2 means a model changed without `pnpm db:migrate`; the
+      # SQL printed is the migration that is missing.
+      - name: The migrations match the schema
+        run: |
+          set +e
+          pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma --script --exit-code
+          status=$?
+          if [ "$status" -eq 2 ]; then
+            echo "::error::The schema has changes no migration makes (the SQL above). Run 'pnpm --filter @kwtech/web-server db:migrate' and commit the migration."
+          fi
+          exit $status
