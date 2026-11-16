@@ -268,3 +268,8 @@ sudo usermod -aG docker $USER && sudo systemctl enable --now docker
 - Shared dependency versions go in the pnpm `catalog:` in `pnpm-workspace.yaml`.
 - `turbo.json` and `biome.jsonc` are JSONC — comment anything non-obvious.
 - Conventional commits, enforced by lefthook + commitlint.
+- **Checks before a merge** (`.github/workflows/`, #156): GitHub runs `CI`
+  (env templates, lint, build, typecheck, test), `PR title` (commitlint, at
+  most 80 characters), `Prisma migrations` (the committed migrations build the
+  schema) and `Security` (CodeQL, dependency review) on every PR, and the
+  `main` ruleset requires them. All free, because the repository is public.

@@ -632,6 +632,18 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-16** — **GitHub runs the checks before a merge: CI, the PR title, the migrations and security scans, all required by the `main` ruleset (#156).**
+
+  The cause: one approving review was the only check on `main`, and the admin role may bypass it. Lint, typecheck, test and build ran only on whoever's machine remembered to, so a PR that broke them could merge.
+
+  - **Free because the repository is public.** Actions minutes on standard runners, CodeQL, dependency review, secret scanning and Dependabot cost nothing for a public repository on GitHub Free. Making the repository private would end the free minutes and the free code scanning, and rulesets would stop being enforced on the Free plan.
+  - **`CI`** (`.github/workflows/ci.yml`): the `.env.example` secret check, `pnpm lint`, `pnpm build`, `pnpm typecheck`, `pnpm test`, configured from the public `.env.example` files, so a missing default there fails CI too. The runner has the memory WSL lacks; the turbo and jest limits still apply and still hold.
+  - **`PR title`**: commitlint and at most 80 characters, because a squash merge makes the title the commit header and the local hook never sees it.
+  - **`Prisma migrations`**: every migration applied to a throwaway Postgres 17, then `prisma migrate diff` against the composed schema must be empty, so a model changed without `db:migrate` cannot merge.
+  - **`Security`**: CodeQL for TypeScript and the workflows, and dependency review refusing a PR that adds a high-severity vulnerability. Secret scanning push protection and Dependabot security updates are on in the settings.
+  - **The ruleset requires them by job name**, with review threads resolved and the branch up to date. Renaming a job means editing the ruleset, or every PR waits on a check that never reports. The admin bypass stays (2026-11-15).
+  - **Not done:** Playwright in CI (it needs a seeded database and a signed-in account past MFA), Dependabot version-update PRs (noise; security updates only), and a merge queue (organizations only on GitHub).
+
 - **2026-11-15** — **The POS prints its receipts on the receipt printer through module-kit's one printer port, the printer picked by the binder and never swapped silently (#144, R5 #149).**
 
   The cause: R1–R4 could print a receipt, but nothing in the POS asked for one; its Print button was the browser's dialog. A module may not import `module-print`, so the POS reaches it the way the price list already did.

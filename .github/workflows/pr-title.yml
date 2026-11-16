@@ -1,0 +1,47 @@
+# The PR title check (#156), apart from CI because it re-runs when the title
+# is EDITED. In ci.yml that event would share the code checks' concurrency
+# group and cancel a build halfway through just because a title changed.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # A squash merge makes the title the commit header and appends ` (#NN)`.
+      # The local commit-msg hook never sees it, so a title commitlint would
+      # refuse lands on main unchecked. 80, not commitlint's 100, leaves room
+      # for the suffix (CLAUDE.md, Conventions).
+      #
+      # The title goes through env, never `${{ }}` inside the script: a title
+      # is text anyone opening a PR chooses, and interpolated it would run as
+      # shell.
+      - name: Conventional commit, at most 80 characters
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          length=${#TITLE}
+          if [ "$length" -gt 80 ]; then
+            echo "::error::The PR title is $length characters; at most 80 (a squash merge adds ' (#NN)', and commitlint refuses over 100)."
+            exit 1
+          fi
+          printf '%s\n' "$TITLE" | pnpm exec commitlint --verbose
