@@ -1,4 +1,5 @@
 import {
+  heldSheetClose,
   phoneCashierSheet,
   quickCashAmounts,
   settledElsewhereText,
@@ -78,5 +79,26 @@ describe('quickCashAmounts', () => {
 
   it('offers nothing for an empty order', () => {
     expect(quickCashAmounts(0)).toEqual([]);
+  });
+});
+
+describe('closing the Cashier sheet on a held order (issue #162)', () => {
+  const held = { shows: 'order', held: true, sheetOpen: true, busy: false } as const;
+
+  it('takes it off the till when the person closes the sheet', () => {
+    expect(heldSheetClose(held)).toBe('clear');
+  });
+
+  it('keeps it when the sheet closed by itself: Add items carries it to Take orders on purpose', () => {
+    expect(heldSheetClose({ ...held, sheetOpen: false })).toBe('keep');
+  });
+
+  it('⚠ refuses to close while an order write runs, or its answer would put the order back behind the sheet', () => {
+    expect(heldSheetClose({ ...held, busy: true })).toBeNull();
+  });
+
+  it('keeps anything that is not a held order, busy or not', () => {
+    expect(heldSheetClose({ ...held, held: false, busy: true })).toBe('keep');
+    expect(heldSheetClose({ ...held, shows: 'receipt' })).toBe('keep');
   });
 });

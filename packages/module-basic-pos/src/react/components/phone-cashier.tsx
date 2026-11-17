@@ -11,7 +11,7 @@ import { useOrderAlerts } from '../use-order-alerts.js';
 import type { TillState } from '../use-till.js';
 import { closedHeldOrderNotice, heldOrderOnTill } from '../view/held-order.js';
 import { formatPeso } from '../view/money.js';
-import { phoneCashierSheet, settledElsewhereText, waitingSummary } from '../view/phone-cashier.js';
+import { heldSheetClose, phoneCashierSheet, settledElsewhereText, waitingSummary } from '../view/phone-cashier.js';
 import {
   canLeaveOrder,
   heldOrderDetail,
@@ -110,17 +110,16 @@ export function PhoneCashier({ state }: { state: TillState }) {
    * onto it. "Add items" is the one way to carry it there, on purpose.
    */
   const closeSheet = () => {
+    const closing = heldSheetClose({ shows, held: held !== null, sheetOpen: sheet !== 'none', busy: state.busy });
+    // An act is running: the sheet stays (it is not dismissible then either), or its answer would reopen the order.
+    if (closing === null) return;
     setSheet('none');
     if (shows === 'receipt' || shows === 'settled_elsewhere') {
       state.clear();
       setSettledHereId(null);
     }
-    /*
-     * ⚠ ONLY WHEN THE PERSON CLOSED IT (`sheet` still set). "Add items" sets
-     * `sheet` to none itself, and the dialog's own `close` event then lands
-     * here too — clearing on it would drop the order "Add items" carries.
-     */
-    if (shows === 'order' && held && sheet !== 'none') state.clear();
+    // ⚠ Only when the person closed it: `heldSheetClose` (view/phone-cashier.ts) says why.
+    if (closing === 'clear') state.clear();
   };
 
   const settled = (done: PosOrderView) => {
@@ -216,6 +215,8 @@ export function PhoneCashier({ state }: { state: TillState }) {
         <BottomSheet
           open={sheet !== 'none' && shows !== 'none'}
           onClose={closeSheet}
+          // Not while an order write runs on a held order: see `heldSheetClose`.
+          dismissible={!(state.busy && shows === 'order' && held !== null)}
           title={sheetTitle(shows, order)}
           footer={
             shows === 'order' && open ? (

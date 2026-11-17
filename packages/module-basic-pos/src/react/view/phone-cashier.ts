@@ -65,6 +65,30 @@ export function phoneCashierSheet(
 }
 
 /** The words for an order another till settled, by its status. */
+/**
+ * Whether closing the Cashier sheet takes its held order off the till (issue
+ * #162), or null when it may not close at all yet.
+ *
+ * - **Off the till** when the PERSON closed it (`sheetOpen`) on a held order:
+ *   left behind a closed sheet, it was what Take orders opened with.
+ * - **Kept** when the sheet closed by itself (`sheetOpen` false): "Add items"
+ *   carries the order to Take orders on purpose, and the dialog's own close
+ *   event lands here too.
+ * - ⚠ **Not closable while an act runs** (null; CodeRabbit on #164): the till
+ *   would be cleared, then the act's answer would put the order back on it,
+ *   behind the closed sheet — the very surprise this is here to prevent.
+ */
+export function heldSheetClose(input: {
+  shows: PosPhoneCashierSheet;
+  held: boolean;
+  sheetOpen: boolean;
+  busy: boolean;
+}): 'clear' | 'keep' | null {
+  if (input.shows !== 'order' || !input.held || !input.sheetOpen) return 'keep';
+  if (input.busy) return null;
+  return 'clear';
+}
+
 export function settledElsewhereText(status: string): string {
   if (status === 'paid') return 'This order was paid at another till.';
   if (status === 'unpaid') return 'This order was released as Pay later at another till.';
