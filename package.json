@@ -57,7 +57,7 @@
     "@commitlint/cli": "21.2.1",
     "@commitlint/config-conventional": "21.2.0",
     "lefthook": "2.1.10",
-    "pm2": "7.0.4",
+    "pm2": "7.1.2",
     "turbo": "2.10.8",
     "typescript": "catalog:"
   }
