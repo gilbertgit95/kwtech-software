@@ -20,9 +20,11 @@ import { Field, INPUT_CLASS } from './controls.js';
  * - **Not a `<datalist>`:** a browser shows one only once something is typed
  *   (or after a second click, on some), and a phone often not at all — the
  *   very thing this field is for.
- * - **In the dialog's flow, not floating:** a popover over a dialog, or a
- *   phone's sheet, gets cut off or covers the next field; a list in the flow
- *   pushes the fields down while it is open, and goes when focus leaves.
+ * - **A dropdown, floating under the box** (the operator, 2026-11-17: in the
+ *   flow it pushed the form down and read as part of it). Positioned inside
+ *   the field rather than in a portal, so it scrolls with the dialog and never
+ *   drifts from the box. Borrower is the dialog's first field, so the form below
+ *   it always gives the list room inside the dialog.
  * - **Keys** are web-ui's list keys: ↓ from the box into the list, ↑ ↓ through
  *   it, Enter picks, Esc closes it (not the dialog).
  * - **Picking** fills the name, and the contact when its box is empty — never
@@ -91,7 +93,7 @@ export function BorrowerField({
     <Field label="Borrower" hint={shown ? undefined : hint} error={error}>
       {(id, describedBy) => (
         // biome-ignore lint/a11y/noStaticElementInteractions: the box and its list's shared Esc and focus-leaving; each control inside is a real input or button.
-        <div className="flex flex-col gap-1" onBlur={onBlur} onKeyDown={onKeyDown}>
+        <div className="relative" onBlur={onBlur} onKeyDown={onKeyDown}>
           <input
             ref={input}
             id={id}
@@ -122,7 +124,7 @@ export function BorrowerField({
             }}
           />
           {shown ? (
-            <div className="overflow-hidden rounded-md border border-border bg-card shadow-sm">
+            <div className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
               <p className="border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
                 {value.trim() ? 'Matching borrowers' : 'Recorded borrowers'}
               </p>

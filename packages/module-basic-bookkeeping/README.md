@@ -52,6 +52,8 @@ and lending more are recorded (issue #48).
   list, not the dialog.
 - **Why not a `<datalist>`:** a browser shows one only once something is typed,
   and a phone often never shows it.
+- **How it looks:** a dropdown floating under the box, over the fields below,
+  not part of the form.
 - **Not in Edit borrower:** renaming to an existing name there would merge two
   people's loans with one tap.
 
