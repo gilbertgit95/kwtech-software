@@ -64,11 +64,22 @@ export function BorrowerField({
   // Said when the typed name already IS somebody: the loan joins theirs, rather than leaving them to wonder.
   const hint = existing ? `Adds to ${existing.borrowerName}’s loans.` : undefined;
 
-  const pick = (suggestion: BooksBorrowerSuggestion) => {
-    onPick(suggestion);
+  /**
+   * Back to the box with the list shut. ⚠ The flag only when focus really
+   * moves: a mouse pick or Esc leaves it in the box already, no focus event
+   * would clear the flag, and the NEXT visit to the field would then open
+   * nothing (self-review on #168).
+   */
+  const backToBox = () => {
     setOpen(false);
+    if (document.activeElement === input.current) return;
     picking.current = true;
     input.current?.focus();
+  };
+
+  const pick = (suggestion: BooksBorrowerSuggestion) => {
+    onPick(suggestion);
+    backToBox();
   };
 
   /** Closes the list once focus leaves the box AND the list — not when it moves from one to the other. */
@@ -83,9 +94,7 @@ export function BorrowerField({
     if (event.key === 'Escape' && shown) {
       event.preventDefault();
       event.stopPropagation();
-      setOpen(false);
-      input.current?.focus();
-      picking.current = true;
+      backToBox();
     }
   };
 
