@@ -36,6 +36,7 @@ import {
 import { CustomerDialog, ReferenceDialog, VariantPicker } from './dialogs.js';
 import { HeldOrderBanner } from './held-order-banner.js';
 import { OrderTypePicker } from './order-type-picker.js';
+import { ReceiptPrintButton, ReceiptPrintStatus, useReceiptPrint } from './receipt-print.js';
 import { WaitBadge } from './wait-badge.js';
 
 type Sheet = 'none' | 'order' | 'hold' | 'reference' | 'customer' | 'availability';
@@ -59,6 +60,8 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
   const { catalogue, order, client, scope, reloadRanks } = state;
   const open = order?.status === 'open' ? order : null;
   const lines = open?.lines ?? [];
+  /** The open order's ORDER SUMMARY (#163): every order here ends at Hold, so it is never a receipt. */
+  const receipt = useReceiptPrint(open, { scope, timeZone: state.timeZone });
   // Opening Take orders reads the ranking again: the till's state outlives this view (issue #47).
   useEffect(() => {
     void reloadRanks();
@@ -403,6 +406,11 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
                   <span className="text-base font-semibold">Total</span>
                   <span className="text-xl font-semibold tabular-nums">{formatPeso(open.total)}</span>
                 </p>
+                {/* The order summary (#163): what the customer is about to pay, on paper. Never a receipt. */}
+                <div className="flex flex-col gap-1">
+                  <ReceiptPrintButton state={receipt} layout={phone ? 'phone' : 'desktop'} height="lg" />
+                  <ReceiptPrintStatus state={receipt} className="px-1" />
+                </div>
                 <button
                   type="button"
                   disabled={lines.length === 0 || state.busy}

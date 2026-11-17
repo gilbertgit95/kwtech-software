@@ -282,6 +282,24 @@ describe('the receipt', () => {
     }
   });
 
+  it('prints an open order as an ORDER SUMMARY (#163): not a receipt, the time printed, no payment', () => {
+    const html = receiptHtml(
+      { ...ORDER, status: 'open', paidAt: null, finalisedAt: null, paymentMethod: null, received: null, change: null },
+      // 10:30 in Manila, the 2nd.
+      { timeZone: 'Asia/Manila', printedAt: new Date('2026-10-02T02:30:00Z'), reprintedAt: new Date() },
+    );
+    for (const text of [
+      '<title>ORDER SUMMARY</title>',
+      'ORDER SUMMARY #41',
+      'NOT A RECEIPT',
+      'This is not a receipt.',
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html).toMatch(/Oct 2, 2026.*10:30/u);
+    for (const text of ['Change', 'Cash', 'REPRINT', 'Thank you!', 'RECEIPT #']) expect(html).not.toContain(text);
+  });
+
   it('prints how the order was served, escaped, and nothing without a type', () => {
     expect(receiptHtml({ ...ORDER, orderTypeName: 'Dine-in <b>' }, { timeZone: 'Asia/Manila' })).toContain(
       'Dine-in &#60;b&#62;',

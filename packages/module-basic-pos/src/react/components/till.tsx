@@ -601,6 +601,7 @@ export function Till({
               <Cart
                 order={open}
                 state={state}
+                receipt={receipt}
                 searchRef={searchRef}
                 cartRef={cartRef}
                 selectedLineId={selectedLineId}
@@ -947,6 +948,7 @@ function ItemGrid({
 function Cart({
   order,
   state,
+  receipt,
   searchRef,
   cartRef,
   selectedLineId,
@@ -956,6 +958,8 @@ function Cart({
 }: {
   order: PosOrderView | null;
   state: TillState;
+  /** The till's printing: for an open order, its ORDER SUMMARY (#163), for the customer before they pay. */
+  receipt: ReceiptPrintState;
   searchRef: RefObject<HTMLInputElement | null>;
   cartRef: RefObject<HTMLUListElement | null>;
   selectedLineId: string | null;
@@ -1223,6 +1227,14 @@ function Cart({
             Cancel
           </button>
         ) : null}
+      </div>
+      {/*
+       * The order summary (#163): what the customer is about to pay, on paper, before they pay. Never a
+       * receipt: it says so, and has no payment on it. Above Hold and Pay, as the thing done before them.
+       */}
+      <div className="flex flex-col gap-1">
+        <ReceiptPrintButton state={receipt} className="w-full" />
+        <ReceiptPrintStatus state={receipt} />
       </div>
       {state.canTakePayment ? (
         <div className="grid grid-cols-[auto_1fr] gap-2">

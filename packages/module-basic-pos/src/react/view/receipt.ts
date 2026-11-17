@@ -37,13 +37,15 @@ export const RECEIPT_CONTENT_MM = RECEIPT_PAPER_MM - 2 * RECEIPT_MARGIN_MM;
  */
 export function receiptHtml(
   order: PosOrderView,
-  options: { timeZone: string; storeName?: string | null; reprintedAt?: Date | null },
+  options: { timeZone: string; storeName?: string | null; reprintedAt?: Date | null; printedAt?: Date | null },
 ): string {
   const when = (iso: string | null) =>
     iso
       ? new Date(iso).toLocaleString('en-PH', { timeZone: options.timeZone, dateStyle: 'medium', timeStyle: 'short' })
       : '';
-  const title = order.status === 'unpaid' ? 'ORDER SLIP — UNPAID' : 'RECEIPT';
+  // ⚠ An open order is an ORDER SUMMARY (#163): `receiptLines`' rules, on paper from the browser.
+  const summary = isOrderSummary(order);
+  const title = receiptTitle(order).replace(' - ', ' — ');
   const row = (left: string, right: string, cls = '') =>
     `<tr class="${cls}"><td>${escapeHtml(left)}</td><td class="r">${escapeHtml(right)}</td></tr>`;
 
@@ -79,9 +81,10 @@ export function receiptHtml(
   const customer = order.customerName
     ? `<p>${escapeHtml(order.customerName)}${order.customerContact ? ` · ${escapeHtml(order.customerContact)}` : ''}</p>`
     : '';
-  const reprint = options.reprintedAt
-    ? `<p class="reprint">REPRINT — ${escapeHtml(options.reprintedAt.toLocaleString('en-PH', { timeZone: options.timeZone }))}</p>`
-    : '';
+  const reprint =
+    options.reprintedAt && !summary
+      ? `<p class="reprint">REPRINT — ${escapeHtml(options.reprintedAt.toLocaleString('en-PH', { timeZone: options.timeZone }))}</p>`
+      : '';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
 body{font:12px/1.4 ui-monospace,Menlo,monospace;margin:0;padding:0;width:${RECEIPT_CONTENT_MM}mm;color:#000}
@@ -93,10 +96,11 @@ table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}.r
 </style></head><body>
 ${options.storeName ? `<h1>${escapeHtml(options.storeName)}</h1>` : ''}
 <p>${escapeHtml(title)}${order.number !== null ? ` #${order.number}` : ''}</p>
-<p>${escapeHtml(when(order.paidAt ?? order.finalisedAt ?? order.createdAt))}</p>
+${summary ? `<p class="reprint">${NOT_A_RECEIPT}</p>` : ''}
+<p>${escapeHtml(when(receiptTime(order, options.printedAt)))}</p>
 ${orderType}${reference}${customer}${reprint}<hr>
 <table>${lines}</table><hr><table>${totals}${payment}</table>
-<p style="margin-top:8px">Thank you!</p>
+<p style="margin-top:8px">${summary ? SUMMARY_FOOTER : 'Thank you!'}</p>
 </body></html>`;
 }
 
@@ -111,6 +115,38 @@ function paymentRows(order: PosOrderView, row: (left: string, right: string, cls
     order.changeOwed > 0 ? row('Change owed to you', formatPeso(order.changeOwed)) : '',
     order.paymentReference ? row('Reference', order.paymentReference) : '',
   ].join('');
+}
+
+/**
+ * Whether the order prints as an ORDER SUMMARY (#163): still open, so nothing
+ * has been paid or released yet. Every other status prints as it always has.
+ */
+export function isOrderSummary(order: Pick<PosOrderView, 'status'>): boolean {
+  return order.status === 'open';
+}
+
+/** The paper's title: an order summary, an unpaid order's slip, or a receipt. Plain ASCII, for a roll's character table. */
+export function receiptTitle(order: Pick<PosOrderView, 'status'>): string {
+  if (isOrderSummary(order)) return 'ORDER SUMMARY';
+  return order.status === 'unpaid' ? 'ORDER SLIP - UNPAID' : 'RECEIPT';
+}
+
+/** Printed under an order summary's title, bold: it must never pass for proof of payment. */
+export const NOT_A_RECEIPT = 'NOT A RECEIPT';
+
+/** An order summary's last words, where a receipt says "Thank you!". */
+export const SUMMARY_FOOTER = 'This is not a receipt.';
+
+/**
+ * The time under the title: when it was paid or released — or, for an order
+ * summary, when it was PRINTED, since the order may still change after.
+ */
+export function receiptTime(
+  order: Pick<PosOrderView, 'status' | 'paidAt' | 'finalisedAt' | 'createdAt'>,
+  printedAt: Date | null | undefined,
+): string {
+  if (isOrderSummary(order) && printedAt) return printedAt.toISOString();
+  return order.paidAt ?? order.finalisedAt ?? order.createdAt;
 }
 
 export const METHOD_LABELS: Readonly<Record<string, string>> = {

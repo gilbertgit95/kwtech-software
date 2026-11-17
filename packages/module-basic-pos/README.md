@@ -350,6 +350,18 @@ Cashier), and as a reprint from Orders (the full screen and the phone).
   millimetres (3 mm on Epson's L-series), and with no margin an inkjet cut
   the receipt's left side off.
   The print agent's raw receipts (`receiptLines`) are not affected.
+- **An order summary before payment** (#163). The open order prints as an
+  ORDER SUMMARY so the customer can see what they are about to pay. The
+  button reads "Print order summary". It sits above Hold and Pay on Classic
+  and Cashier, and in the order sheet's footer on Phone cashier and Take
+  orders. It uses the same printers and menu as a receipt.
+  (`isOrderSummary`, `receiptTitle`, `receiptTime` in `view/receipt.ts`.)
+  ⚠ It is never a receipt. It reads NOT A RECEIPT under its title and
+  "This is not a receipt." at its foot. It shows the time it was printed,
+  and it has no payment lines. It never opens the drawer and is never marked
+  REPRINT. It never counts as the original either, so the receipt printed
+  after payment is still the original. The button is disabled while the
+  order is empty, and "Always print after payment" never prints one.
 - ⚠ **Decided on a fresh read** at each tap, never the list on screen.
 - **Always print after payment** (a switch under the till's receipt, per
   device, in this browser): prints once when THIS screen sees the order go

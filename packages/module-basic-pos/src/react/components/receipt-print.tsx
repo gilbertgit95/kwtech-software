@@ -16,7 +16,7 @@ import {
 import { ChevronDown, Globe, Printer, ReceiptText } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PosOrderView, PosScopeView } from '../pos-client.js';
-import { receiptHtml } from '../view/receipt.js';
+import { isOrderSummary, receiptHtml } from '../view/receipt.js';
 import { pickedReceiptPrinter, receiptLines, receiptPrinterDetail, receiptTargetText } from '../view/receipt-lines.js';
 import { buttonClass } from './controls.js';
 import { printHtml } from './print-frame.js';
@@ -43,6 +43,13 @@ import { printHtml } from './print-frame.js';
 export interface ReceiptPrintState {
   order: PosOrderView | null;
   reprint: boolean;
+  /**
+   * The order is still open: it prints as an ORDER SUMMARY (#163), for a
+   * customer to see what they are about to pay — never as a receipt.
+   */
+  summary: boolean;
+  /** Something to print: an order, and for a summary at least one line on it. */
+  printable: boolean;
   /** The printers are being read for the first time: the button waits. */
   loading: boolean;
   /** False: nothing is bound or no printer is paired; the button is the browser's print. */
@@ -108,10 +115,17 @@ export function useReceiptPrint(
     setSaid(null);
   }, [orderId]);
 
+  const summary = order ? isOrderSummary(order) : false;
+  const printable = order !== null && (!summary || order.lines.length > 0);
   const isCopy = useCallback((current: PosOrderView) => reprint || originals.current.has(current.id), [reprint]);
   const lines = useCallback(
     (current: PosOrderView) =>
-      receiptLines(current, { timeZone, storeName, reprintedAt: isCopy(current) ? new Date() : null }),
+      receiptLines(current, {
+        timeZone,
+        storeName,
+        reprintedAt: isCopy(current) ? new Date() : null,
+        printedAt: new Date(),
+      }),
     [timeZone, storeName, isCopy],
   );
 
@@ -127,10 +141,11 @@ export function useReceiptPrint(
       const going = (async () => {
         try {
           const outcome = await send(current);
-          if (outcome?.sent) originals.current.add(current.id);
+          // ⚠ Not for an order summary (#163): the receipt printed once it is paid would read REPRINT.
+          if (outcome?.sent && !isOrderSummary(current)) originals.current.add(current.id);
           setSaid(outcome ? { text: outcome.message, ok: outcome.sent } : null);
         } catch (caught) {
-          setSaid({ text: caught instanceof Error ? caught.message : 'Could not print the receipt.', ok: false });
+          setSaid({ text: caught instanceof Error ? caught.message : 'Could not print it.', ok: false });
         } finally {
           inFlight.current = false;
           setBusy(false);
@@ -157,7 +172,14 @@ export function useReceiptPrint(
   );
   const printInBrowser = useCallback(() => {
     if (!order) return;
-    printHtml(receiptHtml(order, { timeZone, storeName, reprintedAt: isCopy(order) ? new Date() : null }));
+    printHtml(
+      receiptHtml(order, {
+        timeZone,
+        storeName,
+        reprintedAt: isCopy(order) ? new Date() : null,
+        printedAt: new Date(),
+      }),
+    );
   }, [order, timeZone, storeName, isCopy]);
 
   const { refresh: refreshReceipts } = receipts;
@@ -189,7 +211,7 @@ export function useReceiptPrint(
   }, [receipts]);
 
   const printNow = useCallback(() => {
-    if (!order || inFlight.current || loading) return;
+    if (!order || !printable || inFlight.current || loading) return;
     if (!usesPrinters) {
       printInBrowser();
       return;
@@ -203,7 +225,7 @@ export function useReceiptPrint(
       }
       return receipts.print(where.printerId, lines(current), onStep);
     });
-  }, [order, loading, usesPrinters, printInBrowser, run, decide, receipts, lines, onStep]);
+  }, [order, printable, loading, usesPrinters, printInBrowser, run, decide, receipts, lines, onStep]);
 
   /**
    * "Always print after payment": called by the screen that TOOK the payment,
@@ -233,6 +255,8 @@ export function useReceiptPrint(
   return {
     order,
     reprint,
+    summary,
+    printable,
     loading,
     usesPrinters,
     receiptPrinters,
@@ -284,7 +308,7 @@ export function ReceiptPrintButton({
   height?: keyof typeof HEIGHTS;
   className?: string;
 }) {
-  const label = state.reprint ? 'Reprint receipt' : 'Print receipt';
+  const label = state.summary ? 'Print order summary' : state.reprint ? 'Reprint receipt' : 'Print receipt';
   const size = HEIGHTS[height];
   const round = layout === 'phone' ? 'rounded-2xl' : '';
   const icon = layout === 'phone' ? 'size-5' : 'size-4';
@@ -294,7 +318,7 @@ export function ReceiptPrintButton({
       <button
         type="button"
         className={cn(buttonClass('secondary'), size, round, className)}
-        disabled={!state.order || state.loading}
+        disabled={!state.printable || state.loading}
         onClick={state.printInBrowser}
       >
         <Printer aria-hidden="true" className={icon} />
@@ -309,7 +333,7 @@ export function ReceiptPrintButton({
       <button
         type="button"
         className={cn(buttonClass('secondary'), size, round, 'min-w-0 flex-1 rounded-r-none')}
-        disabled={!state.order || state.busy}
+        disabled={!state.printable || state.busy}
         onClick={state.printNow}
       >
         <ReceiptText aria-hidden="true" className={cn(icon, 'shrink-0')} />
@@ -320,7 +344,7 @@ export function ReceiptPrintButton({
           <button
             type="button"
             className={chooser}
-            disabled={!state.order || state.busy}
+            disabled={!state.printable || state.busy}
             aria-label="Choose the printer"
             onClick={() => state.setMenuOpen(true)}
           >
@@ -434,7 +458,7 @@ function PrinterDropdown({ state, triggerClassName }: { state: ReceiptPrintState
       <span ref={anchor} className="contents" />
       <DropdownMenuTrigger
         className={triggerClassName}
-        disabled={!state.order || state.busy}
+        disabled={!state.printable || state.busy}
         aria-label="Choose the printer"
       >
         <ChevronDown aria-hidden="true" className="size-4" />
@@ -498,7 +522,13 @@ function PrinterSheet({ state }: { state: ReceiptPrintState }) {
     <BottomSheet
       open={state.menuOpen}
       onClose={() => state.setMenuOpen(false)}
-      title={state.reprint ? 'Reprint the receipt on…' : 'Print the receipt on…'}
+      title={
+        state.summary
+          ? 'Print the order summary on…'
+          : state.reprint
+            ? 'Reprint the receipt on…'
+            : 'Print the receipt on…'
+      }
     >
       <div className="flex flex-col gap-4 pb-2">
         {state.askReason ? (

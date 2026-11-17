@@ -143,6 +143,58 @@ describe('a sale as a receipt printer’s lines (#144, R5)', () => {
     expect(slip).not.toContain('[drawer]');
   });
 
+  describe('an open order, as an ORDER SUMMARY (#163)', () => {
+    const OPEN: PosOrderView = {
+      ...ORDER,
+      status: 'open',
+      paymentMethod: null,
+      received: null,
+      change: null,
+      finalisedAt: null,
+      finalisedById: null,
+      paidAt: null,
+      paidById: null,
+    };
+    // 10:30 in Manila, the 2nd: the time it was printed, not when the order was started.
+    const printedAt = new Date('2026-10-02T02:30:00Z');
+
+    it('says it is not a receipt, with the time it was printed, and has no payment', () => {
+      expect(texts(receiptLines(OPEN, { timeZone: 'Asia/Manila', storeName: 'Kape Tayo', printedAt }))).toEqual([
+        'Kape Tayo',
+        'ORDER SUMMARY #41',
+        'NOT A RECEIPT',
+        expect.stringMatching(/Oct 2, 2026.*10:30/u),
+        'Dine-in',
+        'Order ref: Table 5',
+        'Juan - 0917',
+        '[divider]',
+        'Iced coffee — Large | PHP 180.00',
+        '  2 x PHP 90.00',
+        expect.stringMatching(/^ {2}10% \(Senior\) \| -PHP 18\.00$/u),
+        '  Note: less ice',
+        '[divider]',
+        'Subtotal | PHP 162.00',
+        'TOTAL | PHP 162.00',
+        '[feed]',
+        'This is not a receipt.',
+        '[cut]',
+      ]);
+    });
+
+    it('⚠ never opens the drawer and never reads REPRINT, even when asked to', () => {
+      const lines = receiptLines(
+        { ...OPEN, paymentMethod: 'cash' },
+        { timeZone: 'Asia/Manila', reprintedAt: printedAt, printedAt },
+      );
+      expect(lines.some((line) => line.kind === 'drawer')).toBe(false);
+      expect(texts(lines)).not.toContainEqual(expect.stringMatching(/REPRINT/u));
+    });
+
+    it('a paid order ignores the print time: its receipt keeps the time it was paid', () => {
+      expect(texts(receiptLines(ORDER, { timeZone: 'Asia/Manila', printedAt }))[1]).toMatch(/Oct 1, 2026.*11:05/u);
+    });
+  });
+
   it('spells the peso out, which a roll’s character table has no sign for', () => {
     expect(receiptMoney(150000)).toBe('PHP 1,500.00');
   });
@@ -204,7 +256,10 @@ describe('who prints by itself, and how many originals (#144, R5)', () => {
   });
 
   it('⚠ prints one original: once one went to a printer, later prints of that order are copies', () => {
-    expect(hook).toMatch(/if \(outcome\?\.sent\) originals\.current\.add\(current\.id\)/u);
+    // ⚠ An order summary (#163) is never the original: its receipt, once paid, must not read REPRINT.
+    expect(hook).toMatch(
+      /if \(outcome\?\.sent && !isOrderSummary\(current\)\) originals\.current\.add\(current\.id\)/u,
+    );
     expect(hook).toMatch(/reprint \|\| originals\.current\.has\(current\.id\)/u);
   });
 });
