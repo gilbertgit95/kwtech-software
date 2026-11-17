@@ -1,0 +1,165 @@
+'use client';
+
+import { cn, LIST_ITEM, LIST_KEYS, searchIntoList } from '@kwtech/web-ui/react';
+import { type FocusEvent, type KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
+import type { BooksBorrowerView, BooksLoanView } from '../books-client.js';
+import {
+  type BooksBorrowerSuggestion,
+  borrowerSuggestions,
+  existingBorrower,
+  moreBorrowersText,
+} from '../view/borrower-suggestions.js';
+import { Field, INPUT_CLASS } from './controls.js';
+
+/**
+ * "Borrower" in Lend money, with the borrowers already recorded right under it
+ * (issue #167): they show the moment the field takes focus, BEFORE anything is
+ * typed, so lending again to somebody is one tap — and typing narrows them. A
+ * name that matches nobody is still a new borrower, as before.
+ *
+ * - **Not a `<datalist>`:** a browser shows one only once something is typed
+ *   (or after a second click, on some), and a phone often not at all — the
+ *   very thing this field is for.
+ * - **In the dialog's flow, not floating:** a popover over a dialog, or a
+ *   phone's sheet, gets cut off or covers the next field; a list in the flow
+ *   pushes the fields down while it is open, and goes when focus leaves.
+ * - **Keys** are web-ui's list keys: ↓ from the box into the list, ↑ ↓ through
+ *   it, Enter picks, Esc closes it (not the dialog).
+ * - **Picking** fills the name, and the contact when its box is empty — never
+ *   over a contact somebody typed.
+ */
+export function BorrowerField({
+  value,
+  onChange,
+  onPick,
+  borrowers,
+  loans,
+  error,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  /** A recorded borrower was picked: their name, and their newest loan's contact. */
+  onPick: (picked: BooksBorrowerSuggestion) => void;
+  borrowers: readonly BooksBorrowerView[];
+  loans: readonly Pick<BooksLoanView, 'id' | 'contact' | 'createdAt'>[];
+  error?: string | undefined;
+  autoFocus?: boolean | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const list = useRef<HTMLUListElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  /** Set while a pick hands the focus back to the box, so the list does not open again at once. */
+  const picking = useRef(false);
+  const { shown: suggestions, matched } = useMemo(
+    () => borrowerSuggestions(borrowers, loans, value),
+    [borrowers, loans, value],
+  );
+  const more = moreBorrowersText(suggestions.length, matched, value);
+  const existing = existingBorrower(borrowers, value);
+  const shown = open && suggestions.length > 0;
+  // Said when the typed name already IS somebody: the loan joins theirs, rather than leaving them to wonder.
+  const hint = existing ? `Adds to ${existing.borrowerName}’s loans.` : undefined;
+
+  const pick = (suggestion: BooksBorrowerSuggestion) => {
+    onPick(suggestion);
+    setOpen(false);
+    picking.current = true;
+    input.current?.focus();
+  };
+
+  /** Closes the list once focus leaves the box AND the list — not when it moves from one to the other. */
+  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    setOpen(false);
+  };
+
+  const intoList = searchIntoList(list);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // ⚠ Esc closes the list, not the dialog: a native dialog cancels on Esc's keydown unless it is stopped here.
+    if (event.key === 'Escape' && shown) {
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      input.current?.focus();
+      picking.current = true;
+    }
+  };
+
+  return (
+    <Field label="Borrower" hint={shown ? undefined : hint} error={error}>
+      {(id, describedBy) => (
+        // biome-ignore lint/a11y/noStaticElementInteractions: the box and its list's shared Esc and focus-leaving; each control inside is a real input or button.
+        <div className="flex flex-col gap-1" onBlur={onBlur} onKeyDown={onKeyDown}>
+          <input
+            ref={input}
+            id={id}
+            className={INPUT_CLASS}
+            value={value}
+            autoComplete="off"
+            // biome-ignore lint/a11y/noAutofocus: a dialog's first field; `Modal` mounts the content after showModal() so this lands.
+            autoFocus={autoFocus}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
+            aria-controls={shown ? listId : undefined}
+            placeholder={borrowers.length > 0 ? 'Pick one below, or type a new name' : undefined}
+            onFocus={() => {
+              if (picking.current) {
+                picking.current = false;
+                return;
+              }
+              setOpen(true);
+            }}
+            onClick={() => setOpen(true)}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown' && !shown) setOpen(true);
+              intoList(event);
+            }}
+          />
+          {shown ? (
+            <div className="overflow-hidden rounded-md border border-border bg-card shadow-sm">
+              <p className="border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                {value.trim() ? 'Matching borrowers' : 'Recorded borrowers'}
+              </p>
+              <ul
+                ref={list}
+                id={listId}
+                aria-label="Recorded borrowers"
+                className="max-h-56 overflow-y-auto py-1"
+                {...LIST_KEYS}
+              >
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion.key}>
+                    <button
+                      type="button"
+                      {...LIST_ITEM}
+                      // Keeps the focus in the box while the mouse is down, so the list is still there to click.
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => pick(suggestion)}
+                      className={cn(
+                        'flex min-h-11 w-full flex-col justify-center px-3 py-1.5 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
+                        existing?.key === suggestion.key ? 'bg-accent/60' : null,
+                      )}
+                    >
+                      <span className="truncate text-sm font-medium">{suggestion.borrowerName}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {suggestion.detail}
+                        {suggestion.contact ? ` · ${suggestion.contact}` : ''}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {more ? <p className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground">{more}</p> : null}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Field>
+  );
+}

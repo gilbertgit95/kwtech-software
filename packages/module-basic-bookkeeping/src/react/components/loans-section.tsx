@@ -163,6 +163,8 @@ export function LoansSection({
         open={lending !== null}
         loan={lending === 'new' ? null : lending}
         books={books}
+        borrowers={overview.borrowers}
+        loans={overview.loans}
         today={overview.today}
         onClose={() => setLending(null)}
         onDone={(loanId) => {
