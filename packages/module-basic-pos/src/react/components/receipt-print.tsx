@@ -115,7 +115,12 @@ export function useReceiptPrint(
     setSaid(null);
   }, [orderId]);
 
-  const summary = order ? isOrderSummary(order) : false;
+  /*
+   * ⚠ NO ORDER IS A SUMMARY TOO: a clear till's button is the summary's, waiting for an item. Said as
+   * "Print receipt", it read as a receipt for nothing (found in the browser demo, #163). A reprint's
+   * order is null while it reads again, so the label puts `reprint` first.
+   */
+  const summary = order === null || isOrderSummary(order);
   const printable = order !== null && (!summary || order.lines.length > 0);
   const isCopy = useCallback((current: PosOrderView) => reprint || originals.current.has(current.id), [reprint]);
   const lines = useCallback(
@@ -308,7 +313,7 @@ export function ReceiptPrintButton({
   height?: keyof typeof HEIGHTS;
   className?: string;
 }) {
-  const label = state.summary ? 'Print order summary' : state.reprint ? 'Reprint receipt' : 'Print receipt';
+  const label = state.reprint ? 'Reprint receipt' : state.summary ? 'Print order summary' : 'Print receipt';
   const size = HEIGHTS[height];
   const round = layout === 'phone' ? 'rounded-2xl' : '';
   const icon = layout === 'phone' ? 'size-5' : 'size-4';
@@ -523,10 +528,10 @@ function PrinterSheet({ state }: { state: ReceiptPrintState }) {
       open={state.menuOpen}
       onClose={() => state.setMenuOpen(false)}
       title={
-        state.summary
-          ? 'Print the order summary on…'
-          : state.reprint
-            ? 'Reprint the receipt on…'
+        state.reprint
+          ? 'Reprint the receipt on…'
+          : state.summary
+            ? 'Print the order summary on…'
             : 'Print the receipt on…'
       }
     >
