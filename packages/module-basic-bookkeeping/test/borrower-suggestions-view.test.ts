@@ -79,13 +79,13 @@ describe('borrower suggestions (issue #167)', () => {
     expect(all.shown).toHaveLength(BORROWER_SUGGESTIONS_MAX);
     expect(all.matched).toBe(240);
     expect(moreBorrowersText(all.shown.length, all.matched, '')).toBe(
-      'Showing the 10 most recent of 240. Type to find the others.',
+      'Showing the 5 most recent of 240. Type to find the others.',
     );
-    // b239 is past the first 10 drawn, and typing still finds it.
+    // b239 is past the first 5 drawn, and typing still finds it.
     expect(borrowerSuggestions(many, [], 'b239').shown.map((one) => one.key)).toEqual(['b239']);
     const ones = borrowerSuggestions(many, [], 'b1');
     expect(moreBorrowersText(ones.shown.length, ones.matched, 'b1')).toBe(
-      'Showing 10 of 111 matches. Type more to narrow them.',
+      'Showing 5 of 111 matches. Type more to narrow them.',
     );
     expect(moreBorrowersText(3, 3, '')).toBeNull();
   });

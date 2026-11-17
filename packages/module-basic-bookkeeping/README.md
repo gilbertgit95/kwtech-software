@@ -46,7 +46,7 @@ and lending more are recorded (issue #48).
 - **Picking:** fills the name, and the contact only when its box is empty, so
   the loan joins theirs. A typed name that already is somebody says "Adds to
   Maria Cruz's loans."
-- **How many:** at most 10 are drawn (`BORROWER_SUGGESTIONS_MAX`, the operator's
+- **How many:** at most 5 are drawn (`BORROWER_SUGGESTIONS_MAX`, the operator's
   number), with a line saying how many more there are. Typing searches them all.
 - **Keys:** ↓ moves from the box into the list, Enter picks, and Esc closes the
   list, not the dialog.

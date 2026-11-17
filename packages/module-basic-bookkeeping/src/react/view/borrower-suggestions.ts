@@ -23,12 +23,12 @@ export interface BooksBorrowerSuggestion {
 }
 
 /**
- * How many the list shows at most: 10, the operator's number (2026-11-17,
+ * How many the list shows at most: 5, the operator's number (2026-11-17,
  * asked "what if there are hundreds?"). About what a glance takes in before
  * typing is quicker. Past it the list says how many more there are, and typing
  * searches them ALL — the cap is on what is drawn, never on what is found.
  */
-export const BORROWER_SUGGESTIONS_MAX = 10;
+export const BORROWER_SUGGESTIONS_MAX = 5;
 
 /**
  * The borrowers to offer for what is typed: every one when nothing is, else
@@ -71,7 +71,7 @@ export function borrowerSuggestions(
 
 /**
  * The line under a list cut at `BORROWER_SUGGESTIONS_MAX`, or null when all
- * are shown: "Showing the 10 most recent of 240. Type to find the others."
+ * are shown: "Showing the 5 most recent of 240. Type to find the others."
  */
 export function moreBorrowersText(shown: number, matched: number, typed: string): string | null {
   if (matched <= shown) return null;
