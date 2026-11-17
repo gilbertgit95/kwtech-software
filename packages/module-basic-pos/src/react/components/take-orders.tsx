@@ -8,6 +8,7 @@ import { searchItems } from '../../domain/search.js';
 import type { PosItemView } from '../pos-client.js';
 import { useNow } from '../use-now.js';
 import type { TillState } from '../use-till.js';
+import { closedHeldOrderNotice, heldOrderOnTill } from '../view/held-order.js';
 import { formatPeso } from '../view/money.js';
 import { leftOf, stockWarning, tileLeft } from '../view/stock.js';
 import {
@@ -33,6 +34,7 @@ import {
   UnavailableBadge,
 } from './controls.js';
 import { CustomerDialog, ReferenceDialog, VariantPicker } from './dialogs.js';
+import { HeldOrderBanner } from './held-order-banner.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { WaitBadge } from './wait-badge.js';
 
@@ -88,7 +90,21 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
     [catalogue, state.ranks],
   );
   const results = query.trim() ? searchItems(searchable, query) : [];
-  const isHeld = open !== null && state.pending.some((one) => one.id === open.id);
+  /**
+   * The held order on the till (issue #162): the items screen and the order
+   * sheet both say so, since every item tapped goes onto it.
+   */
+  const held = heldOrderOnTill(open, state.pending);
+  const isHeld = held !== null;
+
+  /** Takes the held order off the till, unchanged, for a new one; it keeps waiting for payment. */
+  const closeHeld = () => {
+    if (!held) return;
+    state.clear();
+    setSheet('none');
+    setPassingNotice(null);
+    setNotice(closedHeldOrderNotice(held));
+  };
 
   /** ⓘ for a search result: only for an item with more to read than its row shows. */
   const detailsFor = (itemId: string) => {
@@ -198,7 +214,8 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
             {state.pending.length}
           </span>
         </h2>
-        <nav aria-label="Held orders" className="-mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-1">
+        {/* pb-3 (#166): the sideways scroll bar sat on the chips' bottom edge and looked like it overlapped them. */}
+        <nav aria-label="Held orders" className="-mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-3">
           <button
             type="button"
             onClick={newOrder}
@@ -267,6 +284,8 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
             </button>
           </p>
         ) : null}
+
+        {held ? <HeldOrderBanner held={held} busy={state.busy} large onClose={closeHeld} /> : null}
 
         {/* ── items ───────────────────────────────────────────────────────── */}
         <label className="sr-only" htmlFor={searchId}>
@@ -402,6 +421,7 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
         >
           {open ? (
             <div className="flex flex-col gap-3 px-2 pb-2">
+              {held ? <HeldOrderBanner held={held} busy={state.busy} large onClose={closeHeld} /> : null}
               {/* Inside the order only, never on the items screen (the operator, 2026-10-29). */}
               <OrderTypePicker state={state} order={open} large labelled />
 
