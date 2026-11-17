@@ -1,7 +1,7 @@
 import { type PrinterReceiptLine, type ReceiptPick, type ReceiptPrinterChoice, zonedDayKey } from '@kwtech/module-kit';
 import type { PosOrderView } from '../pos-client.js';
 import { formatPercent, formatPeso } from './money.js';
-import { METHOD_LABELS } from './receipt.js';
+import { isOrderSummary, METHOD_LABELS, NOT_A_RECEIPT, receiptTime, receiptTitle, SUMMARY_FOOTER } from './receipt.js';
 import { lineLabel } from './till.js';
 
 /**
@@ -12,14 +12,20 @@ import { lineLabel } from './till.js';
  * ⚠ A REPRINT SAYS SO, with the time (guard rules), and NEVER OPENS THE
  * DRAWER: a copy must never pass for the original, nor hand out the till.
  * The original of a cash sale opens it, where a drawer is plugged in.
+ *
+ * ⚠ AN OPEN ORDER PRINTS AS AN ORDER SUMMARY (#163), for a customer to see
+ * what they are about to pay: "NOT A RECEIPT" under its title, the time it
+ * was printed, no payment lines, never the drawer, and never REPRINT — every
+ * copy of a summary is as good as the first, so none is an original.
  */
 export function receiptLines(
   order: PosOrderView,
-  options: { timeZone: string; storeName?: string | null; reprintedAt?: Date | null },
+  options: { timeZone: string; storeName?: string | null; reprintedAt?: Date | null; printedAt?: Date | null },
 ): PrinterReceiptLine[] {
   const when = (iso: string) =>
     new Date(iso).toLocaleString('en-PH', { timeZone: options.timeZone, dateStyle: 'medium', timeStyle: 'short' });
-  const title = order.status === 'unpaid' ? 'ORDER SLIP - UNPAID' : 'RECEIPT';
+  const summary = isOrderSummary(order);
+  const title = receiptTitle(order);
   const out: PrinterReceiptLine[] = [];
 
   if (options.storeName)
@@ -30,7 +36,8 @@ export function receiptLines(
     align: 'center',
     bold: true,
   });
-  out.push({ kind: 'text', text: when(order.paidAt ?? order.finalisedAt ?? order.createdAt), align: 'center' });
+  if (summary) out.push({ kind: 'text', text: NOT_A_RECEIPT, align: 'center', bold: true });
+  out.push({ kind: 'text', text: when(receiptTime(order, options.printedAt)), align: 'center' });
   // How it was served, as copied onto the order: a renamed type never changes a receipt.
   if (order.orderTypeName) out.push({ kind: 'text', text: order.orderTypeName, align: 'center' });
   if (order.label) out.push({ kind: 'text', text: `Order ref: ${order.label}`, align: 'center', bold: true });
@@ -38,7 +45,7 @@ export function receiptLines(
     const contact = order.customerContact ? ` - ${order.customerContact}` : '';
     out.push({ kind: 'text', text: `${order.customerName}${contact}`, align: 'center' });
   }
-  if (options.reprintedAt) {
+  if (options.reprintedAt && !summary) {
     out.push({
       kind: 'text',
       text: `REPRINT - ${when(options.reprintedAt.toISOString())}`,
@@ -75,7 +82,7 @@ export function receiptLines(
   out.push(...paymentLines(order));
 
   out.push({ kind: 'feed' });
-  out.push({ kind: 'text', text: 'Thank you!', align: 'center' });
+  out.push({ kind: 'text', text: summary ? SUMMARY_FOOTER : 'Thank you!', align: 'center' });
   out.push({ kind: 'cut' });
   if (!options.reprintedAt && order.status === 'paid' && order.paymentMethod === 'cash') out.push({ kind: 'drawer' });
   return out;

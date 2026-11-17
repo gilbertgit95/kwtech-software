@@ -225,6 +225,11 @@ export function PhoneCashier({ state }: { state: TillState }) {
                   <span className="text-base font-semibold">Total</span>
                   <span className="text-2xl font-semibold tabular-nums">{formatPeso(open.total)}</span>
                 </p>
+                {/* The order summary (#163): what the customer is about to pay, on paper. Never a receipt. */}
+                <div className="flex flex-col gap-1">
+                  <ReceiptPrintButton state={receipt} layout="phone" height="lg" />
+                  <ReceiptPrintStatus state={receipt} className="px-1" />
+                </div>
                 <button
                   type="button"
                   disabled={lines.length === 0 || state.busy}
