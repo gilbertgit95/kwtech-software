@@ -36,6 +36,25 @@ when that many are reached, so its unpaid total is
 `lentOutstanding`. A borrower's loan opens on the Loans view, where repayments
 and lending more are recorded (issue #48).
 
+**Lend money suggests the borrowers already recorded** (issue #167,
+`BorrowerField`, rules in `src/react/view/borrower-suggestions.ts`):
+- **When the list shows:** as soon as Borrower takes focus, before anything is
+  typed. The most recently lent-to come first, each with what they owe, how many
+  loans, and their contact.
+- **Typing:** narrows the list by the same `borrowerKey` that groups "By
+  borrower". A name that matches nobody is a new borrower.
+- **Picking:** fills the name, and the contact only when its box is empty, so
+  the loan joins theirs. A typed name that already is somebody says "Adds to
+  Maria Cruz's loans."
+- **How many:** at most 10 are drawn (`BORROWER_SUGGESTIONS_MAX`, the operator's
+  number), with a line saying how many more there are. Typing searches them all.
+- **Keys:** ↓ moves from the box into the list, Enter picks, and Esc closes the
+  list, not the dialog.
+- **Why not a `<datalist>`:** a browser shows one only once something is typed,
+  and a phone often never shows it.
+- **Not in Edit borrower:** renaming to an existing name there would merge two
+  people's loans with one tap.
+
 **Money** reads any run of days: quick periods (this month, last month, last 7
 and 30 days, this year), or two days from `web-ui`'s `DatePicker` (given the
 workspace's today), stepped with ← →. `booksEntries(fromDay, toDay)` answers
