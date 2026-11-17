@@ -50,20 +50,22 @@ describe('heldOrderOnTill (issue #162)', () => {
 });
 
 describe('heldOrderBanner (issue #162)', () => {
-  it('names the order as the waiting list does, with its type and items', () => {
+  it('names the order as the waiting list does, on one short line', () => {
     const text = heldOrderBanner(summary('a', { label: 'Table 4', orderTypeName: 'Dine-in' }));
-    expect(text.heading).toBe('Held order: Table 4');
-    expect(text.detail).toBe('Dine-in · 3 items');
+    expect(text.name).toBe('Table 4');
+    expect(text.caption).toBe('Held order · edits saved');
   });
 
   it('falls back to the customer, then the number', () => {
-    expect(heldOrderBanner(summary('a', { customerName: 'Ana' })).heading).toBe('Held order: Ana');
-    expect(heldOrderBanner(summary('a')).heading).toBe('Held order: Order 12');
+    expect(heldOrderBanner(summary('a', { customerName: 'Ana' })).name).toBe('Ana');
+    expect(heldOrderBanner(summary('a')).name).toBe('Order 12');
   });
 
-  it('says changes are already saved, so Close never looks like it throws them away', () => {
-    expect(heldOrderBanner(summary('a')).note).toMatch(/saved to this order/u);
-    expect(heldOrderBanner(summary('a')).note).toMatch(/keeps waiting for payment/u);
+  it('says in full, for hover and screen readers, that changes are already saved and Close keeps it waiting', () => {
+    const { note } = heldOrderBanner(summary('a', { label: 'Table 4', orderTypeName: 'Dine-in' }));
+    expect(note).toMatch(/^Held order: Table 4 \(Dine-in · 3 items\)\./u);
+    expect(note).toMatch(/saved to this order/u);
+    expect(note).toMatch(/keeps waiting for payment/u);
   });
 });
 

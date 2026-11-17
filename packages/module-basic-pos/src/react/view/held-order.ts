@@ -28,13 +28,14 @@ export function heldOrderOnTill(
   return pending.find((one) => one.id === order.id) ?? null;
 }
 
-/** What the banner says. */
+/** What the banner says, on ONE line (the operator, 2026-11-17: the first, three-line banner ate the till's height). */
 export interface HeldOrderBannerText {
-  /** "Held order: Table 4" — the name the waiting list gives it, so the two are plainly the same order. */
-  heading: string;
-  /** "Dine-in · 3 items" */
-  detail: string;
+  /** "Z9 Table 4": the name the waiting list gives it, bold, so the two are plainly the same order. */
+  name: string;
+  /** "Held order · edits saved": short enough for a phone beside a short name, and cut with "…" where the row is narrow, never wrapped. */
+  caption: string;
   /**
+   * The whole sentence, on hover and for a screen reader.
    * ⚠ SAYS THAT CHANGES ARE ALREADY SAVED. Every act on the till is written to
    * the order as it happens (no cart in the browser), so Close cannot throw
    * them away — and must not look as if it could.
@@ -44,9 +45,9 @@ export interface HeldOrderBannerText {
 
 export function heldOrderBanner(held: PosOrderSummaryView): HeldOrderBannerText {
   return {
-    heading: `Held order: ${heldOrderTitle(held)}`,
-    detail: heldOrderDetail(held),
-    note: 'Changes here are saved to this order. Close it to start a new one; it keeps waiting for payment.',
+    name: heldOrderTitle(held),
+    caption: 'Held order · edits saved',
+    note: `Held order: ${heldOrderTitle(held)} (${heldOrderDetail(held)}). Changes here are saved to this order. Close it to start a new one; it keeps waiting for payment.`,
   };
 }
 

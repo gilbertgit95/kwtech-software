@@ -225,8 +225,10 @@ The same order process, split by who uses it:
   screens. A seller once opened a pending order by accident and rang up a
   new customer onto it. While the order on the till is in the pending list
   (`heldOrderOnTill`), a banner in the status-warning colour
-  (`HeldOrderBanner`) names it ("Held order: Table 4"), says that changes
-  are saved to it, and has **Close**. Close takes the order off the till
+  (`HeldOrderBanner`) names it on ONE line ("**Table 4** · Held order ·
+  edits saved", cut with "…" where narrow; the whole sentence on
+  hover and for screen readers), and has **Close**. It was three lines at
+  first, and they took too much of the till's height. Close takes the order off the till
   unchanged, so the order keeps waiting, and starts a new one. You don't
   have to tap Hold again. The banner sits above the cart in Classic and
   Cashier, and over the items and in the order sheet in Take orders. In
