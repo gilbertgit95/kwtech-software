@@ -9,6 +9,7 @@ import type { PosOrderView } from '../pos-client.js';
 import { useNow } from '../use-now.js';
 import { useOrderAlerts } from '../use-order-alerts.js';
 import type { TillState } from '../use-till.js';
+import { closedHeldOrderNotice, heldOrderOnTill } from '../view/held-order.js';
 import { formatPeso } from '../view/money.js';
 import { phoneCashierSheet, settledElsewhereText, waitingSummary } from '../view/phone-cashier.js';
 import {
@@ -24,6 +25,7 @@ import { MySoundsDialog } from './alert-tones-editor.js';
 import { URGENCY_CARD } from './cashier.js';
 import { buttonClass, PhoneDialogs } from './controls.js';
 import { CustomerDialog, ReferenceDialog, TextDialog } from './dialogs.js';
+import { HeldOrderBanner } from './held-order-banner.js';
 import { ChangeBadge, HIGHLIGHT_CARD, HIGHLIGHT_TRANSITION, SoundsBlockedNote, SoundsButton } from './order-alerts.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { PaymentDialog } from './payment-dialog.js';
@@ -78,6 +80,8 @@ export function PhoneCashier({ state }: { state: TillState }) {
   const lines = open?.lines ?? [];
   const summary = waitingSummary(state.pending, now);
   const shows = phoneCashierSheet(order, settledHereId);
+  /** The held order open in the sheet (issue #162): the banner names it, and Close takes it off the till. */
+  const held = heldOrderOnTill(open, state.pending);
   const canChange = state.canSell;
 
   const openOrder = async (orderId: string) => {
@@ -98,13 +102,25 @@ export function PhoneCashier({ state }: { state: TillState }) {
     if (await state.resume(orderId)) setSheet('order');
   };
 
-  /** Closes the sheet; a settled order leaves the till, so the next tap starts clean. */
+  /**
+   * Closes the sheet; a settled order leaves the till, so the next tap starts clean.
+   *
+   * ⚠ SO DOES A HELD ONE (issue #162). Left on the till behind a closed sheet,
+   * it was what Take orders opened with, and the next customer's items went
+   * onto it. "Add items" is the one way to carry it there, on purpose.
+   */
   const closeSheet = () => {
     setSheet('none');
     if (shows === 'receipt' || shows === 'settled_elsewhere') {
       state.clear();
       setSettledHereId(null);
     }
+    /*
+     * ⚠ ONLY WHEN THE PERSON CLOSED IT (`sheet` still set). "Add items" sets
+     * `sheet` to none itself, and the dialog's own `close` event then lands
+     * here too — clearing on it would drop the order "Add items" carries.
+     */
+    if (shows === 'order' && held && sheet !== 'none') state.clear();
   };
 
   const settled = (done: PosOrderView) => {
@@ -252,6 +268,19 @@ export function PhoneCashier({ state }: { state: TillState }) {
             ) : null
           }
         >
+          {shows === 'order' && held ? (
+            <HeldOrderBanner
+              held={held}
+              busy={state.busy}
+              large
+              className="mx-2 mb-3"
+              onClose={() => {
+                state.clear();
+                setSheet('none');
+                setNotice(closedHeldOrderNotice(held));
+              }}
+            />
+          ) : null}
           {shows === 'order' && open ? (
             <OrderBody
               state={state}

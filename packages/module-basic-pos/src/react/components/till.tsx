@@ -22,6 +22,7 @@ import { isPosItemAvailable, isPosVariantAvailable } from '../../domain/availabi
 import { type PosSearchResult, parseQuantityPrefix, searchItems } from '../../domain/search.js';
 import type { PosItemView, PosOrderLineView, PosOrderView } from '../pos-client.js';
 import type { TillState } from '../use-till.js';
+import { heldOrderOnTill } from '../view/held-order.js';
 import { actsWhileTyping, keyOfPress, meaningOf, nextLine, type TillZone } from '../view/keys.js';
 import { formatPercent, formatPeso } from '../view/money.js';
 import { ORDER_PANEL_RULES, ORDER_PANEL_STORAGE_KEY } from '../view/order-panel.js';
@@ -57,6 +58,7 @@ import {
   TextDialog,
   VariantPicker,
 } from './dialogs.js';
+import { HeldOrderBanner } from './held-order-banner.js';
 import { OrderTypePicker } from './order-type-picker.js';
 import { PanelEdgeHandle, readPanelWidth } from './panel-edge-handle.js';
 import { PaymentDialog } from './payment-dialog.js';
@@ -187,6 +189,8 @@ export function Till({
   const active = Math.min(activeResult, Math.max(0, results.length - 1));
 
   const lines = open?.lines ?? [];
+  /** A held order on the till (issue #162): the banner says so, and Close takes it off. */
+  const held = heldOrderOnTill(open, state.pending);
   const selectedLine = lines.find((line) => line.id === selectedLineId) ?? null;
   // Read by `focusHome` a frame later, when the closure that asked for it is already stale.
   const lineSelectedRef = useRef(false);
@@ -580,16 +584,31 @@ export function Till({
               }}
             />
           ) : (
-            <Cart
-              order={open}
-              state={state}
-              searchRef={searchRef}
-              cartRef={cartRef}
-              selectedLineId={selectedLineId}
-              onSelect={setSelectedLineId}
-              onDialog={setDialog}
-              phone={phone}
-            />
+            <>
+              {held ? (
+                <HeldOrderBanner
+                  held={held}
+                  busy={state.busy}
+                  onClose={() => {
+                    // Off the till, never cancelled or changed: it stays in Pending as the last act left it.
+                    state.clear();
+                    setSelectedLineId(null);
+                    close();
+                    setOrderShown(false);
+                  }}
+                />
+              ) : null}
+              <Cart
+                order={open}
+                state={state}
+                searchRef={searchRef}
+                cartRef={cartRef}
+                selectedLineId={selectedLineId}
+                onSelect={setSelectedLineId}
+                onDialog={setDialog}
+                phone={phone}
+              />
+            </>
           )}
         </section>
 
