@@ -316,10 +316,10 @@ describe('the receipt', () => {
     expect(slip).toContain('To pay');
   });
 
-  it('⚠ leaves a side margin the printer can reach, and fits between it (#160)', () => {
+  it('⚠ leaves a margin the printer can reach on every edge, and fits between it (#160)', () => {
     const html = receiptHtml(ORDER, { timeZone: 'Asia/Manila' });
-    const page = /@page\{margin:0 (\d+)mm;size:(\d+)mm auto\}/.exec(html);
-    const body = /body\{[^}]*padding:8px 0;width:(\d+)mm/.exec(html);
+    const page = /@page\{margin:(\d+)mm;size:(\d+)mm auto\}/.exec(html);
+    const body = /body\{[^}]*padding:0;width:(\d+)mm/.exec(html);
     const [margin, paper, width] = [page?.[1], page?.[2], body?.[1]].map(Number);
     expect(margin).toBeGreaterThanOrEqual(4);
     expect(paper).toBe(RECEIPT_PAPER_MM);

@@ -331,9 +331,10 @@ Cashier), and as a reprint from Orders (the full screen and the phone).
   and makes it this device's. Then "Other printers (prints as a page)", the
   narrow-page fallback, then "Print from this browser" (`receiptHtml`).
   Inside a phone's sheet the menu opens inside it.
-- ⚠ **The browser's receipt keeps 5 mm of paper on each side**
-  (`RECEIPT_SIDE_MARGIN_MM`, #160): printers cannot print their outer few
-  millimetres, and with no margin an inkjet cut the receipt's left side off.
+- ⚠ **The browser's receipt keeps 5 mm of paper on every edge**
+  (`RECEIPT_MARGIN_MM`, #160): printers cannot print their outer few
+  millimetres (3 mm on Epson's L-series), and with no margin an inkjet cut
+  the receipt's left side off.
   The print agent's raw receipts (`receiptLines`) are not affected.
 - ⚠ **Decided on a fresh read** at each tap, never the list on screen.
 - **Always print after payment** (a switch under the till's receipt, per
