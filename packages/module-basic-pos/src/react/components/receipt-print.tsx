@@ -106,14 +106,18 @@ export function useReceiptPrint(
   const loading = receipts.bound && receipts.printing === null;
   const usesPrinters = receipts.bound && (receiptPrinters.length > 0 || documents.printers.length > 0);
 
-  // Another order, a fresh line under the button. ⚠ Not on null: a reprint's order is null while it reads again.
-  const lastOrderId = useRef<string | null>(null);
-  const orderId = order?.id ?? null;
+  /*
+   * Another order, a fresh line under the button. ⚠ Not on null: a reprint's order is null while it reads again.
+   * ⚠ ALSO WHEN IT IS PAID (#163): "Sent to Counter 1" for its order summary, left under the receipt's
+   * button, read as the receipt having printed already.
+   */
+  const lastOrderKey = useRef<string | null>(null);
+  const orderKey = order ? `${order.id}:${isOrderSummary(order) ? 'summary' : 'receipt'}` : null;
   useEffect(() => {
-    if (orderId === null || orderId === lastOrderId.current) return;
-    lastOrderId.current = orderId;
+    if (orderKey === null || orderKey === lastOrderKey.current) return;
+    lastOrderKey.current = orderKey;
     setSaid(null);
-  }, [orderId]);
+  }, [orderKey]);
 
   /*
    * ⚠ NO ORDER IS A SUMMARY TOO: a clear till's button is the summary's, waiting for an item. Said as
