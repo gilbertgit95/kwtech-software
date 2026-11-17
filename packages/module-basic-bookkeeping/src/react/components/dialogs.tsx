@@ -6,6 +6,7 @@ import { BOOKS_EXPENSE_CATEGORIES, BOOKS_PURCHASE_CATEGORIES, BOOKS_RECORDED_KIN
 import { prepareBooksReason } from '../../domain/text.js';
 import type { BooksEntryKind } from '../../types.js';
 import type {
+  BooksBorrowerView,
   BooksInvestorView,
   BooksLoanView,
   BooksOverviewView,
@@ -35,6 +36,7 @@ import {
 } from '../view/forms.js';
 import { formatDay, formatDays, KIND_HINT, KIND_LABEL } from '../view/labels.js';
 import { formatPercent, formatPeso, parsePeso, percentInputValue } from '../view/money.js';
+import { BorrowerField } from './borrower-field.js';
 import { Modal } from './controls.js';
 import { AmountField, DayField, Figure, FormActions, PlaceField, SelectField, TextField } from './form-fields.js';
 
@@ -463,6 +465,8 @@ export function LendDialog({
   open,
   loan,
   books,
+  borrowers,
+  loans,
   today,
   onClose,
   onDone,
@@ -471,6 +475,9 @@ export function LendDialog({
   /** Lend more to this borrower; null for a new loan. */
   loan: BooksLoanView | null;
   books: BooksContext;
+  /** The borrowers already recorded, and their loans: what the Borrower field offers (issue #167). */
+  borrowers: readonly BooksBorrowerView[];
+  loans: readonly BooksLoanView[];
   today: string;
   onClose: () => void;
   onDone: (loanId: string) => void;
@@ -506,10 +513,19 @@ export function LendDialog({
       <form className="flex flex-col gap-3" onSubmit={submit} noValidate>
         {loan ? null : (
           <>
-            <TextField
-              label="Borrower"
+            <BorrowerField
               value={draft.borrowerName}
               onChange={(borrowerName) => set({ borrowerName })}
+              // Their newest contact only into an empty box: never over one somebody typed.
+              onPick={(picked) =>
+                setDraft((current) => ({
+                  ...current,
+                  borrowerName: picked.borrowerName,
+                  contact: current.contact.trim() === '' ? (picked.contact ?? '') : current.contact,
+                }))
+              }
+              borrowers={borrowers}
+              loans={loans}
               error={errors.borrowerName}
               autoFocus
             />
