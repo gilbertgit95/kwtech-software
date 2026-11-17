@@ -214,7 +214,8 @@ export function TakeOrders({ state, phone = false }: { state: TillState; phone?:
             {state.pending.length}
           </span>
         </h2>
-        <nav aria-label="Held orders" className="-mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-1">
+        {/* pb-3 (#166): the sideways scroll bar sat on the chips' bottom edge and looked like it overlapped them. */}
+        <nav aria-label="Held orders" className="-mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-3">
           <button
             type="button"
             onClick={newOrder}
