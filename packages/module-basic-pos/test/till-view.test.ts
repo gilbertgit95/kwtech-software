@@ -1,7 +1,7 @@
 import type { PosCatalogueView, PosOrderLineView, PosOrderView } from '../src/react/pos-client.js';
 import { formatPercent, formatPeso, parsePercent, parsePeso, pesoInputValue } from '../src/react/view/money.js';
 import { previewPayment } from '../src/react/view/payment.js';
-import { receiptHtml } from '../src/react/view/receipt.js';
+import { RECEIPT_CONTENT_MM, RECEIPT_PAPER_MM, receiptHtml } from '../src/react/view/receipt.js';
 import {
   gridCategories,
   gridItems,
@@ -314,5 +314,16 @@ describe('the receipt', () => {
     const slip = receiptHtml({ ...ORDER, status: 'unpaid', paymentMethod: null }, { timeZone: 'Asia/Manila' });
     expect(slip).toContain('UNPAID');
     expect(slip).toContain('To pay');
+  });
+
+  it('⚠ leaves a side margin the printer can reach, and fits between it (#160)', () => {
+    const html = receiptHtml(ORDER, { timeZone: 'Asia/Manila' });
+    const page = /@page\{margin:0 (\d+)mm;size:(\d+)mm auto\}/.exec(html);
+    const body = /body\{[^}]*padding:8px 0;width:(\d+)mm/.exec(html);
+    const [margin, paper, width] = [page?.[1], page?.[2], body?.[1]].map(Number);
+    expect(margin).toBeGreaterThanOrEqual(4);
+    expect(paper).toBe(RECEIPT_PAPER_MM);
+    expect(width).toBe(RECEIPT_CONTENT_MM);
+    expect((width ?? 0) + 2 * (margin ?? 0)).toBeLessThanOrEqual(paper ?? 0);
   });
 });

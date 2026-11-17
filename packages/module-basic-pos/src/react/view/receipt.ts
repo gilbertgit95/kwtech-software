@@ -2,6 +2,19 @@ import type { PosOrderView } from '../pos-client.js';
 import { formatPercent, formatPeso } from './money.js';
 import { lineLabel } from './till.js';
 
+/** The roll the browser's receipt is laid out for. Millimetres. */
+export const RECEIPT_PAPER_MM = 80;
+
+/**
+ * Blank paper left on each side of the browser's receipt (#160). Millimetres.
+ * Inkjets and thermal printers alike cannot print their outer 3–5 mm; less
+ * than this and the edge of the receipt is lost.
+ */
+export const RECEIPT_SIDE_MARGIN_MM = 5;
+
+/** The receipt's printed width: the paper less both margins. Millimetres. */
+export const RECEIPT_CONTENT_MM = RECEIPT_PAPER_MM - 2 * RECEIPT_SIDE_MARGIN_MM;
+
 /**
  * A receipt as printable HTML (D4 of POS-PLAN §1: "printable from the
  * browser"). Pure, so what prints is tested; the till hands it to a hidden
@@ -12,6 +25,13 @@ import { lineLabel } from './till.js';
  *
  * ⚠ A REPRINT SAYS SO, with the date (guard rules): a copy must never pass for
  * the original.
+ *
+ * ⚠ THE PAGE HAS SIDE MARGINS (#160). A printer cannot print the outer few
+ * millimetres of the paper; with `@page{margin:0}` the receipt began about
+ * 2 mm from the edge and an inkjet cut its left side off. The content is
+ * {@link RECEIPT_CONTENT_MM} wide, so it fits the page box between the
+ * margins and the right side is not pushed off instead. This is the browser's
+ * print only: the print agent's raw path (`receiptLines`) never reads it.
  */
 export function receiptHtml(
   order: PosOrderView,
@@ -62,12 +82,12 @@ export function receiptHtml(
     : '';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
-body{font:12px/1.4 ui-monospace,Menlo,monospace;margin:0;padding:8px;width:72mm;color:#000}
+body{font:12px/1.4 ui-monospace,Menlo,monospace;margin:0;padding:8px 0;width:${RECEIPT_CONTENT_MM}mm;color:#000}
 h1{font-size:14px;text-align:center;margin:0 0 4px}p{margin:0 0 4px;text-align:center}
 table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}.r{text-align:right;white-space:nowrap}
 .muted td{color:#444}.total td{font-weight:700;border-top:1px dashed #000;padding-top:3px}
 .ref{font-weight:700}.reprint{font-weight:700;border:1px solid #000;padding:2px}hr{border:0;border-top:1px dashed #000}
-@page{margin:0;size:80mm auto}
+@page{margin:0 ${RECEIPT_SIDE_MARGIN_MM}mm;size:${RECEIPT_PAPER_MM}mm auto}
 </style></head><body>
 ${options.storeName ? `<h1>${escapeHtml(options.storeName)}</h1>` : ''}
 <p>${escapeHtml(title)}${order.number !== null ? ` #${order.number}` : ''}</p>
