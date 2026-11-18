@@ -15,6 +15,7 @@ import type {
   SubscriptionView,
 } from '../permissions-client.js';
 import { Person, personLabel } from './person.js';
+import { RoleGuide } from './role-guide.js';
 
 /**
  * The sections an organization screen is made of, shared by BOTH audiences.
@@ -260,6 +261,7 @@ export function MembersSection({
         Each member holds <strong>one</strong> organization role. To combine the rights of two, create a role that
         carries both — the role editor can clone an existing one as a starting point.
       </p>
+      <RoleGuide roles={roles} />
 
       <FeatureGate allOf={[FEATURE.membersInvite]}>
         <div className="mt-4 flex flex-wrap items-start gap-2">

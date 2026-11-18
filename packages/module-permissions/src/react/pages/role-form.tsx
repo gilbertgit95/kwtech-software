@@ -399,9 +399,11 @@ export function RoleForm({
         error={errors.description}
         hint="One line for whoever assigns it: who it is for, what it can and can't do. Optional."
       >
-        {(id) => (
+        {(id, feedbackId) => (
           <input
             id={id}
+            aria-describedby={feedbackId}
+            aria-invalid={errors.description ? true : undefined}
             value={draft.description}
             onChange={(event) => edit({ ...draft, description: event.target.value })}
             disabled={readOnly}
@@ -684,21 +686,31 @@ function Field({
   // straight from an error map that legitimately holds undefined.
   hint?: string | undefined;
   error?: string | undefined;
-  children: (id: string) => React.ReactNode;
+  /**
+   * `feedbackId` names the hint or error paragraph under the field, for the
+   * control's `aria-describedby`; undefined when neither is shown. Fields
+   * predating it ignore the second argument.
+   */
+  children: (id: string, feedbackId: string | undefined) => React.ReactNode;
 }) {
   const id = useId();
+  const feedbackId = error || hint ? `${id}-feedback` : undefined;
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-sm font-medium">
         {label}
       </label>
-      {children(id)}
+      {children(id, feedbackId)}
       {/* The error REPLACES the hint rather than stacking under it: two lines of
           guidance under one field is where the eye stops reading either. */}
       {error ? (
-        <p className="mt-1 text-xs text-destructive">{error}</p>
+        <p id={feedbackId} role="alert" className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
       ) : hint ? (
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+        <p id={feedbackId} className="mt-1 text-xs text-muted-foreground">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

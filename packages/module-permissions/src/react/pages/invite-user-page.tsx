@@ -166,6 +166,7 @@ export function InviteUserPage({
         .sort((a, b) => a.features.length - b.features.length || a.key.localeCompare(b.key)),
     [roles, held],
   );
+  const chosenAppRole = appRoles.find((role) => role.id === draft.appRoleId) ?? null;
 
   // Preselected once the list is known, and never afterwards: re-running it
   // would fight somebody who deliberately chose a different role.
@@ -288,6 +289,10 @@ export function InviteUserPage({
               </option>
             ))}
           </select>
+          {/* The chosen role's line as text, not only an option's tooltip, which a keyboard or touch cannot open (#99). */}
+          {chosenAppRole?.description ? (
+            <p className="mt-1 text-xs text-foreground">{chosenAppRole.description}</p>
+          ) : null}
         </Field>
 
         <div className="mt-5 flex items-center gap-2">

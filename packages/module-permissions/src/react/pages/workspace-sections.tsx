@@ -13,6 +13,7 @@ import type {
   WorkspaceMemberView,
 } from '../permissions-client.js';
 import { Person, personLabel } from './person.js';
+import { RoleGuide } from './role-guide.js';
 import { TimeZoneSelect } from './time-zone-select.js';
 
 /**
@@ -215,6 +216,7 @@ export function WorkspaceMembers({
 
   return (
     <div className="border-t border-border px-4 py-2">
+      <RoleGuide roles={roles} />
       {workspace.members.map((member) => (
         <div
           key={member.workspaceMemberId}
