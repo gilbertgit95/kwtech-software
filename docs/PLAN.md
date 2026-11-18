@@ -633,6 +633,14 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-18** — **Tests hold the catalogue together: every tenant permission has a seeded role, every role grant is in a plan, every plan key has a role; app-level staff powers may be Super admin's alone (#172, part of #25).**
+
+  The cause: #25 asked for "no key nobody holds by accident" and "plans and roles agree". Access below app level needs a grant AND an entitlement, so the seeded roles and plans can each look right and still leave a key nobody can use, a grant that does nothing, or a plan selling something no role can reach.
+
+  - **Checked today, all clean.** Every organization and workspace key is held by an organization or workspace role; every such grant is in a plan or plan-exempt (billing's organization keys, D13); every plan key is held by a tenant role.
+  - **39 app-level keys are held by Super admin alone** (admin pages, backups, jobs, plans, users, defaults, chat moderation, sending notifications), and that is allowed: they are staff powers, and staff roles between Super admin and Normal user are **deferred by the operator until there are staff** (#25 item 1). The test excuses app level as a class rather than listing 39 keys, so a new admin page does not grow a list people learn to append to; it does check Super admin still holds every key.
+  - **Not done:** the per-person "why can or can't they" page (#25's last item) is its own issue, #173, not scheduled: #99's refusals already name the role, and the page earns its keep only with many staff and custom roles.
+
 - **2026-11-18** — **A role carries a one-line description, and a `not_granted` refusal names the seeded roles that would allow it, worked out from the roles (#99).**
 
   The cause: a role was a key, a label and an icon, so the Roles screen and the role pickers could not say who a role is for, and a refusal said "Your roles do not include this" without saying which role would. Issue #25 settled the three workspace tiers by trust; this makes the screens say so.
