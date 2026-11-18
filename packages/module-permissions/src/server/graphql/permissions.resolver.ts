@@ -21,6 +21,7 @@ import {
   PaginationArgs,
   PermissionContextType,
   PermissionDefaultType,
+  PermissionFeatureHoldersType,
   PermissionFeaturePageType,
   PermissionInvitationResultType,
   PermissionLimitSpecType,
@@ -1069,6 +1070,28 @@ export class PermissionsResolver {
     return context ? toPermissionContextType(context) : null;
   }
 
+  /**
+   * Which seeded roles hold a feature, so a refusal can name them (#99):
+   * "“Refund and void” needs the Supervisor or Workspace admin role."
+   *
+   * ## Unguarded, like `myPermissions` above, and for the same kind of reason
+   *
+   * The person asking is the one who was just REFUSED, so a key here would be
+   * a key needed to learn which key you lack. Signed in is still required
+   * (the global JwtAuthGuard), and what it discloses is the product's own
+   * vocabulary rather than anybody's grants: the seeded roles are the same in
+   * every organization, are named on the member screens of every tenant, and
+   * their labels and features are fixed by `seed/app-roles.ts`, not by a
+   * customer. No custom role, no disabled role, and nothing about who holds
+   * which role is ever in the answer — see `featureHolders`.
+   *
+   * Null for a key no mounted module declares.
+   */
+  @Query(() => PermissionFeatureHoldersType, { name: 'permissionFeatureHolders', nullable: true })
+  async featureHolders(@Args('feature') feature: string): Promise<PermissionFeatureHoldersType | null> {
+    return this.permissions.featureHolders(feature);
+  }
+
   // ── the tenant's own organization ─────────────────────────────────────────
   //
   // The `/organizations/*` area: what a customer sees about the organization
@@ -1588,6 +1611,7 @@ function toDraft(input: RoleDraftInput) {
     label: input.label,
     level: input.level,
     icon: input.icon ?? '',
+    description: input.description ?? '',
     features: input.features,
     // Pairs back to the map the domain edits. An absent list is an empty draft
     // — see RoleDraftInput.limits for why that is the same as clearing.

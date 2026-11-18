@@ -247,6 +247,15 @@ model PermRole {
   /// far worse than a generic glyph. See the app's `iconFor`.
   icon           String?
 
+  /// One line for whoever is choosing a role (#99): who it is for, what it can
+  /// do and what it can't. Shown beside the label on the Roles screen and the
+  /// role pickers, and named by a `not_granted` refusal.
+  ///
+  /// Nullable, so a custom role may leave it empty. A system role's is replaced
+  /// on every sync from `seed/app-roles.ts`, like its label. It carries NO
+  /// authority: what a role allows is its feature list, never this text.
+  description    String?
+
   /// Turned off without being destroyed. Null means live.
   ///
   /// There is no delete path for a role, deliberately. Every grant ever made

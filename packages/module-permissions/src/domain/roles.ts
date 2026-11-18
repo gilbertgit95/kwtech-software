@@ -25,7 +25,20 @@ export interface RoleDefinition {
    * label as a right is how a role stops describing what its holder can do.
    */
   icon?: string;
+  /**
+   * One line for people choosing a role (#99): who it is for, what it can do,
+   * and what it can't. "The shift lead: discounts, refunds, reports, stock
+   * takes and cash. Not members, settings or payouts."
+   *
+   * Optional, because a custom role may leave it empty. Like `icon` it carries
+   * NO authority: what a role allows is its feature list, and this sentence
+   * only describes that list for someone deciding whom to give it to.
+   */
+  description?: string;
 }
+
+/** The longest description a role may carry. One line on a screen, not a policy document. */
+export const ROLE_DESCRIPTION_MAX = 200;
 
 /**
  * How wide a level reaches. LOWER is broader.

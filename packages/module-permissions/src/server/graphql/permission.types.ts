@@ -290,6 +290,10 @@ export class PermissionRoleDetailType {
   @Field(() => String, { nullable: true })
   icon!: string | null;
 
+  /** Who the role is for and what it can do, one line (#99). Null when it has none. */
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+
   /**
    * Defined in the application and replaced on every deploy, so the screens
    * offer no edit. Exposed rather than inferred from the key, because "is this
@@ -401,6 +405,13 @@ export class RoleDraftInput {
 
   @Field(() => String, { nullable: true })
   icon!: string | null;
+
+  /**
+   * One line for whoever chooses the role (#99). Nullable so a client that
+   * predates it still validates; absent or empty clears it, as `icon` does.
+   */
+  @Field(() => String, { nullable: true })
+  description?: string | null;
 
   @Field(() => [String])
   features!: string[];
@@ -879,6 +890,43 @@ export class PermissionMemberRoleType {
 
   @Field(() => String, { nullable: true })
   icon!: string | null;
+}
+
+/** A seeded role that would allow a refused act (#99). See `rolesHoldingFeature`. */
+@ObjectType('PermissionRoleHolder')
+export class PermissionRoleHolderType {
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  level!: string;
+
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+}
+
+/**
+ * One feature and the seeded roles that hold it, for a `not_granted` refusal
+ * (#99). The label and level travel with the roles so the client writes the
+ * sentence without loading the registry.
+ */
+@ObjectType('PermissionFeatureHolders')
+export class PermissionFeatureHoldersType {
+  @Field()
+  featureKey!: string;
+
+  @Field()
+  featureLabel!: string;
+
+  @Field()
+  featureLevel!: string;
+
+  /** Fewest rights first; empty for an app-level key, or one no seeded role holds. */
+  @Field(() => [PermissionRoleHolderType])
+  roles!: PermissionRoleHolderType[];
 }
 
 /** What a write returned. A result, not a row — the screen re-reads to render. */

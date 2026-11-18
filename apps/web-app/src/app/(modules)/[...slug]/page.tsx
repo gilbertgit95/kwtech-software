@@ -1,12 +1,12 @@
 import { composeRoutes, matchRouteWithParams, routeRedirect } from '@kwtech/module-kit';
-import { denialReason } from '@kwtech/module-permissions';
+import { denialReason, isRoleLevel, notGrantedText } from '@kwtech/module-permissions';
 import { FeatureDenied } from '@kwtech/module-permissions/react';
 import { notEntitledText, PLATFORM_BILLING_FEATURE } from '@kwtech/module-platform-billing';
 import { billingPageHref, billingPlansHref } from '@kwtech/module-platform-billing/react';
 import { notFound, redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { BareShell } from '@/components/layout/bare-shell';
-import { getPlanComparison, getSessionSnapshot, type SessionScope } from '@/lib/session-query';
+import { getFeatureHolders, getPlanComparison, getSessionSnapshot, type SessionScope } from '@/lib/session-query';
 import { WEB_MODULES } from '@/modules';
 
 /**
@@ -122,9 +122,10 @@ export default async function ModuleRoutePage({
      * role opens it (the owner and admins, D8): the rest are told who to ask,
      * rather than linked to a page that refuses them too (#119).
      */
-    const [expiredStep, planStep] = await Promise.all([
+    const [expiredStep, planStep, roleDetail] = await Promise.all([
       expiredNextStep(denied, scope),
       notEntitledStep(denied, route.feature, scope),
+      notGrantedDetail(denied, route.feature),
     ]);
     return (
       <AppShell title={route.title} scope={scope}>
@@ -137,7 +138,7 @@ export default async function ModuleRoutePage({
           title={route.title}
           reason={denied}
           nextStep={expiredStep ?? planStep?.nextStep}
-          detail={planStep?.detail}
+          detail={planStep?.detail ?? roleDetail}
         />
       </AppShell>
     );
@@ -241,6 +242,24 @@ async function notEntitledStep(
   const comparison = await getPlanComparison(scope.organizationId);
   const nextStep = { href: billingPlansHref(scope.organizationId), label: 'Compare plans' };
   return comparison ? { detail: notEntitledText(comparison, feature), nextStep } : { nextStep };
+}
+
+/**
+ * Which role would allow it (#99), for a `not_granted` denial: "“Refund and
+ * void” needs the Supervisor or Workspace admin role. Ask a workspace admin to
+ * give you one." Worked out from the seeded roles, never written per key.
+ * Nothing for any other reason, or when the roles cannot be read or none at
+ * the feature's level holds it: the reason's own sentence still stands.
+ */
+async function notGrantedDetail(denied: string, feature: string | undefined): Promise<string | undefined> {
+  if (denied !== 'not_granted' || !feature) return undefined;
+  const holders = await getFeatureHolders(feature);
+  // An unknown level from the wire names nobody rather than guessing one.
+  if (!holders || !isRoleLevel(holders.featureLevel)) return undefined;
+  const featureLevel = holders.featureLevel;
+  // The API returns only roles AT the feature's level (`rolesHoldingFeature`), so each one's level is that one.
+  const roles = holders.roles.map((role) => ({ ...role, level: featureLevel }));
+  return notGrantedText({ featureLabel: holders.featureLabel, featureLevel, holders: roles }) ?? undefined;
 }
 
 /** `?a=1&b=2` from Next's parsed search params, or '' when there are none. */

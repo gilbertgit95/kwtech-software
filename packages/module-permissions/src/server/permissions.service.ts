@@ -20,7 +20,9 @@ import {
   type LimitSpec,
   resolveLimits,
 } from '../domain/limits.js';
+import { rolesHoldingFeature } from '../domain/role-holders.js';
 import { partitionSubscriptions } from '../domain/subscription-access.js';
+import { FEATURE_REGISTRY } from '../feature-keys.js';
 import { type PermissionContext, toRoleLevel } from '../types.js';
 import type { PermissionsModuleOptions } from './permissions.module.js';
 import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.repository.js';
@@ -365,6 +367,49 @@ export class PermissionsService {
     );
   }
 
+  /**
+   * The seeded roles that hold one feature, for a `not_granted` refusal to name
+   * (#99): "“Refund and void” needs the Supervisor or Workspace admin role."
+   *
+   * SEEDED roles only (`isSystem`), live ones only. A custom role is one
+   * tenant's arrangement, and naming it to a member of another — or naming a
+   * disabled one to anybody — would send them to ask for a role that does not
+   * apply to them. Which of those are named is `rolesHoldingFeature`'s rule,
+   * the same function the app's seed test runs against `APP_ROLES`.
+   *
+   * Null for a key no mounted module declares: there is no label to name and
+   * no level to look at, and the refusal keeps its general sentence.
+   */
+  async featureHolders(featureKey: string) {
+    const spec = (this.options?.featureRegistry ?? FEATURE_REGISTRY).find((one) => one.key === featureKey);
+    if (!spec) return null;
+    // App-level keys name nobody (see `rolesHoldingFeature`), so there is nothing to read.
+    const rows =
+      spec.level === 'app'
+        ? []
+        : await this.prisma.permRole.findMany({
+            where: { organizationId: null, isSystem: true, disabledAt: null, level: spec.level },
+            include: {
+              features: { select: { featureKey: true } },
+              limits: { select: { limitKey: true, value: true } },
+            },
+            orderBy: { key: 'asc' },
+          });
+    const candidates = rows.map((row) => ({
+      key: row.key,
+      label: row.label,
+      level: toRoleLevel(row.level),
+      description: row.description,
+      features: row.features.map((feature) => feature.featureKey),
+    }));
+    return {
+      featureKey: spec.key,
+      featureLabel: spec.label,
+      featureLevel: spec.level,
+      roles: rolesHoldingFeature(candidates, spec.key, spec.level),
+    };
+  }
+
   async listRoles(organizationId: string | null = null) {
     const rows = await this.prisma.permRole.findMany({
       where: { organizationId },
@@ -382,6 +427,7 @@ export class PermissionsService {
       level: row.level,
       organizationId: row.organizationId,
       icon: row.icon,
+      description: row.description,
       isSystem: row.isSystem,
       disabled: row.disabledAt !== null,
       features: row.features.map((feature) => feature.featureKey).sort(),

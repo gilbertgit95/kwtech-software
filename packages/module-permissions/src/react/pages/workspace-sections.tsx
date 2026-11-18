@@ -13,6 +13,7 @@ import type {
   WorkspaceMemberView,
 } from '../permissions-client.js';
 import { Person, personLabel } from './person.js';
+import { RoleGuide } from './role-guide.js';
 import { TimeZoneSelect } from './time-zone-select.js';
 
 /**
@@ -215,6 +216,7 @@ export function WorkspaceMembers({
 
   return (
     <div className="border-t border-border px-4 py-2">
+      <RoleGuide roles={roles} />
       {workspace.members.map((member) => (
         <div
           key={member.workspaceMemberId}
@@ -296,6 +298,8 @@ export function WorkspaceMemberRole({
       <select
         value={current?.id ?? ''}
         disabled={busy}
+        // The held role's one line on hover (#99). The member badge carries no description, so it is looked up.
+        title={roles.find((role) => role.id === current?.id)?.description ?? undefined}
         onChange={(event) => {
           const next = event.target.value;
           if (next === (current?.id ?? '')) return;
@@ -321,7 +325,7 @@ export function WorkspaceMemberRole({
       >
         <option value="">No workspace role</option>
         {roles.map((role) => (
-          <option key={role.id} value={role.id}>
+          <option key={role.id} value={role.id} title={role.description ?? undefined}>
             {role.label}
           </option>
         ))}
@@ -385,6 +389,7 @@ export function AddWorkspaceMemberDialog({
   const [search, setSearch] = useState('');
   const [chosen, setChosen] = useState<string | null>(null);
   const [roleId, setRoleId] = useState('');
+  const chosenRoleDescription = roles.find((candidate) => candidate.id === roleId)?.description ?? null;
 
   /** Organization members not already in this workspace. See the note above. */
   const candidates = useMemo(() => {
@@ -470,11 +475,15 @@ export function AddWorkspaceMemberDialog({
             >
               <option value="">No role</option>
               {roles.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
+                <option key={candidate.id} value={candidate.id} title={candidate.description ?? undefined}>
                   {candidate.label}
                 </option>
               ))}
             </select>
+            {/* What the chosen role is for (#99), so the choice is made on what it does and not on its name. */}
+            {chosenRoleDescription ? (
+              <span className="mt-1 block text-xs text-foreground">{chosenRoleDescription}</span>
+            ) : null}
             <span className="mt-1 block text-xs text-muted-foreground">
               Optional. Being IN a workspace and holding a role in it are different things — somebody with no workspace
               role still acts through whatever their organization role grants.

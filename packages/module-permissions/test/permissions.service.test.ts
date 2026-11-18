@@ -812,6 +812,7 @@ describe('disabled roles are excluded from every grant path', () => {
           level: 'app',
           organizationId: null,
           icon: null,
+          description: null,
           isSystem: false,
           disabledAt: new Date(),
           features: [{ featureKey: 'admin:access' }],
@@ -1152,6 +1153,7 @@ describe('listDefaults', () => {
     level: 'organization',
     organizationId: null,
     icon: 'crown',
+    description: null,
     isSystem: true,
     disabledAt: null,
     features: [],
@@ -1558,5 +1560,77 @@ describe('checkLimitForActor — a refused plan cap names the plan that raises i
     });
     expect(decision.allowed).toBe(true);
     expect(decision.raise).toBeUndefined();
+  });
+});
+
+/**
+ * The seeded roles a `not_granted` refusal names (#99). The rule for WHICH
+ * roles is `rolesHoldingFeature`'s and has its own suite; these pin what the
+ * service asks the database for, which is where a custom or disabled role
+ * would leak in.
+ */
+describe('featureHolders', () => {
+  function role(
+    key: string,
+    level: 'app' | 'organization' | 'workspace',
+    features: string[],
+  ): import('../src/server/permissions.repository.js').RoleDefinitionRow {
+    return {
+      id: key,
+      key,
+      label: key,
+      level,
+      organizationId: null,
+      icon: null,
+      description: `${key} description`,
+      isSystem: true,
+      disabledAt: null,
+      features: features.map((featureKey) => ({ featureKey })),
+      limits: [],
+    };
+  }
+
+  function serviceWith(rows: ReturnType<typeof role>[]) {
+    const { client } = fakePrisma();
+    const asked: unknown[] = [];
+    client.permRole = {
+      findMany: async (args) => {
+        asked.push(args.where);
+        return rows;
+      },
+    };
+    return { svc: new PermissionsService(client), asked };
+  }
+
+  it('asks for live seeded roles at the feature’s level only', async () => {
+    const { svc, asked } = serviceWith([]);
+    await svc.featureHolders(FEATURE.workspaceAssignRole);
+    expect(asked).toEqual([{ organizationId: null, isSystem: true, disabledAt: null, level: 'workspace' }]);
+  });
+
+  it('returns the feature’s label and level with the roles that hold it', async () => {
+    const { svc } = serviceWith([
+      role('big', 'workspace', [FEATURE.workspaceAssignRole, FEATURE.workspaceRead]),
+      role('small', 'workspace', [FEATURE.workspaceAssignRole]),
+      role('none', 'workspace', [FEATURE.workspaceRead]),
+    ]);
+    const holders = await svc.featureHolders(FEATURE.workspaceAssignRole);
+    expect(holders?.featureLevel).toBe('workspace');
+    expect(holders?.featureLabel).toEqual(expect.any(String));
+    expect(holders?.roles.map((one) => one.key)).toEqual(['small', 'big']);
+    expect(holders?.roles[0]?.description).toBe('small description');
+  });
+
+  it('is null for a key no module declares', async () => {
+    const { svc, asked } = serviceWith([]);
+    expect(await svc.featureHolders('nobody:declares_this')).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  it('does not read the database for an app-level key, which names nobody', async () => {
+    const { svc, asked } = serviceWith([role('super-admin', 'app', [FEATURE.featuresRead])]);
+    const holders = await svc.featureHolders(FEATURE.featuresRead);
+    expect(holders?.roles).toEqual([]);
+    expect(asked).toEqual([]);
   });
 });

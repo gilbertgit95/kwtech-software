@@ -434,6 +434,17 @@ every level, app included.
 mirrors the same rule: everything for `app`, only its own keys for the two
 scoped levels. `allFeatureKeys()` is what `super-admin` is seeded from.
 
+**A role describes itself (#99).** `RoleDefinition.description` and
+`perm_role.description` carry one line for whoever chooses a role: who it is
+for, what it can do and what it can't ("The shift lead: discounts, refunds,
+reports, stock takes, recording cash and running the queue. Not members,
+settings or payouts."). Seeded roles get theirs from the app's
+`seed/app-roles.ts` through `upsertSystemRole`, which replaces it on every sync
+like the label; custom roles may leave it empty or set it on the role form (at
+most `ROLE_DESCRIPTION_MAX`, 200 characters). The Roles screen shows it as "Who
+it is for", and the role pickers show the chosen role's line under the select
+and on hover. It carries no authority: nothing may branch on it.
+
 **Level is a filter, not a precedence chain.** App, organization and workspace
 grants all simply apply; nothing overrides anything, so there is no "which wins"
 rule to get wrong — the same reason there is no deny rule.
@@ -825,6 +836,22 @@ It also takes an optional `detail`, a sentence under the reason that only the
 app can write. For `not_entitled` the app says which plans include the feature
 ("Point of sale is in Basic and Pro. You are on Free.") and links to the plan
 comparison, for those whose role opens billing (#101).
+
+For `not_granted` the detail names the role that would allow it (#99):
+"“Refund and void” needs the Supervisor or Workspace admin role. Ask a
+workspace admin to give you one." It is worked out, never written per key:
+
+- `permissionFeatureHolders(feature)` returns the feature's label and level
+  and the **live seeded roles at that level** that hold it. It is unguarded
+  (signed in only), because the person asking is the one just refused; it
+  discloses the product's role vocabulary, never a custom role, a disabled
+  role, or who holds what. Its document is `PERMISSIONS_OPERATIONS.featureHolders`.
+- `rolesHoldingFeature(roles, key, level)` is the rule: roles at the feature's
+  own level only (an organization owner holds workspace keys too, but is not
+  who a cashier asks), fewest rights first, and nobody for an app-level key.
+  The app's `role-descriptions.test.ts` runs it against the seeded roles.
+- `notGrantedText({ featureLabel, featureLevel, holders })` writes the sentence,
+  or null when no role holds it, leaving the general one.
 
 ## Tags, filtering and paging
 

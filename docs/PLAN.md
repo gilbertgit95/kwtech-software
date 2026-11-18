@@ -633,6 +633,17 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-18** — **A role carries a one-line description, and a `not_granted` refusal names the seeded roles that would allow it, worked out from the roles (#99).**
+
+  The cause: a role was a key, a label and an icon, so the Roles screen and the role pickers could not say who a role is for, and a refusal said "Your roles do not include this" without saying which role would. Issue #25 settled the three workspace tiers by trust; this makes the screens say so.
+
+  - **`perm_role.description`, nullable.** Seeded roles get theirs from `seed/app-roles.ts`, replaced on every sync like the label; custom roles may leave it empty or set it on the role form (200 characters at most, one validator for form and API). It carries no authority.
+  - **Shown where a role is chosen:** a "Who it is for" column on the Roles screen, and the chosen role's line under the invite and add-member pickers and on hover over each member's select.
+  - **The refusal is derived, never written per key.** `rolesHoldingFeature` picks the LIVE SEEDED roles at the feature's own level that hold it, fewest rights first, and `notGrantedText` says "“Refund and void” needs the Supervisor or Workspace admin role. Ask a workspace admin to give you one." The app's seed test runs the same function against `APP_ROLES`, so a preset change that moves a key changes the test, not just the sentence.
+  - **Only roles at the feature's level.** The organization owner holds every workspace key through the organization, but a cashier refused at the till needs a role someone in the shop can give. App-level keys name nobody: telling a customer a page needs the Super admin role sends them to ask for something nobody they know can give.
+  - **`permissionFeatureHolders` is unguarded (signed in only), like `myPermissions`.** The person asking is the one just refused, so a key would be a key needed to learn which key you lack. It discloses the seeded role vocabulary every tenant already sees on its member screens, never a custom or disabled role or who holds what. Its document starts the permissions module's `src/operations.ts`, so it is validated against the schema; the older inline documents stay where they are (Legacy) until moved on purpose.
+  - **Not done:** controls hidden inside a page (`useHoldsFeature`) still just hide, and an API refusal still says "Requires …" with the key. Naming the role there means a read per refusal in the guard, or a sentence per control; the route's denial page is where people land, so it is covered first. Custom roles are not named: they belong to whoever built them, and naming one to another tenant would send people to ask for a role that does not apply to them.
+
 - **2026-11-18** — **Security fixes are our own PRs, not Dependabot's: Dependabot only reports, and indirect dependencies are lifted with `overrides` (#169).**
 
   The cause: about 100 open Dependabot alerts, 12 of them critical (`next`'s unauthenticated RCE), and neither Dependabot PR could merge. Dependabot changes a `package.json` without regenerating `pnpm-lock.yaml` under pnpm 11, so CI's `pnpm install --frozen-lockfile` fails on every job, the PR title check included (#159); it bumped `next` in `packages/module-auth` and not in `apps/web-app`, which serves it; and it cannot touch an indirect dependency at all.

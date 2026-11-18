@@ -8,6 +8,7 @@ export * from './limits.js';
 export * from './pagination.js';
 export * from './plan-draft.js';
 export * from './plans.js';
+export * from './role-holders.js';
 export * from './roles.js';
 export * from './spreadsheet.js';
 export * from './subscription-access.js';

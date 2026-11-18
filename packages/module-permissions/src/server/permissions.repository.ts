@@ -289,6 +289,8 @@ export interface RoleDefinitionRow {
   level: string;
   organizationId: string | null;
   icon: string | null;
+  /** Who the role is for, one line (#99). Null for a role that has none. See PermRole.description. */
+  description: string | null;
   isSystem: boolean;
   disabledAt: Date | null;
   features: { featureKey: string }[];
@@ -311,8 +313,19 @@ export interface PermissionsPrismaClient {
      * would make the switch look like a delete — which is the one thing it is
      * not.
      */
+    /*
+     * The three optional filters are for `featureHolders` (#99): the LIVE
+     * system roles at one level. Optional properties on one signature rather
+     * than an overload, which Prisma's generic delegate cannot satisfy (see
+     * `permUserRole.findMany` below).
+     */
     findMany(args: {
-      where: { organizationId: string | null };
+      where: {
+        organizationId: string | null;
+        isSystem?: true;
+        disabledAt?: null;
+        level?: 'app' | 'organization' | 'workspace';
+      };
       include: {
         features: { select: { featureKey: true } };
         limits: { select: { limitKey: true; value: true } };
@@ -846,6 +859,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
         level: 'app' | 'organization' | 'workspace';
         organizationId: string | null;
         icon: string | null;
+        description: string | null;
         isSystem: boolean;
       };
       select: { id: true };
@@ -854,7 +868,7 @@ export interface PermissionsWriteClient extends PermissionsPrismaClient {
       where: { id: string };
       // `level` is absent on purpose — see updateRole. Changing a role's level
       // re-interprets every grant ever made from it.
-      data: { label?: string; icon?: string | null; disabledAt?: Date | null };
+      data: { label?: string; icon?: string | null; description?: string | null; disabledAt?: Date | null };
       select: { id: true };
     }): Promise<{ id: string }>;
   };

@@ -239,6 +239,26 @@ export function RolesPage({
       { field: 'key', headerName: 'Key', flex: 2 },
       { field: 'label', headerName: 'Label', flex: 2 },
       {
+        field: 'description',
+        headerName: 'Who it is for',
+        flex: 4,
+        /*
+         * The role's one line (#99), so whoever is choosing between Supervisor
+         * and Workspace admin reads the difference here instead of comparing
+         * two feature lists. WRAPPED, never clipped: the grid's default
+         * `wrapText` + `autoHeight` grows the row, so the whole sentence is
+         * readable without a hover a keyboard or touch cannot do. A role
+         * without one shows a dash rather than an empty cell that reads like a
+         * loading fault.
+         */
+        cellRenderer: (params: { data?: RoleRow }) =>
+          params.data?.description ? (
+            <span className="whitespace-normal text-xs text-muted-foreground">{params.data.description}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          ),
+      },
+      {
         field: 'levelRank',
         headerName: 'Level',
         width: 150,
