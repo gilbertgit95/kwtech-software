@@ -56,6 +56,12 @@ export interface AuthModuleOptions {
 
   /** Binds the app's Prisma client to AUTH_PRISMA. */
   prismaProvider?: Provider;
+  /**
+   * Binds `AUTH_ADMIN_TARGET_CHECK`: whether an administrator may change a
+   * given account (#175). Unbound, every account write on the Users screens
+   * refuses. See `auth.tokens.ts`.
+   */
+  adminTargetCheckProvider?: Provider;
 
   /**
    * How JwtAuthGuard finds the underlying request, for transports that are not

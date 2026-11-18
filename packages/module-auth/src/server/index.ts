@@ -12,6 +12,7 @@ export * from './auth.module.js';
 export * from './auth.options.js';
 export * from './auth.repository.js';
 export * from './auth.service.js';
+export * from './auth.tokens.js';
 export * from './auth-admin.service.js';
 export * from './auth-display.service.js';
 export * from './google-oidc.js';

@@ -1,5 +1,6 @@
 import { appHubServerModule } from '@kwtech/module-app-hub/server';
 import {
+  AUTH_ADMIN_TARGET_CHECK,
   AuthAdminService,
   AuthService,
   authServerModule,
@@ -149,6 +150,7 @@ import { Logger, Module, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD, ModuleRef, RouterModule } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { createAdminTargetCheck } from './auth/admin-target-check.js';
 import { CredentialThrottlerGuard } from './auth/credential-throttler.guard.js';
 import { sendMfaEmailCode } from './auth/mfa-code-mail.js';
 import { sendPasswordResetEmail } from './auth/reset-mail.js';
@@ -570,6 +572,12 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
    */
   authServerModule({
     prismaProvider: authPrismaProvider,
+    // Who may change whose account (#175): never one with platform rights the actor lacks.
+    adminTargetCheckProvider: {
+      provide: AUTH_ADMIN_TARGET_CHECK,
+      inject: [PermissionsService],
+      useFactory: (permissions: PermissionsService) => createAdminTargetCheck(permissions),
+    },
     sendPasswordResetEmail,
     sendMfaEmailCode,
 

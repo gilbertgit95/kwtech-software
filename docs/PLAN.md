@@ -633,6 +633,17 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-18** — **Platform staff roles: Support, Operations and Moderator, each with only app-level keys and Normal user's; Super admin keeps every platform-wide power (#175, part of #25).**
+  The operator deferred staff roles earlier the same day, then scheduled them. 39 app-level keys were held by Super admin alone, so the only way to let someone help a customer or run a backup was to give them everything.
+  - **Support** (`platform-support`): `platform:support_access`, `organizations:read`, `users:read`, `users:update` (reset email, end sessions, remove a lost second factor), and the catalogue to read (`plans:read`, `defaults:read`, `features:read`).
+  - **Operations** (`platform-operations`): every `jobs:*`, `backup:read`, `backup:create`, `local_network:read`.
+  - **Moderator** (`platform-moderator`): module-chat's `chat-moderator` preset, `chat:manage_all`, `notification:send`, `notification:manage`. This settles who besides Super admin may send as the platform (NOTIFICATIONS-PLAN §18).
+  - **Super admin alone**, listed in `role-plan-audit.test.ts`: defining features, roles and plans, giving app roles, `defaults:manage`, `organizations:manage`, `users:disable`, `billing:manage`, billing settings, and `backup:download` / `delete` / `restore`. Each is a power over the whole platform or all its data, or a decision about a customer rather than help for one. The list replaces #172's "app level is excused as a class": now a new app key must be given to a staff role or added there.
+  - **Only app-level keys in a staff role**, tested: an app grant applies in every organization and skips the plan filter, so a tenant key there would be that right in every shop.
+  - **Bug fixed: a staff role REPLACES Normal user.** `assignAppRole` deletes a person's app roles before writing the new one, so Billing approver (#93), which held only billing keys, took away its holder's own account, chat and notifications. Its comment said "roles add up"; for app roles they don't. Every staff role now carries Normal user's keys and limits, through one helper (`staffFeatures`).
+  - **Account writes check the target too (found in review).** `users:update` carries removing a second factor, so Support could have removed a Super admin's. Every account write in `UsersAdminResolver` now also asks `AUTH_ADMIN_TARGET_CHECK`, which the app answers with `assignAppRole`'s no-escalation rule: the target may hold no platform right the actor lacks (`apps/web-server/src/auth/admin-target-check.ts`). Unbound, every account write refuses.
+  - **Not done:** several app roles per person (the table allows it, `assignAppRole` doesn't). Combining jobs means holding the larger role or a custom one, as with workspace roles. Nobody's role changes on `db:sync`; Super admin assigns the new roles on the Users page.
+
 - **2026-11-18** — **Tests hold the catalogue together: every tenant permission has a seeded role, every role grant is in a plan, every plan key has a role; app-level staff powers may be Super admin's alone (#172, part of #25).**
 
   The cause: #25 asked for "no key nobody holds by accident" and "plans and roles agree". Access below app level needs a grant AND an entitlement, so the seeded roles and plans can each look right and still leave a key nobody can use, a grant that does nothing, or a plan selling something no role can reach.

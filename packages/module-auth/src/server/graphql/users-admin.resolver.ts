@@ -1,9 +1,10 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Inject, Optional, UnauthorizedException } from '@nestjs/common';
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { AUTH_FEATURE } from '../../features.js';
 import type { Principal } from '../../types.js';
 import { PRINCIPAL_KEY } from '../auth.decorators.js';
 import type { AuthAdminSessionRow, AuthAdminUserRow, AuthUserFilter } from '../auth.repository.js';
+import { AUTH_ADMIN_TARGET_CHECK, type AuthAdminTargetCheck } from '../auth.tokens.js';
 import { AuthAdminService } from '../auth-admin.service.js';
 import { RequireAuthFeature } from '../require-feature.decorator.js';
 import {
@@ -54,7 +55,31 @@ import {
  */
 @Resolver()
 export class UsersAdminResolver {
-  constructor(private readonly admin: AuthAdminService) {}
+  constructor(
+    private readonly admin: AuthAdminService,
+    @Optional() @Inject(AUTH_ADMIN_TARGET_CHECK) private readonly mayAdminister?: AuthAdminTargetCheck,
+  ) {}
+
+  /**
+   * ⚠ EVERY ACCOUNT WRITE ASKS FIRST (#175): the key says the caller may change
+   * accounts, this says they may change THIS one. Its target must hold no
+   * platform right the caller lacks, so Support cannot remove a Super admin's
+   * second factor. See `AUTH_ADMIN_TARGET_CHECK`; unbound refuses.
+   */
+  private async assertMayAdminister(gqlContext: { req?: Record<string, unknown> }, userId: string): Promise<void> {
+    const actor = requirePrincipal(gqlContext);
+    if (!this.mayAdminister) {
+      throw new ForbiddenException({
+        message: 'This app has not said who may change whose account, so no account can be changed here.',
+        reason: 'not_configured',
+      });
+    }
+    if (await this.mayAdminister(actor.userId, userId)) return;
+    throw new ForbiddenException({
+      message: 'That account holds platform rights you do not, so only someone who holds all of them can change it.',
+      reason: 'not_permitted',
+    });
+  }
 
   // ── reading ───────────────────────────────────────────────────────────────
 
@@ -111,6 +136,7 @@ export class UsersAdminResolver {
   @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserType, { name: 'adminUpdateUserProfile' })
   async adminUpdateUserProfile(
+    @Context() gqlContext: { req?: Record<string, unknown> },
     @Args('userId') userId: string,
     @Args('displayName', { type: () => String, nullable: true }) displayName?: string | null,
     @Args('username', { type: () => String, nullable: true }) username?: string | null,
@@ -121,6 +147,7 @@ export class UsersAdminResolver {
      * provided — otherwise "did not touch the display name" and "cleared the
      * display name" would be the same request.
      */
+    await this.assertMayAdminister(gqlContext, userId);
     const input = {
       ...(displayName !== undefined && displayName !== null ? { displayName } : {}),
       ...(username !== undefined && username !== null ? { username } : {}),
@@ -136,6 +163,7 @@ export class UsersAdminResolver {
     @Args('suspended') suspended: boolean,
   ): Promise<AdminUserWriteResultType> {
     const actor = requirePrincipal(gqlContext);
+    await this.assertMayAdminister(gqlContext, userId);
     const { user, sessionsRevoked } = await this.admin.setStatus(
       actor.userId,
       userId,
@@ -150,6 +178,7 @@ export class UsersAdminResolver {
     @Context() gqlContext: { req?: Record<string, unknown> },
     @Args('userId') userId: string,
   ): Promise<AdminUserWriteResultType> {
+    await this.assertMayAdminister(gqlContext, userId);
     const request = gqlContext.req as { ip?: string } | undefined;
     await this.admin.sendPasswordReset(userId, { ipAddress: request?.ip ?? null, userAgent: null });
     // No sessions ended: the reset does that when it is CONSUMED, which is the
@@ -160,14 +189,22 @@ export class UsersAdminResolver {
 
   @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserWriteResultType, { name: 'adminRevokeUserSessions' })
-  async adminRevokeUserSessions(@Args('userId') userId: string): Promise<AdminUserWriteResultType> {
+  async adminRevokeUserSessions(
+    @Context() gqlContext: { req?: Record<string, unknown> },
+    @Args('userId') userId: string,
+  ): Promise<AdminUserWriteResultType> {
+    await this.assertMayAdminister(gqlContext, userId);
     const { revoked } = await this.admin.revokeSessions(userId);
     return { changed: revoked > 0, sessionsRevoked: revoked, user: toAdminUser(await this.admin.getUser(userId)) };
   }
 
   @RequireAuthFeature(AUTH_FEATURE.usersUpdate)
   @Mutation(() => AdminUserWriteResultType, { name: 'adminRemoveUserTwoFactor' })
-  async adminRemoveUserTwoFactor(@Args('userId') userId: string): Promise<AdminUserWriteResultType> {
+  async adminRemoveUserTwoFactor(
+    @Context() gqlContext: { req?: Record<string, unknown> },
+    @Args('userId') userId: string,
+  ): Promise<AdminUserWriteResultType> {
+    await this.assertMayAdminister(gqlContext, userId);
     const { removed } = await this.admin.removeTwoFactor(userId);
     return { changed: removed > 0, sessionsRevoked: 0, user: toAdminUser(await this.admin.getUser(userId)) };
   }

@@ -66,6 +66,9 @@ rather than half-working without it:
   reset hook: the fallback, logging the code, puts a live factor in the logs.
 - `google` (or `AUTH_GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`, all three
   or none) — "Sign in with Google". Two of three fails the boot.
+- `adminTargetCheckProvider` — binds `AUTH_ADMIN_TARGET_CHECK`, whether an
+  administrator may change a given account. Unbound, the Users screens can
+  read accounts and change none (see "Features this module declares").
 
 Rate limiting is yours too: the module exports `CREDENTIAL_ENDPOINTS` so a
 throttler can be pointed at the guessing endpoints without matching URLs.
@@ -302,6 +305,15 @@ password, but one key grants both — so holding it is a path into any account.
 That is a deliberate trade of least privilege for a vocabulary that matches the
 rest of the admin app; splitting the credential half back out is one key and a
 binding move.
+
+⚠ **And the key says which accounts only together with the target check
+(#175).** Every account write on the Users screens (profile, suspend, reset,
+end sessions, remove a factor) also asks `AUTH_ADMIN_TARGET_CHECK`
+`(actorId, targetId) => Promise<boolean>`, which the app binds through
+`adminTargetCheckProvider`. This app's answer: the target may hold no platform
+right the actor lacks, so a Support engineer can get a customer signed in again
+and cannot remove a Super admin's second factor. **Unbound, every account write
+refuses** (`not_configured`), since a missing rule is not permission.
 
 **The rule this module follows: a surface gets a key only when it needs
 AUTHORISATION, not merely a session.** Those are different questions, and

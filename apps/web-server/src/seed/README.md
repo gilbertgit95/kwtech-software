@@ -110,7 +110,7 @@ The split is deliberate:
 | | Where | Why |
 |---|---|---|
 | `syncFeatureRegistry`, `upsertSystemRole`, `grantAppRole` | `@kwtech/module-permissions/server` | mechanical, identical for every app, and must agree with the module's own read path — which filters `deprecatedAt: null` |
-| `APP_ROLES` (`super-admin`, `client`) | [`../app-roles.ts`](../app-roles.ts) | product decisions; a second app would want different ones |
+| `APP_ROLES` (`super-admin`, `normal-user`, the platform staff roles `platform-support`, `platform-operations`, `platform-moderator` and `platform-billing-approver`, and the organization and workspace tiers) | [`app-roles.ts`](./app-roles.ts) | product decisions; a second app would want different ones. A person holds ONE app role, so every staff role carries Normal user's keys too (#175) |
 | resolving an email to a user id | [`seeders/super-admin-grant.ts`](./seeders/super-admin-grant.ts) | `auth_user` is `module-auth`'s and `perm_user_role` is `module-permissions`'; the two never import each other, so the app is the seam |
 | ordering, env, logging | this folder | composition is the app's job |
 
