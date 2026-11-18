@@ -6,6 +6,7 @@ import { FeatureImportPage } from './pages/feature-import-page.js';
 import { FeatureNewPage } from './pages/feature-new-page.js';
 import { FeaturesPage } from './pages/features-page.js';
 import { InviteUserPage } from './pages/invite-user-page.js';
+import { MemberAccessPage } from './pages/member-access-page.js';
 import { MyOrganizationsPage } from './pages/my-organizations-page.js';
 import { OrganizationDetailPage } from './pages/organization-detail-page.js';
 import { OrganizationHomePage, type OrganizationPlanPage } from './pages/organization-home-page.js';
@@ -182,6 +183,16 @@ function OrganizationWorkspaceNewRoute({ params }: ModuleRouteProps) {
 
 function OrganizationWorkspaceRoute({ params }: ModuleRouteProps) {
   return <OrganizationWorkspacePage organizationId={params?.organizationId} workspaceId={params?.workspaceId} />;
+}
+
+function MemberAccessRoute({ params }: ModuleRouteProps) {
+  return (
+    <MemberAccessPage
+      organizationId={params?.organizationId}
+      workspaceId={params?.workspaceId}
+      userId={params?.userId}
+    />
+  );
 }
 
 function OrganizationWorkspaceMembersRoute({ params }: ModuleRouteProps) {
@@ -379,6 +390,24 @@ export const permissionsWebModule: WebModuleDescriptor = {
        */
       feature: FEATURE.membersRead,
       nav: { group: ORGANIZATION_NAV_GROUP, order: 30, icon: 'users' },
+    },
+    {
+      /*
+       * One member's access, explained (#173). `organization:read`, not
+       * `members:read`: the commonest visitor is a member asking about
+       * themselves. Whether they may see someone ELSE's is the API's call
+       * (`explainAccess`), and its refusal is shown in its own words.
+       */
+      path: '/organizations/:organizationId/members/:userId/access',
+      component: MemberAccessRoute,
+      title: 'Access',
+      feature: FEATURE.organizationRead,
+    },
+    {
+      path: '/organizations/:organizationId/workspaces/:workspaceId/members/:userId/access',
+      component: MemberAccessRoute,
+      title: 'Access',
+      feature: FEATURE.organizationRead,
     },
     {
       path: '/organizations/:organizationId/workspaces',

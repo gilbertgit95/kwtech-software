@@ -1,6 +1,8 @@
 'use client';
 
+import type { AccessLine } from '../domain/access-explanation.js';
 import type { CloneMode } from '../domain/role-draft.js';
+import { PERMISSIONS_OPERATIONS } from '../operations.js';
 import type { FeatureBinding, FeatureSpec, RoleLevel } from '../types.js';
 
 /**
@@ -400,7 +402,23 @@ export interface WriteResult {
   replaced: boolean;
 }
 
+/** One member's access explained (#173). `lines` are the domain's own `AccessLine`, so `accessReasonText` reads them. */
+export interface AccessExplanationView {
+  userId: string;
+  organizationId: string;
+  workspaceId: string | null;
+  self: boolean;
+  subscriptionEndedAt: string | null;
+  lines: AccessLine[];
+}
+
 export interface PermissionsClient {
+  /** One member's access here, every permission with yes or no and why (#173). */
+  explainAccess(input: {
+    organizationId: string;
+    workspaceId?: string | null;
+    userId: string;
+  }): Promise<AccessExplanationView>;
   /** Every grantable feature, from every module the app composed. */
   listFeatures(): Promise<FeatureView[]>;
   /** Every declared cap, from every module the app composed. */
@@ -684,6 +702,14 @@ export function createPermissionsClient(options: { graphqlPath?: string } = {}):
         `query PermissionLimits { permissionLimits { ${LIMIT_FIELDS} } }`,
       );
       return data.permissionLimits;
+    },
+
+    async explainAccess(input) {
+      const data = await graphql<{ permissionAccessExplanation: AccessExplanationView }>(
+        PERMISSIONS_OPERATIONS.accessExplanation,
+        { organizationId: input.organizationId, workspaceId: input.workspaceId ?? null, userId: input.userId },
+      );
+      return data.permissionAccessExplanation;
     },
 
     async listRoles(organizationId = null) {

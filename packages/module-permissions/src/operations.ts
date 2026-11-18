@@ -20,4 +20,27 @@ export const PERMISSIONS_OPERATIONS = {
       }
     }
   `,
+  accessExplanation: `
+    query PermissionAccessExplanation($organizationId: String!, $workspaceId: String, $userId: String!) {
+      permissionAccessExplanation(organizationId: $organizationId, workspaceId: $workspaceId, userId: $userId) {
+        userId
+        organizationId
+        workspaceId
+        self
+        subscriptionEndedAt
+        lines {
+          key
+          label
+          description
+          module
+          level
+          verdict
+          grantedBy
+          viaPlatformRole
+          inPlans
+          holders { key label level description }
+        }
+      }
+    }
+  `,
 } as const;

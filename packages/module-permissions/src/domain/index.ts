@@ -1,3 +1,4 @@
+export * from './access-explanation.js';
 export * from './feature-draft.js';
 export * from './feature-filter.js';
 export * from './feature-merge.js';

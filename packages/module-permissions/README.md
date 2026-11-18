@@ -853,6 +853,34 @@ workspace admin to give you one." It is worked out, never written per key:
 - `notGrantedText({ featureLabel, featureLevel, holders })` writes the sentence,
   or null when no role holds it, leaving the general one.
 
+### A member's access, explained
+
+`/organizations/:organizationId[/workspaces/:workspaceId]/members/:userId/access`
+lists every organization key (and every workspace key, inside a workspace)
+with **Yes** or **No** and one sentence of why (#173):
+
+| Verdict | Sentence |
+|---|---|
+| `granted` | "Their Supervisor role includes it." |
+| `not_entitled` | "Their Supervisor role includes it, but the organization's plan does not. It is in Pro." |
+| `not_granted` | "None of their roles includes it. The Supervisor or Workspace admin role does." |
+
+- `explainAccess({ compose, specs, plans, roles })` (root, pure) reads the
+  verdict from `composeContext` and finds the roles behind each grant by
+  composing each role on its own, so it never restates the guard's rules.
+  `accessReasonText(line, 'self' | 'other')` writes the sentence.
+- The service composes from the **same loader as `loadContext`**
+  (`contextInput`), so the page explains exactly what the guard decides.
+- `permissionAccessExplanation(organizationId, workspaceId?, userId)` has no
+  `@RequireFeature`: your own access needs no key. Someone else's needs the
+  key that changes their role there (`members:assign_role`, or
+  `workspace:assign_role` in a workspace), checked in the service. The person
+  must be an active member (and in the workspace); otherwise one "not a
+  member" refusal. Its document is `PERMISSIONS_OPERATIONS.accessExplanation`.
+- The member lists link to it: "Your access" on your own row, "Access" on
+  everyone's for whoever holds that key. App-level keys are not listed: they
+  are platform staff powers, never a tenant's to give.
+
 ## Tags, filtering and paging
 
 ### Tags

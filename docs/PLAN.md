@@ -633,6 +633,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-18** — **A member's access, explained: every organization and workspace permission with yes or no and the role or plan behind it, from the guard's own composition (#173, the last item of #25).**
+  Scheduled by the operator the same day it was deferred. #99's refusals name the missing role one key at a time; this answers "what can this person do here, and why" for all of them at once.
+  - **One source of truth.** `loadContext` was split into `contextInput` (the reads) and `composeContext` (the decision). The explanation composes the same input, and finds which roles contribute a key by composing each role alone with no plan, so the applies-at-this-level and plan-filter rules stay in `domain/grants.ts` only.
+  - **Who may look.** Yourself, always, with no key: the question every refusal raises. Someone else, only with the key that changes their role at that level (`members:assign_role`, `workspace:assign_role`), since the person who can fix a missing role is the one who needs to see why. A plain member reading a colleague's rights would be a directory of who may refund. Only active members (and workspace members) are explained; anyone else gets one "not a member" refusal.
+  - **Tenant keys only.** App-level keys are staff powers no tenant gives or plan sells; a "No" for each of them would be noise.
+  - **Not done:** custom roles are not named as roles that would allow a missing key (as #99); no link from a refusal page to this one; no history of who changed a role. The route is gated on `organization:read` so a member can open their own; the member lists hide the link where the API would refuse.
+
 - **2026-11-18** — **Platform staff roles: Support, Operations and Moderator, each with only app-level keys and Normal user's; Super admin keeps every platform-wide power (#175, part of #25).**
   The operator deferred staff roles earlier the same day, then scheduled them. 39 app-level keys were held by Super admin alone, so the only way to let someone help a customer or run a backup was to give them everything.
   - **Support** (`platform-support`): `platform:support_access`, `organizations:read`, `users:read`, `users:update` (reset email, end sessions, remove a lost second factor), and the catalogue to read (`plans:read`, `defaults:read`, `features:read`).
