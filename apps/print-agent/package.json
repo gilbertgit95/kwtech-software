@@ -22,7 +22,7 @@
     "@kwtech/module-print": "workspace:*",
     "graphql-ws": "^6.2.1",
     "pdf-to-printer": "^5.8.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@swc/core": "^1.16.1",

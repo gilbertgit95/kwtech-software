@@ -627,10 +627,21 @@ Phases 3 and 6 carry the risk. The rest is largely transcription from masterdb.
 | 145 | A receipt through a Windows queue starts PowerShell each time | if a counter prints receipts faster than about one a second | `WINDOWS_RAW_SCRIPT` runs in a new `powershell.exe` per receipt (the C# it needs is compiled once and kept). PowerShell's own start-up is still roughly half a second to a second on a shop PC, and the agent prints one job at a time. Network receipt printers (`PRINT_AGENT_NETWORK_PRINTERS`) do not pay it. What would settle it: one long-lived PowerShell per agent, fed jobs on its input |
 | 146 | The Windows RAW path has not printed on a real thermal printer | when the first receipt printer is bought | Proved with a stand-in for PowerShell and, end to end, on the virtual and pretend network printers (#151), not on Windows with a thermal printer. The first Test receipt settles it: width, cutter, drawer, and that `WritePrinter` reaches a USB printer through its driver's queue. A "Generic / Text Only" printer on `FILE:` can try the queue path before then |
 | 147 | A computer switched off still counts as online for up to 90 s | if cashiers meet it | Three missed 30 s heartbeats (`PRINT_AGENT_ONLINE_SECONDS`). A receipt tapped in that window waits 30 s for the computer, then fails with "The computer did not pick the job up…" (seen in the R5 browser test). The agent closing its socket could mark it offline at once; not done, because a socket that drops and comes back in a second would flicker the printer to offline |
+| 148 | One Dependabot alert has no fix to take: picomatch's ReDoS through repeated extglobs (high) | when picomatch 4.0.8 is published | The advisory names 4.0.8 as the first patched release; on 2026-11-18 the newest is 4.0.7 (#169). It arrives under jest, chokidar (pm2) and the Nest CLI, all tooling given patterns from this repository, not from a request. When 4.0.8 ships, add `picomatch@2` and `picomatch@4: ^4.0.8` to `overrides` in `pnpm-workspace.yaml` and run the test suite (2 → 4 crosses a major) |
 Decisions 1, 2, 3 and 5 gate the next step.
 
 
 ## 13. Decision log
+
+- **2026-11-18** — **Security fixes are our own PRs, not Dependabot's: Dependabot only reports, and indirect dependencies are lifted with `overrides` (#169).**
+
+  The cause: about 100 open Dependabot alerts, 12 of them critical (`next`'s unauthenticated RCE), and neither Dependabot PR could merge. Dependabot changes a `package.json` without regenerating `pnpm-lock.yaml` under pnpm 11, so CI's `pnpm install --frozen-lockfile` fails on every job, the PR title check included (#159); it bumped `next` in `packages/module-auth` and not in `apps/web-app`, which serves it; and it cannot touch an indirect dependency at all.
+
+  - **Direct dependencies bumped:** `next` 16.3.1 → 16.4.6 in both places it is declared, `nodemailer` ^9.0.5 → ^10.6.0 (v10 drops Node < 20 and adds an ESM build; `createTransport(url, defaults)` unchanged), `zod` → ^4.6.6, `pm2` → 7.1.2.
+  - **Indirect ones through `overrides` in `pnpm-workspace.yaml`**, each selector (`name@major`) lifting one major line to its first patched release, so nothing moves further than an advisory needs. The few that must cross a major (glob, minimatch, uuid, deepmerge-ts, basic-ftp) still ship CommonJS and run on Node 22; the test suite, both builds and a boot of both apps showed their parents still work.
+  - **An override is a pin.** The comment above them says to remove each once its parent's range reaches the patched version, or the next fix never arrives.
+  - **Dependabot's own PRs (#158, #159) closed as superseded.** Security updates stay on, for the alerts.
+  - **Not done:** picomatch (no patched release exists yet, §12 #148); a `dependabot.yml` with version updates (still noise, §13 2026-11-16); upgrading Nest to 12 or Prisma to 8 to drop overrides (majors of their own, not security work).
 
 - **2026-11-16** — **GitHub runs the checks before a merge: CI, the PR title, the migrations and security scans, all required by the `main` ruleset (#156).**
 

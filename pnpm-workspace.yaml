@@ -88,3 +88,55 @@ allowBuilds:
   # script is a vendored protobuf build; nothing on the query path calls it, and
   # the pure-JS path is what runs either way.
   '@apollo/protobufjs': false
+
+# Security fixes for INDIRECT dependencies (#169). Dependabot opens alerts for
+# these but cannot fix them: the packages that pull them in (Nest 11, Apollo,
+# Prisma's CLI, jest, @nestjs/cli, pm2, exceljs) still pin a vulnerable range.
+# Each entry lifts ONE major line to its first patched release, the selector
+# (`name@range`) keeping it to that line, so nothing jumps further than the
+# advisory needs.
+#
+# The entries that cross a major (uuid, deepmerge-ts, basic-ftp, glob,
+# minimatch) have no patched release on the old line. Every target
+# still ships a CommonJS build and runs on Node 22; the test suite, the builds
+# and a boot of both apps are what showed the parents still work.
+#
+# NOT here: picomatch (ReDoS in extglobs, under jest, chokidar and the Nest
+# CLI). Its advisory names 4.0.8 as the fix, and on 2026-11-18 the newest
+# release is 4.0.7, so there is nothing to lift it to; the alert stays open
+# until 4.0.8 is published (PLAN §12).
+#
+# Remove an entry once its parent's own range reaches the patched version
+# (`pnpm why <name>`): an override left behind pins a version forever, and the
+# next fix after it never arrives.
+overrides:
+  # Express 5 / Nest 11 / Apollo request handling: the API's HTTP surface.
+  proxy-addr@2: ^2.0.8
+  body-parser@2: ^2.4.0
+  qs@6: ^6.16.1
+  multer@2: ^2.5.0
+  '@graphql-tools/utils@12': ^12.0.2
+  # Prisma's CLI (migrate, generate); not on the request path.
+  mysql2@3: ^3.23.1
+  deepmerge-ts@7: ^8.0.0
+  fast-uri@3: ^3.1.9
+  # Build and test tooling: jest, @nestjs/cli, commitlint, postcss.
+  brace-expansion@1: ^1.1.21
+  brace-expansion@2: ^2.1.7
+  brace-expansion@5: ^5.0.12
+  js-yaml@3: ^3.15.2
+  js-yaml@4: ^4.3.2
+  js-yaml@5: ^5.4.1
+  glob@10: ^14.0.2
+  glob@13: ^14.0.2
+  minimatch@9: ^11.0.1
+  minimatch@10: ^11.0.1
+  source-map-js@1: ^1.2.2
+  # pm2 (running the built apps): its proxy agent's FTP client and its API
+  # client's redirects.
+  basic-ftp@5: ^6.2.4
+  follow-redirects@1: ^1.16.2
+  # exceljs (spreadsheets in the browser) only calls uuid v4, which the
+  # advisory (v3/v5/v6 with a buffer) does not touch; lifted so the alert
+  # closes rather than staying open as "not affected".
+  uuid@8: ^11.1.1
