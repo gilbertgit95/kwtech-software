@@ -53,6 +53,16 @@ describe('declared API surfaces are actually guarded', () => {
   });
 
   /**
+   * Unguarded because the person asking is the one just refused (#99): a key
+   * here would be a key you need to learn which key you lack. What it returns
+   * is the seeded vocabulary, never anyone's grants — `featureHolders` reads
+   * live SYSTEM roles only, and its test pins that.
+   */
+  it('permissionFeatureHolders stays unguarded', () => {
+    expect(required(PermissionsResolver.prototype, 'featureHolders')).toBeUndefined();
+  });
+
+  /**
    * Unguarded for the same reason, and the reason is worth stating: a key here
    * would be a key you need before you can be given any key. Somebody holding
    * nothing anywhere must still be able to see which organizations they are in,

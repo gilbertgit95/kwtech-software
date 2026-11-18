@@ -13,6 +13,7 @@ import { JOBS_OPERATIONS } from '@kwtech/module-jobs';
 import { LOCAL_NETWORK_OPERATIONS } from '@kwtech/module-local-network';
 import { NOTE_OPERATIONS } from '@kwtech/module-note';
 import { NOTIFICATION_OPERATIONS } from '@kwtech/module-notification';
+import { PERMISSIONS_OPERATIONS } from '@kwtech/module-permissions';
 import { PLATFORM_BILLING_OPERATIONS } from '@kwtech/module-platform-billing';
 import { PRINT_OPERATIONS } from '@kwtech/module-print';
 import { STUDIO_OPERATIONS } from '@kwtech/module-print-studio';
@@ -85,6 +86,8 @@ const MODULE_OPERATIONS: Record<string, Record<string, string>> = {
   booking: BOOKING_OPERATIONS,
   jobs: JOBS_OPERATIONS,
   local_network: LOCAL_NETWORK_OPERATIONS,
+  // Only the documents written since #99; the older ones are inline (Legacy). See its operations.ts.
+  permissions: PERMISSIONS_OPERATIONS,
 };
 
 describe('every module operation validates against the composed schema', () => {

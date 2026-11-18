@@ -155,6 +155,7 @@ export function MembersSection({
 }) {
   const [email, setEmail] = useState('');
   const [roleId, setRoleId] = useState('');
+  const chosenRoleDescription = roles.find((role) => role.id === roleId)?.description ?? null;
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
 
@@ -293,7 +294,7 @@ export function MembersSection({
             */}
             <option value="">No role</option>
             {roles.map((role) => (
-              <option key={role.id} value={role.id}>
+              <option key={role.id} value={role.id} title={role.description ?? undefined}>
                 {role.label}
               </option>
             ))}
@@ -307,6 +308,8 @@ export function MembersSection({
             {inviting ? 'Sending…' : 'Invite member'}
           </button>
         </div>
+        {/* What the chosen role is for (#99), so the choice is made on what it does and not on its name. */}
+        {chosenRoleDescription ? <p className="mt-2 text-xs text-muted-foreground">{chosenRoleDescription}</p> : null}
         {alreadyMember ? (
           /*
            * A REFUSAL, not a warning. Accepting REPLACES the organization role,
@@ -624,6 +627,8 @@ export function MemberRoles({
       <select
         value={current?.id ?? ''}
         disabled={busy}
+        // The held role's one line on hover (#99). The member badge carries no description, so it is looked up.
+        title={roles.find((role) => role.id === current?.id)?.description ?? undefined}
         onChange={(event) => {
           const next = event.target.value;
           if (next === (current?.id ?? '')) return;
@@ -649,7 +654,7 @@ export function MemberRoles({
       >
         <option value="">No role</option>
         {roles.map((role) => (
-          <option key={role.id} value={role.id}>
+          <option key={role.id} value={role.id} title={role.description ?? undefined}>
             {role.label}
           </option>
         ))}

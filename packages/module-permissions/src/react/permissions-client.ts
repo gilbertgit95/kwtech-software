@@ -34,6 +34,8 @@ export interface RoleView {
   level: string;
   organizationId: string | null;
   icon: string | null;
+  /** Who the role is for and what it can do, one line (#99). Null when it has none. */
+  description: string | null;
   isSystem: boolean;
   disabled: boolean;
   features: string[];
@@ -91,6 +93,8 @@ export interface RoleInput {
   label: string;
   level: string;
   icon: string | null;
+  /** Null or empty clears it. */
+  description: string | null;
   features: string[];
   /** Values are STRINGS, matching `RoleDraft.limits`: the domain validator owns what a number is. */
   limits: { limitKey: string; value: string }[];
@@ -609,7 +613,8 @@ export interface PermissionsClient {
   endSubscription(subscriptionId: string, reason: string): Promise<SubscriptionView>;
 }
 
-const ROLE_FIELDS = 'id key label level organizationId icon isSystem disabled features limits { limitKey value }';
+const ROLE_FIELDS =
+  'id key label level organizationId icon description isSystem disabled features limits { limitKey value }';
 const LIMIT_FIELDS = 'key module label description source countedOver required defaultValue';
 const PLAN_FIELDS = 'key label isPublic icon archived features limits { limitKey value }';
 const SUBSCRIPTION_FIELDS = `id organizationId organizationName workspaceId workspaceName

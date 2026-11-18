@@ -1,6 +1,6 @@
 import { AUTH_DEVICE_COOKIE, isAuthDeviceId, type Viewer } from '@kwtech/module-auth';
 import { getSessionToken } from '@kwtech/module-auth/next';
-import type { PermissionContext } from '@kwtech/module-permissions';
+import { PERMISSIONS_OPERATIONS, type PermissionContext } from '@kwtech/module-permissions';
 import { PLATFORM_BILLING_OPERATIONS, type PlanComparison } from '@kwtech/module-platform-billing';
 import { cookies } from 'next/headers';
 import { cache } from 'react';
@@ -674,3 +674,38 @@ export const getSessionSnapshot = cache(async (scope: SessionScope = {}): Promis
     return UNREACHABLE;
   }
 });
+
+/**
+ * The seeded roles that hold one feature (#99), for the sentence under a
+ * `not_granted` denial: "“Refund and void” needs the Supervisor or Workspace
+ * admin role." Its own request, as `getPlanComparison`, so an outage or a
+ * refusal costs that sentence and nothing else: null, and the denial still
+ * says an administrator can grant it.
+ */
+export const getFeatureHolders = cache(async (feature: string): Promise<FeatureHolders | null> => {
+  const token = await getSessionToken();
+  if (!token) return null;
+
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8080/api/v1';
+  try {
+    const response = await fetch(`${apiUrl}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ query: PERMISSIONS_OPERATIONS.featureHolders, variables: { feature } }),
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { data?: { permissionFeatureHolders: FeatureHolders | null } };
+    return body.data?.permissionFeatureHolders ?? null;
+  } catch {
+    return null;
+  }
+});
+
+/** `permissionFeatureHolders`, as the wire carries it. Levels arrive as strings and are narrowed by the caller. */
+export interface FeatureHolders {
+  featureKey: string;
+  featureLabel: string;
+  featureLevel: string;
+  roles: { key: string; label: string; level: string; description: string | null }[];
+}

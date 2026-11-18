@@ -113,12 +113,13 @@ export interface PermissionsRegistryClient {
         organizationId: null;
         isSystem: boolean;
         icon: string | null;
+        description: string | null;
       };
       select: { id: true };
     }): Promise<{ id: string }>;
     update(args: {
       where: { id: string };
-      data: { label: string; level: RoleLevel; isSystem: boolean; icon: string | null };
+      data: { label: string; level: RoleLevel; isSystem: boolean; icon: string | null; description: string | null };
       select: { id: true };
     }): Promise<{ id: string }>;
   };
@@ -307,10 +308,12 @@ export async function upsertSystemRole(
    * linger on the row with nothing in the checkout still naming it.
    */
   const icon = definition.icon ?? null;
+  // The same rule for the description (#99): removed from the definition, cleared on the next sync.
+  const description = definition.description ?? null;
   const role = existing
     ? await client.permRole.update({
         where: { id: existing.id },
-        data: { label: definition.label, level: definition.level, isSystem: true, icon },
+        data: { label: definition.label, level: definition.level, isSystem: true, icon, description },
         select: { id: true },
       })
     : await client.permRole.create({
@@ -321,6 +324,7 @@ export async function upsertSystemRole(
           organizationId: null,
           isSystem: true,
           icon,
+          description,
         },
         select: { id: true },
       });

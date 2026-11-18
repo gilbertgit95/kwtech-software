@@ -239,6 +239,26 @@ export function RolesPage({
       { field: 'key', headerName: 'Key', flex: 2 },
       { field: 'label', headerName: 'Label', flex: 2 },
       {
+        field: 'description',
+        headerName: 'Who it is for',
+        flex: 4,
+        /*
+         * The role's one line (#99), so whoever is choosing between Supervisor
+         * and Workspace admin reads the difference here instead of comparing
+         * two feature lists. Muted, and the whole sentence on hover, because a
+         * narrow window cuts it; a role without one shows a dash rather than
+         * an empty cell that reads like a loading fault.
+         */
+        cellRenderer: (params: { data?: RoleRow }) =>
+          params.data?.description ? (
+            <span className="text-xs text-muted-foreground" title={params.data.description}>
+              {params.data.description}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          ),
+      },
+      {
         field: 'levelRank',
         headerName: 'Level',
         width: 150,

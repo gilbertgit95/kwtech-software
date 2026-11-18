@@ -48,6 +48,7 @@ const SUPER_ADMIN: SystemRoleDefinition = {
   key: 'super-admin',
   label: 'Super admin',
   level: 'app',
+  description: "The platform's own administrators: every feature, in every organization, whatever its plan.",
   /*
    * A crown: the one role that answers to nobody inside the product. It is the
    * only icon here chosen for RANK rather than for job, which is the honest
@@ -180,6 +181,8 @@ const NORMAL_USER: SystemRoleDefinition = {
   key: 'normal-user',
   label: 'Normal user',
   level: 'app',
+  description:
+    'Every signed-in account: their own profile and sign-in, chat and notifications. Nothing administrative.',
   /*
    * ⚠ AN ID CARD, and it was a SPROUT — changed because the sprout was already
    * the `free` plan's icon, and the two are drawn side by side.
@@ -306,6 +309,8 @@ const ORGANIZATION_ADMIN: SystemRoleDefinition = {
   key: 'organization-admin',
   label: 'Organization admin',
   level: 'organization',
+  description:
+    'Runs the organization day to day: members, their roles, workspaces, renewing and paying. Not its name or its plan.',
   icon: 'shield',
   /*
    * ⚠ NO `OWN_ACCOUNT` HERE, unlike the app-level roles above.
@@ -379,6 +384,7 @@ const ORGANIZATION_USER: SystemRoleDefinition = {
   key: 'organization-user',
   label: 'Organization user',
   level: 'organization',
+  description: 'A member: opens the organization and sees its people and workspaces. Changes nothing.',
   icon: 'users',
   /*
    * `organization:read` and the two READS beside it — enough to open the
@@ -543,6 +549,8 @@ const WORKSPACE_ADMIN: SystemRoleDefinition = {
   key: 'workspace-admin',
   label: 'Workspace admin',
   level: 'workspace',
+  description:
+    "The shop's owner or manager: everything, including members, settings, investors, payouts and pairing printers.",
   /*
    * ⚠ A PERSON WITH A COG, and it was the WORKSPACE glyph — changed because
    * that glyph already names the workspace NAV GROUP, and the two appear
@@ -645,6 +653,8 @@ const WORKSPACE_SUPERVISOR: SystemRoleDefinition = {
   key: 'workspace-supervisor',
   label: 'Supervisor',
   level: 'workspace',
+  description:
+    'The shift lead: discounts, refunds, reports, stock takes, recording cash and running the queue. Not members, settings or payouts.',
   /*
    * A person with a tick: someone who signs off. Distinct from the admin's cog
    * (who configures) and the staff's plain person, and used by no other role,
@@ -689,6 +699,8 @@ const WORKSPACE_USER: SystemRoleDefinition = {
   key: 'workspace-user',
   label: 'Staff',
   level: 'workspace',
+  description:
+    'Serves customers: sells at the listed price, takes payment, works the queue and bookings. No discounts, refunds or books.',
   icon: 'user',
   /*
    * `workspace:read` and nothing else. It was empty, and that was right while
@@ -759,6 +771,8 @@ const ORGANIZATION_OWNER: SystemRoleDefinition = {
   key: 'organization-owner',
   label: 'Organization owner',
   level: 'organization',
+  description:
+    'Owns the organization: everything an admin does, plus renaming it and choosing, changing or cancelling its plan.',
   icon: 'organization',
   /*
    * The admin's list plus `organization:manage` — the right to rename the
@@ -794,6 +808,8 @@ const BILLING_APPROVER_ROLE: SystemRoleDefinition = {
   key: BILLING_APPROVER.key,
   label: BILLING_APPROVER.label,
   level: 'app',
+  description:
+    'Platform billing staff: approve or reject plan requests and payments, and void them. Not the prices or billing settings.',
   icon: BILLING_APPROVER.icon,
   features: [...BILLING_APPROVER.features],
   limits: {},

@@ -2714,6 +2714,7 @@ describe('role limits, through createRole and updateRole', () => {
       label: 'Chat power user',
       level: 'app',
       icon: '',
+      description: '',
       features: [],
       limits: {},
       ...over,

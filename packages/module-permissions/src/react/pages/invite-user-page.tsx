@@ -283,7 +283,7 @@ export function InviteUserPage({
               profile — see the header.
             */}
             {appRoles.map((role) => (
-              <option key={role.id} value={role.id}>
+              <option key={role.id} value={role.id} title={role.description ?? undefined}>
                 {role.label} — {role.features.length} right{role.features.length === 1 ? '' : 's'}
               </option>
             ))}

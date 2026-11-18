@@ -4,7 +4,7 @@ import { ConfirmDialog, IconPicker, TreeSelect, type TreeSelectNode, useIconSet 
 import { useId, useMemo, useState } from 'react';
 import { LIMIT_REGISTRY, type LimitSpec } from '../../domain/limits.js';
 import { type RoleDraft, type RoleDraftErrors, roleLimitFields, validateRoleDraft } from '../../domain/role-draft.js';
-import { canRoleGrant } from '../../domain/roles.js';
+import { canRoleGrant, ROLE_DESCRIPTION_MAX } from '../../domain/roles.js';
 import { ROLE_LEVELS, type RoleLevel } from '../../types.js';
 import {
   type FeatureView,
@@ -130,6 +130,7 @@ export function RoleForm({
     label: role?.label ?? '',
     level: role?.level ?? 'organization',
     icon: role?.icon ?? '',
+    description: role?.description ?? '',
     features: role?.features ?? [],
     /*
      * The role's stored caps as the strings the inputs edit. Seeded from the
@@ -341,6 +342,7 @@ export function RoleForm({
         label: draft.label.trim(),
         level: draft.level,
         icon: draft.icon.trim() || null,
+        description: draft.description.trim() || null,
         features: [...draft.features],
         /*
          * Only what this role may actually carry, and only what was typed.
@@ -388,6 +390,25 @@ export function RoleForm({
             onChange={(event) => edit({ ...draft, label: event.target.value })}
             disabled={readOnly}
             className={inputClass(Boolean(errors.label))}
+          />
+        )}
+      </Field>
+
+      <Field
+        label="Description"
+        error={errors.description}
+        hint="One line for whoever assigns it: who it is for, what it can and can't do. Optional."
+      >
+        {(id) => (
+          <input
+            id={id}
+            value={draft.description}
+            onChange={(event) => edit({ ...draft, description: event.target.value })}
+            disabled={readOnly}
+            // The validator's limit, so the box stops where the save would refuse.
+            maxLength={ROLE_DESCRIPTION_MAX}
+            placeholder="e.g. The shift lead: discounts, refunds and reports. Not members or settings."
+            className={inputClass(Boolean(errors.description))}
           />
         )}
       </Field>

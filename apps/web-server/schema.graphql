@@ -1326,6 +1326,13 @@ type PermissionFeatureBinding {
   surface: String!
 }
 
+type PermissionFeatureHolders {
+  featureKey: String!
+  featureLabel: String!
+  featureLevel: String!
+  roles: [PermissionRoleHolder!]!
+}
+
 type PermissionFeaturePage {
   hasMore: Boolean!
   items: [PermissionFeature!]!
@@ -1434,6 +1441,7 @@ type PermissionRole {
 }
 
 type PermissionRoleDetail {
+  description: String
   disabled: Boolean!
   features: [String!]!
   icon: String
@@ -1444,6 +1452,13 @@ type PermissionRoleDetail {
   level: String!
   limits: [PermissionRoleLimit!]!
   organizationId: String
+}
+
+type PermissionRoleHolder {
+  description: String
+  key: String!
+  label: String!
+  level: String!
 }
 
 type PermissionRoleLimit {
@@ -2466,6 +2481,7 @@ type Query {
   notificationsSince(since: String!): NotificationsMissed!
   orphanedTaskBoards(organizationId: String!, workspaceId: String!): [OrphanedTaskBoard!]!
   permissionDefaults: [PermissionDefault!]!
+  permissionFeatureHolders(feature: String!): PermissionFeatureHolders
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!
   permissionLimits: [PermissionLimitSpec!]!
   permissionOrganizationDetail(organizationId: String!): PermissionOrganizationDetail
@@ -2736,6 +2752,7 @@ type RoleCloneSkip {
 }
 
 input RoleDraftInput {
+  description: String
   features: [String!]!
   icon: String
   key: String!

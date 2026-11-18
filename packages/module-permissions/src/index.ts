@@ -15,6 +15,7 @@ export * from './defaults.js';
 export * from './domain/index.js';
 export * from './feature-keys.js';
 export * from './feature-tags.js';
+export * from './operations.js';
 export * from './registry-audit.js';
 export * from './scope.js';
 export * from './types.js';

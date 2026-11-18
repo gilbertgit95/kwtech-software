@@ -699,6 +699,7 @@ export class PermissionsWriteService {
           // Always a shared preset — see the note in domain/role-draft.ts.
           organizationId: null,
           icon: draft.icon.trim() || null,
+          description: draft.description.trim() || null,
           // Only the seeder writes system roles. One created here is an
           // ordinary row the screens may edit.
           isSystem: false,
@@ -742,7 +743,11 @@ export class PermissionsWriteService {
 
       await tx.permRole.update({
         where: { id: roleId },
-        data: { label: draft.label.trim(), icon: draft.icon.trim() || null },
+        data: {
+          label: draft.label.trim(),
+          icon: draft.icon.trim() || null,
+          description: draft.description.trim() || null,
+        },
         select: { id: true },
       });
       await this.replaceRoleFeatures(tx, roleId, draft.features);

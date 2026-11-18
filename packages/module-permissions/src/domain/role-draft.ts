@@ -2,7 +2,7 @@ import type { FeatureKey, FeatureSpec, RoleLevel } from '../types.js';
 import { ROLE_LEVELS } from '../types.js';
 import { type CloneMode, type CloneResult, mergeFeatures } from './feature-merge.js';
 import { LIMIT_REGISTRY, type LimitSpec } from './limits.js';
-import { canRoleGrant } from './roles.js';
+import { canRoleGrant, ROLE_DESCRIPTION_MAX } from './roles.js';
 
 /**
  * A role being written, before it is a row.
@@ -23,6 +23,8 @@ export interface RoleDraft {
   level: string;
   /** Icon NAME for the badge. Empty means none. See PermRole.icon. */
   icon: string;
+  /** Who the role is for and what it can do (#99). Empty means none. See `RoleDefinition.description`. */
+  description: string;
   features: readonly FeatureKey[];
   /**
    * The caps this role GRANTS, key → string.
@@ -66,6 +68,7 @@ export const EMPTY_ROLE_DRAFT: RoleDraft = {
   label: '',
   level: 'organization',
   icon: '',
+  description: '',
   features: [],
   /**
    * ⚠ EMPTY, and deliberately NOT prefilled the way `EMPTY_PLAN_DRAFT` is.
@@ -146,6 +149,9 @@ export function validateRoleDraft(draft: RoleDraft, options: ValidateRoleOptions
   }
 
   if (!draft.label.trim()) errors.label = 'A label is required.';
+  if (draft.description.trim().length > ROLE_DESCRIPTION_MAX) {
+    errors.description = `Keep it to one line: ${ROLE_DESCRIPTION_MAX} characters at most.`;
+  }
 
   if (!isRoleLevel(draft.level)) {
     errors.level = `Level must be one of: ${ROLE_LEVELS.join(', ')}.`;
