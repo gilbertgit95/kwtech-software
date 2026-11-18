@@ -1,13 +1,16 @@
 import { APP_HUB_FEATURE } from '@kwtech/module-app-hub';
 import { AUTH_FEATURE } from '@kwtech/module-auth';
+import { BACKUP_FEATURE } from '@kwtech/module-backup';
 import { BOOKS_ROLE_PRESETS, type BooksRolePreset } from '@kwtech/module-basic-bookkeeping';
 import { STOCK_ROLE_PRESETS, type StockRolePreset } from '@kwtech/module-basic-inventory';
 import { POS_ROLE_PRESETS, type PosRolePreset } from '@kwtech/module-basic-pos';
 import { BOOKING_ROLE_PRESETS, type BookingRolePreset } from '@kwtech/module-booking';
-import { CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
+import { CHAT_FEATURE, CHAT_ROLE_PRESETS } from '@kwtech/module-chat';
 import { FILE_ROLE_PRESETS, type FileRolePreset } from '@kwtech/module-file-manager';
+import { JOBS_FEATURE } from '@kwtech/module-jobs';
+import { LOCAL_NETWORK_FEATURE } from '@kwtech/module-local-network';
 import { NOTE_ROLE_PRESETS, type NoteRolePreset } from '@kwtech/module-note';
-import { NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
+import { NOTIFICATION_FEATURE, NOTIFICATION_ROLE_PRESETS } from '@kwtech/module-notification';
 import { FEATURE, LIMIT } from '@kwtech/module-permissions';
 import { registryFeatureKeys, type SystemRoleDefinition } from '@kwtech/module-permissions/server';
 import { PLATFORM_BILLING_ROLE_PRESETS, type PlatformBillingRolePreset } from '@kwtech/module-platform-billing';
@@ -115,8 +118,8 @@ const CHAT_USER = (() => {
  * nothing.
  *
  * ⚠ RECEIVING only. Sending as the platform (`notification:send`) and recalling
- * (`notification:manage`) are in no preset and no role: `super-admin` bypasses
- * the check, and nobody else has been decided (docs/NOTIFICATIONS-PLAN.md §18).
+ * (`notification:manage`) are in no preset: Super admin holds them, and so,
+ * since #175, does the `platform-moderator` staff role below.
  */
 const NOTIFICATION_USER = (() => {
   const preset = NOTIFICATION_ROLE_PRESETS.find((one) => one.key === 'notification-user');
@@ -801,8 +804,10 @@ const ORGANIZATION_OWNER: SystemRoleDefinition = {
  * holding it through their own organization (plan §8). The settings and the
  * prices stay with `super-admin`.
  *
- * Holds only the preset's keys: a person given it keeps their `normal-user`
- * role for their own account, since roles add up.
+ * The preset's keys plus Normal user's: this comment used to say a person
+ * given it "keeps their normal-user role, since roles add up", and they did
+ * not. A person holds one app role, and granting this one removed the other
+ * (#175, see `staffFeatures` below).
  */
 const BILLING_APPROVER_ROLE: SystemRoleDefinition = {
   key: BILLING_APPROVER.key,
@@ -811,8 +816,120 @@ const BILLING_APPROVER_ROLE: SystemRoleDefinition = {
   description:
     'Platform billing staff: approve or reject plan requests and payments, and void them. Not the prices or billing settings.',
   icon: BILLING_APPROVER.icon,
-  features: [...BILLING_APPROVER.features],
-  limits: {},
+  features: staffFeatures(BILLING_APPROVER.features),
+  limits: { ...NORMAL_USER.limits },
+};
+
+/*
+ * ── PLATFORM STAFF (#175, part of #25) ──────────────────────────────────────
+ *
+ * Between Super admin (everything) and Normal user (nothing administrative):
+ * one role per staff job, each with only that job's keys.
+ *
+ * ⚠ ONLY APP-LEVEL KEYS. An app-level grant applies in EVERY organization and
+ * is unioned in after the plan filter (domain/grants.ts), so a staff role
+ * carrying `pos:refund` would let its holder refund in every shop on the
+ * platform, whatever the shop bought. Staff help tenants by entering them
+ * (`platform:support_access`), not by holding tenant rights.
+ * `staff-roles.test.ts` enforces it.
+ *
+ * ⚠ SUPER ADMIN KEEPS, alone, every power over the whole platform or all of its
+ * data: defining features, roles and plans, giving app roles, the defaults
+ * every new account gets, renaming any organization, suspending accounts,
+ * adjusting subscriptions by hand, billing settings, and downloading, deleting
+ * or restoring backups (a download is every row, password hashes included).
+ * The audit test pins that list, so moving a key out of it is a decision made
+ * in a diff rather than by accident.
+ */
+
+/**
+ * A person holds ONE app-level role: `assignAppRole` replaces whatever they
+ * held. So a staff role is not added beside Normal user, it REPLACES it, and
+ * must carry Normal user's keys itself or the person loses their own account,
+ * chat and notifications on the day they are made staff. Billing approver had
+ * exactly that fault until #175. The limits are Normal user's for the same
+ * reason.
+ */
+function staffFeatures(...jobs: readonly (readonly string[])[]): string[] {
+  return [...new Set([...NORMAL_USER.features, ...jobs.flat()])];
+}
+
+/**
+ * The module's own `chat-moderator` preset, read by key like `chat-user` and
+ * throwing for the same reason if it is gone.
+ */
+const CHAT_MODERATOR = (() => {
+  const preset = CHAT_ROLE_PRESETS.find((one) => one.key === 'chat-moderator');
+  if (!preset) throw new Error("module-chat no longer ships a 'chat-moderator' preset; app-roles.ts must be updated.");
+  return preset;
+})();
+
+/**
+ * Helping a customer's people: enter their organization, look them up, and get
+ * them signed in again (a reset email, ending sessions, removing a lost second
+ * factor). The catalogue only to read, so they can explain what a plan or a
+ * role gives, never change it. NOT `users:disable`: suspending an account is a
+ * decision about a customer, not help for one.
+ */
+const PLATFORM_SUPPORT: SystemRoleDefinition = {
+  key: 'platform-support',
+  label: 'Support',
+  level: 'app',
+  description:
+    "Platform staff who help customers: enter any organization, find accounts and get people signed in again. Can't change roles, plans or settings.",
+  icon: 'lifebuoy',
+  features: staffFeatures([
+    FEATURE.platformSupportAccess,
+    FEATURE.organizationsRead,
+    AUTH_FEATURE.usersRead,
+    AUTH_FEATURE.usersUpdate,
+    FEATURE.plansRead,
+    FEATURE.defaultsRead,
+    FEATURE.featuresRead,
+  ]),
+  limits: { ...NORMAL_USER.limits },
+};
+
+/**
+ * Keeping the server running: background processes, making a backup, and the
+ * local network page. Never downloading, deleting or restoring a backup: those
+ * are all of the data, or losing it.
+ */
+const PLATFORM_OPERATIONS: SystemRoleDefinition = {
+  key: 'platform-operations',
+  label: 'Operations',
+  level: 'app',
+  description:
+    "Platform staff who keep the server running: background processes, making backups and the local network. Can't download or restore a backup.",
+  icon: 'server',
+  features: staffFeatures([
+    ...Object.values(JOBS_FEATURE),
+    BACKUP_FEATURE.read,
+    BACKUP_FEATURE.create,
+    LOCAL_NETWORK_FEATURE.read,
+  ]),
+  limits: { ...NORMAL_USER.limits },
+};
+
+/**
+ * Chat and platform notices: the module's moderator preset, running any group
+ * without being in it (which reads no message), and sending or recalling a
+ * notification as the platform (docs/NOTIFICATIONS-PLAN.md §18 left the
+ * sender undecided; this is the decision).
+ */
+const PLATFORM_MODERATOR: SystemRoleDefinition = {
+  key: 'platform-moderator',
+  label: 'Moderator',
+  level: 'app',
+  description:
+    'Platform staff who look after chat and notices: remove messages and people, run any group, send and recall platform notifications.',
+  icon: 'shield',
+  features: staffFeatures(CHAT_MODERATOR.features, [
+    CHAT_FEATURE.manageAll,
+    NOTIFICATION_FEATURE.send,
+    NOTIFICATION_FEATURE.manage,
+  ]),
+  limits: { ...NORMAL_USER.limits, ...CHAT_MODERATOR.limits },
 };
 
 export const APP_ROLES: readonly SystemRoleDefinition[] = [
@@ -825,6 +942,9 @@ export const APP_ROLES: readonly SystemRoleDefinition[] = [
   WORKSPACE_SUPERVISOR,
   WORKSPACE_USER,
   BILLING_APPROVER_ROLE,
+  PLATFORM_SUPPORT,
+  PLATFORM_OPERATIONS,
+  PLATFORM_MODERATOR,
 ];
 
 /** Named so the demo-user seeder does not repeat the string. */

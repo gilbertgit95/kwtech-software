@@ -21,20 +21,43 @@ import { ALL_FEATURES } from '../src/seed/registry.js';
  * `catalogue-levels.test.ts` does for levels, so a hurried edit to either file
  * fails here by key instead of reaching a shop as a button nobody can press.
  *
- * ## What is allowed to be held by nobody but Super admin
+ * ## What is held by nobody but Super admin
  *
- * App-level keys: the platform's own staff powers (admin pages, backups,
- * jobs, plans, users, defaults, moderating chat, sending notifications). Roles
- * between Super admin and Normal user are deferred until there are staff to
- * give them to (#25, decided 2026-11-18), so today Super admin, which holds
- * every key, is the only holder. They are not listed one by one: a new admin
- * page adds an app key, and a list would only teach people to append to it.
+ * Powers over the whole platform or all of its data, kept from every staff
+ * role on purpose (#175). They ARE listed one by one, unlike before staff roles
+ * existed: a new app key now has to be either given to a staff role or added
+ * here, and either is a decision someone makes in the diff.
  *
  * Plan-exempt keys (billing's organization keys, D13) work without a plan, so
  * they need no plan to count as entitled.
  */
 
 const SUPER_ADMIN = 'super-admin';
+const SUPER_ADMIN_ONLY = [
+  // The catalogue: what a right, a role and a plan are.
+  'features:create',
+  'features:import',
+  'features:update',
+  'features:delete',
+  'roles:create',
+  'roles:update',
+  'roles:disable',
+  'roles:manage_app',
+  'roles:grant_app',
+  'plans:create',
+  'plans:update',
+  'plans:archive',
+  'defaults:manage',
+  // Decisions about a customer, not help for one.
+  'organizations:manage',
+  'users:disable',
+  'billing:manage',
+  'platform-billing:manage_settings',
+  // All of the data, or losing it.
+  'backup:download',
+  'backup:delete',
+  'backup:restore',
+];
 const tenantRoles = APP_ROLES.filter((role) => role.level !== 'app');
 const heldByTenantRoles = new Set(tenantRoles.flatMap((role) => role.features));
 const inSomePlan = new Set(PLANS.flatMap((plan) => plan.features));
@@ -59,6 +82,10 @@ describe('app-level permissions are staff powers, held by app-level roles only',
   const unheld = ALL_FEATURES.filter(
     (spec) => !APP_ROLES.some((role) => role.key !== SUPER_ADMIN && role.features.includes(spec.key)),
   );
+
+  it('leaves to Super admin alone only the platform-wide powers', () => {
+    expect(unheld.map((spec) => spec.key).sort()).toEqual([...SUPER_ADMIN_ONLY].sort());
+  });
 
   /*
    * Catches the case the allowance above must not cover: a NEW tenant key that
