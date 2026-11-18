@@ -58,6 +58,7 @@ export class AuthModule {
       JwtAuthGuard,
     ];
     if (options.prismaProvider) providers.push(options.prismaProvider);
+    if (options.adminTargetCheckProvider) providers.push(options.adminTargetCheckProvider);
 
     /*
      * On by default. An app that never scales past one node should not have to
