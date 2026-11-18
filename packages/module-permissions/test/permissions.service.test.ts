@@ -1,4 +1,5 @@
 import { APP_DEFAULT, APP_DEFAULT_MOMENT_REGISTRY, APP_DEFAULT_REGISTRY } from '../src/defaults.js';
+import { composeContext } from '../src/domain/grants.js';
 import { LIMIT } from '../src/domain/limits.js';
 import { FEATURE } from '../src/feature-keys.js';
 import type {
@@ -221,6 +222,7 @@ const service = (db?: Db, options?: ConstructorParameters<typeof PermissionsServ
 
 /** A scoped (organization/workspace) role, as the membership queries return it. */
 const role = (over: Partial<RoleWithFeatures> & Pick<RoleWithFeatures, 'key' | 'level'>): RoleWithFeatures => ({
+  label: over.key,
   organizationId: null,
   features: [],
   ...over,
@@ -1632,5 +1634,86 @@ describe('featureHolders', () => {
     const holders = await svc.featureHolders(FEATURE.featuresRead);
     expect(holders?.roles).toEqual([]);
     expect(asked).toEqual([]);
+  });
+});
+
+describe('explainAccess (#173)', () => {
+  /** The person asking, as the guard resolves them. */
+  const asker = (subjectId: string, features: string[]) =>
+    composeContext({
+      subjectId,
+      organizationId: 'org1',
+      roles: [{ roleKey: 'r', level: 'organization', workspaceId: null, features }],
+    });
+
+  const member = () =>
+    service({
+      counts: { membership: 1 },
+      membership: membership({
+        roles: [
+          {
+            role: role({
+              key: 'organization-user',
+              label: 'Member',
+              level: 'organization',
+              features: [{ featureKey: FEATURE.membersRead }],
+            }),
+          },
+        ],
+      }),
+      subscriptions: [plan([FEATURE.membersRead])],
+    }).svc;
+
+  it('lets anybody see their own access, naming the role behind it', async () => {
+    const result = await member().explainAccess(asker('u1', []), { organizationId: 'org1', userId: 'u1' });
+    expect(result.self).toBe(true);
+    expect(result.lines.find((line) => line.key === FEATURE.membersRead)).toMatchObject({
+      verdict: 'granted',
+      grantedBy: ['Member'],
+    });
+    expect(result.lines.every((line) => line.level === 'organization')).toBe(true);
+  });
+
+  it("refuses another member's access without the key that changes their role", async () => {
+    await expect(
+      member().explainAccess(asker('boss', [FEATURE.membersRead]), { organizationId: 'org1', userId: 'u1' }),
+    ).rejects.toMatchObject({ reason: 'not_permitted' });
+  });
+
+  it("shows another member's access to someone who can change organization roles", async () => {
+    const result = await member().explainAccess(asker('boss', [FEATURE.membersAssignRole]), {
+      organizationId: 'org1',
+      userId: 'u1',
+    });
+    expect(result.self).toBe(false);
+  });
+
+  it('asks for the workspace key in a workspace, not the organization one', async () => {
+    await expect(
+      member().explainAccess(asker('boss', [FEATURE.membersAssignRole]), {
+        organizationId: 'org1',
+        workspaceId: 'ws1',
+        userId: 'u1',
+      }),
+    ).rejects.toMatchObject({ reason: 'not_permitted', detail: { feature: FEATURE.workspaceAssignRole } });
+  });
+
+  it('refuses someone who is not a member, saying so', async () => {
+    const { svc } = service({ counts: { membership: 0 } });
+    await expect(
+      svc.explainAccess(asker('boss', [FEATURE.membersAssignRole]), { organizationId: 'org1', userId: 'stranger' }),
+    ).rejects.toMatchObject({ reason: 'not_found', message: 'That person is not a member of this organization.' });
+  });
+
+  it('refuses a member who is not in the named workspace', async () => {
+    const { svc } = service({
+      counts: { membership: 1 },
+      membership: membership({ workspaces: [{ workspaceId: 'ws2' }] }),
+      workspace: { id: 'ws1' },
+      subscriptions: [],
+    });
+    await expect(
+      svc.explainAccess(asker('u1', []), { organizationId: 'org1', workspaceId: 'ws1', userId: 'u1' }),
+    ).rejects.toMatchObject({ reason: 'not_found', message: 'That person is not a member of this workspace.' });
   });
 });

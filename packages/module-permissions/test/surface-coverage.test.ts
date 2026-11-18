@@ -71,6 +71,15 @@ describe('declared API surfaces are actually guarded', () => {
    * It discloses nothing either way — the subject is the caller, taken from the
    * session rather than from an argument.
    */
+  /**
+   * Your own access needs no key (#173); someone else's is checked in
+   * `PermissionsService.explainAccess`, against the key that changes their
+   * role. A `@RequireFeature` here would lock everyone out of their own.
+   */
+  it('permissionAccessExplanation stays unguarded, checking in the service', () => {
+    expect(required(PermissionsResolver.prototype, 'accessExplanation')).toBeUndefined();
+  });
+
   it('myOrganizations stays unguarded', () => {
     expect(required(PermissionsResolver.prototype, 'myOrganizations')).toBeUndefined();
   });

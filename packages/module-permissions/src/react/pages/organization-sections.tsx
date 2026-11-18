@@ -14,6 +14,7 @@ import type {
   RoleView,
   SubscriptionView,
 } from '../permissions-client.js';
+import { MemberAccessLink } from './member-access-link.js';
 import { Person, personLabel } from './person.js';
 import { RoleGuide } from './role-guide.js';
 
@@ -387,16 +388,19 @@ export function MembersSection({
                   </span>
                 </td>
                 <td className="py-3 text-right">
-                  <FeatureGate allOf={[FEATURE.membersRemove]}>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(member)}
-                      disabled={busy}
-                      className="text-xs text-destructive hover:underline disabled:opacity-60"
-                    >
-                      Remove
-                    </button>
-                  </FeatureGate>
+                  <span className="flex flex-col items-end gap-1">
+                    <MemberAccessLink organizationId={detail.id} userId={member.userId} />
+                    <FeatureGate allOf={[FEATURE.membersRemove]}>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(member)}
+                        disabled={busy}
+                        className="text-xs text-destructive hover:underline disabled:opacity-60"
+                      >
+                        Remove
+                      </button>
+                    </FeatureGate>
+                  </span>
                 </td>
               </tr>
             ))}

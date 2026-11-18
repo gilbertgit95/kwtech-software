@@ -929,6 +929,73 @@ export class PermissionFeatureHoldersType {
   roles!: PermissionRoleHolderType[];
 }
 
+/**
+ * One permission in a person's access explained (#173): the verdict and the
+ * structured reason. The sentence is written by `accessReasonText` on the
+ * client, from these fields, so the wording lives in one domain function.
+ */
+@ObjectType('PermissionAccessLine')
+export class PermissionAccessLineType {
+  @Field()
+  key!: string;
+
+  @Field()
+  label!: string;
+
+  @Field()
+  description!: string;
+
+  @Field()
+  module!: string;
+
+  /** `organization` | `workspace`. */
+  @Field()
+  level!: string;
+
+  /** `granted` | `not_entitled` | `not_granted`. */
+  @Field()
+  verdict!: string;
+
+  /** Their roles that include it, by label. */
+  @Field(() => [String])
+  grantedBy!: string[];
+
+  @Field()
+  viaPlatformRole!: boolean;
+
+  /** For `not_entitled`: the live plans that include it, by label. */
+  @Field(() => [String])
+  inPlans!: string[];
+
+  /** For `not_granted`: the seeded roles that would allow it, fewest rights first. */
+  @Field(() => [PermissionRoleHolderType])
+  holders!: PermissionRoleHolderType[];
+}
+
+/** One member's access in one organization or workspace, every key with yes or no and why (#173). */
+@ObjectType('PermissionAccessExplanation')
+export class PermissionAccessExplanationType {
+  @Field()
+  userId!: string;
+
+  @Field()
+  organizationId!: string;
+
+  @Field(() => String, { nullable: true })
+  workspaceId!: string | null;
+
+  /** Whether the person asking is the person explained, so the page says "your" rather than "their". */
+  @Field()
+  self!: boolean;
+
+  /** When the organization's paid plan ended, if it has: why so much says "the plan does not". */
+  @Field(() => String, { nullable: true })
+  subscriptionEndedAt!: string | null;
+
+  @Field(() => [PermissionAccessLineType])
+  lines!: PermissionAccessLineType[];
+}
+
 /** What a write returned. A result, not a row — the screen re-reads to render. */
 @ObjectType('PermissionWriteResult')
 export class PermissionWriteResultType {

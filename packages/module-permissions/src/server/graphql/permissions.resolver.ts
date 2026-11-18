@@ -3,6 +3,7 @@ import { Args, Context, Mutation, Query, Resolver, Subscription } from '@nestjs/
 import { filterFeatures } from '../../domain/feature-filter.js';
 import { LIMIT_REGISTRY } from '../../domain/limits.js';
 import { paginate } from '../../domain/pagination.js';
+import { PermissionWriteError } from '../../domain/writes.js';
 import { FEATURE, FEATURE_REGISTRY } from '../../feature-keys.js';
 import type { PermissionContext } from '../../types.js';
 import { PERMISSION_CONTEXT_KEY } from '../feature.guard.js';
@@ -19,6 +20,7 @@ import {
   FeatureFilterInput,
   MyWorkspaceSummaryType,
   PaginationArgs,
+  PermissionAccessExplanationType,
   PermissionContextType,
   PermissionDefaultType,
   PermissionFeatureHoldersType,
@@ -1090,6 +1092,43 @@ export class PermissionsResolver {
   @Query(() => PermissionFeatureHoldersType, { name: 'permissionFeatureHolders', nullable: true })
   async featureHolders(@Args('feature') feature: string): Promise<PermissionFeatureHoldersType | null> {
     return this.permissions.featureHolders(feature);
+  }
+
+  /**
+   * One member's access, every organization (and workspace) key with yes or
+   * no and why (#173).
+   *
+   * ⚠ NO `@RequireFeature`, ON PURPOSE: your OWN access needs no key, since
+   * "why can't I" is the question every refusal raises. Somebody else's needs
+   * the key that changes their role at that level, and the SERVICE checks it
+   * against the actor resolved here (`explainAccess`). The actor is resolved
+   * in the named organization and workspace, so a caller with no standing
+   * there resolves nothing and is refused before anything is read.
+   */
+  @Query(() => PermissionAccessExplanationType, { name: 'permissionAccessExplanation' })
+  async accessExplanation(
+    @Context() gqlContext: { req?: unknown },
+    @Args('organizationId') organizationId: string,
+    @Args('userId') userId: string,
+    @Args('workspaceId', { type: () => String, nullable: true }) workspaceId: string | null,
+  ): Promise<PermissionAccessExplanationType> {
+    const actor = await this.resolveActor(gqlContext.req, { organizationId, workspaceId });
+    if (!actor) {
+      throw new PermissionWriteError(
+        'not_found',
+        workspaceId ? 'You are not a member of this workspace.' : 'You are not a member of this organization.',
+      );
+    }
+    const explained = await this.permissions.explainAccess(actor, { organizationId, workspaceId, userId });
+    return {
+      ...explained,
+      lines: explained.lines.map((line) => ({
+        ...line,
+        grantedBy: [...line.grantedBy],
+        inPlans: [...line.inPlans],
+        holders: [...line.holders],
+      })),
+    };
   }
 
   // ── the tenant's own organization ─────────────────────────────────────────

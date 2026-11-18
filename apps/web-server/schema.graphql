@@ -1274,6 +1274,28 @@ input PayPosOrderInput {
   tip: Float
 }
 
+type PermissionAccessExplanation {
+  lines: [PermissionAccessLine!]!
+  organizationId: String!
+  self: Boolean!
+  subscriptionEndedAt: String
+  userId: String!
+  workspaceId: String
+}
+
+type PermissionAccessLine {
+  description: String!
+  grantedBy: [String!]!
+  holders: [PermissionRoleHolder!]!
+  inPlans: [String!]!
+  key: String!
+  label: String!
+  level: String!
+  module: String!
+  verdict: String!
+  viaPlatformRole: Boolean!
+}
+
 type PermissionContext {
   accessibleWorkspaceIds: [String!]
   appRoles: [PermissionRole!]!
@@ -2480,6 +2502,7 @@ type Query {
   notifications(after: String, archived: Boolean, before: String, first: Int, globalOnly: Boolean, order: String, organizationId: String, severity: String, source: String, unreadOnly: Boolean): NotificationPage!
   notificationsSince(since: String!): NotificationsMissed!
   orphanedTaskBoards(organizationId: String!, workspaceId: String!): [OrphanedTaskBoard!]!
+  permissionAccessExplanation(organizationId: String!, userId: String!, workspaceId: String): PermissionAccessExplanation!
   permissionDefaults: [PermissionDefault!]!
   permissionFeatureHolders(feature: String!): PermissionFeatureHolders
   permissionFeatures(filter: FeatureFilterInput, limit: Int, offset: Int): PermissionFeaturePage!

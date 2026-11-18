@@ -12,6 +12,7 @@ import type {
   WorkspaceDetailView,
   WorkspaceMemberView,
 } from '../permissions-client.js';
+import { MemberAccessLink } from './member-access-link.js';
 import { Person, personLabel } from './person.js';
 import { RoleGuide } from './role-guide.js';
 import { TimeZoneSelect } from './time-zone-select.js';
@@ -237,6 +238,8 @@ export function WorkspaceMembers({
               onRun={onRun}
             />
           </span>
+
+          <MemberAccessLink organizationId={organizationId} workspaceId={workspace.id} userId={member.userId} />
 
           <FeatureGate allOf={[FEATURE.workspaceMembersAdd]}>
             <button

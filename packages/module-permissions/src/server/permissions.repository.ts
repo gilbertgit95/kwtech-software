@@ -21,6 +21,8 @@ export const PERMISSIONS_PRISMA = 'kwtech:permissions-prisma';
 
 export interface RoleWithFeatures {
   key: string;
+  /** For #173's explanation ("their Supervisor role includes it"), never for a check. */
+  label: string;
   level: string;
   /**
    * Null for a system preset or an app-level role; otherwise the organization

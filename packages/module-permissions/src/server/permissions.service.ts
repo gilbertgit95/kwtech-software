@@ -7,7 +7,8 @@ import {
   type AppDefaultSpec,
   appDefaultRoleLevel,
 } from '../defaults.js';
-import { composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
+import { explainAccess } from '../domain/access-explanation.js';
+import { type ComposeInput, composeContext, type PlanEntitlement, type RoleGrant } from '../domain/grants.js';
 import { invitationState } from '../domain/invitation.js';
 import { limitRaise, planCapOffers } from '../domain/limit-raise.js';
 import {
@@ -22,7 +23,8 @@ import {
 } from '../domain/limits.js';
 import { rolesHoldingFeature } from '../domain/role-holders.js';
 import { partitionSubscriptions } from '../domain/subscription-access.js';
-import { FEATURE_REGISTRY } from '../feature-keys.js';
+import { PermissionWriteError } from '../domain/writes.js';
+import { FEATURE, FEATURE_REGISTRY } from '../feature-keys.js';
 import { type PermissionContext, toRoleLevel } from '../types.js';
 import type { PermissionsModuleOptions } from './permissions.module.js';
 import { PERMISSIONS_PRISMA, type PermissionsPrismaClient } from './permissions.repository.js';
@@ -407,6 +409,94 @@ export class PermissionsService {
       featureLabel: spec.label,
       featureLevel: spec.level,
       roles: rolesHoldingFeature(candidates, spec.key, spec.level),
+    };
+  }
+
+  /**
+   * One person's access here, every organization (and workspace) key with yes
+   * or no and the reason (#173). See `explainAccess` for the rules.
+   *
+   * ⚠ WHO MAY ASK. Yourself, always: "why can't I" is the question every
+   * refusal raises. Somebody else only with the key that CHANGES what they
+   * hold at this level — `members:assign_role` for the organization,
+   * `workspace:assign_role` in a workspace — because the person who can fix a
+   * missing role is the one who needs to see why it is missing, and a plain
+   * member reading a colleague's rights would be a directory of who may
+   * refund. The resolver carries no `@RequireFeature`, since the self case
+   * needs none; the check is here, on the actor the guard resolved.
+   *
+   * ⚠ ONLY MEMBERS. The person must be an active member of the organization,
+   * and in the workspace when one is named: explaining a stranger's access
+   * would confirm they have an account. Refused with one message for both.
+   */
+  async explainAccess(
+    actor: PermissionContext,
+    input: { organizationId: string; workspaceId?: string | null | undefined; userId: string },
+  ) {
+    const workspaceId = input.workspaceId ?? null;
+    const self = input.userId === actor.subjectId;
+    const key = workspaceId ? FEATURE.workspaceAssignRole : FEATURE.membersAssignRole;
+    if (!self && !actor.effective.includes(key)) {
+      throw new PermissionWriteError(
+        'not_permitted',
+        workspaceId
+          ? "Only someone who can change workspace roles can see another member's access."
+          : "Only someone who can change organization roles can see another member's access.",
+        { feature: key },
+      );
+    }
+
+    const notMember = new PermissionWriteError(
+      'not_found',
+      workspaceId
+        ? 'That person is not a member of this workspace.'
+        : 'That person is not a member of this organization.',
+    );
+    const members = await this.prisma.permMembership.count({
+      where: { organizationId: input.organizationId, userId: input.userId, status: 'active' },
+    });
+    if (members === 0) throw notMember;
+
+    const compose = await this.contextInput(input.userId, { organizationId: input.organizationId, workspaceId });
+    if (!compose) throw notMember;
+    const context = composeContext(compose);
+    // `null` is "every workspace" (platform support), a list is the ones they are in.
+    if (workspaceId && context.accessibleWorkspaceIds !== null && !context.accessibleWorkspaceIds.includes(workspaceId))
+      throw notMember;
+
+    const specs = this.options?.featureRegistry ?? FEATURE_REGISTRY;
+    const [plans, roles] = await Promise.all([
+      this.listPlans(),
+      // The same seeded, live roles a refusal names (#99, `featureHolders`).
+      this.prisma.permRole.findMany({
+        where: { organizationId: null, isSystem: true, disabledAt: null },
+        include: {
+          features: { select: { featureKey: true } },
+          limits: { select: { limitKey: true, value: true } },
+        },
+        orderBy: { key: 'asc' },
+      }),
+    ]);
+
+    return {
+      userId: input.userId,
+      organizationId: input.organizationId,
+      workspaceId,
+      self,
+      subscriptionEndedAt: context.subscriptionEndedAt ?? null,
+      lines: explainAccess({
+        compose,
+        specs,
+        // Archived plans sell nothing new, so they are not offered as where a key is.
+        plans: plans.filter((plan) => !plan.archived).map((plan) => ({ label: plan.label, features: plan.features })),
+        roles: roles.map((row) => ({
+          key: row.key,
+          label: row.label,
+          level: toRoleLevel(row.level),
+          description: row.description,
+          features: row.features.map((feature) => feature.featureKey),
+        })),
+      }),
     };
   }
 
@@ -1100,6 +1190,23 @@ export class PermissionsService {
     userId: string,
     scope: { organizationId?: string | undefined; workspaceId?: string | null | undefined } = {},
   ): Promise<PermissionContext | null> {
+    const input = await this.contextInput(userId, scope);
+    return input ? composeContext(input) : null;
+  }
+
+  /**
+   * Everything `composeContext` needs for one person at one scope: their roles,
+   * memberships and the organization's plans, read from the database.
+   *
+   * Split out of `loadContext` for #173, so the page that EXPLAINS a person's
+   * access composes exactly what the guard composes. Two loaders would be two
+   * answers to "what can they do", and the explanation would be the one that
+   * drifted.
+   */
+  private async contextInput(
+    userId: string,
+    scope: { organizationId?: string | undefined; workspaceId?: string | null | undefined } = {},
+  ): Promise<ComposeInput | null> {
     // App-level roles are granted to the user outright, with no organization in
     // the picture. Loaded first because a support engineer holding one has no
     // membership anywhere and must still get a usable context.
@@ -1138,12 +1245,12 @@ export class PermissionsService {
     // hand would pick an arbitrary one, and answer a question nobody asked.
     if (!scope.organizationId) {
       if (appRoleGrants.length === 0) return null;
-      return composeContext({
+      return {
         subjectId: userId,
         organizationId: null,
         roles: appRoleGrants,
         limitRegistry: this.limitRegistry(),
-      });
+      };
     }
 
     const membership = await this.prisma.permMembership.findFirst({
@@ -1171,7 +1278,7 @@ export class PermissionsService {
     // here would lock support out of the organizations they exist to help.
     if (!membership) {
       if (appRoleGrants.length === 0) return null;
-      return composeContext({
+      return {
         subjectId: userId,
         organizationId: scope.organizationId,
         workspaceId: scope.workspaceId ?? null,
@@ -1180,7 +1287,7 @@ export class PermissionsService {
         // subscription is loaded and none is applied.
         plans: undefined,
         limitRegistry: this.limitRegistry(),
-      });
+      };
     }
 
     // The level filter is applied in composeContext, so the rule lives in one
@@ -1199,6 +1306,8 @@ export class PermissionsService {
         .map((link) => ({
           roleKey: link.role.key,
           level: toRoleLevel(link.role.level),
+          // Named for #173's explanation ("their Supervisor role includes it"); nothing resolves against it.
+          label: link.role.label,
           features: link.role.features.map((rf) => rf.featureKey),
           workspaceId: null,
         })),
@@ -1238,6 +1347,7 @@ export class PermissionsService {
           .map((link) => ({
             roleKey: link.role.key,
             level: toRoleLevel(link.role.level),
+            label: link.role.label,
             features: link.role.features.map((rf) => rf.featureKey),
             workspaceId,
           })),
@@ -1297,7 +1407,7 @@ export class PermissionsService {
       if (fallback) plans.push(fallback);
     }
 
-    return composeContext({
+    return {
       subjectId: userId,
       organizationId: membership.organizationId,
       workspaceId,
@@ -1307,7 +1417,7 @@ export class PermissionsService {
       limitRegistry: this.limitRegistry(),
       planExemptFeatures: this.options?.planExemptFeatures ?? [],
       subscriptionEndedAt: access.endedAt,
-    });
+    };
   }
 
   /**
