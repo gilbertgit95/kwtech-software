@@ -1,3 +1,4 @@
+import { safeLocalPath } from '../domain/local-path.js';
 import type { AuthResult, GoogleSignInStart } from '../types.js';
 import { type AuthNextConfig, refreshCookieName, resolveConfig } from './config.js';
 import { json, readCookie, serializeCookie } from './cookies.js';
@@ -241,7 +242,10 @@ const SIGNED_OUT_DESTINATION = '/auth/signin';
  *   '/x'    yes
  *   '//evil.example'  no — protocol-relative, a different host
  *   'https://evil.example'  no
- *   '/\evil.example'  no — some browsers normalise the backslash to '/'
+ *   '/\evil.example'  no — browsers read the backslash as '/'
+ *
+ * The whole list, and why it is checked by resolving too, is on
+ * `safeLocalPath` (`src/domain/local-path.ts`).
  *
  * Anything else falls back to the default rather than being refused: the
  * session is already gone by then, and failing the sign-out over a malformed
@@ -252,18 +256,11 @@ export function safeSignOutDestination(next: string | null): string {
 }
 
 /**
- * `next` if it is a path on this origin, else `fallback`. The rules are the
- * ones listed on safeSignOutDestination; Google sign-in carries a `?next=`
- * across its round trip and needs exactly the same protection.
+ * `next` if it is a path on this origin, else `fallback`: the root's rule
+ * (`src/domain/local-path.ts`), re-exported here because Google sign-in's
+ * callers have always imported it from `/next`.
  */
-export function safeLocalPath(next: string | null | undefined, fallback: string): string {
-  if (!next?.startsWith('/')) return fallback;
-  if (next.startsWith('//') || next.startsWith('/\\')) return fallback;
-  // A control character in a Location header is header injection, not a path.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: that is the point.
-  if (/[\u0000-\u001f\u007f]/.test(next)) return fallback;
-  return next;
-}
+export { safeLocalPath };
 
 function sessionCookieOptions(config: AuthNextConfig) {
   return {
