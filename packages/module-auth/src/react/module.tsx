@@ -1,4 +1,5 @@
 import type { ModuleRouteProps, WebModuleDescriptor } from '@kwtech/module-kit';
+import { safeLocalPath } from '../domain/local-path.js';
 import { AUTH_FEATURE, AUTH_FEATURE_REGISTRY } from '../features.js';
 import { UserDetailPage } from './admin/user-detail-page.js';
 import { UserEditPage } from './admin/user-edit-page.js';
@@ -43,8 +44,13 @@ import { SignInPage } from './sign-in-page.js';
  * Shared by both steps of the sign-in, because the parameter is carried across
  * the 2FA challenge and a check applied to only one of two doors is not a check.
  */
+/**
+ * The `?next=` to follow after signing in: one value, and only a path on this
+ * origin (`safeLocalPath`, the same rule sign-out and Google sign-in apply,
+ * #179). A repeated parameter counts as absent.
+ */
 function safeNext(next: string | string[] | undefined): string {
-  return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  return safeLocalPath(typeof next === 'string' ? next : null, '/');
 }
 
 function SignInRoute({ searchParams }: ModuleRouteProps) {
