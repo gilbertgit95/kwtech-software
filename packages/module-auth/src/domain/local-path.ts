@@ -51,3 +51,24 @@ export function safeLocalPath(next: string | null | undefined, fallback: string)
   }
   return resolved.origin === PROBE_ORIGIN ? next : fallback;
 }
+
+/** The sign-in page, as the shells send a signed-out reader to it. */
+const SIGN_IN_PATH = '/auth/signin';
+
+/**
+ * Where to send somebody who asked for `requested` signed out: the sign-in
+ * page, carrying the address back when there is one worth carrying (#181).
+ *
+ * Without it the shells sent everybody to a bare `/auth/signin`, and a link
+ * opened signed out (a receipt, a notice, a page somebody shared) ended on
+ * the home page once they had signed in.
+ *
+ * Nothing is carried for the home page (where sign-in lands anyway), for the
+ * auth pages themselves (signing in to come back to the sign-in page is a
+ * loop), or for anything `safeLocalPath` refuses.
+ */
+export function signInPathFor(requested: string | null | undefined): string {
+  const next = safeLocalPath(requested, '/');
+  if (next === '/' || next === '/auth' || next.startsWith('/auth/') || next.startsWith('/auth?')) return SIGN_IN_PATH;
+  return `${SIGN_IN_PATH}?next=${encodeURIComponent(next)}`;
+}

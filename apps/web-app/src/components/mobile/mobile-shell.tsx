@@ -1,3 +1,4 @@
+import { signInPathFor } from '@kwtech/module-auth';
 import { SessionKeeper } from '@kwtech/module-auth/react';
 import { FeatureAccessProvider, WorkspaceNameProvider, WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { scopePath } from '@kwtech/module-permissions';
@@ -26,6 +27,7 @@ import { ConnectivityMonitor } from '@/components/status/connectivity-monitor';
 import { StatusBarHost } from '@/components/status/status-bar-host';
 import { appBrand } from '@/config/env';
 import { canUseFullSite } from '@/lib/layout-choice';
+import { REQUESTED_PATH_HEADER } from '@/lib/requested-path';
 
 /**
  * The phone layout's frame (issue #22): a top bar, the page between, and a
@@ -68,7 +70,8 @@ export async function MobileShell({
 
   if (!viewer) {
     // Asked, and told nobody is signed in: the shared sign-in page, the same one every device gets.
-    if (reachable) redirect('/auth/signin');
+    // Back to the page asked for once signed in (#181), never anywhere off the site.
+    if (reachable) redirect(signInPathFor((await headers()).get(REQUESTED_PATH_HEADER)));
 
     return (
       <BareShell>

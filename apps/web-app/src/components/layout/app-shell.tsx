@@ -1,3 +1,4 @@
+import { signInPathFor } from '@kwtech/module-auth';
 import { SessionKeeper } from '@kwtech/module-auth/react';
 import { WorkspaceNameProvider, WorkspaceTimeZoneProvider } from '@kwtech/module-kit/react';
 import { FEATURE } from '@kwtech/module-permissions';
@@ -33,6 +34,7 @@ import { StatusBarHost } from '@/components/status/status-bar-host';
 import { appBrand } from '@/config/env';
 import { canUseFullSite, offersMobileView, parseLayoutPreference } from '@/lib/layout-choice';
 import { layoutCookieName } from '@/lib/preferences';
+import { REQUESTED_PATH_HEADER } from '@/lib/requested-path';
 import {
   getNavContext,
   getOrganizationIdentity,
@@ -222,7 +224,8 @@ export async function AppShell({
 
   if (!viewer) {
     // Asked, and told nobody is signed in. A redirect is right.
-    if (reachable) redirect('/auth/signin');
+    // Back to the page asked for once signed in (#181), never anywhere off the site.
+    if (reachable) redirect(signInPathFor((await headers()).get(REQUESTED_PATH_HEADER)));
 
     /*
      * Could not ask. Say so and stay put — the monitor inside BareShell polls,
