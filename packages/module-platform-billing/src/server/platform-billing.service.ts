@@ -6,7 +6,7 @@ import { addDays, type DayKey, platformDay, platformDayStart } from '../domain/d
 import type { Issuer } from '../domain/documents.js';
 import type { Centavos } from '../domain/money.js';
 import { checkAmount, findReferenceReuse } from '../domain/payments.js';
-import { type CapOverrun, capsBlockingDowngrade } from '../domain/plans.js';
+import { capsBlockingDowngrade, type LabelledCapOverrun, labelOverruns } from '../domain/plans.js';
 import { isRefused, type PricedRequest, priceRequest } from '../domain/pricing.js';
 import type { Quote } from '../domain/quotes.js';
 import type { PlatformBillingRefusal } from '../domain/refusals.js';
@@ -127,7 +127,7 @@ export interface QueueFlags {
 export interface RequestPreview {
   priced: PricedRequest | null;
   refused: PlatformBillingRefusal | null;
-  overruns: readonly CapOverrun[];
+  overruns: readonly LabelledCapOverrun[];
 }
 
 /**
@@ -207,9 +207,10 @@ export class PlatformBillingService {
     return new Map((await this.plansPort.plans()).map((plan) => [plan.key, plan]));
   }
 
-  /** The caps `organizationId` is over on `plan` (D6). */
-  async overruns(organizationId: string, plan: BillingPlan): Promise<readonly CapOverrun[]> {
-    return capsBlockingDowngrade(await this.plansPort.usage(organizationId), plan);
+  /** The caps `organizationId` is over on `plan` (D6), each with its name on screen (#190). */
+  async overruns(organizationId: string, plan: BillingPlan): Promise<readonly LabelledCapOverrun[]> {
+    const overruns = capsBlockingDowngrade(await this.plansPort.usage(organizationId), plan);
+    return labelOverruns(overruns, this.plansPort.labels?.().limits ?? []);
   }
 
   /** Everything a decision about `organizationId` reads, on `now`, inside `db` when a write passes its transaction. */

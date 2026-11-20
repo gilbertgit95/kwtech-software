@@ -197,6 +197,8 @@ export interface BillingNextRenewalView {
 /** A cap the organization is over on a plan it chose (D6). */
 export interface BillingOverrunView {
   limit: string;
+  /** The limit's name on screen (#190). */
+  label: string;
   have: number;
   allowed: number;
   remove: number;

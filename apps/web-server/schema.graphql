@@ -1588,6 +1588,7 @@ type PlatformBillingBill {
 type PlatformBillingCapOverrun {
   allowed: Int!
   have: Int!
+  label: String!
   limit: String!
   remove: Int!
 }

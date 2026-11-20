@@ -40,6 +40,24 @@ export interface CapOverrun {
   remove: number;
 }
 
+/** An overrun with the limit's name on screen ("Organization members"), for the refusal's lines (#190). */
+export interface LabelledCapOverrun extends CapOverrun {
+  label: string;
+}
+
+/**
+ * Names each overrun by its limit's label from the composed registries, the
+ * key only when none is known (a limit no mounted module declares). The key
+ * on screen read "organization:members: the plan allows 3…" (#190).
+ */
+export function labelOverruns(
+  overruns: readonly CapOverrun[],
+  limits: readonly { key: string; label: string }[],
+): LabelledCapOverrun[] {
+  const labels = new Map(limits.map((limit) => [limit.key, limit.label]));
+  return overruns.map((overrun) => ({ ...overrun, label: labels.get(overrun.limit) ?? overrun.limit }));
+}
+
 /**
  * The caps `usage` is over on `plan`: what refuses a downgrade (D6), with the
  * counts the refusal names ("Basic allows 3 members and you have 5. Remove 2").

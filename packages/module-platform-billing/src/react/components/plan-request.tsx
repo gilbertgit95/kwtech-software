@@ -190,7 +190,7 @@ export function PlanRequest({
               <ul className="mt-2 list-disc pl-5">
                 {preview.overruns.map((overrun) => (
                   <li key={overrun.limit}>
-                    {overrun.limit}: the plan allows {overrun.allowed} and you have {overrun.have}. Remove{' '}
+                    {overrun.label}: the plan allows {overrun.allowed} and you have {overrun.have}. Remove{' '}
                     {overrun.remove}.
                   </li>
                 ))}

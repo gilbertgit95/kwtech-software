@@ -59,7 +59,7 @@ export const PLATFORM_BILLING_OPERATIONS = {
       platformBillingPreview(organizationId: $organizationId, kind: $kind, planKey: $planKey, months: $months) {
         kind planKey allowed refusal message nextStep
         quote { lines { ${LINE} } total creditUsed creditAdded direction billAtSubmission periodStart periodEnd }
-        overruns { limit have allowed remove }
+        overruns { limit label have allowed remove }
       }
     }
   `,

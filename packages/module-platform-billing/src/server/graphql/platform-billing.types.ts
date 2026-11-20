@@ -35,6 +35,8 @@ export class PlatformBillingQuoteType {
 @ObjectType('PlatformBillingCapOverrun')
 export class PlatformBillingCapOverrunType {
   @Field() limit!: string;
+  /** The limit's name on screen ("Organization members"), the key when none is known (#190). */
+  @Field() label!: string;
   @Field(() => Int) have!: number;
   @Field(() => Int) allowed!: number;
   @Field(() => Int) remove!: number;

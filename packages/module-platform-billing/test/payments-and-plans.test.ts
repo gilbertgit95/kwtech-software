@@ -3,6 +3,7 @@ import {
   checkAmount,
   findReferenceReuse,
   isPaymentMethod,
+  labelOverruns,
   needsReference,
   normaliseReference,
   pickCoveringPlan,
@@ -64,5 +65,19 @@ describe('plans compared', () => {
     expect(capsBlockingDowngrade({ boards: 2 }, { limits: {} })).toEqual([
       { limit: 'boards', have: 2, allowed: 1, remove: 1 },
     ]);
+  });
+});
+
+describe('labelOverruns — a refused downgrade names each limit as people read it (#190)', () => {
+  const over = { limit: 'organization:members', have: 4, allowed: 3, remove: 1 };
+
+  it('takes the label from the registries', () => {
+    expect(labelOverruns([over], [{ key: 'organization:members', label: 'Organization members' }])).toEqual([
+      { ...over, label: 'Organization members' },
+    ]);
+  });
+
+  it('falls back to the key for a limit no registry names', () => {
+    expect(labelOverruns([over], [])).toEqual([{ ...over, label: 'organization:members' }]);
   });
 });
