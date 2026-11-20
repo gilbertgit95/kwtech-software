@@ -592,3 +592,23 @@ export function paidUpToLine(overview: Pick<BillingOverviewView, 'nextRenewal'>)
   if (!next?.paidUpTo || next.monthsPaid < 1) return null;
   return `Pays renewals up to ${formatDay(next.paidUpTo)} (${monthsLabel(next.monthsPaid)}, at the price on the due date).`;
 }
+
+/**
+ * The status card's due line (#184): what is due and when, only when
+ * something is.
+ *
+ * - A paid plan: "Due", its period end.
+ * - A trial: "Trial ends", its last day. Nothing is due on it, but the day
+ *   still matters: it is when the trial's apps stop.
+ * - Free (no paid subscription): "Due", with no day. The Free row has a
+ *   period end of its own (`organization.plan_period_days`), and printing it
+ *   told a Free organization it owed something on that day.
+ */
+export function dueLine(standing: Pick<BillingStandingView, 'kind' | 'trial' | 'periodEnd'>): {
+  label: string;
+  day: string | null;
+} {
+  if (standing.trial) return { label: 'Trial ends', day: standing.periodEnd };
+  if (standing.kind === 'none') return { label: 'Due', day: null };
+  return { label: 'Due', day: standing.periodEnd };
+}

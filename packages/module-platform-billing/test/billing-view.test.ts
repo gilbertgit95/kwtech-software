@@ -5,6 +5,7 @@ import {
   billingStatus,
   cancelControl,
   changePlanControl,
+  dueLine,
   eventSentence,
   formatDay,
   formatInstantDay,
@@ -273,5 +274,31 @@ describe('paying ahead and renewing from credit on the Billing page (#129)', () 
     expect(eventSentence({ step: 'approved', reason: 'auto_renewed_from_credit', data: '{}' }, 'PHP')).toBe(
       'Approved automatically: paid from credit, nothing was charged.',
     );
+  });
+});
+
+describe('dueLine — the status card says a day is due only when one is (#184)', () => {
+  it('gives a paid plan its period end', () => {
+    expect(dueLine({ kind: 'active', trial: false, periodEnd: '2026-12-20' })).toEqual({
+      label: 'Due',
+      day: '2026-12-20',
+    });
+  });
+
+  it('keeps the due day when overdue, held or expired: that is when it fell due', () => {
+    for (const kind of ['renewal_open', 'overdue', 'held', 'expired']) {
+      expect(dueLine({ kind, trial: false, periodEnd: '2026-11-01' }).day).toBe('2026-11-01');
+    }
+  });
+
+  it('gives Free no due day, though its row has a period end', () => {
+    expect(dueLine({ kind: 'none', trial: false, periodEnd: '2026-12-20' })).toEqual({ label: 'Due', day: null });
+  });
+
+  it("names a trial's last day as its end, not as a day something is due", () => {
+    expect(dueLine({ kind: 'none', trial: true, periodEnd: '2026-12-04' })).toEqual({
+      label: 'Trial ends',
+      day: '2026-12-04',
+    });
   });
 });
