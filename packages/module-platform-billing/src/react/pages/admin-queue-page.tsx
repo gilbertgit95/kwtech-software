@@ -9,7 +9,7 @@ import {
 } from '../billing-admin-client.js';
 import { buttonClass, ErrorLine, Section } from '../components/ui.js';
 import { billingAdminRequestHref } from '../routes.js';
-import { isReadyToCheck, queueChecks, sortQueue } from '../view/admin-view.js';
+import { isReadyToCheck, ownOrganizationTag, queueChecks, sortQueue } from '../view/admin-view.js';
 import { formatInstantDay, formatMoney, requestKindLabel, requestStateLabel } from '../view/billing-view.js';
 
 export interface AdminQueuePageProps {
@@ -153,6 +153,7 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
               const { request } = item;
               const currency = request.bill?.currency ?? 'PHP';
               const checks = queueChecks(item.flags, currency);
+              const own = ownOrganizationTag(item.flags);
               return (
                 <li key={request.id}>
                   <a
@@ -179,6 +180,7 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
                           Bill {request.bill.number}: {formatMoney(request.bill.total, currency)}
                         </span>
                       ) : null}
+                      {own ? <span className="font-medium text-foreground">{own}</span> : null}
                       {tab === 'waiting' && checks.length > 0 ? (
                         <span>{checks.length === 1 ? '1 check to read' : `${checks.length} checks to read`}</span>
                       ) : null}

@@ -206,3 +206,23 @@ export function checkPriceDraft(draft: PriceDraft): PriceDraftErrors {
   if (!isDayKey(draft.effectiveFrom)) errors.effectiveFrom = 'Choose the day it applies from.';
   return errors;
 }
+
+/**
+ * The queue row's tag for the viewer's own organization (D15, #188): an
+ * approver who belongs to it is flagged, never blocked, so the row says so
+ * before they open it. Both tabs: a decided one is still theirs.
+ */
+export function ownOrganizationTag(flags: Pick<BillingQueueFlagsView, 'viewerIsMember'>): string | null {
+  return flags.viewerIsMember ? 'Your organization' : null;
+}
+
+/**
+ * What a decided request says about who decided it (D15, #188): the
+ * membership is stored with the decision (`approverIsMember`), and this is
+ * where it stays visible once the waiting-request checks are gone. Null while
+ * pending (the checks say it then) and for a decision by staff from outside.
+ */
+export function decidedByMemberLine(request: Pick<BillingRequestView, 'state' | 'approverIsMember'>): string | null {
+  if (request.state === 'pending' || !request.approverIsMember) return null;
+  return 'Decided by somebody who belongs to this organization: recorded with the decision.';
+}

@@ -14,7 +14,7 @@ import {
 } from '../billing-admin-client.js';
 import { buttonClass, ErrorLine, Field, inputClass, Reason, Section } from '../components/ui.js';
 import { BILLING_ADMIN_ROUTE, billingAdminDocumentHref } from '../routes.js';
-import { approvalDraft, checkDecisionReason, queueChecks } from '../view/admin-view.js';
+import { approvalDraft, checkDecisionReason, decidedByMemberLine, queueChecks } from '../view/admin-view.js';
 import {
   billingDayOf,
   billStatusLabel,
@@ -186,6 +186,9 @@ export function AdminRequestPage({ requestId, client }: AdminRequestPageProps) {
               {request.bill?.planLabel ?? request.planKey} · {requestStateLabel(request.state)} · requested{' '}
               {formatInstantDay(request.requestedAt, timeZone)}
             </p>
+            {decidedByMemberLine(request) ? (
+              <p className="mt-1 text-sm font-medium">{decidedByMemberLine(request)}</p>
+            ) : null}
           </header>
 
           {request.state === 'pending' ? (
