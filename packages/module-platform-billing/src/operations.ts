@@ -11,7 +11,7 @@ const BILL = `id number status total currency issuedAt planLabel fromPlanLabel l
   issuerName issuerDetails issuedOn periodStart periodEnd`;
 
 const REQUEST = `
-  id organizationId kind state planKey fromPlanKey requestedById requestedAt months automatic
+  id organizationId kind state planKey planLabel fromPlanKey requestedById requestedAt months automatic
   detailsVersion coveredOn holdDays holdReason
   decidedById decidedAt decisionReason selfApproved approverIsMember
   periodStart periodEnd accessUntil voidedById voidedAt voidReason

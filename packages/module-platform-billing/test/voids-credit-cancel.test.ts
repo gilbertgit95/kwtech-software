@@ -344,6 +344,9 @@ describe('cancelling at the period’s end', () => {
     expect(billing.store().bills).toEqual([]);
     expect(billing.store().receipts).toEqual([]);
     expect(billing.store().credits).toEqual([]);
+    // No bill to print the plan's name, so the request carries it (#192): never "Cancel: basic".
+    const detail = await billing.reads.organizationRequest(ORG, cancel.id);
+    expect(detail?.planLabel).toBe('Basic');
     expect(await refusal(billing.writes.cancel(ORG, OWNER, noonOn('2026-11-11')))).toBe('already_cancelled');
   });
 

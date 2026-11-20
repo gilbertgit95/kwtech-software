@@ -163,7 +163,7 @@ export function AdminQueuePage({ client }: AdminQueuePageProps = {}) {
                     <span className="flex flex-wrap items-center justify-between gap-2 text-sm">
                       <span className="font-medium">
                         {item.organizationName ?? request.organizationId}: {requestKindLabel(request.kind)},{' '}
-                        {request.bill?.planLabel ?? request.planKey}
+                        {request.bill?.planLabel ?? request.planLabel}
                       </span>
                       <span className="text-muted-foreground">
                         {tab === 'waiting'

@@ -65,6 +65,7 @@ export function renderRequest(detail: RequestDetail): PlatformBillingRequestType
     kind: request.kind,
     state: request.state,
     planKey: request.planKey,
+    planLabel: detail.planLabel,
     fromPlanKey: request.fromPlanKey,
     requestedById: request.requestedById,
     requestedAt: request.requestedAt.toISOString(),

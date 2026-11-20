@@ -102,6 +102,12 @@ export interface BillingContext {
 /** A request with what hangs off it: one row of the history (plan §7). */
 export interface RequestDetail {
   request: RequestRow;
+  /**
+   * The plan's name, from the plans port, the key only when the plan is
+   * unknown (#192). A request without a bill (a cancel, an adjustment) has no
+   * printed label, and the key on screen read "Cancel: starter".
+   */
+  planLabel: string;
   bills: readonly BillRow[];
   receipts: readonly ReceiptRow[];
   payments: readonly PaymentRow[];
@@ -506,7 +512,8 @@ export class PlatformBillingService {
   private async details(requests: readonly RequestRow[]): Promise<RequestDetail[]> {
     if (requests.length === 0) return [];
     const ids = requests.map((request) => request.id);
-    const [bills, receipts, payments, events] = await Promise.all([
+    const [plans, bills, receipts, payments, events] = await Promise.all([
+      this.plans(),
       this.prisma.platformBillingBill.findMany({ where: { requestId: { in: ids } }, orderBy: { number: 'asc' } }),
       this.prisma.platformBillingReceipt.findMany({ where: { requestId: { in: ids } }, orderBy: { number: 'asc' } }),
       this.prisma.platformBillingPayment.findMany({ where: { requestId: { in: ids } }, orderBy: [{ version: 'asc' }] }),
@@ -517,6 +524,7 @@ export class PlatformBillingService {
     ]);
     return requests.map((request) => ({
       request,
+      planLabel: plans.get(request.planKey)?.label ?? request.planKey,
       bills: bills.filter((row) => row.requestId === request.id),
       receipts: receipts.filter((row) => row.requestId === request.id),
       payments: payments.filter((row) => row.requestId === request.id),

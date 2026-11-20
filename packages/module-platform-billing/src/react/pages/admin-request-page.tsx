@@ -183,7 +183,7 @@ export function AdminRequestPage({ requestId, client }: AdminRequestPageProps) {
               {item.organizationName ?? request.organizationId}: {requestTitle(request)}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {request.bill?.planLabel ?? request.planKey} · {requestStateLabel(request.state)} · requested{' '}
+              {request.bill?.planLabel ?? request.planLabel} · {requestStateLabel(request.state)} · requested{' '}
               {formatInstantDay(request.requestedAt, timeZone)}
             </p>
             {decidedByMemberLine(request) ? (
