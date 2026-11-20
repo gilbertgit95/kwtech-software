@@ -20,8 +20,15 @@ const LABELS: CatalogueLabels = {
     { key: 'queue:read', label: 'Queuing', module: 'queue' },
   ],
   limits: [
-    { key: 'organization:workspaces', label: 'Workspaces', source: 'plan', defaultValue: 1 },
-    { key: 'user:organizations', label: 'Organizations per user', source: 'role', defaultValue: 1 },
+    { key: 'organization:workspaces', label: 'Workspaces', module: 'permissions', source: 'plan', defaultValue: 1 },
+    {
+      key: 'user:organizations',
+      label: 'Organizations per user',
+      module: 'permissions',
+      source: 'role',
+      defaultValue: 1,
+    },
+    { key: 'queue:windows', label: 'Queue windows', module: 'queue', source: 'plan', defaultValue: 10 },
   ],
 };
 const PLANS = [
@@ -57,8 +64,14 @@ describe('buildPlanComparison', () => {
 
   it('compares plan caps only, a missing number read as the declared default', () => {
     const comparison = compare('free');
-    expect(comparison.limits).toEqual([{ key: 'organization:workspaces', label: 'Workspaces' }]);
-    expect(comparison.plans.find((p) => p.key === 'free')?.limits).toEqual({ 'organization:workspaces': 1 });
+    expect(comparison.limits).toEqual([
+      { key: 'organization:workspaces', label: 'Workspaces' },
+      { key: 'queue:windows', label: 'Queue windows' },
+    ]);
+    expect(comparison.plans.find((p) => p.key === 'free')?.limits).toEqual({
+      'organization:workspaces': 1,
+      'queue:windows': 10,
+    });
   });
 
   it('rows only the features some listed plan includes, in registry order', () => {
@@ -82,5 +95,24 @@ describe('notEntitledText', () => {
     expect(notEntitledText(compare(null), 'pos:sell')).toBe(
       'Point of sale is in Basic and Pro. Your organization has no paid plan.',
     );
+  });
+});
+
+describe('buildPlanComparison — a cap of an app the plan does not include (#183)', () => {
+  it('marks it not included, though the plan has a number for it by default', () => {
+    const free = compare('free').plans.find((one) => one.key === 'free');
+    // Free has no queue: the default of 10 windows is no offer of ten windows.
+    expect(free?.notIncluded).toEqual(['queue:windows']);
+    expect(free?.limits['queue:windows']).toBe(10);
+  });
+
+  it('keeps it included on a plan with any of the app’s features', () => {
+    const custom = compare('enterprise').plans.find((one) => one.key === 'enterprise');
+    expect(custom?.notIncluded).toEqual([]);
+  });
+
+  it('counts a cap whose module declares no features as included: there is nothing to leave out', () => {
+    const free = compare('free').plans.find((one) => one.key === 'free');
+    expect(free?.notIncluded).not.toContain('organization:workspaces');
   });
 });

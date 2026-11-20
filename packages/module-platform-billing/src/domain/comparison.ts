@@ -20,8 +20,18 @@ export interface ComparedPlanInput {
 /** What a feature or a cap is called on screen (the code registries, through the PLANS port). */
 export interface CatalogueLabels {
   features: readonly { key: string; label: string; module: string }[];
-  /** `defaultValue` is what a plan that sets no number gets (null = no limit), as permissions resolves it. */
-  limits: readonly { key: string; label: string; source: 'plan' | 'role'; defaultValue: number | null }[];
+  /**
+   * `defaultValue` is what a plan that sets no number gets (null = no limit),
+   * as permissions resolves it. `module` is the app the cap counts in: a plan
+   * that includes none of that app's features has no use for the cap (#183).
+   */
+  limits: readonly {
+    key: string;
+    label: string;
+    module: string;
+    source: 'plan' | 'role';
+    defaultValue: number | null;
+  }[];
 }
 
 export interface ComparedPlan {
@@ -35,6 +45,12 @@ export interface ComparedPlan {
   features: readonly string[];
   /** Every plan-sourced cap, by key: the plan's number, the declared default when it sets none, null = no limit. */
   limits: Readonly<Record<string, number | null>>;
+  /**
+   * The caps of apps this plan does not include (#183), by key. Their number
+   * means nothing to somebody on the plan, and printing the declared default
+   * made Free read as allowing ten queue windows when it has no queue at all.
+   */
+  notIncluded: readonly string[];
 }
 
 export interface PlanComparison {
@@ -44,6 +60,17 @@ export interface PlanComparison {
   features: readonly { key: string; label: string; module: string }[];
   /** The plan-sourced caps. A role's cap is not bought, so it is not compared. */
   limits: readonly { key: string; label: string }[];
+}
+
+/**
+ * Whether a plan holding `planFeatures` includes the app `module`: any one of
+ * its features. A module that declares no features at all (the organization's
+ * own caps, from permissions) counts as included, since there is nothing a
+ * plan could leave out.
+ */
+function includesApp(planFeatures: readonly string[], module: string, features: CatalogueLabels['features']): boolean {
+  const own = features.filter((feature) => feature.module === module);
+  return own.length === 0 || own.some((feature) => planFeatures.includes(feature.key));
 }
 
 /**
@@ -70,6 +97,9 @@ export function buildPlanComparison(input: {
         offered: plan.isPublic && !plan.archived,
         features: [...plan.features],
         limits: Object.fromEntries(caps.map((cap) => [cap.key, plan.limits[cap.key] ?? cap.defaultValue])),
+        notIncluded: caps
+          .filter((cap) => !includesApp(plan.features, cap.module, labels.features))
+          .map((cap) => cap.key),
       }),
     )
     .sort((a, b) => {

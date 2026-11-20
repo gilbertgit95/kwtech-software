@@ -54,6 +54,8 @@ export class PlatformBillingPlansAdapter implements PlatformBillingPlans {
       limits: ALL_LIMITS.map((limit) => ({
         key: limit.key,
         label: limit.label,
+        // A cap naming no module ties to no app's features, so the comparison counts it as included (#183).
+        module: limit.module ?? '',
         source: limit.source,
         defaultValue: limit.defaultValue,
       })),

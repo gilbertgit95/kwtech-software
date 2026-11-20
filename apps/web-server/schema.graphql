@@ -1600,6 +1600,7 @@ type PlatformBillingCollected {
 }
 
 type PlatformBillingComparedCap {
+  included: Boolean!
   key: String!
   value: Int
 }
