@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type Browser, type BrowserContext, test as base, chromium, expect, type Page } from '@playwright/test';
@@ -85,15 +86,36 @@ export const BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8081';
 /** Self-signed locally (Caddy's own CA), so certificate errors are expected over https. */
 const CONTEXT_OPTIONS = { baseURL: BASE_URL, ignoreHTTPSErrors: true } as const;
 
-/** Signs `person` in through the sign-in page, in `context`, and waits until the app has let them past it. */
+/** How long the API's credential throttle counts sign-ins over (10 a minute per address), plus a margin. */
+const THROTTLE_WINDOW_MS = 61_000;
+
+/**
+ * Signs `person` in through the sign-in page and waits until the app has let
+ * them past it.
+ *
+ * ⚠ Sign-in is a credential surface: 10 a minute per address. A run signs
+ * in nine people within the first minute or so, and a rerun straight after
+ * adds more, so the tenth can be throttled. Then it waits the window out and
+ * tries once more, with the test's timeout stretched to cover the wait,
+ * rather than failing a test on a limit that is working as designed.
+ */
 export async function signIn(page: Page, person: Person): Promise<void> {
   const { email, password } = requireFixture().people[person];
-  await page.goto('/auth/signin');
-  await page.getByLabel('Email or username').fill(email);
-  // Exact: the eye button beside the field is labelled "Show password".
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith('/auth'));
+  for (let attempt = 1; ; attempt += 1) {
+    await page.goto('/auth/signin');
+    await page.getByLabel('Email or username').fill(email);
+    // Exact: the eye button beside the field is labelled "Show password".
+    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    try {
+      await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 15_000 });
+      return;
+    } catch (error) {
+      if (attempt >= 2) throw error;
+    }
+    base.info().setTimeout(base.info().timeout + THROTTLE_WINDOW_MS + 30_000);
+    await page.waitForTimeout(THROTTLE_WINDOW_MS);
+  }
 }
 
 interface TestFixtures {
@@ -182,4 +204,19 @@ export async function expectRefused(
   await expect(main.getByRole('heading', { name: refusal.title, exact: true })).toBeVisible();
   await expect(main.getByText(refusal.reason)).toBeVisible();
   if (refusal.detail) await expect(main.getByText(refusal.detail)).toBeVisible();
+}
+
+/** The API package, where the fixture's built script runs (it reads that app's env profile). */
+const WEB_SERVER_DIR = resolve(__dirname, '../../../web-server');
+
+/**
+ * The organization back on Free with no billing history, between journeys
+ * (`e2e:billing reset`): the people and their sessions stay.
+ *
+ * The built script directly, not the package script: that one compiles the
+ * seed build first, ten seconds a call. `setup` built it, and the script
+ * itself refuses anything but the local profile.
+ */
+export function resetBilling(): void {
+  execFileSync('node', ['dist/e2e/billing-fixture.js', 'reset'], { cwd: WEB_SERVER_DIR, stdio: 'pipe' });
 }

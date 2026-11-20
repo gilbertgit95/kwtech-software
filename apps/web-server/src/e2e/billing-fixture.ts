@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { unbilledAccessUntil } from '@kwtech/module-permissions';
 import { grantAppRole } from '@kwtech/module-permissions/server';
@@ -9,7 +9,7 @@ import { PrismaClient } from '../generated/client.js';
 import { seedUser } from '../seed/seeders/first-user.js';
 
 /**
- * `pnpm --filter @kwtech/web-server e2e:billing <setup|teardown>`: the people
+ * `pnpm --filter @kwtech/web-server e2e:billing <setup|reset|teardown>`: the people
  * and the organization the billing browser tests (#178,
  * `apps/web-app/e2e/billing/`) sign in as.
  *
@@ -127,6 +127,141 @@ async function accountAppRoleId(prisma: PrismaClient): Promise<string> {
 }
 
 /**
+ * The payment accounts the tests pay into, one per method (O4 shows them).
+ * Made up and marked: nobody can send money to them.
+ */
+const TEST_PAYMENT_ACCOUNTS = [
+  { method: 'cash', label: 'E2E cash desk', details: 'Test only (#178): pay at the counter.' },
+  { method: 'e_wallet', label: 'E2E e-wallet', details: 'Test only (#178): 0900 000 0000.' },
+  { method: 'bank_transfer', label: 'E2E bank', details: 'Test only (#178): account 000-000-000.' },
+];
+
+/** The platform's billing settings as they were before the first setup, or `null`: no row had been saved. */
+interface SavedSettings {
+  row: {
+    currency: string;
+    timeZone: string;
+    graceDays: number;
+    issuerName: string;
+    issuerDetails: string;
+    paymentAccounts: unknown;
+    updatedById: string | null;
+  } | null;
+}
+
+const SETTINGS_ID = 'platform';
+
+/**
+ * Where the settings before the tests are kept until teardown puts them
+ * back. A file, not the fixture JSON, and written only when absent: a
+ * second `setup` must not save the TEST settings as "before".
+ */
+const SAVED_SETTINGS_FILE = resolve(process.cwd(), '../web-app/e2e/billing/.settings-before.json');
+
+function readSavedSettings(): SavedSettings | null {
+  if (!existsSync(SAVED_SETTINGS_FILE)) return null;
+  return JSON.parse(readFileSync(SAVED_SETTINGS_FILE, 'utf8')) as SavedSettings;
+}
+
+/**
+ * The platform's settings as they were, with the test payment accounts.
+ *
+ * ⚠ PLATFORM-WIDE. There is one settings row (D16), so while the tests run
+ * every organization's Billing page lists the test accounts; teardown puts
+ * the row back as it was, or removes it if there was none. Saved once,
+ * before the first change, so a run that failed halfway still restores the
+ * original. Whatever a test changed (U2: grace, an account) is undone here
+ * on every reset, so the next journey starts from the same settings.
+ */
+async function useTestSettings(prisma: PrismaClient): Promise<void> {
+  let saved = readSavedSettings();
+  if (!saved) {
+    const row = await prisma.platformBillingSettings.findUnique({ where: { id: SETTINGS_ID } });
+    saved = {
+      row: row
+        ? {
+            currency: row.currency,
+            timeZone: row.timeZone,
+            graceDays: row.graceDays,
+            issuerName: row.issuerName,
+            issuerDetails: row.issuerDetails,
+            paymentAccounts: row.paymentAccounts,
+            updatedById: row.updatedById,
+          }
+        : null,
+    };
+    mkdirSync(dirname(SAVED_SETTINGS_FILE), { recursive: true });
+    writeFileSync(SAVED_SETTINGS_FILE, `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 });
+  }
+  const before = saved.row;
+  const data = {
+    ...(before
+      ? {
+          currency: before.currency,
+          timeZone: before.timeZone,
+          graceDays: before.graceDays,
+          issuerName: before.issuerName,
+          issuerDetails: before.issuerDetails,
+        }
+      : {}),
+    paymentAccounts: TEST_PAYMENT_ACCOUNTS,
+  };
+  await prisma.platformBillingSettings.upsert({
+    where: { id: SETTINGS_ID },
+    create: { id: SETTINGS_ID, ...data },
+    update: data,
+  });
+}
+
+/**
+ * The settings back as they were before the first setup, and the prices the
+ * test accounts set (U2) removed: a price is platform-wide too.
+ */
+async function restoreSettings(prisma: PrismaClient, userIds: readonly string[]): Promise<void> {
+  if (userIds.length > 0) await prisma.platformBillingPrice.deleteMany({ where: { setById: { in: [...userIds] } } });
+  const saved = readSavedSettings();
+  if (!saved) return;
+  if (!saved.row) {
+    await prisma.platformBillingSettings.deleteMany({ where: { id: SETTINGS_ID } });
+  } else {
+    const { paymentAccounts, ...rest } = saved.row;
+    await prisma.platformBillingSettings.update({
+      where: { id: SETTINGS_ID },
+      // Stored JSON, put back as it was read.
+      data: { ...rest, paymentAccounts: paymentAccounts as object },
+    });
+  }
+  rmSync(SAVED_SETTINGS_FILE, { force: true });
+}
+
+/**
+ * Between journeys: the organization back on Free with no billing history,
+ * the settings and prices back to the tests' own, the numbering rewound and
+ * the people's notices cleared. The accounts and their sessions stay, so a
+ * run keeps each person signed in (see e2e/billing/fixtures.ts).
+ */
+async function reset(prisma: PrismaClient): Promise<void> {
+  const organization = await prisma.permOrganization.findUnique({
+    where: { key: ORGANIZATION_KEY },
+    select: { id: true },
+  });
+  if (!organization) throw new Error('No E2E Billing organization. Run e2e:billing setup first.');
+  const users = await prisma.authUser.findMany({
+    where: { email: { endsWith: `@${EMAIL_DOMAIN}` } },
+    select: { id: true },
+  });
+  const userIds = users.map((user) => user.id);
+
+  await clearBilling(prisma, organization.id);
+  await startOnFree(prisma, organization.id);
+  await prisma.platformBillingPrice.deleteMany({ where: { setById: { in: userIds } } });
+  await useTestSettings(prisma);
+  await rewindNumbering(prisma);
+  await prisma.notificationItem.deleteMany({ where: { recipientId: { in: userIds } } });
+  console.log(`Reset ${ORGANIZATION_NAME} to Free.`);
+}
+
+/**
  * Removes everything a setup made, and whatever the tests made in the
  * organization since. Billing first: its rows refer to each other with
  * `Restrict`, and none of them cascades from the organization (they hold its
@@ -145,21 +280,13 @@ async function teardown(prisma: PrismaClient): Promise<void> {
 
   if (organization) {
     const organizationId = organization.id;
-    // In this order, each step's rows referring only to rows a later step removes.
-    await prisma.platformBillingEvent.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingPayment.deleteMany({ where: { request: { organizationId } } });
-    await prisma.platformBillingCredit.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingReceipt.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingBill.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingRequest.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingNotice.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingAutoRenew.deleteMany({ where: { organizationId } });
-    await prisma.platformBillingLock.deleteMany({ where: { organizationId } });
+    await clearBilling(prisma, organizationId);
     // Memberships, workspaces, roles and subscriptions cascade from the organization.
     await prisma.permOrganization.delete({ where: { id: organizationId } });
   }
 
   await rewindNumbering(prisma);
+  await restoreSettings(prisma, userIds);
 
   if (userIds.length > 0) {
     await prisma.notificationItem.deleteMany({ where: { recipientId: { in: userIds } } });
@@ -173,6 +300,46 @@ async function teardown(prisma: PrismaClient): Promise<void> {
   console.log(
     `Removed ${organization ? `the organization ${ORGANIZATION_NAME}` : 'no organization'} and ${userIds.length} account(s).`,
   );
+}
+
+/**
+ * Every billing row of the organization. In this order, each step's rows
+ * referring only to rows a later step removes: they refer to each other with
+ * `Restrict`, and none cascades from the organization (they hold its id as a
+ * bare string).
+ */
+async function clearBilling(prisma: PrismaClient, organizationId: string): Promise<void> {
+  await prisma.platformBillingEvent.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingPayment.deleteMany({ where: { request: { organizationId } } });
+  await prisma.platformBillingCredit.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingReceipt.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingBill.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingRequest.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingNotice.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingAutoRenew.deleteMany({ where: { organizationId } });
+  await prisma.platformBillingLock.deleteMany({ where: { organizationId } });
+}
+
+/**
+ * The organization on Free, as `startDefaultSubscription` writes it for an
+ * organization that gets no trial, and with NO `trialUserId`: the owner's
+ * trial is unused, which the trial case (O14) depends on. Every subscription
+ * row it had goes first, ended ones too, so a used trial is forgotten.
+ */
+async function startOnFree(prisma: PrismaClient, organizationId: string): Promise<void> {
+  const periodEnd = new Date(Date.now() + FREE_PERIOD_DAYS * 86_400_000);
+  await prisma.permSubscription.deleteMany({ where: { organizationId } });
+  await prisma.permSubscription.create({
+    data: {
+      organizationId,
+      planKey: FREE_PLAN_KEY,
+      status: 'active',
+      currentPeriodEnd: periodEnd,
+      accessUntil: unbilledAccessUntil(periodEnd),
+      // The live slot: one live organization-wide row per organization.
+      liveOrganizationId: organizationId,
+    },
+  });
 }
 
 /**
@@ -218,37 +385,19 @@ async function setup(prisma: PrismaClient): Promise<void> {
   }
 
   const now = new Date();
-  const periodEnd = new Date(now.getTime() + FREE_PERIOD_DAYS * 86_400_000);
   const organization = await prisma.permOrganization.create({
     data: {
       key: ORGANIZATION_KEY,
       name: ORGANIZATION_NAME,
       description: 'Made by the billing browser tests (#178); removed by e2e:billing teardown.',
       workspaces: { create: { key: WORKSPACE_KEY, name: WORKSPACE_NAME } },
-      /*
-       * Free, as `startDefaultSubscription` writes it for an organization that
-       * gets no trial, and with NO `trialUserId`: the owner's trial is unused,
-       * which the trial case (O14) depends on.
-       */
-      subscriptions: {
-        create: {
-          planKey: FREE_PLAN_KEY,
-          status: 'active',
-          currentPeriodEnd: periodEnd,
-          accessUntil: unbilledAccessUntil(periodEnd),
-        },
-      },
     },
-    select: { id: true, workspaces: { select: { id: true } }, subscriptions: { select: { id: true } } },
+    select: { id: true, workspaces: { select: { id: true } } },
   });
   const workspaceId = organization.workspaces[0]?.id;
-  const subscriptionId = organization.subscriptions[0]?.id;
-  if (!workspaceId || !subscriptionId) throw new Error('The organization was created without its workspace.');
-  // The live slot, set after the create because it names the organization's own id.
-  await prisma.permSubscription.update({
-    where: { id: subscriptionId },
-    data: { liveOrganizationId: organization.id },
-  });
+  if (!workspaceId) throw new Error('The organization was created without its workspace.');
+  await startOnFree(prisma, organization.id);
+  await useTestSettings(prisma);
 
   const accountRoleId = await accountAppRoleId(prisma);
   for (const key of Object.keys(PEOPLE) as PersonKey[]) {
@@ -295,13 +444,14 @@ async function main(): Promise<void> {
     throw new Error('e2e:billing runs only against the local profile, in a development build.');
   }
   const command = process.argv[2];
-  if (command !== 'setup' && command !== 'teardown') {
-    throw new Error('Say what to do: e2e:billing setup | e2e:billing teardown');
+  if (command !== 'setup' && command !== 'reset' && command !== 'teardown') {
+    throw new Error('Say what to do: e2e:billing setup | reset | teardown');
   }
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: env.DATABASE_URL }) });
   try {
     if (command === 'setup') await setup(prisma);
+    if (command === 'reset') await reset(prisma);
     if (command === 'teardown') await teardown(prisma);
   } finally {
     await prisma.$disconnect();

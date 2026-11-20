@@ -74,3 +74,5 @@ test-results/
 playwright-report/
 # The billing browser tests' throwaway accounts and their passwords (#178), written by e2e:billing setup.
 apps/web-app/e2e/billing/.fixture.json
+# ...and the platform's billing settings as they were before them, put back by teardown.
+apps/web-app/e2e/billing/.settings-before.json

@@ -66,7 +66,7 @@ pnpm --filter @kwtech/web-server e2e:billing setup
 E2E_BASE_URL=https://localhost E2E_CDP_URL=http://localhost:9333 \
   pnpm --filter @kwtech/web-app exec playwright test e2e/billing
 
-# 5. remove the people and the organization
+# 5. remove the people and the organization, and put the billing settings back
 pnpm --filter @kwtech/web-server e2e:billing teardown
 ```
 
@@ -74,6 +74,19 @@ pnpm --filter @kwtech/web-server e2e:billing teardown
   whatever the last run left. It writes the accounts and their fresh passwords
   to `e2e/billing/.fixture.json` (gitignored). Without that file the billing
   tests are **skipped** with the command to run.
+- `reset` (run by the tests before each journey, about a second) puts E2E
+  Billing back on Free with no billing history, keeps the people and their
+  sessions, and clears their notices.
+- ⚠ **Platform-wide rows.** Billing settings are one row for every
+  organization: `setup` saves them as they were (`e2e/billing/.settings-before.json`,
+  gitignored, written once) and adds three test payment accounts, which every
+  organization's Billing page lists while the tests are set up. `teardown`
+  puts the row back as it was (or removes it if there was none) and deletes
+  any price a test account set. The bill and receipt numbering is rewound to
+  the highest number still in use. Run `teardown` when you are done.
+- Never covered here, on purpose: archiving a plan (U6). Plans are shared with
+  real organizations, and archiving one credits and withdraws on them; the
+  module's unit tests cover it.
 - The accounts are on `@e2e-billing.test` (a reserved domain: no mail reaches
   anybody) and have no two-step sign-in. Each gets the app role every new
   account gets (`account.app_role`), plus its own role.
@@ -87,6 +100,8 @@ pnpm --filter @kwtech/web-server e2e:billing teardown
 | File | Cases of #178 |
 | --- | --- |
 | `access.spec.ts` | who may open which billing page: S1–S3, M1–M4, A2, A9, O1, O2, P1 (empty queue), P15, U4, T1, T2 |
+| `journeys.spec.ts` | the money, each journey from a reset: the first paid month (O3–O10, P1–P4, P11–P13, A1); the admin pays (A5); withdraw (A6); rejected (P7, O11); kept as credit (P8); overpaid (P5); reversed (P9, O12); an approver who is a member (Q1–Q2); changing plan (O15, O17); paying ahead and auto-renew (O21, O22, A7); cancel (O27); approver edge cases (P6, P10); settings and adjustments (P14, U2, U3, U5); the statement (A8) |
+| `steps.ts` | the steps the journeys repeat, by role and name |
 
 ## What the account needs
 

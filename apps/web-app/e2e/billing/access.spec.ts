@@ -1,4 +1,14 @@
-import { billingPath, expect, expectRefused, fixture, NOT_SET_UP, type Person, requireFixture, test } from './fixtures';
+import {
+  billingPath,
+  expect,
+  expectRefused,
+  fixture,
+  NOT_SET_UP,
+  type Person,
+  requireFixture,
+  resetBilling,
+  test,
+} from './fixtures';
 
 /**
  * Who may open which billing page (#178, sections 1, 2, 3, 5, 7 and 8): the
@@ -10,6 +20,11 @@ import { billingPath, expect, expectRefused, fixture, NOT_SET_UP, type Person, r
  */
 
 test.skip(!fixture, NOT_SET_UP);
+
+// On Free with no history, whatever the journeys left: O1, A2 and U4 read the Free page.
+test.beforeAll(() => {
+  if (fixture) resetBilling();
+});
 
 /** What the organization's billing routes say to somebody without "See billing". */
 const NOT_GRANTED = 'Your roles do not include this. An administrator can grant it.';
