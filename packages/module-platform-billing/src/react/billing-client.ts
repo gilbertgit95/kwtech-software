@@ -99,6 +99,8 @@ export interface BillingRequestView {
   /** `pending`, `approved`, `rejected`, `withdrawn`, `voided`, `closed_as_credit`. */
   state: string;
   planKey: string;
+  /** The plan's name, for a request with no bill (#192). Prefer the bill's printed label when there is one. */
+  planLabel: string;
   fromPlanKey: string | null;
   /** Months paid for at once (#129). */
   months: number;

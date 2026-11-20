@@ -246,6 +246,8 @@ export class PlatformBillingRequestType {
   @Field() kind!: string;
   @Field() state!: string;
   @Field() planKey!: string;
+  /** The plan's name now, for a request with no bill to print one (#192); the key when the plan is unknown. */
+  @Field() planLabel!: string;
   @Field(() => String, { nullable: true }) fromPlanKey!: string | null;
   @Field() requestedById!: string;
   @Field() requestedAt!: string;

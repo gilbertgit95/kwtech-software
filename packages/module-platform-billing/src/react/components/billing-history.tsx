@@ -137,7 +137,7 @@ export function BillingHistory({
               <details>
                 <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-3 text-sm">
                   <span className="font-medium">
-                    {requestTitle(request)}: {request.bills.at(-1)?.planLabel ?? request.planKey}
+                    {requestTitle(request)}: {request.bills.at(-1)?.planLabel ?? request.planLabel}
                   </span>
                   <span className="text-muted-foreground">
                     {requestStateLabel(request.state)} · {formatInstantDay(request.requestedAt, timeZone)}

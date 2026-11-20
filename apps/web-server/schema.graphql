@@ -1864,6 +1864,7 @@ type PlatformBillingRequest {
   periodEnd: String
   periodStart: String
   planKey: String!
+  planLabel: String!
   receipts: [PlatformBillingReceipt!]!
   requestedAt: String!
   requestedById: String!
