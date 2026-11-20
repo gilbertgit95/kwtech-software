@@ -17,6 +17,7 @@ import {
   billingStatus,
   cancelControl,
   changePlanControl,
+  dueLine,
   formatDay,
   formatMoney,
   mainAction,
@@ -170,8 +171,8 @@ function OrganizationBilling({ organizationId, client }: BillingPageProps) {
                     ? `${formatDay(overview.standing.periodStart)} – ${formatDay(overview.standing.periodEnd)}`
                     : '—'}
                 </dd>
-                <dt className="text-muted-foreground">Due</dt>
-                <dd>{formatDay(overview.standing.periodEnd)}</dd>
+                <dt className="text-muted-foreground">{dueLine(overview.standing).label}</dt>
+                <dd>{formatDay(dueLine(overview.standing).day)}</dd>
                 <dt className="text-muted-foreground">Credit</dt>
                 <dd className="tabular-nums">{formatMoney(overview.creditBalance, overview.currency)}</dd>
                 {paidUpTo ? <dd className="col-span-2 text-xs text-muted-foreground">{paidUpTo}</dd> : null}
