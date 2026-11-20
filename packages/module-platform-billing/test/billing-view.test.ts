@@ -302,3 +302,25 @@ describe('dueLine — the status card says a day is due only when one is (#184)'
     });
   });
 });
+
+describe('billingStatus — a renewal held inside grace (#196)', () => {
+  // Due 1 Dec, 7 days of grace, details in on day 3 of it: 4 days of grace left, 6 more held to 14 Dec.
+  const held = overview({ kind: 'overdue', days: 4, holdDays: 6, accessUntil: '2026-12-14' });
+
+  it('counts the days to the held end, not to the end of grace', () => {
+    expect(billingStatus(held).headline).toBe('Basic is overdue: 10 days of access left');
+  });
+
+  it('says access is held while the details are checked, and the sum adds up', () => {
+    expect(billingStatus(held).details[0]).toBe(
+      'It was due on 1 Dec 2026. Your payment details came in, so access is held until 13 Dec 2026 while we check them: the due date plus 7 days of grace and 6 days held.',
+    );
+    expect(billingStatus(held).details.join(' ')).not.toMatch(/Renew and add your payment details/);
+  });
+
+  it('keeps the plain overdue words with no hold', () => {
+    expect(billingStatus(overview({ kind: 'overdue', days: 4 })).details[1]).toBe(
+      'Renew and add your payment details before then.',
+    );
+  });
+});

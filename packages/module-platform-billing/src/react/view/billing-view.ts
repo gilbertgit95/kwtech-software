@@ -169,6 +169,23 @@ export function billingStatus(
       };
     }
     case 'overdue':
+      /*
+       * Covering details came in during grace (D9): access is already HELD
+       * past it, and the standing says overdue only until grace ends. Counting
+       * the grace down beside the held date read "4 days of access left …
+       * until 30 Nov: the due date plus 7 days of grace", which added up to
+       * neither (#196). The days left run to the held end: grace left + hold.
+       */
+      if (s.holdDays > 0) {
+        return {
+          tone: 'info',
+          headline: `${plan} is overdue: ${days((s.days ?? 0) + s.holdDays)} of access left`,
+          details: [
+            `It was due on ${formatDay(s.periodEnd)}. Your payment details came in, so access is held until ${lastDay} while we check them: the due date plus ${days(s.graceDays)} of grace and ${days(s.holdDays)} held.`,
+            ...details,
+          ],
+        };
+      }
       return {
         tone: 'warning',
         headline: `${plan} is overdue: ${days(s.days)} of access left`,
