@@ -81,6 +81,16 @@ export class PermissionContextType {
    */
   @Field(() => [PermissionRoleType])
   appRoles!: PermissionRoleType[];
+
+  /**
+   * When the organization's paid plan ended, ISO, or null (#92). What makes a
+   * page denied after expiry say "your plan ended, renew it" rather than
+   * "upgrade" (#195): without it the browser could only ever answer
+   * `not_entitled`. No more than the denial itself discloses: the API's own
+   * refusals already say `subscription_expired` to the same reader.
+   */
+  @Field(() => String, { nullable: true })
+  subscriptionEndedAt!: string | null;
 }
 
 /** Where a feature is enforced: a GraphQL operation, a route, a UI control. */
@@ -169,6 +179,7 @@ export function toPermissionContextType(context: PermissionContext): PermissionC
     // Copied element by element, like every list above: handing out the same
     // objects would let a field resolver rename the caller's own roles.
     appRoles: context.appRoles.map((role) => ({ key: role.key, label: role.label, icon: role.icon })),
+    subscriptionEndedAt: context.subscriptionEndedAt ?? null,
   };
 }
 
