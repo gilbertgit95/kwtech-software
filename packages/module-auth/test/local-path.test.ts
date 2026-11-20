@@ -1,4 +1,4 @@
-import { safeLocalPath } from '../src/index.js';
+import { safeLocalPath, signInPathFor } from '../src/index.js';
 
 /**
  * The one rule every `?next=` follows (#179). The sign-in page used to check
@@ -30,5 +30,23 @@ describe('safeLocalPath — a next is followed only as a path on this origin', (
     ['a scheme without slashes', 'javascript:alert(1)'],
   ])('falls back for %s', (_case, next) => {
     expect(safeLocalPath(next, '/fallback')).toBe('/fallback');
+  });
+});
+
+describe('signInPathFor — a signed-out reader is sent to sign in and back (#181)', () => {
+  it('carries the page that was asked for, encoded', () => {
+    expect(signInPathFor('/organizations/o1/billing/documents/r1?kind=bill&number=B-000001')).toBe(
+      '/auth/signin?next=%2Forganizations%2Fo1%2Fbilling%2Fdocuments%2Fr1%3Fkind%3Dbill%26number%3DB-000001',
+    );
+  });
+
+  it.each([
+    ['nothing known', null],
+    ['the home page', '/'],
+    ['the sign-in page itself', '/auth/signin'],
+    ['another auth page', '/auth/reset-password?token=x'],
+    ['an address that would leave the site', '/\\evil.example'],
+  ])('sends a bare sign-in for %s', (_case, requested) => {
+    expect(signInPathFor(requested)).toBe('/auth/signin');
   });
 });

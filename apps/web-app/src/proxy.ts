@@ -3,6 +3,7 @@ import { DEFAULT_COOKIE_NAME, renewSessionIfNeeded, serializeCookie } from '@kwt
 import { type NextRequest, NextResponse, userAgent } from 'next/server';
 import { chooseLayout, mobileRewritePath, parseLayoutPreference } from '@/lib/layout-choice';
 import { layoutCookieName } from '@/lib/preferences';
+import { REQUESTED_PATH_HEADER, requestedPathOf } from '@/lib/requested-path';
 import { tokenSubject } from '@/lib/token-subject';
 
 /**
@@ -89,9 +90,14 @@ export async function proxy(request: NextRequest) {
   const userId = tokenSubject(added.get(name) ?? request.cookies.get(name)?.value);
   const mobileTarget = mobileTargetFor(request, userId);
 
-  if (added.size === 0 && !mobileTarget) return NextResponse.next();
-
   const headers = new Headers(request.headers);
+  /*
+   * The address that was asked for, for the shells' sign-in redirect (#181),
+   * on EVERY request: set, never appended, so a value the browser sent is
+   * replaced. Taken before the phone rewrite below, so a phone signing in
+   * comes back to the address in its bar.
+   */
+  headers.set(REQUESTED_PATH_HEADER, requestedPathOf(request.nextUrl));
   if (added.size > 0) {
     const kept = request.cookies
       .getAll()

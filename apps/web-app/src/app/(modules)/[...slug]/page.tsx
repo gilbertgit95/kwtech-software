@@ -1,3 +1,4 @@
+import { signInPathFor } from '@kwtech/module-auth';
 import { composeRoutes, matchRouteWithParams, routeRedirect } from '@kwtech/module-kit';
 import { denialReason, isRoleLevel, notGrantedText } from '@kwtech/module-permissions';
 import { FeatureDenied } from '@kwtech/module-permissions/react';
@@ -115,6 +116,21 @@ export default async function ModuleRoutePage({
    * Still not the security boundary. Every request is authorised again at the
    * API, which is the only check someone calling it directly cannot skip.
    */
+  /*
+   * SIGNED OUT, ON A PAGE THAT NEEDS SOMEBODY: to sign in, and back (#181).
+   *
+   * The 'app' frame's shell redirects on its own, but a 'bare' or
+   * 'fullscreen' route has no shell: a bill or receipt link opened signed out
+   * rendered a page saying "Not signed in" with no way forward. Every route
+   * that declares a feature needs a signed-in reader, whatever its frame.
+   * Only when the API ANSWERED that nobody is signed in: unreachable is the
+   * shell's "Cannot reach the server", never a redirect.
+   */
+  if (route.feature) {
+    const { viewer, reachable } = await getSessionSnapshot(scope);
+    if (reachable && !viewer) redirect(signInPathFor(`${pathname}${queryString(await searchParams)}`));
+  }
+
   const denied = await routeDenial(route.feature, scope);
   if (denied) {
     /*
