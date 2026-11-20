@@ -1305,6 +1305,7 @@ type PermissionContext {
   grantedAtAppLevel: [String!]!
   organizationId: String
   subjectId: String!
+  subscriptionEndedAt: String
   workspaceId: String
 }
 

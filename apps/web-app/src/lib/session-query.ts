@@ -90,6 +90,8 @@ const SESSION_QUERY = `
         label
         icon
       }
+      # When the paid plan ended (#195): a denied page then says "renew", not "upgrade".
+      subscriptionEndedAt
     }
   }
 `;
