@@ -178,6 +178,27 @@ export class PlatformBillingDailyCheck implements ProcessHandler {
   }
 
   /**
+   * ONE organization's part of a run, alone: its renewal from credit when its
+   * switch is on, then its reminders, exactly as `run` does them, on `now`'s
+   * day in the billing time zone.
+   *
+   * For a caller that must not sweep every organization: the billing browser
+   * tests (#178) run it for their own organization after moving its dates,
+   * and a run of `run` there would remind, retry and renew the real ones too.
+   * No schedule, no budget beyond this organization's own reminders, and no
+   * approvers' digest, which is about every organization at once.
+   */
+  async runForOrganization(organizationId: string, now: Date): Promise<{ renewed: boolean; sent: number }> {
+    const autoRenew = await this.prisma.platformBillingAutoRenew.findUnique({ where: { organizationId } });
+    const renewed =
+      autoRenew?.enabled === true && (await this.writes.autoRenew(organizationId, now)).kind === 'renewed';
+    if (!this.notifier) return { renewed, sent: 0 };
+    const today = platformDay(now, (await this.reads.settings()).timeZone);
+    const checked = await this.checkOrganization(this.notifier, organizationId, now, today, Number.MAX_SAFE_INTEGER);
+    return { renewed, sent: checked.sent };
+  }
+
+  /**
    * Every organization with auto-renew on, a page at a time by id, renewed
    * when `planAutoRenew` says so (#129). At most `maxItems` renewals a run;
    * the rest are still due tomorrow, inside their grace. One organization's
