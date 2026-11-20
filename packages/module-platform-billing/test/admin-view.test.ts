@@ -6,7 +6,9 @@ import {
   checkDecisionReason,
   checkPriceDraft,
   checkSettingsDraft,
+  decidedByMemberLine,
   isReadyToCheck,
+  ownOrganizationTag,
   queueChecks,
   type SettingsDraft,
   settingsChange,
@@ -183,5 +185,25 @@ describe('the platform pages in the descriptor', () => {
     ]);
     expect(new Set(admin.map((route) => route.feature))).toEqual(new Set(['platform-billing:queue_read']));
     expect(admin.find((route) => route.path.endsWith('/document'))?.chrome).toBe('fullscreen');
+  });
+});
+
+describe('an approver who belongs to the organization stays flagged (D15, #188)', () => {
+  it('tags a queue row of the viewer’s own organization', () => {
+    expect(ownOrganizationTag({ viewerIsMember: true })).toBe('Your organization');
+    expect(ownOrganizationTag({ viewerIsMember: false })).toBeNull();
+  });
+
+  it('says a decision was made by a member once it is decided, whatever the decision', () => {
+    for (const state of ['approved', 'rejected', 'voided', 'closed_as_credit']) {
+      expect(decidedByMemberLine({ state, approverIsMember: true })).toBe(
+        'Decided by somebody who belongs to this organization: recorded with the decision.',
+      );
+    }
+  });
+
+  it('says nothing while it waits (the checks say it then), or for staff from outside', () => {
+    expect(decidedByMemberLine({ state: 'pending', approverIsMember: true })).toBeNull();
+    expect(decidedByMemberLine({ state: 'approved', approverIsMember: false })).toBeNull();
   });
 });
