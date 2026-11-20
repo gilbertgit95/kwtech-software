@@ -35,7 +35,7 @@ export const PLATFORM_BILLING_OPERATIONS = {
     query PlatformBillingPlanComparison($organizationId: String!) {
       platformBillingPlanComparison(organizationId: $organizationId) {
         currency currentPlanKey
-        plans { key label monthly current offered features limits { key value } }
+        plans { key label monthly current offered features limits { key value included } }
         features { key label module }
         limits { key label }
       }

@@ -153,7 +153,11 @@ export class PlatformBillingResolver {
       plans: comparison.plans.map((plan) => ({
         ...plan,
         features: [...plan.features],
-        limits: Object.entries(plan.limits).map(([key, value]) => ({ key, value })),
+        limits: Object.entries(plan.limits).map(([key, value]) => ({
+          key,
+          value,
+          included: !plan.notIncluded.includes(key),
+        })),
       })),
       features: comparison.features.map((feature) => ({ ...feature })),
       limits: comparison.limits.map((limit) => ({ ...limit })),

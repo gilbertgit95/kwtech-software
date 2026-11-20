@@ -114,11 +114,21 @@ export function BillingPlansPage({ organizationId, client }: BillingPlansPagePro
                     <th scope="row" className="py-2 pr-3 text-left font-normal text-foreground">
                       {limit.label}
                     </th>
-                    {comparison.plans.map((plan) => (
-                      <td key={plan.key} className={cn('px-3 py-2 tabular-nums', plan.current && 'bg-primary/10')}>
-                        {capCell(plan.limits.find((one) => one.key === limit.key)?.value)}
-                      </td>
-                    ))}
+                    {comparison.plans.map((plan) => {
+                      const cap = plan.limits.find((one) => one.key === limit.key);
+                      return (
+                        <td
+                          key={plan.key}
+                          className={cn(
+                            'px-3 py-2 tabular-nums',
+                            plan.current && 'bg-primary/10',
+                            cap?.included === false && 'text-muted-foreground',
+                          )}
+                        >
+                          {capCell(cap?.value, cap?.included ?? true)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
                 {comparison.features.length > 0 ? (

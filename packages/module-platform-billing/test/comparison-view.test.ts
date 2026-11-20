@@ -8,6 +8,12 @@ describe('the plan comparison’s cells', () => {
     expect(capCell(undefined)).toBe('—');
   });
 
+  it('says "Not included" for a cap of an app the plan lacks, whatever its number (#183)', () => {
+    expect(capCell(10, false)).toBe('Not included');
+    expect(capCell(null, false)).toBe('Not included');
+    expect(capCell(10, true)).toBe('10');
+  });
+
   it('says a price, Free, or why there is none', () => {
     expect(priceCell({ monthly: 50_000, offered: true }, 'PHP')).toMatch(/500\.00 a month$/);
     expect(priceCell({ monthly: 0, offered: true }, 'PHP')).toBe('Free');

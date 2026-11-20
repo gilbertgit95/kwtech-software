@@ -95,6 +95,8 @@ export class PlatformBillingPlanOfferType {
 export class PlatformBillingComparedCapType {
   @Field() key!: string;
   @Field(() => Int, { nullable: true }) value!: number | null;
+  /** False when the plan does not include the cap's app (#183): the cell reads "Not included", not the number. */
+  @Field() included!: boolean;
 }
 
 /** A plan in the comparison (#101): today's price, its features by key, its caps. */

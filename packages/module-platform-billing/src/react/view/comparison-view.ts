@@ -13,7 +13,7 @@ export interface ComparedPlanView {
   current: boolean;
   offered: boolean;
   features: readonly string[];
-  limits: readonly { key: string; value: number | null }[];
+  limits: readonly { key: string; value: number | null; included: boolean }[];
 }
 
 export interface PlanComparisonView {
@@ -24,8 +24,12 @@ export interface PlanComparisonView {
   limits: readonly { key: string; label: string }[];
 }
 
-/** A cap in a cell: "No limit", or the number with thousands separators. */
-export function capCell(value: number | null | undefined): string {
+/**
+ * A cap in a cell: "Not included" when the plan lacks the cap's app (#183),
+ * "No limit", or the number with thousands separators.
+ */
+export function capCell(value: number | null | undefined, included = true): string {
+  if (!included) return 'Not included';
   if (value === undefined) return '—';
   return value === null ? 'No limit' : value.toLocaleString('en-US');
 }
