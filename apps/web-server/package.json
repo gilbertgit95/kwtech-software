@@ -20,6 +20,7 @@
     "db:seed:build": "tsc -p tsconfig.build.json",
     "db:sync": "pnpm db:seed:build && node dist/seed/run.js --phase=sync",
     "db:seed": "pnpm db:seed:build && node dist/seed/run.js --phase=seed",
+    "e2e:billing": "node ../../scripts/env.mjs --require=local && pnpm db:seed:build && node dist/e2e/billing-fixture.js",
     "notify:demo": "node ../../scripts/env.mjs --require=local && pnpm db:seed:build && node dist/notifications/demo.js",
     "db:seed:list": "pnpm db:seed:build && node dist/seed/run.js --list",
     "db:snapshot": "pnpm db:seed:build && node dist/seed/snapshot.js --export",

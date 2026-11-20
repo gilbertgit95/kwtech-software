@@ -72,3 +72,5 @@ pnpm-debug.log*
 **/src/generated/
 test-results/
 playwright-report/
+# The billing browser tests' throwaway accounts and their passwords (#178), written by e2e:billing setup.
+apps/web-app/e2e/billing/.fixture.json

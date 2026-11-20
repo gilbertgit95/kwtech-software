@@ -44,6 +44,50 @@ which includes `127.0.0.1`. The page then renders without JavaScript. The TV
 never leaves its loading frame, and the sign-in form submits as a plain GET. The
 default `127.0.0.1` is right for `next start`.
 
+## Billing (#178)
+
+The billing tests in `e2e/billing/` sign in as **their own throwaway people**,
+one per perspective (owner, admin, member, billing approver, an approver who is
+also a member, super admin, Support, Operations, Moderator), in their own
+organization, **E2E Billing**, on Free. They never touch another organization.
+
+```bash
+# 1. the people and the organization (local profile only; refuses any other)
+pnpm --filter @kwtech/web-server e2e:billing setup
+
+# 2. the stack, built, over https (Caddy): pnpm build && pnpm pm2:start
+
+# 3. on WSL, a Windows Chrome to drive (Playwright's own Chromium cannot start there)
+"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new \
+  --remote-debugging-port=9333 --user-data-dir='C:\Users\Public\kw-e2e-billing' \
+  --ignore-certificate-errors about:blank &
+
+# 4. the tests
+E2E_BASE_URL=https://localhost E2E_CDP_URL=http://localhost:9333 \
+  pnpm --filter @kwtech/web-app exec playwright test e2e/billing
+
+# 5. remove the people and the organization
+pnpm --filter @kwtech/web-server e2e:billing teardown
+```
+
+- `setup` starts with a teardown, so every run begins on Free with no requests,
+  whatever the last run left. It writes the accounts and their fresh passwords
+  to `e2e/billing/.fixture.json` (gitignored). Without that file the billing
+  tests are **skipped** with the command to run.
+- The accounts are on `@e2e-billing.test` (a reserved domain: no mail reaches
+  anybody) and have no two-step sign-in. Each gets the app role every new
+  account gets (`account.app_role`), plus its own role.
+- Each person signs in once per run and keeps that context: sign-in is
+  throttled to 10 a minute, and the refresh token rotates, so contexts
+  restored from one saved state would revoke each other.
+- Without `E2E_CDP_URL` Playwright launches its own Chromium as usual.
+- On WSL with mirrored networking, Windows reaches the app at `https://localhost`,
+  not at the LAN address in `FRONTEND_URL`.
+
+| File | Cases of #178 |
+| --- | --- |
+| `access.spec.ts` | who may open which billing page: S1–S3, M1–M4, A2, A9, O1, O2, P1 (empty queue), P15, U4, T1, T2 |
+
 ## What the account needs
 
 The queue test signs in as `E2E_EMAIL` and uses the queue in `E2E_WORKSPACE_ID`, so
