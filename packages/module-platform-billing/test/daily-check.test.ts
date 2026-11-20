@@ -108,6 +108,17 @@ describe('the daily check (platform_billing.daily_check)', () => {
     ]);
   });
 
+  it('runs one organization alone: its reminders, once, and nobody else’s (#178)', async () => {
+    const billing = await onBasic();
+    giveSubscription(billing, 'org2', 'basic', '2026-11-01', '2026-12-01', '2026-12-08');
+    const first = await billing.daily.runForOrganization(ORG, noonOn('2026-11-24'));
+    const again = await billing.daily.runForOrganization(ORG, noonOn('2026-11-24'));
+    expect(first).toEqual({ renewed: false, sent: 1 });
+    expect(again).toEqual({ renewed: false, sent: 0 });
+    // org2 is due the same day and is told nothing: only a run reaches every organization.
+    expect(billing.store().notices.map((row) => row.organizationId)).toEqual([ORG]);
+  });
+
   it('⚠ reads "today" in the billing zone: one instant, two days, two zones', async () => {
     // 2026-11-23T20:00Z is the 24th in Manila (04:00), and still the 23rd in London.
     const instant = new Date('2026-11-23T20:00:00.000Z');

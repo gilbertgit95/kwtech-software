@@ -172,6 +172,15 @@ test.describe('8. Other platform staff', () => {
     });
   }
 
+  test('T3: a billing approver keeps their own account: the bell and chat are still theirs', async ({ as }) => {
+    // #175: granting the approver role once took the account's own keys away with it.
+    const approver = await as('approver');
+    await approver.goto('/notifications');
+    await expect(approver.getByRole('heading', { name: 'Notifications', exact: true })).toBeVisible();
+    await expect(approver.getByRole('button', { name: 'Notifications' })).toBeVisible();
+    await expect(approver.getByRole('button', { name: /^Chat\b/ })).toBeVisible();
+  });
+
   test("T2: support staff are refused the organization's billing page", async ({ as }) => {
     const page = await as('support');
     await page.goto(billingPath());

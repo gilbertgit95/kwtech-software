@@ -1,15 +1,24 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { DEFAULT_TIME_ZONE } from '@kwtech/module-kit';
 import { unbilledAccessUntil } from '@kwtech/module-permissions';
 import { grantAppRole } from '@kwtech/module-permissions/server';
+import {
+  addDays,
+  addMonthsAnchored,
+  DEFAULT_GRACE_DAYS,
+  dayOfMonth,
+  platformDay,
+  platformDayStart,
+} from '@kwtech/module-platform-billing';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { env } from '../config/env.js';
 import { PrismaClient } from '../generated/client.js';
 import { seedUser } from '../seed/seeders/first-user.js';
 
 /**
- * `pnpm --filter @kwtech/web-server e2e:billing <setup|reset|teardown>`: the people
+ * `pnpm --filter @kwtech/web-server e2e:billing <setup|reset|period|daily|teardown>`: the people
  * and the organization the billing browser tests (#178,
  * `apps/web-app/e2e/billing/`) sign in as.
  *
@@ -262,6 +271,95 @@ async function reset(prisma: PrismaClient): Promise<void> {
 }
 
 /**
+ * `period --ends=<±days> [--access=<±days>]`: moves E2E Billing's live
+ * subscription so its period ends that many days from today (billing's time
+ * zone), and its access with it: the end plus the grace by default, or
+ * `--access` days from today. How the date cases (renewal window, grace,
+ * hold, expiry) get there without waiting a month.
+ *
+ * Written the way billing writes a period (`platformDayStart` of each day,
+ * the start one month before the end on the same billing day), so the pages
+ * read it as they would a real one.
+ */
+async function movePeriod(prisma: PrismaClient, args: readonly string[]): Promise<void> {
+  const ends = numberArgument(args, 'ends');
+  if (ends === null) throw new Error('Say when the period ends: period --ends=-3 (days from today).');
+  const organization = await prisma.permOrganization.findUnique({
+    where: { key: ORGANIZATION_KEY },
+    select: { id: true },
+  });
+  if (!organization) throw new Error('No E2E Billing organization. Run e2e:billing setup first.');
+  const live = await prisma.permSubscription.findFirst({ where: { liveOrganizationId: organization.id } });
+  if (!live) throw new Error('E2E Billing has no live subscription.');
+
+  const settings = await prisma.platformBillingSettings.findUnique({ where: { id: SETTINGS_ID } });
+  const timeZone = settings?.timeZone ?? DEFAULT_TIME_ZONE;
+  const graceDays = settings?.graceDays ?? DEFAULT_GRACE_DAYS;
+  const today = platformDay(new Date(), timeZone);
+  const end = addDays(today, ends);
+  const billingDay = dayOfMonth(end);
+  const start = addMonthsAnchored(end, -1, billingDay);
+  const accessDays = numberArgument(args, 'access');
+  const accessUntil = accessDays === null ? addDays(end, graceDays) : addDays(today, accessDays);
+
+  await prisma.permSubscription.update({
+    where: { id: live.id },
+    data: {
+      periodStart: platformDayStart(start, timeZone),
+      currentPeriodEnd: platformDayStart(end, timeZone),
+      billingDay,
+      accessUntil: platformDayStart(accessUntil, timeZone),
+    },
+  });
+  console.log(`E2E Billing's period now ${start} to ${end}, access until ${accessUntil}.`);
+}
+
+/** `--name=<integer>` from the command line, or null when absent. */
+function numberArgument(args: readonly string[], name: string): number | null {
+  const raw = args.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+  if (raw === undefined) return null;
+  const value = Number(raw);
+  if (!Number.isInteger(value)) throw new Error(`--${name} takes a whole number of days, not ${raw}.`);
+  return value;
+}
+
+/**
+ * `daily`: the billing daily check for E2E Billing ALONE, now
+ * (`PlatformBillingDailyCheck.runForOrganization`): its renewal from credit,
+ * then its reminders, written and sent through the app's real notifier.
+ *
+ * ⚠ Never the whole run. A run retries, renews and reminds every
+ * organization and sends the approvers' digest about all of them, and the
+ * real organizations here must not be touched by a test.
+ *
+ * ⚠ The app is booted in this process to reach the handler, so the job
+ * runner must be off (`JOBS_RUNNER=off` in the environment, which the env
+ * profile does not override): a second runner beside the running API would
+ * run every process twice. Refused otherwise.
+ */
+async function runDailyCheck(organizationId: string): Promise<void> {
+  if (env.JOBS_RUNNER !== 'off') {
+    throw new Error('Run it with JOBS_RUNNER=off: booting the app here must not start a second job runner.');
+  }
+  const [{ NestFactory }, { AppModule }, { PlatformBillingDailyCheck }] = await Promise.all([
+    import('@nestjs/core'),
+    import('../app.module.js'),
+    import('@kwtech/module-platform-billing/server'),
+  ]);
+  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn'] });
+  try {
+    await app.init();
+    const daily = app.get(PlatformBillingDailyCheck, { strict: false });
+    const result = await daily.runForOrganization(organizationId, new Date());
+    console.log(
+      `Daily check for ${ORGANIZATION_NAME}: ${result.renewed ? 'renewed, ' : ''}${result.sent} notice(s) sent.`,
+    );
+  } finally {
+    await app.close();
+  }
+}
+
+/**
  * Removes everything a setup made, and whatever the tests made in the
  * organization since. Billing first: its rows refer to each other with
  * `Restrict`, and none of them cascades from the organization (they hold its
@@ -285,6 +383,7 @@ async function teardown(prisma: PrismaClient): Promise<void> {
     await prisma.permOrganization.delete({ where: { id: organizationId } });
   }
 
+  await clearOrphanedBillingNotices(prisma);
   await rewindNumbering(prisma);
   await restoreSettings(prisma, userIds);
 
@@ -303,12 +402,51 @@ async function teardown(prisma: PrismaClient): Promise<void> {
 }
 
 /**
+ * The notices the tests' requests sent, to ANYBODY: the organization's own
+ * (scoped to it, which reaches a super admin too) and the approvers' (global,
+ * keyed by the request: `billing:request:<id>:approvers` in the app's
+ * notifier). Approvers include the real platform staff of this database, and
+ * a test run must not leave its requests in their inbox.
+ *
+ * Then any billing notice whose request no longer exists: requests are never
+ * deleted in real use, so only a test's (an earlier run that died before this
+ * cleanup, or runs before it existed) can be orphaned like that.
+ */
+async function clearBillingNotices(prisma: PrismaClient, organizationId: string): Promise<void> {
+  const requests = await prisma.platformBillingRequest.findMany({ where: { organizationId }, select: { id: true } });
+  const keys = requests.flatMap((request) => [
+    `billing:request:${request.id}:approvers`,
+    `billing:request:${request.id}:organization`,
+  ]);
+  await prisma.notificationItem.deleteMany({ where: { OR: [{ organizationId }, { groupKey: { in: keys } }] } });
+  await clearOrphanedBillingNotices(prisma);
+}
+
+/** Billing notices about a request that no longer exists: only the tests delete requests. */
+async function clearOrphanedBillingNotices(prisma: PrismaClient): Promise<void> {
+  const rows = await prisma.notificationItem.findMany({
+    where: { groupKey: { startsWith: 'billing:request:' } },
+    select: { id: true, groupKey: true },
+  });
+  const requestIdOf = (key: string | null) => key?.split(':')[2] ?? '';
+  const ids = [...new Set(rows.map((row) => requestIdOf(row.groupKey)))];
+  const existing = new Set(
+    (await prisma.platformBillingRequest.findMany({ where: { id: { in: ids } }, select: { id: true } })).map(
+      (request) => request.id,
+    ),
+  );
+  const orphaned = rows.filter((row) => !existing.has(requestIdOf(row.groupKey))).map((row) => row.id);
+  if (orphaned.length > 0) await prisma.notificationItem.deleteMany({ where: { id: { in: orphaned } } });
+}
+
+/**
  * Every billing row of the organization. In this order, each step's rows
  * referring only to rows a later step removes: they refer to each other with
  * `Restrict`, and none cascades from the organization (they hold its id as a
  * bare string).
  */
 async function clearBilling(prisma: PrismaClient, organizationId: string): Promise<void> {
+  await clearBillingNotices(prisma, organizationId);
   await prisma.platformBillingEvent.deleteMany({ where: { organizationId } });
   await prisma.platformBillingPayment.deleteMany({ where: { request: { organizationId } } });
   await prisma.platformBillingCredit.deleteMany({ where: { organizationId } });
@@ -444,14 +582,20 @@ async function main(): Promise<void> {
     throw new Error('e2e:billing runs only against the local profile, in a development build.');
   }
   const command = process.argv[2];
-  if (command !== 'setup' && command !== 'reset' && command !== 'teardown') {
-    throw new Error('Say what to do: e2e:billing setup | reset | teardown');
+  if (!command || !['setup', 'reset', 'period', 'daily', 'teardown'].includes(command)) {
+    throw new Error('Say what to do: e2e:billing setup | reset | period --ends=<days> | daily | teardown');
   }
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: env.DATABASE_URL }) });
   try {
     if (command === 'setup') await setup(prisma);
     if (command === 'reset') await reset(prisma);
+    if (command === 'period') await movePeriod(prisma, process.argv.slice(3));
+    if (command === 'daily') {
+      const organization = await prisma.permOrganization.findUnique({ where: { key: ORGANIZATION_KEY } });
+      if (!organization) throw new Error('No E2E Billing organization. Run e2e:billing setup first.');
+      await runDailyCheck(organization.id);
+    }
     if (command === 'teardown') await teardown(prisma);
   } finally {
     await prisma.$disconnect();

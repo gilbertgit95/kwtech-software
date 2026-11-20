@@ -396,6 +396,12 @@ organization, an expired one included, with no plan gate (#94).
   (D14). It does not mark expired subscriptions `canceled` either: the live
   row is what explains "your plan ended on <date>", what charges a late
   renewal for the access used (D10), and what keeps it a renewal.
+- **One organization alone** (`runForOrganization(organizationId, now)`):
+  its renewal from credit, then its reminders, exactly as a run does them,
+  with no schedule, no retry of other rows and no approvers' digest. For a
+  caller that must not sweep every organization: the billing browser tests
+  (#178, `e2e:billing daily`) run it for their own organization after moving
+  its dates.
 - **Paused:** nobody is reminded and nobody hears about waiting requests;
   access still ends on time. Request notices (approved, rejected, …) are not
   the process: they are sent after each decision commits.

@@ -220,3 +220,63 @@ const WEB_SERVER_DIR = resolve(__dirname, '../../../web-server');
 export function resetBilling(): void {
   execFileSync('node', ['dist/e2e/billing-fixture.js', 'reset'], { cwd: WEB_SERVER_DIR, stdio: 'pipe' });
 }
+
+/** Runs one of the fixture's commands, from the built script (see `resetBilling`). */
+function fixtureCommand(args: readonly string[], env: Record<string, string> = {}): void {
+  execFileSync('node', ['dist/e2e/billing-fixture.js', ...args], {
+    cwd: WEB_SERVER_DIR,
+    stdio: 'pipe',
+    env: { ...process.env, ...env },
+  });
+}
+
+/**
+ * Moves E2E Billing's live period to end `ends` days from today (negative:
+ * in the past), and its access to the end plus grace, or `access` days from
+ * today when given (`e2e:billing period`). The date cases' way of being on
+ * the due day, in grace or expired without waiting.
+ */
+export function movePeriod(ends: number, access?: number): void {
+  fixtureCommand(['period', `--ends=${ends}`, ...(access === undefined ? [] : [`--access=${access}`])]);
+}
+
+/**
+ * The billing daily check for E2E Billing ALONE, now (`e2e:billing daily`):
+ * its renewal from credit, then its reminders. Never the whole run, which
+ * would remind and renew the real organizations too. The fixture boots the
+ * app to reach the check, so the job runner is switched off for it.
+ */
+export function runDailyCheck(): void {
+  fixtureCommand(['daily'], { JOBS_RUNNER: 'off' });
+}
+
+/** The billing time zone the local database uses (the settings' default). */
+const BILLING_ZONE = 'Asia/Manila';
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A day `offset` days from today in the billing zone, then `months` on with
+ * billing's anchoring (the same day of the month, or the month's last day
+ * when it has fewer), as the billing pages print it (`formatDay`: "17 Nov
+ * 2026"). Days, not instants: added on the calendar, so a run near midnight
+ * UTC still names Manila's day.
+ */
+export function billingDay(offset: number, months = 0): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BILLING_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: string) => Number(parts.find((one) => one.type === type)?.value);
+  const day = new Date(Date.UTC(part('year'), part('month') - 1, part('day') + offset));
+  const lastOfTarget = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + months + 1, 0));
+  const target = new Date(
+    Date.UTC(
+      lastOfTarget.getUTCFullYear(),
+      lastOfTarget.getUTCMonth(),
+      Math.min(day.getUTCDate(), lastOfTarget.getUTCDate()),
+    ),
+  );
+  return `${target.getUTCDate()} ${MONTHS[target.getUTCMonth()]} ${target.getUTCFullYear()}`;
+}
