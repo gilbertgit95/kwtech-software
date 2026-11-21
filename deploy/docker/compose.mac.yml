@@ -1,0 +1,17 @@
+# Apple Silicon Macs only (#233), copied by install.sh to the install's
+# compose.override.yml, which `kwtech` and install.sh merge over compose.yml.
+#
+# Colima (Docker on the Mac) forwards a port published on 0.0.0.0 to the
+# Mac's localhost only, so phones could not reach the app. With Colima's
+# `hostAddresses: true` (prepare-mac.sh sets it), a port published on a
+# specific Mac address IS forwarded there. So: localhost for this Mac, and
+# the Mac's network address (KWTECH_HTTPS_HOST) for everyone else.
+# `!override` replaces compose.yml's two 0.0.0.0 ports instead of adding to
+# them: the same port on 0.0.0.0 and on one address would clash.
+services:
+  caddy:
+    ports: !override
+      - '127.0.0.1:${KWTECH_HTTP_PORT:-80}:80'
+      - '127.0.0.1:${KWTECH_HTTPS_PORT:-443}:443'
+      - '${KWTECH_HTTPS_HOST}:${KWTECH_HTTP_PORT:-80}:80'
+      - '${KWTECH_HTTPS_HOST}:${KWTECH_HTTPS_PORT:-443}:443'

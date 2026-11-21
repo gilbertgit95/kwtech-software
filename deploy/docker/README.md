@@ -26,11 +26,12 @@ deploy stay as they are. On Windows, prepare the PC first with
 | `../install.sh`, `../install.ps1` | the installer: settings and secrets, images, start, first setup (#133 P3) |
 | `../kwtech` | the day-to-day command it installs: `status`, `logs`, `recover-account`, `certificate` |
 | `../make-bundle.sh` | assembles the install bundle, for the release and for the Installer test |
+| `compose.mac.yml`, `../mac/prepare-mac.sh`, `../install-mac.sh` | Apple Silicon Macs (#233): Colima, and ports published on the Mac's network address (Colima forwards `0.0.0.0` to the Mac's localhost only) |
 
 ## Running it
 
 **At a shop, use the installer** (`deploy/install.ps1` on Windows,
-`deploy/install.sh` on Linux; the release's `kwtech-install-<version>.zip`),
+`deploy/install.sh` on Linux, `deploy/install-mac.sh` on an Apple Silicon Mac, #233; the release's `kwtech-install-<version>.zip`),
 which does all of this and the secrets, and [INSTALL.md](../INSTALL.md) is
 the step-by-step guide. By hand:
 
