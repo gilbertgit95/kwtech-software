@@ -133,23 +133,127 @@ jobs:
           gh release create "v$version" --target "$GITHUB_SHA" --title "kwtech $version" --notes-file "$RUNNER_TEMP/notes.md"
           echo "released=$version" >> "$GITHUB_OUTPUT"
 
-  # #215 (#133 P2): what a shop downloads, built from the tag and checked
-  # before anything is published. Here, in the same workflow, because a tag
-  # pushed with the workflow's own token starts no other workflow.
-  publish:
-    name: Images, install bundle, print agent
+  # #215 (#133 P2), #233: what a shop downloads, built from the tag and
+  # checked before anything is published. In the same workflow, because a
+  # tag pushed with the workflow's own token starts no other workflow.
+  #
+  # Three jobs: the images, once per architecture on a machine of that
+  # architecture (so each is built natively AND passes the release check on
+  # its own CPU before it is pushed); one multi-platform name over both; then
+  # the zips and the checksums.
+  images:
+    name: Images (${{ matrix.arch }})
     needs: release
     if: always() && (needs.release.outputs.released != '' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          # Apple Silicon Macs and ARM servers (#233). GitHub's own arm64
+          # machines, free for public repositories: no slow emulation.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     permissions:
-      contents: write
+      contents: read
       packages: write
     env:
       VERSION: ${{ needs.release.outputs.released || inputs.version }}
       # ghcr.io/<owner>/<repository>/api and /web: compose.yml's default
       # KWTECH_IMAGES. Under the repository's name: a package named otherwise
       # (kwtech-api) was refused at the first push (#224).
+      IMAGES: ghcr.io/${{ github.repository }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: v${{ env.VERSION }}
+
+      - name: Sign in to the registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # !! A version's tags are never moved (#133): publishing again (#229)
+      # reuses what was already pushed for this architecture.
+      - name: Already published for this architecture?
+        id: published
+        run: |
+          if docker manifest inspect "$IMAGES/api:$VERSION-$ARCH" >/dev/null 2>&1 \
+            && docker manifest inspect "$IMAGES/web:$VERSION-$ARCH" >/dev/null 2>&1; then
+            echo "images=yes" >> "$GITHUB_OUTPUT"
+            echo "The $VERSION $ARCH images are already published: reused."
+          else
+            echo "images=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the images
+        if: steps.published.outputs.images == 'no'
+        run: |
+          docker build -f deploy/docker/api.Dockerfile -t "kwtech/api:$VERSION" -t "$IMAGES/api:$VERSION-$ARCH" .
+          docker build -f deploy/docker/web.Dockerfile -t "kwtech/web:$VERSION" -t "$IMAGES/web:$VERSION-$ARCH" .
+
+      # On an empty database exactly as a shop runs them, on this CPU.
+      - name: Release check
+        if: steps.published.outputs.images == 'no'
+        env:
+          KWTECH_CHECK_TAG: ${{ env.VERSION }}
+        run: deploy/docker/check-release.sh --no-build
+
+      - name: Push this architecture
+        if: steps.published.outputs.images == 'no'
+        run: |
+          docker push "$IMAGES/api:$VERSION-$ARCH"
+          docker push "$IMAGES/web:$VERSION-$ARCH"
+
+  manifest:
+    name: One name for both architectures
+    needs: [release, images]
+    if: always() && needs.images.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.release.outputs.released || inputs.version }}
+      IMAGES: ghcr.io/${{ github.repository }}
+    steps:
+      - name: Sign in to the registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # `<version>` and `stable` point at both architectures; Docker picks the
+      # one matching the machine. A version already published keeps its tag
+      # (#133: never moved), even one published before arm64 existed.
+      - name: Join amd64 and arm64
+        run: |
+          for image in api web; do
+            if docker manifest inspect "$IMAGES/$image:$VERSION" >/dev/null 2>&1; then
+              echo "$image:$VERSION already published: kept as it is."
+              continue
+            fi
+            docker buildx imagetools create \
+              -t "$IMAGES/$image:$VERSION" -t "$IMAGES/$image:stable" \
+              "$IMAGES/$image:$VERSION-amd64" "$IMAGES/$image:$VERSION-arm64"
+            docker buildx imagetools inspect "$IMAGES/$image:$VERSION" | grep -E 'Platform|Name'
+          done
+
+  bundle:
+    name: Install bundle, print agent, checksums
+    needs: [release, manifest]
+    if: always() && needs.manifest.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: read
+    env:
+      VERSION: ${{ needs.release.outputs.released || inputs.version }}
       IMAGES: ghcr.io/${{ github.repository }}
     steps:
       - uses: actions/checkout@v5
@@ -160,55 +264,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-
       - name: Sign in to the registry
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      # ⚠ A version's tag is never moved (#133): publishing again (a failed
-      # zip step, #229) reuses the images already pushed, pulled for their
-      # digests, instead of building new ones under the same tag.
-      - name: Already published?
-        id: published
-        run: |
-          if docker manifest inspect "$IMAGES/api:$VERSION" >/dev/null 2>&1 \
-            && docker manifest inspect "$IMAGES/web:$VERSION" >/dev/null 2>&1; then
-            echo "images=yes" >> "$GITHUB_OUTPUT"
-            docker pull -q "$IMAGES/api:$VERSION"
-            docker pull -q "$IMAGES/web:$VERSION"
-            echo "The $VERSION images are already published: reused, not rebuilt."
-          else
-            echo "images=no" >> "$GITHUB_OUTPUT"
-          fi
-
-      # amd64 only for now: shop PCs are x86, and arm64 under emulation builds
-      # 5 to 10 times slower (PLAN §12).
-      - name: Build the images
-        if: steps.published.outputs.images == 'no'
-        run: |
-          docker build -f deploy/docker/api.Dockerfile -t "kwtech/api:$VERSION" -t "$IMAGES/api:$VERSION" -t "$IMAGES/api:stable" .
-          docker build -f deploy/docker/web.Dockerfile -t "kwtech/web:$VERSION" -t "$IMAGES/web:$VERSION" -t "$IMAGES/web:stable" .
-
-      # Boots them on an empty database exactly as a shop runs them; nothing
-      # is published unless it passes.
-      - name: Release check
-        if: steps.published.outputs.images == 'no'
-        env:
-          KWTECH_CHECK_TAG: ${{ env.VERSION }}
-        run: deploy/docker/check-release.sh --no-build
-
-      - name: Push the images
-        if: steps.published.outputs.images == 'no'
-        run: |
-          # The version tag is never moved again; `stable` follows the newest release.
-          for image in api web; do
-            docker push "$IMAGES/$image:$VERSION"
-            docker push "$IMAGES/$image:stable"
-          done
-
       - run: pnpm install --frozen-lockfile
-
       - name: The print agent zip
         run: |
           # Its workspace dependencies first: the agent's tsc compiles against
@@ -249,7 +309,9 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/out"
           sha256sum *.zip > SHA256SUMS.txt
+          # The multi-platform name's digest: what `docker pull <name>@<digest>` checks.
           for image in api web; do
-            echo "$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGES/$image:$VERSION")" >> SHA256SUMS.txt
+            digest=$(docker buildx imagetools inspect "$IMAGES/$image:$VERSION" | sed -n 's/^Digest: *//p' | head -n 1)
+            echo "$IMAGES/$image@$digest" >> SHA256SUMS.txt
           done
           gh release upload "v$VERSION" ./*.zip SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
