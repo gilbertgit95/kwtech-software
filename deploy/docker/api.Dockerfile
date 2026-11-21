@@ -51,6 +51,8 @@ RUN apt-get update -q \
  && apt-get install -y -q --no-install-recommends postgresql-client-${POSTGRES_MAJOR} \
  && apt-get purge -y -q curl gnupg && apt-get autoremove -y -q \
  && rm -rf /var/lib/apt/lists/*
+# Links the image to its repository on GitHub's registry (its page, its access).
+LABEL org.opencontainers.image.source=https://github.com/gilbertgit95/kwtech-software
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=node:node /repo /app

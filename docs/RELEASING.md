@@ -48,7 +48,30 @@ token opened. It changes only versions and `CHANGELOG.md`.
 
 Read `CHANGELOG.md` in the PR, fix a sentence there if needed, and merge it.
 The Release workflow then tags `v<version>` and creates the GitHub release
-**kwtech <version>** with that section as its notes. Nothing else to do.
+**kwtech <version>** with that section as its notes, and its **publish** job
+(#215) builds what shops download:
+
+- the API and web **images**, checked first by `deploy/docker/check-release.sh`
+  on an empty database (nothing is published if it fails), then pushed to
+  `ghcr.io/gilbertgit95/kwtech-api` and `kwtech-web` as `<version>` (never
+  moved) and `stable`; amd64 only for now (PLAN §12);
+- the **install bundle** `kwtech-install-<version>.zip` (`deploy/docker` with
+  the version filled in, and `deploy/windows`) and the **print agent**
+  `kwtech-print-agent-<version>.zip` (the bundle with the version stamped in,
+  and `pdf-to-printer`), each also under a fixed name for
+  `releases/latest/download/…`;
+- `SHA256SUMS.txt`: every zip's checksum and every image's digest.
+
+No zip may hold a `.env`, `envs/`, `.caddy/`, a key or a test fixture: the job
+fails if one does.
+
+To publish an existing release again (a failed publish): Actions → Release →
+Run workflow, with its version. It never makes a version or a tag.
+
+⚠ **Once, after the first publish:** GitHub creates a user's new container
+package as **private**. Make `kwtech-api` and `kwtech-web` public in each
+package's settings (Package settings → Danger zone → Change visibility), or
+shops cannot pull them without a token.
 
 Not ready to release? Leave the PR open: later merges add to it.
 
@@ -69,6 +92,5 @@ approve pull requests".
 
 ## Not yet
 
-Showing the version in the app (the health endpoint, the Server pages), the
-print agent reporting it, and building the Docker images and the print agent
-zip on each release are #133 (P2 and P5).
+Showing the version in the app (the health endpoint, the Server pages) is
+#133. The print agent reports its version from this release on (#215).
