@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/print-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The print agent: a small program on a shop's computer that pairs with a workspace, reports the printers installed there, and prints what the workspace sends",
   "type": "module",

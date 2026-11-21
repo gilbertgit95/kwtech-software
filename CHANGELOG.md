@@ -2,6 +2,12 @@
 
 kwtech, one version for the API, the web app, the print agent and every module (#204).
 
+## 0.2.0 (2026-11-21)
+
+### New
+
+- A forgotten password can be set again on the server computer with `kwtech recover-account`, for shops without email and for the super admin.
+
 ## 0.1.0 (2026-11-21)
 
 ### New
