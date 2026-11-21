@@ -34,7 +34,7 @@ same number. Pick the ones you changed, so the history says where.
 
 After a merge to `main` with changesets pending, the **Release** workflow
 (`.github/workflows/release.yml`) opens or updates one PR,
-**chore(release): version packages**, from `changeset-release/main`. It holds:
+**chore(release): kwtech <version>**, from `changeset-release/main`. It holds:
 
 - the next version on every package and the root `package.json`;
 - one new section at the top of `CHANGELOG.md`, the sentences grouped under
