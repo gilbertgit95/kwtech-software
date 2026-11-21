@@ -1,5 +1,5 @@
 # The API image (#213, #133 P1). Built from the repository root:
-#   docker build -f deploy/docker/api.Dockerfile -t kwtech-api .
+#   docker build -f deploy/docker/api.Dockerfile -t kwtech/api .
 # Holds no secret: every setting comes from the install's .env at start.
 
 ARG NODE_VERSION=22
