@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-chat",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "User-to-user and group messaging \u2014 a direct chat is a group with two participants",
   "sideEffects": false,

@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-booking",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Bookings per workspace, run as a sub-app on the Apps page: services, the staff, places and equipment that perform them, opening hours, and the day's reservations with no double booking",
   "sideEffects": false,

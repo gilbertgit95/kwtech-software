@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-jobs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "The background runner: queues and runs the processes every module declares, one at a time each and a few at once, records every run, and gives app-level staff a page to see, pause, force and schedule them",
   "sideEffects": false,

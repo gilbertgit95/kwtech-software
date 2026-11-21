@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-app-hub",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A workspace's Apps page: every sub-app in tabs, or several side by side in a resizable grid, with saved layouts",
   "sideEffects": false,

@@ -2,6 +2,16 @@
 
 kwtech, one version for the API, the web app, the print agent and every module (#204).
 
+## 0.3.0 (2026-11-21)
+
+### New
+
+- A new organization's overview shows what is left to set up (workspaces, staff, a role for each person), with a link to each step.
+
+### Fixed
+
+- A shop's install downloads the app from the project's own registry address, so new installs and updates can reach it.
+
 ## 0.2.0 (2026-11-21)
 
 ### New
