@@ -139,7 +139,27 @@ super admin's email (**never** a password).
 wsl -d Ubuntu -u root kwtech status            # is everything running
 wsl -d Ubuntu -u root kwtech logs api          # what the app is doing (Ctrl+C stops)
 wsl -d Ubuntu -u root kwtech recover-account   # a new password for an account
+wsl -d Ubuntu -u root kwtech update            # the newest release, safely (below)
 ```
+
+## Updating
+
+Do it when someone can check the shop afterwards, not just before opening.
+
+1. PowerShell as administrator: `wsl -d Ubuntu -u root kwtech update`.
+2. It shows the version it moves from and to, and that release's notes. Answer **y**.
+3. It **backs up first** (the database, the shop's certificate authority and
+   the settings, in `/opt/kwtech/backups/update-<from>-to-<to>-<time>`), and
+   stops if the backup fails.
+4. It updates and waits until everything is healthy. **If the new version
+   does not come up, it goes back to the old one by itself**, restoring the
+   database if the new one had changed it, and says what failed.
+5. Then update the **print agent on each printing PC** it lists (step 6, with
+   the same release's bundle). Always the server first, then the agents: an
+   agent newer than its server gets no print jobs.
+
+Offline, from a USB stick: unzip the new `kwtech-install-<version>.zip`,
+then `kwtech update --bundle <that folder as WSL sees it, e.g. /mnt/d/kwtech-install-<version>> --from-images /mnt/d/kwtech-images-<version>.tar`.
 
 ## Troubleshooting
 
