@@ -147,8 +147,10 @@ jobs:
       packages: write
     env:
       VERSION: ${{ needs.release.outputs.released || inputs.version }}
-      # ghcr.io/<owner>/kwtech-api and -web: compose.yml's default KWTECH_IMAGES.
-      IMAGES: ghcr.io/${{ github.repository_owner }}/kwtech
+      # ghcr.io/<owner>/<repository>/api and /web: compose.yml's default
+      # KWTECH_IMAGES. Under the repository's name: a package named otherwise
+      # (kwtech-api) was refused at the first push (#224).
+      IMAGES: ghcr.io/${{ github.repository }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -163,8 +165,8 @@ jobs:
       # 5 to 10 times slower (PLAN §12).
       - name: Build the images
         run: |
-          docker build -f deploy/docker/api.Dockerfile -t "kwtech-api:$VERSION" -t "$IMAGES-api:$VERSION" -t "$IMAGES-api:stable" .
-          docker build -f deploy/docker/web.Dockerfile -t "kwtech-web:$VERSION" -t "$IMAGES-web:$VERSION" -t "$IMAGES-web:stable" .
+          docker build -f deploy/docker/api.Dockerfile -t "kwtech/api:$VERSION" -t "$IMAGES/api:$VERSION" -t "$IMAGES/api:stable" .
+          docker build -f deploy/docker/web.Dockerfile -t "kwtech/web:$VERSION" -t "$IMAGES/web:$VERSION" -t "$IMAGES/web:stable" .
 
       # Boots them on an empty database exactly as a shop runs them; nothing
       # is published unless it passes.
@@ -180,8 +182,8 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           # The version tag is never moved again; `stable` follows the newest release.
           for image in api web; do
-            docker push "$IMAGES-$image:$VERSION"
-            docker push "$IMAGES-$image:stable"
+            docker push "$IMAGES/$image:$VERSION"
+            docker push "$IMAGES/$image:stable"
           done
 
       - run: pnpm install --frozen-lockfile
@@ -224,6 +226,6 @@ jobs:
           cd "$RUNNER_TEMP/out"
           sha256sum *.zip > SHA256SUMS.txt
           for image in api web; do
-            echo "$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGES-$image:$VERSION")" >> SHA256SUMS.txt
+            echo "$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGES/$image:$VERSION")" >> SHA256SUMS.txt
           done
           gh release upload "v$VERSION" ./*.zip SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"

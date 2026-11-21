@@ -28,7 +28,9 @@ services:
       retries: 20
 
   api:
-    image: ${KWTECH_IMAGES:-ghcr.io/gilbertgit95/kwtech}-api:${KWTECH_VERSION:?Set KWTECH_VERSION in .env}
+    # ghcr.io/<owner>/<repository>/api: under the repository's name, which is
+    # what the release's token may publish (#224).
+    image: ${KWTECH_IMAGES:-ghcr.io/gilbertgit95/kwtech-software}/api:${KWTECH_VERSION:?Set KWTECH_VERSION in .env}
     restart: unless-stopped
     init: true
     depends_on:
@@ -65,7 +67,7 @@ services:
       - caddy-public:/caddy-public:ro
 
   web:
-    image: ${KWTECH_IMAGES:-ghcr.io/gilbertgit95/kwtech}-web:${KWTECH_VERSION:?Set KWTECH_VERSION in .env}
+    image: ${KWTECH_IMAGES:-ghcr.io/gilbertgit95/kwtech-software}/web:${KWTECH_VERSION:?Set KWTECH_VERSION in .env}
     restart: unless-stopped
     init: true
     depends_on:

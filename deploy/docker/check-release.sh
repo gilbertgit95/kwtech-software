@@ -24,9 +24,9 @@ HOST=127.0.0.1
 BASE="https://$HOST:$HTTPS_PORT"
 
 if [ "${1:-}" != "--no-build" ]; then
-  echo "== building the images (kwtech-api:$TAG, kwtech-web:$TAG)"
-  docker build -f "$HERE/api.Dockerfile" -t "kwtech-api:$TAG" "$ROOT"
-  docker build -f "$HERE/web.Dockerfile" -t "kwtech-web:$TAG" "$ROOT"
+  echo "== building the images (kwtech/api:$TAG, kwtech/web:$TAG)"
+  docker build -f "$HERE/api.Dockerfile" -t "kwtech/api:$TAG" "$ROOT"
+  docker build -f "$HERE/web.Dockerfile" -t "kwtech/web:$TAG" "$ROOT"
 fi
 
 WORK=$(mktemp -d)

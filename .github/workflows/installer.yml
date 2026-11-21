@@ -35,8 +35,8 @@ jobs:
 
       - name: Build the images
         run: |
-          docker build -f deploy/docker/api.Dockerfile -t kwtech-api:ci .
-          docker build -f deploy/docker/web.Dockerfile -t kwtech-web:ci .
+          docker build -f deploy/docker/api.Dockerfile -t kwtech/api:ci .
+          docker build -f deploy/docker/web.Dockerfile -t kwtech/web:ci .
 
       - name: The bundle, as a release ships it
         run: deploy/make-bundle.sh ci "$BUNDLE"
@@ -93,8 +93,8 @@ jobs:
       - name: Update to a newer release
         run: |
           set -x
-          docker tag kwtech-api:ci kwtech-api:ci2
-          docker tag kwtech-web:ci kwtech-web:ci2
+          docker tag kwtech/api:ci kwtech/api:ci2
+          docker tag kwtech/web:ci kwtech/web:ci2
           deploy/make-bundle.sh ci2 "$BUNDLE-ci2"
           KWTECH_UPDATE_NO_PULL=1 "$DIR/kwtech" update --bundle "$BUNDLE-ci2" --yes
           [ "$("$DIR/kwtech" version)" = ci2 ]
@@ -110,8 +110,8 @@ jobs:
       - name: A broken release rolls back
         run: |
           set -x
-          printf 'FROM kwtech-api:ci\nENTRYPOINT ["sh", "-c", "echo broken on purpose; exit 1"]\n' | docker build -t kwtech-api:broken -
-          docker tag kwtech-web:ci kwtech-web:broken
+          printf 'FROM kwtech/api:ci\nENTRYPOINT ["sh", "-c", "echo broken on purpose; exit 1"]\n' | docker build -t kwtech/api:broken -
+          docker tag kwtech/web:ci kwtech/web:broken
           deploy/make-bundle.sh broken "$BUNDLE-broken"
           if KWTECH_HEALTH_TIMEOUT=60 KWTECH_UPDATE_NO_PULL=1 "$DIR/kwtech" update --bundle "$BUNDLE-broken" --yes; then
             echo '::error::An update to a release that cannot start reported success.'

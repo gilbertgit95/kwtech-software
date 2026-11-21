@@ -1,5 +1,5 @@
 # The web app image (#213, #133 P1). Built from the repository root:
-#   docker build -f deploy/docker/web.Dockerfile -t kwtech-web .
+#   docker build -f deploy/docker/web.Dockerfile -t kwtech/web .
 
 ARG NODE_VERSION=22
 
