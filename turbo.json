@@ -169,7 +169,11 @@
       // in src/app/api/auth, never inlined into the client bundle, which is the
       // whole point of not naming them NEXT_PUBLIC_. They still belong in the
       // hash: a build against a different API is a different build.
-      "env": ["NEXT_PUBLIC_*", "API_URL", "SESSION_COOKIE"]
+      // NEXT_OUTPUT=standalone is the Docker image's build (#213,
+      // next.config.ts): a different output, so it is in the hash too, and
+      // without it here turbo would filter it out and the image would get a
+      // normal build with no server.js.
+      "env": ["NEXT_PUBLIC_*", "API_URL", "SESSION_COOKIE", "NEXT_OUTPUT"]
     },
 
     // The backend must generate its Prisma client before anything typechecks

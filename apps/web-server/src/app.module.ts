@@ -1115,7 +1115,7 @@ const DECLARING_MODULES: readonly ServerModuleDescriptor[] = [
    */
   localNetworkServerModule({
     enabled: env.LOCAL_NETWORK === 'on',
-    certificatePath: LOCAL_NETWORK_CERTIFICATE_PATH,
+    certificatePath: env.LOCAL_NETWORK_CERTIFICATE_PATH ?? LOCAL_NETWORK_CERTIFICATE_PATH,
     origin: env.LOCAL_NETWORK_ORIGIN,
     publishedOrigin: env.FRONTEND_URL,
     resolveActorId: (request: unknown) => resolvePrincipal(request)?.userId,

@@ -365,6 +365,17 @@ WSL it cannot use the network address at all (below).
 | The Windows PC itself | `https://<address>` (its own network address) | ⚠ **no**, it times out: Windows does not route its own address back into WSL. Use `localhost` on this PC |
 | A print agent on the Windows PC | `http://localhost:8080/api/v1` | yes |
 
+### With Docker instead of pm2
+
+A shop's computer can run the whole app in Docker Compose instead
+(`deploy/docker/`, #213): Caddy runs as one of its containers, with the same
+Caddyfile pointed at the containers, so steps 3 to 6 above are replaced by
+`docker compose up -d`. Steps 1 and 2 still apply (on Windows,
+`deploy/windows/prepare-windows.ps1` does step 1). The shop's certificate
+authority lives in the `caddy-data` volume; copying a pm2 install's `.caddy/`
+into it keeps every registered device's trust. See
+[deploy/docker/README.md](../deploy/docker/README.md).
+
 ## 5. The shop's network: registering a device
 
 Once on **each** phone, tablet or computer, connected to the **shop's

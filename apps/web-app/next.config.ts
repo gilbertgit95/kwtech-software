@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 
 /**
@@ -35,9 +36,25 @@ function workspacePackages(): string[] {
  */
 const LAN_DEV_ORIGINS = ['10.*.*.*', '192.168.*.*', '172.*.*.*', '*.local'];
 
+/**
+ * Next's `standalone` output, ONLY for the Docker image (#213): the build
+ * there sets `NEXT_OUTPUT=standalone`, and gets a folder with `server.js` and
+ * just the node_modules it needs, so the image carries no source and no
+ * other app. Everywhere else (`next build`, `next start`, pm2) it is unset
+ * and nothing changes.
+ *
+ * ⚠ The trace root is the REPOSITORY, not this app: the workspace packages
+ * live in `packages/`, and traced from here they would be left out, so the
+ * image would boot and fail on the first page that imports one.
+ */
+const standalone = process.env.NEXT_OUTPUT === 'standalone';
+
 const nextConfig: NextConfig = {
   transpilePackages: workspacePackages(),
   allowedDevOrigins: LAN_DEV_ORIGINS,
+  ...(standalone
+    ? { output: 'standalone', outputFileTracingRoot: fileURLToPath(new URL('../../', import.meta.url)) }
+    : {}),
 };
 
 export default nextConfig;

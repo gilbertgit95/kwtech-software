@@ -115,6 +115,15 @@ const envSchema = z
     LOCAL_NETWORK: z.enum(['on', 'off']).default('off'),
 
     /**
+     * Where the local authority's PUBLIC `root.crt` is, when not at the
+     * repository's `.caddy/pki/authorities/local/root.crt` (the pm2 setup's
+     * default, `config/local-network.ts`). The Docker install (#213) mounts a
+     * volume holding that one file, copied out by the Caddy container, so the
+     * API never sees the folder with the authority's private keys.
+     */
+    LOCAL_NETWORK_CERTIFICATE_PATH: optionalText,
+
+    /**
      * Signs the access token. Nothing else in the system uses it: a shared secret
      * means a leak of either compromises both, and rotating one silently
      * invalidates the other.
@@ -385,10 +394,18 @@ const envSchema = z
     path: ['APP_ENV'],
     message: "APP_ENV is required in a production build: 'staging' or 'production' (or 'local' to run one here).",
   })
-  .refine((env) => env.NODE_ENV !== 'production' || Boolean(env.SMTP_URL), {
+  /*
+   * ⚠ Except a shop's own install (LOCAL_NETWORK=on, #213): a shop may have
+   * no mail account, and the app must still run on its network. Nothing is
+   * logged instead: every sender refuses in production when there is no
+   * mailer (auth/reset-mail.ts and the others), so a reset link never lands
+   * in a log. A forgotten password is set again with the recovery command on
+   * the server PC (#133 P3, open decision 2).
+   */
+  .refine((env) => env.NODE_ENV !== 'production' || Boolean(env.SMTP_URL) || env.LOCAL_NETWORK === 'on', {
     path: ['SMTP_URL'],
     message:
-      'SMTP_URL is required in production — without it a password reset and an organization invitation ' +
+      'SMTP_URL is required in production (except a shop install, LOCAL_NETWORK=on) — without it a password reset and an organization invitation ' +
       'cannot be delivered, and the development fallback (logging the link) would write a working ' +
       'credential into the logs.',
   })
