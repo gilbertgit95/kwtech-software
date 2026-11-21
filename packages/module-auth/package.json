@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-auth",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "The authentication feature, whole: identity tables, credential and token logic, REST surface, Nest wiring, Next route handlers and React pages",
   "sideEffects": false,
