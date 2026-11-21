@@ -23,7 +23,7 @@ it again is always safe.
 | Step | Checks | Changes when missing |
 |---|---|---|
 | The PC | Windows 11 22H2+ (build 22621), 64-bit, Administrator, virtualization on, ports 80 and 443 free | nothing: it stops and says how to fix it |
-| WSL | installed | `wsl --install --no-distribution`, then a **restart**: it registers a task that continues after you sign in again, as the same user |
+| WSL | installed | `wsl --install --no-distribution`, then a **restart**: it registers a task that continues after you sign in again, as the same user (with `-ThenRun`, the installer's own `install.ps1` continues instead), and exits 3010 |
 | | | `wsl --update` |
 | Ubuntu | listed by `wsl -l` | `wsl --install -d Ubuntu --no-launch` |
 | systemd | `systemd=true` in the distro's `/etc/wsl.conf` | added under `[boot]` |

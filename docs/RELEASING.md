@@ -55,8 +55,10 @@ The Release workflow then tags `v<version>` and creates the GitHub release
   on an empty database (nothing is published if it fails), then pushed to
   `ghcr.io/gilbertgit95/kwtech-api` and `kwtech-web` as `<version>` (never
   moved) and `stable`; amd64 only for now (PLAN §12);
-- the **install bundle** `kwtech-install-<version>.zip` (`deploy/docker` with
-  the version filled in, and `deploy/windows`) and the **print agent**
+- the **install bundle** `kwtech-install-<version>.zip`, assembled by
+  `deploy/make-bundle.sh`: the installers (`install.ps1`, `install.sh`), the
+  `kwtech` command, `INSTALL.md`, `docker/` with the version filled in, and
+  `windows/` and the **print agent**
   `kwtech-print-agent-<version>.zip` (the bundle with the version stamped in,
   and `pdf-to-printer`), each also under a fixed name for
   `releases/latest/download/…`;

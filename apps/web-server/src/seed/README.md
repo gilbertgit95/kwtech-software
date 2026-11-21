@@ -58,6 +58,18 @@ before anything is written; a failure part-way removes what it made.
 - The rules are in `src/setup/first-setup-plan.ts` (tested in
   `test/first-setup-plan.test.ts`).
 
+## A new password on the server (`recover-account`)
+
+```bash
+pnpm --filter @kwtech/web-server recover-account     # or, in Docker: kwtech recover-account
+```
+
+Sets a new password for any account, typed hidden twice and checked against
+the policy, clears a lockout, ends every session, and can remove two-step
+sign-in for a lost phone (#133 P3). For a shop without email (a super admin
+can only SEND a reset), and for a super admin who forgot their own. It logs
+that an account was recovered, never the password.
+
 ## Dev data snapshot
 
 `pnpm db:snapshot` / `pnpm db:restore` ([`snapshot.ts`](./snapshot.ts)) copy a

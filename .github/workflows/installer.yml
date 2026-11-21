@@ -1,0 +1,97 @@
+# The installer, end to end (#133 P3): builds the images, makes the bundle as
+# a release does (deploy/make-bundle.sh), and runs install.sh on this runner
+# exactly as a shop's PC would (minus Windows), with first setup's answers
+# piped in. Then runs it AGAIN, which must change nothing, and recovers an
+# account. Only when the install's pieces change: it takes ~15 minutes.
+name: Installer
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - 'apps/web-server/src/setup/**'
+      - 'apps/web-server/src/config/env.ts'
+      - '.github/workflows/installer.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: installer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install, install again, recover an account
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DIR: ${{ github.workspace }}/../kwtech-install-test
+      BUNDLE: ${{ github.workspace }}/../kwtech-bundle
+      PASSWORD: installer test passphrase 1
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the images
+        run: |
+          docker build -f deploy/docker/api.Dockerfile -t kwtech-api:ci .
+          docker build -f deploy/docker/web.Dockerfile -t kwtech-web:ci .
+
+      - name: The bundle, as a release ships it
+        run: deploy/make-bundle.sh ci "$BUNDLE"
+
+      - name: Install, with first setup's answers piped
+        run: |
+          printf '%s\n' 'Test Shop' '' 'Counter' '' \
+            'Test Admin' 'admin@install.test' '' "$PASSWORD" "$PASSWORD" \
+            'Test Owner' 'owner@install.test' '' "$PASSWORD" "$PASSWORD" '' \
+            'n' 'n' 'y' \
+          | "$BUNDLE/install.sh" --dir "$DIR" --images kwtech --address 127.0.0.1 \
+              --http-port 18080 --https-port 18443 --no-pull | tee "$RUNNER_TEMP/first.log"
+          grep -q 'Test Shop is set up' "$RUNNER_TEMP/first.log"
+
+      - name: What it made
+        run: |
+          set -x
+          # The settings: owner-only, every secret filled, the two-step key exactly 32 bytes.
+          [ "$(stat -c %a "$DIR/.env")" = 600 ]
+          for key in POSTGRES_PASSWORD AUTH_JWT_SECRET AUTH_MFA_SECRET_KEY; do
+            value=$(sed -n "s/^$key=\"\(.*\)\"$/\1/p" "$DIR/.env")
+            [ -n "$value" ]
+          done
+          [ "$(sed -n 's/^AUTH_MFA_SECRET_KEY="\(.*\)"$/\1/p' "$DIR/.env" | base64 -d | wc -c)" = 32 ]
+          # Through Caddy, as a phone would.
+          [ "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/api/v1/health)" = 200 ]
+          [ "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/auth/signin)" = 200 ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/kwtech-local-ca.crt)" = 200 ]
+          "$DIR/kwtech" certificate | grep -q 'BEGIN CERTIFICATE'
+          [ "$("$DIR/kwtech" address)" = 127.0.0.1 ]
+          grep -q 'address   127.0.0.1' "$DIR/RECORD.txt"
+          # A real sign-in as the owner, through the web app.
+          curl -sk -X POST https://127.0.0.1:18443/api/auth/signin -H 'content-type: application/json' \
+            -H 'origin: https://127.0.0.1:18443' \
+            --data "{\"identifier\":\"owner@install.test\",\"password\":\"$PASSWORD\"}" | grep -q '"ok":true'
+
+      - name: Install again, which must change nothing
+        run: |
+          before=$(sha256sum "$DIR/.env")
+          "$BUNDLE/install.sh" --dir "$DIR" --images kwtech --no-pull < /dev/null | tee "$RUNNER_TEMP/again.log"
+          [ "$(sha256sum "$DIR/.env")" = "$before" ]
+          grep -q 'secrets: 0 generated, 3 kept' "$RUNNER_TEMP/again.log"
+          grep -q 'already set up' "$RUNNER_TEMP/again.log"
+
+      - name: Recover an account, and sign in with the new password
+        run: |
+          printf '%s\n' 'owner' 'a brand new passphrase 9' 'a brand new passphrase 9' 'n' 'y' | "$DIR/kwtech" recover-account
+          curl -sk -X POST https://127.0.0.1:18443/api/auth/signin -H 'content-type: application/json' \
+            -H 'origin: https://127.0.0.1:18443' \
+            --data '{"identifier":"owner@install.test","password":"a brand new passphrase 9"}' | grep -q '"ok":true'
+
+      - name: Logs, if anything failed
+        if: failure()
+        run: docker compose --project-directory "$DIR" -f "$DIR/compose.yml" --env-file "$DIR/.env" logs --tail=60 || true
+
+      - name: Remove everything it made
+        if: always()
+        run: docker compose --project-directory "$DIR" -f "$DIR/compose.yml" --env-file "$DIR/.env" down -v || true
