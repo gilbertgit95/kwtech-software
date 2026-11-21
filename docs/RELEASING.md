@@ -70,10 +70,15 @@ fails if one does.
 To publish an existing release again (a failed publish): Actions → Release →
 Run workflow, with its version. It never makes a version or a tag.
 
-⚠ **Once, after the first publish:** GitHub creates a user's new container
-package as **private**. Make `kwtech-software/api` and `kwtech-software/web` public in each
-package's settings (Package settings → Danger zone → Change visibility), or
-shops cannot pull them without a token.
+**Who can pull them:** the packages are named under this public repository
+and linked to it, and the first publish (0.3.0) came out **public**: checked
+with an anonymous `docker manifest inspect`. If a package ever shows as
+private (Package settings), make it public there, or shops cannot pull it
+without a token.
+
+**Publishing again** (a failed zip step, Actions → Release → Run workflow)
+never moves a version's image tag: if that version's images are already in
+the registry, they are pulled for their digests, not rebuilt (#229).
 
 Not ready to release? Leave the PR open: later merges add to it.
 

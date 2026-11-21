@@ -637,6 +637,17 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-21** — **#133 done: a shop's computer is set up by one installer, updated by one command, and fed by releases that build, check and publish themselves (#215, #217, #220, #222, #224, #226, #229).**
+  The operator asked to proceed through #133 by recommendation and merge on green CI. The recommendations taken:
+  - **Releases publish themselves, in the Release workflow itself** (#215): a tag pushed with the workflow's own token starts no other workflow. Images for amd64 only (§12.150); named under the repository, `ghcr.io/gilbertgit95/kwtech-software/api` and `/web`, after `kwtech-api` was refused at the first push (#224). Nothing is published unless `check-release.sh` passes on an empty database: that check caught a broken two-step key before 0.1.0 was published. A re-publish never moves a version's tag (#229).
+  - **One installer logic, `install.sh`, wrapped on Windows by `install.ps1`** (#217): the Windows script prepares the PC and trusts the certificate, the rest is the same on Linux and inside WSL. Tested end to end on every PR that touches it (the Installer workflow): install, install again changing nothing, recover an account, update, and a broken release rolling back. macOS later (§12.151).
+  - **Secrets are made in the form each needs and never regenerated:** the two-step key exactly 32 bytes of base64, the database password hex (it sits in a URL).
+  - **`recover-account` for any account on the server PC**, because a super admin can only send a reset email and a shop may have none.
+  - **`kwtech update` runs the new release's own installer** (bundle checked against `SHA256SUMS.txt`) after a backup, and rolls back when not healthy, restoring the database if a migration ran (#220).
+  - **The print agent installer goes through `https://localhost` even on the server PC** (Docker publishes only 80 and 443) and continues only after the person compares the certificate's fingerprint, printed as the Local network page shows it (#222).
+  - **First-run help is a checklist over the existing pages, not a wizard** (#226): it writes nothing a page could not.
+  - **Not done:** a shop install has not yet been run on a fresh Windows PC (WSL install, restart, boot task); the agent reports its version only at pairing (§12.152); the API image is about 2.3 GB (§12.149); automatic nightly updates and the agent as a Windows service stay later.
+
 - **2026-11-21** — **A shop's own computer runs kwtech in Docker Compose; on it, billing is bookkeeping and email is optional (#213, #133 P1).**
   The operator asked to proceed on #133 by recommendation where it had options; these are those recommendations.
   - **Billing on a shop's own copy is bookkeeping** (#133 open decision 1). The shop owns the database, so a plan holds only as far as the shop is trusted: local installs are for trusted shops. Not done: a check-in to a server of ours; it is the way back if shops we do not know start hosting.
