@@ -30,6 +30,8 @@ RUN cp apps/web-server/.env.example apps/web-server/.env.local \
  && rm apps/web-server/.env.local apps/web-app/.env.local
 
 FROM node:${NODE_VERSION}-bookworm-slim
+# Links the image to its repository on GitHub's registry (its page, its access).
+LABEL org.opencontainers.image.source=https://github.com/gilbertgit95/kwtech-software
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=8081
 WORKDIR /app
 # The standalone server and the node_modules it traced (from the repository

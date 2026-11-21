@@ -11,7 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "node scripts/dev.mjs",
     "start": "node dist/cli.js start",
-    "bundle": "pnpm build && esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --external:pdf-to-printer --outfile=dist/bundle/print-agent.mjs --log-level=warning",
+    "bundle": "pnpm build && node scripts/bundle.mjs",
     "agent": "node dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",

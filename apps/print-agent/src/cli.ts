@@ -25,8 +25,20 @@ import { clearState, readState, stateMatchesServer, statePath, writeState } from
  * exists and where its file is; that is all anybody at the keyboard needs.
  */
 
-/** Sent to the server at pairing, for the web app to show. Not a secret. */
-const AGENT_VERSION = '0.0.0';
+/**
+ * Stamped into the bundle at build (`scripts/bundle.mjs`, esbuild's
+ * `define`) from this package's version, which changesets keeps equal to the
+ * product's (#204). Run unbundled (development, `tsc` output) it is not
+ * defined, and the agent says `0.0.0`.
+ */
+declare const __KWTECH_AGENT_VERSION__: string | undefined;
+
+/**
+ * Sent to the server at pairing, for the web app to show. Not a secret. The
+ * release's version, so the server can tell an out-of-date computer (PLAN
+ * §12.143); it was always `0.0.0` before (#215).
+ */
+const AGENT_VERSION = typeof __KWTECH_AGENT_VERSION__ === 'string' ? __KWTECH_AGENT_VERSION__ : '0.0.0';
 
 const USAGE = `Usage:
   print-agent pair <code>   pair this computer, with the code from the web app

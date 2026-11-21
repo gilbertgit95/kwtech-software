@@ -25,6 +25,13 @@ name: Release
 on:
   push:
     branches: [main]
+  # Publish an existing release again (its images, bundle and print agent),
+  # e.g. after a failed publish. Never makes a version or a tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The released version to publish again, e.g. 0.1.0 (tag v0.1.0 must exist)'
+        required: true
 
 # One at a time and never cancelled: two runs at once could both see "not
 # tagged yet" and tag the same version, and a cancelled run can stop between
@@ -40,8 +47,12 @@ permissions:
 jobs:
   release:
     name: Version PR or release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      # The version tagged by THIS run, or empty: what the publish job builds.
+      released: ${{ steps.tag.outputs.released }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -101,6 +112,7 @@ jobs:
           fi
 
       - name: Tag and release the version
+        id: tag
         if: steps.pending.outputs.count == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -119,3 +131,103 @@ jobs:
           fi
           node scripts/release-version.mjs notes --print "$version" > "$RUNNER_TEMP/notes.md"
           gh release create "v$version" --target "$GITHUB_SHA" --title "kwtech $version" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "released=$version" >> "$GITHUB_OUTPUT"
+
+  # #215 (#133 P2): what a shop downloads, built from the tag and checked
+  # before anything is published. Here, in the same workflow, because a tag
+  # pushed with the workflow's own token starts no other workflow.
+  publish:
+    name: Images, install bundle, print agent
+    needs: release
+    if: always() && (needs.release.outputs.released != '' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.release.outputs.released || inputs.version }}
+      # ghcr.io/<owner>/kwtech-api and -web: compose.yml's default KWTECH_IMAGES.
+      IMAGES: ghcr.io/${{ github.repository_owner }}/kwtech
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: v${{ env.VERSION }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # amd64 only for now: shop PCs are x86, and arm64 under emulation builds
+      # 5 to 10 times slower (PLAN §12).
+      - name: Build the images
+        run: |
+          docker build -f deploy/docker/api.Dockerfile -t "kwtech-api:$VERSION" -t "$IMAGES-api:$VERSION" -t "$IMAGES-api:stable" .
+          docker build -f deploy/docker/web.Dockerfile -t "kwtech-web:$VERSION" -t "$IMAGES-web:$VERSION" -t "$IMAGES-web:stable" .
+
+      # Boots them on an empty database exactly as a shop runs them; nothing
+      # is published unless it passes.
+      - name: Release check
+        env:
+          KWTECH_CHECK_TAG: ${{ env.VERSION }}
+        run: deploy/docker/check-release.sh --no-build
+
+      - name: Push the images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          # The version tag is never moved again; `stable` follows the newest release.
+          for image in api web; do
+            docker push "$IMAGES-$image:$VERSION"
+            docker push "$IMAGES-$image:stable"
+          done
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: The print agent zip
+        run: |
+          # The release's version is stamped into the bundle (scripts/bundle.mjs).
+          pnpm --filter @kwtech/print-agent bundle
+          stage="$RUNNER_TEMP/print-agent"
+          mkdir -p "$stage"
+          cp apps/print-agent/dist/bundle/print-agent.mjs "$stage/"
+          # The one library the bundle does not carry: it brings SumatraPDF, a
+          # Windows program (apps/print-agent/README.md, step 2).
+          (cd "$stage" && npm init -y >/dev/null && npm install --omit=dev --no-audit --no-fund pdf-to-printer@5.8.1 >/dev/null)
+          mkdir -p "$RUNNER_TEMP/out"
+          (cd "$stage" && zip -qr "$RUNNER_TEMP/out/kwtech-print-agent-$VERSION.zip" .)
+          # A fixed name too, for releases/latest/download/kwtech-print-agent.zip.
+          cp "$RUNNER_TEMP/out/kwtech-print-agent-$VERSION.zip" "$RUNNER_TEMP/out/kwtech-print-agent.zip"
+
+      - name: The install bundle
+        run: |
+          bundle="$RUNNER_TEMP/kwtech-install-$VERSION"
+          mkdir -p "$bundle/docker" "$bundle/windows"
+          cp deploy/docker/compose.yml deploy/docker/Caddyfile.docker deploy/docker/README.md "$bundle/docker/"
+          # The version filled in: the bundle runs exactly the images it shipped with.
+          sed "s/^KWTECH_VERSION=\"\"$/KWTECH_VERSION=\"$VERSION\"/" deploy/docker/.env.example > "$bundle/docker/.env.example"
+          cp -r deploy/windows/. "$bundle/windows/"
+          (cd "$RUNNER_TEMP" && zip -qr "$RUNNER_TEMP/out/kwtech-install-$VERSION.zip" "kwtech-install-$VERSION")
+          cp "$RUNNER_TEMP/out/kwtech-install-$VERSION.zip" "$RUNNER_TEMP/out/kwtech-install.zip"
+
+      - name: No secret in the zips
+        run: |
+          for zip in "$RUNNER_TEMP"/out/*.zip; do
+            if unzip -Z1 "$zip" | grep -Ei '(^|/)\.env$|(^|/)\.env\.local$|(^|/)envs/|(^|/)\.caddy/|\.key$|\.fixture\.json$'; then
+              echo "::error::$(basename "$zip") holds a file that must never ship (listed above)."
+              exit 1
+            fi
+          done
+
+      - name: Checksums, and upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$RUNNER_TEMP/out"
+          sha256sum *.zip > SHA256SUMS.txt
+          for image in api web; do
+            echo "$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGES-$image:$VERSION")" >> SHA256SUMS.txt
+          done
+          gh release upload "v$VERSION" ./*.zip SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
