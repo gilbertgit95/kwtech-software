@@ -43,11 +43,39 @@ router** (#133, "A fixed address on the shop's network").
 The rule names are the ones `docs/HTTPS.md` uses, so a PC set up by hand
 reads as done.
 
+## The print agent: `install-print-agent.ps1`
+
+Sets up a Windows 10 or 11 printing PC (#133 P5), the README's manual
+"Setting up a computer" in one script: Node.js 22 (winget, if missing); the
+release's print agent zip, checked against its `SHA256SUMS.txt`, unpacked to
+`C:\kwtech-print-agent`; the server's address, and the shop's certificate,
+whose **SHA-256 fingerprint you compare** with the Local network page before
+anything else happens; the printers it sees; pairing with the Printers page's
+code; and a task that starts it at sign-in of this Windows user (the pairing
+is kept per user). `install.ps1` runs it with `-ThisPc` on the server PC.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-print-agent.ps1                 # asks the address and the code
+powershell -ExecutionPolicy Bypass -File .\install-print-agent.ps1 -WhatIf         # what it would do
+```
+
+- **Even on the server PC it goes through `https://localhost`**: the Docker
+  install publishes only Caddy's 80 and 443, never the API's 8080.
+- Node trusts the shop's authority only through `NODE_EXTRA_CA_CERTS`, read
+  when Node starts, so the agent starts through the `start-agent.ps1` it writes.
+- **Running it again updates the agent** (the release's files replace the
+  old ones) and keeps `.env.local`, the certificate and the pairing.
+- Not yet: running as a Windows service, so it prints with nobody signed in
+  (#133, later).
+
 ## Tested
 
 - `-WhatIf` on a PC already set up by hand (Windows 11 Pro build 26300,
   WSL 3.0.5): every check `[ok]`, nothing changed.
 - `test\wslconfig.tests.ps1`: the `.wslconfig` edit on sample files.
+- `install-print-agent.ps1 -WhatIf -Server <address>` on that PC, and its
+  fingerprint against Node's `fingerprint256` (the Local network page's) on
+  the shop's real certificate: identical.
 
 **Not yet run on a fresh PC:** the WSL install and restart, the Ubuntu and
 Docker installs, and the start-at-boot task after a real restart. Run it on
