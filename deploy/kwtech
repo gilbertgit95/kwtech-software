@@ -15,10 +15,22 @@
 # On Windows, inside PowerShell: wsl -d Ubuntu -u root kwtech <command>
 set -euo pipefail
 
-SELF=$(readlink -f "$0")
-DIR=$(dirname "$SELF")
+# The real file behind a symlink (/usr/local/bin/kwtech), without
+# `readlink -f`, which older macOS lacks.
+SELF=$0
+while [ -L "$SELF" ]; do
+  link=$(readlink "$SELF")
+  case "$link" in /*) SELF=$link ;; *) SELF=$(dirname "$SELF")/$link ;; esac
+done
+DIR=$(cd "$(dirname "$SELF")" && pwd)
 [ -f "$DIR/compose.yml" ] && [ -f "$DIR/.env" ] || { echo "No kwtech install in $DIR (no compose.yml or .env)." >&2; exit 1; }
-compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yml" --env-file "$DIR/.env" "$@"; }
+compose() {
+  local files=(-f "$DIR/compose.yml")
+  [ -f "$DIR/compose.override.yml" ] && files+=(-f "$DIR/compose.override.yml")
+  docker compose --project-directory "$DIR" "${files[@]}" --env-file "$DIR/.env" "$@"
+}
+# sha256sum on Linux, shasum on macOS: the same check.
+sha256_check() { if command -v sha256sum >/dev/null; then sha256sum -c --quiet -; else shasum -a 256 -c --quiet -; fi; }
 
 # The repository releases come from (its public Releases page).
 REPO=${KWTECH_REPO:-gilbertgit95/kwtech-software}
@@ -61,9 +73,10 @@ update() {
     curl -fsSL -o "$work/bundle.zip" "https://github.com/$REPO/releases/download/v$target/kwtech-install-$target.zip"
     curl -fsSL -o "$work/SHA256SUMS.txt" "https://github.com/$REPO/releases/download/v$target/SHA256SUMS.txt"
     # The release's own checksum, or nothing is run from it.
-    (cd "$work" && grep " kwtech-install-$target.zip\$" SHA256SUMS.txt | sed "s/kwtech-install-$target.zip/bundle.zip/" | sha256sum -c --quiet -) \
+    (cd "$work" && grep " kwtech-install-$target.zip\$" SHA256SUMS.txt | sed "s/kwtech-install-$target.zip/bundle.zip/" | sha256_check) \
       || { echo "The bundle does not match the release's checksum: not using it." >&2; return 1; }
-    python3 -m zipfile -e "$work/bundle.zip" "$work/" || { echo 'Could not unpack the bundle (python3 is needed).' >&2; return 1; }
+    if command -v unzip >/dev/null; then unzip -q "$work/bundle.zip" -d "$work/"
+    else python3 -m zipfile -e "$work/bundle.zip" "$work/"; fi || { echo 'Could not unpack the bundle (unzip or python3 is needed).' >&2; return 1; }
     bundle="$work/kwtech-install-$target"
   fi
   [ -n "$target" ] || { echo 'No version to update to.' >&2; return 1; }

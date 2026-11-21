@@ -7,7 +7,7 @@
 #   sudo ./install.sh --from-images FILE.tar  offline: the images from a USB stick
 #
 # Options (mostly for scripts and tests):
-#   --dir DIR             where the install lives (default /opt/kwtech)
+#   --dir DIR             where the install lives (default /opt/kwtech; on a Mac ~/kwtech)
 #   --address IP          this computer's address on the shop's network (default: detected, asked)
 #   --version V           the release to run (default: the one this bundle came with)
 #   --images PREFIX       where images come from (default: the project's public registry)
@@ -20,7 +20,11 @@
 set -euo pipefail
 
 BUNDLE=$(cd "$(dirname "$0")" && pwd)
-DIR=/opt/kwtech
+# macOS (Apple Silicon, #233) differs in a few commands, marked where used.
+OS=$(uname -s)
+# On a Mac the folder must be under the home folder: Colima shares only
+# $HOME with its VM, and compose.yml mounts Caddyfile.docker from here.
+if [ "$OS" = Darwin ]; then DIR=$HOME/kwtech; else DIR=/opt/kwtech; fi
 ADDRESS=''
 VERSION=''
 IMAGES=''
@@ -53,7 +57,13 @@ stop() { printf '  [xx] %s\n' "$1" >&2; exit 1; }
 interactive() { [ -t 0 ]; }
 
 ENV_FILE="$DIR/.env"
-compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yml" --env-file "$ENV_FILE" "$@"; }
+# compose.override.yml, when the install has one (a Mac's, #233), is merged
+# over compose.yml.
+compose() {
+  local files=(-f "$DIR/compose.yml")
+  [ -f "$DIR/compose.override.yml" ] && files+=(-f "$DIR/compose.override.yml")
+  docker compose --project-directory "$DIR" "${files[@]}" --env-file "$ENV_FILE" "$@"
+}
 # !! Every Docker command but first setup reads from /dev/null: piped, the
 # answers waiting on standard input are first setup's, and `compose exec`
 # would otherwise swallow them.
@@ -98,12 +108,18 @@ mkdir -p "$DIR"
 # The bundle's files replace the install's: that is how an update brings new
 # compose settings. .env is never one of them.
 cp "$BUNDLE/docker/compose.yml" "$BUNDLE/docker/Caddyfile.docker" "$DIR/"
+# On a Mac, Colima forwards published ports only to the Mac's localhost
+# unless they name an address; the override publishes 80 and 443 on
+# 127.0.0.1 and on the Mac's network address, for phones (#233).
+if [ "$OS" = Darwin ] && [ -f "$BUNDLE/docker/compose.mac.yml" ]; then cp "$BUNDLE/docker/compose.mac.yml" "$DIR/compose.override.yml"; fi
 [ -f "$BUNDLE/docker/README.md" ] && cp "$BUNDLE/docker/README.md" "$DIR/"
 if [ -f "$BUNDLE/kwtech" ]; then
   cp "$BUNDLE/kwtech" "$DIR/kwtech"
   chmod 755 "$DIR/kwtech"
   # The day-to-day command (status, logs, recover-account, ...), on the PATH when we may.
-  if [ -w /usr/local/bin ]; then ln -sf "$DIR/kwtech" /usr/local/bin/kwtech; fi
+  for bin in /usr/local/bin /opt/homebrew/bin; do
+    if [ -d "$bin" ] && [ -w "$bin" ]; then ln -sf "$DIR/kwtech" "$bin/kwtech"; break; fi
+  done
 fi
 ok 'compose.yml and Caddyfile.docker in place'
 
@@ -126,7 +142,16 @@ chmod 600 "$ENV_FILE"
 ok "version $(env_get KWTECH_VERSION)"
 
 # The address phones will use: the first one that is not Docker's own bridge.
-detect_address() { hostname -I 2>/dev/null | tr ' ' '\n' | grep -Ev '^(172\.1[7-9]\.|127\.|$)' | grep -E '^[0-9.]+$' | head -n 1; }
+detect_address() {
+  if [ "$OS" = Darwin ]; then
+    # The interface of the default route (Wi-Fi or Ethernet), then its address.
+    local iface
+    iface=$(route -n get default 2>/dev/null | awk '/interface:/ { print $2 }')
+    [ -n "$iface" ] && ipconfig getifaddr "$iface" 2>/dev/null
+    return 0
+  fi
+  hostname -I 2>/dev/null | tr ' ' '\n' | grep -Ev '^(172\.1[7-9]\.|127\.|$)' | grep -E '^[0-9.]+$' | head -n 1
+}
 if [ -n "$ADDRESS" ]; then
   env_set KWTECH_HTTPS_HOST "$ADDRESS"
 elif [ -z "$(env_get KWTECH_HTTPS_HOST)" ]; then
@@ -223,9 +248,14 @@ else
 fi
 
 # --- 7. Hand-off -------------------------------------------------------------------
-iface=$(ip -o -4 addr show 2>/dev/null | awk -v a="$ADDRESS" '{ split($4, p, "/"); if (p[1] == a) { print $2; exit } }')
 mac=''
-[ -n "$iface" ] && [ -r "/sys/class/net/$iface/address" ] && mac=$(cat "/sys/class/net/$iface/address")
+if [ "$OS" = Darwin ]; then
+  iface=$(route -n get default 2>/dev/null | awk '/interface:/ { print $2 }' || true)
+  [ -n "$iface" ] && mac=$(ifconfig "$iface" 2>/dev/null | awk '/ether/ { print $2; exit }' || true)
+else
+  iface=$(ip -o -4 addr show 2>/dev/null | awk -v a="$ADDRESS" '{ split($4, p, "/"); if (p[1] == a) { print $2; exit } }' || true)
+  [ -n "$iface" ] && [ -r "/sys/class/net/$iface/address" ] && mac=$(cat "/sys/class/net/$iface/address")
+fi
 url="https://$ADDRESS${https_port:+:$https_port}"
 {
   echo "kwtech install record ($(date '+%Y-%m-%d'))"

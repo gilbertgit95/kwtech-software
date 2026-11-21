@@ -133,6 +133,47 @@ The installer writes `/opt/kwtech/RECORD.txt` inside WSL (version, address,
 MAC, computer name, date). Add: the router's model, which PCs print, and the
 super admin's email (**never** a password).
 
+## On a Mac (Apple Silicon, M-series)
+
+⚠ **Not yet run on a real Mac** (#233): try it on one before a shop relies on it.
+
+**The Mac:** an M-series MacBook or Mac mini, **macOS 13 (Ventura) or newer**,
+at least 16 GB of memory, signed in as an administrator, on the shop's own
+network (not a guest network). Intel Macs are not supported. Printing still
+needs a Windows PC with the print agent (step 6).
+
+1. **Homebrew** (brew.sh), if the Mac does not have it: paste its install
+   command into Terminal, then open a new Terminal.
+2. Unzip `kwtech-install-<version>.zip` into your home folder, then:
+   ```bash
+   cd ~/kwtech-install-<version>
+   bash install-mac.sh --dry-run    # what it would change
+   bash install-mac.sh              # do it
+   ```
+   It installs **Colima** (free Docker for the Mac), starts it at sign-in,
+   stops the Mac sleeping on power (asks your password), installs the app in
+   `~/kwtech`, asks the same questions as on Windows (step 3), and makes the Mac
+   trust the shop's certificate (asks your password again).
+3. **At the end it checks whether phones can reach it.** `[ok] https://<address>
+   answers` means yes. `[xx]` lists what to check: usually macOS's Firewall
+   (System Settings, Network, Firewall) blocking incoming connections for
+   `limactl`.
+4. **(by hand)** System Settings, Users & Groups: **automatic sign-in** for
+   this user. Colima runs as the signed-in user, so after a power cut the app
+   comes back only once someone (or automatic sign-in) signs in. With
+   FileVault on, macOS does not allow automatic sign-in: a person signs in
+   after each restart.
+5. **(by hand)** Reserve the Mac's address on the router (step 4; the MAC
+   address is in `~/kwtech/RECORD.txt`), and register devices (step 7).
+
+Day to day in Terminal: `kwtech status`, `kwtech logs api`, `kwtech update`,
+`kwtech recover-account` (in `/opt/homebrew/bin`, or `~/kwtech/kwtech`).
+
+**Trying it the first time:** after step 2, check these and note what you see:
+`kwtech status` (all healthy); `https://localhost` opens with a padlock;
+a phone on the same Wi-Fi opens `https://<address>`; restart the Mac, sign in,
+and the app comes back by itself.
+
 ## Day to day, in PowerShell
 
 ```powershell
