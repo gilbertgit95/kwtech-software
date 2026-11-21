@@ -1,0 +1,91 @@
+# Releases (#204): one product version, raised by changesets.
+#
+# Every push to main runs it. Two states, decided by whether changesets are
+# pending in `.changeset/`:
+#
+# - **Pending:** keeps ONE pull request open, "chore(release): version
+#   packages" on the branch `changeset-release/main`, that runs `pnpm
+#   changeset:version`: the next version on every package, ONE section of
+#   release notes in CHANGELOG.md, the changesets removed. Each new merge
+#   updates the same PR.
+# - **None pending** (the version PR was just merged, or nothing was ever
+#   added): tags `v<version>` and creates the GitHub release with that
+#   version's notes, once. A version that is already tagged, or 0.0.0, does
+#   nothing. #133's P2 adds the image and print agent builds to this.
+#
+# ⚠ Needs "Allow GitHub Actions to create and approve pull requests"
+# (Settings → Actions → General → Workflow permissions), or the version PR
+# step fails with "GitHub Actions is not permitted to create or approve pull
+# requests". And a PR opened with the workflow's own token starts no
+# workflows (GitHub's rule against loops), so the version PR shows no CI
+# checks: it changes only versions and CHANGELOG.md, which every later PR's
+# CI covers again.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# One at a time and never cancelled: two runs at once could both see "not
+# tagged yet" and tag the same version, and a cancelled run can stop between
+# the tag and the release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Version PR or release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # changesets compares against main's history, and the tag check reads tags.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Keep the version PR up to date
+        id: changesets
+        uses: changesets/action@v2.1.2
+        with:
+          version-script: pnpm changeset:version
+          # Conventional and under 80 characters: the PR title check and the
+          # squash merge's commit header (CLAUDE.md, Conventions).
+          pr-title: 'chore(release): version packages'
+          commit-message: 'chore(release): version packages'
+          # Nothing is published to npm, and the tag and release are ours
+          # (below): one `v<version>`, not a tag per package.
+          create-github-releases: false
+          push-git-tags: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and release the version
+        if: steps.changesets.outputs.has-changesets == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Refuses, naming them, when the packages disagree: a tag for a
+          # version half of them do not carry would be worse than none.
+          node scripts/release-version.mjs check
+          version=$(node scripts/release-version.mjs)
+          if [ "$version" = "0.0.0" ]; then
+            echo "Nothing released yet (0.0.0): no tag."
+            exit 0
+          fi
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged."
+            exit 0
+          fi
+          node scripts/release-version.mjs notes --print "$version" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$version" --target "$GITHUB_SHA" --title "kwtech $version" --notes-file "$RUNNER_TEMP/notes.md"

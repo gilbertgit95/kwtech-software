@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "baseBranch": "main",
+  "fixed": [["@kwtech/*"]],
+  "linked": [],
+  "ignore": [],
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  },
+  "updateInternalDependencies": "patch",
+  "changelog": false,
+  "commit": false,
+  "access": "restricted",
+  "format": false
+}

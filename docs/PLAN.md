@@ -633,6 +633,14 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-21** — **One product version, raised by changesets, with one CHANGELOG.md for the shops (#204).**
+  Every package said `0.0.0` and nothing ever changed it, so no release, update or out-of-date print agent could be named. #133's installers and updates need a version to download, record and compare.
+  - **Changesets over release-please:** the operator's choice. The notes are a sentence written per PR for the people who use the app, where release-please would print commit titles written for developers. The cost is a step in every PR, which CI enforces (`pnpm changeset --empty` when there is nothing to tell).
+  - **One `fixed` group of every `@kwtech/*` package:** the modules are private and always ship together in the same images, so 24 versions would be bookkeeping with no reader. The root `package.json` (not a workspace package) is copied from them (`scripts/release-version.mjs sync`).
+  - **One CHANGELOG.md, not changesets' per-package files:** those were 24 files mostly saying "Updated dependencies". `changelog: false`, and `release-version.mjs notes` writes one section from the pending changesets before `changeset version` consumes them, grouped for a shop: *Needs your attention*, *New*, *Fixed*.
+  - **One tag, `v<version>`, and a GitHub release** with that section, made by the Release workflow when the version PR merges. Not changesets' per-package tags, and nothing published to npm.
+  - **Not done:** the app does not show its version yet, and the print agent still reports `0.0.0` (#133, P2 and P5). The version PR runs no CI, because GitHub starts no workflow for a PR opened with the workflow's own token; a token of our own would, and is not set up.
+
 - **2026-11-21** — **A founder's second organization says why it has no trial; its founder is read as its first membership (#199).**
   D2 gives one trial per founder account, so the second organization starts on Free, but its Billing page read "No paid plan" like any other and the declared `trial_used` refusal was never shown (#99: a surprising outcome explains itself). Found by O14 of #178.
   - **Decided in the domain:** `checkTrialUsedElsewhere` says `trial_used` only while the organization is on Free, has no live trial, had no trial of its own and no approved request, and its founder's trial row is on another organization. Once it paid or had a trial, "no trial here" is no longer a surprise.

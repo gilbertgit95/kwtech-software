@@ -50,10 +50,14 @@
     "db:snapshot": "pnpm --filter @kwtech/web-server db:snapshot",
     "db:restore": "pnpm --filter @kwtech/web-server db:restore",
     "db:backup": "node scripts/env.mjs --require=local && pnpm --filter @kwtech/web-server backup:create --open",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "changeset": "changeset",
+    "changeset:check": "changeset status --since=origin/main",
+    "changeset:version": "node scripts/release-version.mjs notes && changeset version && node scripts/release-version.mjs sync"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
+    "@changesets/cli": "3.0.3",
     "@commitlint/cli": "21.2.1",
     "@commitlint/config-conventional": "21.2.0",
     "lefthook": "2.1.10",

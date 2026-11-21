@@ -60,6 +60,36 @@ jobs:
       - name: Test
         run: pnpm test
 
+  changeset:
+    # Every PR that changes a package says what changed, for the release
+    # notes (#204, .changeset/README.md). Not on main itself (nothing to
+    # compare with), and not on the version PR, which removes the changesets
+    # by design.
+    name: Changeset
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # `changeset status --since=origin/main` needs main's history to
+          # find which packages this PR changed.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: A changeset for every changed package
+        run: |
+          if ! pnpm changeset:check; then
+            echo "::error::This PR changes a package but adds no changeset. Run 'pnpm changeset' (what changed, for the release notes) or 'pnpm changeset --empty' (nothing for a shop to know), and commit the file."
+            exit 1
+          fi
+      - name: Every package shares one version
+        run: node scripts/release-version.mjs check
+
   prisma:
     name: Prisma migrations
     runs-on: ubuntu-latest

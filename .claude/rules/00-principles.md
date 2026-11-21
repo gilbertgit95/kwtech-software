@@ -77,6 +77,9 @@ and the rule is stale. Say so, and fix the rule in the same change.
 
 - `pnpm typecheck`, `pnpm test` and `pnpm lint` pass. If the change is visible,
   run the app, because boot-time failures pass `tsc`.
+- A changeset when a package changed (`pnpm changeset`, or `--empty` when a
+  shop has nothing to know): one plain sentence for the people using the app.
+  CI refuses the PR without it (docs/RELEASING.md, #204).
 - Docs are updated in the same change: the module README for a contract change.
   For a real decision, add a dated entry at the TOP of PLAN §13:
   `- **YYYY-MM-DD** — **One-line decision.**`, then the cause, bold-led bullets,
