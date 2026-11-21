@@ -1,0 +1,37 @@
+# What the Docker images are built from (#213, deploy/docker/). Everything
+# here is left out of the build context, so it can never reach an image.
+
+# ⚠ Secrets and private keys: env profiles, every .env file, and the shop's
+# certificate authority (its root.key). An image is shared; these are not.
+envs/
+**/.env
+**/.env.*
+!**/.env.example
+.caddy/
+
+# User data: backups, uploads, the dev snapshot, dumps.
+backups/
+uploaded-files/
+apps/web-server/seed-data/
+*.dump
+
+# Rebuilt inside the image, and large.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/test-results
+**/playwright-report
+apps/web-server/src/generated/
+apps/web-server/prisma/_modules/
+
+# Not needed to build.
+.git/
+.github/
+.claude/
+**/*.log
+
+# Test fixtures holding throwaway passwords (#178).
+**/.fixture.json
+**/.settings-before.json

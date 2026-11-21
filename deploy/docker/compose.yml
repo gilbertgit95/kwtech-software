@@ -1,0 +1,118 @@
+# kwtech on one shop computer (#213, #133 P1): the database, the API, the web
+# app and HTTPS. Every setting comes from .env beside this file (see
+# .env.example); the installer (#133 P3) writes it.
+#
+#   docker compose up -d                          start, or apply a changed .env
+#   docker compose run --rm api first-setup       a new install's first people (#206)
+#   docker compose logs -f api                    what the API is doing
+#
+# Local hosting only: development runs the apps natively, and a real server
+# uses its own database and HTTPS (#133, the three setups).
+name: kwtech
+
+services:
+  postgres:
+    # The same major as the API image's pg_dump and pg_restore (api.Dockerfile).
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kwtech
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: kwtech
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kwtech -d kwtech']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: ${KWTECH_IMAGES:-ghcr.io/gilbertgit95/kwtech}-api:${KWTECH_VERSION:?Set KWTECH_VERSION in .env}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://kwtech:${POSTGRES_PASSWORD}@postgres:5432/kwtech?schema=public
+      APP_ENV: production
+      PORT: '8080'
+      # Inside the container network only: nothing publishes 8080; Caddy reaches it.
+      LISTEN_HOST: 0.0.0.0
+      FRONTEND_URL: https://${KWTECH_HTTPS_HOST:?Set KWTECH_HTTPS_HOST in .env}
+      AUTH_RESET_URL_BASE: https://${KWTECH_HTTPS_HOST}/auth/reset-password
+      PERMISSIONS_INVITE_URL_BASE: https://${KWTECH_HTTPS_HOST}/invitations/accept
+      CHAT_URL_BASE: https://${KWTECH_HTTPS_HOST}/chat
+      # A shop's own install: the Local network page on, and email optional (env.ts).
+      LOCAL_NETWORK: 'on'
+      # The ONE public file Caddy copies out; never the folder with the keys.
+      LOCAL_NETWORK_CERTIFICATE_PATH: /caddy-public/root.crt
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in .env}
+      AUTH_MFA_SECRET_KEY: ${AUTH_MFA_SECRET_KEY:?Set AUTH_MFA_SECRET_KEY in .env}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@localhost}
+      APP_NAME: ${APP_NAME:-Kwtech Software}
+      # Backups with the image's own pg_dump: the API never controls Docker.
+      BACKUP_DIR: /backups
+      BACKUP_DOCKER_CONTAINER: ''
+      BACKUP_TIME_ZONE: ${BACKUP_TIME_ZONE:-}
+      FILES_DIR: /files
+    volumes:
+      - backups:/backups
+      # Uploaded files (#138): temporary, deleted by the nightly clean-up, so not backed up.
+      - files:/files
+      - caddy-public:/caddy-public:ro
+
+  web:
+    image: ${KWTECH_IMAGES:-ghcr.io/gilbertgit95/kwtech}-web:${KWTECH_VERSION:?Set KWTECH_VERSION in .env}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_URL: http://api:8080/api/v1
+      APP_ENV: production
+      APP_NAME: ${APP_NAME:-Kwtech Software}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - '${KWTECH_HTTP_PORT:-80}:80'
+      - '${KWTECH_HTTPS_PORT:-443}:443'
+    environment:
+      KWTECH_HTTPS_HOST: ${KWTECH_HTTPS_HOST}
+      # The shop's certificate authority lives here, in the caddy-data volume.
+      # A pm2 install's .caddy/ copied in keeps every phone's trust (README).
+      KWTECH_CADDY_STORAGE: /data/kwtech
+    volumes:
+      - ./Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-public:/public
+    # Caddy, plus a copy of the authority's PUBLIC certificate into the small
+    # volume the API reads. The copy runs every 30 s because Caddy makes the
+    # authority on its first certificate, after it starts; if Caddy stops,
+    # the loop ends and the container restarts. chmod 644: Caddy writes it
+    # readable by root only, and the API runs as an unprivileged user (found
+    # booting the images). It is the PUBLIC certificate; the keys never move.
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
+        pid=$$!
+        while kill -0 $$pid 2>/dev/null; do
+          cp -f /data/kwtech/pki/authorities/local/root.crt /public/root.crt 2>/dev/null && chmod 644 /public/root.crt || true
+          sleep 30
+        done
+        wait $$pid
+
+volumes:
+  db:
+  backups:
+  files:
+  caddy-data:
+  caddy-public:

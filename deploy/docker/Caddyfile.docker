@@ -1,0 +1,33 @@
+# HTTPS for the Docker install (#213). The pm2 setup's deploy/https/Caddyfile
+# with the containers' names for the two apps; everything else the same:
+# the shop's own authority (tls internal), the certificate for devices on
+# plain HTTP, and every other plain-HTTP request sent to HTTPS.
+{
+	storage file_system {
+		root {$KWTECH_CADDY_STORAGE}
+	}
+	default_sni {$KWTECH_HTTPS_HOST}
+	skip_install_trust
+}
+
+https://{$KWTECH_HTTPS_HOST}, https://localhost {
+	tls internal
+	handle /api/v1/* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy web:8081
+	}
+}
+
+http://{$KWTECH_HTTPS_HOST}, http://localhost {
+	handle /kwtech-local-ca.crt {
+		root * {$KWTECH_CADDY_STORAGE}/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
