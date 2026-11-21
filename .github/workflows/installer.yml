@@ -1,4 +1,4 @@
-# The installer, end to end (#133 P3): builds the images, makes the bundle as
+# The installer and updates, end to end (#133 P3, P4): builds the images, makes the bundle as
 # a release does (deploy/make-bundle.sh), and runs install.sh on this runner
 # exactly as a shop's PC would (minus Windows), with first setup's answers
 # piped in. Then runs it AGAIN, which must change nothing, and recovers an
@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   install:
-    name: Install, install again, recover an account
+    name: Install, again, recover, update, roll back
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -84,6 +84,45 @@ jobs:
       - name: Recover an account, and sign in with the new password
         run: |
           printf '%s\n' 'owner' 'a brand new passphrase 9' 'a brand new passphrase 9' 'n' 'y' | "$DIR/kwtech" recover-account
+          curl -sk -X POST https://127.0.0.1:18443/api/auth/signin -H 'content-type: application/json' \
+            -H 'origin: https://127.0.0.1:18443' \
+            --data '{"identifier":"owner@install.test","password":"a brand new passphrase 9"}' | grep -q '"ok":true'
+
+      # #133 P4: `kwtech update` from a local bundle (as from a USB stick),
+      # the same images under a newer version's tag.
+      - name: Update to a newer release
+        run: |
+          set -x
+          docker tag kwtech-api:ci kwtech-api:ci2
+          docker tag kwtech-web:ci kwtech-web:ci2
+          deploy/make-bundle.sh ci2 "$BUNDLE-ci2"
+          KWTECH_UPDATE_NO_PULL=1 "$DIR/kwtech" update --bundle "$BUNDLE-ci2" --yes
+          [ "$("$DIR/kwtech" version)" = ci2 ]
+          backup=$(ls -d "$DIR"/backups/update-ci-to-ci2-*)
+          for file in database.dump caddy-data.tgz .env compose.yml; do [ -s "$backup/$file" ]; done
+          [ "$(stat -c %a "$backup")" = 700 ]
+          curl -sk -X POST https://127.0.0.1:18443/api/auth/signin -H 'content-type: application/json' \
+            -H 'origin: https://127.0.0.1:18443' \
+            --data '{"identifier":"owner@install.test","password":"a brand new passphrase 9"}' | grep -q '"ok":true'
+
+      # A release whose API cannot start: the update must fail and put the
+      # previous version back, with the shop working and its data intact.
+      - name: A broken release rolls back
+        run: |
+          set -x
+          printf 'FROM kwtech-api:ci\nENTRYPOINT ["sh", "-c", "echo broken on purpose; exit 1"]\n' | docker build -t kwtech-api:broken -
+          docker tag kwtech-web:ci kwtech-web:broken
+          deploy/make-bundle.sh broken "$BUNDLE-broken"
+          if KWTECH_HEALTH_TIMEOUT=60 KWTECH_UPDATE_NO_PULL=1 "$DIR/kwtech" update --bundle "$BUNDLE-broken" --yes; then
+            echo '::error::An update to a release that cannot start reported success.'
+            exit 1
+          fi
+          [ "$("$DIR/kwtech" version)" = ci2 ]
+          "$DIR/kwtech" status
+          for _ in $(seq 1 36); do
+            [ "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/api/v1/health)" = 200 ] && break
+            sleep 5
+          done
           curl -sk -X POST https://127.0.0.1:18443/api/auth/signin -H 'content-type: application/json' \
             -H 'origin: https://127.0.0.1:18443' \
             --data '{"identifier":"owner@install.test","password":"a brand new passphrase 9"}' | grep -q '"ok":true'

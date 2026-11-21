@@ -181,7 +181,8 @@ fi
 # --- 5. Start --------------------------------------------------------------------
 step 'Starting the database, the app and HTTPS'
 quiet_compose up -d --remove-orphans >/dev/null
-for _ in $(seq 1 72); do
+# KWTECH_HEALTH_TIMEOUT: seconds to wait (default 6 minutes); shortened by tests.
+for _ in $(seq 1 $(( ${KWTECH_HEALTH_TIMEOUT:-360} / 5 ))); do
   api=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q api)" 2>/dev/null || echo starting)
   web=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q web)" 2>/dev/null || echo starting)
   [ "$api" = healthy ] && [ "$web" = healthy ] && break
@@ -192,7 +193,7 @@ if [ "$api" != healthy ] || [ "$web" != healthy ]; then
     printf '\n--- %s, last lines ---\n' "$service" >&2
     quiet_compose logs --tail=25 "$service" >&2 || true
   done
-  stop "Not healthy after 6 minutes (api: $api, web: $web). The lines above say why. The shop's data is untouched; fix it and run this again."
+  stop "Not healthy in time (api: $api, web: $web). The lines above say why. The shop's data is untouched; fix it and run this again."
 fi
 ok 'all healthy'
 

@@ -50,8 +50,13 @@ shop's certificate from the Local network page, as in
 - **`first-setup`** (#206) asks for the organization, its first workspace,
   the super admin and a first person per role. It refuses on an install that
   is already set up. Pipe the answers in, one per line, when no one is typing.
-- **Updating** is a new `KWTECH_VERSION` in `.env`, then `docker compose up -d`.
-  Back up first (#133 P4 will do both, and roll back).
+- **Updating: `kwtech update`** (#133 P4). It backs up the database, the
+  certificate authority and the settings first, runs the new release's own
+  installer (checked against the release's `SHA256SUMS.txt`), and if the new
+  version is not healthy, puts the old files and version back and restores
+  the database when a migration ran. `--bundle DIR` and `--from-images FILE`
+  update from a USB stick. By hand, without the safety: a new
+  `KWTECH_VERSION` in `.env`, then `docker compose up -d`.
 
 ## What lives where
 

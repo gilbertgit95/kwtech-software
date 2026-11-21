@@ -9,6 +9,8 @@
 #   kwtech first-setup       a new install's shop and first people (refused once set up)
 #   kwtech restart           restart everything (the shop's data is kept)
 #   kwtech certificate       the shop's public root certificate, as text
+#   kwtech update [--version V] [--bundle DIR] [--from-images FILE] [--yes]
+#                            a newer release, safely: back up, update, roll back if unhealthy
 #
 # On Windows, inside PowerShell: wsl -d Ubuntu -u root kwtech <command>
 set -euo pipefail
@@ -17,6 +19,144 @@ SELF=$(readlink -f "$0")
 DIR=$(dirname "$SELF")
 [ -f "$DIR/compose.yml" ] && [ -f "$DIR/.env" ] || { echo "No kwtech install in $DIR (no compose.yml or .env)." >&2; exit 1; }
 compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yml" --env-file "$DIR/.env" "$@"; }
+
+# The repository releases come from (its public Releases page).
+REPO=${KWTECH_REPO:-gilbertgit95/kwtech-software}
+env_get() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" "$DIR/.env" | tail -n 1; }
+
+# --- kwtech update (#133 P4) ----------------------------------------------------
+# 1. Back up first (database, the shop's certificate authority, the settings and
+#    files), and stop if that fails. 2. Say what changes and ask. 3. Run the new
+#    release's own installer, which applies its compose files and waits for
+#    health. 4. If it is not healthy: the previous files and version back, the
+#    database restored if a migration ran (they cannot be undone, which is why
+#    the backup comes first), and say what failed.
+update() {
+  local target='' bundle='' from_images='' yes=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --version) target=$2; shift 2 ;;
+      --bundle) bundle=$2; shift 2 ;;
+      --from-images) from_images=$2; shift 2 ;;
+      --yes) yes=1; shift ;;
+      *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+  done
+  local current
+  current=$(env_get KWTECH_VERSION)
+  local work
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' RETURN
+
+  # Which release, and its bundle.
+  if [ -n "$bundle" ]; then
+    [ -f "$bundle/install.sh" ] || { echo "No install.sh in $bundle." >&2; return 1; }
+    [ -n "$target" ] || target=$(sed -n 's/^KWTECH_VERSION="\(.*\)"$/\1/p' "$bundle/docker/.env.example")
+  else
+    if [ -z "$target" ]; then
+      target=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/^  "tag_name": "v\([^"]*\)".*/\1/p')
+      [ -n "$target" ] || { echo "Could not read the newest release from GitHub. Check the internet, or pass --version." >&2; return 1; }
+    fi
+    echo "Downloading the kwtech $target install bundle"
+    curl -fsSL -o "$work/bundle.zip" "https://github.com/$REPO/releases/download/v$target/kwtech-install-$target.zip"
+    curl -fsSL -o "$work/SHA256SUMS.txt" "https://github.com/$REPO/releases/download/v$target/SHA256SUMS.txt"
+    # The release's own checksum, or nothing is run from it.
+    (cd "$work" && grep " kwtech-install-$target.zip\$" SHA256SUMS.txt | sed "s/kwtech-install-$target.zip/bundle.zip/" | sha256sum -c --quiet -) \
+      || { echo "The bundle does not match the release's checksum: not using it." >&2; return 1; }
+    python3 -m zipfile -e "$work/bundle.zip" "$work/" || { echo 'Could not unpack the bundle (python3 is needed).' >&2; return 1; }
+    bundle="$work/kwtech-install-$target"
+  fi
+  [ -n "$target" ] || { echo 'No version to update to.' >&2; return 1; }
+  if [ "$target" = "$current" ] && [ "$yes" = 0 ]; then
+    echo "Already on $current."
+    return 0
+  fi
+
+  echo
+  echo "kwtech $current -> $target"
+  # The release's notes, when GitHub can be reached (an offline update shows none).
+  curl -fsS --max-time 10 "https://api.github.com/repos/$REPO/releases/tags/v$target" 2>/dev/null \
+    | sed -n 's/^  "body": "\(.*\)",\{0,1\}$/\1/p' | sed 's/\\n/\n/g; s/\\r//g' | head -n 30 || true
+  if [ "$yes" = 0 ]; then
+    if [ -t 0 ]; then
+      read -r -p 'Update now? A backup is made first. (y/N) ' answer
+      [[ "$answer" =~ ^[yY] ]] || { echo 'Not updated.'; return 0; }
+    else
+      echo 'Not a terminal: pass --yes to update without asking.' >&2
+      return 1
+    fi
+  fi
+
+  # 1. The backup.
+  local stamp backup
+  stamp=$(date '+%Y%m%d-%H%M%S')
+  backup="$DIR/backups/update-$current-to-$target-$stamp"
+  mkdir -p "$backup"
+  chmod 700 "$backup"
+  echo "Backing up to $backup"
+  compose exec -T postgres pg_dump -U kwtech -d kwtech -Fc < /dev/null > "$backup/database.dump" \
+    || { echo 'The database backup failed: nothing was changed.' >&2; return 1; }
+  docker run --rm --volumes-from "$(compose ps -q caddy)" --entrypoint tar caddy:2 czf - -C /data . < /dev/null > "$backup/caddy-data.tgz" \
+    || { echo 'The certificate authority backup failed: nothing was changed.' >&2; return 1; }
+  cp "$DIR/.env" "$DIR/compose.yml" "$DIR/Caddyfile.docker" "$backup/"
+  chmod 600 "$backup"/*
+  local migrations_before
+  migrations_before=$(compose exec -T postgres psql -U kwtech -d kwtech -tAc 'select count(*) from _prisma_migrations' < /dev/null)
+
+  # 2. The update: the new release's installer, on this install.
+  local args=(--dir "$DIR" --version "$target")
+  [ -n "$from_images" ] && args+=(--from-images "$from_images")
+  [ "${KWTECH_UPDATE_NO_PULL:-0}" = 1 ] && args+=(--no-pull)
+  if bash "$bundle/install.sh" "${args[@]}" < /dev/null; then
+    echo
+    echo "kwtech is on $target. The backup stays in $backup."
+    print_agents
+    return 0
+  fi
+
+  # 3. Not healthy: roll back.
+  echo
+  echo "kwtech $target did not come up healthy: going back to $current." >&2
+  cp "$backup/.env" "$backup/compose.yml" "$backup/Caddyfile.docker" "$DIR/"
+  compose up -d --remove-orphans < /dev/null >/dev/null 2>&1 || true
+  local migrations_after
+  migrations_after=$(compose exec -T postgres psql -U kwtech -d kwtech -tAc 'select count(*) from _prisma_migrations' < /dev/null || echo "$migrations_before")
+  if [ "$migrations_after" != "$migrations_before" ]; then
+    echo "  $target changed the database ($migrations_before -> $migrations_after migrations): restoring the backup." >&2
+    compose stop api web < /dev/null >/dev/null
+    compose exec -T postgres pg_restore -U kwtech -d kwtech --clean --if-exists --no-owner < "$backup/database.dump" \
+      || echo "  !! The restore reported errors. The backup is $backup/database.dump." >&2
+    compose up -d < /dev/null >/dev/null
+  fi
+  # Healthy again, or say so: the shop must not find out by trying.
+  local api='' web=''
+  for _ in $(seq 1 $(( ${KWTECH_HEALTH_TIMEOUT:-360} / 5 ))); do
+    api=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q api)" 2>/dev/null || echo starting)
+    web=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q web)" 2>/dev/null || echo starting)
+    [ "$api" = healthy ] && [ "$web" = healthy ] && break
+    # The web app waits for a healthy API; ask again once it is.
+    [ "$api" = healthy ] && compose up -d < /dev/null >/dev/null 2>&1
+    sleep 5
+  done
+  if [ "$api" = healthy ] && [ "$web" = healthy ]; then
+    echo "  Back on $current, healthy. Nothing from $target stays. The backup is in $backup." >&2
+  else
+    echo "  !! Back on $current's files, but not healthy yet (api: $api, web: $web). See: kwtech logs. The backup is in $backup." >&2
+  fi
+  return 1
+}
+
+# Every paired computer, to update its print agent after the server (PLAN
+# §12.144: an agent newer than its server gets no jobs).
+print_agents() {
+  local agents
+  agents=$(compose exec -T postgres psql -U kwtech -d kwtech -tAc \
+    "select name || coalesce(' (' || \"hostName\" || ')', '') from print_agent where \"revokedAt\" is null order by name" < /dev/null 2>/dev/null || true)
+  [ -n "$agents" ] || return 0
+  echo
+  echo 'Now update the print agent on each printing PC (install-print-agent.ps1 from the same release):'
+  while IFS= read -r agent; do [ -n "$agent" ] && echo "  - $agent"; done <<< "$agents"
+}
 
 case "${1:-status}" in
   status) compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' ;;
@@ -30,6 +170,7 @@ case "${1:-status}" in
   # The shop's PUBLIC root certificate, as text: what install.ps1 imports
   # into Windows, and what phones download from the Local network page.
   certificate) compose exec -T caddy cat /data/kwtech/pki/authorities/local/root.crt ;;
-  -h|--help|help) sed -n '2,14p' "$SELF" ;;
+  update) shift; update "$@" ;;
+  -h|--help|help) sed -n '2,16p' "$SELF" ;;
   *) echo "Unknown command: $1 (kwtech help)" >&2; exit 2 ;;
 esac
