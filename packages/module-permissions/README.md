@@ -702,6 +702,17 @@ The five `features:*` keys are split by RISK, not by convenience:
   an EXISTING key means under everyone already holding it. Keeping update with
   create would make the safe right imply the risky one.
 
+
+### Getting started, on an organization's overview (#133 P0a)
+
+After first setup (#206) the overview shows a short checklist to whoever can
+invite or create workspaces: **workspaces** for where work happens, **your
+staff**, and **a role in a workspace for each person** (a member with none
+sees the organization and cannot open one app in it, so it names how many).
+Each step is ticked off by what is already true and links to the page that
+does it; it writes nothing itself. It disappears when every step is done, or
+when hidden (remembered in that browser). Rules: `react/view/getting-started.ts`.
+
 ## Invitations — two offers, one row
 
 `PermInvitation` covers both, which is why `organizationId` is nullable and
