@@ -203,12 +203,8 @@ jobs:
 
       - name: The install bundle
         run: |
-          bundle="$RUNNER_TEMP/kwtech-install-$VERSION"
-          mkdir -p "$bundle/docker" "$bundle/windows"
-          cp deploy/docker/compose.yml deploy/docker/Caddyfile.docker deploy/docker/README.md "$bundle/docker/"
-          # The version filled in: the bundle runs exactly the images it shipped with.
-          sed "s/^KWTECH_VERSION=\"\"$/KWTECH_VERSION=\"$VERSION\"/" deploy/docker/.env.example > "$bundle/docker/.env.example"
-          cp -r deploy/windows/. "$bundle/windows/"
+          # The same script the Installer test runs: the bundle tested is the bundle shipped.
+          deploy/make-bundle.sh "$VERSION" "$RUNNER_TEMP/kwtech-install-$VERSION"
           (cd "$RUNNER_TEMP" && zip -qr "$RUNNER_TEMP/out/kwtech-install-$VERSION.zip" "kwtech-install-$VERSION")
           cp "$RUNNER_TEMP/out/kwtech-install-$VERSION.zip" "$RUNNER_TEMP/out/kwtech-install.zip"
 

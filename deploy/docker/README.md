@@ -23,8 +23,16 @@ deploy stay as they are. On Windows, prepare the PC first with
 | `api.Dockerfile`, `api-entrypoint.sh` | the API image and its commands (`serve`, `first-setup`) |
 | `web.Dockerfile` | the web app image (Next's standalone output) |
 | `check-release.sh` | builds the images, boots them on an empty database, checks them |
+| `../install.sh`, `../install.ps1` | the installer: settings and secrets, images, start, first setup (#133 P3) |
+| `../kwtech` | the day-to-day command it installs: `status`, `logs`, `recover-account`, `certificate` |
+| `../make-bundle.sh` | assembles the install bundle, for the release and for the Installer test |
 
 ## Running it
+
+**At a shop, use the installer** (`deploy/install.ps1` on Windows,
+`deploy/install.sh` on Linux; the release's `kwtech-install-<version>.zip`),
+which does all of this and the secrets, and [INSTALL.md](../INSTALL.md) is
+the step-by-step guide. By hand:
 
 ```bash
 cd deploy/docker

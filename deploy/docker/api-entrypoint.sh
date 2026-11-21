@@ -7,6 +7,8 @@
 #   first-setup      a NEW install's organization, workspace and first people
 #                    (#206): the reference data and the starting plans, then
 #                    the questions. Refuses on an install already set up.
+#   recover-account  a new password for any account, typed here (#133 P3):
+#                    for a shop without email, or a forgotten super admin.
 #   <anything else>  run as given (a shell, a one-off script).
 set -e
 cd /app/apps/web-server
@@ -28,6 +30,9 @@ case "${1:-serve}" in
     # The app is booted to write through its own services, so the job runner
     # must be off here: the running API already has one.
     JOBS_RUNNER=off exec node dist/setup/first-setup.js
+    ;;
+  recover-account)
+    JOBS_RUNNER=off exec node dist/setup/recover-account.js
     ;;
   *)
     exec "$@"

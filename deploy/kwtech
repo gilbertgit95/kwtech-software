@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# The day-to-day command for a kwtech install (#133 P3), placed in the
+# install's folder by install.sh and linked as /usr/local/bin/kwtech.
+#
+#   kwtech status            each service and whether it is healthy
+#   kwtech logs [service]    the last lines, and new ones as they come (Ctrl+C stops)
+#   kwtech version           the release this install runs
+#   kwtech recover-account   a new password for any account, typed here
+#   kwtech first-setup       a new install's shop and first people (refused once set up)
+#   kwtech restart           restart everything (the shop's data is kept)
+#   kwtech certificate       the shop's public root certificate, as text
+#
+# On Windows, inside PowerShell: wsl -d Ubuntu -u root kwtech <command>
+set -euo pipefail
+
+SELF=$(readlink -f "$0")
+DIR=$(dirname "$SELF")
+[ -f "$DIR/compose.yml" ] && [ -f "$DIR/.env" ] || { echo "No kwtech install in $DIR (no compose.yml or .env)." >&2; exit 1; }
+compose() { docker compose --project-directory "$DIR" -f "$DIR/compose.yml" --env-file "$DIR/.env" "$@"; }
+
+case "${1:-status}" in
+  status) compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' ;;
+  logs) shift; compose logs --tail=50 -f "$@" ;;
+  address) sed -n 's/^KWTECH_HTTPS_HOST="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$DIR/.env" ;;
+  version) sed -n 's/^KWTECH_VERSION="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$DIR/.env" ;;
+  recover-account|first-setup)
+    if [ -t 0 ]; then compose run --rm api "$1"; else compose run --rm -T api "$1"; fi
+    ;;
+  restart) compose up -d --force-recreate ;;
+  # The shop's PUBLIC root certificate, as text: what install.ps1 imports
+  # into Windows, and what phones download from the Local network page.
+  certificate) compose exec -T caddy cat /data/kwtech/pki/authorities/local/root.crt ;;
+  -h|--help|help) sed -n '2,14p' "$SELF" ;;
+  *) echo "Unknown command: $1 (kwtech help)" >&2; exit 2 ;;
+esac

@@ -31,16 +31,22 @@ fi
 
 WORK=$(mktemp -d)
 ENV_FILE="$WORK/.env"
-secret() { head -c "$1" /dev/urandom | base64 | tr -d '\n=+/' ; }
+# Each secret in the form it must take (the same as install.sh): the
+# two-step key is EXACTLY 32 bytes of standard base64 (the API refuses
+# anything else, which a stripped base64 broke: the first release's check
+# caught it), and the database password is hex, since it sits inside
+# DATABASE_URL, where / + = would break the URL.
+hex() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+b64() { head -c "$1" /dev/urandom | base64 | tr -d '\n'; }
 cat > "$ENV_FILE" <<ENV
 KWTECH_VERSION=$TAG
 KWTECH_IMAGES=kwtech
 KWTECH_HTTPS_HOST=$HOST
 KWTECH_HTTP_PORT=$HTTP_PORT
 KWTECH_HTTPS_PORT=$HTTPS_PORT
-POSTGRES_PASSWORD=$(secret 24)
-AUTH_JWT_SECRET=$(secret 48)
-AUTH_MFA_SECRET_KEY=$(secret 32)
+POSTGRES_PASSWORD=$(hex 24)
+AUTH_JWT_SECRET=$(b64 48)
+AUTH_MFA_SECRET_KEY=$(b64 32)
 APP_NAME=kwtech release check
 ENV
 
@@ -61,7 +67,9 @@ fail() {
 }
 
 echo "== starting on an empty database"
-compose up -d
+# Not fatal by itself: `up` fails when a service is unhealthy, and the logs
+# that say why are what the health wait below prints.
+compose up -d || true
 
 echo "== waiting for every service to be healthy"
 for _ in $(seq 1 60); do
