@@ -145,6 +145,13 @@ Have these ready. Then nothing stops halfway.
 
 Skip this on a Mac or Linux server.
 
+**Or let a script do this step:** `deploy/windows/prepare-windows.ps1` (run
+as Administrator; `-WhatIf` shows what it would change) shares the network
+and opens both firewalls, and also installs WSL, Ubuntu and Docker Engine and
+keeps the PC up. See [deploy/windows/README.md](../deploy/windows/README.md).
+Step 2 (the router) stays by hand, and step 3 (Caddy) is still needed for
+this pm2 setup.
+
 The app, Caddy and the database all run inside WSL. Phones and other
 computers reach **Windows**, not WSL, so Windows has to share its network
 with WSL and let ports 80 and 443 through. No `netsh interface portproxy` is
