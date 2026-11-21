@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/web-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "NestJS API: REST today, GraphQL + graphql-ws subscriptions in Phase 3. Owns the Prisma schema and the database.",
