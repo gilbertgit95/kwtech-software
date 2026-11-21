@@ -92,6 +92,7 @@ jobs:
       # the same images under a newer version's tag.
       - name: Update to a newer release
         run: |
+          set -x
           docker tag kwtech-api:ci kwtech-api:ci2
           docker tag kwtech-web:ci kwtech-web:ci2
           deploy/make-bundle.sh ci2 "$BUNDLE-ci2"
@@ -108,6 +109,7 @@ jobs:
       # previous version back, with the shop working and its data intact.
       - name: A broken release rolls back
         run: |
+          set -x
           printf 'FROM kwtech-api:ci\nENTRYPOINT ["sh", "-c", "echo broken on purpose; exit 1"]\n' | docker build -t kwtech-api:broken -
           docker tag kwtech-web:ci kwtech-web:broken
           deploy/make-bundle.sh broken "$BUNDLE-broken"
@@ -116,6 +118,7 @@ jobs:
             exit 1
           fi
           [ "$("$DIR/kwtech" version)" = ci2 ]
+          "$DIR/kwtech" status
           for _ in $(seq 1 36); do
             [ "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:18443/api/v1/health)" = 200 ] && break
             sleep 5

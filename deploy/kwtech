@@ -128,7 +128,21 @@ update() {
       || echo "  !! The restore reported errors. The backup is $backup/database.dump." >&2
     compose up -d < /dev/null >/dev/null
   fi
-  echo "  Back on $current. Nothing from $target stays. The backup is in $backup." >&2
+  # Healthy again, or say so: the shop must not find out by trying.
+  local api='' web=''
+  for _ in $(seq 1 $(( ${KWTECH_HEALTH_TIMEOUT:-360} / 5 ))); do
+    api=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q api)" 2>/dev/null || echo starting)
+    web=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q web)" 2>/dev/null || echo starting)
+    [ "$api" = healthy ] && [ "$web" = healthy ] && break
+    # The web app waits for a healthy API; ask again once it is.
+    [ "$api" = healthy ] && compose up -d < /dev/null >/dev/null 2>&1
+    sleep 5
+  done
+  if [ "$api" = healthy ] && [ "$web" = healthy ]; then
+    echo "  Back on $current, healthy. Nothing from $target stays. The backup is in $backup." >&2
+  else
+    echo "  !! Back on $current's files, but not healthy yet (api: $api, web: $web). See: kwtech logs. The backup is in $backup." >&2
+  fi
   return 1
 }
 
