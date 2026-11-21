@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useMemo, useState } from 'react';
 import { FEATURE } from '../../feature-keys.js';
+import type { FeatureKey } from '../../types.js';
 import { createPermissionsClient, type PermissionsClient } from '../permissions-client.js';
 import { AdminPage } from './admin-page.js';
 
@@ -28,6 +29,7 @@ import { AdminPage } from './admin-page.js';
 export function OrganizationNewPage({
   client,
   basePath = '/admin/organizations',
+  feature = FEATURE.organizationsRead,
 }: {
   client?: PermissionsClient;
   /**
@@ -46,6 +48,14 @@ export function OrganizationNewPage({
    * why the adapters in module.tsx hand over plain values only.
    */
   basePath?: string;
+  /**
+   * The key the page is gated on: `organizations:read` in `/admin` (the
+   * area's key, above), and `null` on the tenant route (#201). The tenant
+   * copy used to take the admin key too, which refused every account that
+   * was not platform staff, though the cap is the only real bound. A plain
+   * value, for the reason `basePath` is one.
+   */
+  feature?: FeatureKey | null;
 }) {
   const api = useMemo(() => client ?? createPermissionsClient(), [client]);
   const keyId = useId();
@@ -95,7 +105,7 @@ export function OrganizationNewPage({
     <AdminPage
       title="New organization"
       description="A tenant: its people, its workspaces, and the plan it subscribes to."
-      feature={FEATURE.organizationsRead}
+      feature={feature ?? undefined}
       backTo={{ href: basePath, label: 'Organizations' }}
     >
       <div className="flex flex-col gap-6">
@@ -151,8 +161,8 @@ export function OrganizationNewPage({
         </div>
 
         <p className="rounded-md border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-          You become its first member. The organization starts on no plan, so it is entitled to nothing until a
-          subscription is started for it.
+          You become its first member. The organization starts on the free plan, with a free trial of a paid plan if the
+          platform offers one and your account has not had one.
         </p>
 
         {error ? (
