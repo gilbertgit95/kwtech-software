@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-permissions",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "The permissions feature, whole: data model, domain logic, GraphQL surface, server wiring and React components",
   "sideEffects": false,
