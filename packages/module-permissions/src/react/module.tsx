@@ -159,7 +159,8 @@ function MyOrganizationNewRoute(_props: ModuleRouteProps) {
    * cannot be passed directly to Client Components". The page used to take a
    * `detailHref` callback and this route is what found it.
    */
-  return <OrganizationNewPage basePath={ORGANIZATIONS_HREF} />;
+  // No feature: the `user:organizations` cap refuses at the write, with its reason (#201).
+  return <OrganizationNewPage basePath={ORGANIZATIONS_HREF} feature={null} />;
 }
 
 function OrganizationHomeRoute({ params }: ModuleRouteProps) {
