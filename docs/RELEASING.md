@@ -54,7 +54,10 @@ The Release workflow then tags `v<version>` and creates the GitHub release
 - the API and web **images**, checked first by `deploy/docker/check-release.sh`
   on an empty database (nothing is published if it fails), then pushed to
   `ghcr.io/gilbertgit95/kwtech-software/api` and `/web` as `<version>` (never
-  moved) and `stable`; amd64 only for now (PLAN §12);
+  moved) and `stable`, for **amd64 and arm64** (#233): each architecture is
+  built and checked on its own kind of machine, pushed as `<version>-amd64` /
+  `<version>-arm64`, then joined under one name, so Docker on an Intel/AMD PC
+  and on an Apple Silicon Mac each get theirs;
 - the **install bundle** `kwtech-install-<version>.zip`, assembled by
   `deploy/make-bundle.sh`: the installers (`install.ps1`, `install.sh`), the
   `kwtech` command, `INSTALL.md`, `docker/` with the version filled in, and
