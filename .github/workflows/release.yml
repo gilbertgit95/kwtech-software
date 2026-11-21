@@ -161,9 +161,31 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Sign in to the registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # ⚠ A version's tag is never moved (#133): publishing again (a failed
+      # zip step, #229) reuses the images already pushed, pulled for their
+      # digests, instead of building new ones under the same tag.
+      - name: Already published?
+        id: published
+        run: |
+          if docker manifest inspect "$IMAGES/api:$VERSION" >/dev/null 2>&1 \
+            && docker manifest inspect "$IMAGES/web:$VERSION" >/dev/null 2>&1; then
+            echo "images=yes" >> "$GITHUB_OUTPUT"
+            docker pull -q "$IMAGES/api:$VERSION"
+            docker pull -q "$IMAGES/web:$VERSION"
+            echo "The $VERSION images are already published: reused, not rebuilt."
+          else
+            echo "images=no" >> "$GITHUB_OUTPUT"
+          fi
+
       # amd64 only for now: shop PCs are x86, and arm64 under emulation builds
       # 5 to 10 times slower (PLAN §12).
       - name: Build the images
+        if: steps.published.outputs.images == 'no'
         run: |
           docker build -f deploy/docker/api.Dockerfile -t "kwtech/api:$VERSION" -t "$IMAGES/api:$VERSION" -t "$IMAGES/api:stable" .
           docker build -f deploy/docker/web.Dockerfile -t "kwtech/web:$VERSION" -t "$IMAGES/web:$VERSION" -t "$IMAGES/web:stable" .
@@ -171,15 +193,14 @@ jobs:
       # Boots them on an empty database exactly as a shop runs them; nothing
       # is published unless it passes.
       - name: Release check
+        if: steps.published.outputs.images == 'no'
         env:
           KWTECH_CHECK_TAG: ${{ env.VERSION }}
         run: deploy/docker/check-release.sh --no-build
 
       - name: Push the images
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.published.outputs.images == 'no'
         run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           # The version tag is never moved again; `stable` follows the newest release.
           for image in api web; do
             docker push "$IMAGES/$image:$VERSION"
@@ -190,6 +211,9 @@ jobs:
 
       - name: The print agent zip
         run: |
+          # Its workspace dependencies first: the agent's tsc compiles against
+          # their dist/, which `pnpm install` alone does not make (#229).
+          pnpm turbo run build --filter=@kwtech/print-agent...
           # The release's version is stamped into the bundle (scripts/bundle.mjs).
           pnpm --filter @kwtech/print-agent bundle
           stage="$RUNNER_TEMP/print-agent"
