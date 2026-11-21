@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-kit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "The contract every module-* package implements and every app composes \u2014 descriptors, routes, navigation, feature contributions",
   "sideEffects": false,

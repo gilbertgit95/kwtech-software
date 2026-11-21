@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-local-network",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Local Network: a super admin's page for connecting phones and computers to an app on the shop's own network \u2014 the local authority's certificate and the server's address, as text and QR codes",
   "sideEffects": false,

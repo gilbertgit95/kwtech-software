@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-task",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Task boards per workspace, run as a sub-app on the Apps page: owner-configured columns, private or shared boards, assignees, checklists and comments",
   "sideEffects": false,

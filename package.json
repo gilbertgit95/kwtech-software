@@ -1,6 +1,6 @@
 {
   "name": "kwtech-software",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "KWTech software monorepo",
   "packageManager": "pnpm@11.18.0",
