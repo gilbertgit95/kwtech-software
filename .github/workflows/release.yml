@@ -3,8 +3,8 @@
 # Every push to main runs it. Two states, decided by whether changesets are
 # pending in `.changeset/`:
 #
-# - **Pending:** keeps ONE pull request open, "chore(release): version
-#   packages" on the branch `changeset-release/main`, that runs `pnpm
+# - **Pending:** keeps ONE pull request open, "chore(release): kwtech
+#   <version>" on the branch `changeset-release/main`, that runs `pnpm
 #   changeset:version`: the next version on every package, ONE section of
 #   release notes in CHANGELOG.md, the changesets removed. Each new merge
 #   updates the same PR.
@@ -14,8 +14,8 @@
 #   nothing. #133's P2 adds the image and print agent builds to this.
 #
 # ⚠ Needs "Allow GitHub Actions to create and approve pull requests"
-# (Settings → Actions → General → Workflow permissions), or the version PR
-# step fails with "GitHub Actions is not permitted to create or approve pull
+# (Settings → Actions → General → Workflow permissions), or `gh pr create`
+# fails with "GitHub Actions is not permitted to create or approve pull
 # requests". And a PR opened with the workflow's own token starts no
 # workflows (GitHub's rule against loops), so the version PR shows no CI
 # checks: it changes only versions and CHANGELOG.md, which every later PR's
@@ -54,24 +54,54 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      # Pending = any file in .changeset/ but its README and config. Read
+      # here, not from changesets/action, which crashed building the PR body
+      # from per-package CHANGELOG.md files we do not write (#208).
+      - name: Changesets pending?
+        id: pending
+        run: |
+          count=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "$count changeset(s) pending."
+
       - name: Keep the version PR up to date
-        id: changesets
-        uses: changesets/action@v2.1.2
-        with:
-          version-script: pnpm changeset:version
-          # Conventional and under 80 characters: the PR title check and the
-          # squash merge's commit header (CLAUDE.md, Conventions).
-          pr-title: 'chore(release): version packages'
-          commit-message: 'chore(release): version packages'
-          # Nothing is published to npm, and the tag and release are ours
-          # (below): one `v<version>`, not a tag per package.
-          create-github-releases: false
-          push-git-tags: false
+        if: steps.pending.outputs.count != '0'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Rebuilt from this main every time, so the PR always holds exactly
+          # the changesets pending now, never a stale version.
+          git switch -C changeset-release/main
+          pnpm changeset:version
+          version=$(node scripts/release-version.mjs)
+          node scripts/release-version.mjs notes --print "$version" > "$RUNNER_TEMP/notes.md"
+          {
+            echo "Merging this releases **kwtech $version**: every package moves to $version, the notes below go to CHANGELOG.md and the GitHub release, and the changesets are removed. Edit a sentence in CHANGELOG.md here before merging if it needs it (docs/RELEASING.md)."
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+          } > "$RUNNER_TEMP/body.md"
+          git add -A
+          # --no-verify: the hooks format and lint what a person wrote; this
+          # commit is versions and generated notes only.
+          git commit --no-verify -m "chore(release): kwtech $version"
+          git push --force origin changeset-release/main
+          # Conventional and short: the PR title check and the squash
+          # merge's header (CLAUDE.md, Conventions).
+          title="chore(release): kwtech $version"
+          number=$(gh pr list --head changeset-release/main --base main --state open --json number -q '.[0].number')
+          if [ -n "$number" ]; then
+            # Not `gh pr edit`: it fails in this repository on a Projects
+            # (classic) query. The REST endpoint does not.
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$number" -f title="$title" -F body=@"$RUNNER_TEMP/body.md" >/dev/null
+            echo "Updated the version PR #$number for $version."
+          else
+            gh pr create --base main --head changeset-release/main --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
 
       - name: Tag and release the version
-        if: steps.changesets.outputs.has-changesets == 'false'
+        if: steps.pending.outputs.count == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
