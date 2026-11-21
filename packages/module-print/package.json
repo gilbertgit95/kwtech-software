@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-print",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "A workspace's printing side: the computers paired to print for it, the printers they report, and the relay a print job crosses",
   "sideEffects": false,

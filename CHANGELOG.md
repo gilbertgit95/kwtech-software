@@ -2,6 +2,12 @@
 
 kwtech, one version for the API, the web app, the print agent and every module (#204).
 
+## 0.3.1 (2026-11-21)
+
+### Fixed
+
+- kwtech can be installed on an Apple Silicon (M-series) Mac with `install-mac.sh`, and its images now also run natively on ARM computers.
+
 ## 0.3.0 (2026-11-21)
 
 ### New

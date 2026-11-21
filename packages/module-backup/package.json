@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-backup",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Database backups: a super admin's Backups page (back up now, download, delete, restore), a daily backup process, and the command line \u2014 files in a folder, nothing in the database",
   "sideEffects": false,
