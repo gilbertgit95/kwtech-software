@@ -18,6 +18,7 @@ link to the longer documents rather than copying them.
 | [docs/STANDARDS.md](docs/STANDARDS.md) | the coding standards: what is in `.claude/rules/`, and the known inconsistencies |
 | [docs/HTTPS.md](docs/HTTPS.md) | other devices reaching the app: the shop's network (Caddy, registering phones), a remote server (no Caddy), moving to another computer |
 | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | what may import what, and the ports modules use instead. Enforced by `pnpm check:boundaries` |
+| [docs/RELEASING.md](docs/RELEASING.md) | versions and releases: a changeset in every PR, the version PR, tags and release notes (#204) |
 | [docs/PLATFORM-BILLING-PLAN.md](docs/PLATFORM-BILLING-PLAN.md) | platform billing (#88): requests we approve, prorated plan changes, grace and expiry, bills and receipts; its decisions and phases |
 
 `docs/PLAN.md` is over 9,000 lines. Search it (`grep -n "§12.40" docs/PLAN.md`)
@@ -67,6 +68,7 @@ pnpm dev:print-agent | start:print-agent   # the print agent alone: rebuilt and 
 pnpm typecheck
 pnpm test                # jest in packages and web-server
 pnpm lint                # biome, then the package boundary check; pnpm check:fix writes the fixes
+pnpm changeset           # in every PR that changes a package: what changed, for the release notes (--empty: nothing to tell)
 pnpm --filter @kwtech/web-app test:e2e     # playwright, see apps/web-app/e2e/README.md
 
 pnpm --filter @kwtech/web-server db:migrate    # compose module fragments + prisma migrate dev
@@ -239,6 +241,10 @@ only when it is a feature of its own (PLAN §9 rule 8).
       page file.
 
 **Then**
+- [ ] **A changeset** (`pnpm changeset`): one plain-English sentence for the
+      people who use the app, patch / minor / major. `pnpm changeset --empty`
+      when there is nothing for them to know. CI refuses a PR that changes a
+      package without one. See [docs/RELEASING.md](docs/RELEASING.md).
 - [ ] `pnpm --filter @kwtech/web-server db:migrate` for schema changes, and commit
       the migration.
 - [ ] `pnpm --filter @kwtech/web-server db:sync` so new feature keys exist
@@ -272,6 +278,9 @@ answer *how many*. The details are in DESIGN-NOTES Part 4 and
   committing). commitlint refuses a header over 100, and a squash merge adds
   ` (#NN)` to the PR title, so a title near 100 passes when the PR is opened
   and goes over when it is merged. The detail goes in the body.
+- **One product version, by changesets** (#204): every `@kwtech/*` package moves
+  together, and release notes are one `CHANGELOG.md` at the root. Never edit a
+  package's `version` by hand; the version PR does it ([docs/RELEASING.md](docs/RELEASING.md)).
 - ESM throughout. Relative imports in packages end in `.js`.
 - Shared dependency versions go in the pnpm `catalog:` in `pnpm-workspace.yaml`.
   Nest, `@nestjs/graphql` and `graphql` **must** come from the catalog: a
