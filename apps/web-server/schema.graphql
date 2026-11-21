@@ -1909,6 +1909,7 @@ type PlatformBillingStanding {
   planLabel: String
   prepaid: Boolean!
   trial: Boolean!
+  trialUsed: Boolean!
 }
 
 type PlatformBillingStandingCount {

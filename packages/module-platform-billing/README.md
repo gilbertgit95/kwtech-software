@@ -142,7 +142,7 @@ platformBillingServerModule({
 
 | Port | What it answers | Unbound |
 |---|---|---|
-| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription (and every live row on a plan, for an archive), and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
+| `PLATFORM_BILLING_SUBSCRIPTIONS` | the organization's live subscription (and every live row on a plan, for an archive), its trial history (`trialHistory`: whether its founder's one trial went to another organization, #199), and `module-permissions`' billed writes (`renew`, `changePlan`, `start`, `end`, `setAccessUntil`) **inside billing's transaction** | the module refuses to boot |
 | `PLATFORM_BILLING_PLANS` | every plan (listing, archived, features, caps), an organization's usage of the caps (D6), and, optionally, what each feature and cap is called (`labels()`, the plan comparison, #101) | the module refuses to boot; without `labels()` the comparison lists plans and prices with no rows |
 | `PLATFORM_BILLING_PEOPLE` | whether an approver is a member of the organization (D15), the organization's name for documents, and a page of every organization by id (the platform's standings and reports) | every approver is flagged as a member: the flag never blocks; documents print the id; the standings and the counts say they are unavailable |
 | `PLATFORM_BILLING_NOTIFIER` | the reminders, the approvers' digest and each request's steps, as notifications; each answers whether it was delivered | nobody is told, and the daily check writes nothing, so binding it later still delivers that day's reminders |
@@ -271,7 +271,11 @@ presses it.
   one that left the dates as they were, is refused as `subscription_changed`.
 - **A trial** (D2, `perm_subscription.trialUserId`) reads as unpaid: there is
   nothing to renew, change, cancel or credit, and the owner subscribes, which
-  ends the trial row.
+  ends the trial row. A founder's **second** organization gets no trial and
+  says why (#199, `checkTrialUsedElsewhere`): while it is on Free and never had
+  a plan or a trial of its own, its Billing page gives `trial_used`'s sentence
+  and next step (`standing.trialUsed`). The founder is the organization's first
+  membership, the account `createOrganization` checked for a trial.
 - **Cancel** applies at once, decided by the owner (`cancel_needs_no_approval`):
   no bill, no credit, access to the period's end without grace. Renewing
   opens at once after a cancel and undoes it.

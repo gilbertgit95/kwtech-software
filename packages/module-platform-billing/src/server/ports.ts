@@ -3,6 +3,7 @@ import type { CatalogueLabels } from '../domain/comparison.js';
 import type { DayKey } from '../domain/days.js';
 import type { ReminderKind } from '../domain/notices.js';
 import type { RequestKind } from '../domain/requests.js';
+import type { BillingTrialHistory } from '../domain/trials.js';
 import type { PlatformBillingTransaction } from './platform-billing.repository.js';
 
 /**
@@ -59,6 +60,13 @@ export interface PlatformBillingSubscriptions {
   ): Promise<ReadonlyArray<BillingSubscriptionRow & { organizationId: string }>>;
   /** The live organization-wide row, or null (no row holds the organization's slot). */
   live(organizationId: string, tx?: PlatformBillingTransaction): Promise<BillingSubscriptionRow | null>;
+  /**
+   * Whether the organization had a trial of its own, and whether its founder
+   * (the account that created it) used their one trial on another
+   * organization (D2, #199): why a Free organization has no trial. Read
+   * outside any transaction; it only explains, never decides a write.
+   */
+  trialHistory(organizationId: string): Promise<BillingTrialHistory>;
   /** The same row, its period and access moved forward (a renewal before access ended). */
   renew(input: BillingPeriodWrite, tx: PlatformBillingTransaction): Promise<{ subscriptionId: string }>;
   /** The old row ended and a new one started on `planKey` (a plan change). */

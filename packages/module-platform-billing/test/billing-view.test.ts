@@ -36,6 +36,7 @@ function overview(standing: Partial<BillingStandingView> = {}, over: Partial<Bil
       planArchived: false,
       cancelled: false,
       trial: false,
+      trialUsed: false,
       periodStart: '2026-11-01',
       periodEnd: '2026-12-01',
       accessUntil: '2026-12-08',

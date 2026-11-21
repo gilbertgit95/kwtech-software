@@ -1,4 +1,5 @@
 import { DEFAULT_TIME_ZONE, isValidTimeZone, zonedDayKey } from '@kwtech/module-kit';
+import { PLATFORM_BILLING_REFUSALS } from '../../domain/refusals.js';
 import type {
   BillingEventView,
   BillingOverviewView,
@@ -142,6 +143,19 @@ export function billingStatus(
   }
   switch (s.kind) {
     case 'none':
+      /*
+       * The founder's one trial went to another organization (D2, #199): the
+       * owner expected a trial and got Free, so the page says why, in
+       * `trial_used`'s words (the one refusal text, never restated here).
+       */
+      if (s.trialUsed) {
+        const used = PLATFORM_BILLING_REFUSALS.trial_used;
+        return {
+          tone: 'info',
+          headline: 'No paid plan',
+          details: [`The organization uses the free plan, with no trial. ${used.message}`, used.nextStep, ...details],
+        };
+      }
       return {
         tone: 'info',
         headline: 'No paid plan',

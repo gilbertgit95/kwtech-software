@@ -28,6 +28,7 @@ export * from './domain/reports.js';
 export * from './domain/requests.js';
 export * from './domain/standing.js';
 export * from './domain/statement.js';
+export * from './domain/trials.js';
 export * from './domain/voids.js';
 export * from './feature-keys.js';
 export * from './operations.js';

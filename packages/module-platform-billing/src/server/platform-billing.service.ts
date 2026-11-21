@@ -29,6 +29,7 @@ import {
   STATEMENT_MAX_DAYS,
   type Statement,
 } from '../domain/statement.js';
+import { checkTrialUsedElsewhere } from '../domain/trials.js';
 import { billingRefusal } from './platform-billing.errors.js';
 import {
   type BillRow,
@@ -97,6 +98,11 @@ export interface BillingContext {
   cancelled: boolean;
   /** The owner's auto-renew switch (#129): off when no row was ever written. */
   autoRenew: { enabled: boolean; setAt: Date | null };
+  /**
+   * The founder's trial went to another organization and this one never had a
+   * plan or a trial (#199): the Billing page says why there is no trial.
+   */
+  trialUsedElsewhere: boolean;
 }
 
 /** A request with what hangs off it: one row of the history (plan §7). */
@@ -256,6 +262,7 @@ export class PlatformBillingService {
             },
           })
         : null;
+    const trialUsedElsewhere = await this.trialUsedElsewhere(organizationId, live, standing, db);
     return {
       organizationId,
       settings,
@@ -268,8 +275,36 @@ export class PlatformBillingService {
       creditBalance,
       pending,
       cancelled: cancel !== null,
+      trialUsedElsewhere,
       autoRenew: { enabled: autoRenew?.enabled ?? false, setAt: autoRenew?.setAt ?? null },
     };
+  }
+
+  /**
+   * Whether the Billing page owes the founder the reason there is no trial
+   * (#199, `checkTrialUsedElsewhere`). The two reads run only for an
+   * organization on Free with no trial live, the one case the sentence can
+   * apply to, so every other context costs nothing more.
+   */
+  private async trialUsedElsewhere(
+    organizationId: string,
+    live: BillingSubscriptionRow | null,
+    standing: BillingStanding,
+    db: PlatformBillingTransaction,
+  ): Promise<boolean> {
+    const liveTrial = live?.trial ?? false;
+    if (liveTrial || standing.hasPaidSubscription) return false;
+    const [history, approved] = await Promise.all([
+      this.subscriptions.trialHistory(organizationId),
+      db.platformBillingRequest.findFirst({ where: { organizationId, state: 'approved' } }),
+    ]);
+    return (
+      checkTrialUsedElsewhere(history, {
+        liveTrial,
+        hasPaidSubscription: standing.hasPaidSubscription,
+        everApproved: approved !== null,
+      }) !== null
+    );
   }
 
   /**

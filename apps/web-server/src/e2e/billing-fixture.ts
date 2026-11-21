@@ -56,6 +56,13 @@ const ORGANIZATION_NAME = 'E2E Billing';
 const WORKSPACE_KEY = 'e2e-billing-desk';
 const WORKSPACE_NAME = 'E2E Billing desk';
 
+/**
+ * The organizations the trial case (O14) has the owner create in the browser:
+ * keys start with this, which is what reset and teardown find them by. The
+ * owner's first one takes the trial; the second is refused it (#199).
+ */
+const TRIAL_ORGANIZATION_KEY_PREFIX = 'e2e-billing-trial-';
+
 /** `.test` is reserved (RFC 2606): no mail sent to these can reach anybody. */
 const EMAIL_DOMAIN = 'e2e-billing.test';
 
@@ -263,6 +270,7 @@ async function reset(prisma: PrismaClient): Promise<void> {
 
   await clearBilling(prisma, organization.id);
   await startOnFree(prisma, organization.id);
+  await removeTrialOrganizations(prisma);
   await prisma.platformBillingPrice.deleteMany({ where: { setById: { in: userIds } } });
   await useTestSettings(prisma);
   await rewindNumbering(prisma);
@@ -382,6 +390,7 @@ async function teardown(prisma: PrismaClient): Promise<void> {
     // Memberships, workspaces, roles and subscriptions cascade from the organization.
     await prisma.permOrganization.delete({ where: { id: organizationId } });
   }
+  await removeTrialOrganizations(prisma);
 
   await clearOrphanedBillingNotices(prisma);
   await rewindNumbering(prisma);
@@ -456,6 +465,23 @@ async function clearBilling(prisma: PrismaClient, organizationId: string): Promi
   await prisma.platformBillingNotice.deleteMany({ where: { organizationId } });
   await prisma.platformBillingAutoRenew.deleteMany({ where: { organizationId } });
   await prisma.platformBillingLock.deleteMany({ where: { organizationId } });
+}
+
+/**
+ * The organizations O14 created (`TRIAL_ORGANIZATION_KEY_PREFIX`), with their
+ * billing rows: the owner's trial goes with them, since its row cascades from
+ * the organization it was given to, so the next run's owner has it unused.
+ */
+async function removeTrialOrganizations(prisma: PrismaClient): Promise<void> {
+  const created = await prisma.permOrganization.findMany({
+    where: { key: { startsWith: TRIAL_ORGANIZATION_KEY_PREFIX } },
+    select: { id: true },
+  });
+  // One at a time: each clears rows that refer to each other, in order.
+  for (const { id } of created) {
+    await clearBilling(prisma, id);
+    await prisma.permOrganization.delete({ where: { id } });
+  }
 }
 
 /**
