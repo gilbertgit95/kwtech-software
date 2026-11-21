@@ -9,6 +9,7 @@ import { createPermissionsClient } from '../permissions-client.js';
 import { ORGANIZATIONS_HREF, organizationSectionHref } from '../tenant-nav.js';
 import { usePermissions } from '../use-permissions.js';
 import { AdminPlaceholder } from './admin-page.js';
+import { OrganizationGettingStarted } from './organization-getting-started.js';
 import { OrganizationNotices } from './organization-notices.js';
 import { TenantPage } from './tenant-page.js';
 import { useMyOrganization } from './use-my-organization.js';
@@ -159,6 +160,11 @@ export function OrganizationHomePage({
               </p>
             ) : null}
           </div>
+
+          {/* Only for someone who can act on a step: inviting staff or adding workspaces (#133 P0a). */}
+          <FeatureGate anyOf={[FEATURE.membersInvite, FEATURE.workspacesCreate]}>
+            <OrganizationGettingStarted detail={detail} />
+          </FeatureGate>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat
