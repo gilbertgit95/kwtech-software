@@ -27,7 +27,8 @@
     "db:restore": "pnpm db:seed:build && node dist/seed/snapshot.js --restore",
     "backup:create": "pnpm db:seed:build && node dist/backup/cli.js create",
     "backup:list": "pnpm db:seed:build && node dist/backup/cli.js list",
-    "backup:restore": "pnpm db:seed:build && node dist/backup/cli.js restore"
+    "backup:restore": "pnpm db:seed:build && node dist/backup/cli.js restore",
+    "first-setup": "pnpm db:seed:build && node dist/seed/run.js --phase=seed --only=permissions:features,permissions:app-roles,permissions:defaults,jobs:processes,permissions:plans && JOBS_RUNNER=off node dist/setup/first-setup.js"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",

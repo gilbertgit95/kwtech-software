@@ -32,6 +32,32 @@ node dist/seed/run.js --phase=seed --only=demo:tenant
 `prisma.config.ts` registers `pnpm db:seed` as the migration seed command, so
 `prisma migrate reset` re-seeds on its own.
 
+## First setup of a new install (`first-setup`)
+
+```bash
+pnpm --filter @kwtech/web-server first-setup
+```
+
+For a shop's new install (#206, #133 P0c), instead of `db:seed`: it syncs the
+reference data and the starting plans, then asks for the organization, its
+first workspace, the super admin, and a first person per organization role
+(the owner first and required, who founds the organization), each with a role
+in the workspace. Passwords are typed hidden, twice. A summary is confirmed
+before anything is written; a failure part-way removes what it made.
+
+- **New installs only:** it refuses once any organization or super admin
+  exists, so it can never add a second shop or hand out platform powers on a
+  live install.
+- **The app's own paths:** accounts through `seedUser`, and the organization,
+  workspace and roles through `PermissionsWriteService` acting as the owner,
+  so the founder role, the default plan and the trial apply as in the app. It
+  boots the app with `JOBS_RUNNER=off` (the script sets it).
+- **No terminal** (the Docker installer, tests): one answer per line on
+  standard input, and a refused answer stops it with the reason.
+- ⚠ Not `pnpm setup`: that is pnpm's own command.
+- The rules are in `src/setup/first-setup-plan.ts` (tested in
+  `test/first-setup-plan.test.ts`).
+
 ## Dev data snapshot
 
 `pnpm db:snapshot` / `pnpm db:restore` ([`snapshot.ts`](./snapshot.ts)) copy a

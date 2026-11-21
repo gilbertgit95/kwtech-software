@@ -75,6 +75,7 @@ pnpm --filter @kwtech/web-server db:migrate    # compose module fragments + pris
 pnpm --filter @kwtech/web-server db:generate   # compose + generate the client
 pnpm --filter @kwtech/web-server db:sync       # reference data (features, roles, defaults)
 pnpm --filter @kwtech/web-server db:seed       # sync + first user, plans, demo user
+pnpm --filter @kwtech/web-server first-setup   # a NEW install: organization, workspace, super admin, a person per role (asks; #206)
 pnpm db:restore [--force]                      # load seed-data/snapshot.json (local, gitignored)
 pnpm db:backup [--no-open]                     # full pg_dump to backups/ (gitignored), then shown in Explorer
 pnpm env:show | env:use <name> | env:new <name> | env:check   # env profiles in envs/ (local by default)
