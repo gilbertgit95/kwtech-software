@@ -196,6 +196,7 @@ export function renderStanding(context: BillingContext): PlatformBillingStanding
     planArchived: live?.planArchived ?? false,
     cancelled: context.cancelled,
     trial: live?.trial ?? false,
+    trialUsed: context.trialUsedElsewhere,
     periodStart: standing.currentPeriod?.start ?? null,
     periodEnd: standing.rowPeriod?.end ?? liveDays?.periodEnd ?? null,
     accessUntil: standing.window?.accessUntil ?? liveDays?.accessUntil ?? null,

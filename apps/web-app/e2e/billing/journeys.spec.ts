@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { billingPath, expect, fixture, NOT_SET_UP, resetBilling, test } from './fixtures';
 import {
   approve,
@@ -424,6 +425,63 @@ test.describe
       ).toBeVisible();
       await expect(refusal.getByText(/organization:members/)).toHaveCount(0);
       await expect(owner.getByRole('button', { name: 'Request this plan' })).toBeDisabled();
+    });
+  });
+
+/**
+ * Creates an organization as `page`'s person on the New organization page and
+ * returns its id, read from the page it lands on. The key carries the prefix
+ * `e2e:billing reset` and `teardown` remove these by.
+ */
+async function createOrganization(page: Page, suffix: string, name: string): Promise<string> {
+  await page.goto('/organizations/new');
+  await page.getByLabel('Key').fill(`e2e-billing-trial-${suffix}`);
+  await page.getByLabel('Name').fill(name);
+  await page.getByRole('button', { name: 'Create organization' }).click();
+  // Lands on the new organization's page (its overview), never back on /new.
+  await page.waitForURL(/\/organizations\/(?!new(?:[/?#]|$))[^/?#]+/);
+  const id = /\/organizations\/([^/?#]+)/.exec(new URL(page.url()).pathname)?.[1];
+  if (!id) throw new Error(`No organization id in ${page.url()}.`);
+  return decodeURIComponent(id);
+}
+
+test.describe
+  .serial('The trial, once per founder (O14)', () => {
+    test.beforeAll(() => {
+      // Also removes any organization an earlier run of this case left behind, and the owner's trial with it.
+      if (fixture) resetBilling();
+    });
+
+    test.afterAll(() => {
+      if (fixture) resetBilling();
+    });
+
+    test('O14: the owner’s new organization takes the trial; their second is refused it and told why', async ({
+      as,
+    }) => {
+      const owner = await as('owner');
+
+      const first = await createOrganization(owner, 'one', 'E2E Trial One');
+      await owner.goto(`/organizations/${encodeURIComponent(first)}/billing`);
+      await expect(owner.getByRole('heading', { name: 'Trial of Basic' })).toBeVisible();
+      await expect(owner.getByText(/^Free until .*, with no grace after it\./)).toBeVisible();
+
+      const second = await createOrganization(owner, 'two', 'E2E Trial Two');
+      await owner.goto(`/organizations/${encodeURIComponent(second)}/billing`);
+      await expect(owner.getByRole('heading', { name: 'No paid plan' })).toBeVisible();
+      await expect(
+        owner.getByText(
+          'The organization uses the free plan, with no trial. A free trial was already used by this account.',
+        ),
+      ).toBeVisible();
+      await expect(owner.getByText('Request a plan to keep using the business apps.')).toBeVisible();
+
+      /*
+       * "Nothing changes" for an organization that had its own trial or a plan
+       * is the module's unit tests (trial-used.test.ts). Not E2E Billing here:
+       * its first member is this owner, so by the rule it now names the used
+       * trial too.
+       */
     });
   });
 

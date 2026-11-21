@@ -45,7 +45,7 @@ export const PLATFORM_BILLING_OPERATIONS = {
     query PlatformBillingOverview($organizationId: String!) {
       platformBillingOverview(organizationId: $organizationId) {
         organizationId organizationName today timeZone currency creditBalance
-        standing { kind days planKey planLabel planArchived cancelled trial periodStart periodEnd accessUntil graceDays holdDays prepaid }
+        standing { kind days planKey planLabel planArchived cancelled trial trialUsed periodStart periodEnd accessUntil graceDays holdDays prepaid }
         pending { ${REQUEST} }
         plans { key label monthly isPublic archived current }
         paymentAccounts { method label details }
@@ -144,7 +144,7 @@ export const PLATFORM_BILLING_OPERATIONS = {
       platformBillingOrganizations(cursor: $cursor, limit: $limit, filter: $filter) {
         items {
           organizationId name creditBalance pendingRequestId
-          standing { kind days planKey planLabel planArchived cancelled trial periodStart periodEnd accessUntil graceDays holdDays prepaid }
+          standing { kind days planKey planLabel planArchived cancelled trial trialUsed periodStart periodEnd accessUntil graceDays holdDays prepaid }
         }
         nextCursor available
       }

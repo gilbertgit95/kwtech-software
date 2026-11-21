@@ -70,6 +70,11 @@ export class PlatformBillingStandingType {
   @Field() cancelled!: boolean;
   /** The live row is a trial (D2): free days, nothing to renew; the owner subscribes. */
   @Field() trial!: boolean;
+  /**
+   * On Free with no trial because the founder used theirs on another
+   * organization (D2, #199): the page says so, with `trial_used`'s words.
+   */
+  @Field() trialUsed!: boolean;
   @Field(() => String, { nullable: true }) periodStart!: string | null;
   @Field(() => String, { nullable: true }) periodEnd!: string | null;
   /** The first day without access. */

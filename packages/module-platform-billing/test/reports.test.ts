@@ -301,6 +301,7 @@ describe('what the report pages show', () => {
       planArchived: false,
       cancelled: false,
       trial: false,
+      trialUsed: false,
       periodStart: '2026-10-15',
       periodEnd: '2026-11-15',
       accessUntil: '2026-11-22',

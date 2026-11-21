@@ -140,6 +140,8 @@ export interface BillingStandingView {
   planArchived: boolean;
   cancelled: boolean;
   trial: boolean;
+  /** No trial here: the founder's went to another organization (#199). */
+  trialUsed: boolean;
   periodStart: string | null;
   periodEnd: string | null;
   accessUntil: string | null;

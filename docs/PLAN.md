@@ -633,6 +633,13 @@ Decisions 1, 2, 3 and 5 gate the next step.
 
 ## 13. Decision log
 
+- **2026-11-21** — **A founder's second organization says why it has no trial; its founder is read as its first membership (#199).**
+  D2 gives one trial per founder account, so the second organization starts on Free, but its Billing page read "No paid plan" like any other and the declared `trial_used` refusal was never shown (#99: a surprising outcome explains itself). Found by O14 of #178.
+  - **Decided in the domain:** `checkTrialUsedElsewhere` says `trial_used` only while the organization is on Free, has no live trial, had no trial of its own and no approved request, and its founder's trial row is on another organization. Once it paid or had a trial, "no trial here" is no longer a surprise.
+  - **The founder is the first membership** (`joinedAt`, then id). Nothing stores who created an organization, but `createOrganization` makes the founder a member in the same transaction, before anybody can be invited. Not the owner role: ownership can move to somebody who founded nothing. The alternative, a founder column, would need a migration and would still be empty for every organization made before it.
+  - **Bug fixed on the way (#201):** `/organizations/new` reused the admin page and its `organizations:read` gate, so no account but platform staff could found an organization from the app. The tenant route is now ungated; the `user:organizations` cap refuses at the write, as designed. Its note no longer says a new organization "starts on no plan".
+  - **Not done:** the New organization page does not say beforehand whether this organization will get the trial.
+
 - **2026-11-18** — **A member's access, explained: every organization and workspace permission with yes or no and the role or plan behind it, from the guard's own composition (#173, the last item of #25).**
   Scheduled by the operator the same day it was deferred. #99's refusals name the missing role one key at a time; this answers "what can this person do here, and why" for all of them at once.
   - **One source of truth.** `loadContext` was split into `contextInput` (the reads) and `composeContext` (the decision). The explanation composes the same input, and finds which roles contribute a key by composing each role alone with no plan, so the applies-at-this-level and plan-filter rules stay in `domain/grants.ts` only.

@@ -1,5 +1,6 @@
 import type { PermissionsTransaction } from '@kwtech/module-permissions/server';
 import { PermissionsWriteService } from '@kwtech/module-permissions/server';
+import type { BillingTrialHistory } from '@kwtech/module-platform-billing';
 import type {
   BillingPeriodWrite,
   BillingSubscriptionRow,
@@ -83,6 +84,38 @@ export class PlatformBillingSubscriptionsAdapter implements PlatformBillingSubsc
       accessUntil: row.accessUntil,
       trial: row.trialUserId !== null,
     };
+  }
+
+  /**
+   * The organization's trials, for why it has none (D2, #199).
+   *
+   * ⚠ THE FOUNDER IS THE ORGANIZATION'S FIRST MEMBERSHIP. Nothing stores who
+   * created an organization, but `createOrganization` makes the founder a
+   * member in the same transaction that creates it, before anybody can be
+   * invited, so the earliest membership is theirs (the id breaks a tie). It is
+   * the account `startTrial` checked, which an owner's role is not: ownership
+   * can move to somebody who never founded anything.
+   */
+  async trialHistory(organizationId: string): Promise<BillingTrialHistory> {
+    const [own, founder] = await Promise.all([
+      this.prisma.permSubscription.findFirst({
+        where: { organizationId, trialUserId: { not: null } },
+        select: { id: true },
+      }),
+      this.prisma.permMembership.findFirst({
+        where: { organizationId },
+        orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
+        select: { userId: true },
+      }),
+    ]);
+    if (own) return { ownTrial: true, founderTrialElsewhere: false };
+    if (!founder) return { ownTrial: false, founderTrialElsewhere: false };
+    // `trialUserId` is unique: the founder's one trial row, ended ones included.
+    const used = await this.prisma.permSubscription.findFirst({
+      where: { trialUserId: founder.userId },
+      select: { organizationId: true },
+    });
+    return { ownTrial: false, founderTrialElsewhere: used !== null && used.organizationId !== organizationId };
   }
 
   /** Every live organization-wide row on `planKey`: whom an archive of it owes credit (D12b). */

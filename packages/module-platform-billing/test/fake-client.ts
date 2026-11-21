@@ -1,4 +1,5 @@
 import { platformDayStart } from '../src/domain/days.js';
+import type { BillingTrialHistory } from '../src/domain/trials.js';
 import type {
   AutoRenewRow,
   BillRow,
@@ -53,6 +54,8 @@ interface Store {
   autoRenew: Map<string, AutoRenewRow>;
   /** The organization's live subscription, as permissions would hold it. */
   subscriptions: Map<string, BillingSubscriptionRow>;
+  /** What permissions knows about each organization's trials (#199); absent reads as none. */
+  trialHistory: Map<string, BillingTrialHistory>;
   /** Every subscription write, in order: what an approval applied. */
   subscriptionWrites: Array<{ how: string; organizationId: string; planKey?: string; accessUntil: Date }>;
 }
@@ -73,6 +76,7 @@ function emptyStore(): Store {
     notices: [],
     autoRenew: new Map(),
     subscriptions: new Map(),
+    trialHistory: new Map(),
     subscriptionWrites: [],
   };
 }
@@ -560,6 +564,9 @@ export function fakeBilling(): FakeBilling {
     async live(organizationId) {
       const row = current().subscriptions.get(organizationId);
       return row ? { ...row } : null;
+    },
+    async trialHistory(organizationId) {
+      return { ...(current().trialHistory.get(organizationId) ?? { ownTrial: false, founderTrialElsewhere: false }) };
     },
     async renew(input) {
       return write(

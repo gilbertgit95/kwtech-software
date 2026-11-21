@@ -102,7 +102,8 @@ pnpm --filter @kwtech/web-server e2e:billing teardown
   module's unit tests cover it. Nor the approvers' digest (P16): it is about
   every organization's waiting requests, and goes to the real staff. O13 (a
   plan with no price) cannot be reached: an unpriced plan is never offered.
-  O14 (the trial) waits on #199.
+  O14 (the trial) has the owner create two organizations (keys `e2e-billing-trial-*`),
+  which `reset` and `teardown` remove, the owner's trial with them.
 - The accounts are on `@e2e-billing.test` (a reserved domain: no mail reaches
   anybody) and have no two-step sign-in. Each gets the app role every new
   account gets (`account.app_role`), plus its own role.
