@@ -227,5 +227,6 @@ then `kwtech update --bundle <that folder as WSL sees it, e.g. /mnt/d/kwtech-ins
 | "Not private" / "Not secure" on a phone | the certificate is not installed, or not trusted (iPhone) | Step 7 again; on iPhone, **Certificate Trust Settings** |
 | The point of sale says "Not live" | opened through the wrong address | `https://<address>`; on the server PC `https://localhost` |
 | A printing PC shows Offline | nobody signed in, asleep, or off the network | Automatic sign-in, never sleep, check its network |
+| Server, Backups shows no daily backup, or an upload fails | an install made before 0.3.2: the backups and files folders were not the app's | Run step 2 again (or `kwtech update`): it hands the folders to the app, and keeps the data |
 | "The code has expired" when pairing | codes last 10 minutes, once | Add the computer again for a new code |
 | Forgot a password | | With email: *Forgot password* on the sign-in page. Without, or for the super admin: on the server PC, `wsl -d Ubuntu -u root kwtech recover-account` |
