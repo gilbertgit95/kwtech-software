@@ -205,6 +205,14 @@ fi
 
 # --- 5. Start --------------------------------------------------------------------
 step 'Starting the database, the app and HTTPS'
+# The API runs as `node`, but Docker makes a new volume's folder root's when
+# the image has none there, so every backup and upload failed with EACCES
+# (the backups folder stayed empty). Hand both to `node` before the API
+# starts: on every install and update, so an install made before this is
+# fixed too. --no-deps: nothing else starts for it; run creates the volumes.
+quiet_compose run --rm --no-deps -T -u root --entrypoint chown api node:node /backups /files >/dev/null \
+  || stop 'Could not give the app its backups and files folders (chown in the api image).'
+ok 'the backups and files folders belong to the app'
 quiet_compose up -d --remove-orphans >/dev/null
 # KWTECH_HEALTH_TIMEOUT: seconds to wait (default 6 minutes); shortened by tests.
 for _ in $(seq 1 $(( ${KWTECH_HEALTH_TIMEOUT:-360} / 5 ))); do
