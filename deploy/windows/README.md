@@ -32,11 +32,13 @@ it again is always safe.
 | Private network | no connection marked Public | marked Private (the firewall rules cover Private only) |
 | Windows Defender Firewall | a rule named `kwtech HTTPS` | ports 80 and 443 in, Private |
 | Hyper-V firewall (in front of WSL) | a rule named `kwtech HTTPS` | ports 80 and 443 in, for WSL's id |
-| Start at boot | a task `kwtech WSL at startup` | starts the distro at boot with nobody signed in (this user, no stored password) |
+| Keep WSL running | a task `kwtech WSL at startup` with a startup, a sign-in and a 5-minute trigger | starts the distro at startup with nobody signed in (this user, no stored password), at sign-in, and again within 5 minutes whenever it stops; an older task with only the startup trigger is updated |
+| Fast Startup | `HiberbootEnabled` is 0 | turned off, so Shut down really shuts down (Hibernate stays) |
 | Sleep | plugged-in sleep is Never | sleep and hibernate on mains power: Never |
 
 After changing `.wslconfig` or systemd it runs `wsl --shutdown` once, so
-anything running inside WSL stops and starts again. At the end it prints the
+anything running inside WSL stops and starts again, and then starts the
+task again (it holds WSL open only while it runs). At the end it prints the
 PC's address and the one step it cannot do: **reserve that address on the
 router** (#133, "A fixed address on the shop's network").
 
@@ -73,6 +75,9 @@ powershell -ExecutionPolicy Bypass -File .\install-print-agent.ps1 -WhatIf      
 - `-WhatIf` on a PC already set up by hand (Windows 11 Pro build 26300,
   WSL 3.0.5): every check `[ok]`, nothing changed.
 - `test\wslconfig.tests.ps1`: the `.wslconfig` edit on sample files.
+- `-WhatIf` on that PC with the old startup-only task (#237): the task is
+  reported as to be updated, and Fast Startup's state is read from the
+  registry.
 - `install-print-agent.ps1 -WhatIf -Server <address>` on that PC, and its
   fingerprint against Node's `fingerprint256` (the Local network page's) on
   the shop's real certificate: identical.
@@ -95,5 +100,16 @@ Found running it on a real PC, and commented where they are handled:
   `wsl.exe` is judged by its exit code instead.
 - **`-WhatIf` reached PowerShell's own module loading** ("What if: Set Alias
   gcim..."), so the script uses its own dry-run flag.
+- **A startup task alone left the app down after a normal Shut down** (#237).
+  With Fast Startup (on by default) Shut down logs off and hibernates, and
+  the next power-on is a resume: no startup trigger runs. And the task holds
+  WSL open only while its `sleep infinity` runs, so anything that ends the
+  distro (`wsl --shutdown`, a WSL update, this script's own restart of WSL)
+  ended it until the next real boot. A WSL started from a terminal instead
+  stops when that terminal closes. Hence the sign-in and 5-minute triggers
+  (with `IgnoreNew`, a repeat does nothing while the task runs), Fast
+  Startup off, and the task started again after `wsl --shutdown`. In the
+  System log it shows as event 1074 "power off" then 42 "entering sleep",
+  and no Kernel-General event 12 at the next power-on.
 - Output and the files are plain ASCII: 5.1 reads a script without a byte-order
   mark in the machine's code page.

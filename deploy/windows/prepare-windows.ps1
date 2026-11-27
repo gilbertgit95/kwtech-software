@@ -6,8 +6,9 @@
   Does, in order, what docs/HTTPS.md section 4 step 1 does by hand, and what
   a Docker install needs before it: checks the PC, installs WSL with Ubuntu and Docker Engine inside it, shares
   the network with WSL (mirrored networking), marks the shop's network
-  Private, opens ports 80 and 443 in BOTH firewalls, starts WSL at boot, and
-  keeps the PC from sleeping.
+  Private, opens ports 80 and 443 in BOTH firewalls, keeps WSL running (at
+  boot, at sign-in and every 5 minutes), turns off Fast Startup, and keeps
+  the PC from sleeping.
 
   Every step checks first and skips what is already done, so running it again
   is always safe. A step that needs a restart says so, registers itself to
@@ -276,18 +277,49 @@ if ($hyperVRule) {
 # --- 5. Staying up ---------------------------------------------------------
 Write-Host ''
 Write-Host 'Staying up'
-if (Get-ScheduledTask -TaskName $BootTaskName -ErrorAction SilentlyContinue) {
-  Say-Ok "WSL starts when Windows starts ('$BootTaskName')"
+# The task holds WSL open: its `sleep infinity` keeps the distro, and with
+# systemd its Docker, running (vmIdleTimeout=-1 keeps the VM). A boot trigger
+# alone is not enough (#237): with Fast Startup, Shut down hibernates and the
+# next power-on is a resume, not a boot; and anything that ends the distro
+# (wsl --shutdown, a WSL update) ends the task with it, until the next real
+# boot. So it also runs at sign-in and every 5 minutes. IgnoreNew makes those
+# a watchdog: nothing happens while it runs, and WSL starts again when not.
+$bootTask = Get-ScheduledTask -TaskName $BootTaskName -ErrorAction SilentlyContinue
+$bootTriggers = if ($bootTask) { @($bootTask.Triggers) } else { @() }
+$bootTaskCurrent = $bootTask -and
+  @($bootTriggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskBootTrigger' }).Count -gt 0 -and
+  @($bootTriggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }).Count -gt 0 -and
+  @($bootTriggers | Where-Object { $_.Repetition.Interval -eq 'PT5M' }).Count -gt 0 -and
+  $bootTask.Settings.MultipleInstances -eq 'IgnoreNew'
+if ($bootTaskCurrent) {
+  Say-Ok "WSL is kept running: at startup, at sign-in and every 5 minutes ('$BootTaskName')"
 } else {
-  Invoke-Change "Start WSL when Windows starts, with nobody signed in (task '$BootTaskName')" {
+  $what = if ($bootTask) { 'Update' } else { 'Add' }
+  Invoke-Change "$what the task '$BootTaskName': start WSL at startup (nobody signed in), at sign-in, and again within 5 minutes whenever it stops" {
     # A distro is per user, so the task runs as THIS user, without a stored
-    # password (S4U). `sleep infinity` keeps the distro, and with systemd its
-    # Docker, running; vmIdleTimeout=-1 keeps the VM.
+    # password (S4U).
     $action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument "-d $Distro -u root -- sleep infinity"
-    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $triggers = @(
+      (New-ScheduledTaskTrigger -AtStartup),
+      (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"),
+      # No -RepetitionDuration: repeats for as long as the task exists.
+      (New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 5))
+    )
     $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $BootTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $BootTaskName -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
+  }
+}
+
+# Fast Startup makes Shut down a hibernation: the next power-on runs no
+# startup task, and the shop finds the app down (#237). Hibernate itself stays.
+$powerKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power'
+$hiberboot = (Get-ItemProperty -Path $powerKey -Name HiberbootEnabled -ErrorAction SilentlyContinue).HiberbootEnabled
+if ($hiberboot -eq 0) {
+  Say-Ok 'Fast Startup is off: Shut down really shuts down'
+} else {
+  Invoke-Change 'Turn off Fast Startup, so Shut down really shuts down and the app starts on the next power-on' {
+    Set-ItemProperty -Path $powerKey -Name HiberbootEnabled -Value 0 -Type DWord
   }
 }
 
@@ -308,6 +340,19 @@ if ($script:RestartWsl) {
   Invoke-Change 'Restart WSL so the new settings apply (wsl --shutdown; anything running in WSL stops and starts again)' {
     Invoke-Wsl @('--shutdown') | Out-Null
     Invoke-Wsl @('-d', $Distro, '-u', 'root', '--', 'true') | Out-Null
+  }
+}
+
+# The task holds WSL open only while it runs. wsl --shutdown above ends it,
+# and a new task waits for its first trigger: start it now, or WSL stops when
+# this window closes and the app with it (#237).
+$bootTask = Get-ScheduledTask -TaskName $BootTaskName -ErrorAction SilentlyContinue
+if ($DryRun -and -not $bootTask) {
+  $script:Planned.Add("Start the task '$BootTaskName' now, so WSL keeps running when this window closes")
+} elseif ($bootTask -and ($script:RestartWsl -or $bootTask.State -ne 'Running')) {
+  Invoke-Change "Start the task '$BootTaskName' now, so WSL keeps running when this window closes" {
+    Stop-ScheduledTask -TaskName $BootTaskName -ErrorAction SilentlyContinue
+    Start-ScheduledTask -TaskName $BootTaskName
   }
 }
 
