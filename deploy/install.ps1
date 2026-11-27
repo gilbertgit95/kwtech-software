@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   1. Prepares Windows (windows\prepare-windows.ps1): WSL, Ubuntu, Docker
-     Engine, network sharing, both firewalls, start at boot, never sleep. If
+     Engine, network sharing, both firewalls, WSL kept running, Fast Startup
+     off, never sleep. If
      Windows must restart, it says so and this script continues by itself
      after you sign in again.
   2. Runs install.sh inside WSL, where Docker runs: the settings and their

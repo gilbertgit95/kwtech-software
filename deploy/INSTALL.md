@@ -123,6 +123,7 @@ the certificate, install it (`docs/HTTPS.md` section 5 has each device), then
 
 - [ ] The router reservation is made, and after a restart the address stayed (`ipconfig`).
 - [ ] After that restart, a phone opened the app **without anybody signing in to the server PC**.
+- [ ] Then **Shut down** (Start, Power, Shut down), switch the PC on again, and a phone opens the app within 2 minutes, again without signing in.
 - [ ] A phone shows the padlock, and the point of sale shows **no** "Not live" note.
 - [ ] Every printing PC shows **Online**, and a test print came out right.
 - [ ] **Server, Backups** shows the daily 9 PM backup. Copy backups off the PC now and then.
@@ -183,6 +184,15 @@ wsl -d Ubuntu -u root kwtech recover-account   # a new password for an account
 wsl -d Ubuntu -u root kwtech update            # the newest release, safely (below)
 ```
 
+**The app runs inside WSL, so WSL must keep running.** The installer sets
+this up: the task `kwtech WSL at startup` starts WSL when Windows starts, at
+sign-in, and again within 5 minutes whenever it stops; and **Fast Startup is
+off**, so Shut down really shuts down (with Fast Startup on, the next
+power-on is a resume and no startup task runs). Don't run `wsl --shutdown`
+on the server PC: the app stops until the task starts WSL again, within 5
+minutes. Big Windows updates can turn Fast Startup back on; check it as in
+Troubleshooting.
+
 ## Updating
 
 Do it when someone can check the shop afterwards, not just before opening.
@@ -212,6 +222,7 @@ then `kwtech update --bundle <that folder as WSL sees it, e.g. /mnt/d/kwtech-ins
 | It did not continue after the restart | signed in as another user | Sign in as the user who started it; run step 2 again |
 | "Not healthy after 6 minutes", with log lines | a service would not start | Run it again once. If it repeats, photograph the screen; the shop's data is untouched |
 | A phone cannot open the app | not on the shop's Wi-Fi, a guest network, or the PC asleep | Same Wi-Fi, not guest; the server PC on and awake |
+| The app is not running after switching the server PC on | WSL was not started: Fast Startup back on (after a big Windows update), or the task missing or old | Wait 2 minutes after switching on, then `wsl -d Ubuntu -u root kwtech status`. Still down: **Restart** (not Shut down) to get going now, then run step 2 again, which turns Fast Startup off and updates the task. To check by hand: `powercfg.cpl`, *Choose what the power buttons do*, *Turn on fast startup* unticked |
 | It worked yesterday; today nothing reaches it | the address changed (no reservation) | `ipconfig`; reserve the OLD address again (step 4) and restart |
 | "Not private" / "Not secure" on a phone | the certificate is not installed, or not trusted (iPhone) | Step 7 again; on iPhone, **Certificate Trust Settings** |
 | The point of sale says "Not live" | opened through the wrong address | `https://<address>`; on the server PC `https://localhost` |
