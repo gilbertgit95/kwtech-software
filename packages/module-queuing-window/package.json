@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-queuing-window",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "A walk-in queue per workspace: windows, numbered lines, and a live public display",
   "sideEffects": false,

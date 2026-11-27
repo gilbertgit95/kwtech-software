@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-basic-pos",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "A point of sale per workspace, run as a sub-app on the Apps page: items with variants, orders with hold, pay later, change owed, tips, discounts and refunds, hot keys and reports",
   "sideEffects": false,

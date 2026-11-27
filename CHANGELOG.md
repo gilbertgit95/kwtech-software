@@ -2,6 +2,13 @@
 
 kwtech, one version for the API, the web app, the print agent and every module (#204).
 
+## 0.3.2 (2026-11-28)
+
+### Fixed
+
+- Daily backups and uploaded files now save on a Docker install: the installer gives the app its backups and files folders, which were the system's and refused every write. Run the installer again (or `kwtech update`) on an existing install to fix it.
+- On Windows, the app now starts after a normal Shut down and power-on: the installer turns off Fast Startup and keeps WSL running (at startup, at sign-in and within 5 minutes whenever it stops). Run the installer again on an existing shop PC to get this.
+
 ## 0.3.1 (2026-11-21)
 
 ### Fixed

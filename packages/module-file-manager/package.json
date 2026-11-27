@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-file-manager",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "File manager sub-app: upload a file, share it with the workspace or chosen people, download it; files are temporary and the nightly clean-up deletes them",
   "sideEffects": false,
