@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-platform-billing",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Billing for the whole application: an organization requests a plan, pays outside the app, and platform staff approve it; prorated plan changes with credit, grace and expiry, bills and receipts",
   "sideEffects": false,

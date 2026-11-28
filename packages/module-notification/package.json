@@ -1,6 +1,6 @@
 {
   "name": "@kwtech/module-notification",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "System notifications for a person, across every organization and workspace: realtime, with toasts, a bell and a paginated inbox",
   "sideEffects": false,
