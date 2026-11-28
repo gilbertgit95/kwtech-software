@@ -97,11 +97,22 @@ matching. A new or reset router loses the reservation: make it again.
 2. **(by hand)** On the workspace's **Printers** page, as a workspace admin:
    **Add a computer**, name it after the PC. The pairing code works **once,
    for 10 minutes**.
-3. On the printing PC, PowerShell as administrator, from the bundle:
-   `powershell -ExecutionPolicy Bypass -File .\windows\install-print-agent.ps1`,
-   then type the server's address and the code.
-4. **(by hand)** Compare the certificate fingerprint it shows with the Local
-   network page's; answer **y** only if they match.
+3. On the printing PC, PowerShell as administrator, from the bundle, as
+   **one line** (split over two, PowerShell runs `-ExecutionPolicy` as a
+   command of its own and says it is not recognized):
+   - **Any other PC:**
+     `powershell -ExecutionPolicy Bypass -File .\windows\install-print-agent.ps1`,
+     then type the server's address and the code.
+   - **The server PC itself:** answering **y** to *Will this PC print?*
+     (step 3) already did this. Otherwise, add ` -ThisPc`:
+     `powershell -ExecutionPolicy Bypass -File .\windows\install-print-agent.ps1 -ThisPc`,
+     then type the code. ⚠ Never type the server's own address here: this
+     PC cannot reach its own `192.168.x.x` address (step 3), so it stops with
+     *Unable to connect to the remote server*.
+4. **(by hand, other PCs)** Compare the certificate fingerprint it shows with
+   the Local network page's; answer **y** only if they match. With `-ThisPc`
+   there is nothing to compare: it reads the certificate from this PC's own
+   install.
 5. **(by hand)** Set that PC to sign in automatically and never sleep.
 6. **(by hand)** **Test print** on each printer from the Printers page, and
    measure the page (lines the stated length, the corner 20 mm from the left
@@ -206,8 +217,10 @@ Do it when someone can check the shop afterwards, not just before opening.
    does not come up, it goes back to the old one by itself**, restoring the
    database if the new one had changed it, and says what failed.
 5. Then update the **print agent on each printing PC** it lists (step 6, with
-   the same release's bundle). Always the server first, then the agents: an
-   agent newer than its server gets no print jobs.
+   the same release's bundle: `-ThisPc` on the server PC, the address on
+   every other). Running it again keeps the pairing, so no new code is
+   needed. Always the server first, then the agents: an agent newer than its
+   server gets no print jobs.
 
 Offline, from a USB stick: unzip the new `kwtech-install-<version>.zip`,
 then `kwtech update --bundle <that folder as WSL sees it, e.g. /mnt/d/kwtech-install-<version>> --from-images /mnt/d/kwtech-images-<version>.tar`.
@@ -228,5 +241,7 @@ then `kwtech update --bundle <that folder as WSL sees it, e.g. /mnt/d/kwtech-ins
 | The point of sale says "Not live" | opened through the wrong address | `https://<address>`; on the server PC `https://localhost` |
 | A printing PC shows Offline | nobody signed in, asleep, or off the network | Automatic sign-in, never sleep, check its network |
 | Server, Backups shows no daily backup, or an upload fails | an install made before 0.3.2: the backups and files folders were not the app's | Run step 2 again (or `kwtech update`): it hands the folders to the app, and keeps the data |
+| *Unable to connect to the remote server* from `install-print-agent.ps1`, on the server PC | it was given this PC's own address, which this PC cannot reach (other devices can) | Run it with ` -ThisPc` instead (step 6) |
+| *-ExecutionPolicy is not recognized* | the command was split over two lines | Paste it as one line |
 | "The code has expired" when pairing | codes last 10 minutes, once | Add the computer again for a new code |
 | Forgot a password | | With email: *Forgot password* on the sign-in page. Without, or for the super admin: on the server PC, `wsl -d Ubuntu -u root kwtech recover-account` |

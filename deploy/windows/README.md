@@ -59,8 +59,21 @@ is kept per user). `install.ps1` runs it with `-ThisPc` on the server PC.
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install-print-agent.ps1                 # asks the address and the code
 powershell -ExecutionPolicy Bypass -File .\install-print-agent.ps1 -WhatIf         # what it would do
+powershell -ExecutionPolicy Bypass -File .\install-print-agent.ps1 -ThisPc         # on the server PC: only the code is asked
 ```
 
+- **The server PC always uses `-ThisPc`, never `-Server <its own address>`.**
+  Under mirrored networking Windows does not reach its own `192.168.x.x`
+  address inside WSL (phones and other PCs do): the certificate download
+  times out with *Unable to connect to the remote server*. Only
+  `127.0.0.1` gets through; `localhost` from PowerShell tries `::1` first,
+  which WSL does not forward, and hangs. So `-ThisPc` reads the certificate
+  from the install through WSL instead of over the network (nothing to
+  compare), and points the agent at `https://localhost`.
+- **`-ThisPc` expects the install in `/opt/kwtech`** (it runs
+  `/opt/kwtech/kwtech version` and `certificate` in WSL as root). An install
+  made with `install.sh --dir` elsewhere needs a link first:
+  `sudo ln -s <that folder> /opt/kwtech`.
 - **Even on the server PC it goes through `https://localhost`**: the Docker
   install publishes only Caddy's 80 and 443, never the API's 8080.
 - Node trusts the shop's authority only through `NODE_EXTRA_CA_CERTS`, read
